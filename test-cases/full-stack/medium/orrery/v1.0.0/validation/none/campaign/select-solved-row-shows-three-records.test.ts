@@ -155,6 +155,26 @@ async function courseNames(count: number): Promise<string[]> {
   return names;
 }
 
+/** A string as a literal the regexes below can carry. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/**
+ * Every conventional rendering of a whole figure: plain, and grouped by triples.
+ *
+ * Grouping the digits is what `Number.prototype.toLocaleString` does by default,
+ * so `1234` and `1,234` are the one figure written two ways. A figure of three
+ * digits or fewer has nothing to group and so has exactly one rendering.
+ */
+function renderings(figure: number): string[] {
+  const plain = String(figure);
+  const grouped = [",", "'", "\u00A0", "\u202F", "\u2009"].map((separator) =>
+    plain.replace(/\B(?=(?:\d{3})+$)/gu, separator),
+  );
+  return [plain, ...grouped.filter((rendering) => rendering !== plain)];
+}
+
 /**
  * Whether `text` carries `figure` beside `label`, in either order.
  *
@@ -164,14 +184,22 @@ async function courseNames(count: number): Promise<string[]> {
  * to six characters that are neither letters nor digits — a space, a colon, a
  * bullet, nothing at all — is allowed between the two, and the figure is required
  * to stand alone rather than inside a longer number.
+ *
+ * Nor does it fix how the figure itself is written: a build is free to group it
+ * into digit triples, which is what `Number.prototype.toLocaleString` does by
+ * default, so every conventional rendering of it counts. ASCII space is not one of
+ * the separators: a row is read as its runs of text joined together, so accepting
+ * it would read the two figures in `40 130` as the single figure `40130`.
  */
 function labelled(text: string, label: string, figure: number): boolean {
   const between = "[^0-9A-Za-z]{0,6}";
-  const value = `(?<![0-9])${figure}(?![0-9])`;
-  return new RegExp(
-    `(?:${label}${between}${value})|(?:${value}${between}${label})`,
-    "iu",
-  ).test(text);
+  return renderings(figure).some((rendering) => {
+    const value = `(?<![0-9])${escapeRegExp(rendering)}(?![0-9])`;
+    return new RegExp(
+      `(?:${label}${between}${value})|(?:${value}${between}${label})`,
+      "iu",
+    ).test(text);
+  });
 }
 
 it("draws a solved row's cost, cycles and area, each beside its own label", async () => {

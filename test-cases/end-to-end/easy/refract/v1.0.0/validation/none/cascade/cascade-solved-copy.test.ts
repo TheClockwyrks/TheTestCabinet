@@ -21,8 +21,9 @@
 // THE COPY IS READ AS RUNS. A build may letter-space its headings and canvas
 // carries no portable property for it, so tracked copy is drawn a glyph per
 // `fillText` call; the frame's COALESCED runs are what carry the words, and the
-// count is matched as one of the whole numbers a run spells rather than as its
-// digits run together.
+// count is matched as one of the numbers a run spells rather than as its
+// digits run together, and a figure the build groups with a thousands
+// separator spells the one figure it reads as.
 //
 // THE BOARD STAYS DRAWN BEHIND — AND ONLY THAT. The item's description asks for
 // the finished board still visible; the spec's own words are that it "stays
@@ -127,6 +128,37 @@ function covered(draw: TextDraw, x: number, y: number): boolean {
   );
 }
 
+/**
+ * Group separators a build may draw between a figure's digit triples: the
+ * comma, the apostrophe, and the no-break, narrow no-break and thin spaces
+ * `Number.prototype.toLocaleString` reaches for. A figure drawn with them
+ * reads as the one figure it spells, because the specification fixes the VALUE
+ * and leaves how that figure is presented to the build.
+ *
+ * ASCII space is deliberately absent from the set: a frame's text is assembled
+ * by joining separate draw runs with one, so accepting it would read the two
+ * figures in `"40 130"` as the single number 40130. The full stop is absent for
+ * a reason of its own — it is the decimal point, and a build drawing `"1.5"`
+ * means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn number: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** The separators themselves, stripped out of a figure once matched whole. */
+const SEPARATORS = new RegExp(GROUP, "g");
+
+/** The numbers a run of text carries, in order. */
+function numbersIn(text: string): number[] {
+  return (text.match(DRAWN) ?? []).map((figure) =>
+    Number(figure.replace(SEPARATORS, "")),
+  );
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -173,11 +205,7 @@ it("draws the title, the count, and the menu in order over the finished board", 
     `the frame draws ${JSON.stringify(SOLVED_TITLE_TEXT)}`,
   );
   assertTrue(
-    runs.some((run) =>
-      (run.text.match(/\d+/g) ?? []).some(
-        (d) => Number.parseInt(d, 10) === SOLVES,
-      ),
-    ),
+    runs.some((run) => numbersIn(run.text).includes(SOLVES)),
     `the frame draws the boards-solved count, ${SOLVES}`,
   );
 

@@ -17,9 +17,11 @@
 // a build is free to keep its HUD on the screen behind the menu.
 //
 // The score is a four-digit figure carrying neither of those digits standing
-// alone, matched at word boundaries, so a build that draws some other number
-// cannot satisfy it by accident. The items are matched by substring, because a
-// highlighted entry is commonly drawn with a marker beside it.
+// alone, matched at word boundaries and in every grouping a build may draw it
+// with, so a build that draws some other number cannot satisfy it by accident
+// and one that draws `3,070` is read as drawing `3070`. The items are matched
+// by substring, because a highlighted entry is commonly drawn with a marker
+// beside it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ENDING_ITEMS } from "../constants";
@@ -39,6 +41,27 @@ const RUN_SCORE = 3070;
 const RUN_LEVEL = 5;
 /** The level reached, which it does. */
 const REACHED_LEVEL = 9;
+
+/**
+ * A pattern matching `figure` drawn on its own, however the build grouped it.
+ *
+ * `specs/ui.md` fixes the figure the screen reports and leaves the drawing of it
+ * to the build, so the plain digits and the same digits grouped in threes —
+ * `1,234`, `1'234`, and the same with a non-breaking or a thin space — are all
+ * the one figure and all match. An ASCII space is not a grouping separator: the
+ * screen's runs are joined with one to make the copy read below, so a copy
+ * reading `40 130` drew the two figures `40` and `130`, not `40130`. The word
+ * boundaries on both sides are kept, so a copy showing `150` still does not
+ * report `50`.
+ */
+function drawnFigure(figure: number): RegExp {
+  const plain = String(figure);
+  const forms = new Set([plain]);
+  for (const separator of [",", "'", "\u00A0", "\u202F", "\u2009"]) {
+    forms.add(plain.replace(/\B(?=(\d{3})+(?!\d))/g, separator));
+  }
+  return new RegExp(`\\b(?:${[...forms].join("|")})\\b`);
+}
 
 let h: Harness;
 
@@ -77,12 +100,12 @@ it("reports the score, the level reached and both ending items", async () => {
   const copy = drawnText(h.calls).join("  ");
   assertMatches(
     copy,
-    new RegExp(`\\b${RUN_SCORE}\\b`),
+    drawnFigure(RUN_SCORE),
     "the game-over screen draws the run's final score (specs/ui.md)",
   );
   assertMatches(
     copy,
-    new RegExp(`\\b${REACHED_LEVEL}\\b`),
+    drawnFigure(REACHED_LEVEL),
     "the game-over screen draws the level the run reached (specs/ui.md)",
   );
   for (const item of ENDING_ITEMS) {

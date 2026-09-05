@@ -241,9 +241,30 @@ function rowText(order: readonly TextDraw[], row: Row): string[] {
 
 /* -------------------------------------------------------------------------- */
 
-/** The numbers a run of text carries. */
+/**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * ASCII space is deliberately absent: a frame's text is assembled by joining
+ * separate draw runs with one, so accepting it would read the two figures in
+ * `40 130` as the single number 40130. `.` is absent for the same sort of
+ * reason — it is the decimal point, and a build drawing `1.5` means one and a
+ * half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn number: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
+
+/**
+ * The numbers a run of text carries.
+ *
+ * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
+ * come back as 1234 and a build is free to group the figure it draws.
+ */
 function numbersIn(text: string): number[] {
-  return (text.match(/\d+/g) ?? []).map((run) => Number(run));
+  return (text.match(DRAWN) ?? []).map((one) =>
+    Number(one.replace(new RegExp(GROUP, "g"), "")),
+  );
 }
 
 let h: Harness;

@@ -20,8 +20,9 @@
 // THE COPY IS READ AS RUNS. A build may letter-space its headings and canvas
 // carries no portable property for it, so tracked copy is drawn a glyph per
 // `fillText` call; the frame's COALESCED runs are what carry the words, and
-// the count is matched as one of the whole numbers a run spells rather than
-// as its digits run together.
+// the count is matched as one of the numbers a run spells rather than as its
+// digits run together, and a figure the build groups with a thousands
+// separator spells the one figure it reads as.
 //
 // THE BOARD STAYS DRAWN BEHIND — AND ONLY THAT. The spec's words are that the
 // finished board "stays visible behind it ... so the player sees the shape

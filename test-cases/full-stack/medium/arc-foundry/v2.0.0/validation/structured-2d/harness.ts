@@ -2601,22 +2601,38 @@ export function drew(
   );
 }
 
-/** `1,234` reads as one figure rather than as `1` beside `234`. */
-function stripGrouping(line: string): string {
-  let out = line;
-  for (;;) {
-    const next = out.replace(/(\d),(\d{3})(?!\d)/g, "$1$2");
-    if (next === out) return out;
-    out = next;
-  }
-}
+/**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * The specification fixes the figure and leaves its presentation to the build,
+ * and grouping is what `Number.prototype.toLocaleString()` does by default —
+ * with whichever separator the locale uses: a comma, an apostrophe, a no-break
+ * space, a narrow no-break space, a thin space. `1,234` therefore reads as the
+ * one figure `1234` rather than as `1` beside `234`, and a build that draws
+ * `1234` and one that draws `1,234` are read the same.
+ *
+ * The ASCII space is deliberately absent from the class. {@link textLines} joins
+ * the separate draws of a row with one, so accepting it would read the two
+ * figures of `40 130` as the single `40130`. `.` is absent for a related reason:
+ * it is the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** The same separators again, to take back off a figure once it is matched. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/** One figure a line draws: a grouped one, or a plain one. */
+const FIGURE = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
 
 /** Every number a region's text draws, in reading order. */
 export function figures(calls: readonly DrawCall[], region: Region): number[] {
   const found: number[] = [];
   for (const line of textLines(calls, region)) {
-    for (const match of stripGrouping(line).matchAll(/\d+(?:\.\d+)?/g)) {
-      found.push(Number(match[0]));
+    for (const match of line.matchAll(FIGURE)) {
+      found.push(Number(match[0].replace(GROUPS, "")));
     }
   }
   return found;

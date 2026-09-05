@@ -106,6 +106,22 @@ function squash(text: string): string {
   return text.toLowerCase().replace(/\s+/gu, "");
 }
 
+/**
+ * The separators a build may draw between a figure's digit triples.
+ *
+ * The specification fixes the figures a row carries and leaves how the row writes
+ * them to the build, and grouping is what `Number.prototype.toLocaleString` does
+ * by default, so a row that drew `1,234` drew the one figure 1234 and reads as
+ * that. ASCII space is deliberately absent from the set: a row is read as its runs
+ * of text joined together, so accepting it would read the two figures in `40 130`
+ * as the single figure `40130`. The decimal point is absent for the same kind of
+ * reason — a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One whole number as a build may draw it: grouped into triples, or plain. */
+const WHOLE = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "gu");
+
 /** The baseline a challenge's row was drawn on, found by its name. */
 function baselineOf(lines: readonly Line[], name: string): number {
   const row = lines.find((line) => squash(line.text).includes(squash(name)));
@@ -229,7 +245,9 @@ it("draws no record figures on an unsolved row, locked or unlocked", async () =>
           `no ${metric} record; the row reads ${JSON.stringify(text)}`,
       );
     }
-    const figures = (withoutName.match(/\d+/gu) ?? []).map(Number);
+    const figures = (withoutName.match(WHOLE) ?? []).map((drawn) =>
+      Number(drawn.replace(new RegExp(GROUP, "gu"), "")),
+    );
     for (const figure of figures) {
       assertEqual(
         figure,

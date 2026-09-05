@@ -21,7 +21,9 @@
 // HOW A VALUE IS RECOGNISED. Every figure below is checked as a whole run of
 // digits rather than as a substring, so a `17` on the panel is not answered by the
 // `7` inside some other number, and the board is posed so that no two of the
-// values asserted share a figure. Two of them cannot be made unique — a bolt count
+// values asserted share a figure. A run grouped in threes is read as the one
+// figure it spells, since the panel reports a figure and draws it however it
+// likes. Two of them cannot be made unique — a bolt count
 // and an entity id are both small integers — and those are the weakest readings
 // here. HOW each value is drawn is the build's: specs/overview.md fixes no
 // palette, no typeface and no layout, and the engine formats a source's value
@@ -120,9 +122,30 @@ function newLines(
   });
 }
 
-/** Every maximal run of digits the lines carry. */
+/** The separators a build may draw between the digit triples of a figure. */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn figure: digits grouped in threes, or a plain run of digits. */
+const FIGURE = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
+
+/**
+ * Every maximal run of digits the lines carry, with any grouping taken out.
+ *
+ * specs/instrumentation.md fixes the FIGURE a source reports and leaves the
+ * drawing of it to the build, so a panel that groups its thousands — `4,271`,
+ * `4'271`, `4 271` written with a non-breaking or a thin space — carries the one
+ * figure `4271` and reads as it. An ASCII space is not a grouping separator: the
+ * panel's lines are read as the build drew them, and a line reading `40 130`
+ * drew the two figures `40` and `130`, not `40130`. Nor is the decimal point, so
+ * a line drawing `1.5` still reads out `1` and `5` rather than one figure.
+ */
 function digitRuns(lines: readonly string[]): string[] {
-  return lines.flatMap((line) => line.match(/\d+/g) ?? []);
+  return lines.flatMap(
+    (line) =>
+      line
+        .match(FIGURE)
+        ?.map((run) => run.replace(new RegExp(GROUP, "g"), "")) ?? [],
+  );
 }
 
 /** Some line carries `value` as a whole figure; fails naming what was wanted. */

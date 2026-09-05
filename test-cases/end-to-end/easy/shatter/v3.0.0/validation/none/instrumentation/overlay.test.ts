@@ -14,10 +14,14 @@
 // set of FACTS and requires each to be short enough to read on a line; it fixes no
 // format, no layout, no wording and no units, and asking for any of those would fail
 // a build that reported the same fact differently. So the field is posed to figures
-// nothing else on it carries, and each is looked for as a WHOLE RUN OF DIGITS among
-// the lines the toggle ADDED to an otherwise identical frame — so the `4` of the
-// bullet count is not answered by the `4` inside `448`. A build reporting the wrong
-// field, or a placeholder, produces a different number.
+// nothing else on it carries, and each is looked for as a WHOLE FIGURE among the
+// lines the toggle ADDED to an otherwise identical frame — so the `4` of the bullet
+// count is not answered by the `4` inside `448`. A figure the build GROUPED reads as
+// the one figure it is: `45,310` and `45310` are the same score, whatever separator
+// its formatter reached for. An ASCII space is not one of those separators, because
+// a panel's lines are the runs of text the frame drew and two figures a run apart
+// stay two figures. A build reporting the wrong field, or a placeholder, produces a
+// different number.
 //
 // THE TWO VALUES WITH MORE THAN ONE HONEST WRITTEN FORM are accepted in any of
 // them. A facing may be drawn in degrees or in radians and a grace to whatever
@@ -148,9 +152,48 @@ function newLines(
   });
 }
 
-/** Every maximal run of digits the lines carry. */
-function digitRuns(lines: readonly string[]): string[] {
-  return lines.flatMap((line) => line.match(/\d+/g) ?? []);
+/**
+ * The characters a build may GROUP a figure's digit triples with.
+ *
+ * A figure reaches a panel through the build's own formatter, and the ordinary one
+ * — `Number.prototype.toLocaleString` — groups by default, with the comma, the
+ * apostrophe or one of the thin and non-breaking spaces its locale calls for. All
+ * of them write the same number.
+ *
+ * ASCII SPACE IS NOT ONE OF THEM. A panel's lines are the runs of text the frame
+ * drew, and a build is free to draw a figure and its neighbour as runs one space
+ * apart — so reading a space as a separator would take the two figures in `40 130`
+ * for the single number `40130`. `.` is left out for the neighbouring reason: it is
+ * the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/**
+ * One figure as a build may write it: grouped into triples, or plain.
+ *
+ * A LEADING SIGN IS NOT PART OF THE FIGURE. What is read here is the digits, so a
+ * build that writes a velocity component as `-448` and one that writes the
+ * magnitude `448` are read alike — which is what the reading of a component posed
+ * negative rests on.
+ */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
+ * Every figure the lines carry, as the numbers they read as.
+ *
+ * The separators are dropped from each match, so a panel that groups a figure
+ * (`45,310`) and one that does not (`45310`) report the same number: the
+ * specification fixes the FIGURE and leaves how it is written to the build.
+ */
+function drawnNumbers(lines: readonly string[]): number[] {
+  return lines.flatMap((line) =>
+    (line.match(DRAWN) ?? []).map((figure) =>
+      Number(figure.replace(new RegExp(GROUP, "g"), "")),
+    ),
+  );
 }
 
 /** Some line carries `value` as a whole figure; fails naming what was wanted. */
@@ -159,7 +202,7 @@ function assertFigure(
   value: number,
   what: string,
 ): void {
-  if (!digitRuns(lines).includes(String(value))) {
+  if (!drawnNumbers(lines).includes(value)) {
     fail(`an overlay line carrying ${what} (${value})`, lines);
   }
 }

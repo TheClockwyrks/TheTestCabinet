@@ -41,7 +41,9 @@
 // overlay's LAYOUT is entirely the build's — the specification asks only that each
 // source be "short enough to read on a line" — so requiring an exact run of text
 // would fail a conformant build over its own formatting. A posed heat of `63`
-// reads as `63`, `63.0` or `63.00` and all three carry the substring. A route's
+// reads as `63`, `63.0` or `63.00` and all three carry the substring. A figure
+// long enough to group reads under any grouping a build may letter it with, so a
+// score of `6821` is found whether the line carries `6821` or `6,821`. A route's
 // length is a sum of `1`s and `sqrt(2)`s (`specs/mazing.md`) and so a fraction, so
 // it is looked for under any of the roundings a build might print it at.
 //
@@ -158,20 +160,83 @@ async function runsOfOneFrame(): Promise<string[]> {
   return drawnText(await h.frameCalls());
 }
 
-/** How many of `runs` carry `needle`, ignoring case. */
-function carrying(runs: readonly string[], needle: string): number {
-  const wanted = needle.toLowerCase();
-  return runs.filter((run) => run.toLowerCase().includes(wanted)).length;
+/**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * `1,250`, `1'250`, and `1 250` written with a non-breaking, a narrow or a thin
+ * space are all the one figure `1250` — the grouping
+ * `Number.prototype.toLocaleString` writes by default. The ASCII space is
+ * deliberately not one of them: a line is read as a whole run of text and a run
+ * may carry two figures with an ordinary space between them, so accepting it
+ * would read `40 130` as `40130`. Nor is the full stop, which is the decimal
+ * point.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"] as const;
+
+/**
+ * Every way a build may letter the figure `value`: plain, and grouped into digit
+ * triples by each separator above.
+ *
+ * A figure of three digits or fewer has exactly one rendering, so a life count, a
+ * tile column or an entity id is looked for exactly as it is.
+ */
+function figureRenderings(value: number): string[] {
+  const plain = String(value);
+  const dot = plain.indexOf(".");
+  const whole = dot === -1 ? plain : plain.slice(0, dot);
+  const tail = dot === -1 ? "" : plain.slice(dot);
+  const sign = whole.startsWith("-") ? "-" : "";
+  const digits = sign === "" ? whole : whole.slice(1);
+  if (digits.length <= 3) return [plain];
+  const triples: string[] = [];
+  for (let end = digits.length; end > 0; end -= 3) {
+    triples.unshift(digits.slice(Math.max(0, end - 3), end));
+  }
+  return [
+    plain,
+    ...GROUP_SEPARATORS.map(
+      (separator) => `${sign}${triples.join(separator)}${tail}`,
+    ),
+  ];
 }
 
-/** The first of `runs` containing `needle`, ignoring case, or a failure. */
+/** Every form `needle` may have been lettered in, ready to be looked for. */
+function formsOf(needle: string | number): string[] {
+  const forms =
+    typeof needle === "number" ? figureRenderings(needle) : [needle];
+  return forms.map((form) => form.toLowerCase());
+}
+
+/**
+ * How many of `runs` carry `needle`, ignoring case.
+ *
+ * A FIGURE is handed over as a number rather than as a string, and is then
+ * counted under every grouping a build may letter it with, so a run reading
+ * `4,321` carries the money `4321`.
+ */
+function carrying(runs: readonly string[], needle: string | number): number {
+  const wanted = formsOf(needle);
+  return runs.filter((run) => {
+    const line = run.toLowerCase();
+    return wanted.some((form) => line.includes(form));
+  }).length;
+}
+
+/**
+ * The first of `runs` containing `needle`, ignoring case, or a failure.
+ *
+ * A figure is handed over as a number, on the same terms `carrying` states.
+ */
 function lineContaining(
   runs: readonly string[],
-  needle: string,
+  needle: string | number,
   requirement: string,
 ): string {
-  const wanted = needle.toLowerCase();
-  const found = runs.find((run) => run.toLowerCase().includes(wanted));
+  const wanted = formsOf(needle);
+  const found = runs.find((run) => {
+    const line = run.toLowerCase();
+    return wanted.some((form) => line.includes(form));
+  });
   if (found === undefined) {
     fail(
       `an overlay line containing ${JSON.stringify(needle)} (${requirement})`,
@@ -181,21 +246,24 @@ function lineContaining(
   return found;
 }
 
-/** A line carrying `value` under any rounding a build might print it at. */
+/**
+ * A line carrying `value` under any rounding a build might print it at, and under
+ * any grouping it might letter that rounding with.
+ */
 function lineWithNumber(
   runs: readonly string[],
   value: number,
   requirement: string,
 ): string {
-  const renderings = [
-    String(value),
-    String(Math.round(value)),
-    String(Math.trunc(value)),
+  const roundings = [
+    ...figureRenderings(value),
+    ...figureRenderings(Math.round(value)),
+    ...figureRenderings(Math.trunc(value)),
     value.toFixed(1),
     value.toFixed(2),
   ];
   const found = runs.find((run) =>
-    renderings.some((rendering) => run.includes(rendering)),
+    roundings.some((rendering) => run.includes(rendering)),
   );
   if (found === undefined) {
     fail(
@@ -220,11 +288,12 @@ it("draws the game's own facts once the backtick opens it", async () => {
   // The frame before the toggle: the panel alone.
   const closedRuns = await runsOfOneFrame();
   const closed = closedRuns.join(" | ");
-  for (const figure of [String(POSED_SCORE), String(POSED_HP)]) {
-    if (closed.includes(figure)) {
+  for (const figure of [POSED_SCORE, POSED_HP]) {
+    if (figureRenderings(figure).some((form) => closed.includes(form))) {
       fail(
-        `${figure} absent from the frame before the overlay was opened ` +
-          "(specs/hud.md draws neither the score nor a unit's hp as a figure)",
+        `${String(figure)} absent from the frame before the overlay was ` +
+          "opened (specs/hud.md draws neither the score nor a unit's hp as a " +
+          "figure)",
         closed,
       );
     }
@@ -252,15 +321,15 @@ it("draws the game's own facts once the backtick opens it", async () => {
     ["the wave", POSED_WAVE],
   ] as const) {
     assertGreaterThan(
-      carrying(openedRuns, String(figure)),
-      carrying(closedRuns, String(figure)),
+      carrying(openedRuns, figure),
+      carrying(closedRuns, figure),
       `${name}, ${String(figure)}: runs carrying it with the overlay open, ` +
         "against the runs carrying it with the overlay shut",
     );
   }
 
   // The score, which the panel draws nowhere.
-  lineContaining(added, String(POSED_SCORE), "the score");
+  lineContaining(added, POSED_SCORE, "the score");
 
   // The two routes.
   lineWithNumber(added, posed.paths.left.length, "the left route's length");
@@ -268,7 +337,7 @@ it("draws the game's own facts once the backtick opens it", async () => {
 
   // The tower's line: its type, its id, its level, its heat and its redline.
   const towerLine = lineContaining(added, TOWER, "the tower's type");
-  lineContaining([towerLine], String(tower), "the tower's id");
+  lineContaining([towerLine], tower, "the tower's id");
   const level = towerLine.toLowerCase();
   if (!level.includes(String(POSED_LEVEL)) && !level.includes("iii")) {
     fail(
@@ -276,15 +345,15 @@ it("draws the game's own facts once the backtick opens it", async () => {
       towerLine,
     );
   }
-  lineContaining([towerLine], String(POSED_HEAT), "the tower's heat");
-  lineContaining([towerLine], String(TOWER_DEF.redline), "the tower's redline");
+  lineContaining([towerLine], POSED_HEAT, "the tower's heat");
+  lineContaining([towerLine], TOWER_DEF.redline, "the tower's redline");
 
   // The unit's line: its type, its id, the tile it stands on and its hp.
   const unitLine = lineContaining(added, UNIT, "the unit's type");
-  lineContaining([unitLine], String(unit), "the unit's id");
-  lineContaining([unitLine], String(UNIT_TILE.col), "the unit's column");
-  lineContaining([unitLine], String(UNIT_TILE.row), "the unit's row");
-  lineContaining([unitLine], String(POSED_HP), "the unit's hp");
+  lineContaining([unitLine], unit, "the unit's id");
+  lineContaining([unitLine], UNIT_TILE.col, "the unit's column");
+  lineContaining([unitLine], UNIT_TILE.row, "the unit's row");
+  lineContaining([unitLine], POSED_HP, "the unit's hp");
 
   // The trip flag, by difference: the pose touches that flag alone.
   await h.debug.setTowerTripped(tower, true);

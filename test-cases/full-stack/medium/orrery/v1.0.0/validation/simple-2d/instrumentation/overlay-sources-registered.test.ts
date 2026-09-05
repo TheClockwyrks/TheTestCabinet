@@ -140,9 +140,30 @@ async function panelLines(): Promise<string[]> {
   return gained.length > 0 ? gained : lost;
 }
 
+/**
+ * The separators a build may draw between a figure's digit triples.
+ *
+ * The specification fixes the figure and leaves its presentation to the build, and
+ * grouping is what `Number.prototype.toLocaleString` does by default, so a panel
+ * that wrote `1,234` wrote the one figure 1234 and reads as that. ASCII space is
+ * deliberately absent from the set: the panel's lines are separate runs of text
+ * and are joined before they are read, so accepting it would read the two figures
+ * in `40 130` as the single figure `40130`. The decimal point is absent for the
+ * same kind of reason — a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One number as a build may draw it: grouped into triples, or plain. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
 /** Every number the panel wrote, whatever it wrote beside them. */
 function numbersOn(lines: readonly string[]): number[] {
-  return (lines.join("\n").match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return (lines.join("\n").match(DRAWN) ?? []).map((drawn) =>
+    Number(drawn.replace(new RegExp(GROUP, "g"), "")),
+  );
 }
 
 it("registers every diagnostic the specification asks the overlay to show", async () => {

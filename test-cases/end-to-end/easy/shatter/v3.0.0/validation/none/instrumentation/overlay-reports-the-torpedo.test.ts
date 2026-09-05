@@ -20,8 +20,11 @@
 // the specification fixes no format, no layout, no wording and no units. So the
 // charge is posed to a value nothing else on the field carries and looked for among
 // the lines the toggle ADDED to an otherwise identical frame, and the count of
-// torpedoes is looked for as a whole run of digits so the `2` of the count is not
-// answered by the `2` inside `260`.
+// torpedoes is looked for as a whole figure so the `2` of the count is not answered
+// by the `2` inside `260`. That reading takes a figure the build GROUPED for the one
+// figure it is — `1,024` and `1024` are the same number — and leaves an ASCII space
+// between two figures alone, because a panel's lines are the runs of text the frame
+// drew and two figures a run apart stay two figures.
 //
 // THE FIELD HOLDS THE TORPEDOES AND NOTHING ELSE. `startPlaying` leaves an empty,
 // quiet field with both world gates shut, and the only bodies posed onto it are the
@@ -86,9 +89,47 @@ function newLines(
   });
 }
 
-/** Every maximal run of digits the lines carry. */
-function digitRuns(lines: readonly string[]): string[] {
-  return lines.flatMap((line) => line.match(/\d+/g) ?? []);
+/**
+ * The characters a build may GROUP a figure's digit triples with.
+ *
+ * A figure reaches a panel through the build's own formatter, and the ordinary one
+ * — `Number.prototype.toLocaleString` — groups by default, with the comma, the
+ * apostrophe or one of the thin and non-breaking spaces its locale calls for. All
+ * of them write the same number.
+ *
+ * ASCII SPACE IS NOT ONE OF THEM. A panel's lines are the runs of text the frame
+ * drew, and a build is free to draw a figure and its neighbour as runs one space
+ * apart — so reading a space as a separator would take the two figures in `40 130`
+ * for the single number `40130`. `.` is left out for the neighbouring reason: it is
+ * the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/**
+ * One figure as a build may write it: grouped into triples, or plain.
+ *
+ * A LEADING SIGN IS NOT PART OF THE FIGURE. What is read here is the digits, so a
+ * build that writes a figure with a sign in front of it and one that writes the
+ * magnitude alone are read alike, as this panel's sibling reading needs.
+ */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
+ * Every figure the lines carry, as the numbers they read as.
+ *
+ * The separators are dropped from each match, so a panel that groups a figure
+ * (`45,310`) and one that does not (`45310`) report the same number: the
+ * specification fixes the FIGURE and leaves how it is written to the build.
+ */
+function drawnNumbers(lines: readonly string[]): number[] {
+  return lines.flatMap((line) =>
+    (line.match(DRAWN) ?? []).map((figure) =>
+      Number(figure.replace(new RegExp(GROUP, "g"), "")),
+    ),
+  );
 }
 
 beforeEach(async () => {
@@ -132,7 +173,7 @@ it("draws the torpedo charge and the torpedoes in flight", async () => {
       overlay,
     );
   }
-  if (!digitRuns(overlay).includes(String(TORPEDO_PLACES.length))) {
+  if (!drawnNumbers(overlay).includes(TORPEDO_PLACES.length)) {
     fail(
       `an overlay line carrying how many torpedoes are in flight ` +
         `(${String(TORPEDO_PLACES.length)}) — the Diagnostics list ` +

@@ -90,19 +90,84 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
 }
 
 /**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * `specs/ui.md` fixes the figures a screen states and leaves their presentation
+ * to the build, and grouping is what `Number.prototype.toLocaleString()` does by
+ * default — with whichever separator the locale uses: a comma, an apostrophe, a
+ * no-break space, a narrow no-break space, a thin space. So a screen drawing
+ * `1,234` and one drawing `1234` state the same figure and read the same.
+ *
+ * The ASCII space is deliberately absent from the class. {@link frameText} joins
+ * the runs of a frame with one, so accepting it would read the two figures of
+ * `40 130` as the single `40130`. `.` is absent for a related reason: it is the
+ * decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** The same separators again, to take back off a figure once it is matched. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/** One drawn number: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** The separators of {@link GROUP}, one at a time, to write a figure with. */
+const SEPARATORS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/** `value` as a literal in a pattern, with nothing in it read as syntax. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Every conventional rendering of `value`: its plain digits, and the same digits
+ * grouped in threes with each separator a build might reach for.
+ *
+ * Only the whole part is grouped, because that is the part a build groups; the
+ * digits past a decimal point are left as they are. A value of three digits or
+ * fewer has exactly one rendering, there being nothing to group.
+ */
+function renderings(value: number): string[] {
+  const plain = String(value);
+  const dot = plain.indexOf(".");
+  const whole = dot === -1 ? plain : plain.slice(0, dot);
+  const rest = dot === -1 ? "" : plain.slice(dot);
+  const all = [plain];
+  for (const separator of SEPARATORS) {
+    const grouped = whole.replace(/\B(?=(?:\d{3})+$)/g, separator) + rest;
+    if (!all.includes(grouped)) all.push(grouped);
+  }
+  return all;
+}
+
+/**
  * Whether the frame drew `value` as a number of its own.
  *
  * Bounded on both sides so that a screen showing `40` is not read as showing `4`,
  * and so that the `50` of a wave count is not found inside a `150`. A build is
- * free to pad, group or label the figure; what it may not do is leave it out.
+ * free to pad, group or label the figure; what it may not do is leave it out —
+ * so every rendering of it, plain and grouped, is asked for in turn.
  */
 export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
-  return new RegExp(`(?<![\\d.])${value}(?![\\d.])`).test(frameText(calls));
+  const text = frameText(calls);
+  return renderings(value).some((rendering) =>
+    new RegExp(`(?<![\\d.])${escapeRegExp(rendering)}(?![\\d.])`).test(text),
+  );
 }
 
-/** Every number the frame drew, as numbers, in the order they were drawn. */
+/**
+ * Every number the frame drew, as numbers, in the order they were drawn.
+ *
+ * A grouped figure is one number: the separators come off the match before it is
+ * read, so `1,234` is the single `1234`.
+ */
 export function drawnNumbers(calls: readonly DrawCall[]): number[] {
-  return (frameText(calls).match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return (frameText(calls).match(DRAWN) ?? []).map((drawn) =>
+    Number(drawn.replace(GROUPS, "")),
+  );
 }
 
 /* -------------------------------------------------------------------------- */

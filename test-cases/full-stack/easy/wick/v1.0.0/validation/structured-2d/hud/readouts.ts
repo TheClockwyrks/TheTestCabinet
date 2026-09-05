@@ -125,9 +125,31 @@ function issuedRuns(calls: readonly DrawCall[]): string[] {
     .filter((text) => text.trim().length > 1);
 }
 
-/** Every maximal run of digits in `text`. */
+/**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so `1,234` and `1234`
+ * are one figure written two ways and a check may not tell them apart. ASCII
+ * space is deliberately absent: the runs of a line are joined with one, so
+ * accepting it would read the two figures of `40 130` as the single figure
+ * `40130`. `.` is absent because it is the decimal point, and a build writing
+ * `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One figure a build wrote: a grouped run of digits, or a plain one. */
+const FIGURE = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
+
+/** Every separator in a written figure, for reading it back as its digits. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/**
+ * Every maximal figure in `text`, each read back as the digits alone: `1,234`
+ * and `1234` both answer `1234`, so how a build groups a figure's digits never
+ * decides a point.
+ */
 function digitRuns(text: string): string[] {
-  return text.match(/\d+/g) ?? [];
+  return (text.match(FIGURE) ?? []).map((run) => run.replace(GROUPS, ""));
 }
 
 /** Every maximal run of digits and colons in `text`. */
@@ -139,7 +161,8 @@ function clockRuns(text: string): string[] {
  * Whether the frame showed `value` as a figure of its own: some word or issued
  * run holds it as a maximal run of digits. A readout of `143 KILLS`, one of
  * `143`, and one drawn glyph by glyph all answer yes; one reading `1143` does
- * not.
+ * not. A build is free to group a figure's digits, so a readout of `1,234`
+ * shows the figure `1234`.
  */
 export function drewFigure(calls: readonly DrawCall[], value: number): boolean {
   const wanted = String(value);

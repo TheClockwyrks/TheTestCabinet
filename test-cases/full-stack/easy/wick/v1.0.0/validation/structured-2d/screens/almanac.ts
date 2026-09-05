@@ -139,6 +139,38 @@ export function anchorX(
 export const STAT_LINE = 20;
 
 /**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * `Number.prototype.toLocaleString` groups by default and `specs/ui.md` fixes
+ * the figure beside a label rather than how it is written, so `1,234` and
+ * `1234` are one figure written two ways. ASCII space is not among them: a
+ * frame's runs are read as separate strings and a build sets its own spacing
+ * within one, so accepting it would read the two figures of `40 130` as the
+ * single figure `40130`.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every way a build may write `figure`: the figure itself, and, where its whole
+ * part runs past three digits, the same digits with each separator a build may
+ * group them by. A figure of three digits or fewer is written one way, so `10`
+ * stays `10`.
+ */
+function spellings(figure: string): string[] {
+  const parsed = /^(-?)(\d{4,})(\.\d+)?$/.exec(figure);
+  if (parsed === null) return [figure];
+  const [, sign, whole, fraction = ""] = parsed;
+  const grouped = GROUP_SEPARATORS.map((separator) => {
+    const triples: string[] = [];
+    for (let at = whole.length; at > 0; at -= 3) {
+      triples.unshift(whole.slice(Math.max(0, at - 3), at));
+    }
+    return `${sign}${triples.join(separator)}${fraction}`;
+  });
+  return [figure, ...grouped];
+}
+
+/**
  * Whether a run of text carries `figure` as a figure of its own rather than as
  * part of a longer one.
  *
@@ -148,12 +180,16 @@ export const STAT_LINE = 20;
  * `10 dmg`, and is not written on one reading `DAMAGE 100`. The bound either
  * side is a digit or a decimal point, so the units, the punctuation and the
  * words a build sets around a figure are still its own, and a figure written
- * with trailing zeros past the point is the same figure.
+ * with trailing zeros past the point is the same figure. The figure is looked
+ * for as any of its {@link spellings}, so a build that groups a figure's digits
+ * writes the figure the specification names.
  */
 function carriesFigure(text: string, figure: string): boolean {
-  const escaped = figure.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const zeros = figure.includes(".") ? "0*" : "(?:\\.0+)?";
-  return new RegExp(`(?<![\\d.])${escaped}${zeros}(?![\\d.])`).test(text);
+  return spellings(figure).some((written) => {
+    const escaped = written.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?<![\\d.])${escaped}${zeros}(?![\\d.])`).test(text);
+  });
 }
 
 /**

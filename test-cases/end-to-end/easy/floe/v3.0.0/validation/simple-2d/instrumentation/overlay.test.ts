@@ -25,7 +25,8 @@
 // `(880, 512)` — facing `left` on solid ice, one bear whose centre is `(304, 320)`
 // and whose target is tile `(33, 3)`, three vehicles and two floes. A value is
 // looked for as a whole number rather than as a substring, so `7250` is not
-// answered by a `72` inside something else.
+// answered by a `72` inside something else, and it is taken under any of its
+// groupings, so a panel that set that score as `7,250` reports the one figure.
 //
 // TWO OF THE FACTS ARE FLAGS RATHER THAN FIGURES, AND THEY ARE READ DIFFERENTLY.
 // How a build spells a swimming bear or a filled bay is its own — `swim`, `true`,
@@ -127,9 +128,47 @@ function assertReports(
   if (!holds) fail(`an overlay line carrying ${what}`, lines);
 }
 
-/** That whole number, not as a digit inside a longer one. */
+/**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a panel that reaches for
+ * it registers a score of `7250` as `7,250`, and another locale's grouping gives
+ * `7'250` or `7\u202F250`. Every one of those reports the one figure, and
+ * specs/instrumentation.md fixes none of them.
+ *
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. A panel line carries a label
+ * and often more than one figure, separated by exactly that, so accepting it would
+ * read the `40` and the `130` of one line as the single figure `40130`. `.` is left
+ * out for its own reason: it is the decimal point, and a centre of `1.5` is one and
+ * a half.
+ */
+const GROUPS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every conventional setting of `value`: the plain figure, and — when it runs to
+ * more than three digits — the same figure with its triples grouped by each of
+ * {@link GROUPS}. A figure of three digits or fewer has exactly one setting.
+ */
+function settings(value: number): string[] {
+  const text = String(value);
+  const figure = /^(-?)(\d+)(\.\d+)?$/.exec(text);
+  if (figure === null) return [text];
+  const [, sign, digits, fraction = ""] = figure;
+  if (digits.length <= 3) return [text];
+  return [
+    text,
+    ...GROUPS.map(
+      (group) => sign + digits.replace(/\B(?=(\d{3})+$)/g, group) + fraction,
+    ),
+  ];
+}
+
+/** That whole number under any of its settings, not as a digit inside a longer one. */
 function whole(value: number): RegExp {
-  return new RegExp(`(?<!\\d)${value}(?!\\d)`);
+  const wanted = settings(value)
+    .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  return new RegExp(`(?<!\\d)(?:${wanted})(?!\\d)`);
 }
 
 /** The snapshot fields that differ between two readings, `simTime` apart. */

@@ -23,8 +23,8 @@
 // labelled or formatted — a wave count may be drawn as `15`, `15 WAVES`,
 // `WAVES 15` or `1/15`, and a score with a thousands separator. So a figure is
 // looked for as a NUMBER parsed out of a run rather than as a literal, and a
-// comma between two digits is dropped before parsing, so `10,000` reads as one
-// figure and not as two.
+// figure grouped into digit triples is read as the one figure it is, so `10,000`
+// reads as one figure and not as two.
 //
 // THIS FILE FIXES NO FIGURE AND NO THRESHOLD. Every number a point compares
 // against, and every floor it puts under a body of text, is stated in the point
@@ -47,15 +47,38 @@ export function reactorTexts(calls: readonly DrawCall[]): string[] {
 }
 
 /**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * Grouping is formatting, and formatting is the build's: `10,000` is the one
+ * figure `10000` drawn the way `Number.prototype.toLocaleString` draws it by
+ * default. The ASCII space is deliberately not one of them, because the frame's
+ * runs are read side by side and a run may carry two figures with a space between
+ * them — `40 130` is a reading of `40` and `130` rather than one of `40130`. Nor
+ * is the full stop, which is the decimal point: a build drawing `1.5` drew one
+ * and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One figure as a run may carry it: grouped into triples, or plain. */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every group separator inside one figure, for dropping before it is read. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/**
  * Every number the given runs carry, in the order they carry them.
  *
- * A comma between two digits is dropped first, so a build drawing `10,000` reads
- * the one figure it drew rather than two smaller ones.
+ * The separators of a grouped figure are dropped as it is read, so a build
+ * drawing `10,000` reads as the one figure it drew rather than as two smaller
+ * ones.
  */
 export function numbersIn(texts: readonly string[]): number[] {
   return texts.flatMap((text) =>
-    (text.replace(/(\d),(\d)/g, "$1$2").match(/\d+(?:\.\d+)?/g) ?? []).map(
-      Number,
+    (text.match(DRAWN) ?? []).map((figure) =>
+      Number(figure.replace(GROUPS, "")),
     ),
   );
 }

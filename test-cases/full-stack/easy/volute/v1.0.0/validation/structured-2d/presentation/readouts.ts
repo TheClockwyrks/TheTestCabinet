@@ -108,7 +108,9 @@ export function sheetFrameKey(draw: ImageDraw): string {
 // So a figure is read the way a reader reads it: the runs of text a frame drew
 // are grouped into the LINES they landed on and, within a line, into the words
 // the spacing separates, and the digits of each word are taken as the figures the
-// HUD showed.
+// HUD showed. A build is free to group the digits of a long figure as it draws
+// it — "1,234" is the score 1234 with the separator `toLocaleString()` puts there
+// by default — so a grouped figure is read as the one figure it is.
 
 /**
  * How far apart two glyph anchors on one line may sit and still be one word.
@@ -144,22 +146,71 @@ export function drawnWords(calls: readonly DrawCall[]): string[] {
   return words;
 }
 
-/** Every maximal run of digits in `text`. */
-function digitRuns(text: string): string[] {
-  return text.match(/\d+/g) ?? [];
+/**
+ * The marks a build may draw between the digit triples of one figure.
+ *
+ * `specs/ui.md` fixes the FIGURE and leaves its presentation to the build, and
+ * grouping the digits of a long figure is what `Number.prototype.toLocaleString`
+ * does by default, so "1,234" and "1234" are the same score drawn two ways —
+ * along with the apostrophe and the narrow and non-breaking spaces other locales
+ * group with. The ASCII space is deliberately not one of them: the runs a frame
+ * drew are joined into words above, and taking it for a grouping mark would read
+ * the two readouts of "40 130" as the single figure 40130. Neither is ".", which
+ * is the decimal point — a build drawing "1.5" means one and a half.
+ */
+const GROUP_MARKS = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/** `text` as a pattern that matches exactly itself. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Every conventional drawing of `value`: plain, and grouped by each mark.
+ *
+ * A figure of three digits or fewer has nothing to group, so it has exactly one
+ * drawing and the plain reading below is the whole of it.
+ */
+function renderings(value: number): string[] {
+  const plain = String(value);
+  const [whole, fraction] = plain.split(".");
+  // A break goes before every run of digit triples that reaches the end of the
+  // whole part, and never at the head of the figure or after its sign.
+  const broken = whole.replace(/\B(?=(?:\d{3})+$)/g, "\u0000");
+  if (broken === whole) return [plain];
+  const tail = fraction === undefined ? "" : `.${fraction}`;
+  return [
+    plain,
+    ...GROUP_MARKS.map((mark) => broken.split("\u0000").join(mark) + tail),
+  ];
+}
+
+/**
+ * Whether `text` shows `value` as a figure of its own.
+ *
+ * The figure has to stand with no digit and no decimal point on either side of
+ * it, so a screen showing "150" is not showing 50 and one showing "1.5" is not
+ * showing 1 — the same boundary a maximal run of digits carries, held at each of
+ * the ways the figure may have been grouped.
+ */
+function showsFigure(text: string, value: number): boolean {
+  return renderings(value).some((drawn) =>
+    new RegExp(`(?<![\\d.])${escapeRegExp(drawn)}(?![\\d.])`).test(text),
+  );
 }
 
 /**
  * Whether the frame showed `value` as a figure of its own.
  *
- * A figure is shown when some word the frame drew holds it as a maximal run of
- * digits, so a HUD reading "SCORE 50" and one reading "50" both answer yes while
- * one reading "504" does not. The strings the frame issued are read the same way
- * before they are grouped, so a build that draws a whole readout in one call is
- * never at the mercy of the grouping.
+ * A figure is shown when some word the frame drew holds it with nothing that
+ * could be part of the same figure beside it, so a HUD reading "SCORE 50" and
+ * one reading "50" both answer yes while one reading "504" does not, and a
+ * figure the build grouped answers the same drawn "1,234" as drawn "1234". The
+ * strings the frame issued are read the same way before they are grouped into
+ * words, so a build that draws a whole readout in one call is never at the mercy
+ * of that grouping.
  */
 export function drewFigure(calls: readonly DrawCall[], value: number): boolean {
-  const wanted = String(value);
   // A run the frame issued carries its own word boundaries, so it is read as it
   // stands — but only when it is more than one glyph long. A build that draws a
   // readout one glyph at a time issues runs that carry no boundary at all, and
@@ -168,6 +219,6 @@ export function drewFigure(calls: readonly DrawCall[], value: number): boolean {
     .map((run) => run.text)
     .filter((text) => text.trim().length > 1);
   return [...issued, ...drawnWords(calls)].some((text) =>
-    digitRuns(text).includes(wanted),
+    showsFigure(text, value),
   );
 }

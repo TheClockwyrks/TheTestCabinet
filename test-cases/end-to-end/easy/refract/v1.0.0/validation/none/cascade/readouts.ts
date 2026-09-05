@@ -68,10 +68,37 @@ export function runClearOf(run: TextDraw, keepOut: KeepOut): boolean {
   return !(crossesX && insideY);
 }
 
-/** The whole numbers a run of text carries, in order. */
+/**
+ * Group separators a build may draw between a figure's digit triples: the
+ * comma, the apostrophe, and the no-break, narrow no-break and thin spaces
+ * `Number.prototype.toLocaleString` reaches for. A figure drawn with them
+ * reads as the one figure it spells, because the specification fixes the VALUE
+ * and leaves how that figure is presented to the build.
+ *
+ * ASCII space is deliberately absent from the set: a frame's text is assembled
+ * by joining separate draw runs with one, so accepting it would read the two
+ * figures in `"40 130"` as the single number 40130. The full stop is absent for
+ * a reason of its own — it is the decimal point, and a build drawing `"1.5"`
+ * means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn number: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** The separators themselves, stripped out of a figure once matched whole. */
+const SEPARATORS = new RegExp(GROUP, "g");
+
+/**
+ * The numbers a run of text carries, in order. A figure grouped by its
+ * thousands separator reads as the one figure it spells (see `GROUP`).
+ */
 function numbersIn(text: string): number[] {
-  return (text.match(/\d+/g) ?? []).map((digits) =>
-    Number.parseInt(digits, 10),
+  return (text.match(DRAWN) ?? []).map((figure) =>
+    Number(figure.replace(SEPARATORS, "")),
   );
 }
 

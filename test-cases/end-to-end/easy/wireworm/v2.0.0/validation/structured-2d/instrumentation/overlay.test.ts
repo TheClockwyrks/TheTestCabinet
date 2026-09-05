@@ -20,9 +20,10 @@
 // "Keep each one short enough to read on a line" is the whole of the layout
 // requirement — so the board below is posed with values a build cannot render as
 // anything but themselves, and each is looked for as a standalone number
-// anywhere in the panel. Every posed figure is distinct from every other, so a
-// build reporting the node count where the bolt count belongs still fails the
-// fact it left out.
+// anywhere in the panel — in the plain digits, or in the same digits grouped in
+// threes, since a panel that draws `4,271` reports the one figure `4271`. Every
+// posed figure is distinct from every other, so a build reporting the node count
+// where the bolt count belongs still fails the fact it left out.
 //
 // TWO FACTS ARE READ EITHER WAY ROUND, BECAUSE THE SPECIFICATION LEAVES THEM
 // OPEN. A foe's "position" and "the cursor's position" could honestly be written
@@ -123,10 +124,36 @@ const BOLT_ROW = 19;
 const ENGINE_WORLD_LINE = /^level: .*\s{2}phase: .*\s{2}actors: \d+$/;
 const ENGINE_METRICS_LINE = /^frame: /;
 
-/** Whether some line carries `value` as a number of its own. */
+/**
+ * Every conventional drawing of a whole figure: its plain digits, and the same
+ * digits grouped in threes by each separator a build may reach for — `1,234`,
+ * `1'234`, and the same with a non-breaking or a thin space. An ASCII space is
+ * not among them: the panel's lines are read as the build drew them, and a line
+ * reading `40 130` drew the two figures `40` and `130`, not `40130`. A figure of
+ * three digits or fewer has exactly one drawing.
+ */
+function drawingsOf(figure: number): string[] {
+  const plain = String(figure);
+  const forms = new Set([plain]);
+  for (const separator of [",", "'", "\u00A0", "\u202F", "\u2009"]) {
+    forms.add(plain.replace(/\B(?=(\d{3})+(?!\d))/g, separator));
+  }
+  return [...forms];
+}
+
+/**
+ * Whether some line carries `value` as a number of its own.
+ *
+ * Every drawing of the figure is looked for, so a panel that groups its
+ * thousands carries it as surely as one that does not, and the boundary on both
+ * sides is kept, so a line showing `150` still does not carry `50`. A whole
+ * figure written with a trailing `.0` is the same figure.
+ */
 function mentions(lines: readonly string[], value: number): boolean {
-  const pattern = new RegExp(`(?<![\\d.])${value}(?:\\.0+)?(?!\\d)`);
-  return lines.some((line) => pattern.test(line));
+  return drawingsOf(value).some((form) => {
+    const pattern = new RegExp(`(?<![\\d.])${form}(?:\\.0+)?(?!\\d)`);
+    return lines.some((line) => pattern.test(line));
+  });
 }
 
 /**

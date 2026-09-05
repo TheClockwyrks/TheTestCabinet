@@ -10,7 +10,9 @@
 //
 // AS A COUNT. Some run of text inside the bar names the posed figure as a
 // standalone number — `2`, `x2`, `LIVES 2` all read as two, and the digits `12`
-// do not, which is what the standalone reading is for. That settles it outright.
+// do not, which is what the standalone reading is for. The reading is
+// `presentation/hud`'s, so a build that groups the thousands of a larger count
+// names it too. That settles it outright.
 //
 // AS A ROW OF ICONS. Otherwise the bar is read as a picture, at three counts of
 // lives, and what is asked of it is PRESENCE: the bar drew something at one life
@@ -46,7 +48,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { hudSpans } from "./hud";
+import { hudSpans, names } from "./hud";
 
 /** The lives posed: the figure the point decides. */
 const POSED_LIVES = 2;
@@ -124,9 +126,7 @@ it("shows two lives on the HUD bar, as a count or as two icons", async () => {
 
   // As a count: a run of text on the bar naming the figure on its own.
   const onBar = hudSpans(h);
-  const counted = onBar.filter((span) =>
-    new RegExp(`(?<![0-9])${POSED_LIVES}(?![0-9])`).test(span.text),
-  );
+  const counted = onBar.filter((span) => names(span, POSED_LIVES));
   if (counted.length > 0) return;
 
   // As a row of icons: the bar answers to the figure, at each step of it.

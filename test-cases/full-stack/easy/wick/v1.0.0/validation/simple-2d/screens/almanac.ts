@@ -93,9 +93,36 @@ export function walkToTab(h: Harness, tab: AlmanacTab): Promise<WickSnapshot> {
   return tapTimes(h, RIGHT_KEY, tabIndex(tab));
 }
 
-/** Every number one run of text holds, whatever a build wrote around it. */
+/**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * `Number.prototype.toLocaleString` groups by default and specs/ui.md fixes the
+ * figure rather than how it is written, so `1,234` and `1234` are one figure
+ * written two ways. ASCII space is deliberately absent: the runs of a frame are
+ * read as separate strings and a build sets its own spacing within one, so
+ * accepting it would read the two figures of `40 130` as the single figure
+ * `40130`. `.` is absent because it is the decimal point, and a build writing
+ * `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One number a build wrote: a grouped figure, or a plain one. */
+const NUMBER = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every separator in a written figure, for reading it back as its digits. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/**
+ * Every number one run of text holds, whatever a build wrote around it. A
+ * grouped figure reads as the one figure it is, so `1,234` answers `1234`.
+ */
 function figuresIn(line: string): number[] {
-  return (line.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return (line.match(NUMBER) ?? []).map((written) =>
+    Number(written.replace(GROUPS, "")),
+  );
 }
 
 /** Every number the frame wrote, whatever a build wrote beside it. */

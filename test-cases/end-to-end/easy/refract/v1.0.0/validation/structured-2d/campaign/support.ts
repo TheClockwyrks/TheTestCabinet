@@ -45,6 +45,40 @@ export interface NumberPoint {
 }
 
 /**
+ * Group separators a build may draw between a figure's digit triples: the
+ * comma, the apostrophe, and the no-break, narrow no-break and thin spaces
+ * `Number.prototype.toLocaleString` reaches for. A figure drawn with them
+ * reads as the one figure it spells, because the specification fixes the VALUE
+ * and leaves how that figure is presented to the build.
+ *
+ * ASCII space is deliberately absent from the set: a frame's text is assembled
+ * by joining separate draw runs with one, so accepting it would read the two
+ * figures in `"40 130"` as the single number 40130. The full stop is absent for
+ * a reason of its own — it is the decimal point, and a build drawing `"1.5"`
+ * means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn number: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** The separators themselves, stripped out of a figure once matched whole. */
+const SEPARATORS = new RegExp(GROUP, "g");
+
+/**
+ * The numbers a run of text carries, in order — `"1 OF 24 SOLVED"` reads
+ * `[1, 24]`, and a grouped `"1,234"` reads as the single figure `1234`.
+ */
+function numbersIn(text: string): number[] {
+  return (text.match(DRAWN) ?? []).map((figure) =>
+    Number(figure.replace(SEPARATORS, "")),
+  );
+}
+
+/**
  * Where board `board`'s number sits among one frame's runs of text.
  *
  * A run that IS the number once trimmed is taken first, because substring
@@ -54,7 +88,9 @@ export interface NumberPoint {
  * padding or a label around the number is the build's own copy and font
  * choice, and specs/modes/campaign.md asks only that each board shows its
  * number. A run carrying a second board's digits, such as `"1 OF 24 SOLVED"`,
- * is not that number and stays out either way.
+ * is not that number and stays out either way. A figure a build groups with a
+ * thousands separator reads as the one figure it spells, so a run carrying
+ * such a figure and nothing else still carries exactly one number.
  *
  * A build that draws a number more than once (a shadow pass, a highlight
  * redraw) draws the passes within a couple of pixels of each other, so the
@@ -69,8 +105,8 @@ export function numberRun(
     exact.length > 0
       ? exact
       : runs.filter((run) => {
-          const digits = run.text.match(/\d+/g);
-          return digits?.length === 1 && Number(digits[0]) === board;
+          const figures = numbersIn(run.text);
+          return figures.length === 1 && figures[0] === board;
         });
   if (matches.length === 0) {
     fail(

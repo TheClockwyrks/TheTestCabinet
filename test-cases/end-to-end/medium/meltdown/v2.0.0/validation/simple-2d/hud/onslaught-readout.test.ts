@@ -75,6 +75,28 @@ const MONEY = 9999;
 const LIVES = 17;
 
 /**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * Grouping is formatting, and formatting is the build's: `"1,250"` is the one
+ * figure `1250` drawn the way `Number.prototype.toLocaleString` draws it by
+ * default, so a grouped figure is ungrouped before the pair below is read out of
+ * it. The ASCII space is deliberately not one of them, because a run's text may
+ * carry two figures with a space between them and `"40 130"` is a reading of `40`
+ * and `130` rather than one of `40130`. Nor is the full stop, which is the
+ * decimal point.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One figure as a run may carry it: grouped into triples, or plain. */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every group separator inside one figure, for dropping before it is read. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/**
  * Whether some run of text reads `wave` and then `total` as two figures with
  * nothing but a separator between them.
  *
@@ -92,7 +114,9 @@ function readsWaveOverTotal(
 ): boolean {
   const pattern = /(?<!\d)(\d+)(?:\.\d+)?\D{1,4}(\d+)(?:\.\d+)?(?!\d)/g;
   return spans.some((span) => {
-    const text = span.text.replace(/,/g, "");
+    const text = span.text.replace(DRAWN, (figure) =>
+      figure.replace(GROUPS, ""),
+    );
     pattern.lastIndex = 0;
     for (
       let match = pattern.exec(text);

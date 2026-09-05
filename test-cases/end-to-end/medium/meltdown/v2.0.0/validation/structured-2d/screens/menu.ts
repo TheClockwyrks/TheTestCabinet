@@ -12,8 +12,10 @@
 //     handed the build rather than by a literal written here.
 //   - EVERY FIGURE A SCREEN REPORTS IS A NUMBER. `specs/screens.md` fixes not one
 //     thing about how a screen formats what it reports — a build may draw
-//     `SCORE 875`, `875 PTS` or `Score: 875` — so a reported figure is looked for
-//     as a NUMBER TOKEN in some run, never as a literal.
+//     `SCORE 875`, `875 PTS`, `Score: 875` or, for a long figure, `12,345` — so a
+//     reported figure is looked for as a NUMBER TOKEN in some run, never as a
+//     literal, and a figure grouped into digit triples reads as the one figure
+//     the screen reported.
 //
 // THIS FILE FIXES NO FIGURE AND NO TOLERANCE. Every margin a point grows a text
 // run's box by, and every floor it puts under a reading of the picture, is stated
@@ -119,9 +121,32 @@ export function saysAnyStem(
   return stems.some((stem) => saysStem(runs, stem));
 }
 
+/**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * Grouping is formatting, and formatting is the build's: `12,345` is the one
+ * figure `12345` drawn the way `Number.prototype.toLocaleString` draws it by
+ * default. The ASCII space is deliberately not one of them, because a run's text
+ * may carry two figures with a space between them and `40 130` is a reading of
+ * `40` and `130` rather than one of `40130`. Nor is the full stop, which is the
+ * decimal point: a build drawing `1.5` drew one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One figure as a run may carry it: grouped into triples, or plain. */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every group separator inside one figure, for dropping before it is read. */
+const GROUPS = new RegExp(GROUP, "g");
+
 /** Every number a run's text carries, in the order it carries them. */
 export function numbersIn(run: TextSpan): number[] {
-  return (run.text.match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
+  return (run.text.match(DRAWN) ?? []).map((figure) =>
+    Number(figure.replace(GROUPS, "")),
+  );
 }
 
 /**
@@ -129,7 +154,8 @@ export function numbersIn(run: TextSpan): number[] {
  *
  * A token rather than a substring, so a screen reading `875` is not accepted as
  * a screen reading `7`. Every figure a screen reports in this game — a score,
- * a wave count, a life count, a sum of money — is a whole number.
+ * a wave count, a life count, a sum of money — is a whole number, and a build
+ * that grouped a long one into digit triples reported that same whole number.
  */
 export function readsNumber(runs: readonly TextSpan[], value: number): boolean {
   return runs.some((run) => numbersIn(run).includes(value));

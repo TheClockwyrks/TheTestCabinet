@@ -36,7 +36,8 @@
 // backtick key on it and says it "draws the registered sources". So what is
 // observable is the TEXT the overlay puts on the canvas once it is open, and the
 // reading is that each fact the specification names appears in it. A figure is
-// matched as the run of characters the snapshot reports it as, which is what a
+// matched as the FIGURE the snapshot reports, in any of the ways a build writes
+// one — `4731` and the grouped `4,731` are the same reading — which is what a
 // source "reporting the figure the snapshot reports" comes to when the only
 // window onto it is the picture. How a build lays that text out, labels it and
 // formats it is its own, and none of that is read.
@@ -51,6 +52,7 @@ import { afterEach, beforeEach, it } from "vitest";
 
 import { assertEqual, assertMatches } from "../assert";
 import { OVERLAY_KEY } from "../constants";
+import { figurePattern } from "../figures";
 import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureStill,
@@ -143,11 +145,20 @@ it("draws every fact the specification names, and reading it changes nothing", a
   await captureStill(h, "sources");
   const after = await h.snapshot();
 
-  /** A number the overlay drew, matched as a figure rather than as a substring. */
+  /**
+   * A number the overlay drew, matched as a figure rather than as a substring.
+   *
+   * Every conventional writing of the figure counts, so an overlay that groups a
+   * score's digit triples — `4,731`, which is what `toLocaleString()` writes by
+   * default — reports the figure the snapshot reports just as `4731` does. The
+   * ASCII space is not one of the separators, because the runs of a frame are
+   * joined with one and `40` beside `130` is two readings rather than `40130`;
+   * `figures.ts` states that in full.
+   */
   const drewNumber = (value: number, what: string): void => {
     assertMatches(
       drawn,
-      new RegExp(`(?<!\\d)${String(value)}(?!\\d)`),
+      figurePattern(value),
       `${what}, which the overlay draws for the source the specification ` +
         "names (specs/instrumentation.md)",
     );

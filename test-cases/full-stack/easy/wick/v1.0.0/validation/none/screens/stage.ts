@@ -140,6 +140,40 @@ export function assertHides(page: Shown, text: string, what: string): void {
   fail(`${what}: the frame not showing ${JSON.stringify(text)}`, runsOf(page));
 }
 
+/** `text` with every character a regular expression reads specially escaped. */
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The separators a build may set between the digit triples of a whole number.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build showing a
+ * kill count of `1234` is free to write it `1,234`, and the specification fixes
+ * the figure rather than how it is written. ASCII space is not among them: the
+ * runs on show are read as separate lines and words, and accepting it would
+ * read the two figures of `40 130` as the single figure `40130`.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every way a build may write `token`: the token itself, and, where it is a
+ * whole number of more than three digits, the same digits with each separator
+ * a build may group them by. A figure of three digits or fewer is written one
+ * way, so `6` stays `6`.
+ */
+function spellings(token: string): string[] {
+  if (!/^[0-9]{4,}$/.test(token)) return [token];
+  const grouped = GROUP_SEPARATORS.map((separator) => {
+    const digits: string[] = [];
+    for (let at = token.length; at > 0; at -= 3) {
+      digits.unshift(token.slice(Math.max(0, at - 3), at));
+    }
+    return digits.join(separator);
+  });
+  return [token, ...grouped];
+}
+
 /**
  * Whether the frame names `token` as a word: a single letter or a whole number
  * that is not part of a longer one.
@@ -147,16 +181,18 @@ export function assertHides(page: Shown, text: string, what: string): void {
  * A folded search cannot decide a key named `P` or a kill count of `6`, because
  * either is a substring of nearly any text. So the raw text is searched for the
  * token standing alone, with a letter bounded by non-letters and a number by
- * non-digits.
+ * non-digits. A whole number is looked for as any of its {@link spellings}, so
+ * a build that groups its digits names the same figure; the bound either side
+ * is unchanged, so a frame showing `150` still does not name `50`.
  */
 export function names(page: Shown, token: string): boolean {
   const text = runsOf(page).join("\n");
   const bound = /^[0-9]+$/.test(token) ? "0-9" : "A-Za-z";
-  const pattern = new RegExp(
-    `(^|[^${bound}])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^${bound}]|$)`,
-    "i",
+  return spellings(token).some((written) =>
+    new RegExp(`(^|[^${bound}])${escaped(written)}([^${bound}]|$)`, "i").test(
+      text,
+    ),
   );
-  return pattern.test(text);
 }
 
 /** The frame names `token` as a word, or the point fails. */

@@ -13,10 +13,12 @@
 //
 // HOW A FIGURE IS RECOGNISED. A build may draw a readout as a bare figure, with
 // a label in the same run, zero-padded, or with a thousands separator, and
-// specs/ui.md permits every one of those. So a run "shows" a number when the
-// run's digits read as it — either as one group of digits within the run, or as
-// all of the run's digits taken together, which is what makes "1,234" read as
-// `1234` and "SCORE 1234" read as `1234` alike.
+// specs/ui.md permits every one of those. So a run "shows" a number when one of
+// the FIGURES the run sets reads as it, where a figure's digits may be grouped in
+// triples — which is what makes "1,234", "1234" and "SCORE 1234" read as `1234`
+// alike. A run sets more than one figure when it carries more than one readout,
+// so the figures are read one by one rather than as all of the run's digits taken
+// together: "LEVEL 4  LIVES 3" sets `4` and `3`, not `43`.
 
 import { HUD_H } from "../constants";
 import {
@@ -33,17 +35,37 @@ export function hudRuns(h: Harness, calls: readonly DrawCall[]): TextSpan[] {
   );
 }
 
-/** Every run of digits in a text, as numbers. */
+/**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build that reaches
+ * for it draws its score as `1,240`, or as `1'240` or `1\u202F240` in another
+ * locale. Every one of those sets the one figure `1240`, and each separator is
+ * dropped before the digits are read.
+ *
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. It is what a build puts
+ * between two readouts it set in the same run, so accepting it would read the
+ * `40` and the `130` of "SCORE 40  TIME 130" as the single figure `40130`. `.` is
+ * left out for its own reason: it is the decimal point, and a build drawing `1.5`
+ * means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One figure as a build may have set it: grouped, or plain. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every figure a text sets, as numbers, in the order it sets them. */
 export function numbersIn(text: string): number[] {
-  return (text.match(/\d+/g) ?? []).map((digits) =>
-    Number.parseInt(digits, 10),
+  return (text.match(DRAWN) ?? []).map((figure) =>
+    Number(figure.replace(new RegExp(GROUP, "g"), "")),
   );
 }
 
-/** Whether a run's digits read as `value`, by either reading. */
+/** Whether one of the figures a run sets reads as `value`. */
 export function readsAs(text: string, value: number): boolean {
-  const all = text.replace(/\D/g, "");
-  if (all.length > 0 && Number.parseInt(all, 10) === value) return true;
   return numbersIn(text).includes(value);
 }
 

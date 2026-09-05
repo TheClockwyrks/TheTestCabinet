@@ -65,9 +65,35 @@ const POSED_SCORE = 0;
  */
 const ADJACENT_MAX = 160;
 
-/** A standalone occurrence of `figure` in a run: not part of a longer number. */
+/**
+ * Every conventional drawing of a whole figure: its plain digits, and the same
+ * digits grouped in threes by each separator a build may reach for — `1,234`,
+ * `1'234`, and the same with a non-breaking or a thin space. An ASCII space is
+ * not among them: the bar's runs are read as the build anchored them, and a run
+ * reading `40 130` drew the two figures `40` and `130`, not `40130`. A figure of
+ * three digits or fewer has exactly one drawing.
+ */
+function drawingsOf(figure: number): string[] {
+  const plain = String(figure);
+  const forms = new Set([plain]);
+  for (const separator of [",", "'", "\u00A0", "\u202F", "\u2009"]) {
+    forms.add(plain.replace(/\B(?=(\d{3})+(?!\d))/g, separator));
+  }
+  return [...forms];
+}
+
+/**
+ * A standalone occurrence of `figure` in a run: not part of a longer number.
+ *
+ * Every drawing of the figure is looked for, so a build that groups the
+ * thousands of a larger one names it as surely as a build that does not, and the
+ * digit boundary is held on both sides, so a run showing `150` still does not
+ * name `50`.
+ */
 function names(span: TextSpan, figure: number): boolean {
-  return new RegExp(`(?<![0-9])${figure}(?![0-9])`).test(span.text);
+  return drawingsOf(figure).some((form) =>
+    new RegExp(`(?<![0-9])${form}(?![0-9])`).test(span.text),
+  );
 }
 
 /**

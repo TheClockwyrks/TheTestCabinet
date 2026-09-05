@@ -22,8 +22,10 @@
 // readouts — which `specs/ui.md` already puts the level, lives, score, timer and
 // bays on — cancel out and what remains is the panel's own text. A fact is then
 // looked for as a STANDALONE TOKEN in that text, so `13` is not found inside
-// `130`. Nothing here asserts a layout, a label, an order or a format: a build
-// may lay its panel out however it likes.
+// `130`, and a figure is taken under any of its groupings, so a panel that set a
+// score of `1240` as `1,240` reports the one figure. Nothing here asserts a
+// layout, a label, an order or a format: a build may lay its panel out however it
+// likes.
 //
 // THE POSED STRAIT IS BUILT SO EVERY FACT IS ITS OWN NUMBER. The level, the
 // lives, the score, the timer, the critter's tile and center, the bear's tile,
@@ -135,10 +137,54 @@ function panelText(
   return own;
 }
 
-/** Whether the panel drew `value` as a standalone token, ignoring case. */
+/**
+ * The separators a build may set between a figure's digit triples.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a panel that reaches for
+ * it registers a score of `1240` as `1,240`, and another locale's grouping gives
+ * `1'240` or `1\u202F240`. Every one of those reports the one figure, and nothing in
+ * `specs/instrumentation.md` fixes which a build picks.
+ *
+ * THE ASCII SPACE IS DELIBERATELY NOT ONE OF THEM. A panel line carries a label
+ * and often more than one figure, separated by exactly that, so accepting it would
+ * read the `40` and the `130` of one line as the single figure `40130`. `.` is left
+ * out for its own reason: it is the decimal point, and a centre of `1.5` is one and
+ * a half.
+ */
+const GROUPS: readonly string[] = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every conventional setting of `value`: the value itself, and — when it is a
+ * plain figure of more than three digits — the same figure with its triples
+ * grouped by each of {@link GROUPS}. A figure of three digits or fewer has exactly
+ * one setting, and so does a word.
+ */
+function settings(value: string | number): string[] {
+  const text = String(value);
+  const figure = /^(-?)(\d+)(\.\d+)?$/.exec(text);
+  if (figure === null) return [text];
+  const [, sign, whole, fraction = ""] = figure;
+  if (whole.length <= 3) return [text];
+  return [
+    text,
+    ...GROUPS.map(
+      (group) => sign + whole.replace(/\B(?=(\d{3})+$)/g, group) + fraction,
+    ),
+  ];
+}
+
+/**
+ * Whether the panel drew `value` as a standalone token, ignoring case and taking
+ * any of {@link settings}' groupings of a figure.
+ */
 function reports(panel: readonly string[], value: string | number): boolean {
-  const wanted = String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`(^|[^A-Za-z0-9])${wanted}([^A-Za-z0-9]|$)`, "i");
+  const wanted = settings(value)
+    .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  const pattern = new RegExp(
+    `(^|[^A-Za-z0-9])(?:${wanted})([^A-Za-z0-9]|$)`,
+    "i",
+  );
   return panel.some((run) => pattern.test(run));
 }
 

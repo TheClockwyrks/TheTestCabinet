@@ -21,8 +21,13 @@
 //
 // WHAT IS ASSERTED OF THE COPY, AND WHAT IS NOT. specs/ui.md fixes only that the
 // score and the depth are SHOWN, never how they are written, so the score is
-// matched as the digits the run finished on and the depth as a standalone number.
-// A build is free to write `SCORE 00210` or `210 POINTS`.
+// matched as the figure the run finished on wherever in a run of text it sits,
+// and the depth as a figure of its own. A build is free to write `SCORE 00210` or
+// `210 POINTS`, and free to group the triples of a longer figure: `1,234`,
+// `1'234` and `1234` are the one score. The ASCII space is not a separator — the
+// frame's runs are joined with one, so `40` drawn beside `130` stays two figures
+// rather than becoming `40130` — and neither is the full stop, which is the
+// decimal point. `figures.ts` states both in full.
 //
 // WHAT THIS DOES NOT DECIDE. That three catches cost three lives and the fourth
 // ends the run, which is `scoring.three-lives`'; what the menu draws, which is
@@ -31,6 +36,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
+import { figureAnywherePattern, figurePattern } from "../figures";
 import { spawnDrifter } from "../fixtures";
 import {
   captureStill,
@@ -38,7 +44,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { assertDrew, drawnText, frameOps, loseEveryLife } from "./screens";
+import { drawnText, frameOps, loseEveryLife } from "./screens";
 
 /** Ticks spent taking the opening mouthful and the posed drifter, one each. */
 const EAT_TICKS = 1;
@@ -86,14 +92,14 @@ it("draws the score the run finished on and the depth it reached", async () => {
     "the screen contact with no life in reserve reaches (specs/progression.md)",
   );
 
-  assertDrew(
-    ops,
-    String(over.score),
+  assertMatches(
+    drawnText(ops),
+    figureAnywherePattern(over.score),
     "the score the run finished on, drawn on the game-over screen (specs/ui.md)",
   );
   assertMatches(
     drawnText(ops),
-    new RegExp(`(?<!\\d)${String(over.depth)}(?!\\d)`),
+    figurePattern(over.depth),
     "the depth the run reached, drawn on the game-over screen as a number of " +
       "its own (specs/ui.md)",
   );

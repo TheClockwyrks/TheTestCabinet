@@ -152,14 +152,67 @@ async function overlayLines(): Promise<string[]> {
   return newLines(baseline, shown).filter((line) => !isMetrics(line));
 }
 
-/** Some overlay line carries `token`, ignoring case; fails naming `what`. */
+/**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * `1,250`, `1'250`, and `1 250` written with a non-breaking, a narrow or a thin
+ * space are all the one figure `1250` — the grouping
+ * `Number.prototype.toLocaleString` writes by default. The ASCII space is
+ * deliberately not one of them: a line is read as a whole run of text and a run
+ * may carry two figures with an ordinary space between them, so accepting it
+ * would read `40 130` as `40130`. Nor is the full stop, which is the decimal
+ * point.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"] as const;
+
+/**
+ * Every way a build may letter the figure `value`: plain, and grouped into digit
+ * triples by each separator above.
+ *
+ * A figure of three digits or fewer has exactly one rendering, so a life count, a
+ * tile column or an entity id is looked for exactly as it is.
+ */
+function figureRenderings(value: number): string[] {
+  const plain = String(value);
+  const dot = plain.indexOf(".");
+  const whole = dot === -1 ? plain : plain.slice(0, dot);
+  const tail = dot === -1 ? "" : plain.slice(dot);
+  const sign = whole.startsWith("-") ? "-" : "";
+  const digits = sign === "" ? whole : whole.slice(1);
+  if (digits.length <= 3) return [plain];
+  const triples: string[] = [];
+  for (let end = digits.length; end > 0; end -= 3) {
+    triples.unshift(digits.slice(Math.max(0, end - 3), end));
+  }
+  return [
+    plain,
+    ...GROUP_SEPARATORS.map(
+      (separator) => `${sign}${triples.join(separator)}${tail}`,
+    ),
+  ];
+}
+
+/**
+ * Some overlay line carries `token`, ignoring case; fails naming `what`.
+ *
+ * A FIGURE is handed over as a number rather than as a string, because how a
+ * build letters a long one is the build's: every grouping it may reach for
+ * answers, so a score of `12345` is found whether the line carries `12345` or
+ * `12,345`.
+ */
 function assertSomeLine(
   lines: readonly string[],
-  token: string,
+  token: string | number,
   what: string,
 ): void {
-  const wanted = token.toLowerCase();
-  if (!lines.some((line) => line.toLowerCase().includes(wanted))) {
+  const wanted = (
+    typeof token === "number" ? figureRenderings(token) : [token]
+  ).map((form) => form.toLowerCase());
+  const carried = lines.some((line) => {
+    const seen = line.toLowerCase();
+    return wanted.some((form) => seen.includes(form));
+  });
+  if (!carried) {
     fail(`an overlay line carrying ${what}`, lines);
   }
 }
@@ -216,21 +269,21 @@ it("draws the facts the specification lists", async () => {
   assertSomeLine(lines, "building", "the current phase, 'building'");
   assertSomeLine(lines, "bottleneck", "the mode, 'bottleneck'");
   assertSomeLine(lines, "hard", "the difficulty, 'hard'");
-  assertSomeLine(lines, String(RUN.money), `the money, ${RUN.money}`);
-  assertSomeLine(lines, String(RUN.lives), `the lives, ${RUN.lives}`);
-  assertSomeLine(lines, String(RUN.wave), `the wave, ${RUN.wave}`);
-  assertSomeLine(lines, String(RUN.score), `the score, ${RUN.score}`);
+  assertSomeLine(lines, RUN.money, `the money, ${RUN.money}`);
+  assertSomeLine(lines, RUN.lives, `the lives, ${RUN.lives}`);
+  assertSomeLine(lines, RUN.wave, `the wave, ${RUN.wave}`);
+  assertSomeLine(lines, RUN.score, `the score, ${RUN.score}`);
 
   // The two route lengths, read off the snapshot rather than named here: what
   // they come to on this floor is `mazing`'s reading, not this one's.
   assertSomeLine(
     lines,
-    String(posed.paths.left.length),
+    posed.paths.left.length,
     `the left route's length, ${String(posed.paths.left.length)}`,
   );
   assertSomeLine(
     lines,
-    String(posed.paths.top.length),
+    posed.paths.top.length,
     `the top route's length, ${String(posed.paths.top.length)}`,
   );
 
@@ -239,32 +292,24 @@ it("draws the facts the specification lists", async () => {
   assertSomeLine(lines, TOWER_TYPE, `the tower's type, '${TOWER_TYPE}'`);
   assertSomeLine(
     lines,
-    String(towerOf(posed, gun).redline),
+    towerOf(posed, gun).redline,
     `the tower's redline, ${towerOf(posed, gun).redline}`,
   );
-  assertSomeLine(lines, String(TOWER_HEAT), `the tower's heat, ${TOWER_HEAT}`);
-  assertSomeLine(lines, String(gun), `the tower's id, ${gun}`);
-  assertSomeLine(
-    lines,
-    String(TOWER_LEVEL),
-    `the tower's level, ${TOWER_LEVEL}`,
-  );
-  assertSomeLine(lines, String(kills), `the tower's kills, ${kills}`);
+  assertSomeLine(lines, TOWER_HEAT, `the tower's heat, ${TOWER_HEAT}`);
+  assertSomeLine(lines, gun, `the tower's id, ${gun}`);
+  assertSomeLine(lines, TOWER_LEVEL, `the tower's level, ${TOWER_LEVEL}`);
+  assertSomeLine(lines, kills, `the tower's kills, ${kills}`);
 
   // The unit: its type, its hp, the tile it stands on, and its id.
   assertSomeLine(lines, UNIT_TYPE, `the unit's type, '${UNIT_TYPE}'`);
-  assertSomeLine(lines, String(UNIT_HP), `the unit's hp, ${UNIT_HP}`);
+  assertSomeLine(lines, UNIT_HP, `the unit's hp, ${UNIT_HP}`);
   assertSomeLine(
     lines,
-    String(UNIT_TILE.col),
+    UNIT_TILE.col,
     `the unit's tile column, ${UNIT_TILE.col}`,
   );
-  assertSomeLine(
-    lines,
-    String(UNIT_TILE.row),
-    `the unit's tile row, ${UNIT_TILE.row}`,
-  );
-  assertSomeLine(lines, String(unit), `the unit's id, ${unit}`);
+  assertSomeLine(lines, UNIT_TILE.row, `the unit's tile row, ${UNIT_TILE.row}`);
+  assertSomeLine(lines, unit, `the unit's id, ${unit}`);
 
   // The two facts a free format leaves no token for, read by changing them: the
   // overlay's lines are different once the tower is tripped, and different again

@@ -21,12 +21,15 @@
 // difference: it is the engine's, and its figures are wall-clock timings that
 // differ from run to run.
 //
-// HOW A VALUE IS RECOGNISED. Each figure below is looked for as a whole run of
-// digits rather than as a substring, so the `4` of the bullet count is not answered
-// by the `4` inside `448`, and the field is posed so that no two of the asserted
-// figures collide. HOW a value is drawn is the build's: `specs/overview.md` fixes
-// no palette, typeface or layout, the engine formats a number source itself, and a
-// build is free to render an angle in degrees or in radians and a duration to
+// HOW A VALUE IS RECOGNISED. Each figure below is looked for as a whole figure
+// rather than as a substring, so the `4` of the bullet count is not answered by the
+// `4` inside `448`, and the field is posed so that no two of the asserted figures
+// collide. A figure the build GROUPED reads as the one figure it is — `45,310` and
+// `45310` are the same score — while an ASCII space is not read as a separator,
+// because a panel's lines are the runs of text the frame drew and two figures a run
+// apart stay two figures. HOW a value is drawn is the build's: `specs/overview.md`
+// fixes no palette, typeface or layout, the engine formats a number source itself,
+// and a build is free to render an angle in degrees or in radians and a duration to
 // whatever precision reads well — so the two values that have more than one honest
 // written form are accepted in any of them. The two counts are small integers and
 // are the weakest readings here; nothing about the specification lets them be made
@@ -146,9 +149,48 @@ function newLines(
   });
 }
 
-/** Every maximal run of digits the lines carry. */
-function digitRuns(lines: readonly string[]): string[] {
-  return lines.flatMap((line) => line.match(/\d+/g) ?? []);
+/**
+ * The characters a build may GROUP a figure's digit triples with.
+ *
+ * A figure reaches a panel through the build's own formatter, and the ordinary one
+ * — `Number.prototype.toLocaleString` — groups by default, with the comma, the
+ * apostrophe or one of the thin and non-breaking spaces its locale calls for. All
+ * of them write the same number.
+ *
+ * ASCII SPACE IS NOT ONE OF THEM. A panel's lines are the runs of text the frame
+ * drew, and a build is free to draw a figure and its neighbour as runs one space
+ * apart — so reading a space as a separator would take the two figures in `40 130`
+ * for the single number `40130`. `.` is left out for the neighbouring reason: it is
+ * the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/**
+ * One figure as a build may write it: grouped into triples, or plain.
+ *
+ * A LEADING SIGN IS NOT PART OF THE FIGURE. What is read here is the digits, so a
+ * build that writes a velocity component as `-448` and one that writes the
+ * magnitude `448` are read alike — which is what the reading of a component posed
+ * negative rests on.
+ */
+const DRAWN = new RegExp(
+  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/**
+ * Every figure the lines carry, as the numbers they read as.
+ *
+ * The separators are dropped from each match, so a panel that groups a figure
+ * (`45,310`) and one that does not (`45310`) report the same number: the
+ * specification fixes the FIGURE and leaves how it is written to the build.
+ */
+function drawnNumbers(lines: readonly string[]): number[] {
+  return lines.flatMap((line) =>
+    (line.match(DRAWN) ?? []).map((figure) =>
+      Number(figure.replace(new RegExp(GROUP, "g"), "")),
+    ),
+  );
 }
 
 /** Some line carries `value` as a whole figure; fails naming what was wanted. */
@@ -157,7 +199,7 @@ function assertFigure(
   value: number,
   what: string,
 ): void {
-  if (!digitRuns(lines).includes(String(value))) {
+  if (!drawnNumbers(lines).includes(value)) {
     fail(`an overlay line carrying ${what} (${String(value)})`, lines);
   }
 }

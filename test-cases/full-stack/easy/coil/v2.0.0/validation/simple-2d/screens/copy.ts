@@ -7,14 +7,33 @@
 // (`SCORE 250`) or padded to a fixed width (`0250`), and both are the same figure
 // to a player. So each run of text is reduced to the numbers it holds and the
 // wanted figure is looked for among them: `2500` is not `250`, and `SCORE 250`
-// is.
+// is. A GROUPED figure is the same figure too: a build that writes its score with
+// `toLocaleString` draws `1,234`, and a player reads that as the twelve hundred
+// and thirty-four the specification fixes, so the separators between digit
+// triples are read as part of the one number they punctuate.
 
 import { drawnText, textDraws, type DrawCall } from "../harness";
 
-/** Every whole number appearing in a run of text, in the order they appear. */
+/**
+ * Group separators a build may write between digit triples: the comma, the
+ * apostrophe, and the no-break, narrow no-break and thin spaces. `.` is not one
+ * of them, because it is the decimal point and a build drawing `1.5` means one
+ * and a half. The ASCII space is not one of them either: a run commonly carries
+ * two figures with a space between them, and accepting it would read `40 130` as
+ * the single number 40130.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One number as a build may draw it: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every number appearing in a run of text, in the order they appear. */
 function numbersIn(text: string): number[] {
-  return [...text.matchAll(/\d+/g)].map((match) =>
-    Number.parseInt(match[0], 10),
+  return (text.match(DRAWN) ?? []).map((drawn) =>
+    Number(drawn.replace(new RegExp(GROUP, "g"), "")),
   );
 }
 

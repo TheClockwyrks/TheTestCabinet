@@ -178,8 +178,33 @@ export function spanClearOf(span: TextSpan, keepOut: KeepOut): boolean {
 }
 
 /**
- * The WHOLE NUMBERS a run carries, in order: `"SOLVED 12"` reads `[12]` and a
- * one-line HUD `"CASCADE · SOLVED 1 · TIER 1"` reads `[1, 1]`.
+ * Group separators a build may draw between a figure's digit triples: the
+ * comma, the apostrophe, and the no-break, narrow no-break and thin spaces
+ * `Number.prototype.toLocaleString` reaches for. A figure drawn with them
+ * reads as the one figure it spells, because the specification fixes the VALUE
+ * and leaves how that figure is presented to the build.
+ *
+ * ASCII space is deliberately absent from the set: a frame's text is assembled
+ * by joining separate draw runs with one, so accepting it would read the two
+ * figures in `"40 130"` as the single number 40130. The full stop is absent for
+ * a reason of its own — it is the decimal point, and a build drawing `"1.5"`
+ * means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** One drawn number: a grouped figure, or a plain one. */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** The separators themselves, stripped out of a figure once matched whole. */
+const SEPARATORS = new RegExp(GROUP, "g");
+
+/**
+ * The NUMBERS a run carries, in order: `"SOLVED 12"` reads `[12]`, a one-line
+ * HUD `"CASCADE · SOLVED 1 · TIER 1"` reads `[1, 1]`, and a figure grouped by
+ * its thousands separator reads as the one figure it spells (see `GROUP`).
  *
  * Reading a run's digits stripped of everything else instead would spell one
  * number out of two — that same line would read as eleven — so the same-run
@@ -189,8 +214,8 @@ export function spanClearOf(span: TextSpan, keepOut: KeepOut): boolean {
  * itself.
  */
 export function numbersIn(span: TextSpan): number[] {
-  return (span.text.match(/\d+/g) ?? []).map((digits) =>
-    Number.parseInt(digits, 10),
+  return (span.text.match(DRAWN) ?? []).map((figure) =>
+    Number(figure.replace(SEPARATORS, "")),
   );
 }
 

@@ -468,7 +468,8 @@ function serveWorkspaceAssets(): void {
   hostServed = true;
   const host = globalThis as unknown as Record<string, unknown>;
   const inherited = host.fetch as
-    ((input: string, init?: unknown) => Promise<Response>) | undefined;
+    | ((input: string, init?: unknown) => Promise<Response>)
+    | undefined;
 
   host.fetch = async (input: unknown, init?: unknown): Promise<Response> => {
     const url = typeof input === "string" ? input : String(input);
@@ -2406,16 +2407,52 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
 }
 
 /**
+ * The separators a build may set between the digit triples of a figure.
+ *
+ * `Number.prototype.toLocaleString` groups by default, so a build showing a
+ * kill count of `1234` is free to write it `1,234`; the specification fixes the
+ * figure and leaves how it is written to the build. ASCII space is not among
+ * them: a frame's runs are read as separate strings and a build sets its own
+ * spacing within one, so accepting it would read the two figures of `40 130` as
+ * the single figure `40130`.
+ */
+const GROUP_SEPARATORS = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * Every way a build may write `value`: the value itself, and, where its whole
+ * part runs past three digits, the same digits with each separator a build may
+ * group them by. A figure of three digits or fewer is written one way, so `48`
+ * stays `48`, and anything that is not a number is left as it stands.
+ */
+function spellings(value: string): string[] {
+  const parsed = /^(-?)(\d{4,})(\.\d+)?$/.exec(value);
+  if (parsed === null) return [value];
+  const [, sign, whole, fraction = ""] = parsed;
+  const grouped = GROUP_SEPARATORS.map((separator) => {
+    const triples: string[] = [];
+    for (let at = whole.length; at > 0; at -= 3) {
+      triples.unshift(whole.slice(Math.max(0, at - 3), at));
+    }
+    return `${sign}${triples.join(separator)}${fraction}`;
+  });
+  return [value, ...grouped];
+}
+
+/**
  * Whether `value` appears in `lines` as its own token: a digit run matches
  * whole (`48` is found in `48 / 100` and not in `348`), and a word matches
  * case-insensitively. How a figure the HUD shows (a level, a kill count, the
  * clock) is found among the strings a frame drew, whatever the build put
- * around it.
+ * around it. A figure is looked for as any of its {@link spellings}, so a build
+ * that groups a figure's digits shows the same figure; the bound either side is
+ * unchanged, so `50` is still not found in `150`.
  */
 export function hasToken(lines: readonly string[], value: string): boolean {
-  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, "i");
-  return lines.some((line) => pattern.test(line));
+  return spellings(value).some((written) => {
+    const escaped = written.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, "i");
+    return lines.some((line) => pattern.test(line));
+  });
 }
 
 /** One run of text a frame drew, and where it drew it in device pixels. */

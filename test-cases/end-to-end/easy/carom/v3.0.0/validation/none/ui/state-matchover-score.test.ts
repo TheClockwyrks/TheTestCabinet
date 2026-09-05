@@ -35,6 +35,40 @@ import {
   type Harness,
 } from "../harness";
 
+/**
+ * Group separators a build may draw between a figure's digit triples.
+ *
+ * An ASCII space is deliberately absent. The frame's separate runs of text are
+ * joined with one, so accepting it would read the two figures in `40 130` as the
+ * single figure `40130`. `.` is absent for the same kind of reason: it is the
+ * decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = [",", "'", "\u00A0", "\u202F", "\u2009"];
+
+/**
+ * A pattern matching `value` drawn as a figure of its own.
+ *
+ * specs/ui.md fixes the two figures the screen carries and leaves how they are
+ * drawn to the build, so every conventional rendering of the figure is accepted
+ * and a grouped figure reads as the one figure it is: `1234`, `1,234`, `1'234`,
+ * and the three space separators a locale reaches for (U+00A0, U+202F, U+2009) —
+ * which is what `toLocaleString` draws by default. A figure of three digits or
+ * fewer has exactly one rendering, so a final score short of a thousand is the
+ * bare digits it is. The digit boundary either side is what keeps a screen
+ * showing `150` from reading as one showing `50`.
+ */
+function figure(value: number): RegExp {
+  const plain = String(value);
+  const forms = new Set([
+    plain,
+    ...GROUP.map((sep) => plain.replace(/\B(?=(\d{3})+(?!\d))/g, sep)),
+  ]);
+  const alternatives = [...forms]
+    .map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  return new RegExp(`(?<![\\d.])(?:${alternatives})(?![\\d.])`);
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -60,6 +94,6 @@ it("draws the final score the match ended on", async () => {
   const calls = await h.frameCalls();
   await captureStill(h, "score");
   const text = drawnText(calls).join(" ");
-  assertMatches(text, new RegExp(`\\b${WIN_SCORE}\\b`));
-  assertMatches(text, /\b0\b/);
+  assertMatches(text, figure(WIN_SCORE));
+  assertMatches(text, figure(0));
 });

@@ -30,8 +30,9 @@
 // is NAMED `dragging` is not read as reporting a live drag while its value says
 // `none`; where it separates them any other way the line is read whole, which
 // can only make a point more permissive and never wrongly strict. A number is
-// then matched as a whole run of digits, never as a substring, so a `4` is not
-// answered by the `4` inside `14`.
+// then matched as a whole figure, never as a substring, so a `4` is not answered
+// by the `4` inside `14`, and a figure whose digits the build grouped into
+// triples — `1,234` — is the one number it draws.
 //
 // WHAT THIS READING CANNOT DO, AND WHY THE POINTS ARE POSED THE WAY THEY ARE. A
 // build is free to draw lines of its own beside the ones the specification asks
@@ -77,9 +78,48 @@ export function overlayValues(lines: readonly string[]): string[] {
   });
 }
 
-/** Every maximal run of digits the values carry, in the order they were drawn. */
-export function digitRuns(lines: readonly string[]): string[] {
-  return overlayValues(lines).flatMap((value) => value.match(/\d+/g) ?? []);
+/**
+ * The separators a build may group a figure's digit triples with.
+ *
+ * specs/instrumentation.md fixes the FIGURE a source reports and leaves how it
+ * is drawn to the build, so a count drawn through
+ * `Number.prototype.toLocaleString()` as `1,234` and the same count drawn as
+ * `1234` are the same report and read as the one number. The apostrophe and the
+ * three narrow spaces are here for the same reason: they are what a locale group
+ * separator is, and which one a build's formatting reaches for is not what any
+ * point beside this file decides.
+ *
+ * The ASCII space is deliberately absent. A frame's text is a list of separate
+ * draw runs joined with one, so accepting it would read the two figures in
+ * `40 130` as the single number 40130. The `.` is deliberately absent too: it is
+ * the decimal point, and a build drawing `1.5` means one and a half.
+ */
+const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+
+/** Those separators on their own, for stripping them back out of a match. */
+const GROUPS = new RegExp(GROUP, "g");
+
+/**
+ * One figure as a build may draw it: digits grouped into triples, or a plain
+ * run of them, either way with an optional sign and an optional fraction.
+ *
+ * The grouped form is tried first so that a grouped figure is taken whole rather
+ * than as its leading triple, and both forms are anchored on nothing but their
+ * own digits, so a figure is still read as a WHOLE run and never as a substring
+ * of a longer one.
+ */
+const DRAWN = new RegExp(
+  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
+  "g",
+);
+
+/** Every figure the values carry, in the order they were drawn. */
+export function drawnNumbers(lines: readonly string[]): number[] {
+  return overlayValues(lines).flatMap((value) =>
+    (value.match(DRAWN) ?? []).map((drawn) =>
+      Number(drawn.replace(GROUPS, "")),
+    ),
+  );
 }
 
 /**
@@ -95,9 +135,7 @@ export function assertFigure(
   what: string,
   times = 1,
 ): void {
-  const carried = digitRuns(lines).filter(
-    (run) => Number.parseInt(run, 10) === value,
-  ).length;
+  const carried = drawnNumbers(lines).filter((drawn) => drawn === value).length;
   if (carried < times) {
     fail(
       times === 1
