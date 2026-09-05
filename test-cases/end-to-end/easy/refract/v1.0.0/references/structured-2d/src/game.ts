@@ -26,11 +26,7 @@
 // and `elapsed` stays `0`.
 
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { defineCues } from "./audio";
 import { Bench } from "./bench";
 import { DEFAULT_SEED } from "./constants";

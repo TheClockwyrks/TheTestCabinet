@@ -36,11 +36,7 @@
 // through the engine's own projection (specs/world.md).
 
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { DEFAULT_SEED, GEMSTONE_IDS, ITEM_IDS, ORE_IDS } from "./constants";
 import type {
   ComponentId,

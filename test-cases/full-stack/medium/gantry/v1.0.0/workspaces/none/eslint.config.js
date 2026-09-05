@@ -21,6 +21,7 @@ export default tseslint.config(
       "playwright-report/",
       ".vendor/",
       "assets/",
+      "specs/",
     ],
   },
   js.configs.recommended,

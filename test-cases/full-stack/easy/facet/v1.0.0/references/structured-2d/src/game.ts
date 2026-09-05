@@ -33,11 +33,7 @@
 // inherited `phase` stays `"waiting"` and `elapsed` stays `0`.
 
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { loadAssets } from "./assets";
 import { defineCues, loadCues } from "./audio";
 import { Bench } from "./bench";

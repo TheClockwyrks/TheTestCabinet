@@ -21,6 +21,7 @@ export default tseslint.config(
       "test-results/",
       "assets/",
       ".vendor/",
+      "specs/",
     ],
   },
   js.configs.recommended,

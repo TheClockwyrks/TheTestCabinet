@@ -11,11 +11,7 @@
 // at `y = 120` and the leg at `y = 220`, clear of both by more than the plate's
 // own half-width.
 
-import {
-  Actor,
-  DrawComponent,
-  type DrawApi,
-} from "@clockwyrks/structured-2d";
+import { Actor, DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
 import { assets } from "./assets";
 import {
   FIELD_H,

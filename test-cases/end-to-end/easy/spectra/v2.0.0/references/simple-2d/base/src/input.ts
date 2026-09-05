@@ -17,11 +17,7 @@
 //     every edge is read, and the screen uses the one that applies to it.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import type {
-  InitApi,
-  PointerSample,
-  UpdateApi,
-} from "@clockwyrks/simple-2d";
+import type { InitApi, PointerSample, UpdateApi } from "@clockwyrks/simple-2d";
 
 /** Everything a frame's input amounts to, resolved once per update. */
 export interface FrameInput {

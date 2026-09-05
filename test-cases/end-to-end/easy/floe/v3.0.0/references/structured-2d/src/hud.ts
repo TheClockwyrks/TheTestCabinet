@@ -6,11 +6,7 @@
 // the strait, and nothing drawn on the strait is drawn inside it: the bar is an
 // opaque panel on the HUD layer, above every body and below the screens.
 
-import {
-  Actor,
-  DrawComponent,
-  type DrawApi,
-} from "@clockwyrks/structured-2d";
+import { Actor, DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
 import {
   BAY_COUNT,
   HUD_H,

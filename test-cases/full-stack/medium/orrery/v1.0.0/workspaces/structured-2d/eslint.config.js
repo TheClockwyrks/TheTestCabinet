@@ -22,6 +22,7 @@ export default tseslint.config(
       "assets/",
       ".vendor/",
       "engine/",
+      "specs/",
     ],
   },
   js.configs.recommended,

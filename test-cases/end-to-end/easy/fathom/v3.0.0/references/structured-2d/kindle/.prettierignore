@@ -11,3 +11,6 @@ package-lock.json
 
 # Prose. The formatter handles code; Markdown is left to its own linter.
 *.md
+
+# Seeded reading material rather than this project's source: the specification.
+specs/

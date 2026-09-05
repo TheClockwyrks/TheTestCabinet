@@ -9,11 +9,7 @@
 // `TextComponent` refreshed each tick, because which of the two ways to play is
 // being played is read from the instance every frame (src/match-mode.ts).
 
-import {
-  Actor,
-  DrawComponent,
-  TextComponent,
-} from "@clockwyrks/structured-2d";
+import { Actor, DrawComponent, TextComponent } from "@clockwyrks/structured-2d";
 import type { DrawApi } from "@clockwyrks/structured-2d";
 import { drawText, type Ctx } from "./draw";
 import { CaromState } from "./state";

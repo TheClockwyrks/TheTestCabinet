@@ -28,11 +28,7 @@
 // and `elapsed` stays `0`.
 
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { defineCues, noCues, playCues } from "./audio";
 import { DEFAULT_SEED, LEVELS, START_LIVES } from "./constants";
 import { WirewormController } from "./controller";

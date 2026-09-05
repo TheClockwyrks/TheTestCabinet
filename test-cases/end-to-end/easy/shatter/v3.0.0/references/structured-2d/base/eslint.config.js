@@ -64,6 +64,7 @@ export default tseslint.config(
       "out/",
       "coverage/",
       ".vendor/",
+      "specs/",
     ],
   },
   js.configs.recommended,

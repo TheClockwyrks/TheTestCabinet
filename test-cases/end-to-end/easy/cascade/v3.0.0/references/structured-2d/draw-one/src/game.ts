@@ -31,11 +31,7 @@
 // the inherited `phase` stays `"waiting"`.
 
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { applyAudio, defineCues, noCues } from "./audio";
 import { advanceCascade } from "./cascade";
 import { DEFAULT_SEED, LEVELS, MENU_BINDINGS, TAGS } from "./constants";

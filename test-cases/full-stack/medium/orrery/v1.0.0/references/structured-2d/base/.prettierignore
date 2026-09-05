@@ -1,6 +1,6 @@
 # Everything that is not authored source: installed packages, build output,
-# coverage and browser-verification reports, the produced assets, and the
-# vendored engine.
+# coverage and browser-verification reports, the produced assets, the
+# vendored engine, and the supplied specification.
 node_modules/
 /dist/
 /build/
@@ -11,6 +11,7 @@ test-results/
 package-lock.json
 .vendor/
 assets/
+specs/
 
 # Prose. The formatter handles code; Markdown is left to its own linter.
 *.md

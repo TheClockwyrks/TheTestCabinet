@@ -25,11 +25,7 @@
 // surface specs/instrumentation.md fixes (`src/debug.ts`).
 
 import { GameInstance } from "@clockwyrks/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { DEFAULT_SEED, LEVELS } from "./constants";
 import { defineCues } from "./audio";
 import { CaromMode } from "./carom-mode";

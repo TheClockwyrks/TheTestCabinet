@@ -18,11 +18,7 @@
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
 import { DIRS } from "./grid";
 import type { Dir, Heading } from "./state";
-import type {
-  InitApi,
-  PointerSample,
-  UpdateApi,
-} from "@clockwyrks/simple-2d";
+import type { InitApi, PointerSample, UpdateApi } from "@clockwyrks/simple-2d";
 
 /**
  * Register every action, bound to its keys.

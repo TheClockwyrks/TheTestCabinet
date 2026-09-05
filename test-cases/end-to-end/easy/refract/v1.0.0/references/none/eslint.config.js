@@ -43,6 +43,7 @@ export default tseslint.config(
       "coverage/",
       "proof/",
       ".vendor/",
+      "specs/",
     ],
   },
   js.configs.recommended,

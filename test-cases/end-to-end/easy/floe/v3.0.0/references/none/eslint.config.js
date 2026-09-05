@@ -83,6 +83,7 @@ export default tseslint.config(
       "build/",
       "out/",
       "coverage/",
+      "specs/",
       "proof/",
       ".vendor/",
     ],

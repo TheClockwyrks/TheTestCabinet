@@ -8,11 +8,7 @@
 // This is one `DrawComponent` on the topmost layer, reading the live state at the
 // draw and writing nothing.
 
-import {
-  Actor,
-  DrawComponent,
-  type DrawApi,
-} from "@clockwyrks/structured-2d";
+import { Actor, DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
 import {
   STAGE_H,
   STAGE_W,

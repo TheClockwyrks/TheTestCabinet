@@ -24,11 +24,7 @@ import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import type { ModelName } from "./assets";
 import { applyClick, pick, type EditOutcome, type Pick } from "./editor";
 import type { Vec3 } from "./sim";
-import {
-  collectedTextRuns,
-  drawHud,
-  type HudHint,
-} from "./render-hud";
+import { collectedTextRuns, drawHud, type HudHint } from "./render-hud";
 import {
   describeFrame,
   measureModel,

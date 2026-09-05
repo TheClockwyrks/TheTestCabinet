@@ -20,11 +20,7 @@
 // transform that folds that box down onto the footprint the event calls for; the
 // two maps compose, so a particle lands where the event put it.
 
-import {
-  Actor,
-  DrawComponent,
-  type DrawApi,
-} from "@clockwyrks/structured-2d";
+import { Actor, DrawComponent, type DrawApi } from "@clockwyrks/structured-2d";
 import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
 import { assets, type SheetName, type SystemName } from "./assets";
 import { Injector, Intake } from "./actors";

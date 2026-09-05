@@ -34,11 +34,7 @@
 // `elapsed` stays `0`.
 
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
-import type {
-  GameDefinition,
-  InitApi,
-  World,
-} from "@clockwyrks/structured-2d";
+import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { applyEvents, defineCues, noEvents } from "./audio";
 import { advanceCascade } from "./cascade";
 import { DEFAULT_SEED, LEVELS, MENU_BINDINGS, TAGS } from "./constants";

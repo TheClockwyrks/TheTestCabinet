@@ -9,11 +9,7 @@
 // `TextComponent` refreshed each tick, because `setMode` poses the mode on a
 // match that is already open (specs/instrumentation.md).
 
-import {
-  Actor,
-  DrawComponent,
-  TextComponent,
-} from "@clockwyrks/structured-2d";
+import { Actor, DrawComponent, TextComponent } from "@clockwyrks/structured-2d";
 import type { DrawApi } from "@clockwyrks/structured-2d";
 import { drawText, type Ctx } from "./draw";
 import { caromState, type CaromState } from "./state";
