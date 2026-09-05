@@ -23,7 +23,8 @@
     "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
     "test:scripts": "node --test scripts/lib/*.test.mjs",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck:validators": "node scripts/typecheck-validators.mjs"
   },
   "devDependencies": {
     "cspell": "^10.0.1",

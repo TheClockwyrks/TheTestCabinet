@@ -184,6 +184,29 @@ process. The hard rule is that the seeded workspace supplies configuration only:
 a `package.json`, tool configuration, and an `index.html`, with no source code.
 The model owns as much of the code as possible.
 
+## Validators type-check where they are authored
+
+A case ships one validator project per engine at `validation/<engine>/`, and a
+run stages that project into the collected tree at `validation/`. Each project's
+`tsconfig.json` extends `../tsconfig.json`, which is the build's own root
+tsconfig at run time.
+
+The version supplies that parent at `validation/tsconfig.json`, a copy of the
+seeded workspace's `tsconfig.json`, so a validator is checked under the options
+it runs under. Nothing seeds or stages it.
+
+Two module paths a validator uses exist only in the staged tree. `../src/*` is
+the build's own source, and `./case-harness/*` is the shared harness copied in
+beside the suites. Each project's `tsconfig.json` maps both onto the checkout
+with `rootDirs`, pointing the first at the case's reference implementation for
+that engine and the second at `packages/case-harness/src`. The reference is the
+one for the project's own engine at the case's default variant, and every suite
+in the project is checked against it.
+
+Run `npm run typecheck:validators` after editing a validator or a reference
+implementation's exported surface. It covers every project of every case, and
+both CI systems run it.
+
 ## Menus and screens
 
 A case whose build presents menus specifies how they are driven, how they lead
@@ -304,6 +327,7 @@ When you finish revising a case's specs or prompt, confirm each of the following
 - Navigating back to a menu selects the entry that led away from it.
 - Every review item asserts one observable behavior and carries a validation
   script for each engine it covers, with every threshold derived from the spec.
+- Every validator project type-checks, with `npm run typecheck:validators`.
 - A required showcase carries one review item whose validator checks only that
   the showcase exists, weighted above the default, with no other item asserting
   anything about the media.

@@ -43,6 +43,7 @@ and can be run from anywhere, including locally:
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
+| `validators-typecheck.sh` | `npm ci`, `tsc --noEmit` over every case's `validation/<engine>/` project | yes |
 | `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package, every tree the workspace bakes in with `include_str!`, and every package `stage-tcab-packages.mjs` bakes into the host package store — survives every `.dockerignore` allowlist that can apply to it | yes |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or

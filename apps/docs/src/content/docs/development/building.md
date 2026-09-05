@@ -366,6 +366,25 @@ is the runtime counterpart. It wraps the routed body, so a page that throws is
 contained to itself: the chrome and section nav stay, the panel names the
 failure, and navigating to another page clears it.
 
+### Validator projects
+
+Type-check every test case's validators with:
+
+```sh
+npm run typecheck:validators
+```
+
+It runs `tsc --noEmit` over each `test-cases/**/<version>/validation/<engine>/`
+project. Nothing else compiles them: a run stages a project into the produced
+tree and vitest transpiles it without checking types, so this is the only gate on
+a validator that fails to compile. Both CI systems run it, through
+`scripts/ci/validators-typecheck.sh`.
+
+A project resolves the build's `../src/*` against the case's reference
+implementation and the shared harness's `./case-harness/*` against
+`packages/case-harness/src`, through the `rootDirs` its config declares. See
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/#validators-type-check-where-they-are-authored).
+
 Lint the authored prose with:
 
 ```sh
