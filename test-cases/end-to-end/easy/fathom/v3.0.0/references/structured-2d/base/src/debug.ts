@@ -28,6 +28,7 @@ import { noCues } from "./audio";
 import {
   BRIGHT_HOLD,
   DEFAULT_SEED,
+  DRIFTER_INTERVAL,
   FATHOM_DEBUG_VERSION,
   GLOAMFIN_HEAR,
   GRID_COLS,
@@ -137,6 +138,8 @@ export interface FathomSnapshot {
   lives: number;
   muted: boolean;
   planktonRemaining: number;
+  /** Seconds until the cadence admits the next drifter (`specs/state.md`). */
+  drifterIn: number;
   brightness: number;
   brightHold: number;
   visionRadius: number;
@@ -191,6 +194,7 @@ export interface FathomDebugApi {
   clearDrifters(): void;
   setDrifterMind(index: number, enabled: boolean): void;
   setDrifterTravel(index: number, enabled: boolean): void;
+  setDrifterIn(seconds: number): void;
   setSonarCooldown(seconds: number): void;
   setInkCooldown(seconds: number): void;
 }
@@ -700,6 +704,22 @@ export function createDebugApi(world: () => World): FathomDebugApi {
       requireDrifter(state, index, where).travel = enabled === true;
     },
 
+    /**
+     * The seconds left on the bonus-drifter cadence, which runs down from there
+     * and admits at `0` exactly as one the game armed itself does. The call
+     * admits nothing (`specs/instrumentation.md`).
+     */
+    setDrifterIn(seconds) {
+      const where = "setDrifterIn(seconds)";
+      const left = requireSeconds(seconds, where);
+      if (left > DRIFTER_INTERVAL) {
+        throw new Error(
+          `${where}: expected at most ${DRIFTER_INTERVAL}, received ${String(seconds)}`,
+        );
+      }
+      read().drifterTimer = left;
+    },
+
     /** The seconds left on the sonar pulse's cooldown. */
     setSonarCooldown(seconds) {
       read().sonarCooldown = requireSeconds(
@@ -743,6 +763,7 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
     lives: state.lives,
     muted: state.muted,
     planktonRemaining: state.planktonRemaining,
+    drifterIn: state.drifterTimer,
     brightness: forager.brightness,
     brightHold: forager.hold,
     visionRadius: forager.visionRadius,

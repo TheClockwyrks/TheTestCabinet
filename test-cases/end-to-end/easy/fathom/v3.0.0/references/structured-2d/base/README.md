@@ -145,8 +145,8 @@ The operations are `reset` (seedable), `snapshot`, `setScreen`, `setScore`,
 `clearPredators`, `addPredator`, `setPredatorTile`, `setPredatorDir`,
 `setPredatorState`, `setPredatorReleased`, `setPredatorMind`,
 `setPredatorTravel`, `spawnDrifter`, `clearDrifters`, `setDrifterMind`,
-`setDrifterTravel`, `setSonarCooldown` and `setInkCooldown`. Each
-is a single-field pose that feeds the same code path play feeds — a posed layout
+`setDrifterTravel`, `setDrifterIn`, `setSonarCooldown` and `setInkCooldown`.
+Each is a single-field pose that feeds the same code path play feeds — a posed layout
 is loaded by the code a descent loads one with, a posed predator hunts through
 its own mind, and a posed chase takes its fix through the acquisition a sense
 takes one through — so a scenario driven from code behaves exactly like one

@@ -151,6 +151,7 @@ export const REQUIRED_OPS = [
   "clearDrifters",
   "setDrifterMind",
   "setDrifterTravel",
+  "setDrifterIn",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;
@@ -294,6 +295,12 @@ export interface FathomSnapshot extends FixtureBoard {
   muted: boolean;
   autoStep: boolean;
   planktonRemaining: number;
+  /**
+   * The seconds left on the bonus-drifter cadence: the countdown that admits
+   * the next drifter at the den gate. `DRIFTER_INTERVAL` at the top of a maze
+   * and again from each admission, and never more than that (specs/state.md).
+   */
+  drifterIn: number;
   brightness: number;
   brightHold: number;
   visionRadius: number;
@@ -385,6 +392,8 @@ export interface FathomDebugApi extends FixtureOps {
   clearDrifters(): Promise<void>;
   setDrifterMind(index: number, enabled: boolean): Promise<void>;
   setDrifterTravel(index: number, enabled: boolean): Promise<void>;
+  /** Poses the seconds left on the bonus-drifter cadence, `0` to `DRIFTER_INTERVAL`. */
+  setDrifterIn(seconds: number): Promise<void>;
   setSonarCooldown(seconds: number): Promise<void>;
   setInkCooldown(seconds: number): Promise<void>;
 }

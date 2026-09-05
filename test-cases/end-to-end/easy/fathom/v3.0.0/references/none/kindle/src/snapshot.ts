@@ -110,6 +110,8 @@ export interface FathomSnapshot {
   muted: boolean;
   autoStep: boolean;
   planktonRemaining: number;
+  /** Seconds until the cadence admits the next drifter (`specs/state.md`). */
+  drifterIn: number;
   brightness: number;
   brightHold: number;
   visionRadius: number;
@@ -176,6 +178,7 @@ export function snapshot(
     muted: state.muted,
     autoStep,
     planktonRemaining: state.planktonRemaining,
+    drifterIn: state.drifterTimer,
     brightness: forager.brightness,
     brightHold: forager.hold,
     visionRadius: visionRadius(state),

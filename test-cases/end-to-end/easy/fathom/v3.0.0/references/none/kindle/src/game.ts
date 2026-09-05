@@ -905,11 +905,14 @@ function stepDrifters(state: FathomState, dt: number): void {
     );
   }
 
-  // The timer runs only while the maze has room, so a freed slot refills after a
-  // whole fresh interval rather than the instant one is eaten.
-  if (state.drifters.length >= DRIFTER_MAX) return;
+  // The timer runs only while the maze has room and while plankton remain, so a
+  // freed slot refills after a whole fresh interval rather than the instant one
+  // is eaten, and a maze with nothing left to graze banks no admission up.
+  if (state.drifters.length >= DRIFTER_MAX || state.planktonRemaining <= 0) {
+    return;
+  }
   state.drifterTimer -= dt;
-  if (state.drifterTimer > 0 || state.planktonRemaining <= 0) return;
+  if (state.drifterTimer > 0) return;
   state.drifterTimer = DRIFTER_INTERVAL;
   admitDrifter(state);
 }

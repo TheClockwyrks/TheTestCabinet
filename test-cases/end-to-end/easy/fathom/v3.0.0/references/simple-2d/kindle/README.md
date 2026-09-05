@@ -179,7 +179,7 @@ The operations are `reset`, `snapshot`, `setScreen`, `setScore`, `setLives`,
 `clearPredators`, `addPredator`, `setPredatorTile`, `setPredatorDir`,
 `setPredatorState`, `setPredatorReleased`, `setPredatorMind`,
 `setPredatorTravel`, `spawnDrifter`, `clearDrifters`, `setDrifterMind`,
-`setDrifterTravel`, `setSonarCooldown` and `setInkCooldown`.
+`setDrifterTravel`, `setDrifterIn`, `setSonarCooldown` and `setInkCooldown`.
 
 **Each pose sets one thing** and leaves the rest of the trench as it stands, so a
 caller that wants several things arranged makes several calls, in the order it

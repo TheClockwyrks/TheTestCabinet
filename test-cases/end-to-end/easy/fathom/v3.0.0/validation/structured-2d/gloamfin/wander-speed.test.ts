@@ -74,8 +74,29 @@ const SETTLE_TICKS = 12;
  * `specs/predators/gloamfin.md` states the claim in exactly this unit — "a
  * Gloamfin that has wandered for a minute" — so the check waits the minute out
  * rather than sampling something shorter and calling it the same question.
+ *
+ * THE MINUTE IS RUN, NOT SKIPPED OVER. It is spent through {@link Harness.skip},
+ * which hands the engine several ticks' worth of delta a frame instead of one:
+ * every one of the 7,200 ticks runs, in order, through the game's own
+ * `TICK_DT` loop, and what is spared is the 7,200 renders between them.
+ * specs/movement.md is what makes the two the same simulation — "the number of
+ * ticks run over an interval of game time is the same however that interval was
+ * divided into frames" — and {@link COAST_SLACK} below is the reading that says
+ * the minute really passed on this build rather than being waved through.
  */
 const MINUTE_TICKS = 60 * TICK_HZ;
+
+/**
+ * How far the simulated time the minute took may sit from the minute itself, in
+ * seconds.
+ *
+ * Four ticks, which is the accumulation of a double across the march and nothing
+ * else. A build that did not run every tick the march is worth — one that steps
+ * once however much time it was handed, say — reaches the second reading a few
+ * seconds into the patrol instead of a minute, and fails here rather than
+ * passing a claim it never faced.
+ */
+const COAST_SLACK = 4 / TICK_HZ;
 
 /**
  * How far either reading may sit from `PREDATOR_SPEED`, as a fraction.
@@ -162,7 +183,19 @@ it("It wanders at a steady PREDATOR_SPEED", async () => {
 
   // The minute, run before the capture below opens, so the wait costs the clip
   // nothing: a recording holds only the frames the section it wraps drove.
-  await h.advance(MINUTE_TICKS);
+  const beforeMinute = h.snapshot();
+  await h.skip(MINUTE_TICKS);
+  const afterMinute = h.snapshot();
+  assertLessThanOrEqual(
+    Math.abs(
+      afterMinute.simTime - beforeMinute.simTime - MINUTE_TICKS / TICK_HZ,
+    ),
+    COAST_SLACK,
+    `how far the simulated time the minute of wandering took sat from the ` +
+      `${MINUTE_TICKS / TICK_HZ} s those ${MINUTE_TICKS} ticks are worth — ` +
+      `specs/movement.md runs the whole TICK_DT ticks a frame's delta ` +
+      `completes, so a minute spent in long frames is the same minute`,
+  );
 
   const late = await captureReplay(h, "wander", async () => {
     const measured = await measure(index);

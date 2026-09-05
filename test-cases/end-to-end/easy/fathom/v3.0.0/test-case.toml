@@ -533,7 +533,7 @@ validation = { script = "instrumentation/surface-present.test.ts", outputs = [
 [[review.categories.items]]
 id = "snapshot-shape"
 title = "Snapshot reports the full documented shape"
-description = "In live play on a posed board carrying a drifter, a pulse in flight, an ink cloud, and one predator of each kind, the snapshot reports every field specs/state.md lists with its documented type — version, the screen, menuIndex, titleIndex, depth, score, lives, muted (and autoStep on an engineless build), planktonRemaining, brightness, brightHold, visionRadius, the sonar and ink pairs, the grid block, tiles, plankton and visibility, the forager block, drifters, one predators entry per predator with every per-kind field present or null, pulses, inkClouds and simTime — with tiles, plankton and visibility all GRID_ROWS (18) strings of GRID_COLS (36) characters and every tile coordinate agreeing with the position it is derived from."
+description = "In live play on a posed board carrying a drifter, a pulse in flight, an ink cloud, and one predator of each kind, the snapshot reports every field specs/state.md lists with its documented type — version, the screen, menuIndex, titleIndex, depth, score, lives, muted (and autoStep on an engineless build), planktonRemaining, drifterIn, brightness, brightHold, visionRadius, the sonar and ink pairs, the grid block, tiles, plankton and visibility, the forager block, drifters, one predators entry per predator with every per-kind field present or null, pulses, inkClouds and simTime — with tiles, plankton and visibility all GRID_ROWS (18) strings of GRID_COLS (36) characters and every tile coordinate agreeing with the position it is derived from."
 domains = ["navigation", "sensing", "predators", "progression", "presentation"]
 failure_cap = "broken"
 # Automated validation: pose a board exercising every branch of the shape, then
@@ -1816,25 +1816,28 @@ validation = { script = "amber/drifter-speed.test.ts", outputs = [
 [[review.categories.items]]
 id = "drifter-cadence"
 title = "Drifters are admitted on the DRIFTER_INTERVAL cadence"
-description = "With plankton still in the maze, consecutive admissions at the den gate arrive DRIFTER_INTERVAL (25 s) apart within a tenth of a second, over at least two of them, with the maze emptied of drifters after each admission so the DRIFTER_MAX ceiling never stops the cadence."
+description = "With plankton still in the maze, an admission at the den gate lands as the cadence's own countdown drifterIn reaches 0, each admission re-arms that countdown to DRIFTER_INTERVAL (25 s) within a twentieth of a second, and the countdown falls with the simulation's own clock — so consecutive admissions arrive DRIFTER_INTERVAL apart within a tenth of a second, with the maze emptied of drifters after each admission so the DRIFTER_MAX ceiling never stops the cadence."
 domains = ["progression"]
 failure_cap = "passable"
-# Automated validation: on a board that still holds plankton, record the simulated
-# time each admission arrives and take it off the maze with `clearDrifters` before
-# the next is due — which specs/instrumentation.md has leave the cadence's own
-# clock untouched, and which does not depend on the tile the den gate admits onto.
-# See validation/<engine>/amber/drifter-cadence.test.ts.
+# Automated validation: on a board that still holds plankton, pose `drifterIn` a
+# short lead from expiry with `setDrifterIn`, read the admission it lands and the
+# countdown it re-arms, and measure that countdown's fall against `simTime` — the
+# three readings the DRIFTER_INTERVAL gap is composed of. Each drifter is taken
+# off the maze with `clearDrifters`, which specs/instrumentation.md has leave the
+# cadence's own clock untouched and which does not depend on the tile the den
+# gate admits onto. See validation/<engine>/amber/drifter-cadence.test.ts.
 validation = { script = "amber/drifter-cadence.test.ts", outputs = [
   { id = "cadence", name = "A drifter admitted at the den gate", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "drifter-cap"
 title = "The maze holds no more than DRIFTER_MAX drifters"
-description = "A maze already holding DRIFTER_MAX (2) drifters admits none over a stretch far longer than DRIFTER_INTERVAL (25 s), and admits one on the next cadence once the forager has eaten one of the two."
+description = "A maze already holding DRIFTER_MAX (2) drifters admits none with the cadence's own countdown drifterIn standing at 0 — the instant an admission is due — on each of four occasions, and admits one at the next expiry once the forager has eaten one of the two."
 domains = ["progression"]
 failure_cap = "passable"
-# Automated validation: spawn the ceiling's worth, watch `drifters` over several
-# cadences, then eat one and watch the next arrive. See
+# Automated validation: spawn the ceiling's worth, stand `drifterIn` at 0 with
+# `setDrifterIn` and run the game on, four times over, then eat one and pose the
+# countdown a short lead from expiry to watch the next arrive. See
 # validation/<engine>/amber/drifter-cap.test.ts.
 validation = { script = "amber/drifter-cap.test.ts", outputs = [
   { id = "cap", name = "A maze holding its two drifters and no more", kind = "replay" },

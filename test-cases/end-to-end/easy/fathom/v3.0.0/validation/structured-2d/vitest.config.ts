@@ -43,9 +43,11 @@ export default defineConfig({
     // A dive driven out to a game over is tens of thousands of ticks of real
     // simulation, and the heaviest check here — a minute of wandering measured at
     // both ends, which specs/predators/gloamfin.md states in exactly that unit —
-    // drives some seven and a half thousand of them. That takes half a minute of
-    // wall clock on a quiet machine and appreciably longer on a loaded one, so a
-    // budget sized to what it costs when nothing else is running turns an honest
+    // drives some seven and a half thousand of them. The march between the two
+    // readings is run off camera through the harness's `skip`, which spends it
+    // several ticks a frame rather than one, so what it costs the wall clock is a
+    // fraction of a second; what it costs on a loaded host is still the host's to
+    // decide, so a budget sized to a quiet machine would turn an honest
     // measurement into a coin flip. This is many times the slowest check observed
     // on an idle machine, which costs a passing suite nothing and still stops a
     // validator that hangs. What it is NOT is a budget for the measurement: every

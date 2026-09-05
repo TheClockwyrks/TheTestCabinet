@@ -22,6 +22,7 @@
 import {
   BRIGHT_HOLD,
   DEFAULT_SEED,
+  DRIFTER_INTERVAL,
   DRIFTER_SPEED,
   FATHOM_DEBUG_VERSION,
   GLOAMFIN_CHASE_SPEED,
@@ -107,6 +108,7 @@ export interface FathomDebugApi {
   clearDrifters(): void;
   setDrifterMind(index: number, enabled: boolean): void;
   setDrifterTravel(index: number, enabled: boolean): void;
+  setDrifterIn(seconds: number): void;
   setSonarCooldown(seconds: number): void;
   setInkCooldown(seconds: number): void;
 }
@@ -578,6 +580,21 @@ export function createDebugApi(
       const d = drifterAt(index);
       d.travel = Boolean(enabled);
       if (!d.travel) d.dir = null;
+    },
+
+    /**
+     * Set the seconds left on the bonus-drifter cadence. It runs down from
+     * there and admits at `0` exactly as one the game armed itself does; the
+     * call admits nothing (`specs/instrumentation.md`).
+     */
+    setDrifterIn(seconds) {
+      const left = requireSeconds("a drifter cadence", seconds);
+      if (left > DRIFTER_INTERVAL) {
+        invalid(
+          `a drifter cadence must lie in [0, ${DRIFTER_INTERVAL}], got ${seconds}`,
+        );
+      }
+      state.drifterTimer = left;
     },
 
     /** Set the seconds left on the sonar pulse's cooldown. */

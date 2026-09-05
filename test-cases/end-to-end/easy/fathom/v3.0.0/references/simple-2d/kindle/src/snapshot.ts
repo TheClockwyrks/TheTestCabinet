@@ -76,6 +76,8 @@ export interface FathomSnapshot {
   lives: number;
   muted: boolean;
   planktonRemaining: number;
+  /** Seconds until the cadence admits the next drifter (`specs/state.md`). */
+  drifterIn: number;
   brightness: number;
   brightHold: number;
   visionRadius: number;
@@ -190,6 +192,7 @@ export function snapshotOf(
     lives: state.lives,
     muted: state.muted,
     planktonRemaining: state.planktonRemaining,
+    drifterIn: state.drifterIn,
     brightness: state.brightness,
     brightHold: state.brightHold,
     visionRadius: visionRadius(state.brightness),
