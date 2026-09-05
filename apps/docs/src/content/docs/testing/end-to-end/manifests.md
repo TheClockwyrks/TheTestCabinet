@@ -545,10 +545,9 @@ The case's build config must write both files. `reporters: ["default", "json"]`
 with `outputFile: { json: "coverage/test-report.json" }` produces the run's
 results: the totals, a row per test file, and each failure with its message.
 Coverage declared as `provider: "istanbul"` with
-`reporter: ["text", "json-summary"]` produces `coverage/coverage-summary.json`,
-which carries istanbul's four metrics for the whole measured source and per
-file. `reportOnFailure: true` is what makes a failing suite write its coverage at
-all.
+`reporter: ["json-summary"]` produces `coverage/coverage-summary.json`, which
+carries istanbul's four metrics for the whole measured source and per file.
+`reportOnFailure: true` is what makes a failing suite write its coverage at all.
 
 Coverage is measured over the build's own `src/`, excluding its tests and any
 source the workspace seeded and forbade the build to edit, so the denominator is
