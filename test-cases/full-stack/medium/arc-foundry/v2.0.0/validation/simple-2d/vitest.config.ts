@@ -80,6 +80,5 @@ export default defineConfig({
     // So the count is the core count: both cores busy, and every file running at
     // the speed the machine can actually give it.
     maxWorkers: WORKERS,
-    minWorkers: WORKERS,
   },
 });

@@ -53,7 +53,6 @@ export default defineConfig({
     // of magnitude away. Nothing here is close to either, so the worker count is
     // set by what the host can spare rather than by a deadline.
     maxWorkers: 8,
-    minWorkers: 1,
     // A ceiling on a suite that never terminates, not a schedule any check is
     // written to. Every scenario here is stepped in whole ticks and none of them
     // measures the wall clock, so what a check costs is processor time on a host

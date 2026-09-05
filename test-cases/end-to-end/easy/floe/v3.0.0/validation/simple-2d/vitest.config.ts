@@ -39,7 +39,6 @@ export default defineConfig({
     // not follow that one: four leaves a two-core host room for the work under
     // it rather than oversubscribing it.
     maxWorkers: 4,
-    minWorkers: 1,
     // A CEILING FOR A HUNG SUITE, NOT AN ALLOWANCE FOR A SLOW ONE. Every
     // measurement in this project is taken in the game's own ticks and decides
     // the same thing however long the host took to run them; the only thing this

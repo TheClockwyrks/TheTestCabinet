@@ -42,7 +42,6 @@ export default defineConfig({
     // browser process rather than a core, and the host running this is running a
     // model's build under it.
     maxWorkers: 4,
-    minWorkers: 1,
     // A scenario that drains the whole combo window, or fills the board to reach
     // the cleared ending, is thousands of ticks driven a crossing at a time.
     testTimeout: 120_000,
