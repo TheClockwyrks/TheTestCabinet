@@ -36,7 +36,13 @@
 # or by adding it to the repo-root .env (the `secrets` target sources it):
 #   OPENROUTER_API_KEY=…
 # Comment a line out in .env to leave that key unset (e.g. when using
-# subscription-based auth for that provider instead). The shared
+# subscription-based auth for that provider instead).
+#
+# One more credential is OPTIONAL and only matters for audio: the read-scoped
+# CLOUDFLARE_AUDIO_R2_PRESIGN pair, which lets the `audio-store` target build the store
+# the driver image carries out of the audio object store. Without it the stack still
+# comes up — see that target for what happens instead. Nothing here ever PULLS an audio
+# image; a local build gets its store from this checkout. The shared
 # dispatcher↔backend claim token defaults to a dev value; override it with
 # `SERVICE_TOKEN=… make local-up` if you want. The `secrets` target creates the
 # cluster Secrets from these; nothing sensitive is ever written to a tracked file.
@@ -45,6 +51,7 @@
 #   local-up        create the cluster, build+import service AND run images, apply, ingest catalog
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import the SERVICE images, re-apply the overlay, restart the services (after a service code OR manifest change)
+#   audio-store     (re)build ONLY the audio store the driver image carries — run after publishing an audio pack, then `local-rebuild`
 #   run-images      rebuild+import ALL the RUN-CONTAINER images (after changing baked-in tooling: voxel-anim/draw/core modeling) — the heavy path
 #   run-images-e2e / -full-stack / -game-jam / -asset / -adversarial / -performance / -gg
 #                   rebuild+import ONLY one test type's run image(s) — the fast path when you touched just that type's tooling
@@ -158,6 +165,23 @@ ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFAC
 RUN_IMAGE_PREFIX := $(REGISTRY_PREFIX)/test-cabinet-
 RUN_IMAGE_TAG    := local
 
+# The AUDIO STORE image the DRIVER SERVICE image copies its `/opt/tcab-audio` out of
+# (the `FROM ${AUDIO_STORE_IMAGE}` stage in deployments/images/services.Dockerfile).
+# It is not a run image — nothing executes in it, no run resolves it, and it is never
+# imported into the cluster — but it is named with the run-image prefix/tag anyway,
+# because `containers/build.sh` builds it and names everything it builds
+# `$(IMAGE_NAME_PREFIX)<name>:$(IMAGE_TAG)`.
+#
+# IT IS BUILT HERE, NEVER PULLED. The Dockerfile's default for that build arg is the
+# published `ghcr.io/theclockwyrks/test-cabinet-audio-store:latest`, which is the right
+# default for a deployment (a store pinned by digest, independent of the checkout) and
+# exactly the wrong one locally, twice over: it makes `make images` fail on any machine
+# that cannot pull that reference, and it makes trying an audio change require
+# publishing a container image first. The `audio-store` target below builds the store
+# from THIS checkout and `images` passes this ref in as `AUDIO_STORE_IMAGE`, so no local
+# build reaches a registry for audio at all.
+AUDIO_STORE_IMG := $(RUN_IMAGE_PREFIX)audio-store:$(RUN_IMAGE_TAG)
+
 # The run images grouped by TEST TYPE, so a `run-images-<type>` target (and, for
 # asset generation, a per-kind `run-image-<kind>`) can rebuild just one type / one
 # asset kind instead of the whole set — the full rebuild recompiles ~20 images from
@@ -263,16 +287,20 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # dev-containers credential helper) that the BuildKit builder invokes even for the
 # PUBLIC base-image pulls and which errors hard in here — the legacy builder
 # tolerated it, BuildKit does not. The service-image Dockerfiles only ever pull
-# public images (docker.io bases, plus the published audio store the driver stage
-# copies in from ghcr), so an empty auth set is correct. Pointing DOCKER_CONFIG
-# here also pins buildx to its `default` (docker-driver) builder, which loads the
-# result into the daemon image store so the `docker save`/`k3d image import` below
-# can find it — sidestepping any `docker-container` builder a host might default to.
+# public images (the docker.io bases — the audio store the driver stage copies in is
+# built locally by the `audio-store` target and never pulled), so an empty auth set
+# is correct. Pointing DOCKER_CONFIG here also pins buildx to its `default`
+# (docker-driver) builder, which loads the result into the daemon image store so the
+# `docker save`/`k3d image import` below can find it — sidestepping any
+# `docker-container` builder a host might default to.
+# That pin is load-bearing for the audio store too: the driver build resolves
+# `AUDIO_STORE_IMAGE` — a locally-built `:local` ref — out of that same daemon image
+# store, which a `docker-container` builder could not see.
 # buildx itself lives in the system cli-plugins dir, so it is still found with
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg run-images-gg-selfcheck apply apply-overlay apply-wait rollout-wait sts-reconcile
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig audio-store images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg run-images-gg-selfcheck apply apply-overlay apply-wait rollout-wait sts-reconcile
 
 # The ingest sits BETWEEN applying the overlay and waiting for the services to become
 # ready, and that order is load-bearing rather than incidental. The backend's readiness
@@ -422,6 +450,62 @@ define save_and_import
 	  fi
 endef
 
+# Build the AUDIO STORE the driver image is given, out of THIS checkout — never pulled.
+#
+# The driver stages each run's declared `[audio] packs` into its run container out of a
+# host store at /opt/tcab-audio (crates/core `audio_stage`), and the driver IMAGE is what
+# carries that store in a deployment: services.Dockerfile has a
+# `FROM ${AUDIO_STORE_IMAGE}` stage it copies the tree from. That build arg defaults to
+# the published ghcr image, and a local build must NOT take that default — see
+# AUDIO_STORE_IMG above for why. This target produces the ref `images` passes in instead.
+#
+# Three sources, in order:
+#
+#   1. THE AUDIO OBJECT STORE, when the CLOUDFLARE_AUDIO_R2_PRESIGN pair is in the
+#      environment or $(ENV_FILE) — the normal case for anyone working on audio, and the
+#      only one that is authoritative. `containers/build.sh audio-store` runs
+#      scripts/stage-audio-store.mjs, which presigns a short-lived read-only GET for
+#      every published object and verifies each against
+#      containers/sample-packs/objects.lock.json before it lands, then builds the
+#      data-only image from the staged tree. THIS IS THE AUDIO ITERATION LOOP: publish a
+#      pack (`node scripts/build-sample-pack.mjs <pack> --publish`, commit the updated
+#      lock), re-run `make images`, enqueue a run. Nothing is pushed to a registry, and
+#      the stager's content-addressed download cache means a re-stage re-reads only the
+#      bytes it does not already have.
+#   2. A TREE ALREADY STAGED at dist/audio-store/tree by an earlier run, when the
+#      credentials are absent. It is exactly what that staging produced, so it is as
+#      current as the last one, and a machine that has staged once keeps building
+#      offline.
+#   3. NEITHER — an EMPTY store, loudly. A contributor with no audio credentials still
+#      gets a stack that comes up, and every case declaring no packs (every end-to-end,
+#      adversarial and performance run, and every sfx-synth one) is unaffected. A case
+#      that DOES declare packs then fails at staging with a clear error, which is a much
+#      better failure than `make images` dying for everybody.
+audio-store: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+audio-store:
+	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
+	@$(LOAD_ENV); \
+	if [ -n "$${CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID:-}" ] && [ -n "$${CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY:-}" ]; then \
+	  echo '==> staging the audio store from the audio object store'; \
+	  IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
+	    bash '$(REPO)/containers/build.sh' audio-store; \
+	elif [ -f '$(REPO)/dist/audio-store/tree/objects.lock.json' ]; then \
+	  echo '==> WARNING: no CLOUDFLARE_AUDIO_R2_PRESIGN credentials in the environment or $(ENV_FILE);'; \
+	  echo '             reusing the store already staged at dist/audio-store/tree.'; \
+	  $(CONTAINER_TOOL) build --build-arg AUDIO_STAGE_DIR=dist/audio-store/tree \
+	    -t '$(AUDIO_STORE_IMG)' -f '$(REPO)/containers/audio-store/Dockerfile' '$(REPO)'; \
+	else \
+	  echo '==> WARNING: no CLOUDFLARE_AUDIO_R2_PRESIGN credentials and nothing staged at'; \
+	  echo '             dist/audio-store/tree — building an EMPTY $(AUDIO_STORE_IMG).'; \
+	  echo '             The stack comes up and every case that declares no [audio] packs runs'; \
+	  echo '             normally; a full-stack, game-jam, sfx-sample or music case that DOES'; \
+	  echo '             declare packs will fail at staging. Put the CLOUDFLARE_AUDIO_R2_PRESIGN'; \
+	  echo '             pair in $(ENV_FILE) and re-run `make audio-store`.'; \
+	  mkdir -p '$(REPO)/dist/audio-store/tree'; \
+	  $(CONTAINER_TOOL) build --build-arg AUDIO_STAGE_DIR=dist/audio-store/tree \
+	    -t '$(AUDIO_STORE_IMG)' -f '$(REPO)/containers/audio-store/Dockerfile' '$(REPO)'; \
+	fi
+
 # Build the service images from the same Dockerfile the cluster uses, then load
 # them into the cluster's nodes (no registry needed for local development).
 #
@@ -442,6 +526,12 @@ endef
 # Saving and importing is `save_and_import` above — one archive for the whole set, not one
 # per image, imported in k3d's direct mode. The reasons are written down there.
 #
+# The `audio-store` prerequisite builds the store the DRIVER line copies in, from this
+# checkout, and the driver build is pointed at it with `--build-arg AUDIO_STORE_IMAGE`.
+# Without that override the driver stage takes the Dockerfile's default and tries to pull
+# the published ghcr store, which makes a local build depend on a registry and makes an
+# audio change untestable until it has been published. See the `audio-store` target.
+#
 # THE BACKEND AND DRIVER LINES ARE THE SLOW ONES, AND THE FIRST RUN IS MUCH THE
 # SLOWEST. Both depend on the gg stage: the driver bakes the `gg` binary itself, and the
 # backend bakes the reference documents that binary projects (`gg reference --out`,
@@ -457,12 +547,13 @@ endef
 # fastest way to find out that the gg stage is broken, which is why it is worth knowing it
 # is normal for it to take minutes rather than seconds.
 images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
-images:
+images: audio-store
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target backend    -t '$(BACKEND_IMG)'    -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target auth       -t '$(AUTH_IMG)'       -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target dispatcher -t '$(DISPATCHER_IMG)' -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target driver     -t '$(DRIVER_IMG)'     -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --build-arg AUDIO_STORE_IMAGE='$(AUDIO_STORE_IMG)' \
+	                        --target driver    -t '$(DRIVER_IMG)'     -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target artifacts  -t '$(ARTIFACTS_IMG)'  -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target arena      -t '$(ARENA_IMG)'      -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(call save_and_import,$(ALL_IMGS))

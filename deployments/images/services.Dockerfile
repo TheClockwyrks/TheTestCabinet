@@ -288,9 +288,18 @@ RUN --mount=type=cache,target=/root/.npm \
 # build every service image.
 #
 # `AUDIO_STORE_IMAGE` is declared globally above, because an ARG a `FROM` resolves
-# has to be. A tag that cannot be pulled fails the build here rather than shipping a
+# has to be. A tag that cannot be resolved fails the build here rather than shipping a
 # driver whose every full-stack, game-jam, sfx-sample and music run fails at
 # container start.
+#
+# THE DEFAULT IS FOR A DEPLOYMENT, NOT FOR A LOCAL BUILD. Pulling the published store is
+# right when the driver image is built to be deployed — CI has already published it, and
+# an environment overrides the arg with a digest so the store is pinned alongside the
+# rest of its images. It is wrong for a build on a developer's machine: it makes `make
+# images` depend on a registry, and it makes an audio change untestable until it has been
+# published. `deployments/local/Makefile` therefore builds the store from the checkout
+# (its `audio-store` target) and passes THAT ref in here, so a local build reaches no
+# registry for audio at all. Any other out-of-CI build of this target should do the same.
 FROM ${AUDIO_STORE_IMAGE} AS audio-store
 
 # ── Shared slim runtime ──────────────────────────────────────────────────────

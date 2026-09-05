@@ -564,10 +564,19 @@ the container against the recorded sha256 and byte length. A store with no lock,
 and one whose bytes disagree with it, each fail the run.
 
 That tree ships as the `audio-store` image. The driver image copies it in at
-`/opt/tcab-audio`, and a local checkout fetches it with
+`/opt/tcab-audio`, and a local checkout gets it with
 [`scripts/fetch-audio-store.sh`](../scripts/fetch-audio-store.sh), which pulls the
-published image and extracts the tree. `TCAB_AUDIO_STORE` points core at a store
-elsewhere on the host.
+published image and extracts the tree — or, with `--stage` (and automatically when
+the pull fails), materializes it straight out of the audio object store instead.
+`TCAB_AUDIO_STORE` points core at a store elsewhere on the host.
+
+**The image is never the only source, and it must not be.** It is published *behind*
+the object store, so anyone who has just published a pack would otherwise have to
+push a container image before they could hear it. Every consumer therefore has a
+path that skips the registry: `--stage` here, and
+[`deployments/local/Makefile`](../deployments/local/Makefile)'s `audio-store` target,
+which builds the store from the checkout and hands the driver image build that ref
+so a local `make images` pulls no audio at all.
 
 ### What a run receives
 
@@ -974,6 +983,12 @@ what puts every published pack on a machine that has no repository checkout and 
 R2 credential: the driver image resolves it through an `AUDIO_STORE_IMAGE` build
 arg and `COPY --from`s the tree out, and `scripts/fetch-audio-store.sh` pulls the
 same published image for a local `tcab run`.
+
+It is the source for a machine that *cannot* stage, not for one that can. A build
+in this repository that has the presign credentials should produce the store rather
+than pull it — `deployments/local/Makefile` overrides `AUDIO_STORE_IMAGE` with a
+locally-built ref for exactly that reason — so publishing an image is never on the
+path between changing audio and running with it.
 
 Like the gg toolchain builder it is **not** a run image and never appears in
 `image-names.sh` — that list is the set of images a *run resolves*, and `build.sh`'s

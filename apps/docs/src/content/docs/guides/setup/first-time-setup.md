@@ -123,6 +123,11 @@ so it needs no R2 credential. The default destination is
 that points `tcab` at it. End-to-end, adversarial, and performance cases declare
 no packs and read no store.
 
+If you have just published a pack, the image is behind you: pass `--stage` to
+build the store straight out of the audio object store instead, which needs
+`node` and the read-scoped `CLOUDFLARE_AUDIO_R2_PRESIGN` credentials. The script
+falls back to that source on its own when the pull fails.
+
 ## 4. A headless browser
 
 The [validator](/components/core/validation/) and the reference renderer drive a
