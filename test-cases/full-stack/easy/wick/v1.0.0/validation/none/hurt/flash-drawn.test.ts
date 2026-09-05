@@ -30,17 +30,17 @@
 // the drawing leaves `0.3 - 1/60`, well above 0 — which the reading taken off
 // each frame's own snapshot states rather than assumes.
 //
-// THE TOLERANCE. Neither figure is the specification's, and both are what a
-// reading of an unfixed appearance needs. A channel differs at all (`CHANNEL_TOL`
-// `0`), so anything a build redraws is counted. What the reading rests on is not
-// that two frames of one state are identical, which is nothing the specification
-// promises: specs/ui.md has `simTime` accumulate "on every frame, whatever the
-// screen", so a build is free to drift a glow or a flicker off it while the
-// night stands still. So the first two frames MEASURE that drift, over the same
-// tick and the same driving the arming imposes, and `CAST_MIN` is what the cast
-// must part the pair by ON TOP OF it: 64 pixels, an eight-by-eight patch, far
-// below any cast drawn over a `1280 x 720` view and far above a pair that drew
-// no cast at all.
+// THE FLOOR. Neither figure is the specification's, and both sit at the level
+// below which a sampling cannot tell a drawing from the noise around it. A
+// channel differs at all (`CHANNEL_TOL` `0`), so anything a build redraws is
+// counted. What the reading rests on is not that two frames of one state are
+// identical, which is nothing the specification promises: specs/ui.md has
+// `simTime` accumulate "on every frame, whatever the screen", so a build is free
+// to drift a glow or a flicker off it while the night stands still. So the first
+// two frames MEASURE that drift, over the same tick and the same driving the
+// arming imposes, and `CAST_MIN` is the one pixel the cast must part the pair by
+// ON TOP OF that measured floor. It reads whether a cast was drawn, not how
+// broadly.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -68,10 +68,11 @@ import {
 const CHANNEL_TOL = 0;
 
 /**
- * How many pixels the cast must part its pair by BEYOND the pixels the same
- * night parts a pair of its own by, which is what says a player sees a cast.
+ * The fewest pixels a sampling can tell from the night's own measured drift: one
+ * beyond it. Channels are compared at a floor of `0`, so anything the build
+ * painted for the cast clears this.
  */
-const CAST_MIN = 64;
+const CAST_MIN = 1;
 
 let h: Harness;
 

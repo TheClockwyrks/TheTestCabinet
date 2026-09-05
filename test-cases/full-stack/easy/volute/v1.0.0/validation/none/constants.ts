@@ -59,7 +59,8 @@ export const TICK_MS = 1000 / TICK_HZ;
  * and `olivine`."
  *
  * The ids are fixed; the colour and the glyph each is drawn with are the build's,
- * so no check asserts either — only that the five are told apart.
+ * so no check asserts either — only that each charge draws a produced core sprite
+ * of its own.
  */
 export const CHARGE_IDS = [
   "halide",
@@ -600,14 +601,6 @@ export const ANGLE_TOL = 1;
 /** Pressure: +/- 0.05. */
 export const PRESSURE_TOL = 0.05;
 
-/**
- * Two sampled pixels are told apart at "RGB distance above 50 on a 0-441 scale".
- *
- * The specification fixes no palette, so distinguishability is the whole of what
- * an appearance check may read. No check asserts a hex value.
- */
-export const DISTINCT_MIN = 50;
-
 /** The tolerance on a measured speed, in units/s, for a stated figure. */
 export function speedTolerance(stated: number): number {
   return Math.abs(stated) * SPEED_TOL_FRACTION;
@@ -726,17 +719,3 @@ export const PAUSE_DRIFT_TOL = 0.2;
  * else can be mistaken for the one being read.
  */
 export const SPRITE_CENTRE_TOL = CORE_SPRITE / 2;
-
-/**
- * `presentation/charge-glyphs`: the fraction of a core sprite's 28 x 28 face two
- * charges' glyph masks must differ over.
- *
- * THE ONE BOUND IN THIS FILE THAT NO SPEC FIGURE FIXES. specs/assets.md requires
- * that "each charge carries a glyph of its own" and states no size for it, so a
- * number has to be chosen. 15% of 784 pixels is about 118 — a stroke drawn across
- * a third of the sprite, which is the smallest mark that reads at all at 28 units
- * on screen. Two sprites differing only in hue score 0 and a shading-only
- * difference scores a few percent, so the bound separates a glyph from no glyph
- * rather than grading how big a glyph is.
- */
-export const GLYPH_DIFFERENCE_MIN = 0.15;

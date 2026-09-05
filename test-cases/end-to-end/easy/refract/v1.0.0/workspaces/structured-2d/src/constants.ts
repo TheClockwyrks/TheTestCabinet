@@ -257,6 +257,9 @@ export const SOLVED_ITEMS = ["NEXT BOARD", "RESTART"] as const;
 export const HUD_SOLVED_LABEL = "SOLVED";
 export const HUD_TIER_LABEL = "TIER";
 
+/** How far a readout's value may sit from its label and still be beside it. */
+export const HUD_VALUE_GAP = 96;
+
 // ---- Pointer targets (specs/controls.md) ---------------------------------
 
 /**

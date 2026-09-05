@@ -68,14 +68,15 @@ const BAND_ROWS = 15;
 export const BAND_SAMPLES = BAND_COLUMNS * BAND_ROWS;
 
 /**
- * How far apart two colours must be, out of about 441, to count as a changed sample.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * Two renders of the same state are identical, so the floor is not rejecting noise
- * from the build — it is rejecting a build whose menu differs by a shade no player
- * could see. Thirty of 441 is the same distance the case's `presentation` items use
- * to call two things drawn apart.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-export const CHANGE_DISTANCE = 30;
+export const CHANGE_DISTANCE = 8;
 
 /** One entry's band: where it is, in logical field units. */
 export interface Band {

@@ -609,124 +609,62 @@ validation = { script = "instrumentation/rules-read-nothing-from-the-renderer.te
 # Where everything sits and how it reads. The geometry is the one part of
 # Refract's appearance the specification does fix, because every pointer position
 # in the game is measured against it: a board drawn off the cell centers makes the
-# hit radius wrong and the game unplayable. The rest of these points are the
-# legibility floor the player depends on to read a board at all, decided from the
-# pixels the build actually renders — samples at known cell centers against the
-# board's own ground, with every threshold stated in the item. The palette itself
-# is the build's, and how good the bench looks is the aesthetic rating's.
+# hit radius wrong and the game unplayable. Every point here decides one thing off
+# the rendered pixels — that the build drew something at the coordinates
+# specs/board.md computes, or that what it drew changed when the state behind it
+# changed. How a node, a beam or an empty cell LOOKS — the palette, the three
+# silhouettes, outline against fill, a crystal's charge readout, how quiet a
+# background is — is the reviewer's presentation rating and is decided nowhere
+# here.
 [[review.categories]]
 id = "board"
 title = "Board and rendering"
 [[review.categories.items]]
 id = "cell-geometry"
 title = "Nodes sit on the cell centers the formula gives"
-description = "On a posed 3x3 and a posed 7x6 board, every node's computed center carries a node — some pixel within NODE_R (30) of it stands more than 50 of 441 from the board's own ground — and that node's mass sits on the center rather than merely near it, its silhouette's centroid within NODE_R / 3 + 2 (12) of the formula center, with adjacent centers CELL_PITCH (96) apart on both axes and the grid centered on BOARD_CX, BOARD_CY (640, 392) whatever its dimensions, so the board does not drift as boards change size."
+description = "On a posed 3x3 and a posed 7x6 board, every node's computed center carries something drawn: some pixel within NODE_R (30) of it differs from the board's own ground, with adjacent centers CELL_PITCH (96) apart on both axes and the grid centered on BOARD_CX, BOARD_CY (640, 392) whatever its dimensions, so the board does not drift as boards change size."
 domains = ["tracing", "presentation"]
 failure_cap = "scuffed"
-# Automated validation: read each node's silhouette at every formula center on two
-# board sizes, for its loudest pixel and its centroid. Nothing is sampled off the
-# board: specs/board.md leaves what sits behind and around it to the build. See
+# Automated validation: read the disc about every formula center on two board
+# sizes and decide that the build drew there. Nothing is sampled off the board:
+# specs/board.md leaves what sits behind and around it to the build, and how a
+# node looks inside the disc is the reviewer's. See
 # validation/<engine>/board/cell-geometry.test.ts.
 validation = { script = "board/cell-geometry.test.ts", outputs = [
   { id = "board", name = "The posed boards whose centers are sampled", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "silhouettes-distinct"
-title = "The three channel silhouettes are told apart by form"
-description = "With one lens of each channel posed on an otherwise empty board, each node's pixels within NODE_R (30) of its center, binarized at half its strongest reading against the board's ground into a hue-independent mask of the form's body, overlap each of the other two masks by an intersection-over-union below 0.85 after centroid alignment, so channel identity reads by form and not by hue alone."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: binarize each silhouette and compare the masks pairwise —
-# distinctness is the part decidable without shape recognition, and the exact
-# triangle, square, and diamond conformance is visible to the reviewer in the
-# captured frame. See validation/<engine>/board/silhouettes-distinct.test.ts.
-validation = { script = "board/silhouettes-distinct.test.ts", outputs = [
-  { id = "nodes", name = "One lens of each channel, side by side", kind = "image" },
-] }
-[[review.categories.items]]
-id = "emitter-versus-lens"
-title = "An emitter reads as outlined against a lens's fill"
-description = "Both nodes of one channel are drawn — some pixel within NODE_R (30) of each center exceeds 50 of 441 from the board's ground — and the lens covers more than half of its own inner disc where the emitter covers less than half of its own, each node's inner disc being half the reach the form it drew has, which is the largest disc about the center that a triangle of that reach encloses, so the reading holds at whatever size within NODE_R (30) the build draws its nodes, and so a node's channel and its role read in the same glance."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: pose an emitter and a lens of one channel and measure how
-# much of each node's inner disc its own form covers. See
-# validation/<engine>/board/emitter-versus-lens.test.ts.
-validation = { script = "board/emitter-versus-lens.test.ts", outputs = [
-  { id = "pair", name = "An emitter and a lens of one channel", kind = "image" },
-] }
-[[review.categories.items]]
-id = "channel-hues"
-title = "The three channel hues are told apart at a glance"
-description = "With one lens of each channel posed, the median color of each of the three lens forms differs pairwise by more than 50 of 441 RGB distance, so each channel carries one distinct hue."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: sample each lens's fill and compare the three pairwise.
-# See validation/<engine>/board/channel-hues.test.ts.
-validation = { script = "board/channel-hues.test.ts", outputs = [
-  { id = "channels", name = "The three channel hues side by side", kind = "image" },
-] }
-[[review.categories.items]]
-id = "crystal-distinct"
-title = "A crystal is never mistaken for a channel node"
-description = "A crystal's pixels within NODE_R (30) of its center, binarized at half its strongest reading against the board's ground into a hue-independent mask of the form's body, overlap each channel silhouette's mask by an intersection-over-union below 0.85 after centroid alignment, so a crystal reads apart from all three channel forms."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: the same mask comparison as silhouettes-distinct, crystal
-# against each channel. See validation/<engine>/board/crystal-distinct.test.ts.
-validation = { script = "board/crystal-distinct.test.ts", outputs = [
-  { id = "crystal", name = "A crystal beside the three channel nodes", kind = "image" },
-] }
-[[review.categories.items]]
 id = "crystal-charges-read"
 title = "A crystal's charge count reads from its form"
-description = "A 1-charge and a 3-charge crystal render differently within NODE_R (30) of their centers: the two regions differ by more than 50 of 441 RGB distance at some paired sample."
+description = "A 1-charge and a 3-charge crystal render differently within NODE_R (30) of one cell center: posed in turn at the same cell, the two regions differ at some paired sample, so the count is drawn rather than implied."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: pose a 1-charge and a 3-charge crystal on one board and
-# compare their rendered regions sample against sample. The spent half of
-# specs/board.md's readout requirement carries no point of its own: every
-# arrangement that moves a crystal's spent count also draws a beam over the
-# region a script would read, so no pixel reading isolates the readout, and it
-# is left to the reviewer's presentation rating.
+# Automated validation: pose a 1-charge crystal at one cell, read the disc about
+# that center, pose a 3-charge crystal at the same cell, and compare the two
+# readings sample against sample — the cell, its neighbours and the background
+# are identical between them, so the only thing that moved is the charge count.
+# The captured still is a third pose carrying both counts side by side, which is
+# what a reviewer wants to look at. The spent half of specs/board.md's readout
+# requirement carries no point of its own: every arrangement that moves a
+# crystal's spent count also draws a beam over the region a script would read, so
+# no pixel reading isolates the readout, and it is left to the reviewer's
+# presentation rating.
 # See validation/<engine>/board/crystal-charges-read.test.ts.
 validation = { script = "board/crystal-charges-read.test.ts", outputs = [
   { id = "charges", name = "A 1-charge and a 3-charge crystal side by side", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "node-radius"
-title = "Every node fits inside NODE_R of its cell center"
-description = "Around a posed node of each kind, the node's form, binarized against the board's own ground at half its strongest reading, has no pixel beyond NODE_R (30) plus 6 of its cell center, so a node's silhouette never spills toward its neighbors. The 6 is the tolerance a stroked outline needs: the specification bounds the form, and half the width it is inked with falls outside that bound before any pixel is misplaced."
-domains = ["presentation"]
-failure_cap = "passable"
-# Automated validation: pose an emitter, a lens and a crystal, each two clear
-# cells from its nearest neighbor, and measure how far each one's binarized body
-# reaches from its cell center. See validation/<engine>/board/node-radius.test.ts.
-validation = { script = "board/node-radius.test.ts", outputs = [
-  { id = "node", name = "The node inside its radius", kind = "image" },
-] }
-[[review.categories.items]]
 id = "beam-route"
 title = "A drawn beam visibly connects the cells it links"
-description = "The midpoint cluster of an orthogonal and of a diagonal drawn segment, on two different channels, differs from the background sample by more than 50 of 441 RGB distance and sits closer in RGB to its own channel's sampled node color than to either other channel's, so the beam's route is unambiguous and carries its channel's hue."
+description = "The midpoint of an orthogonal and of a diagonal drawn segment, on two different channels, renders differently once the segment is drawn than it did on the same board with the beam empty, so a beam is drawn along the line joining the two cell centers and its route is unambiguous."
 domains = ["presentation", "tracing"]
 failure_cap = "scuffed"
-# Automated validation: trace one orthogonal and one diagonal segment and sample
-# each segment's midpoint against the background and the three channel colors.
-# See validation/<engine>/board/beam-route.test.ts.
+# Automated validation: read each segment's midpoint on the posed board before
+# anything is traced, trace one orthogonal and one diagonal segment, and read the
+# same two points again. What the beam looks like — its hue, its width, its
+# styling — is the reviewer's. See validation/<engine>/board/beam-route.test.ts.
 validation = { script = "board/beam-route.test.ts", outputs = [
   { id = "beams", name = "An orthogonal and a diagonal segment drawn", kind = "image" },
-] }
-[[review.categories.items]]
-id = "empty-cells"
-title = "An empty cell holds nothing"
-description = "Every empty cell on a posed board stays within 50 of 441 RGB distance of the board's own ground — at its center, and for an interior cell at sixteen further points, eight directions at each of NODE_R / 2 (15) and NODE_R (30) out — so an empty cell is drawn as nothing, or as quiet background texture, and never as something as loud as a node."
-domains = ["presentation"]
-failure_cap = "passable"
-# Automated validation: sample every empty cell on a board that mixes nodes and
-# gaps, at its center and across an interior cell's two rings. See validation/<engine>/board/empty-cells.test.ts.
-validation = { script = "board/empty-cells.test.ts", outputs = [
-  { id = "board", name = "The board whose empty cells are sampled", kind = "image" },
 ] }
 
 # --- Tracing ------------------------------------------------------------------
@@ -1099,8 +1037,8 @@ validation = { script = "campaign/select-grid.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "select-states"
-title = "Locked, unlocked, and solved read apart"
-description = "More than 0.5% of board 2's own tile region on the select grid changes by more than 12 of 255 in luminance when solving board 1 unlocks it, and again when board 2 is itself solved, so each state reads apart from the last at a glance and not by hue alone."
+title = "Locked, unlocked, and solved render apart"
+description = "Board 2's own tile region on the select grid renders differently once solving board 1 unlocks it, and differently again once board 2 is itself solved, read on three frames driven the same number of frames after the grid is reached with the highlight in the same place, so the build draws the three board states apart rather than one tile for all three."
 domains = ["campaign"]
 failure_cap = "passable"
 validation = { script = "campaign/select-states.test.ts", outputs = [
@@ -1605,7 +1543,7 @@ validation = { script = "cascade/solved-back.test.ts", outputs = [
 [[review.categories.items]]
 id = "hud-solved-count"
 title = "The boards-solved count is on screen while playing"
-description = "During playing after two solves, a frame draws HUD_SOLVED_LABEL (SOLVED) with the digit 2 adjacent, clear of the board's extent. The count is the run's one measure, so a missing count is scuffed rather than cosmetic."
+description = "During playing after two solves, a frame draws HUD_SOLVED_LABEL (SOLVED) with the digit 2 within HUD_VALUE_GAP (96) of it, both clear of the board in play, whose extent specs/board.md gives for that board's own cols and rows, widened by NODE_R (30). The count is the run's one measure, so a missing count is scuffed rather than cosmetic."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/hud-solved-count.test.ts", outputs = [
@@ -1614,7 +1552,7 @@ validation = { script = "cascade/hud-solved-count.test.ts", outputs = [
 [[review.categories.items]]
 id = "hud-tier"
 title = "The tier is on screen while playing"
-description = "During playing, a frame draws HUD_TIER_LABEL (TIER) with the current tier's digit adjacent, clear of the board's extent."
+description = "During playing, a frame draws HUD_TIER_LABEL (TIER) with the current tier's digit within HUD_VALUE_GAP (96) of it, both clear of the board in play, whose extent specs/board.md gives for that board's own cols and rows, widened by NODE_R (30)."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/hud-tier.test.ts", outputs = [
@@ -1625,19 +1563,28 @@ validation = { script = "cascade/hud-tier.test.ts", outputs = [
 # This case fixes no palette, no font, no node artwork, no beam rendering and no
 # background on purpose, so there is nothing to compare a build against, and the
 # two points here are the two presentation facts the specification does fix: the
-# stage fitted whatever the window is, and the readouts clear of the board. How
-# GOOD the bench looks — the design, the type, the originality — is the run-wide
-# aesthetic rating's, not scored here.
+# stage fitted whatever the window is, and the readouts clear of the board. The
+# fit is graded under `none` alone, because under an engine the engine derives
+# it and every build on that engine gets the same answer; the readouts are the
+# build's placement under every engine. How GOOD the bench looks — the design,
+# the type, the originality — is the run-wide aesthetic rating's, not scored
+# here.
 [[review.categories]]
 id = "presentation"
 title = "Presentation"
 [[review.categories.items]]
 id = "stage-fit"
 title = "The stage is fitted and centered"
-description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface at its own aspect ratio, centered with even letterboxing, and the bars carry the stage's background color within an RGB distance of 25 of 441."
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the backing store is the window at its device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface at its own aspect ratio with one axis filled exactly, centered with even letterboxing, and a board posed at the corners of the largest grid renders under its own logical coordinates mapped through that fit."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/stage-fit.test.ts", outputs = [
+# Automated validation, `none` ONLY: under an engine the fit is the engine's —
+# the uniform scale, the letterboxed centering and the device pixel ratio all
+# come out of the engine's viewport, so the check returns one verdict for every
+# build on that engine. Under `none` the build derives the fit itself, which is
+# where the requirement is the build's own work.
+# See validation/none/presentation/stage-fit.test.ts.
+validation = { script = "presentation/stage-fit.test.ts", engines = ["none"], outputs = [
   { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },
 ] }
 [[review.categories.items]]

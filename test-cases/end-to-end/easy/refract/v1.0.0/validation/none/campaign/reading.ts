@@ -21,7 +21,7 @@
 // carry the same readers under the same names, with the same failure messages,
 // so one condition reports identically whichever engine the build was written
 // for (README.md: the three run the same scenarios and differ only in how they
-// reach the build). Only `regionLuminances` differs: there is no context to
+// reach the build). Only `regionPixels` differs: there is no context to
 // read a backing store off here, so the pixels are asked of the page, and the
 // reader is asynchronous like every other reading in this project.
 
@@ -154,8 +154,7 @@ export interface Region {
 }
 
 /**
- * The Rec. 709 luminance, on the same 0..255 scale, of every device pixel the
- * region covers.
+ * Every device pixel the region covers, channel by channel.
  *
  * Every one of them, stepping one device pixel at a time: a sparse lattice
  * aliases against a tile's border — two device pixels wide is typical, and a
@@ -163,7 +162,7 @@ export interface Region {
  * none of it. The points are built in a fixed order, so two reads of one region
  * on two frames line up pixel for pixel.
  */
-export async function regionLuminances(
+export async function regionPixels(
   h: Harness,
   region: Region,
 ): Promise<number[]> {
@@ -180,24 +179,19 @@ export async function regionLuminances(
     }
   }
   const read = await h.pixels(points);
-  return read.map(([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b);
+  return read.flatMap(([r, g, b]) => [r, g, b]);
 }
 
 /**
- * The share of a region's pixels whose luminance moved by more than `step`
- * between two readings of it, on 0..1.
+ * How many of a region's channel values moved at all between two readings of
+ * it. Zero means the build rendered the two states of that tile identically.
  *
- * A COUNT, never a mean: a mean measures how much ink a build repaints, so a
- * build that states a tile's condition in a word beside an unchanged tile
- * dilutes to nothing, while the same reading is obvious to a player. Counting
- * the pixels that moved reads that build and a build that repaints the whole
- * tile alike. The two readings must be of one region on one canvas, so a
- * mismatch in length is a fault in the caller, named as one.
+ * The two readings must be of one region on one canvas, so a mismatch in length
+ * is a fault in the caller, named as one.
  */
-export function changedFraction(
+export function changedValues(
   before: readonly number[],
   after: readonly number[],
-  step: number,
 ): number {
   assertLength(after, before.length, "two readings of one tile region");
   if (before.length === 0) {
@@ -205,9 +199,9 @@ export function changedFraction(
   }
   let changed = 0;
   for (let i = 0; i < before.length; i += 1) {
-    if (Math.abs(after[i] - before[i]) > step) changed += 1;
+    if (after[i] !== before[i]) changed += 1;
   }
-  return changed / before.length;
+  return changed;
 }
 
 /** One node, reduced to the fields specs/campaign-boards.md fixes. */

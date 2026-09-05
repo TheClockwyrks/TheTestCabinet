@@ -3,10 +3,10 @@
 // Only the `screens` group reads a HUD strip, a menu entry's neighbourhood and a
 // drawn number this way, so they live beside the checks that use them rather than
 // in the shared harness next door. Like everything there they fix a READING
-// alone — which square of the stage a readout may sit in, how many samples of it
+// alone — which square of the stage a readout may sit in, which of its samples
 // moved, and which runs of text carry a number — and never a threshold: every
-// distance, count and tolerance a check asserts is stated in that check, derived
-// from the figure `specs/` fixes for it.
+// count and tolerance a check asserts is stated in that check, derived from the
+// figure `specs/` fixes for it.
 //
 // WHY A HUD CHECK READS A WHOLE STRIP. `specs/field.md` puts each readout in one
 // of the two strips and then says, in as many words, that "how each is composed
@@ -74,14 +74,29 @@ export function insideBand(rect: Rect, y: number): boolean {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * How far a place must move between two readings to count as repainted, as a
+ * Euclidean RGB distance out of the `441` an RGB cube is across.
+ *
+ * THIS IS THE READING, NOT A THRESHOLD. It decides which places of a region
+ * count as having been drawn on again, and how far a readout moves beyond that
+ * is never asserted: `specs/ui.md` fixes each readout's CONTENT and
+ * `specs/field.md` leaves its composition and placement within its strip to the
+ * build, so the palette, the type and the treatment are the reviewer's to rate.
+ * Two readings of one place nothing was drawn on are identical, so anything
+ * above zero would do; `12` is a little above the rounding one composite can put
+ * on a pixel.
+ */
+export const PAINT_MIN = 12;
+
+/**
  * How many samples of two readings of the same region moved further than
  * `minDistance` apart, sample for sample.
  *
  * The harness's own `countDiffering` holds a reading against ONE colour, which is
  * the question "how much of this square is not the field behind it". The question
  * every HUD check here asks is the other one: how much of this square changed
- * when the value it reports changed. `minDistance` is the caller's, because what
- * counts as a sample having moved is the check's own figure.
+ * when the value it reports changed. `minDistance` is the caller's; every check
+ * in this group passes {@link PAINT_MIN}.
  */
 export function changedSamples(
   a: readonly Rgb[],

@@ -8,11 +8,11 @@
 //
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. The two drag sources. The screen and
 // the mode are `presentation/overlay-shows-screen`, the pile counts
-// `presentation/overlay-shows-pile-counts`, the cascade
-// `presentation/overlay-shows-cascade`, and that watching the panel costs the
-// game nothing is `presentation/overlay-changes-nothing`. What the run in hand
-// LOOKS like is `presentation/held-run-drawn-above`, and what a press lifts is
-// `handling.press-grabs-column-run`.
+// `presentation/overlay-shows-pile-counts`, and the cascade
+// `presentation/overlay-shows-cascade`. That watching the panel costs the game
+// nothing is the engine's under this engine and is graded on `none` alone. What
+// the run in hand LOOKS like is `presentation/held-run-drawn-above`, and what a
+// press lifts is `handling.press-grabs-column-run`.
 //
 // THE RUN HELD IS FOUR CARDS, on an otherwise empty table. Every other figure the
 // panel can carry is then a zero — the thirteen piles are empty once the run

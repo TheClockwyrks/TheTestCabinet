@@ -36,7 +36,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
-import { TILE } from "../constants";
+import { SHAKE_MIN, TILE } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -67,9 +67,6 @@ const MAX_SHIFT = 24;
 
 /** How many frames after the blast the jitter is confirmed over. */
 const SHAKE_FRAMES = 24;
-
-/** How far the picture must slide in those frames for the shake to be live. */
-const SHAKE_MIN = 2;
 
 /** Seconds of game time the menu is held up between readings, and their frames. */
 const HELD_SECONDS = 1;

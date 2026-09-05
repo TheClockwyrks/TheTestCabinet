@@ -88,8 +88,16 @@ const BEFORE_SCORE = EXTRA_LIFE_STEP - SCORE_SAUCER;
  */
 const CELL = 3;
 
-/** How much a cell's ink must move to count as changed, of 441. */
-const CHANGE = 60;
+/**
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
+ *
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
+ */
+const CHANGE = 8;
 
 /**
  * How far from where the kill happened a change must be to be the announcement, in

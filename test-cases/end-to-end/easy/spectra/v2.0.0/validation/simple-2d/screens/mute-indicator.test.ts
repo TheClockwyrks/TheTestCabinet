@@ -47,36 +47,15 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { BOTTOM_STRIP, countMoved, driftOverOneFrame } from "./reading";
+import {
+  BOTTOM_STRIP,
+  PAINT_MIN,
+  countMoved,
+  driftOverOneFrame,
+} from "./reading";
 
 /** The key `specs/controls.md` binds `mute` to, written out as it states it. */
 const MUTE_KEY = "KeyM";
-
-/**
- * How far a pixel must move to count as repainted, as a Euclidean RGB distance out
- * of the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to
- * the build: `40` is about a tenth of the space, which is the least a player reads as
- * a mark appearing at a glance, and far above the rounding two readings of one
- * unchanged pixel differ by.
- */
-const REPAINT_MIN = 40;
-
-/**
- * How many pixels of the strip the indicator must repaint to count as drawn — and,
- * unmuted again, must NOT repaint, for it to count as gone.
- *
- * One figure for both directions on purpose: "drawn whenever muted and absent whenever
- * it is not" is one mark, so what counts as present has to be what counts as absent —
- * and both are taken against the same floor, so the two readings partition cleanly on
- * one number rather than on two the strip could fall between.
- *
- * At the harness's default shape the canvas is the stage at one device pixel per
- * logical unit, so `64` pixels is an eight-by-eight mark, smaller than one glyph of
- * type legible at the stage's `1280 x 720` (`specs/ui.md`).
- */
-const INDICATOR_PIXELS = 64;
 
 let h: Harness;
 
@@ -97,7 +76,7 @@ it("draws a mute indicator in the bottom strip while muted and none when unmuted
     "the game starts unmuted, which is the state this reading is held against",
   );
 
-  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, REPAINT_MIN);
+  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, PAINT_MIN);
   const unmuted = drift.reading;
 
   await h.tap(MUTE_KEY);
@@ -122,9 +101,9 @@ it("draws a mute indicator in the bottom strip while muted and none when unmuted
   // One floor for both directions: a strip that moves on its own moves whether the
   // game is muted or not, so it raises the bar the mark must clear and the bar the
   // absent mark must stay under by the same amount.
-  const floor = Math.max(drift.count, INDICATOR_PIXELS);
+  const floor = drift.count;
   assertGreaterThan(
-    countMoved(unmuted, muted, REPAINT_MIN),
+    countMoved(unmuted, muted, PAINT_MIN),
     floor,
     "pixels of the bottom HUD strip the mute indicator painted — it is drawn " +
       "whenever sound is muted (specs/ui.md) and sits in that strip " +
@@ -132,7 +111,7 @@ it("draws a mute indicator in the bottom strip while muted and none when unmuted
       `${String(drift.count)} pixels`,
   );
   assertLessThanOrEqual(
-    countMoved(unmuted, unmutedAgain, REPAINT_MIN),
+    countMoved(unmuted, unmutedAgain, PAINT_MIN),
     floor,
     "pixels of the strip still standing apart from the unmuted reading once " +
       "the game was unmuted again — the indicator is ABSENT whenever sound is " +

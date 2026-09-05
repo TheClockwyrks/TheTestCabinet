@@ -218,17 +218,16 @@ and `combo-up` once each. Every cue is a file this build produces, and
 `specs/assets.md` fixes how each is made.
 
 {{#if (eq engine.slug "none")}}
-Muting and the first-interaction unlock belong to the runtime you write. The game
-binds the `mute` action to the runtime's mute bit and toggles it from any screen,
-then mirrors that bit into `muted` every frame. Browsers refuse to start
-audio before the player interacts with the page, so the game stays fully playable
-and silent until that first interaction, and audio that fails to load or decode
-leaves the game running.
+Muting and the first-interaction unlock belong to the runtime you write. The
+game binds the `mute` action to the runtime's mute bit and toggles it from any
+screen, then mirrors that bit into `muted` every frame. Browsers refuse to start
+audio before the player interacts with the page, so the game stays fully
+playable and silent until that first interaction.
 {{else}}
 Muting and the first-interaction unlock belong to the engine. The game binds the
 `mute` action to the engine's mute bit and toggles it from any screen, then
-mirrors that bit into `muted` every frame. The game stays fully playable
-with sound muted, and audio that fails to load leaves the game running.
+mirrors that bit into `muted` every frame. The game stays fully playable with
+sound muted.
 {{/if}}
 
 ## Out of scope

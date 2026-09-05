@@ -19,7 +19,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
-import { START_LIVES } from "../constants";
+import { RING3_SPEED_CAP, START_LIVES } from "../constants";
 import { captureStill, openHarness, type Harness } from "../harness";
 import {
   assertWaveLaid,
@@ -49,7 +49,7 @@ it("restores the boot state from a thoroughly disturbed session", async () => {
   await h.debug.clearTargets();
   await h.debug.spawnTarget(2, 5, 1);
   await h.debug.setRingAngle(2, 155);
-  await h.debug.setRingSpeed(3, 77);
+  await h.debug.setRingSpeed(3, RING3_SPEED_CAP);
   const ball = polarPose(250, 200, 60, 80);
   await h.debug.spawnBall(ball.x, ball.y, ball.vx, ball.vy);
   const pod = toXy(320, 250);

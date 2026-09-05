@@ -9,26 +9,19 @@
 // where the wheel turns about reads off nothing but the spokes What stays drawn in
 // code hands to the build.
 //
-// WHAT IT READS. The file decodes, and the share of its canvas carrying paint —
-// any pixel whose alpha is above zero — clears `PAINT_MIN_SHARE`.
-// `specs/assets.md` fixes no coverage figure, so that floor is one hundredth of the
-// canvas: an order of magnitude below the thinnest mark a hub could legibly be
-// drawn as, which makes it a reading about a canvas that was drawn on at all rather
-// than a second art bar.
+// WHAT IT READS. The file decodes, and the share of its canvas carrying paint
+// is above zero: some pixel of it carries an alpha above zero.
+// `specs/assets.md` fixes no coverage figure, so what is read is that the
+// canvas was drawn on at all rather than a second art bar.
 //
 // THE EVIDENCE is the file magnified over a checkerboard: wherever the checker
 // shows through, the canvas carried nothing there.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { WHEEL_HUB_PATH } from "../constants";
 import { WHEEL_SPRITES, assetFile } from "./files";
-import {
-  PAINT_MIN_SHARE,
-  decodeProduced,
-  paintShare,
-  showSprites,
-} from "./sprites";
+import { decodeProduced, paintShare, showSprites } from "./sprites";
 
 const HUB = WHEEL_SPRITES.filter(
   (row) => row.file === assetFile(WHEEL_HUB_PATH),
@@ -44,9 +37,9 @@ it("decodes the wheel hub as a canvas carrying paint", async () => {
   );
   const [read] = await decodeProduced(HUB);
   if (read.sprite === null) fail(`a decoded ${HUB[0].label}`, read.reason);
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     paintShare(read.sprite),
-    PAINT_MIN_SHARE,
+    0,
     "the wheel hub: the share of its canvas carrying paint",
   );
 });

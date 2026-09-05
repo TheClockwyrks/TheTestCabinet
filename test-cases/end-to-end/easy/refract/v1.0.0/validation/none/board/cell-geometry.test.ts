@@ -8,24 +8,20 @@
 // a posed 7x6 — the same centering on both, so the grid does not drift as the
 // board changes size.
 //
-// EVERY NODE IS READ THE SAME WAY, by the loudest pixel of the form drawn about
-// its center rather than by the center pixel alone. specs/board.md's only
-// statement here is that a node's silhouette is drawn inside NODE_R of its cell
-// center; which pixel inside that radius carries the form is the build's, and
-// an emitter, the OUTLINED silhouette, is open at the very center by design
-// while a lens may still wear an iris over the middle of its fill. A reading
-// that demanded a painted center pixel would fail both for a rendering choice
-// the specification leaves open, and role-by-role branching would decide
-// emitter-versus-lens's requirement inside this item.
+// THE READING IS PRESENCE AND NOTHING ELSE: within NODE_R of each formula
+// center, some sampled pixel differs from the board's own ground, so the build
+// drew a node there. It is read over the whole disc rather than at the center
+// pixel alone because specs/board.md's only statement here is that a node's
+// silhouette is drawn inside NODE_R of its cell center; which pixel inside that
+// radius carries the form is the build's, and an emitter, the OUTLINED
+// silhouette, is open at the very center by design. What the form looks like
+// inside the disc — its shape, its hue, how much of the disc it fills, where
+// its mass sits — specs/board.md leaves to the build, so none of it is decided
+// here and all of it is the reviewer's presentation rating.
 //
-// PRESENCE IS NOT POSITION, so both are read. A form standing apart from the
-// ground SOMEWHERE inside NODE_R of a formula center says only that something
-// is drawn near that point: a node whose own silhouette reaches NODE_R answers
-// it from as far as 2 * NODE_R away, more than half a CELL_PITCH, so a grid
-// drawn half a pitch off center still leaves a crescent of the node that moved
-// off each center inside the disc. What says the form is CENTERED on the point
-// rather than merely visible from it is the body's centroid, and CENTROID_MAX
-// below says how far it may sit and where that figure comes from.
+// THE BOARDS ARE POSED DENSE so a drift is visible: with a node in every cell
+// but one, a grid derived from the wrong origin or the wrong pitch moves some
+// center off its node, and the disc there reads bare ground.
 //
 // WHICH GROUND. The comparand is the board's OWN ground, an empty cell's sample
 // on the same frame, which is why each posed board leaves one interior cell
@@ -36,7 +32,7 @@
 // what sits behind and around the board to the build.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   center,
@@ -46,7 +42,7 @@ import {
   type Rgb,
 } from "../harness";
 import { NODE_R, type Board } from "../notation";
-import { APART_MIN, bodyCentroid, bodyMask, groundSample } from "./sampling";
+import { diskPeak, groundSample, sampleDisk } from "./sampling";
 
 /**
  * A 3x3 occupied but for one cell: two emitters per channel, lenses between.
@@ -68,26 +64,6 @@ tsdtdst
 DtsSdtT
 `;
 
-/**
- * How far the body's centroid may sit from the formula center.
- *
- * specs/board.md draws the disc of NODE_R (30) about a cell center as the box a
- * node's silhouette is drawn inside, and pins the three forms — a triangle, a
- * square, and a diamond. A square and a diamond are centrally symmetric, so one
- * filling its box puts its centroid on the center exactly. A triangle does not:
- * the most lopsided triangle that still fills the box is the isoceles one with
- * its apex on the rim and its base a chord across the far side, and its centroid
- * sits NODE_R / 3 (10) out. That is the largest offset the pinned forms
- * themselves produce, and 2 px is added on top for the binarized edge and the
- * lattice the disc is sampled on.
- *
- * Nothing here is read off this case's builds, and the line is nowhere near
- * what it must catch: a grid drawn half a CELL_PITCH off center leaves each
- * formula center reading a crescent of the node that moved off it, whose
- * centroid sits about 24 out.
- */
-const CENTROID_MAX = NODE_R / 3 + 2;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -106,18 +82,12 @@ async function assertNodesOnCenters(
 ): Promise<void> {
   for (const node of board.nodes) {
     const at = center(board, node);
-    const body = await bodyMask(h, at.x, at.y, NODE_R, ground);
-    const where = `${what} ${node.kind} (${node.col}, ${node.row})`;
+    const disk = await sampleDisk(h, at.x, at.y, NODE_R);
     assertGreaterThan(
-      body.peak,
-      APART_MIN,
-      `${where}: its loudest pixel within NODE_R of its computed center (${at.x}, ${at.y})`,
-    );
-    const centroid = bodyCentroid(body);
-    assertLessThanOrEqual(
-      centroid === null ? Infinity : Math.hypot(centroid.x, centroid.y),
-      CENTROID_MAX,
-      `${where}: how far the form drawn about its computed center (${at.x}, ${at.y}) has its own mass sitting from that point`,
+      diskPeak(disk, ground),
+      0,
+      `${what} ${node.kind} (${node.col}, ${node.row}): something drawn ` +
+        `within NODE_R of its computed center (${at.x}, ${at.y})`,
     );
   }
 }

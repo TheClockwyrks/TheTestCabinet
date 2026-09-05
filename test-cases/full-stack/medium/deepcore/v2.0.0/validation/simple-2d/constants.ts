@@ -1011,6 +1011,23 @@ export const LAVA_FRAMES = 2;
  */
 export const DRAWINGS_MIN = 2;
 
+/**
+ * The least the screen shake displaces the drawn world at its peak, in logical
+ * units.
+ *
+ * `specs/assets.md`: "The jitter displaces the drawn world by at least
+ * `SHAKE_MIN` (`2`) logical units at its peak".
+ */
+export const SHAKE_MIN = 2;
+
+/**
+ * How long after the event the drawn world is back where it started, in seconds.
+ *
+ * `specs/assets.md`: "the world is back where it started within `SHAKE_SETTLE`
+ * (`3`) seconds of the event".
+ */
+export const SHAKE_SETTLE = 3;
+
 /** The miner's animation states, and the frames `specs/assets.md` asks each for. */
 export const MINER_CYCLES: Readonly<Record<string, number>> = {
   idle: 2,

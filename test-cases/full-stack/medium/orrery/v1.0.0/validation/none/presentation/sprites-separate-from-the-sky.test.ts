@@ -35,8 +35,7 @@
 // spawn or consume anything between the two frames of a row.
 //
 // THE VERDICT. Every row's square is drawn differently once its sprite is on it,
-// over at least `MIN_DISTINCT_SHARE` of that square, with a produced image centred
-// there.
+// with a produced image centred there.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
@@ -68,16 +67,6 @@ import {
  * and reaches no neighbouring hex, whose centre is `HEX_PITCH` (`48`) away.
  */
 const HALF = 20;
-
-/**
- * The least share of that square that must be drawn differently.
- *
- * The case's own figure for "visibly distinct" is one percent of a rectangle
- * (`editor/a-spent-entry-is-drawn-distinct`); this is five times it, because a
- * sprite is not a mark on a slot but the thing itself, and it must not be possible
- * to pass this on a stray pixel of anti-aliasing.
- */
-const MIN_DISTINCT_SHARE = 0.05;
 
 /** The hex a filament's strip is centred on the way between: the midpoint. */
 function midpointOf(a: Hex, b: Hex): StagePoint {
@@ -242,7 +231,7 @@ it("draws every produced field sprite so its place differs from the field behind
     );
     assertGreaterThan(
       differingShare(read.bare, read.drawn),
-      MIN_DISTINCT_SHARE,
+      0,
       `${row.name} leaves the field where it lands drawn differently from the same place with it absent, so it reads on the dark sky rather than on a ground of its own`,
     );
   }

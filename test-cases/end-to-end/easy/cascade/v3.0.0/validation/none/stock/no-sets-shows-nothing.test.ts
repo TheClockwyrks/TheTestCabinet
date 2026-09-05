@@ -32,12 +32,12 @@
 // own, and what this point decides is that the no-set waste looks like one.
 //
 // WHAT IT DOES NOT DECIDE. That an empty pile draws a card-sized mark at all is
-// `presentation/empty-slot-drawn`, and that the mark reads apart from the felt is
-// `presentation/slot-distinct-from-table`; between them those two pin what the
-// second reading here is compared against, so a build that draws nothing at any
-// anchor is charged there rather than twice. Which cards a waste with a memory
-// shows is `draw-one/waste-shows-one` and `draw-three/waste-fans-shown-set`, and
-// that such a waste refuses a move is `stock/no-sets-refuses-move`.
+// `presentation/empty-slot-drawn`, which is what the second reading here is
+// compared against, so a build that draws nothing at any anchor is charged there
+// rather than twice. How that mark reads against the felt is the reviewer's.
+// Which cards a waste with a memory shows is `draw-one/waste-shows-one` and
+// `draw-three/waste-fans-shown-set`, and that such a waste refuses a move is
+// `stock/no-sets-refuses-move`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";

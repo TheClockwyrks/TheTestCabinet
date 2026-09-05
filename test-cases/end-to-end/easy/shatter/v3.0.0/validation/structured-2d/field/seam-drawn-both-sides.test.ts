@@ -63,17 +63,15 @@ const LEFT_COLUMNS = [8, 20, 32];
 const DRAW_TICKS = 1;
 
 /**
- * How far a pixel's colour must move to count as the rock, of the 441 an RGB
- * distance can span.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * The baseline is the SAME tick of the SAME seeded game without the rock, so a
- * pixel that moved at all moved because of the rock, and the only thing this bound
- * has to clear is the rounding of an 8-bit channel. Twenty is far above that and
- * far below the contrast of a rock `specs/overview.md` requires to read apart from
- * a field whose luminance is below a quarter of full, so no legible drawing of a
- * rock fails to clear it.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const CHANGE_MIN = 20;
+const CHANGE_MIN = 8;
 
 /**
  * How many such pixels a side must show, summed over its three columns.

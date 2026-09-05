@@ -179,6 +179,7 @@ suit, red apart from black, a card back apart from a card face and from the tabl
 an empty pile as a slot, a held run as lifted, a highlighted target as
 highlighted, and legible text — and the palette, the type, the card design and
 every other aspect of the look are the build's. The presentation validators assert
-that a thing is drawn and that two things are told apart, against a stated RGB
-distance, never a hex value. `reference/`, `reference-impl/` and `specs/proof.md`
-are gone, and the build ships a `showcase/` of its own captured media instead.
+that a thing is drawn where the specification says something is drawn, and never
+what it was drawn in: how two things read against each other is the reviewer's.
+`reference/`, `reference-impl/` and `specs/proof.md` are gone, and the build ships
+a `showcase/` of its own captured media instead.

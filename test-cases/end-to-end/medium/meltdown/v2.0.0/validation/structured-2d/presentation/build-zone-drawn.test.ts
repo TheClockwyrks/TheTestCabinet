@@ -1,152 +1,119 @@
-// presentation/build-zone-drawn — a restricted mode shows what it restricts.
+// presentation/build-zone-drawn — a mode that restricts building shows a player
+// where it may be done.
 //
-// THE RULE. specs/overview.md's legibility table: "A mode that restricts building
-// draws the zone it restricts building to." specs/modes.md says which mode and
-// which tiles: Bottleneck restricts building to a marked central zone,
-// `BOTTLENECK_ZONE` — columns `13` through `36` and rows `8` through `27`, both
-// ends included — and the floor outside the zone stays open for the surge to
-// walk. So the zone is not a wall and not a different kind of floor: it is a MARK
-// on the floor, and what a player must be able to see is where it stops.
+// THE RULE. specs/overview.md's legibility table: "The build zone — A mode that
+// restricts building draws the zone it restricts building to." specs/modes.md
+// names the one such mode and fixes the rectangle: "Bottleneck restricts building
+// to a marked central zone, `BOTTLENECK_ZONE`: columns `13` through `36` and rows
+// `8` through `27`, both ends included." So what the point decides is that the
+// FOUR EDGES of that rectangle are visible on the floor, since a player who cannot
+// see them finds the zone by being refused.
 //
-// WHERE THE READING IS TAKEN, AND WHY IT IS TAKEN AT THE EDGE. Across the zone's
-// own boundary, on four stretches of each of its four sides. A build may mark the
-// zone by washing its area, by drawing a border round it, by hatching it, or by
-// dimming everything outside it, and every one of those puts something plainly
-// different from the bare floor within a few units of the boundary. Reading the
-// middle of the zone instead would pass the wash and fail the border, and the
-// specification asks for neither in particular.
+// WHY THE READING IS BOTTLENECK AGAINST A MODE WITH NO ZONE. specs/overview.md
+// fixes no palette, and specs/floor.md puts a grid line on every tile boundary —
+// which is exactly where the zone's edges fall. A single frame therefore cannot
+// tell a marked edge from the grid line under it, and comparing the mark against
+// the floor beside it would be comparing two things the build drew.
+// specs/modes.md supplies the control: "Every mode plays the same game: the same
+// floor ... A mode changes the figures its own row below states, and nothing else
+// beyond what its own section names." Containment's row fixes no zone, so the same
+// empty floor drawn under Containment and under Bottleneck differs in the zone
+// marking and in nothing else on the floor at all. Every reading below is that
+// difference.
 //
-// WHAT IS COMPARED, AND WHY IT IS NEVER A COLOUR. specs/overview.md fixes no
-// palette. Each scan is compared against the bare floor on its OWN line, two
-// tiles outside the zone, so a build free to shade or texture its floor is
-// measured against the floor it drew there. A build that washes the WHOLE floor
-// uniformly reads zero everywhere, because its zone edge is then no different
-// from the floor beside it — which is the right verdict, since such a build has
-// drawn no zone.
+// THE TWO HALVES OF THE READING, AND WHY BOTH.
 //
-// WHY THE FIGURE IS 50 AND NOT LOWER. specs/overview.md also requires the tile
-// grid to be visible on the floor at all times, so every scan crosses a grid
-// line. `floor.grid-visible` counts a line at eight of 441 above the floor,
-// deliberately quiet; the bar here is more than six times that, so the grid the
-// specification requires cannot be mistaken for the zone it also requires.
+//   1. SOMETHING CHANGED AT THE EDGE. Along each of the four edges, at some point
+//      within a tile of it, the picture moves by more than the floor moves on its
+//      own. That refuses a build that draws no zone, and a build that draws one
+//      somewhere other than where specs/modes.md puts it.
+//   2. AND SOMETHING NEARBY DID NOT. Along the same edge, some point within that
+//      same tile is untouched. That is what makes the change an EDGE rather than a
+//      wash: a build that simply tints the whole floor whenever the mode is
+//      Bottleneck has drawn no zone, and it moves every point alike.
 //
-// WHAT IT DOES NOT DECIDE. WHICH tiles the zone covers, and that a footprint with
-// one tile outside it is refused, are `modes.bottleneck-zone` and
-// `building.preview-outside-the-zone`. That a refused footprint reads refused is
-// `valid-and-invalid-previews-read-apart`.
+// AND WHERE THE BAR COMES FROM. Not a stated distance — specs/overview.md hands
+// the palette to the build, so how strongly a zone is marked is the reviewer's to
+// judge. The same strip is read twice under Containment, which is how far the
+// floor moves between two frames under a build that animates it, and the marking
+// has to beat that by `NOISE_MARGIN` while the untouched point stays inside it.
+//
+// WHY THE STRIP REACHES BOTH WAYS, AND WHY THAT MATTERS. The points run from a
+// tile outside the edge to a tile inside it. Three ways of drawing a zone are all
+// ordinary — filling the ground inside it, dimming the ground outside it, and
+// ruling a line along it — and reading only one side would fail two of them. A
+// strip that spans the edge passes all three and still refuses a floor-wide wash,
+// because whichever side is marked, the other one is not.
+//
+// WHAT IT DOES NOT DECIDE. That a footprint outside the zone is REFUSED is the
+// `building` group's, and which rectangle the zone is is the `modes` group's.
+// This is pixels, and it is about whether a player can see the line.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
-import {
-  BOTTLENECK_ZONE,
-  tileCX,
-  tileCY,
-  tileLeft,
-  tileTop,
-} from "../constants";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import { BOTTLENECK_ZONE, TILE, tileLeft, tileTop } from "../constants";
 import {
   captureStill,
   colorDistance,
   createHarness,
   startRun,
   type Harness,
-  type Point,
 } from "../harness";
-import { pixelAt, showRgb } from "./read";
+import { NOISE_MARGIN, readPoints, type Point } from "./read";
 
 /**
- * How far, out of the 441 the RGB cube spans, the mark at the zone's edge must
- * sit from the bare floor outside it.
+ * How far either side of an edge, in logical units, the strip is read.
  *
- * The group's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at.
+ * Negative is outside the zone and positive inside. The fine depths catch a line
+ * ruled along the edge, whatever width a build draws it at; the far ones, more
+ * than a tile out and a tile in, are what let a mark be told from a wash — a
+ * marking treatment that reached them both would be a tile and a half thick.
  */
-const APART_MIN = 50;
+const DEPTHS: readonly number[] = [-24, -12, -4, -2, -1, 1, 2, 4, 12, 24];
 
-/**
- * How far either side of the boundary a scan looks, in units.
- *
- * Eight units is under half a tile (specs/floor.md fixes `TILE` at 19), so a scan
- * stays inside the rank of tiles on either side of the boundary and cannot reach
- * a second tile's worth of whatever a build drew. It is wide enough for a border
- * of any ordinary weight laid on either side of the line, and for a wash read a
- * few units in from it.
- */
-const SCAN_REACH = 8;
+/** Where along an edge, as fractions of its length, the strip is read. */
+const ALONGS: readonly number[] = [
+  0.05, 0.14, 0.23, 0.32, 0.41, 0.5, 0.59, 0.68, 0.77, 0.86, 0.95,
+];
 
-/** How far outside the zone the bare-floor reference sits, in tiles. */
-const FLOOR_REFERENCE_TILES = 2;
-
-/**
- * Where along each side the scans are taken.
- *
- * Four stretches per side, kept off the corners so each scan crosses one boundary
- * rather than two, and kept off the vent and exhaust runs specs/floor.md fixes,
- * so nothing a build may draw to hint a corridor is read as the zone.
- */
-const ALONG_ROWS: readonly number[] = [10, 13, 23, 26];
-const ALONG_COLS: readonly number[] = [15, 18, 32, 35];
-
-/** One side of the zone: the scans across it, and the floor outside it. */
-interface Side {
+/** One edge of the zone, in stage units, and how to step off it. */
+interface Edge {
   name: string;
-  along: readonly number[];
-  /** The scan point `offset` units across the boundary at `n` along the side. */
-  scan(offset: number, n: number): Point;
-  /** Bare floor outside the zone, on `n`'s own line. */
-  floorAt(n: number): Point;
+  /** The point `depth` units inward from the edge, `along` of the way down it. */
+  at(depth: number, along: number): Point;
 }
 
-const SIDES: readonly Side[] = [
+/** The rectangle specs/modes.md fixes, in stage units. */
+const X0 = tileLeft(BOTTLENECK_ZONE.col0);
+const X1 = tileLeft(BOTTLENECK_ZONE.col1 + 1);
+const Y0 = tileTop(BOTTLENECK_ZONE.row0);
+const Y1 = tileTop(BOTTLENECK_ZONE.row1 + 1);
+
+const EDGES: readonly Edge[] = [
   {
     name: "the zone's left edge",
-    along: ALONG_ROWS,
-    scan: (offset, row) => ({
-      x: tileLeft(BOTTLENECK_ZONE.col0) + offset,
-      y: tileCY(row),
-    }),
-    floorAt: (row) => ({
-      x: tileCX(BOTTLENECK_ZONE.col0 - FLOOR_REFERENCE_TILES),
-      y: tileCY(row),
-    }),
+    at: (depth, along) => ({ x: X0 + depth, y: Y0 + along * (Y1 - Y0) }),
   },
   {
     name: "the zone's right edge",
-    along: ALONG_ROWS,
-    scan: (offset, row) => ({
-      x: tileLeft(BOTTLENECK_ZONE.col1 + 1) + offset,
-      y: tileCY(row),
-    }),
-    floorAt: (row) => ({
-      x: tileCX(BOTTLENECK_ZONE.col1 + FLOOR_REFERENCE_TILES),
-      y: tileCY(row),
-    }),
+    at: (depth, along) => ({ x: X1 - depth, y: Y0 + along * (Y1 - Y0) }),
   },
   {
     name: "the zone's top edge",
-    along: ALONG_COLS,
-    scan: (offset, col) => ({
-      x: tileCX(col),
-      y: tileTop(BOTTLENECK_ZONE.row0) + offset,
-    }),
-    floorAt: (col) => ({
-      x: tileCX(col),
-      y: tileCY(BOTTLENECK_ZONE.row0 - FLOOR_REFERENCE_TILES),
-    }),
+    at: (depth, along) => ({ x: X0 + along * (X1 - X0), y: Y0 + depth }),
   },
   {
     name: "the zone's bottom edge",
-    along: ALONG_COLS,
-    scan: (offset, col) => ({
-      x: tileCX(col),
-      y: tileTop(BOTTLENECK_ZONE.row1 + 1) + offset,
-    }),
-    floorAt: (col) => ({
-      x: tileCX(col),
-      y: tileCY(BOTTLENECK_ZONE.row1 + FLOOR_REFERENCE_TILES),
-    }),
+    at: (depth, along) => ({ x: X0 + along * (X1 - X0), y: Y1 - depth }),
   },
 ];
+
+/** Every point of every edge's strip, edge by edge. */
+const STRIP: Point[] = EDGES.flatMap((edge) =>
+  ALONGS.flatMap((along) => DEPTHS.map((depth) => edge.at(depth, along))),
+);
+
+const PER_EDGE = ALONGS.length * DEPTHS.length;
 
 let h: Harness;
 
@@ -158,31 +125,55 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("marks the buildable zone apart from the floor outside it", async () => {
+it("marks the zone Bottleneck restricts building to", async () => {
+  // The same empty floor under a mode with no zone, twice, so how far the floor
+  // moves on its own is measured rather than assumed.
+  startRun(h, "containment");
+  await h.advance(1);
+  const first = readPoints(h, STRIP);
+  await h.advance(1);
+  const unzoned = readPoints(h, STRIP);
+
   startRun(h, "bottleneck");
   await h.advance(1);
   captureStill(h, "zone");
+  const zoned = readPoints(h, STRIP);
 
-  for (const side of SIDES) {
-    for (const n of side.along) {
-      const beside = side.floorAt(n);
-      const floor = pixelAt(h, beside.x, beside.y);
-      let best = 0;
-      for (let offset = -SCAN_REACH; offset <= SCAN_REACH; offset += 1) {
-        const at = side.scan(offset, n);
-        best = Math.max(best, colorDistance(pixelAt(h, at.x, at.y), floor));
+  for (const [index, edge] of EDGES.entries()) {
+    let strongest = 0;
+    let quietest = Infinity;
+    let noise = 0;
+    let strongestAt: Point = STRIP[index * PER_EDGE];
+    for (let n = 0; n < PER_EDGE; n += 1) {
+      const i = index * PER_EDGE + n;
+      const moved = colorDistance(unzoned[i], zoned[i]);
+      if (moved > strongest) {
+        strongest = moved;
+        strongestAt = STRIP[i];
       }
-      assertGreaterThanOrEqual(
-        best,
-        APART_MIN,
-        `${side.name} at ${n}, scanned ${SCAN_REACH} units either side of it: ` +
-          `the furthest anything drawn there sits from the bare floor two ` +
-          `tiles outside the zone (${showRgb(floor)}), out of 441 ` +
-          `(specs/overview.md: a mode that restricts building draws the zone ` +
-          `it restricts building to; specs/modes.md: Bottleneck's zone is ` +
-          `columns ${BOTTLENECK_ZONE.col0} to ${BOTTLENECK_ZONE.col1} and ` +
-          `rows ${BOTTLENECK_ZONE.row0} to ${BOTTLENECK_ZONE.row1})`,
-      );
+      quietest = Math.min(quietest, moved);
+      noise = Math.max(noise, colorDistance(first[i], unzoned[i]));
     }
+
+    assertGreaterThanOrEqual(
+      strongest,
+      noise + NOISE_MARGIN,
+      `${edge.name}, columns ${BOTTLENECK_ZONE.col0}-${BOTTLENECK_ZONE.col1} ` +
+        `by rows ${BOTTLENECK_ZONE.row0}-${BOTTLENECK_ZONE.row1}: within a ` +
+        `tile of it, at (${Math.round(strongestAt.x)}, ` +
+        `${Math.round(strongestAt.y)}), Bottleneck draws something ` +
+        `Containment does not, past the ${noise} two Containment frames moved ` +
+        `on their own (specs/overview.md: a mode that restricts building ` +
+        `draws the zone; specs/modes.md fixes the rectangle)`,
+    );
+    assertLessThanOrEqual(
+      quietest,
+      noise + NOISE_MARGIN,
+      `${edge.name}: some point within a tile of it — ${TILE} units either ` +
+        `side — is drawn the same way under both modes, so the marking is an ` +
+        `edge a player can place a footprint against rather than a wash over ` +
+        `the whole floor (specs/modes.md: every mode plays the same game on ` +
+        `the same floor)`,
+    );
   }
 });

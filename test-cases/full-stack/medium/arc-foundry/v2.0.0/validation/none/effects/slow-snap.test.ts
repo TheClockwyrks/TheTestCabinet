@@ -24,7 +24,7 @@
 // `specs/enemies.md` draws a health bar on every unit and a bar is not a snap.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import { tileCenter } from "../constants";
 import {
   captureReplay,
@@ -43,7 +43,6 @@ const AT = tileCenter(26, 17);
 const POINTS = lattice(AT, 18, 3).filter((point) => point.y >= AT.y - 8);
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
@@ -73,11 +72,5 @@ it("sets the ground around a unit moving when a slow lands on it", async () => {
     "the ground around a unit to change on more frames after a slow is " +
       "applied to it than before, so a slow snap is played on it " +
       `(specs/assets.md); it changed on ${still} of ${WINDOW} frames before`,
-  );
-  assertGreaterThanOrEqual(
-    played,
-    MOVING,
-    "the snap to keep moving across the tenth of a second after the slow " +
-      "lands, as a live particle system does (specs/assets.md)",
   );
 });

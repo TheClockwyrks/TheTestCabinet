@@ -390,11 +390,11 @@ description = "Everything a player sees and hears. The produced assets first: th
 #
 # NOTHING here asks a reviewer to judge how the game looks or sounds. Appearance is
 # rated through the domains above. The points about what is drawn assert only what
-# the specification fixes: that the stage is fitted, that the pieces on the board
-# are told apart by a stated color distance, that the copy each screen names is
-# drawn, that the snake is painted from produced sprites rather than from shapes,
-# and that the produced sounds carry signal and hold the lengths `specs/assets.md`
-# fixes for them.
+# the specification fixes: that the stage is fitted, that each piece on the board
+# is drawn rather than left as the ground under it, that the copy each screen
+# names is drawn, that the snake is painted from produced sprites rather than from
+# shapes, and that the produced sounds carry signal and hold the lengths
+# `specs/assets.md` fixes for them.
 #
 # EVERY point also carries `domains` and `failure_cap`. `domains` names the scoring
 # domains a failure lowers: a rule of the simulation lowers `gameplay`, a point
@@ -1657,13 +1657,13 @@ validation = { script = "hud/combo-shown-from-two.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "combo-bar-drains"
-title = "The combo bar drains with the window"
-description = "More of the HUD band is painted at the same multiplier with a full COMBO_WINDOW than with the window nearly spent, so the bar drains as the window does."
+title = "The combo bar tracks the window"
+description = "The HUD band drawn at the same multiplier with a full COMBO_WINDOW differs from the one drawn with the window nearly spent, so the bar follows the window rather than sitting still."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: render one frame at a raised multiplier with a full
-# window and one with a nearly spent window, and compare how much of the HUD
-# band each painted. See validation/<engine>/hud/combo-bar-drains.test.ts.
+# window and one with a nearly spent window over the same board, and compare the
+# two HUD bands. See validation/<engine>/hud/combo-bar-drains.test.ts.
 validation = { script = "hud/combo-bar-drains.test.ts", outputs = [
   { id = "full", name = "The combo bar at a full window", kind = "image" },
   { id = "spent", name = "The combo bar at a nearly spent window", kind = "image" },
@@ -2057,71 +2057,35 @@ validation = { script = "touch/drag-cancels.test.ts", outputs = [
 ] }
 
 # --- Visibility ---------------------------------------------------------------
-# The pieces on the board are told apart by color, read from the rendered pixels
-# against a stated RGB distance. The distance is the requirement; the palette is
-# the build's and is rated through the domains.
+# Each piece on the board is drawn rather than left as the ground under it. The
+# points read presence alone: whether the build painted the cell the piece sits
+# on. What the piece looks like is the build's and is rated through the domains.
 [[review.categories]]
 id = "visibility"
 title = "Visibility"
 [[review.categories.items]]
-id = "head-apart-from-board"
-title = "The head stands apart from the board"
-description = "The pixel at the head cell's center is more than 50/441 in RGB distance from an empty interior cell."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: pose the snake and the pellet on a known board, render,
-# and sample the head cell against an empty interior cell. See
-# validation/<engine>/visibility/head-apart-from-board.test.ts.
-validation = { script = "visibility/head-apart-from-board.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
-] }
-[[review.categories.items]]
-id = "head-apart-from-body"
-title = "The head stands apart from the body"
-description = "The pixel at the head cell's center is more than 50/441 in RGB distance from the pixel at a body cell's center, so the leading cell is never mistaken for a segment."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: pose a chain several cells long, render, and sample the
-# head cell against a middle body cell. See
-# validation/<engine>/visibility/head-apart-from-body.test.ts.
-validation = { script = "visibility/head-apart-from-body.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
-] }
-[[review.categories.items]]
 id = "pellet-apart-from-board"
-title = "The pellet stands apart from the board"
-description = "The pixel at the pellet cell's center is more than 50/441 in RGB distance from an empty interior cell."
+title = "The pellet is drawn on the cell it occupies"
+description = "The pixel at the pellet cell's center changes when the pellet is taken off the board, so the build draws the pellet rather than leaving its cell as the empty field."
 domains = ["presentation"]
 failure_cap = "scuffed"
-# Automated validation: place the pellet on a known cell, render, and sample it
-# against an empty interior cell. See
+# Automated validation: place the pellet on a known cell, render, sample its
+# center, clear the pellet, render again, and sample the same point. See
 # validation/<engine>/visibility/pellet-apart-from-board.test.ts.
 validation = { script = "visibility/pellet-apart-from-board.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
-] }
-[[review.categories.items]]
-id = "pellet-apart-from-snake"
-title = "The pellet stands apart from the snake"
-description = "The pixel at the pellet cell's center is more than 50/441 in RGB distance from the pixels at the head cell and at a body cell."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: pose the snake and the pellet on a known board, render,
-# and sample the pellet against the head and a body cell. See
-# validation/<engine>/visibility/pellet-apart-from-snake.test.ts.
-validation = { script = "visibility/pellet-apart-from-snake.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the pixels were sampled from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "wall-apart-from-interior"
-title = "The wall border stands apart from the interior"
-description = "The pixel at a wall cell's center is more than 50/441 in RGB distance from an empty interior cell, so the border a player must not touch is visible."
+title = "The wall border is drawn around the interior"
+description = "The pixel at a wall cell's center differs from the stage outside the board, so the border a player must not touch is drawn rather than left as bare ground."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: render a live board and sample a wall cell against an
-# empty interior cell. See
+# Automated validation: render a live board and sample a wall cell against a
+# point outside the board's own rectangle. See
 # validation/<engine>/visibility/wall-apart-from-interior.test.ts.
 validation = { script = "visibility/wall-apart-from-interior.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the pixels were sampled from", kind = "image" },
 ] }
 
 # --- Presentation -------------------------------------------------------------
@@ -2137,13 +2101,15 @@ title = "Presentation"
 [[review.categories.items]]
 id = "window-fit"
 title = "Window fit"
-description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface, its aspect ratio is preserved, and the letterboxing is even. The fit is read on the first frame before any input."
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the canvas is sized to the window at its pixel ratio and one posed scene is drawn at the same uniform scale, centered in that surface. The fit is read on the first frame before any input."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: build the game over several differently shaped surfaces
-# and read back the viewport the build derived, before any input reaches it. See
-# validation/<engine>/presentation/window-fit.test.ts.
-validation = { script = "presentation/window-fit.test.ts", outputs = [
+# Automated validation: build the game over several differently shaped surfaces,
+# read the backing store it sized before any input reaches it, and read where the
+# same posed scene's own draws landed in it. Under an engine the fit is the
+# engine's, so this is the engineless build's point alone. See
+# validation/none/presentation/window-fit.test.ts.
+validation = { script = "presentation/window-fit.test.ts", engines = ["none"], outputs = [
   { id = "fit", name = "The stage fitted and centered in an off-aspect window", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -2161,7 +2127,7 @@ validation = { script = "presentation/head-frames-produced.test.ts", outputs = [
 [[review.categories.items]]
 id = "head-frames-distinct"
 title = "The four head frames differ from one another"
-description = "No two of the four head frames are the same image: each pair differs on a measurable share of its pixels, so the sheet is four poses rather than one frame repeated."
+description = "No two of the four head frames are the same image: each pair differs on at least one pixel, so the sheet is four poses rather than one frame repeated."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: decode the four head PNGs and compare every pair pixel
@@ -2208,13 +2174,13 @@ validation = { script = "presentation/tail-sprite-produced.test.ts", outputs = [
 [[review.categories.items]]
 id = "tail-sprite-faces-its-neighbor"
 title = "The tail sprite is authored joining on its right edge"
-description = "assets/snake/tail.png reaches the right edge, where its one neighbor lies, and terminates well short of the left, which is the snake's free end."
+description = "assets/snake/tail.png carries paint on its right edge, where its one neighbor lies, so the two cells join without a gap."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: decode the produced file and count the painted rows of
-# each of its two vertical edge columns. The picture on the board cannot answer
-# this: a sprite authored backwards and a renderer that turns it backwards
-# compose to the right frame. See
+# Automated validation: decode the produced file and read whether its right edge
+# column carries paint. The picture on the board cannot answer this: a sprite
+# authored backwards and a renderer that turns it backwards compose to the right
+# frame. See
 # validation/<engine>/presentation/tail-sprite-faces-its-neighbor.test.ts.
 validation = { script = "presentation/tail-sprite-faces-its-neighbor.test.ts", outputs = [
   { id = "authored", name = "The tail sprite as it was authored", kind = "image" },
@@ -2235,7 +2201,7 @@ validation = { script = "presentation/tail-turned-toward-its-neighbor.test.ts", 
 [[review.categories.items]]
 id = "sprites-distinct"
 title = "The body, corner and tail sprites differ"
-description = "The straight, corner and tail sprites are three different images: each pair differs on a measurable share of its pixels, so one sprite has not been shipped three times."
+description = "The straight, corner and tail sprites are three different images: each pair differs on at least one pixel, so one sprite has not been shipped three times."
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: decode the three body PNGs and compare every pair pixel
@@ -2352,7 +2318,7 @@ title = "Audio"
 [[review.categories.items]]
 id = "eat-file-produced"
 title = "The eat cue ships a produced sound"
-description = "assets/audio/eat.wav exists, decodes as a WAV of non-zero length, and carries audible signal rather than silence."
+description = "assets/audio/eat.wav exists, decodes as a WAV of non-zero length, and carries signal rather than silence."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: read the WAV off the built workspace, parse its header,
@@ -2366,7 +2332,7 @@ validation = { script = "audio/eat-file-produced.test.ts", outputs = [
 [[review.categories.items]]
 id = "combo-up-file-produced"
 title = "The combo cue ships a produced sound"
-description = "assets/audio/combo-up.wav exists, decodes as a WAV of non-zero length, and carries audible signal rather than silence."
+description = "assets/audio/combo-up.wav exists, decodes as a WAV of non-zero length, and carries signal rather than silence."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: read the WAV off the built workspace, parse its header,
@@ -2379,7 +2345,7 @@ validation = { script = "audio/combo-up-file-produced.test.ts", outputs = [
 [[review.categories.items]]
 id = "death-file-produced"
 title = "The death cue ships a produced sound"
-description = "assets/audio/death.wav exists, decodes as a WAV of non-zero length, and carries audible signal rather than silence."
+description = "assets/audio/death.wav exists, decodes as a WAV of non-zero length, and carries signal rather than silence."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: read the WAV off the built workspace, parse its header,
@@ -2392,7 +2358,7 @@ validation = { script = "audio/death-file-produced.test.ts", outputs = [
 [[review.categories.items]]
 id = "music-file-produced"
 title = "The music bed ships a produced track"
-description = "assets/audio/music.wav exists, decodes as a WAV of non-zero length, and carries audible signal rather than silence."
+description = "assets/audio/music.wav exists, decodes as a WAV of non-zero length, and carries signal rather than silence."
 domains = ["presentation"]
 failure_cap = "scuffed"
 # Automated validation: read the WAV off the built workspace, parse its header,

@@ -64,7 +64,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { HUD_H, STAGE_W, START_LIVES } from "../constants";
-import { assertEqual, assertGreaterThanOrEqual, assertTrue } from "../assert";
+import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -74,34 +74,8 @@ import {
 } from "../harness";
 import { renderFrame } from "./frame";
 import { hudNumbers, hudRuns } from "./hud";
-import { differingPixels, readRaster, unitArea, type Raster } from "./raster";
+import { differingPixels, readRaster, type Raster } from "./raster";
 import { spritesOf } from "./sprites";
-
-/**
- * How far apart two pixels must be to count as drawn differently, as an RGB
- * distance out of about `441`.
- *
- * Two renderings of the SAME readout are identical to the byte — the two frames
- * are posed alike and read at the same tick — so this bound is not separating
- * signal from noise; it is there so that a build whose readout shifts by a shade
- * a player could never see is not credited with having drawn a different count.
- * Thirty is a fifteenth of the range, well under the contrast any readout must
- * already have against the bar behind it.
- */
-const PIXEL_DISTANCE_MIN = 30;
-
-/**
- * How much of the HUD bar must be drawn differently, in square stage units.
- *
- * Twelve — about a `3 x 4` patch of a stage `1280 x 720` units across, inside a
- * bar `80` units tall that carries five readouts. A readout a player can actually
- * count differs by a multiple of that between two counts, even set small: the
- * digit of a readout set at the smallest size anyone would call legible here
- * changes by more, and a row of marks by far more. A readout that ignored the
- * count differs in none of it. It is a floor on "drawn differently at all", not a
- * measure of how the difference should look.
- */
-const CHANGED_MIN_UNITS = 12;
 
 /** The counts read: the three a run passes through, most to fewest. */
 const COUNTS: readonly number[] = [
@@ -141,17 +115,15 @@ it("draws the HUD's lives readout differently for each count a run passes throug
   // Before the assertions, so a failing verdict still leaves the last bar.
   captureStill(h, "hud");
 
-  const minChanged = CHANGED_MIN_UNITS * unitArea(bars[0].bar);
   for (let i = 0; i < bars.length; i += 1) {
     for (let j = i + 1; j < bars.length; j += 1) {
-      const changed = differingPixels(
-        bars[i].bar,
-        bars[j].bar,
-        PIXEL_DISTANCE_MIN,
-      );
-      assertGreaterThanOrEqual(
+      // Any difference at all: the two frames are posed alike and read at the
+      // same tick, so a bar that is not byte-identical between them is a bar the
+      // count moved.
+      const changed = differingPixels(bars[i].bar, bars[j].bar, 0);
+      assertGreaterThan(
         changed.length,
-        minChanged,
+        0,
         `the device pixels of the HUD bar drawn differently at ` +
           `${bars[i].count} lives and at ${bars[j].count} — the lives readout ` +
           `counts the run's lives (specs/ui.md), and 'lives' is the only ` +

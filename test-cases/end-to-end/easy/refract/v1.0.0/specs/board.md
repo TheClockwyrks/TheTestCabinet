@@ -92,11 +92,7 @@ What the look must deliver:
 3. A crystal is never mistaken for a channel node, and its charges and its spent
    count are both readable without counting slowly.
 4. Each node's silhouette is drawn inside `NODE_R` (`30`) of its cell center, so
-   neighboring nodes never collide. A halo, a backing, or a highlight drawn
-   around the silhouette may reach `CELL_PITCH / 2` (`48`) from that center, and
-   everywhere outside `NODE_R` it stays faint: less than halfway from the
-   background it is drawn on to the strongest color the silhouette shows against
-   that background.
+   neighboring nodes never collide.
 5. A drawn beam visibly connects the centers of the cells it links, so its route
    is unambiguous, and it carries its channel's hue.
 

@@ -28,9 +28,9 @@
 // itself, magnified.
 //
 // THE TOLERANCE. The canvas is exact, because the specification states it
-// exactly. The paint floor is `PAINT_MIN_SHARE`, one pixel in a thousand: the
-// specification fixes no coverage figure, so the only honest reading is the
-// line between a drawn picture and an empty file.
+// exactly. The paint reading is presence: the specification fixes no coverage
+// figure, so the only honest reading is the line between a drawn picture and an
+// empty file.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { captureStill, createHarness, type Harness } from "../harness";

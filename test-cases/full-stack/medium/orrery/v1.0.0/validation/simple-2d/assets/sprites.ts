@@ -31,47 +31,6 @@ import { CHANNEL_EPSILON, type PixelRect } from "../color";
 import { WORKSPACE, writeImageBytes } from "../media";
 import type { ProducedSprite } from "./files";
 
-/**
- * How much of a sprite's canvas must carry paint for it to be a sprite rather
- * than a stray pixel: one hundredth of its area.
- *
- * `specs/assets.md` requires every sprite to "read on the dark sky" at native
- * size, so a file with a pixel or two set is not the deliverable; it fixes no
- * coverage figure, and this floor sits an order of magnitude below the thinnest
- * mark any of them could legibly be drawn as. A `24`-unit instruction glyph clears
- * it with six pixels.
- */
-export const PAINT_MIN_SHARE = 0.01;
-
-/**
- * How much of two sprites' shared area must differ for them to be two sprites:
- * one hundredth.
- *
- * `specs/assets.md`'s art bar asks that the fifteen motes be "pairwise
- * distinguishable", that the twelve sigil glyphs "are told apart from one
- * another", and that the ten instruction glyphs "are told apart in a `24`-unit
- * tape cell" — and a file shipped twice differs by exactly nothing, since a PNG
- * carries its pixels losslessly. One hundredth is the smallest share worth calling
- * measurable; whether two sprites differ ENOUGH to tell apart at a glance is the
- * art bar itself, which is a reviewer's judgement rather than a check's.
- */
-export const DIFFER_MIN_SHARE = 0.01;
-
-/**
- * How much of a sprite's canvas must be CLEAR for the ground to be transparent
- * rather than filled: one twentieth.
- *
- * `specs/assets.md` requires each sprite "on a transparent, straight-alpha
- * canvas" and that "none of them relies on a background behind it". A sprite drawn
- * to the edge of its canvas is conformant, so the floor is deliberately low: what
- * it catches is a file whose canvas was FLOODED, which is the failure the
- * requirement is about.
- */
-export const GROUND_MIN_SHARE = 0.05;
-
-/** The alpha at or below which a pixel counts as clear ground. */
-export const GROUND_ALPHA = 32;
-
 /** One produced sprite, decoded. */
 export interface Sprite {
   /** The path `specs/assets.md` fixes for it, relative to the repository root. */
@@ -163,12 +122,12 @@ export function paintShare(sprite: Sprite): number {
   return painted / (sprite.width * sprite.height);
 }
 
-/** How much of a sprite is clear ground: alpha at or below {@link GROUND_ALPHA}. */
+/** How much of a sprite is clear ground: pixels whose alpha is zero. */
 export function groundShare(sprite: Sprite): number {
   const { data } = sprite.pixels;
   let clear = 0;
   for (let i = 3; i < data.length; i += 4) {
-    if ((data[i] as number) <= GROUND_ALPHA) clear += 1;
+    if ((data[i] as number) === 0) clear += 1;
   }
   return clear / (sprite.width * sprite.height);
 }

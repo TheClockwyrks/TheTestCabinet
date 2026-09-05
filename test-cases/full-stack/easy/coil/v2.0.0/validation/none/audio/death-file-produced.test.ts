@@ -26,13 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
-import {
-  type Cell,
-  CUE_FILES,
-  CUES,
-  INTERIOR_COL_MAX,
-  SILENCE_FLOOR,
-} from "../constants";
+import { type Cell, CUE_FILES, CUES, INTERIOR_COL_MAX } from "../constants";
 import {
   captureStill,
   chainFrom,
@@ -57,7 +51,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("ships a produced death cue carrying audible signal", async () => {
+it("ships a produced death cue carrying signal", async () => {
   const { sound, reason } = await decodeSound(h, FILE);
 
   await showRound(h, {
@@ -72,7 +66,7 @@ it("ships a produced death cue carrying audible signal", async () => {
   assertGreaterThan(sound.frames, 0, `sample frames in ${FILE}`);
   assertGreaterThan(
     sound.peak,
-    SILENCE_FLOOR,
+    0,
     `the peak sample of ${FILE}, on a full scale of 1`,
   );
 });

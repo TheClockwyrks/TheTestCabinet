@@ -1,18 +1,13 @@
-// Floe — audio/mute-silences: with the mute bit on, a hop and a bay fill emit no
-// sound at all, and the crossing carries on around them.
+// Floe — audio/mute-silences: with the mute bit on, the crossing carries on —
+// the hop lands, the bay fills and scores, and the fresh crossing begins.
 //
-// THE OTHER HALF IS ELSEWHERE. That the two events sound in the first place is
-// `audio/cue-hop` and `audio/cue-bay`; this point holds the rule `specs/ui.md`
-// states beside them — "the game stays fully playable with sound muted" — which
-// is two claims about one stretch of play: nothing came out, and the game went
-// on. Both are read from the same muted stretch.
-//
-// SILENCE IS READ BOTH WAYS THE HARNESS CAN HEAR IT. `watchCues` attributes an
-// emission to the driven call that produced it, which catches anything the
-// simulation sounded; `sounds()` is the page's running total, which catches an
-// emission a build makes outside a driven call — from a key handler, say. A
-// muted stretch has to be silent by both. See audio/cue-hop for what "an
-// emission" is and why it is what an engineless build can be heard by at all.
+// WHAT THIS POINT HOLDS, AND WHAT IT DOES NOT. `specs/ui.md` states the rule
+// beside the ten cues — "the game stays fully playable with sound muted" — and
+// this point is the PLAYABILITY half of it: the muted hop lands, the muted bay
+// fills and is scored, and the crossing that follows begins. That nothing came
+// out of it is `audio/mute-produces-no-sound`, which is `engines = ["none"]`
+// because under an engine the mute bit and the cue bus are the engine's own.
+// That the two events sound at all is `audio/cue-hop` and `audio/cue-bay`.
 //
 // MUTE IS REACHED THE WAY A PLAYER REACHES IT. `specs/instrumentation.md` gives
 // the surface no operation for muting on purpose — "muting is reached the same
@@ -38,7 +33,6 @@ import {
   startCrossing,
   ticksFor,
   ticksPast,
-  watchCues,
   type Harness,
 } from "../harness";
 
@@ -63,8 +57,7 @@ const QUIET_TICKS = ticksFor(0.25);
  * Past `BAYFILL_PAUSE` (`0.5` s) by a tenth of a second, so the hold
  * `specs/progression.md` runs after a bay is filled expires inside the window and
  * the fresh crossing it leads to is inside it too — which is the "the game keeps
- * running" half of this point, read rather than assumed. A build that sounds late
- * is also still inside it.
+ * running" half of this point, read rather than assumed.
  */
 const SETTLE_TICKS = ticksPast(BAYFILL_PAUSE) + ticksFor(0.1);
 
@@ -78,21 +71,17 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("emits nothing while muted, and keeps the crossing running", async () => {
+it("keeps the crossing running while muted", async () => {
   // An empty strait, all five bays open, and one stationary raft under the bay's
   // two columns, so a hop along the row and a hop into the bay are both there to
   // take.
   await startCrossing(h);
   await poseLane(h, WATER_TOP, APPROACH_KIND, [BAY_COL]);
   await h.debug.addCritter(BAY_COL, WATER_TOP);
-  await h.armAudio();
 
   // Mute, the way a player mutes.
   await h.tap(MUTE_KEY);
   const muted = await h.snapshot();
-
-  const played = watchCues(h);
-  const totalBefore = await h.sounds();
 
   await h.advance(QUIET_TICKS);
 
@@ -107,7 +96,6 @@ it("emits nothing while muted, and keeps the crossing running", async () => {
   await h.advance(SETTLE_TICKS);
   const running = await h.snapshot();
 
-  const totalAfter = await h.sounds();
   await captureStill(h, "muted");
 
   // The mute bit really is on (specs/ui.md).
@@ -139,13 +127,5 @@ it("emits nothing while muted, and keeps the crossing running", async () => {
     critterTile(running),
     { col: START_COL, row: ROW_NEAR },
     "the fresh crossing began from the near shore",
-  );
-
-  // And nothing came out of it, heard either way.
-  assertEqual(played.length, 0, "no sound on any tick driven while muted");
-  assertEqual(
-    totalAfter - totalBefore,
-    0,
-    "no sound anywhere across the muted stretch, driven or not",
   );
 });

@@ -3152,13 +3152,13 @@ export function blitsNear(
 /* -------------------------------------------------------------------------- */
 //
 // `specs/overview.md` fixes NO PALETTE — the colours, the type and the glow are
-// the build's — and states instead what a player must read at a glance: the two
-// bands told apart, each band apart from the field behind it, the three drones
-// apart from one another, the ship apart from a drone of its own band, a
-// shimmering Flux apart from a settled one. So every colour check is a comparison
-// between two things the build drew, never against a hex value, and the DISTANCE
-// it demands is the check's own figure, stated in the check. Nothing here fixes
-// one.
+// the build's — and what a player must read at a glance is the reviewer's
+// presentation rating rather than any script's. So NOTHING BELOW IS READ AS
+// APPEARANCE. A colour reading answers one question: whether the build painted
+// something in a place the specification says something is drawn, decided as a
+// CHANGE at that place against what the same place held with the thing gone.
+// Two things the build drew are never held apart from each other, and no reading
+// here compares against a hex value, a palette, a luminance or a contrast.
 
 /** A sampled colour, each channel 0–255. */
 export interface Rgb {

@@ -35,9 +35,7 @@
 // arrangement drove it to.
 //
 // WHAT THIS POINT DOES NOT DECIDE. What each produced file is, and whether it
-// decodes, are the sprite, system and sound points; that a load which FAILS
-// leaves the game running is the four `missing-*` points, which withhold a file
-// on purpose. This one decides that on a run where nothing is withheld, nothing
+// decodes, are the sprite, system and sound points. This one decides that nothing
 // is still loading when the game starts.
 //
 // THE EVIDENCE is the first frame itself, as the build drew it.

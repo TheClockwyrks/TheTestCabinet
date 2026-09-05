@@ -31,14 +31,14 @@
 // and it is what lets the flash's own comparison be made at a channel
 // tolerance of zero.
 //
-// THE TOLERANCE. Zero on the channels: both frames come from the same build
-// drawing the same scene into the same canvas, so every pixel the flash did
-// not touch is written by the same calls in the same order and is identical
-// byte for byte, which the control reads back. On the AREA, `CAST_PIXELS`
-// (`256`), a square of sixteen pixels a side out of the 1280 x 720 stage:
-// far below anything a player would call a cast over the view, so no
-// conformant build is failed by it, and far above the nothing a build that
-// draws no cast leaves.
+// THE FLOOR. Zero on the channels: both frames come from the same build drawing
+// the same scene into the same canvas, so every pixel the flash did not touch is
+// written by the same calls in the same order and is identical byte for byte,
+// which the control reads back. On the COUNT, `CAST_PIXELS` (`0`), asserted as
+// more than none: the control has just proved the two routes differ nowhere when
+// neither is flashing, so the sampling's own noise is zero and one differing
+// pixel is already a pixel the build painted for the cast. The reading is
+// whether a cast was drawn, not how much of the view it covers.
 
 import { afterEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -55,10 +55,12 @@ import {
 import { armFlash, poseRat, stageFrame } from "./flash";
 
 /**
- * How many pixels must differ for a cast to have been drawn: a square of
- * sixteen pixels a side, out of the 921600 the stage holds.
+ * The count a differing-pixel reading must exceed for the sampling to tell a
+ * drawing from nothing. The control above proves the two routes differ on no
+ * pixels at all while neither flashes, so anything the build painted for the
+ * cast clears this.
  */
-const CAST_PIXELS = 256;
+const CAST_PIXELS = 0;
 
 /** One route's two readings: the tick under test, and the tick the flash is spent on. */
 interface Route {

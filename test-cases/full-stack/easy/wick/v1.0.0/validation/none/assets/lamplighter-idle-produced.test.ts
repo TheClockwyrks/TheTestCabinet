@@ -7,8 +7,8 @@
 // transparent, straight-alpha canvas of exactly the size its row states, so a
 // sprite `24` pixels wide stands `24` units wide in the world". The path and the
 // canvas are exact figures, so they are read exactly; that the file carries a
-// drawing rather than an empty canvas is read against `PAINT_MIN_SHARE`, whose
-// reasoning `assets/sprites.ts` states.
+// drawing rather than an empty canvas is read as presence: at least one pixel of
+// the canvas is not clear.
 //
 // WHAT IT DELIBERATELY DOES NOT READ. That the idle sprite is drawn on the ticks
 // the lamplighter is still is the presentation category's; that it reads as a

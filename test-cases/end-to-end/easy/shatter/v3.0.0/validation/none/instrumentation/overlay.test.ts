@@ -1,16 +1,14 @@
-// instrumentation/overlay — the read-only debug overlay is there, it reports every
-// fact the Diagnostics section of specs/instrumentation.md lists, and watching it
-// leaves the game exactly as it was.
+// instrumentation/overlay — the debug overlay reports every fact the Diagnostics
+// section of specs/instrumentation.md lists.
 //
-// UNDER THIS ENGINE THE WHOLE PANEL IS THE BUILD'S. specs/instrumentation.md puts
-// the overlay in the runtime layer an engineless build writes: it draws the
-// registered sources, it is shown and hidden by the backtick key
-// (specs/controls.md fixes `Backquote`), it is off when the game starts, and it
-// "reads the game without changing it". There is no operation on the debug surface
-// for any of that, so this item is decided the way a player would decide it: the key
-// is pressed, and the frames the build drew before and after are compared. The
-// requirement itself is the same one the engine-backed suites decide, so the fact
-// list below is the same list — this case's review items do not differ by engine.
+// WHAT THIS ITEM DECIDES, AND WHAT IT LEAVES TO ANOTHER. The values a build
+// registers are the build's work under every engine, so this item covers all three
+// and the fact list below is the same list under each. That the panel appears, that
+// the backtick key toggles it, and that watching it changes nothing are the RUNTIME's
+// under an engine and the build's only with no engine, so they are
+// `instrumentation/overlay-is-a-read-only-toggle`, which names `engines = ["none"]`.
+// The overlay is toggled on here to read what it drew, and nothing about the toggle
+// itself is asserted.
 //
 // WHAT IS ASSERTED IS THE VALUE, NEVER THE WORDING. The specification requires a
 // set of FACTS and requires each to be short enough to read on a line; it fixes no
@@ -32,9 +30,9 @@
 // the specification lets them be made unique.
 //
 // THE FIELD IS POSED AND THEN PAUSED. specs/ui.md freezes the field behind the
-// pause menu — "No body moves, no timer runs down" — which is what makes the
-// read-only leg a reading about the OVERLAY rather than about the frames of play
-// that would otherwise have run underneath it.
+// pause menu — "No body moves, no timer runs down" — so the figures the panel is
+// read for are the figures that were posed rather than whatever a tick of play had
+// moved them to.
 //
 // AND THE CLOCK IS DRIVEN TO A FIGURE OF ITS OWN FIRST. The accumulated simulation
 // time is one of the values the overlay owes, and a reading taken moments after a
@@ -44,12 +42,9 @@
 // frames that are read. One tick of the twenty-three is left for the key press the
 // toggle spends, so the reading lands on the figure.
 //
-// THE READ-ONLY HALF IS READ THROUGH A REDRAW RATHER THAN A TICK. The frames are
-// collected with `presentCalls`, which redraws the state as it stands without
-// advancing it, so the only game time either leg spends is the single tick that
-// delivers each key press. The snapshot is then identical either side of the toggle
-// but for exactly that tick, which is what "watching the overlay leaves the game
-// exactly as it is" means when the toggle is a key.
+// THE FRAMES ARE READ THROUGH A REDRAW RATHER THAN A TICK. `presentCalls` redraws
+// the state as it stands without advancing it, so the only game time this scenario
+// spends is the single tick that delivers the key press.
 //
 // WHAT THE VARIANT ADDS IS ITS OWN ITEM. specs/instrumentation.md's Diagnostics list
 // adds the torpedo charge and the torpedoes in flight under `warhead`, and those two
@@ -62,15 +57,7 @@
 // already knows which variant it is grading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertEqual,
-  assertGreaterThan,
-  assertLength,
-  assertLessThanOrEqual,
-  fail,
-} from "../assert";
-import { TICK_DT } from "../constants";
+import { fail } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -142,15 +129,6 @@ const ROCK_ROW_STEP = 100;
  */
 const SIM_SECONDS = 23;
 
-/**
- * The decimal places the game time either side of the toggle is compared to.
- *
- * Six, which is to say exactly: the only game time this scenario spends is the one
- * tick that delivers the key press, so a build whose overlay advanced anything of
- * its own reads as more than a single `TICK_DT`.
- */
-const CLOCK_DIGITS = 6;
-
 let h: Harness;
 
 /** The lines `after` drew beyond `before`, as a multiset difference. */
@@ -205,7 +183,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws every registered value when toggled on, and takes them away again", async () => {
+it("draws every registered value when the overlay is toggled on", async () => {
   // A quiet, empty run from a known zero, carried to the game time the panel has to
   // report. One of the twenty-three seconds' ticks is left for the key press the
   // toggle spends below, so the reading lands on the figure.
@@ -237,18 +215,11 @@ it("draws every registered value when toggled on, and takes them away again", as
   // The frame as the build draws it with the overlay off, which specs/controls.md
   // says is how the game starts. `presentCalls` redraws without advancing.
   const bare = drawnText(await presentCalls(h));
-  const before = await h.snapshot();
 
   await toggleOverlay(h);
   const overlaid = drawnText(await presentCalls(h));
   await captureStill(h, "overlay");
   const overlay = newLines(bare, overlaid);
-
-  assertGreaterThan(
-    overlay.length,
-    0,
-    "the text lines the overlay added to the frame",
-  );
 
   // ---- The values specs/instrumentation.md names --------------------------
 
@@ -279,33 +250,5 @@ it("draws every registered value when toggled on, and takes them away again", as
     overlay,
     SIM_SECONDS,
     "the accumulated simulation time, in seconds",
-  );
-
-  // ---- And watching it changed nothing but the tick that delivered the key -
-
-  const after = await h.snapshot();
-  assertEqual(after.screen, before.screen, "the screen");
-  assertEqual(after.score, before.score, "the score");
-  assertEqual(after.lives, before.lives, "the ships");
-  assertEqual(after.wave, before.wave, "the wave");
-  assertLength(after.rocks, before.rocks.length, "the rock roster");
-  assertLength(after.bullets, before.bullets.length, "the bullet roster");
-  assertEqual(after.ship.x, before.ship.x, "the ship's x");
-  assertEqual(after.ship.y, before.ship.y, "the ship's y");
-  assertEqual(after.ship.invuln, before.ship.invuln, "the ship's grace");
-  assertCloseTo(
-    after.simTime - before.simTime,
-    TICK_DT,
-    CLOCK_DIGITS,
-    "the game time the toggle spent: the one tick that delivered the key",
-  );
-
-  // And the panel is a toggle rather than a switch that only goes one way.
-  await toggleOverlay(h);
-  const cleared = drawnText(await presentCalls(h));
-  assertLessThanOrEqual(
-    cleared.length,
-    bare.length,
-    "the text draws left once the overlay was toggled off again",
   );
 });

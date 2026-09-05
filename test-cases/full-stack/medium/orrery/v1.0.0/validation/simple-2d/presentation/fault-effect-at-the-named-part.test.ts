@@ -173,9 +173,10 @@ it("plays the fault effect on the anchor of the part an unmounted fault names", 
     "a fault naming no mote is played at the anchor hex of the part it names, " +
       "so the picture on that hex changes across the frames after the fault",
   );
-  assertGreaterThan(
-    moved[0] ?? 0,
+  assertEqual(
     moved[1] ?? 0,
-    "and it is played at THAT part rather than at the arm the fault does not name",
+    0,
+    "and at THAT part rather than at the arm the fault does not name: not one " +
+      "pixel of that arm's own hex, six hexes away, changes",
   );
 });

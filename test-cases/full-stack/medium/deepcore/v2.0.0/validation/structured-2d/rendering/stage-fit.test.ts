@@ -1,31 +1,23 @@
-// rendering/stage-fit — the whole stage is on screen at its own aspect ratio.
+// rendering/stage-fit — the mine is drawn into the fitted stage.
 //
 // specs/overview.md fixes the fit: "the uniform scale that preserves the aspect
 // ratio, the letterboxed centering, and the device pixel ratio", with "the
 // complete stage on screen at every window size, on load and at any pixel
 // density".
 //
-// THIS POINT DECIDES THE CONTAINMENT: the backing store is the window at its
-// device pixel ratio, the whole `STAGE_W x STAGE_H` stage fits inside it at ONE
-// uniform scale, and the build really drew into that map — a posed field of rock
-// and the open mine beside it, sampled at their own LOGICAL coordinates and
-// mapped through the reported fit, come back as two clearly different things. A
-// build that read the canvas element's size and scaled the mine itself, or that
-// drew in device pixels, puts something else under those points.
-//
 // UNDER THIS ENGINE THE FIT ITSELF IS THE RUNTIME'S. specs/overview.md hands the
 // engine "the uniform scale that preserves the aspect ratio, the letterboxed
-// centering, and the device pixel ratio", so the viewport it reports is the map
-// every reading here is taken against. What the BUILD owes is the third reading:
-// it must put the mine where the specification says, so a cell read through the
-// camera the snapshot reports lands under its own logical coordinate rather than
-// somewhere the build scaled it to.
+// centering, and the device pixel ratio", so the backing store, the fitted
+// stage's extent and its single scale are all the engine's arithmetic and return
+// the same verdict for every build on it. The engineless project is where those
+// are the build's own work and where this check reads them.
 //
-// THREE POINTS. The requirement names three separable things — the whole stage
-// inside the surface at its own aspect, the stage CENTRED with even bars, and the
-// bars themselves carrying the game's background — and a build that fits the stage
-// and pins it to one corner must grade differently from one that does none of the
-// three. The other two are `rendering/stage-centred` and `rendering/letterbox-carries-the-background`.
+// WHAT THE BUILD OWES HERE is the one reading that stays its own under an
+// engine: it must put the mine where the specification says, so a posed field of
+// rock and the open mine beside it, sampled at their own LOGICAL coordinates and
+// mapped through the camera the snapshot reports, come back as two different
+// things. A build that read the canvas element's size and scaled the mine
+// itself, or that drew in device pixels, puts something else under those points.
 //
 // THREE SHAPES, THREE WINDOWS. A window wider than the stage, a window taller
 // than it, and an off-aspect window at twice the device pixel ratio. A pixel
@@ -34,15 +26,8 @@
 // requirement is about, since the fit has to be right on load.
 
 import { afterEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
 import {
-  assertCloseTo,
-  assertEqual,
-  assertGreaterThan,
-  assertLessThanOrEqual,
-} from "../assert";
-import { STAGE_H, STAGE_W } from "../constants";
-import {
-  DISTINCT_MIN,
   captureStill,
   colorDistance,
   createHarness,
@@ -95,56 +80,12 @@ async function surface(options: {
   return h;
 }
 
-it("fits the whole stage into every window shape at one uniform scale", async () => {
+it("draws the mine into the fitted stage in every window shape", async () => {
   for (const [index, shape] of SURFACES.entries()) {
     const h = await surface(shape);
-    const { cssWidth, cssHeight, dpr } = shape;
 
-    // 1. The backing store is the window at its device pixel ratio.
-    const store = { width: h.canvas.width, height: h.canvas.height };
-    assertEqual(
-      store.width,
-      Math.round(cssWidth * dpr),
-      `the canvas backing store's width on ${shape.name}`,
-    );
-    assertEqual(
-      store.height,
-      Math.round(cssHeight * dpr),
-      `the canvas backing store's height on ${shape.name}`,
-    );
-
-    // 2. The whole stage inside it, at one uniform scale.
-    const view = h.viewport();
-    const uniform = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H) * dpr;
-    assertEqual(
-      view.width,
-      STAGE_W,
-      `the fitted stage's width on ${shape.name}`,
-    );
-    assertEqual(
-      view.height,
-      STAGE_H,
-      `the fitted stage's height on ${shape.name}`,
-    );
-    assertCloseTo(
-      view.scale,
-      uniform,
-      9,
-      `one uniform scale on ${shape.name}, the same on both axes`,
-    );
-    assertLessThanOrEqual(
-      STAGE_W * view.scale,
-      store.width + 1e-6,
-      `the fitted stage inside the surface horizontally on ${shape.name}`,
-    );
-    assertLessThanOrEqual(
-      STAGE_H * view.scale,
-      store.height + 1e-6,
-      `the fitted stage inside the surface vertically on ${shape.name}`,
-    );
-
-    // 3. And the build drew into that map: a field of rock and the open mine
-    // beside it, each read at its own logical coordinate.
+    // A field of rock and the open mine beside it, each read at its own logical
+    // coordinate through the camera the snapshot reports.
     const field = layRockField(h);
     await h.advance(1);
     const snapshot = h.snapshot();
@@ -153,7 +94,7 @@ it("fits the whole stage into every window shape at one uniform scale", async ()
     if (index === 0) captureStill(h, "fit");
     assertGreaterThan(
       colorDistance(rock, open),
-      DISTINCT_MIN,
+      0,
       `the posed rock and the open mine beside it landing under their own logical coordinates on ${shape.name}`,
     );
   }

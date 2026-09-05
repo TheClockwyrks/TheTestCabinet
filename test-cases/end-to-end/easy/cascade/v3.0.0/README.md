@@ -142,9 +142,10 @@ legibility table: a face-up card's rank and suit are legible, red and black are
 told apart at a glance, a card back reads apart from a card face and from the
 table, an empty pile reads as a slot, a held run reads as lifted, a highlighted
 target reads as highlighted, and every string is legible against what it sits on.
-Everything else about the look is the build's own design, and the `presentation`
-validators check presence and distinguishability against a stated RGB distance
-rather than a hex value.
+Everything else about the look is the build's own design. The `presentation`
+validators decide presence and nothing else — that the build drew something where
+the specification says something is drawn — and every row of that table about how
+two things read against each other is the reviewer's domain ratings to judge.
 
 ## Validation
 
@@ -153,9 +154,12 @@ and the validators decide the functional rating through each point's failure cap
 A reviewer rates the run's aesthetics through the four domains and may override a
 verdict.
 
-The checklist is `226` common items across fourteen categories, plus `6` on Draw
-One and `10` on Draw Three, so a run carries `232` or `236` points depending on
-the deal mode.
+The checklist is `294` common items across fifteen categories, plus `6` on Draw
+One and `10` on Draw Three, so a run on `none` carries `300` or `304` points
+depending on the deal mode. Nine of the common items are scoped to `none` — the
+five touch gestures, which the browser owns under an engine, and the four about
+the debug overlay itself, which the engine draws and toggles — so a run on
+`simple-2d` or `structured-2d` carries `291` or `295`.
 
 `validation/` holds one project per engine, `validation/none/`,
 `validation/simple-2d/` and `validation/structured-2d/`, each with a suite per

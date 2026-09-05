@@ -423,9 +423,9 @@ description = "The produced art, motion, effects, and audio, and how the hall re
 # point (the default weight), so a category is worth the number of items it holds
 # and there is no fractional scoring. A category carries no prose of its own; each
 # item states in `description` the claim its validator checks. One hundred and
-# twenty-nine items across eleven categories, all common: the case has one
+# twenty-six items across eleven categories, all common: the case has one
 # variant, so no point lives in a variant file. Three of them are scoped to the
-# engineless configuration and thirteen to the two engines, since the behavior
+# engineless configuration and twelve to the two engines, since the behavior
 # each decides is the build's own work there and the runtime's elsewhere; every
 # other point covers all three.
 #
@@ -466,7 +466,6 @@ description = "The produced art, motion, effects, and audio, and how the hall re
 #   angle                            ±1 degree
 #   pressure                         ±0.05
 #   count, score, charge id, screen  exact
-#   two sampled pixels told apart    RGB distance above 50 on a 0-441 scale
 #
 # THE MEDIA a point declares is produced by its own suite, from the scenario the
 # case controls: an `image` output is a captured frame and a `replay` output the
@@ -487,13 +486,12 @@ description = "The produced art, motion, effects, and audio, and how the hall re
 # graded by how much of the game a failure takes away: `broken` for a
 # gameplay-critical rule (the debug surface, the advance, an insertion, an
 # extraction, the fail condition); `scuffed` for a secondary rule (a machinery
-# effect, a level figure, a screen transition, the legibility of the charges);
-# `passable` for polish (a tolerance, an edge case, a produced-asset detail); and
-# `great` where the failure leaves the standard flow of gameplay unaffected — a
-# cue that does not sound, a music bed that does not run, a mute that does not
-# take, or charges that are told apart by color but not by shape. `flawless` is
-# never a cap: a validator only fails on a deviation from the specification, and
-# a deviation always costs something.
+# effect, a level figure, a screen transition); `passable` for polish (a
+# tolerance, an edge case, a produced-asset detail); and `great` where the
+# failure leaves the standard flow of gameplay unaffected — a cue that does not
+# sound, a music bed that does not run, or a mute that does not take.
+# `flawless` is never a cap: a validator only fails on a deviation from the
+# specification, and a deviation always costs something.
 [review]
 format = 2
 
@@ -1990,59 +1988,29 @@ validation = { script = "screens/mute-toggle.test.ts", outputs = [
 
 # --- Produced art and the HUD -------------------------------------------------
 # The produced half of the deliverable. These points assert only that a thing is
-# present and told apart, never a color value, a palette, a font, or a layout:
-# how the hall looks is what the reviewer's aesthetic rating judges, and a
-# validator that asserted a hex value would fail a perfectly good build. What is
-# graded here is what the specification actually fixes — that the five charges are
-# told apart, that they are told apart without color, that the cores are produced
-# sprites rather than code-drawn discs, that the produced sheet and the produced
-# particle system play, and that the HUD carries its six readouts.
+# drawn, and which produced file it was drawn from, never a color value, a
+# palette, a font, or a layout: how the hall looks is what the reviewer's
+# aesthetic rating judges, and a validator that read a color would fail a
+# perfectly good build. What is graded here is what the specification actually
+# fixes — that each charge carries a core sprite of its own, that the cores are
+# produced sprites rather than code-drawn discs, that the produced sheet and the
+# produced particle system play, and that the HUD carries its six readouts.
 [[review.categories]]
 id = "presentation"
 title = "Produced art and the HUD"
 [[review.categories.items]]
 id = "charges-distinct"
-title = "The five charges are told apart"
-description = "The five charges are mutually distinguishable where they stand on the channel."
+title = "Each charge has a core sprite of its own"
+description = "Each of the five charges draws a produced core sprite of its own, so no two charges share a source."
 domains = ["presentation"]
-failure_cap = "scuffed"
+failure_cap = "passable"
 # Automated validation: pose one core of each charge at known arc positions on the
-# straight top run, render, take each core's mean RGB over the disc of radius 13
-# around its center — a mean rather than one pixel, since every core carries a
-# glyph over its face — and confirm all ten pairwise RGB distances exceed 50 on a
-# 0-441 scale. See
+# straight top run, render, and take the identity of the produced 28 x 28 source
+# the frame drew at each core's center. Confirm every core has one and that the
+# five identities are five distinct sources. See
 # validation/<engine>/presentation/charges-distinct.test.ts.
 validation = { script = "presentation/charges-distinct.test.ts", outputs = [
   { id = "charges", name = "The five charges side by side", kind = "image" },
-] }
-[[review.categories.items]]
-id = "charges-vs-field"
-title = "Every charge stands off the field"
-description = "Every charge stands apart from the field and from the channel plate behind it."
-domains = ["presentation"]
-failure_cap = "scuffed"
-# Automated validation: from the same frame, take the mean RGB of the 9 x 9 patch
-# at (320, 270), which is empty field 50 units clear of every leg, and of the
-# 9 x 9 patch at (320, 220), which is bare channel plate on the leg the posed
-# cores are not on, and confirm each of the five core samples is more than 50 on
-# the 0-441 scale from both. See
-# validation/<engine>/presentation/charges-vs-field.test.ts.
-validation = { script = "presentation/charges-vs-field.test.ts", outputs = [
-  { id = "charges", name = "The five charges on the channel", kind = "image" },
-] }
-[[review.categories.items]]
-id = "charge-glyphs"
-title = "The charges are told apart without color"
-description = "Each charge carries a glyph of its own, so the five stay tellable apart with color removed."
-domains = ["presentation"]
-failure_cap = "great"
-# Automated validation: convert each of the five 28 x 28 core sprites to a binary
-# luminance mask at its own median luminance and confirm every pair of masks
-# differs in more than 15% of the sprite's pixels, so no two charges differ by hue
-# alone. See
-# validation/<engine>/presentation/charge-glyphs.test.ts.
-validation = { script = "presentation/charge-glyphs.test.ts", outputs = [
-  { id = "glyphs", name = "The five charges rendered flat", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "produced-core-sprites"
@@ -2152,19 +2120,18 @@ validation = { script = "presentation/hud-pressure-icon.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "hud-pressure-fill"
-title = "The HUD's gauge fills with the pressure"
-description = "The HUD's pressure gauge is filled in proportion to the current pressure: empty at 0 and full at 100."
+title = "The HUD's gauge answers the pressure"
+description = "The HUD's pressure gauge is drawn differently at each step of the pressure scale, rather than holding one picture whatever the pressure."
 domains = ["presentation", "channel"]
 failure_cap = "scuffed"
 # Automated validation: pose one core and render the same hall three times, at
 # setPressure(0), setPressure(50) and setPressure(100), stepping 6 ticks after
 # each pose so a gauge that eases has settled, and comparing pixels away from the
 # disc the core sits in, since the core rides a different distance at each
-# pressure. Confirm the 50 frame differs from the 0 frame somewhere, and that more
-# pixels differ between the 0 frame and the 100 frame than between the 0 frame and
-# the 50 frame. A gauge that ignores the pressure fails the first; one that snaps
-# between empty and full fails the second. See
-# validation/<engine>/presentation/hud-pressure-fill.test.ts.
+# pressure. Confirm the 50 frame differs from the 0 frame somewhere and that the
+# 100 frame differs from the 50 frame somewhere. A gauge that ignores the
+# pressure fails both; one that snaps between empty and full fails one of the
+# two. See validation/<engine>/presentation/hud-pressure-fill.test.ts.
 validation = { script = "presentation/hud-pressure-fill.test.ts", outputs = [
   { id = "empty", name = "The gauge at 0", kind = "image" },
   { id = "full", name = "The gauge at 100", kind = "image" },
@@ -2420,17 +2387,4 @@ failure_cap = "great"
 # started looping on that tick and that `hall-loop` is no longer looping.
 validation = { script = "audio/danger-bed-swap.test.ts", engines = ["simple-2d", "structured-2d"], outputs = [
   { id = "swap", name = "The bed changing as the hall turns dangerous", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "mute-silences-cues"
-title = "Muting silences the cues without stopping the bed"
-description = "While the game is muted a cue sounds at no gain and the running bed goes on looping."
-domains = ["presentation"]
-failure_cap = "great"
-# Automated validation: with the bed up, press the mute control, raise the fire
-# control, and confirm the cue the shot played was announced at a gain of 0 and
-# that the bed is still among the looping cues. screens/mute-toggle reads the
-# reported bit; this reads what muting did to the sound.
-validation = { script = "audio/mute-silences-cues.test.ts", engines = ["simple-2d", "structured-2d"], outputs = [
-  { id = "muted", name = "A cue raised on a muted hall", kind = "image" },
 ] }

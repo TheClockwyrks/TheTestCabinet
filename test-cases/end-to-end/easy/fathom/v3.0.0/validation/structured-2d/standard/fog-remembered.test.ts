@@ -72,13 +72,14 @@ const SWUM_TILES = 18;
 const VISION_MAX = VISION_MIN + VISION_GAIN;
 
 /**
- * How far apart the remembered tile and the unrevealed one must be drawn, as an
- * RGB distance out of `441`.
+ * The sensing floor the remembered tile owes against the unrevealed one, as an RGB
+ * distance out of `441`.
  *
- * The review item's own bound: "it differs from an unrevealed tile by more than
- * an RGB distance of 25 of 441".
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
  */
-const DRAWN_MIN = 25;
+const DRAWN_MIN = 8;
 
 /** Ticks the forager stands at each berth, so the build has drawn what it lit. */
 const SETTLE_TICKS = 4;

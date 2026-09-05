@@ -2027,11 +2027,11 @@ export async function drawFrame(h: Harness): Promise<DrawCall[]> {
 // The presentation and audio halves of this suite need four things the scenario
 // helpers above do not provide: a cue record stamped with the frame each cue fired
 // on, a way to ask what a single frame's render put where, the seeded art to hold
-// a drawn sprite against, and a colour sampler over the rendered canvas. THE
+// a drawn sprite against, and a pixel sampler over the rendered canvas. THE
 // PALETTE IS THE BUILD'S — specs/overview.md fixes no colour, no typeface and no
-// HUD layout, only what a player must be able to tell apart — so nothing here
-// knows a colour: the samplers compare what was painted against what else was
-// painted.
+// HUD layout, and whether a player can tell two things apart is the reviewer's to
+// judge — so nothing here knows a colour, and the samplers exist to answer
+// presence: whether what was painted at a point changed.
 
 /* ---- Cues ----------------------------------------------------------------- */
 
@@ -2563,23 +2563,6 @@ export function sampleTile(h: Harness, col: number, row: number): Rgb {
   return sampleColor(h, tileCX(col), tileCY(row));
 }
 
-/**
- * `steps` colours sampled evenly across the full width of strait `row`, at its
- * tile centres.
- *
- * How the band items read a band: specs/strait.md makes each band one strip across
- * the whole stage, so a tint that only holds in the middle of it is not the band
- * reading distinct.
- */
-export function sampleRow(h: Harness, row: number, steps = 8): Rgb[] {
-  const samples: Rgb[] = [];
-  const last = Math.max(1, steps - 1);
-  for (let i = 0; i < steps; i += 1) {
-    samples.push(sampleTile(h, Math.round((i / last) * (COLS - 1)), row));
-  }
-  return samples;
-}
-
 /** Euclidean distance between two colours, 0 to about 441. */
 export function colorDistance(a: Rgb, b: Rgb): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
@@ -2611,26 +2594,6 @@ export function samplesAlong(
     );
   }
   return samples;
-}
-
-/**
- * The build's exported `BACKGROUND`, rasterized: the colour the engine clears the
- * whole canvas to each frame (specs/overview.md), read back through the same
- * canvas implementation the harness samples with, so a pixel the game never drew
- * over compares against it exactly.
- *
- * The fill is repeated rather than applied once so a translucent colour reads as
- * the engine leaves it: the engine composites its clear over the previous frame
- * every frame, which converges on the colour's own channels, and a single fill
- * over a transparent canvas would not.
- */
-export function clearColor(): Rgb {
-  const probe = createCanvas(1, 1);
-  const ctx = probe.getContext("2d");
-  ctx.fillStyle = BACKGROUND;
-  for (let i = 0; i < 255; i += 1) ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return { r, g, b };
 }
 
 /* -------------------------------------------------------------------------- */

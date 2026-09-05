@@ -24,7 +24,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";
 import { createHarness, type Harness, openYard, releaseUnit } from "../harness";
 import { cycleFrames, decodeAll, evidence, missing } from "./images";
-import { serveProducedAssets } from "./produced";
 import { SPAWN_TYPES } from "../constants";
 
 /** The three identifiers `specs/assets.md` draws at `32 x 32`. */
@@ -40,7 +39,6 @@ const FRAMES = SPAWN_TYPES.flatMap((type) => cycleFrames(`load/${type}`));
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

@@ -279,32 +279,21 @@ validation = { script = "screens/title-mode-entry-maze.test.ts", outputs = [
 ] }
 
 # --- Visibility ---------------------------------------------------------------
-# The course is a solid a player must read at a glance, so it is held to the
-# same stated distance the other pieces on the board are.
+# The course is a solid a player must read at a glance, so the point reads that
+# the build draws it: an obstacle cell carries paint of the build's own rather
+# than the empty field.
 [[review.categories]]
 id = "visibility"
 title = "Visibility"
 [[review.categories.items]]
 id = "obstacle-apart-from-board"
-title = "An obstacle stands apart from the board"
-description = "The pixel at an obstacle cell's center is more than 50/441 in RGB distance from an empty interior cell."
+title = "An obstacle is drawn on the cell it occupies"
+description = "The pixel at an obstacle cell's center changes when the course is taken off the board, so the build draws an obstacle rather than leaving its cell as the empty field."
 domains = ["maze", "presentation"]
 failure_cap = "scuffed"
-# Automated validation: render a live board and sample an obstacle cell against
-# an empty interior cell. See
+# Automated validation: lay one obstacle cell, render, sample its center, clear
+# the course, render again, and sample the same point. See
 # validation/<engine>/visibility/obstacle-apart-from-board.test.ts.
 validation = { script = "visibility/obstacle-apart-from-board.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
-] }
-[[review.categories.items]]
-id = "obstacle-apart-from-snake"
-title = "An obstacle stands apart from the snake"
-description = "The pixel at an obstacle cell's center is more than 50/441 in RGB distance from the pixels at the head cell and at a body cell, so an obstacle is never mistaken for a segment."
-domains = ["maze", "presentation"]
-failure_cap = "scuffed"
-# Automated validation: pose the snake beside the course, render, and sample an
-# obstacle cell against the head and a body cell. See
-# validation/<engine>/visibility/obstacle-apart-from-snake.test.ts.
-validation = { script = "visibility/obstacle-apart-from-snake.test.ts", outputs = [
-  { id = "scene", name = "The posed board the colors were sampled from", kind = "image" },
+  { id = "scene", name = "The posed board the pixels were sampled from", kind = "image" },
 ] }

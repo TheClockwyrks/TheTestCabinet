@@ -12,7 +12,7 @@
 //
 // THE TOLERANCES. The three paths and the three canvases are exact figures and
 // are read exactly. That each file carries a drawing rather than an empty canvas
-// is read against `PAINT_MIN_SHARE`, whose reasoning `assets/sprites.ts` states.
+// is read as presence: at least one pixel of the canvas is not clear.
 //
 // WHAT IT DELIBERATELY DOES NOT READ. What a gem is worth is the progression
 // category's; that a dropped gem is drawn at its tier's size is the presentation

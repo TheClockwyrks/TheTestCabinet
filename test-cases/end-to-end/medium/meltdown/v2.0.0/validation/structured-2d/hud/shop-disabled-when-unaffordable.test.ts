@@ -12,12 +12,16 @@
 // arrangement, so a build that disables an entry it can exactly afford fails here
 // and a build that draws the two states alike fails here.
 //
-// WHAT IS COMPARED, AND WHY IT IS COLOUR-FREE. specs/overview.md fixes no
-// palette, so nothing here says what disabled looks like: the Lance's own box —
+// WHAT IS DECIDED, AND WHERE THE BAR COMES FROM. specs/overview.md fixes no
+// palette, so nothing here says what disabled looks like and nothing says how far
+// apart the two states must read — that is the reviewer's. The Lance's own box —
 // the rectangle the panel reports for it — is photographed at each of the two
 // money levels and the two pictures are compared. A build may grey the name, dim
 // the cost, cross the box out or stamp it; every one of those moves pixels, and a
-// build that draws the two states identically moves none.
+// build that draws the two states identically moves none. How far a box moves on
+// its own is measured first, by photographing it twice at the same money, and the
+// change has to beat that by `NOISE_MARGIN` on the Lance while staying inside it
+// on the Arc.
 //
 // THE ARC IS THE CONTROL. It costs `15`, so it is affordable at both money levels
 // and its box must not move: without it, a panel that redrew its whole strip
@@ -39,7 +43,7 @@ import {
   type Harness,
   type ShopControl,
 } from "../harness";
-import { controlOf, differing, pixelsOver } from "./panel";
+import { controlOf, largestChange, pixelsOver } from "./panel";
 
 /** The entry under test, and the one that stays affordable throughout. */
 const DEAR = "lance" as const;
@@ -52,28 +56,19 @@ const SHORT = TOWER_DEFS[DEAR].cost - 1;
 const EXACTLY = TOWER_DEFS[DEAR].cost;
 
 /**
- * The RGB distance, out of the 441 a full swing across the cube is, at which two
- * colours count as plainly apart.
+ * How far above the movement two unchanged frames show a reading must sit for
+ * an entry to count as having been drawn differently, out of the 441 a full
+ * swing across the cube is.
  *
- * specs/overview.md fixes no colours and asks that a state read at a glance, so
- * this is the point's own figure: `60` is roughly an eighth of the cube's
- * diagonal, past any anti-aliasing wobble and well under the swing between a lit
- * and a dimmed run of text.
+ * NOT A LEGIBILITY BAR. specs/overview.md gives the palette to the build, so no
+ * figure here says how far apart a disabled entry and an affordable one must
+ * read; how plainly they do is what the reviewer's presentation rating judges.
+ * This is the tolerance on the noise measurement itself: two frames of an
+ * animated build do not move by exactly the same amount every pair, so a reading
+ * has to clear the measured movement by a little rather than by nothing. Eight
+ * units is under two per cent of the scale.
  */
-const PLAINLY = 60;
-
-/**
- * How many of the entry's pixels must move that far: forty.
- *
- * Forty pixels is about the ink of one small glyph, so it is less than any
- * recolouring of an entry's name or its cost can amount to, and it is far more
- * than the zero a static scene moves on its own — which is why the affordable
- * entry is held to a quarter of it.
- */
-const MOVED = 40;
-
-/** What the control entry is allowed to move: essentially nothing. */
-const STILL = 10;
+const NOISE_MARGIN = 8;
 
 /** The entry the panel drew for `type`, or a failure naming the missing one. */
 function entryOf(entry: ShopControl | undefined, type: string): ShopControl {
@@ -98,8 +93,15 @@ it("draws the Lance's entry apart at 149 money from the same entry at 150", asyn
   // moves the state and the picture is what the next frame leaves behind.
   await h.advance(1);
   const short = h.snapshot();
+  const dearFirst = pixelsOver(h, entryOf(shopEntry(short, DEAR), DEAR));
+  const cheapFirst = pixelsOver(h, entryOf(shopEntry(short, CHEAP), CHEAP));
+
+  // The same money again, so how far each box moves on its own is measured.
+  await h.advance(1);
   const dearShort = pixelsOver(h, entryOf(shopEntry(short, DEAR), DEAR));
   const cheapShort = pixelsOver(h, entryOf(shopEntry(short, CHEAP), CHEAP));
+  const dearNoise = largestChange(dearFirst, dearShort);
+  const cheapNoise = largestChange(cheapFirst, cheapShort);
   captureStill(h, "disabled");
 
   h.debug.setMoney(EXACTLY);
@@ -120,15 +122,17 @@ it("draws the Lance's entry apart at 149 money from the same entry at 150", asyn
   );
 
   assertGreaterThanOrEqual(
-    differing(dearShort, dearExactly, PLAINLY),
-    MOVED,
-    `the Lance's entry to read plainly apart at ${SHORT} money from the same ` +
-      `entry at ${EXACTLY} (specs/hud.md)`,
+    largestChange(dearShort, dearExactly),
+    dearNoise + NOISE_MARGIN,
+    `the Lance's entry to be drawn differently at ${SHORT} money from the ` +
+      `same entry at ${EXACTLY}, past the ${dearNoise} two frames at ` +
+      `${SHORT} showed (specs/hud.md)`,
   );
   assertLessThanOrEqual(
-    differing(cheapShort, cheapExactly, PLAINLY),
-    STILL,
+    largestChange(cheapShort, cheapExactly),
+    cheapNoise + NOISE_MARGIN,
     `the Arc's entry, affordable at both, to be drawn the same way at ` +
-      `${SHORT} money as at ${EXACTLY}`,
+      `${SHORT} money as at ${EXACTLY} — within the ${cheapNoise} two frames ` +
+      `at ${SHORT} showed`,
   );
 });

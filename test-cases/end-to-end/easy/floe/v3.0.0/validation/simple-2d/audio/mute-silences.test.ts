@@ -1,19 +1,13 @@
-// Floe — audio/mute-silences: with the mute bit on, an accepted hop and a filled
-// bay put out no audible sound, and the crossing carries on around them.
+// Floe — audio/mute-silences: with the mute bit on, the crossing carries on —
+// the hop lands, the bay fills and scores, and the fresh crossing begins.
 //
-// THE OTHER HALF IS ELSEWHERE. That the two events play their cues in the first
-// place is `audio/cue-hop` and `audio/cue-bay`; this point holds the rule
-// `specs/ui.md` states beside them — "the game stays fully playable with sound
-// muted" — which is two claims about one stretch of play: nothing audible came
-// out, and the game went on. Both are read from the same muted stretch.
-//
-// WHAT SILENCE IS, UNDER AN ENGINE. `engine/audio.md` fixes the reading exactly:
-// "a play or a loop on a muted bus reports `gain: 0`", and "a muted cue still
-// emits its event, at `gain: 0`". So a muted stretch is one in which NO cue is
-// announced at a gain above zero — which holds both for a build that keeps
-// playing its cues into a muted bus, and for one that stops asking for them at
-// all. Neither is required by `specs/ui.md`, so neither is demanded here; what is
-// demanded is that nothing audible comes out.
+// WHAT THIS POINT HOLDS, AND WHAT IT DOES NOT. `specs/ui.md` states the rule
+// beside the ten cues — "the game stays fully playable with sound muted" — and
+// this point is the PLAYABILITY half of it: the muted hop lands, the muted bay
+// fills and is scored, and the crossing that follows begins. That nothing came
+// out of it is `audio/mute-produces-no-sound`, which is `engines = ["none"]`
+// because under an engine the mute bit and the cue bus are the engine's own.
+// That the two events sound at all is `audio/cue-hop` and `audio/cue-bay`.
 //
 // MUTE IS REACHED THE WAY A PLAYER REACHES IT. `specs/instrumentation.md` gives
 // the surface no operation for muting on purpose — "muting is reached the same way
@@ -38,7 +32,6 @@ import {
   poseLane,
   startCrossing,
   ticksFor,
-  watchCues,
   type Harness,
 } from "../harness";
 
@@ -63,8 +56,7 @@ const QUIET_TICKS = ticksFor(0.25);
  * Past `BAYFILL_PAUSE` (`0.5` s) by a tenth of a second, so the hold
  * `specs/progression.md` runs after a bay is filled expires inside the window and
  * the fresh crossing it leads to is inside it too — which is the "the game keeps
- * running" half of this point, read rather than assumed. A build that plays a cue
- * late is also still inside it.
+ * running" half of this point, read rather than assumed.
  */
 const SETTLE_TICKS = ticksFor(BAYFILL_PAUSE + 0.1);
 
@@ -78,7 +70,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("puts out nothing audible while muted, and keeps the crossing running", async () => {
+it("keeps the crossing running while muted", async () => {
   // An empty strait, all five bays open, and one stationary raft under the bay's
   // two columns, so a hop along the row and a hop into the bay are both there to
   // take.
@@ -89,8 +81,6 @@ it("puts out nothing audible while muted, and keeps the crossing running", async
   // Mute, the way a player mutes.
   await h.tap(MUTE_KEY);
   const muted = h.snapshot();
-
-  const played = watchCues(h);
 
   await h.advance(QUIET_TICKS);
 
@@ -136,12 +126,5 @@ it("puts out nothing audible while muted, and keeps the crossing running", async
     critterTile(running),
     { col: START_COL, row: ROW_NEAR },
     "the fresh crossing began from the near shore",
-  );
-
-  // And nothing audible came out of any of it.
-  assertDeepEqual(
-    played.filter((entry) => entry.gain > 0).map((entry) => entry.cue),
-    [],
-    "cues sounded at a gain above zero over the muted stretch",
   );
 });

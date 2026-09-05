@@ -9,12 +9,11 @@
 // path".
 //
 // WHAT IS READ, AND WHY IT IS A CENSUS. Every asset request the build makes is
-// announced by the engine with the path the build asked for, and this harness has
-// been listening since before the game's own code ran. There is no page behind the
-// loader here, so every request settles as a failure and the record is therefore a
-// COMPLETE list of everything the build reached for. That is a stronger reading
-// than watching a served page: a file the build asks for on some path a drive
-// never reaches cannot hide.
+// announced by the engine with the path the build asked for, whether the request
+// arrived or not, and this harness has been listening since before the game's own
+// code ran. The two records together are therefore a COMPLETE list of everything
+// the build reached for. That is a stronger reading than watching a served page: a
+// file the build asks for on some path a drive never reaches cannot hide.
 //
 // Each path the build asked for is then held to the two things the specification
 // fixes about it. It has to be relative — a leading `/`, a `..` segment, or a URL
@@ -22,6 +21,14 @@
 // exactly those. And the repository has to carry the file at that path, since a
 // path the build asks for and did not produce is a hole in the built site
 // wherever it is served from.
+//
+// AND WHAT THE BUILD ASKED FOR HAS TO HAVE ARRIVED. The harness serves the
+// committed `assets/` tree to the engine's loader, so a request that failed is a
+// file the repository does not carry at the path the build asked for. The one
+// exception is the host's, not the build's: decoding audio needs a Web Audio
+// context and a node process has none, so the twelve `.wav` cues fetch cleanly and
+// fail at the decode with a reason naming the missing context. A failure of any
+// other shape is a produced file that did not arrive.
 //
 // The drive is the three phases `specs/campaign.md` has — a build phase, a wave,
 // and the finale — with something of every kind on the yard: a component firing, a
@@ -52,6 +59,9 @@ const REPOSITORY = fileURLToPath(new URL("../../", import.meta.url));
 
 /** A path that leaves the page's own base path (specs/assets.md). */
 const ESCAPES = /^\/|^[a-z][a-z0-9+.-]*:/i;
+
+/** The one failure this host imposes on every build: no Web Audio to decode into. */
+const NO_AUDIO_CONTEXT = /this host has no AudioContext/;
 
 let h: Harness;
 
@@ -97,7 +107,9 @@ it("asks the site for nothing it does not carry, across all three phases", async
     await h.advanceSeconds(2);
   });
 
-  const asked = [...new Set(h.assetFailures.map((failure) => failure.path))];
+  const asked = [
+    ...new Set([...h.assetLoads, ...h.assetFailures.map((f) => f.path)]),
+  ];
   assertDeepEqual(
     asked.flatMap((path) => {
       const bad = fault(path);
@@ -107,5 +119,14 @@ it("asks the site for nothing it does not carry, across all three phases", async
     "what the build asked for while a run was driven through a build phase, " +
       "a wave, and the finale that the repository does not carry under " +
       `${ASSET_ROOT} at the path asked for`,
+  );
+
+  assertDeepEqual(
+    h.assetFailures
+      .filter((failure) => !NO_AUDIO_CONTEXT.test(failure.reason))
+      .map((failure) => `${failure.path} — ${failure.reason}`),
+    [],
+    "what the build asked the site for and did not get, leaving out the " +
+      "twelve cues this host cannot decode",
   );
 });

@@ -76,8 +76,9 @@ export interface RebuildResult {
   toolsInvoked: string[];
   /**
    * `src`/`href` values in the rebuilt site's `index.html` that name a location
-   * outside the site itself: a URL carrying a scheme, or a protocol-relative
-   * `//host` reference.
+   * outside the site itself: a URL carrying a scheme other than `data:`, or a
+   * protocol-relative `//host` reference. A `data:` reference carries its own
+   * content in the attribute and fetches nothing.
    */
   externalHtmlRefs: string[];
   /** The rebuilt output directory existed and held files. */
@@ -152,7 +153,8 @@ export function rebuildWithoutTools(): RebuildResult {
         )) {
           const reference = match[1]!;
           if (
-            /^[a-z][a-z0-9+.-]*:/i.test(reference) ||
+            (/^[a-z][a-z0-9+.-]*:/i.test(reference) &&
+              !/^data:/i.test(reference)) ||
             reference.startsWith("//")
           ) {
             externalHtmlRefs.push(reference);

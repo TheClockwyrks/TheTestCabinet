@@ -90,12 +90,13 @@ const ASSEMBLE_SECONDS = 16;
 /**
  * The fewest settled drones this reads before it decides.
  *
- * The item asks for at least eight resting drones. specs/swarm.md's standard
- * wave is "Shards of both bands as the bulk of it", at least two Fluxes and at
- * least one Prism, so eight is far below any conformant stage-1 wave — a floor
- * that says the reading happened, not a demand on how many drones a wave holds.
+ * One. specs/swarm.md leaves the size of a wave to the build — "Which slots a
+ * wave fills is yours" — so a count is not this point's to demand; what a wave is
+ * made of is `swarm/wave-composition`. This is the precondition that the reading
+ * happened at all, since the block's offset below is fitted over the drones that
+ * settled.
  */
-const SLOTS_MIN = 8;
+const SLOTS_MIN = 1;
 
 /** The signed remainder of `value` over `pitch`, in `[-pitch / 2, pitch / 2)`. */
 function centredRemainder(value: number, pitch: number): number {

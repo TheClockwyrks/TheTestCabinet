@@ -55,7 +55,7 @@ import {
   sceneGuard,
 } from "../scene";
 import {
-  FOG_MATCH,
+  DRAWN_FLOOR,
   MASKED_MATCH,
   MOTE_REACH,
   brightestNear,
@@ -83,9 +83,18 @@ const AWAY_TILES = 16; // 512 units: past R at G = 1 (320)
 /** How far the near station stands from it, in tiles. */
 const NEAR_TILES = 5; // 160 units: past V (96), inside R (192)
 
-/** The review item's bound, as an RGB distance out of `441`. */
+/** What a light the circle has clipped away may read as, out of `441`. */
 const CLIPPED_MAX = MASKED_MATCH;
-const DRAWN_MIN = FOG_MATCH;
+
+/**
+ * The sensing floor a light inside the circle owes against the fog around it, as
+ * an RGB distance out of `441`.
+ *
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ */
+const DRAWN_MIN = DRAWN_FLOOR;
 
 /** Ticks run at each station, so the build has drawn the posed board. */
 const SETTLE_TICKS = 2;

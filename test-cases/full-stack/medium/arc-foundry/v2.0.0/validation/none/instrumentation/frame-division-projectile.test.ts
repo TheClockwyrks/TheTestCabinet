@@ -34,15 +34,6 @@ import {
 /** The seed both halves of every comparison run under. */
 const SEED = 3;
 
-/**
- * The frame lengths the two halves step at while the shot is being armed.
- *
- * The arming is identical in both halves; what differs is how the FLIGHT below is
- * divided, which is what this point is about.
- */
-const SECOND_MS = 1000;
-const FINE_FRAMES = 60;
-
 /** Where the firing structure stands, and where its target is held. */
 const TOWER_AT = { col: 20, row: 10 };
 const TARGET_AT = { x: 600, y: 276 };
@@ -53,6 +44,7 @@ const ARM_STEPS = 180; // six seconds, against a cadence of one shot every two
 
 /** The interval the projectile comparison covers, and its two divisions. */
 const FLIGHT_SECONDS = 0.2;
+const FLIGHT_MS = FLIGHT_SECONDS * 1000;
 const FLIGHT_FRAMES = 30;
 
 /** The tolerance the item states: one logical unit. */
@@ -62,11 +54,13 @@ let coarse: Harness;
 let fine: Harness;
 
 beforeEach(async () => {
-  // One frame a second, and sixty. Both harnesses drive the same build the same
-  // way; the size of a frame is the only thing that differs between them.
-  coarse = await createHarness({ clock: new ConstantClock(SECOND_MS) });
+  // The flight interval as ONE frame, and as thirty. Both harnesses drive the same
+  // build the same way; the size of a frame is the only thing that differs between
+  // them, and the arming below is stepped through the debug surface in both halves
+  // so nothing but the flight is divided differently.
+  coarse = await createHarness({ clock: new ConstantClock(FLIGHT_MS) });
   fine = await createHarness({
-    clock: new ConstantClock(SECOND_MS / FINE_FRAMES),
+    clock: new ConstantClock(FLIGHT_MS / FLIGHT_FRAMES),
   });
 });
 
@@ -104,10 +98,8 @@ it("flies a projectile the same distance however the interval is divided", async
     armed.push(shot!);
   }
 
-  await coarse.debug.advance(FLIGHT_SECONDS, 1);
-  await captureReplay(fine, "flight", () =>
-    fine.debug.advance(FLIGHT_SECONDS, FLIGHT_FRAMES),
-  );
+  await coarse.advance(1);
+  await captureReplay(fine, "flight", () => fine.advance(FLIGHT_FRAMES));
 
   const flown: number[] = [];
   for (const [at, h] of [coarse, fine].entries()) {

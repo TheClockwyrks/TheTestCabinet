@@ -42,7 +42,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
-import { CARD_H, CARD_W, FLOOR_Y, STAGE_W } from "../constants";
+import { CARD_H, CARD_W, FLOOR_Y, LAUNCH_VX_MAX, STAGE_W } from "../constants";
 import {
   captureStill,
   cardFootprints,
@@ -72,11 +72,15 @@ const READ_RECT: Rect = { x: START.x, y: START.y, w: CARD_W, h: CARD_H };
 /**
  * The gated card's horizontal speed, in logical units per second.
  *
- * `700` carries it from `100` to `800` over the second — right off the read
- * rectangle, so the reading is of the table rather than of the card, and still
- * `380` units clear of the right edge `specs/victory.md` retires a card past.
+ * `LAUNCH_VX_MAX`, the fastest a launched card may travel: `specs/victory.md`
+ * draws a launched card's `vx` uniformly from `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]`
+ * (`[180, 420]`), so no card the game produces goes faster. It carries this one
+ * from `100` to `520` over the second — right off the read rectangle, which is
+ * `CARD_W` wide at `x = 100`, so the reading is of the table rather than of the
+ * card, and still `660` units clear of the right edge `specs/victory.md` retires
+ * a card past.
  */
-const GATED_VX = 700;
+const GATED_VX = LAUNCH_VX_MAX;
 
 /** How finely the read rectangle is sampled: twelve points, none on an edge. */
 const SAMPLE_COLS = 3;
@@ -88,9 +92,8 @@ const SAMPLE_ROWS = 4;
  *
  * `8` on a scale that runs to about `441`. Both readings are the same build
  * drawing a state the specification says is the same, so the only distance is the
- * rasterizer's own; this is that noise floor with room to spare, and it is a
- * twentieth of what a card over felt gives, since `specs/overview.md` requires
- * that a card of either face read apart from the table it sits on.
+ * rasterizer's own; this is that noise floor with room to spare, and a stamp of a
+ * whole card cannot hide inside it.
  */
 const CLEAN_DISTANCE = 8;
 

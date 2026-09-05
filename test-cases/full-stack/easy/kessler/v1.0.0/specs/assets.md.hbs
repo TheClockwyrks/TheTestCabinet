@@ -68,11 +68,6 @@ constructing a URL of its own. Each audio cue below is bound to its produced
 file through the cue bus, under its name in `CUES`.
 {{/if}}
 
-A load that fails leaves the game running. The game still initializes, still
-ticks, still takes input, and still draws a legible field when a sprite, a
-system, or a sound is unavailable, so a missing file costs the game its polish
-rather than its playability.
-
 ## The sprites
 
 Produce each of these on a transparent, straight-alpha canvas, and draw it at
@@ -186,9 +181,12 @@ or both. `music` writes a `.wav` and a `.mid` beside it; the
 
 The game-over screen plays no bed, so the `game-over` cue rings out over
 silence. Confirming QUIT stops the play bed and the title bed resumes. Each
-bed runs at least 12 seconds and loops without an audible seam, the file's end
-running into its start with no click, no gap, and no jump in level, and each
-sits under the cues rather than competing with them.
+bed runs at least 12 seconds and loops without an audible seam: the step
+between the file's last sample and its first is no larger than the largest step
+the bed's own material takes, the half second either side of the junction
+carries at least a tenth of the bed's own level, and the level across the
+junction, read over the second either side, moves by no more than `6` decibels.
+Each bed sits under the cues rather than competing with them.
 
 ### The sound bar
 

@@ -13,9 +13,9 @@
 // and covers the span between them.
 //
 // THE TOLERANCE IS THE BAR'S OWN THICKNESS. `size` is what was drawn rather than
-// the bare span, and a bar is drawn with a cross-section, so a quarter of a unit
-// is generous against any profile a build picks and far short of the two-unit
-// lattice pitch that would put it on the wrong nodes.
+// the bare span, and a bar is drawn with a cross-section, so two fifths of a
+// unit is generous against any profile a build picks and far short of the
+// two-unit lattice pitch that would put it on the wrong nodes.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertTrue } from "../assert";

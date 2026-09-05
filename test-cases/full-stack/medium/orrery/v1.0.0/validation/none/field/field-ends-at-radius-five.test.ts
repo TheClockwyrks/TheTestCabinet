@@ -21,14 +21,16 @@
 // ring-`6` hexes whose WHOLE disc lies inside the field's region are read; the
 // rest are asking about somebody else's panel.
 //
-// THE VERDICT. Every sample in every one of those discs matches the sky — within
-// `25` of a colour distance that runs to `441` over the whole RGB cube — so
-// nothing of the field reaches ring `6`.
+// THE VERDICT. Every sample in every one of those discs is the sky — no channel
+// of it stands `CHANNEL_EPSILON` from the sampled sky, which is the case's own
+// span for two pixels being the same colour — so nothing of the field reaches
+// ring `6`.
 //
 // AND THE FIELD WAS REALLY DRAWN. A build that drew nothing at all would pass a
 // check that only asks for sky, so the same reading is taken the other way round
-// on the ring-`5` hexes that border the discs: each of them differs from the sky
-// somewhere within `HEX_PITCH / 2` (`24`) of its center, which is its own cell.
+// on the ring-`5` hexes that border the discs: each of them is drawn in some
+// colour that is not the sky within `HEX_PITCH / 2` (`24`) of its center, which
+// is its own cell.
 // The pair is one statement — the field is drawn out to radius `FIELD_R` and
 // stops there.
 //
@@ -60,7 +62,7 @@ import {
 import { BARE } from "../fixtures";
 import {
   captureStill,
-  colorDistance,
+  CHANNEL_EPSILON,
   createHarness,
   darkestOf,
   discPoints,
@@ -72,8 +74,14 @@ import {
 
 let h: Harness;
 
-/** How near a sample must land on the sky, of the `441` the RGB cube spans. */
-const SKY_TOLERANCE = 25;
+/** How far the worst channel of two colours stands apart. */
+function channelsApart(a: Rgb, b: Rgb): number {
+  return Math.max(
+    Math.abs(a.r - b.r),
+    Math.abs(a.g - b.g),
+    Math.abs(a.b - b.b),
+  );
+}
 
 /** The radius about a ring-6 center every sample is taken within. */
 const SKY_DISC_R = 16;
@@ -158,11 +166,11 @@ it("leaves every ring-6 hex inside the field region as bare sky", async () => {
     const pixels = await h.pixels(disc);
     let worst = 0;
     for (const pixel of pixels) {
-      worst = Math.max(worst, colorDistance(rgbOf(pixel), sky));
+      worst = Math.max(worst, channelsApart(rgbOf(pixel), sky));
     }
     assertLessThanOrEqual(
       worst,
-      SKY_TOLERANCE,
+      CHANNEL_EPSILON,
       `(${hex.q}, ${hex.r}) is outside max(|q|, |r|, |q + r|) <= FIELD_R, so every sample within ${SKY_DISC_R} of its center is sky`,
     );
   }
@@ -174,11 +182,11 @@ it("leaves every ring-6 hex inside the field region as bare sky", async () => {
     );
     let worst = 0;
     for (const pixel of pixels) {
-      worst = Math.max(worst, colorDistance(rgbOf(pixel), sky));
+      worst = Math.max(worst, channelsApart(rgbOf(pixel), sky));
     }
     assertGreaterThan(
       worst,
-      SKY_TOLERANCE,
+      CHANNEL_EPSILON,
       `(${hex.q}, ${hex.r}) is on the field, so its cell is drawn rather than left as sky`,
     );
   }

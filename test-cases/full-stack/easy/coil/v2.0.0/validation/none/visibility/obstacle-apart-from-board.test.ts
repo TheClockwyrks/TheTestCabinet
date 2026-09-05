@@ -1,47 +1,50 @@
-// visibility/obstacle-apart-from-board — an obstacle cell is not the colour of
-// the board it sits in.
+// visibility/obstacle-apart-from-board — an obstacle is drawn on the cell it
+// occupies.
 //
 // WHAT THE SPECIFICATION FIXES. `specs/mode.md` states of the course that "an
 // obstacle cell is part of the board rather than part of the snake. It is drawn
-// one cell in size, distinctly from the wall border, from the snake, and from the
-// pellet, so a player reads the course at a glance." The field it is read
-// against is `specs/overview.md`'s dark interior. No palette is fixed, so what is
-// read is separation alone, against the case's figure for clearly apart: more
-// than `DISTINCT_MIN` (50) of the 441 the RGB cube spans. This suite decides the
-// field half; the snake half is `visibility/obstacle-apart-from-snake`.
+// one cell in size", over `specs/overview.md`'s interior. The palette is the
+// build's and how an obstacle looks is the presentation domain's aesthetic
+// rating, so the one thing a check may read off the picture is PRESENCE: whether
+// the build painted the cell an obstacle sits on at all.
 //
-// THE WORLD THIS POSES. ONE obstacle cell, on a cell of the check's choosing,
-// rather than the course the mode lays. The requirement is about how an obstacle
-// cell is drawn, not about where they are, so the isolated world holds one of
-// them and the rest of the interior stays empty — which is also what makes the
-// empty cell this samples against unambiguously empty. `specs/instrumentation.md`
-// carries `clearObstacles` and `addObstacle` for exactly this, and `poseScene`
-// spends them in the order the surface accepts. The pellet is off the board and
-// travel is switched off.
+// HOW PRESENCE IS READ. The same point, twice. One obstacle cell is laid on a
+// cell of the check's choosing and its centre is sampled; the course is then
+// taken off the board with `clearObstacles` (`specs/instrumentation.md`) and the
+// same point is sampled again. A build that drew the obstacle renders two
+// different pixels; a build that left the cell as the empty field renders one.
+//
+// THE WORLD THIS POSES. ONE obstacle cell rather than the course the mode lays.
+// The requirement is about how an obstacle cell is drawn, not about where they
+// are, so the isolated world holds one of them and the rest of the interior stays
+// empty. The pellet is off the board and travel is switched off, so nothing moves
+// between the two readings.
 //
 // A build whose mode lays no obstacle cell carries neither operation, and this
 // point belongs only to the mode that does.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan } from "../assert";
+import { assertNotEqual } from "../assert";
 import type { Cell } from "../constants";
-import { DISTINCT_MIN } from "../constants";
 import {
   captureStill,
   chainFrom,
-  colorDistance,
+  clearObstacles,
   createHarness,
   HOME_HEAD,
   poseScene,
   sampleCells,
   type Harness,
+  type Rgb,
 } from "../harness";
 
 /** The one obstacle cell this world holds, clear of the posed chain. */
 const OBSTACLE_CELL: Cell = { col: 20, row: 5 };
 
-/** The interior cell the posed world leaves empty, far from both and from the wall. */
-const BOARD_CELL: Cell = { col: 20, row: 12 };
+/** A sampled colour as one string, so a failure names the reading plainly. */
+function shows(color: Rgb): string {
+  return `rgb(${color.r}, ${color.g}, ${color.b})`;
+}
 
 let h: Harness;
 
@@ -53,7 +56,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws an obstacle cell apart from an empty interior cell", async () => {
+it("paints an obstacle's cell, and leaves it unpainted once the course is gone", async () => {
   await poseScene(h, {
     obstacles: [OBSTACLE_CELL],
     snake: chainFrom(HOME_HEAD, "right", 3),
@@ -64,11 +67,15 @@ it("draws an obstacle cell apart from an empty interior cell", async () => {
   await h.advance(1);
   await captureStill(h, "scene");
 
-  const [obstacle, board] = await sampleCells(h, [OBSTACLE_CELL, BOARD_CELL]);
+  const [withObstacle] = await sampleCells(h, [OBSTACLE_CELL]);
 
-  assertGreaterThan(
-    colorDistance(obstacle, board),
-    DISTINCT_MIN,
-    "the RGB distance between an obstacle cell's centre and an empty interior cell's",
+  await clearObstacles(h);
+  await h.advance(1);
+  const [withoutObstacle] = await sampleCells(h, [OBSTACLE_CELL]);
+
+  assertNotEqual(
+    shows(withObstacle),
+    shows(withoutObstacle),
+    "an obstacle cell's centre with the obstacle on the board, against the same point with the course cleared",
   );
 });

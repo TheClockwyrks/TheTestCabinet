@@ -60,8 +60,6 @@ import {
   fieldPixels,
   head,
   imageDraws,
-  luminanceMask,
-  maskDifference,
   pixelsDiffering,
   poseHall,
   soundsStarted,
@@ -267,7 +265,7 @@ it("reads a whole field back, and tells two of them apart", async () => {
 
   // The same hall with one thing changed. WHICH pixels move is
   // `machinery/sightline-ray`'s point; that the comparison sees any is this
-  // file's, because three points rest on it.
+  // file's, because the points that read a frame back rest on it.
   h.debug.grantMachinery("sightline");
   await h.step(1);
   const after = fieldPixels(h);
@@ -283,7 +281,7 @@ it("reads a whole field back, and tells two of them apart", async () => {
   );
 });
 
-it("reads a produced sprite's own pixels, and masks them", async () => {
+it("reads a produced sprite's own pixels", async () => {
   const ids = ["halide", "sulfur", "cobalt"] as const;
   const first = topRunS(200);
   await poseHall(h, {
@@ -294,22 +292,20 @@ it("reads a produced sprite's own pixels, and masks them", async () => {
   const sprites = imageDraws(await h.frameCalls()).filter(
     (draw) => draw.image.width === CORE_SPRITE,
   );
-  const masks = new Map<number, boolean[]>();
+  const seen = new Set<number>();
   for (const sprite of sprites) {
-    if (masks.has(sprite.image.id)) continue;
+    if (seen.has(sprite.image.id)) continue;
     const pixels = h.imagePixels(sprite.image.id);
     assertTruthy(pixels, "the pixels of a drawn core sprite");
-    const mask = luminanceMask(pixels as PixelRect);
+    const rect = pixels as PixelRect;
     assertEqual(
-      mask.length,
+      rect.width * rect.height,
       CORE_SPRITE * CORE_SPRITE,
-      "the entries of a 28 x 28 mask",
+      "the pixels of a 28 x 28 core sprite",
     );
-    masks.set(sprite.image.id, mask);
+    seen.add(sprite.image.id);
   }
-  assertGreaterThan(masks.size, 1, "distinct core sprites drawn");
-  const [a, b] = [...masks.values()];
-  assertBetween(maskDifference(a, b), 0, 1, "the difference between two masks");
+  assertGreaterThan(seen.size, 1, "distinct core sprites drawn");
 });
 
 /* ---- The channel's geometry ------------------------------------------------ */

@@ -7,12 +7,12 @@
 // as `specs/parts.md` asks" — so the two pictures are the whole of how a hold is
 // shown, and one picture under both names shows nothing.
 //
-// WHAT IT READS. The two files differ on at least `DIFFER_MIN_SHARE` of the canvas
-// they share. One file shipped twice differs by exactly nothing, since a PNG
-// carries its pixels losslessly, so the floor is one hundredth — the smallest share
-// worth calling measurable. Two clear pixels count as the same pixel whatever bytes
-// sit under them, because a straight-alpha canvas leaves those bytes undefined and
-// a player sees nothing either way.
+// WHAT IT READS. The two files differ somewhere on the canvas they share. One
+// file shipped twice differs by exactly nothing, since a PNG carries its pixels
+// losslessly, so any pixel of difference is the whole of the reading. Two clear
+// pixels count as the same pixel whatever bytes sit under them, because a
+// straight-alpha canvas leaves those bytes undefined and a player sees nothing
+// either way.
 //
 // WHAT IT DOES NOT DECIDE. Whether the closed gripper reads AS CLOSED at any of the
 // six spoke angles is the art bar itself, and the reviewer's judgement. This point
@@ -22,14 +22,9 @@
 // compared by eye beside the verdict.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { GRIPPER_SPRITES } from "./files";
-import {
-  DIFFER_MIN_SHARE,
-  decodeProduced,
-  differingShare,
-  showSprites,
-} from "./sprites";
+import { decodeProduced, differingShare, showSprites } from "./sprites";
 
 it("draws the closed gripper as a different picture from the open one", async () => {
   await showSprites("grippers", GRIPPER_SPRITES);
@@ -49,9 +44,9 @@ it("draws the closed gripper as a different picture from the open one", async ()
     fail(`a decoded ${closed.label}`, readClosed.reason);
   }
 
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     differingShare(readOpen.sprite, readClosed.sprite),
-    DIFFER_MIN_SHARE,
+    0,
     "the share of the canvas on which the closed gripper differs from the open one",
   );
 });

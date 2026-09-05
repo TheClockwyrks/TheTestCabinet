@@ -24,9 +24,9 @@
 // to its produced file through the engine's cue bus and the build plays each by
 // the name `specs/ui.md` fixes, so the engine announces the name and
 // `watchCues` reads it — which separates a build that plays the wrong cue on the
-// rise from one that plays the right one, as counting sounds could not. The cue
-// is asked for whether or not its produced file loaded, since `specs/assets.md`
-// leaves the game running when one does not arrive.
+// rise from one that plays the right one, as counting sounds could not. What is
+// read is the ask the cue bus announces rather than a sound: this process has no
+// Web Audio context, so no produced file is decoded here.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

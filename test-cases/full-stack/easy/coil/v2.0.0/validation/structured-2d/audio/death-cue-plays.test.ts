@@ -23,9 +23,9 @@
 // to its produced file through the engine's cue bus and the build plays each by
 // the name `specs/ui.md` fixes, so the engine announces the name and `watchCues`
 // reads it — which separates a build that plays the wrong cue at the end of a
-// round from one that plays the right one. The cue is asked for whether or not
-// its produced file loaded, since `specs/assets.md` leaves the game running when
-// one does not arrive.
+// round from one that plays the right one. What is read is the ask the cue bus
+// announces rather than a sound: this process has no Web Audio context, so no
+// produced file is decoded here.
 //
 // THE CLIP RUNS ON PAST THE DEATH IN FRAMES RATHER THAN TICKS, because
 // `specs/movement.md` stops the tick the moment a round ends: nothing advances on

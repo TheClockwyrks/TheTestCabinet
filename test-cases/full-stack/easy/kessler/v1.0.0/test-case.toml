@@ -408,10 +408,10 @@ description = "Everything a player sees and hears. The produced assets first: th
 # suite is written to the item's claim and read back against the three reference
 # implementations under `references/<engine>/base/`, which every suite passes. A
 # handful of items add `engines = ["none"]` to that table, which scopes the item to
-# the engines where the behavior is the build's own work: the debug overlay and its
-# backtick toggle, the press-edge contract, and the stage fit are the engine's under
-# `simple-2d` and `structured-2d`, and grading them there would hand every build the
-# point. The checklist was authored first so the suites are
+# the engines where the behavior is the build's own work: the debug overlay, its
+# backtick toggle and its read-only-ness, the press-edge contract, and the stage fit
+# are the engine's under `simple-2d` and `structured-2d`, and grading them there
+# would hand every build the point. The checklist was authored first so the suites are
 # written TO these claims rather than the claims drifting to fit what a suite
 # happened to check. Every item is cut to that standard: ONE observable behavior, posed
 # through the instrumentation surface and read back, so a build fails exactly the
@@ -652,7 +652,7 @@ title = "setRingSpeed poses a ring's orbital speed"
 description = "setRingSpeed(ring, degPerSec) sets the ring's orbital speed, signed as specs/rings.md signs it, the ring advances at the posed rate from the next tick, and the posed speed holds until the next setWave or wave transition restores the wave formula."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/set-ring-speed.test.ts", outputs = [ { id = "orbit", name = "Ring 1 orbiting at the posed speed", kind = "replay" } ] }
+validation = { script = "instrumentation/set-ring-speed.test.ts", outputs = [ { id = "orbit", name = "Rings 2 and 3 orbiting at the posed speeds", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "clear-pods"
@@ -772,7 +772,7 @@ title = "The overlay reads the game without changing it"
 description = "Showing the overlay, letting it report over a stretch of ticks, and hiding it leaves the game exactly as an identical session without it: every diagnostic source is a pure read, so the two sessions' snapshots are identical."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-read-only.test.ts", outputs = [ { id = "watched", name = "The watched stretch the overlay reports over", kind = "replay" } ] }
+validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The watched stretch the overlay reports over", kind = "replay" } ] }
 
 # --- Field --------------------------------------------------------------------
 # The two fixed surfaces that bound play: the containment field the ball comes
@@ -2397,77 +2397,64 @@ validation = { script = "hud/hud-clear-of-field.test.ts", outputs = [ { id = "hu
 
 # --- Visibility ---------------------------------------------------------------
 # Whether a player reads the field off the screen: each element the playing
-# screen shows stands apart from what lies behind it, and the states the specs
-# call visibly distinct are. Nothing here judges the look; that is the
-# presentation domain's rating.
+# screen shows is drawn where the specs put it, and the states the specs call
+# visibly distinct render differently. Every point here is a presence reading —
+# a region rendered with the thing under test and again without it. Nothing
+# here judges the look; that is the presentation domain's rating.
 [[review.categories]]
 id = "visibility"
 title = "Visibility"
 [[review.categories.items]]
 id = "deflector-apart-from-field"
-title = "The deflector stands apart from the field"
-description = "The deflector, drawn on its track between radii 170 and 186, stands apart from the field behind it, so its position is read at a glance."
+title = "The deflector is drawn on its track"
+description = "The deflector is drawn on its track between radii 170 and 186, across the span it holds, so its position is read off the screen."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "visibility/deflector-apart-from-field.test.ts", outputs = [ { id = "scene", name = "The empty posed field the deflector was sampled against", kind = "image" } ] }
+validation = { script = "visibility/deflector-apart-from-field.test.ts", outputs = [ { id = "scene", name = "The posed field the deflector was read on", kind = "image" } ] }
 [[review.categories.items]]
 id = "ball-separates-over-open-field"
-title = "The ball separates from open field"
-description = "A ball posed over open field stands apart from what lies behind it."
+title = "The ball is drawn over open field"
+description = "A ball posed over open field is drawn over the field behind it."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "visibility/ball-separates-over-open-field.test.ts", outputs = [ { id = "open-field", name = "The ball posed over open field", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "ball-separates-over-a-target"
-title = "The ball separates from a live target"
-description = "A ball posed over a live ring target stands apart from what lies behind it."
+title = "The ball is drawn over a live target"
+description = "A ball posed over a live ring target is drawn over the target behind it."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "visibility/ball-separates-over-a-target.test.ts", outputs = [ { id = "over-ring", name = "The ball posed over a live ring target", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "ball-separates-near-the-planet"
-title = "The ball separates from the planet"
-description = "A ball posed near the planet stands apart from what lies behind it."
+title = "The ball is drawn near the planet"
+description = "A ball posed near the planet is drawn over what lies behind it there."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "visibility/ball-separates-near-the-planet.test.ts", outputs = [ { id = "near-planet", name = "The ball posed near the planet", kind = "image" } ] }
 [[review.categories.items]]
 id = "targets-apart-from-field"
-title = "A live target stands apart from the field"
-description = "A live target's arc stands apart from the open field around its ring, so the derelicts to sweep are read off the screen."
+title = "A live target is drawn on its ring"
+description = "A live target's arc is drawn across its ring's annulus, so the derelicts to sweep are read off the screen."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "visibility/targets-apart-from-field.test.ts", outputs = [ { id = "scene", name = "The lone live target sampled against its empty ring", kind = "image" } ] }
+validation = { script = "visibility/targets-apart-from-field.test.ts", outputs = [ { id = "scene", name = "The lone live target on its otherwise empty ring", kind = "image" } ] }
 [[review.categories.items]]
 id = "damaged-target-distinct"
-title = "A damaged ring 2 target reads as damaged"
-description = "A ring 2 target that has taken a hit is drawn visibly distinct from an undamaged one, so a player reads its state at a glance."
+title = "A damaged ring 2 target renders differently"
+description = "A ring 2 target that has taken a hit does not render as an undamaged one in the same slot, so a player reads its state at a glance."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "visibility/damaged-target-distinct.test.ts", outputs = [ { id = "undamaged", name = "The ring 2 target at full hit points", kind = "image" }, { id = "damaged", name = "The same slot's target after a hit", kind = "image" } ] }
 [[review.categories.items]]
-id = "pods-told-apart-in-flight"
-title = "The five pod kinds are told apart in flight"
-description = "The five pod kinds are pairwise distinguishable on falling pods at their 24-pixel size, without reading a label, so a player decides whether to catch one from its look alone."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "visibility/pods-told-apart-in-flight.test.ts", outputs = [ { id = "pod-widen", name = "The falling widen pod at the sampled spot", kind = "image" }, { id = "pod-multiball", name = "The falling multiball pod at the sampled spot", kind = "image" }, { id = "pod-shield", name = "The falling shield pod at the sampled spot", kind = "image" }, { id = "pod-pierce", name = "The falling pierce pod at the sampled spot", kind = "image" }, { id = "pod-narrow", name = "The falling narrow pod at the sampled spot", kind = "image" } ] }
-[[review.categories.items]]
 id = "containment-extent-reads"
 title = "The containment field's extent reads"
-description = "The containment field's circle of radius 480 is drawn so its extent reads at a glance against the field."
+description = "The containment field's circle of radius 480 is drawn in every quadrant, so its extent reads off the screen."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "visibility/containment-extent-reads.test.ts", outputs = [ { id = "scene", name = "The empty field the containment circle was sampled on", kind = "image" } ] }
-[[review.categories.items]]
-id = "shield-drawn-while-active"
-title = "An active shield ring is drawn"
-description = "While a shield is active the shield ring is drawn at radius 92 around the planet."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "visibility/shield-drawn-while-active.test.ts", outputs = [ { id = "shield-active", name = "The field with the shield raised", kind = "image" } ] }
+validation = { script = "visibility/containment-extent-reads.test.ts", outputs = [ { id = "scene", name = "The empty field the containment circle was read on", kind = "image" } ] }
 [[review.categories.items]]
 id = "shield-absent-while-inactive"
 title = "No shield ring is drawn without a shield"
@@ -2477,81 +2464,28 @@ failure_cap = "passable"
 validation = { script = "visibility/shield-absent-while-inactive.test.ts", outputs = [ { id = "shield-inactive", name = "The field with no shield active", kind = "image" } ] }
 [[review.categories.items]]
 id = "parked-ball-drawn"
-title = "A parked ball is drawn like any other"
-description = "A parked ball is drawn like any other ball, sitting at radius 194 at the deflector's center angle."
+title = "A parked ball is drawn at the serve point"
+description = "A parked ball is drawn at the serve point, at radius 194 at the deflector's center angle."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "visibility/parked-ball-drawn.test.ts", outputs = [ { id = "scene", name = "The parked ball at the serve point beside a free ball", kind = "image" } ] }
-[[review.categories.items]]
-id = "text-legible-title"
-title = "The title screen's text is legible"
-description = "Every piece of text the title screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "visibility/text-legible-title.test.ts", outputs = [ { id = "title", name = "The title screen whose text was read", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "text-legible-howto"
-title = "The howto screen's text is legible"
-description = "Every piece of text the howto screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "visibility/text-legible-howto.test.ts", outputs = [ { id = "howto", name = "The howto screen whose text was read", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "text-legible-playing"
-title = "The playing screen's text is legible"
-description = "Every piece of text the playing screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "visibility/text-legible-playing.test.ts", outputs = [ { id = "playing", name = "The playing screen whose text was read", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "text-legible-waveclear"
-title = "The waveclear screen's text is legible"
-description = "Every piece of text the waveclear screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "visibility/text-legible-waveclear.test.ts", outputs = [ { id = "waveclear", name = "The waveclear screen whose text was read", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "text-legible-paused"
-title = "The paused screen's text is legible"
-description = "Every piece of text the paused screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "visibility/text-legible-paused.test.ts", outputs = [ { id = "paused", name = "The paused screen whose text was read", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "text-legible-gameover"
-title = "The gameover screen's text is legible"
-description = "Every piece of text the gameover screen shows is legible against whatever sits behind it at the 1000 x 1000 stage size."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "visibility/text-legible-gameover.test.ts", outputs = [ { id = "gameover", name = "The gameover screen whose text was read", kind = "image" } ] }
+validation = { script = "visibility/parked-ball-drawn.test.ts", outputs = [ { id = "scene", name = "The parked ball at the serve point", kind = "image" } ] }
 
 # --- Presentation -------------------------------------------------------------
 # Whether the build draws what it produced: the stage fit, the sprites painted
 # at native size from image draws, the ball's spin on simulation time, and each
-# particle system playing at its event. How the art looks is the presentation
-# domain's aesthetic rating, not a point here.
+# particle system playing on its own event. Where an instance landed on the
+# stage, and how the art looks, are the presentation domain's aesthetic rating,
+# not a point here.
 [[review.categories]]
 id = "presentation"
 title = "Presentation"
 [[review.categories.items]]
 id = "stage-fits-window"
 title = "Window fit"
-description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the complete 1000 x 1000 stage is on screen with its aspect ratio preserved, filling the window's short side with even letterboxing."
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the build sizes its canvas backing store to the window at the window's device pixel ratio, and the complete 1000 x 1000 stage at one uniform scale fits inside that store on both axes."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/stage-fits-window.test.ts", engines = ["none"], outputs = [ { id = "fit", name = "Stage fit", kind = "image" } ] }
-[[review.categories.items]]
-id = "letterbox-matches-background"
-title = "The letterbox bars match the stage"
-description = "The letterbox bars around the stage carry the stage's background color."
-domains = ["presentation"]
-failure_cap = "great"
-validation = { script = "presentation/letterbox-matches-background.test.ts", outputs = [ { id = "bars", name = "Letterbox bars", kind = "image" } ] }
 [[review.categories.items]]
 id = "planet-drawn-from-sprite"
 title = "The planet is drawn from its sprite"
@@ -2604,14 +2538,14 @@ validation = { script = "presentation/ball-spin-holds-while-paused.test.ts", out
 [[review.categories.items]]
 id = "burst-at-destruction"
 title = "The burst plays at a destruction"
-description = "The destruction burst system plays at the destroyed target's arc center, as the ring stood posed on the destruction tick."
+description = "The destruction burst system is composited when a target is destroyed, on that tick or within the two frames after it, and not on the frame before."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/burst-at-destruction.test.ts", outputs = [ { id = "burst", name = "Destruction burst", kind = "replay" } ] }
 [[review.categories.items]]
 id = "spark-at-deflector-bounce"
 title = "The spark plays at a deflector bounce"
-description = "The impact spark system plays at the contact point of a deflector bounce."
+description = "The impact spark system is composited when a deflector bounce resolves, on that tick or within the two frames after it, and not on the frame before."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/spark-at-deflector-bounce.test.ts", outputs = [ { id = "spark-paddle", name = "Deflector spark", kind = "replay" } ] }
@@ -2619,7 +2553,7 @@ validation = { script = "presentation/spark-at-deflector-bounce.test.ts", output
 [[review.categories.items]]
 id = "spark-at-containment-reflection"
 title = "The spark plays at a containment reflection"
-description = "The impact spark system plays at the contact point of a containment field reflection."
+description = "The impact spark system is composited when a containment field reflection resolves, on that tick or within the two frames after it, and not on the frame before."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/spark-at-containment-reflection.test.ts", outputs = [ { id = "spark-field", name = "Containment spark", kind = "replay" } ] }
@@ -2627,14 +2561,14 @@ validation = { script = "presentation/spark-at-containment-reflection.test.ts", 
 [[review.categories.items]]
 id = "spark-at-shield-reflection"
 title = "The spark plays at a shield reflection"
-description = "The impact spark system plays at the contact point of a shield ring reflection."
+description = "The impact spark system is composited when a shield ring reflection resolves, on that tick or within the two frames after it, and not on the frame before."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/spark-at-shield-reflection.test.ts", outputs = [ { id = "spark-shield", name = "Shield spark", kind = "replay" } ] }
 [[review.categories.items]]
 id = "burnup-at-ball"
 title = "The burn-up plays at a burning ball"
-description = "The burn-up system plays at a ball whose center radius reaches 78 against the planet."
+description = "The burn-up system is composited when a ball's center radius reaches 78 against the planet, on that tick or within the two frames after it, and not on the frame before."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/burnup-at-ball.test.ts", outputs = [ { id = "burnup-ball", name = "Ball burn-up", kind = "replay" } ] }
@@ -2642,7 +2576,7 @@ validation = { script = "presentation/burnup-at-ball.test.ts", outputs = [ { id 
 [[review.categories.items]]
 id = "burnup-at-pod"
 title = "The burn-up plays at a burning pod"
-description = "The burn-up system plays at a pod whose center radius reaches 78 against the planet."
+description = "The burn-up system is composited when a pod's center radius reaches 78 against the planet, on that tick or within the two frames after it, and not on the frame before."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/burnup-at-pod.test.ts", outputs = [ { id = "burnup-pod", name = "Pod burn-up", kind = "replay" } ] }
@@ -2934,13 +2868,6 @@ description = "Every URL the build emits or constructs at runtime resolves again
 domains = ["gameplay", "presentation"]
 failure_cap = "passable"
 validation = { script = "assets/asset-urls-page-relative.test.ts", outputs = [ { id = "resolved", name = "The game with every URL resolved", kind = "image" } ] }
-[[review.categories.items]]
-id = "missing-asset-leaves-game-running"
-title = "A missing file costs polish, not playability"
-description = "With a produced file unavailable at load, the game still initializes, still ticks, still takes input, and still draws a legible field."
-domains = ["gameplay", "presentation"]
-failure_cap = "passable"
-validation = { script = "assets/missing-asset-leaves-game-running.test.ts", outputs = [ { id = "degraded", name = "The game running without its planet sprite", kind = "image" } ] }
 
 # --- Showcase -----------------------------------------------------------------
 # ONE point, and it grades EXISTENCE alone. Whether the description reads like

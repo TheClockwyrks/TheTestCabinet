@@ -1,8 +1,8 @@
 // presentation/dropper-from-sprite — the dropper is drawn from its seeded art.
 //
 // specs/assets.md seeds `assets/dropper/` and states what it covers: "One frame, drawn centered on the dropper's position as it falls", so `assets/dropper/0.png` is the only art a dropper is drawn from. A build that
-// draws a convincing shape in code satisfies presentation/foes-distinct and
-// misses this point, which is the whole reason the point exists.
+// draws a convincing shape in code misses this point, which is the whole reason
+// the point exists.
 //
 // THE READING IS THE IMAGE SOURCE ITSELF, NOT THE PIXELS ON THE STAGE. The bitmap
 // the build handed the context is held against the seeded PNGs read off the

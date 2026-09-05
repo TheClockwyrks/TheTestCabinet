@@ -16,15 +16,10 @@
 // obstacles go with it; the paddles are the field furniture no operation
 // removes, and neither is touched, since nothing here reads one.
 //
-// THE ANCHOR IS THE READING, where both engine projects read the run's midpoint.
-// A run's measured extent is available only to a harness that asks the page to
-// measure every drawn string, which is a round trip into the page per frame
-// read, and the `none` harness does not: `textDraws` reports each run as the
-// point its anchor names. That point is where the build PLACED the figure, which
-// is what "right of center" fixes; the only build the wider reading would catch
-// on top of this one is a scoreboard anchored just past the net and spilling
-// back across it, and specs/overview.md draws the two scores near the top of the
-// field rather than against it.
+// THE ANCHOR IS THE READING, in this project and in both engine projects alike.
+// specs/overview.md fixes the position each score is DRAWN AT, so `textDraws`
+// reporting each run as the point its anchor names is the whole of what the
+// requirement asks for, and the three projects decide the point one way.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";

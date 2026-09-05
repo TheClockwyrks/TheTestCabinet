@@ -23,7 +23,7 @@
 //   states a player cannot tell apart, whatever else the overlay did.
 
 import {
-  DISTINCT,
+  DRAWN,
   type Harness,
   lattice,
   type RecipeEntry,
@@ -57,7 +57,7 @@ export async function cellPixels(
 export function movedPoints(a: readonly Pixel[], b: readonly Pixel[]): number {
   let moved = 0;
   for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
-    if (rgbDistance(a[i]!, b[i]!) > DISTINCT) moved += 1;
+    if (rgbDistance(a[i]!, b[i]!) > DRAWN) moved += 1;
   }
   return moved;
 }

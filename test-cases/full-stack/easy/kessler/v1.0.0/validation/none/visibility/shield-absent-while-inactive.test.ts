@@ -2,29 +2,36 @@
 //
 // WHAT THE SPECIFICATION FIXES. `specs/field.md` makes the shield ring a
 // circle "present while the shield is active", and the review item reads the
-// other direction of that sentence: "With no shield active no shield ring is
+// second half of that sentence: "With no shield active no shield ring is
 // drawn, so a player never reads protection that is not there."
 //
-// THE WORLD THIS POSES. An isolated `playing` field and nothing more: `reset`
-// restores the boot state, so no shield is active — the snapshot's
-// `effects.shieldActive` confirms it — and one tick renders the field.
+// THE WORLD THIS POSES, AND THE THREE FRAMES. An isolated `playing` field and
+// nothing more: `reset` restores the boot state, so no shield is active — the
+// snapshot's `effects.shieldActive` confirms it — and one tick renders the
+// bare band. `setShield(true)` and another tick render the band WITH the ring,
+// which is the control: a band that does not move when the shield goes up is a
+// band this reading cannot decide anything on. `setShield(false)` and a third
+// tick render it again, and that frame must have put the band back where the
+// bare one left it.
 //
-// WHERE IT SAMPLES, AND THE TOLERANCE. The shared shield band (see
-// `visibility/shield-band.ts`): twenty angle columns around the four
-// cardinals, each a radial window over 86 to 98 held against the open field
-// at the same angle. A drawn ring separates essentially every column — that
-// is what the presence point reads — while a field with no ring separates
-// none of them, except where a speck of the build's own starfield happens to
-// sit inside the sampled band. So the read is a COUNT: no more than
-// `ABSENCE_MAX_COLUMNS` (4) of the twenty columns may stand clearly apart
-// (`DISTINCT_MIN`, see `visibility/distinct.ts`), which tolerates stray
-// specks and still fails any arc coherent enough to read protection off.
+// THE TOLERANCE. Both readings are counts of the twenty columns (see
+// `visibility/shield-band.ts`), held to the same figure from either side: the
+// raised ring must move MORE than `ABSENCE_MAX_COLUMNS` of them, and the
+// cleared frame must leave no more than that many moved against the bare
+// frame.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLessThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { captureStill, isolate, openHarness, type Harness } from "../harness";
-import { ABSENCE_MAX_COLUMNS, DISTINCT_MIN } from "./distinct";
-import { shieldBandColumns } from "./shield-band";
+import {
+  ABSENCE_MAX_COLUMNS,
+  movedColumns,
+  shieldBandColumns,
+} from "./shield-band";
 
 let h: Harness;
 
@@ -45,14 +52,25 @@ it("draws no shield ring while no shield is active", async () => {
   );
   await h.tick(1);
   await captureStill(h, "shield-inactive");
+  const bare = await shieldBandColumns(h);
 
-  const columns = await shieldBandColumns(h);
-  const apart = columns.filter((column) => column > DISTINCT_MIN).length;
-
-  assertLessThanOrEqual(
-    apart,
+  await h.debug.setShield(true);
+  await h.tick(1);
+  const raised = await shieldBandColumns(h);
+  assertGreaterThan(
+    movedColumns(raised, bare),
     ABSENCE_MAX_COLUMNS,
-    "the sampled columns of the radius-92 band standing apart from the " +
-      "field with no shield active",
+    "the columns of the radius-92 band the raised shield's ring moved — the " +
+      "control this reading rests on, which the cleared frame must undo",
+  );
+
+  await h.debug.setShield(false);
+  await h.tick(1);
+  const cleared = await shieldBandColumns(h);
+  assertLessThanOrEqual(
+    movedColumns(cleared, bare),
+    ABSENCE_MAX_COLUMNS,
+    "the columns of the radius-92 band still moved against the bare field " +
+      "once the shield is inactive again",
   );
 });

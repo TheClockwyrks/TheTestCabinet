@@ -11,7 +11,7 @@
 //
 // THE TOLERANCES. The three paths and the `24 x 24` canvas are exact figures and
 // are read exactly. That each file carries a drawing rather than an empty canvas
-// is read against `PAINT_MIN_SHARE`, whose reasoning `assets/sprites.ts` states.
+// is read as presence: at least one pixel of the canvas is not clear.
 // That no two are the same picture needs none: a PNG carries its pixels
 // losslessly, so two files holding one picture differ on exactly nothing.
 //

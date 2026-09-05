@@ -525,6 +525,12 @@ export const ASSET_ROOT = "assets/";
 /** Voxel models are sculpted at eight voxels to the world unit. */
 export const VOXELS_PER_UNIT = 8;
 
+/**
+ * The share of its class box a load model's mesh spans on every axis
+ * (`specs/assets.md` § The models).
+ */
+export const LOAD_MODEL_FILL = 0.85;
+
 // ---- Instrumentation (specs/instrumentation.md) --------------------------
 
 export const GANTRY_DEBUG_VERSION = 1;

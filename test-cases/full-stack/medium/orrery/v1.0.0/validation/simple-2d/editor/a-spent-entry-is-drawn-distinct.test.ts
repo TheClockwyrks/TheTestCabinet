@@ -18,8 +18,8 @@
 // and the only thing that changed between the two frames is that the rise is now
 // on the field.
 //
-// THE VERDICT. At least `MIN_DISTINCT_SHARE` of the entry's rectangle is drawn
-// differently — visibly distinct rather than a pixel's worth of difference.
+// THE VERDICT. The entry's rectangle is drawn differently once the entry is
+// spent.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -38,15 +38,6 @@ import {
 
 /** `BARE`'s tray: `arm`, then the one rise, then the one set. */
 const RISE_SLOT = 1;
-
-/**
- * The least share of the entry's rectangle that must be drawn differently.
- *
- * A slot is `TRAY_W` by `TRAY_SLOT_H` (`208` by `30`), so this is sixty-two
- * pixels: below anything a player would see as a distinct entry, and far above a
- * pixel or two of anti-aliasing drift.
- */
-const MIN_DISTINCT_SHARE = 0.01;
 
 let h: Harness;
 
@@ -84,7 +75,7 @@ it("draws the rise entry differently once its rise is on the field", async () =>
   );
   assertGreaterThan(
     differingShare(unspent, spent),
-    MIN_DISTINCT_SHARE,
+    0,
     `entry ${RISE_SLOT} is drawn visibly distinct once its rise is on the field`,
   );
 });

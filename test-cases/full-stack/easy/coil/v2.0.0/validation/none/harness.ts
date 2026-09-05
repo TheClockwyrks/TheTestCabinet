@@ -977,9 +977,8 @@ export async function createHarness(
       // the build load them itself), so a check that drove the game the instant
       // the page settled could reach the eat before the eat's own clip had
       // arrived and read silence from a build that is simply still starting up.
-      // The wait is BOUNDED and never fails: `specs/assets.md` says a load that
-      // fails leaves the game running, so a build with no audio at all must reach
-      // its cue points and fail them, rather than hang here.
+      // The wait is BOUNDED and never fails: a build that ships no audio at all
+      // must reach its cue points and fail them, rather than hang here.
       //
       // Then a GENUINE browser gesture, not a posed one: a build is free to open
       // its audio context from a real DOM event alone (both are conformant), so a
@@ -1042,7 +1041,8 @@ const harnessCues = new WeakMap<Harness, TimedCue[][]>();
  * build's own work, so asking it would be asking a build to grade itself. Every
  * check but `presentation/window-fit` runs at the stage's own size, where this is
  * the identity and the question does not arise; that one check runs at other
- * shapes and reads the pixels against what the specification says should be there.
+ * shapes and reads where the build's own draws landed against where this puts
+ * them.
  */
 export function fitViewport(
   cssWidth: number,
@@ -1968,11 +1968,10 @@ export function colorDistance(a: Rgb, b: Rgb): number {
 /**
  * The colour rendered at the centre of cell `(col, row)`.
  *
- * The centre pixel itself rather than an average over a cluster, because that is
- * how the visibility points are worded and because a cell is `CELL` (32) units
- * across: its centre is sixteen units from the nearest edge, far outside any
- * anti-aliased rim, and a build's own ruling or glow at a cell's border cannot
- * reach it.
+ * The centre pixel itself rather than an average over a cluster, because a cell
+ * is `CELL` (32) units across: its centre is sixteen units from the nearest
+ * edge, far outside any anti-aliased rim, and a build's own ruling or glow at a
+ * cell's border cannot reach it.
  */
 export async function sampleCell(
   h: Harness,

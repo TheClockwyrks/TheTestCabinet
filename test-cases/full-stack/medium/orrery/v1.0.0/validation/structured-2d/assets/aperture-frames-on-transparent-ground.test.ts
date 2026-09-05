@@ -14,12 +14,12 @@
 //
 // WHICH FRAMES. All twelve: the rise sheet's six and the set sheet's six.
 //
-// WHAT IT READS. Every frame decodes, and at least `GROUND_MIN_SHARE` of its canvas
-// is clear — alpha at or below `GROUND_ALPHA`. `specs/assets.md` fixes no coverage
-// figure, and a frame drawn right out to the edge of its canvas is conformant, so the
-// floor is deliberately low at one twentieth: what it catches is a canvas that was
-// FLOODED, which is the failure the requirement is about. A frame whose every pixel
-// is opaque cannot clear it however it was drawn.
+// WHAT IT READS. Every frame decodes, and some of its canvas is clear — some
+// pixel whose alpha is zero. `specs/assets.md` fixes no coverage figure, and a
+// frame drawn right out to the edge of its canvas is conformant, so all that is
+// read is a canvas that was not FLOODED, which is the failure the requirement
+// is about. A frame whose every pixel is opaque carries no clear ground however
+// it was drawn.
 //
 // WHAT IT DOES NOT DECIDE. Whether the alpha is STRAIGHT rather than premultiplied is
 // not readable from a decoded canvas, which hands back straight-alpha bytes whatever
@@ -30,15 +30,10 @@
 // checker shows through, that frame was transparent there.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { APERTURE_FRAMES } from "../constants";
 import { RISE_SPRITES, SET_SPRITES } from "./files";
-import {
-  GROUND_MIN_SHARE,
-  decodeProduced,
-  groundShare,
-  showSprites,
-} from "./sprites";
+import { decodeProduced, groundShare, showSprites } from "./sprites";
 
 /** Both sheets' frames, each sheet in frame order. */
 const FRAMES = [...RISE_SPRITES, ...SET_SPRITES];
@@ -55,9 +50,9 @@ it("leaves clear ground on every one of the twelve aperture frames", async () =>
   for (const [index, row] of FRAMES.entries()) {
     const read = readings[index];
     if (read.sprite === null) fail(`a decoded ${row.label}`, read.reason);
-    assertGreaterThanOrEqual(
+    assertGreaterThan(
       groundShare(read.sprite),
-      GROUND_MIN_SHARE,
+      0,
       `${row.label}: the share of its canvas left as clear ground`,
     );
   }

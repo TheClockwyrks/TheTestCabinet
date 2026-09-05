@@ -7,8 +7,9 @@
 // ring centered on an Arc-Node's impact point". `specs/components.md` fixes that
 // radius: `ARCNODE_SPLASH` is `42` at Scrap.
 //
-// THE PRODUCED SYSTEMS ARE SERVED TO THE LOADER HERE, by `./produced.ts`, so what
-// plays is the file the build committed.
+// THE PRODUCED SYSTEMS REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds, so what plays is the
+// file the build committed.
 //
 // WHAT IS READ, AND AT WHAT RADIUS. A circle of points about the impact point, at
 // four fifths of the Scrap splash radius. The requirement is that the ring covers
@@ -47,7 +48,6 @@ import {
   ticks,
   unitById,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { circle, read, scan } from "./region";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
@@ -63,7 +63,6 @@ const POINTS = circle(AT, 0.8 * ARCNODE_SPLASH[0]!, 24);
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

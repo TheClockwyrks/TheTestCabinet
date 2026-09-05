@@ -3,9 +3,10 @@
 // torpedoes are in flight. `warhead` only.
 //
 // THE RULE. `specs/instrumentation.md`'s Diagnostics section adds those two rows to
-// the panel under this variant. Everything else about the overlay — that it exists,
-// that the engine's key shows it, that it is read-only, and every fact both variants
-// share — is `instrumentation/overlay`, which both checklists name.
+// the panel under this variant. Every fact both variants share is
+// `instrumentation/overlay`, which both checklists name. That the panel exists at
+// all, that the engine's key shows it and that it is read-only are the ENGINE's
+// under this engine, so no item on it reads them.
 //
 // WHY IT IS AN ITEM OF ITS OWN. That sibling script is common to both checklists,
 // and the only thing it could branch on to decide whether to demand these two rows
@@ -28,7 +29,7 @@
 // "No body moves, no timer runs down").
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, fail } from "../assert";
+import { fail } from "../assert";
 import {
   captureStill,
   clearCalls,
@@ -94,8 +95,6 @@ it("draws the torpedo charge and the torpedoes in flight", async () => {
   // after the replay recorder's bracket closes, so a still is the one capture
   // that shows it.)
   captureStill(h, "overlay");
-
-  assertGreaterThan(added.length, 0, "the toggle draws the overlay's lines");
 
   if (!added.some((line) => CHARGE_FORMS.test(line))) {
     fail(

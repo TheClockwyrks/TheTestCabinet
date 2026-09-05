@@ -1109,8 +1109,8 @@ id = "table"
 title = "The Table"
 [[review.categories.items]]
 id = "stage-fit"
-title = "The whole table is on screen"
-description = "At four window shapes and two pixel ratios the complete 1280 x 720 table is visible, fitted and centred, with nothing clipped."
+title = "The whole table is drawn in logical units"
+description = "At four window shapes and two pixel ratios the build draws the table at its own logical anchors inside the fit, with nothing of it in the letterbox bars. Where the build writes the runtime, the fit itself is read."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "table/stage-fit.test.ts", outputs = [
@@ -3353,7 +3353,7 @@ validation = { script = "cascade/cascade-completes.test.ts", outputs = [
 [[review.categories.items]]
 id = "trail-survives-completion"
 title = "The painted table stays after the cascade"
-description = "The trail is still painted once cascadeDone is true."
+description = "Every point the cascade painted is still painted, and trailStamps is unchanged, once cascadeDone is true."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/trail-survives-completion.test.ts", outputs = [
@@ -3361,31 +3361,34 @@ validation = { script = "cascade/trail-survives-completion.test.ts", outputs = [
 ] }
 
 # --- Presentation -------------------------------------------------------------
-# What a player can actually READ. The case fixes no palette and no typeface, so
-# every point here checks PRESENCE and DISTINGUISHABILITY against a stated RGB
-# distance out of 441, never a hex value. The thresholds come from
-# `specs/overview.md`'s legibility table, which is the whole of what the
-# specification fixes about the look.
+# What a player can actually READ. The case fixes no palette and no typeface, and
+# `specs/overview.md` closes its visual design table with "The palette, the type,
+# and every other aspect of the look are yours", so every point here decides
+# PRESENCE and nothing else: the build drew something where the specification
+# says something is drawn, or the region changed when the thing under test was
+# posed. How any of it looks — colors, contrast, how much of a region carries a
+# mark — is the reviewer's domain ratings to judge and no point's to measure.
 #
-# `text-legible` is the legibility table's Text row and is the only point in this
-# group about drawn strings: WHICH strings are drawn is the `screens` group's
-# question and is not decided again here. Deciding one fact in two groups would
-# dock one defect twice.
+# WHICH strings are drawn is the `screens` group's question and is not decided
+# again here. Deciding one fact in two groups would dock one defect twice.
 #
-# THE OVERLAY'S TOGGLE AND ITS DEFAULT ARE GRADED ON `none` ALONE. Under
-# `simple-2d` and `structured-2d` the panel, the Backquote listener and the
-# default are all the engine's, so a point about either could not fail on two of
-# the three engines; under `none` they belong to the runtime layer the build
-# writes, and `specs/controls.md` states both. So the two of them carry
-# `engines = ["none"]` and the other five, which are about which diagnostic
-# sources the build registers and about registering them changing nothing, are
-# what every engine is held to.
+# THE OVERLAY'S TOGGLE, ITS DEFAULT AND ITS READ-ONLY-NESS ARE GRADED ON `none`
+# ALONE. Under `simple-2d` and `structured-2d` the panel, the Backquote listener,
+# the hidden-at-start default and the fact that reading the panel moves nothing
+# are all the engine's, so a point about any of them could not fail on two of the
+# three engines; under `none` they belong to the runtime layer the build writes,
+# and `specs/controls.md` states them. So four of the eight overlay points carry
+# `engines = ["none"]` and the other four, which are about which diagnostic
+# sources the build registers, are what every engine is held to.
 #
-# Both `none` points cap at `great`. The overlay is a developer affordance: a
-# build whose backtick key does nothing plays exactly as well as one whose key
-# works, and the standard flow of gameplay is untouched. They exist so that a
-# missing Backquote binding docks the one point it costs rather than entangling
-# the five registration points, which have to reach the panel to read it.
+# `overlay-off-at-start`, `overlay-shows-on-backquote` and
+# `overlay-hides-on-backquote` cap at `great`. The overlay is a developer
+# affordance: a build whose backtick key does nothing plays exactly as well as one
+# whose key works, and the standard flow of gameplay is untouched. They exist so
+# that a missing Backquote binding docks the one point it costs rather than
+# entangling the registration points, which have to reach the panel to read it.
+# `overlay-changes-nothing` caps at `passable` instead, because an overlay that
+# moves the game's own state as it is read changes how the game plays.
 [[review.categories]]
 id = "presentation"
 title = "Presentation"
@@ -3398,12 +3401,11 @@ failure_cap = "broken"
 validation = { script = "presentation/card-face-drawn.test.ts", outputs = [
   { id = "card", name = "The drawn card", kind = "image" },
 ] }
-# Rank, suit and color cap at `broken` with `card-face-drawn`, and for the same
-# reason: Klondike is played by reading a card. A player who cannot tell a five
-# from a nine cannot build a column, one who cannot tell hearts from diamonds
-# cannot build a foundation, and one who cannot tell red from black cannot apply
-# the alternating-color rule at all. The board is still drawn, the rules still
-# work, and the game cannot be played as intended, which is what `broken` names.
+# Rank and suit cap at `broken` with `card-face-drawn`, and for the same reason:
+# Klondike is played by reading a card. A player who cannot tell a five from a
+# nine cannot build a column, and one who cannot tell hearts from spades cannot
+# build a foundation. The board is still drawn, the rules still work, and the game
+# cannot be played as intended, which is what `broken` names.
 [[review.categories.items]]
 id = "rank-drawn"
 title = "A face-up card shows its rank"
@@ -3423,49 +3425,6 @@ validation = { script = "presentation/suit-drawn.test.ts", outputs = [
   { id = "suit", name = "The suit on the card", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "red-black-distinct"
-title = "Red and black suits are told apart"
-description = "The colors a heart and a spade are drawn in differ by at least 90 of 441 in RGB distance."
-domains = ["presentation"]
-failure_cap = "broken"
-validation = { script = "presentation/red-black-distinct.test.ts", outputs = [
-  { id = "suits", name = "The heart and the spade side by side", kind = "image" },
-] }
-# `back-distinct-from-face` and `face-distinct-from-table` stay `scuffed` while
-# the three above rise. Both measure a FILL against a fill, and the rank and the
-# suit are drawn on a face and on nothing else, so a build failing either still
-# marks every face-up card with glyphs the two points do not sample: the board
-# stays readable and reading it becomes unpleasant, which is `scuffed`. A rank or
-# a suit that is not drawn at all leaves nothing to fall back on, which is what
-# separates them.
-[[review.categories.items]]
-id = "back-distinct-from-face"
-title = "A card back reads apart from a card face"
-description = "The two differ by at least 90 of 441."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/back-distinct-from-face.test.ts", outputs = [
-  { id = "faces", name = "A card back beside a card face", kind = "image" },
-] }
-[[review.categories.items]]
-id = "back-distinct-from-table"
-title = "A card back reads apart from the table"
-description = "The two differ by at least 60 of 441."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/back-distinct-from-table.test.ts", outputs = [
-  { id = "back", name = "The card back on the table", kind = "image" },
-] }
-[[review.categories.items]]
-id = "face-distinct-from-table"
-title = "A card face reads apart from the table"
-description = "The two differ by at least 90 of 441."
-domains = ["presentation"]
-failure_cap = "scuffed"
-validation = { script = "presentation/face-distinct-from-table.test.ts", outputs = [
-  { id = "face", name = "The card face on the table", kind = "image" },
-] }
-[[review.categories.items]]
 id = "empty-slot-drawn"
 title = "An empty pile draws a slot"
 description = "A pile holding no cards draws a card-sized mark at its anchor."
@@ -3473,15 +3432,6 @@ domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/empty-slot-drawn.test.ts", outputs = [
   { id = "slot", name = "The empty pile's slot", kind = "image" },
-] }
-[[review.categories.items]]
-id = "slot-distinct-from-table"
-title = "An empty slot reads apart from the table"
-description = "The two differ by at least 30 of 441."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/slot-distinct-from-table.test.ts", outputs = [
-  { id = "slot", name = "The slot against the bare table", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "held-run-drawn-above"
@@ -3495,20 +3445,11 @@ validation = { script = "presentation/held-run-drawn-above.test.ts", outputs = [
 [[review.categories.items]]
 id = "drop-highlight-visible"
 title = "A highlighted target reads as highlighted"
-description = "The same pile drawn with and without the highlight differs by at least 60 of 441 somewhere in its rectangle."
+description = "The same pile is drawn differently somewhere in the part of its rectangle the held run leaves in view, once the run over it makes it a legal drop target."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/drop-highlight-visible.test.ts", outputs = [
   { id = "highlight", name = "The pile highlighted and unhighlighted", kind = "image" },
-] }
-[[review.categories.items]]
-id = "text-legible"
-title = "Text reads against what it sits on"
-description = "Every string drawn on the title screen, and every HUD label, differs from the background immediately behind it by at least 60 of 441 in RGB distance. This is the legibility table's Text row, which no other item carried. Which strings are drawn is the screens group's question and is not decided again here."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/text-legible.test.ts", outputs = [
-  { id = "text", name = "The title screen and the HUD labels", kind = "image" },
 ] }
 # The one thing a menu shows a player that no `navigation`, `pointer` or `touch`
 # point can see: `specs/controls.md` has "the selected item drawn distinctly from
@@ -3521,7 +3462,7 @@ validation = { script = "presentation/text-legible.test.ts", outputs = [
 [[review.categories.items]]
 id = "selected-item-distinct"
 title = "The selected menu item is drawn apart from the others"
-description = "Each title item's own region is drawn differently while that item is selected: at least 1% of its cells change by at least 30 of 441."
+description = "Each title item's own region is drawn differently while that item is selected."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/selected-item-distinct.test.ts", outputs = [
@@ -3578,7 +3519,7 @@ title = "The overlay changes nothing"
 description = "The snapshot is identical before and after the overlay is toggled on, and identical again after it is toggled off."
 domains = ["presentation"]
 failure_cap = "passable"
-validation = { script = "presentation/overlay-changes-nothing.test.ts", outputs = [
+validation = { script = "presentation/overlay-changes-nothing.test.ts", engines = ["none"], outputs = [
   { id = "toggled", name = "The table with the overlay on", kind = "image" },
 ] }
 [[review.categories.items]]

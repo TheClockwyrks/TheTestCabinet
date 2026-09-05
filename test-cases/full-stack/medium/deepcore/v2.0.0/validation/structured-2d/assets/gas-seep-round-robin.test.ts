@@ -59,7 +59,7 @@ const BASELINE_FRAMES = 6;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

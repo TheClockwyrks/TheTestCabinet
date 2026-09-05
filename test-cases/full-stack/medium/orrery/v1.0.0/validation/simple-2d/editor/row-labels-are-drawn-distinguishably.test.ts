@@ -1,5 +1,5 @@
 // editor/row-labels-are-drawn-distinguishably — no two of a machine's row labels
-// are the same picture, and none of them is blank.
+// are the same picture, and a row's label is not what a vacant row draws.
 //
 // THE RULE. "Each row's label carries an identifier unique among the machine's
 // rows, and the same identifier is drawn on that part on the field"
@@ -31,15 +31,16 @@
 // `specs/editor.md` requires beside the identifier reads the same on all three.
 // What is left to tell the three pictures apart is the identifier.
 //
-// WHAT "NOT DRAWN EMPTY" IS MEASURED AGAINST. With THREE arms placed and no
-// cursor, visible row `2` holds the third of them and visible row `4` holds no row
-// at all — two rows of the same parity, neither of them the panel's first or last —
-// so the second rectangle is what this build draws where there is no identifier to
-// draw, rather than a colour this check guessed at.
+// WHAT "NOT DRAWN EMPTY" IS MEASURED AGAINST, IN ONE RECTANGLE TOO. With THREE
+// arms placed and no cursor, visible row `2` holds the third of them; that arm is
+// then removed and the SAME rectangle is read again, where visible row `2` now
+// holds no row. Nothing about the rectangle moved — the same `x`, the same `y`,
+// the same panel — so what the two pictures can differ by is the identifier a row
+// puts there, rather than a colour this check guessed at.
 //
 // THE VERDICT. The three pictures of visible row `0`'s label are pairwise
-// different, and an occupied row's label is not drawn the way a row that holds no
-// row is drawn.
+// different, and one rectangle draws something where a row stands that it does not
+// draw where none does.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -65,9 +66,8 @@ const THREE: readonly Hex[] = [at(-3, 0), at(0, 0), at(3, 0)];
 /** The rows read in visible row 0, one per scroll position. */
 const ROWS_READ = [0, 1, 2] as const;
 
-/** The visible row that holds the third arm, and the one that holds no row. */
+/** The visible row read twice: it holds the third arm, and then no row at all. */
 const OCCUPIED_ROW = 2;
-const VACANT_ROW = 4;
 
 let h: Harness;
 
@@ -114,18 +114,30 @@ it("draws a different label for each row, and none of them blank", async () => {
   }
 
   await clearWorld(h);
-  for (const anchor of THREE) await placePart(h, "arm", anchor);
+  const three: number[] = [];
+  for (const anchor of THREE) three.push(await placePart(h, "arm", anchor));
   await h.debug.setCursor(null, 0);
   await h.advance(1);
 
   assertEqual(
     (await h.snapshot()).editor.parts.length,
     THREE.length,
-    "the machine is now three arms, so visible row 2 holds the last of them and visible row 4 holds no row",
+    "the machine is now three arms, so visible row 2 holds the last of them",
   );
+  const occupied = await readLabel(OCCUPIED_ROW);
+
+  await h.debug.removePart(three[THREE.length - 1] as number);
+  await h.advance(1);
+  assertEqual(
+    (await h.snapshot()).editor.parts.length,
+    THREE.length - 1,
+    "the machine is now two arms, so visible row 2 holds no row at all",
+  );
+  const vacant = await readLabel(OCCUPIED_ROW);
+
   assertGreaterThan(
-    pixelsDiffering(await readLabel(OCCUPIED_ROW), await readLabel(VACANT_ROW)),
+    pixelsDiffering(occupied, vacant),
     0,
-    `visible row ${OCCUPIED_ROW}'s label carries its row's identifier, so it is not drawn the way visible row ${VACANT_ROW}, which holds no row, is drawn`,
+    `visible row ${OCCUPIED_ROW}'s label carries its row's identifier, so that one rectangle is drawn differently with a row standing in it than with none`,
   );
 });

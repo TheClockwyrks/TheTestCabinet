@@ -119,13 +119,25 @@ export function furthestChange(
 }
 
 /**
+ * How far a place must move between two readings to count as painted, as a
+ * Euclidean RGB distance out of the `441` an RGB cube is across.
+ *
+ * THIS IS THE READING, NOT A THRESHOLD. It decides which places of a square count
+ * as drawn on, and how far they moved is never asserted: `specs/overview.md`
+ * fixes no palette and `specs/assets.md` leaves how the burst is composed to the
+ * build, so how bright or broad it reads is the reviewer's rating. Two readings
+ * of one place nothing was drawn on are identical, so anything above zero would
+ * do; `12` is a little above the rounding one composite can put on a pixel.
+ */
+export const PAINT_MIN = 12;
+
+/**
  * How many samples of a region moved further than `minDistance` between two
  * readings of it.
  *
  * The count rather than the single furthest sample, for a check asking whether
- * something was PAINTED over a stretch of field: one sample can move because a
- * build's starfield drifted a mark under the reading, while a population of
- * particles moves a whole patch of them.
+ * something was PAINTED over a stretch of field. `minDistance` is the caller's;
+ * every check in this group passes {@link PAINT_MIN}.
  *
  * The lattice is {@link readRegion}'s, and the two readings must have been taken
  * on the same one — a pair of different lengths is not comparable and says so

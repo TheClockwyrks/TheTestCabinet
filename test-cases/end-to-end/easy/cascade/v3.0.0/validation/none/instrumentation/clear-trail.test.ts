@@ -41,11 +41,17 @@ import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
-  assertGreaterThanOrEqual,
   assertLength,
   assertLessThanOrEqual,
 } from "../assert";
-import { CARD_H, CARD_W, FLOOR_Y, STAGE_W } from "../constants";
+import {
+  CARD_H,
+  CARD_W,
+  FLOOR_Y,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
+  STAGE_W,
+} from "../constants";
 import {
   captureStill,
   createHarness,
@@ -65,16 +71,20 @@ const SPAN_SECONDS = 0.5;
  * The two cards, and the two rectangles the table is read over.
  *
  * Both sit left of `STOCK_X` (`224`), so `specs/table.md` puts nothing there on
- * any screen and a stamp is the only thing that can mark them. Each card's speed
- * carries it `250` units or more over the span — over twice its own width — so
- * each rectangle is bare of cards by the time it is read, while both cards stay
- * more than `700` units clear of the right edge and, starting `480` and `320`
- * above `FLOOR_Y` (`580`) with no downward speed of their own and `227` units of
- * fall to make in the span, clear of the floor throughout.
+ * any screen and a stamp is the only thing that can mark them. Both speeds lie
+ * inside `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` (`[180, 420]`), the range
+ * `specs/victory.md` draws a launched card's `vx` from, so neither card moves
+ * faster than the game can ever launch one: the first at the top of that range
+ * and the second at its midpoint. Each carries its card `150` units or more over
+ * the span — over its own width — so each rectangle is bare of cards by the time
+ * it is read, while both cards stay more than `800` units clear of the right edge
+ * and, starting `480` and `320` above `FLOOR_Y` (`580`) with no downward speed of
+ * their own and `225` units of fall to make in the span, clear of the floor
+ * throughout.
  */
 const CARDS = [
-  { x: 100, y: 100, vx: 600 },
-  { x: 100, y: 260, vx: 500 },
+  { x: 100, y: 100, vx: LAUNCH_VX_MAX },
+  { x: 100, y: 260, vx: (LAUNCH_VX_MIN + LAUNCH_VX_MAX) / 2 },
 ] as const;
 
 /** How finely each rectangle is sampled: twelve points, none on an edge. */
@@ -90,18 +100,13 @@ function footprintPoints(at: {
   return gridPoints(rect, SAMPLE_COLS, SAMPLE_ROWS);
 }
 
-/**
- * The smallest MEAN colour distance a PAINTED footprint must show against the
- * bare table, out of the `441` a colour distance runs to.
- *
- * `24`, a weak floor rather than a measurement: `specs/overview.md` requires a
- * card to read apart from the table it sits on "at a glance", and a build whose
- * card ground were within `24` of its felt would fail the `presentation` group's
- * legibility points long before it reached this one. It is a precondition — what
- * this point decides is the reading after the clear — and it is three times
- * {@link CLEAN_DISTANCE}, so the two cannot be confused.
+/*
+ * A PAINTED footprint only has to read DIFFERENTLY from the bare table, and how
+ * far apart the two sit is not measured: `specs/overview.md` fixes no palette, so
+ * that is the reviewer's. It is a precondition — what this point decides is the
+ * reading after the clear — and rendering is deterministic, so any difference at
+ * all is the paint.
  */
-const PAINTED_DISTANCE = 24;
 
 /**
  * The largest colour distance a CLEARED point may show against the same point
@@ -130,11 +135,6 @@ function distance(
   b: readonly [number, number, number, number],
 ): number {
   return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-}
-
-/** The mean of a set of readings. */
-function mean(values: readonly number[]): number {
-  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 let h: Harness;
@@ -213,11 +213,13 @@ it("clears the painted layer and its count, leaving every flyer in flight", asyn
       `stamped nothing would leave nothing for clearTrail to clear`,
   );
   for (const [index, spec] of CARDS.entries()) {
-    assertGreaterThanOrEqual(
-      mean(marked[index].map((pixel, at) => distance(pixel, bare[index][at]))),
-      PAINTED_DISTANCE,
-      `the mean colour distance across the ${points[index].length} points of ` +
-        `the footprint the card posed at (${spec.x}, ${spec.y}) flew off, ` +
+    assertGreaterThan(
+      Math.max(
+        ...marked[index].map((pixel, at) => distance(pixel, bare[index][at])),
+      ),
+      0,
+      `the largest colour distance across the ${points[index].length} points ` +
+        `of the footprint the card posed at (${spec.x}, ${spec.y}) flew off, ` +
         `against the same points read before it was posed — that footprint has ` +
         `to have been painted for a reading of a cleared one to mean anything`,
     );

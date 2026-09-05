@@ -43,11 +43,12 @@ const FROZEN_FRAMES = 1_200; // 10 s
  * How far apart the two samples must sit before the structure counts as visible
  * behind the menu.
  *
- * Well below {@link DISTINCT_MIN}, deliberately: `specs/ui.md` asks for a yard
- * that is "visible" behind the menu and says nothing about how strongly, so a
- * build that dims the whole yard under a scrim is conforming and its structure is
- * still there to be seen. What this rules out is a menu that paints the yard away
- * entirely, which leaves the two samples identical.
+ * The floor any presence reading in this project clears, and nothing over it.
+ * `specs/ui.md` asks for a yard that is "visible" behind the menu and says
+ * nothing about how strongly, so a build that dims the whole yard under a scrim
+ * is conforming and its structure is still there to be seen. What this rules out
+ * is a menu that paints the yard away entirely, which leaves the two samples
+ * identical.
  */
 const VISIBLE_MIN = 8;
 

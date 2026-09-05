@@ -94,15 +94,18 @@ const SETTLE_TICKS = 2;
 const PERSIST_TICKS = ticksFor(1.5);
 
 /**
- * How far apart the remembered tile and the unrevealed fog must be drawn, as an
- * RGB distance out of the `441` (`sqrt(3) * 255`) that separates black from white.
+ * The sensing floor the remembered tile owes against the unrevealed fog, as an RGB
+ * distance out of the `441` (`sqrt(3) * 255`) that separates black from white.
  *
- * The review item's bound. It is a floor rather than a match: every palette is the
- * build's (specs/overview.md fixes only that the trench is dark), so what is
- * asserted is that a remembered tile is drawn as SOMETHING and not painted back
- * into the fog.
+ * `8` of `441` is the level below which a sampling cannot tell a drawing from
+ * eight-bit channel rounding and the host's antialiasing. Anything the build
+ * painted there clears it, in whatever palette and however dim.
+ *
+ * Every palette is the build's (specs/overview.md fixes only that the trench is
+ * dark), so what is asserted is that a remembered tile is drawn as SOMETHING and
+ * not painted back into the fog.
  */
-const DRAWN_MIN_DISTANCE = 25;
+const DRAWN_MIN_DISTANCE = 8;
 
 let h: Harness;
 

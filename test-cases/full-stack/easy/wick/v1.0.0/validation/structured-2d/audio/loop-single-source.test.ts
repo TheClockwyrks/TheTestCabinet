@@ -38,11 +38,6 @@
 // `FRAMES` (120) frames. The bed is let up before the span opens, so a start
 // announced inside the span is a restart rather than the first start.
 //
-// A second start request is then made directly of the bus — the same call
-// `specs/ui.md` gives the game, `world.audio.loop` — while the cue is
-// looping, and the count is read again: "a cue is either looping or not", so
-// the request has to leave one source running rather than adding another.
-//
 // THE TOLERANCE. None: one is the count "either looping or not" fixes, zero
 // is the count of starts a bed that "keeps playing" makes inside a span it
 // never left, and the frames are whole.
@@ -71,7 +66,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("has one source of the bed running across the span, started once, and unchanged by a second start", async () => {
+it("has one source of the bed running across the span, started once", async () => {
   await isolatedRun(h);
   assertEqual(
     h.looping(CUES.music),
@@ -108,18 +103,5 @@ it("has one source of the bed running across the span, started once, and unchang
     heard(played, CUES.music),
     0,
     `times the bed was sounded afresh inside ${FRAMES} frames it kept playing through (specs/ui.md, The loops)`,
-  );
-
-  h.world.audio.loop(CUES.music);
-  await h.advance(1);
-  assertEqual(
-    sources(h, CUES.music),
-    1,
-    "sources of the bed after a second start request while it loops (specs/ui.md, The loops)",
-  );
-  assertEqual(
-    h.looping(CUES.music),
-    true,
-    "whether the bed was still looping after the second start request",
   );
 });

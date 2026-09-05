@@ -4,8 +4,8 @@
 // specs/assets.md § The models states the requirement and the reason in one
 // sentence: "The three load models fill their class boxes: a load's collisions
 // and placement use the class dimensions from `specs/world.md` whatever is
-// drawn, so a model well short of its box would read as missing what it visibly
-// overlaps." The same table sizes the `crate` model at "its class box,
+// drawn. Each load model's mesh spans at least `LOAD_MODEL_FILL` (`0.85`) of its
+// class box on every axis." The same table sizes the `crate` model at "its class box,
 // `2 x 2 x 2` units", and specs/world.md § Loads fixes that class box:
 // "`crate` | `2 x 2 x 2`", read as width by height by depth at yaw `0`.
 //
@@ -25,10 +25,10 @@
 // accessor, so the extent is read off the file's own declaration of it rather
 // than off a decode of its vertices.
 //
-// THE TOLERANCE IS ONE-SIDED, because the requirement is. What specs/assets.md
-// forbids is a model "well short of its box"; nothing there caps a model at its
-// box. So each axis is required to reach 85% of the class dimension, and a
-// model that overfills its box is a different complaint from this one.
+// THE BOUND IS ONE-SIDED, because the requirement is. specs/assets.md fixes the
+// floor — each load model's mesh "spans at least `LOAD_MODEL_FILL` (`0.85`) of
+// its class box on every axis" — and caps nothing, so a model that overfills its
+// box is a different complaint from this one.
 //
 // The still beside it is the load the class draws, posed alone in an emptied
 // yard, so a reviewer sees the model this point measured.
@@ -37,7 +37,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
-import { LOAD_CLASS_DIMENSIONS, VOXELS_PER_UNIT } from "../constants";
+import {
+  LOAD_CLASS_DIMENSIONS,
+  LOAD_MODEL_FILL,
+  VOXELS_PER_UNIT,
+} from "../constants";
 import {
   addOneLoad,
   createHarness,
@@ -55,18 +59,6 @@ const CLASS = "crate" as const;
 const MODEL = "crate";
 
 const SITE = 0;
-
-/**
- * The share of each class dimension the model's extent has to reach.
- *
- * specs/assets.md gives no figure, only "well short"; this is the honest reading
- * of it. A voxel sculpt at eight voxels to the unit cannot always land on the
- * box's face — a round form inscribed in a two-unit box gives up a voxel at each
- * side, an eighth of a unit — so an axis has to be allowed to stop a little
- * inside. A model reaching seven eighths of the way across is filling its box;
- * one stopping short of that is the miss the sentence is about.
- */
-const FILL = 0.85;
 
 /** Where the load stands: out in the open yard, clear of the anchors. */
 const AT: LoadPose = { x: 6, y: 2, z: 0, yaw: 0 };
@@ -100,12 +92,13 @@ it("draws the crate class from a model that fills its class box", async () => {
   for (const axis of axes) {
     assertGreaterThanOrEqual(
       axis.span,
-      FILL * axis.box,
+      LOAD_MODEL_FILL * axis.box,
       `the ${axis.name} span of the committed assets/models/${MODEL}.glb, in ` +
         `world units, against the ${CLASS} class box's ${axis.box} — ` +
-        "specs/assets.md asks that the three load models fill their class " +
-        "boxes, since a load's collisions and placement use the class " +
-        "dimensions whatever is drawn (the model measures " +
+        "specs/assets.md asks that each load model's mesh span at least " +
+        `${LOAD_MODEL_FILL} of its class box on every axis, since a load's ` +
+        "collisions and placement use the class dimensions whatever is " +
+        "drawn (the model measures " +
         `${drawn.x.toFixed(3)} x ${drawn.y.toFixed(3)} x ` +
         `${drawn.z.toFixed(3)} units)`,
     );

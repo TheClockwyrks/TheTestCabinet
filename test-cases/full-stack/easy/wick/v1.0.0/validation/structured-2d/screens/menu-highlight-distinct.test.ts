@@ -26,9 +26,12 @@
 // THE DRIVE. `reset` to the title screen, one frame, one real `ArrowDown`,
 // one frame.
 //
-// THE TOLERANCE. A band counts as redrawn at more than `MOVED_PIXELS` (`32`)
-// pixels differing by more than `PIXEL_CHANNEL_EPS` (`8`) in a channel, so
-// neither anti-aliasing nor a stray pixel reads as a highlight.
+// THE FLOOR. A sample counts as changed once a channel moved by more than
+// `PIXEL_CHANNEL_EPS` (`8`), the level below which eight-bit rounding and the
+// host's anti-aliasing cannot be told from a drawing. A band counts as redrawn
+// at more than `MOVED_PIXELS` (`0`) such samples: anything the build painted
+// differently into the band clears it, and neither the size nor the strength of
+// the mark is read.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
@@ -43,8 +46,12 @@ import {
 } from "../harness";
 import { anchorY, bandAt } from "./stage";
 
-/** How many pixels of an item's rows must change for the highlight to have moved. */
-const MOVED_PIXELS = 32;
+/**
+ * The count of changed samples a band must exceed for the sampling to tell a
+ * redraw from none. Each sample already had to clear `PIXEL_CHANNEL_EPS`, the
+ * rounding-and-anti-aliasing level, so one of them is a pixel the build painted.
+ */
+const MOVED_PIXELS = 0;
 
 /** The two title items one `down` from index `0` moves the highlight between. */
 const MOVED_BETWEEN: readonly string[] = TITLE_ITEMS.slice(0, 2);

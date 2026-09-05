@@ -24,9 +24,9 @@
 //     mode, the difficulty and the two entity types are spec-fixed words, and the
 //     numeric figures are posed at values nothing else in the reading carries —
 //     `4321` money, `46` lives, Wave `13`, `90210` score, `92` redline, `63` heat,
-//     `777` hp, tile `(34, 25)`, and the two route lengths, which on this floor are
-//     exactly `49` and `35` tiles because neither corridor is built on
-//     (specs/floor.md, specs/mazing.md).
+//     `777` hp, tile `(34, 25)`, and the two route lengths, which are read off the
+//     snapshot rather than named here — what they come to on this floor is the
+//     `mazing` group's reading.
 //   - A VALUE WITH NO SPELLING OF ITS OWN is read by CHANGING IT: the tripped flag
 //     and the slow are booleans a build may draw as `TRIPPED`, `yes`, `true` or a
 //     mark of its own, so what is asserted is that the overlay's lines are not the
@@ -39,32 +39,22 @@
 // absence is still a failure, but the honest reading is that they catch an overlay
 // missing them entirely rather than one that reports the wrong one.
 //
-// PURITY IS READ ON A FLOOR THAT CANNOT MOVE. "keep every source a pure read, so
-// watching the overlay leaves the game exactly as it is" — so the snapshot must be
-// identical across the toggle. That is only decidable where the game itself would
-// otherwise have changed nothing, so the second check poses a floor with the build
-// timer at `0` behind the shut world gate, one tower with both faculties held, and
-// one unit with its motion held: over the toggle's one frame nothing in the game has
-// anything to do, and the only field that may move is `simTime`, which must gain
-// exactly that one frame — time passing is what every update owes, overlay or not.
+// PURITY IS NOT READ HERE. "keep every source a pure read, so watching the overlay
+// leaves the game exactly as it is" is a requirement on the OVERLAY, and under an
+// engine the overlay is the engine's: it owns the backtick key, the panel, the
+// hidden-at-start state and the read-only-ness. A check on any of those returns
+// the same verdict for every build on this engine. It is
+// `instrumentation.overlay-is-read-only`, which only `none` carries, where the
+// build writes the overlay itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertDeepEqual,
-  assertGreaterThan,
-  assertNotEqual,
-  assertTrue,
-  fail,
-} from "../assert";
+import { assertGreaterThan, assertNotEqual, assertTrue, fail } from "../assert";
 import {
   captureStill,
   createHarness,
   drawnText,
   poseTarget,
   posePinnedTower,
-  poseTower,
-  seconds,
   startRun,
   ticksFor,
   towerOf,
@@ -95,10 +85,6 @@ const UNIT_TYPE = "hulk";
 const UNIT_HP = 777;
 const UNIT_TILE = { col: 34, row: 25 } as const;
 
-/** The two vent-to-exhaust routes on a floor with neither corridor built on. */
-const LEFT_ROUTE = 49;
-const TOP_ROUTE = 35;
-
 /** The marks the Lance is driven through, so its kill tally is not zero. */
 const MARKS: ReadonlyArray<{ col: number; row: number }> = [
   { col: 12, row: 12 },
@@ -114,9 +100,6 @@ const MARKS: ReadonlyArray<{ col: number; row: number }> = [
  * each mark carries, so eight seconds is more than twice what three kills need.
  */
 const KILL_TICKS = ticksFor(8);
-
-/** The `simTime` gain a single frame owes, as decimal places. */
-const CLOCK_DIGITS = 6;
 
 let h: Harness;
 
@@ -218,18 +201,6 @@ it("draws the facts the specification lists", async () => {
   h.debug.setWave(RUN.wave);
 
   const posed = h.snapshot();
-  assertCloseTo(
-    posed.paths.left.length,
-    LEFT_ROUTE,
-    3,
-    "precondition: the left corridor is unbuilt, so its route is straight",
-  );
-  assertCloseTo(
-    posed.paths.top.length,
-    TOP_ROUTE,
-    3,
-    "precondition: the top corridor is unbuilt, so its route is straight",
-  );
 
   const lines = await overlayLines();
   h.calls.length = 0;
@@ -250,16 +221,17 @@ it("draws the facts the specification lists", async () => {
   assertSomeLine(lines, String(RUN.wave), `the wave, ${RUN.wave}`);
   assertSomeLine(lines, String(RUN.score), `the score, ${RUN.score}`);
 
-  // The two route lengths, which are whole numbers on this floor.
+  // The two route lengths, read off the snapshot rather than named here: what
+  // they come to on this floor is `mazing`'s reading, not this one's.
   assertSomeLine(
     lines,
-    String(LEFT_ROUTE),
-    `the left route's length, ${LEFT_ROUTE}`,
+    String(posed.paths.left.length),
+    `the left route's length, ${String(posed.paths.left.length)}`,
   );
   assertSomeLine(
     lines,
-    String(TOP_ROUTE),
-    `the top route's length, ${TOP_ROUTE}`,
+    String(posed.paths.top.length),
+    `the top route's length, ${String(posed.paths.top.length)}`,
   );
 
   // The tower: its type and its redline are its own figures; its id, its level and
@@ -313,52 +285,5 @@ it("draws the facts the specification lists", async () => {
     slowed.join("\n"),
     tripped.join("\n"),
     "the overlay reports whether a unit is slowed",
-  );
-});
-
-it("leaves the game exactly as it is", async () => {
-  // A floor with nothing of its own to do, AND NOT ONE FACULTY GATE HOLDING IT
-  // THERE — a gate this point leant on would make it fail for a fault another item
-  // already names. The build timer is at `0` behind the world gate `startRun`
-  // shuts, so the countdown has nowhere to go; the tower is left at the heat
-  // `addTower` starts it at, `0`, where specs/heat.md's air term — proportional to
-  // `H / 100` — is exactly nothing; and it stands thirty tiles from the one unit on
-  // the floor, far outside any emitter's range, so it acquires nothing and fires
-  // nothing. Only the unit's motion is held, and that is a pose rather than a
-  // faculty the tower is being read for.
-  startRun(h);
-  poseTower(h, "arc", GUN.col, GUN.row);
-  poseTarget(h, "mote", UNIT_TILE.col, UNIT_TILE.row);
-  h.debug.setBuildTimer(0);
-  await h.advance(1);
-
-  const before = h.snapshot();
-  await h.tap(TOGGLE);
-  const after = h.snapshot();
-
-  assertDeepEqual(
-    { ...after, simTime: 0 },
-    { ...before, simTime: 0 },
-    "watching the overlay leaves the game exactly as it is",
-  );
-  assertCloseTo(
-    after.simTime - before.simTime,
-    seconds(1),
-    CLOCK_DIGITS,
-    "simTime advances by exactly the toggle's one frame, and nothing more",
-  );
-
-  // And the frame the toggle drew really did draw something the steady frame did
-  // not, so the reading above is of a frame that had the overlay on it.
-  h.calls.length = 0;
-  await h.advance(1);
-  const withOverlay = drawnText(h.calls).filter((line) => !isMetrics(line));
-  h.calls.length = 0;
-  await h.tap(TOGGLE);
-  const withoutOverlay = drawnText(h.calls).filter((line) => !isMetrics(line));
-  assertGreaterThan(
-    newLines(withoutOverlay, withOverlay).length,
-    0,
-    "the overlay was on for the frame the purity reading was taken across",
   );
 });

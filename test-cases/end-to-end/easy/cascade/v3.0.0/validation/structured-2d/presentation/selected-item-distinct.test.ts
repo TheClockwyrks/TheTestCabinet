@@ -21,21 +21,25 @@
 // THE REGIONS ARE THE BUILD'S OWN, asked for through `menuItemRect`
 // (`specs/instrumentation.md`), so any layout passes.
 //
-// WHY A SHARE OF CHANGED CELLS RATHER THAN A MEAN. `specs/` fixes no form for the
+// WHY CHANGED CELLS RATHER THAN A MEAN. `specs/` fixes no form for the
 // indication: a filled bar, an outline, a caret drawn beside the label and a
 // recoloured word are all honest, and the last two leave most of the region
 // untouched. A mean over the region would wash them out. So the reading counts
-// the cells that changed, and asks that a share of the region moved.
+// the cells that changed, and asks that at least one of them did. Rendering is
+// deterministic and the two frames differ in nothing but the selection, so a
+// build that draws no indication changes none of them and no threshold is needed
+// or stated. The region is read at unit pitch so that a one-unit caret or outline
+// lands on cells rather than between them.
 //
-// THE PALETTE IS THE BUILD'S: nothing here knows a colour, and what is measured
-// is the distance between two things the build itself painted.
+// THE PALETTE IS THE BUILD'S: nothing here knows a colour, and how loudly the
+// indication reads is the reviewer's.
 //
 // WHAT THIS DOES NOT DECIDE. Which item `menuIndex` names, which every
-// `navigation/`, `pointer/` and `touch/` point decides, nor whether the label
-// inside the region can be read, which is `presentation/text-legible`'s.
+// `navigation/`, `pointer/` and `touch/` point decides, nor how legibly the label
+// inside the region reads, which is the reviewer's.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import { TITLE_HOW_TO_ITEM, TITLE_NEW_GAME_ITEM } from "../constants";
 import {
   captureStill,
@@ -51,31 +55,6 @@ import {
   type UnitGrid,
 } from "./reading";
 import type { Rgb } from "../harness";
-
-/**
- * How far apart two paintings of one cell must lie to count as a change, in RGB
- * distance out of `441`.
- *
- * The same floor `presentation/slot-distinct-from-table` holds a mark to against
- * the felt: a fifteenth of the scale, which is a difference a player picks out of
- * a plain ground without it having to be loud. `specs/controls.md` fixes no
- * colour for the indication, so the figure is a threshold of visibility and not a
- * palette.
- */
-const CHANGE_INK = 30;
-
-/**
- * How much of an item's region has to be painted differently when it is the
- * selected one, as a share of the region.
- *
- * `specs/controls.md` fixes no form for the indication, so the floor has to admit
- * the quietest honest one. A one-unit outline drawn around a region already
- * covers several per cent of it, and a caret glyph beside the label covers a few
- * more, while a build that draws nothing covers none. `1%` sits under every mark
- * a player can actually see and above the anti-aliasing of a redrawn frame. It is
- * an area, so it does not move with how finely the region is sampled.
- */
-const CHANGE_SHARE = 0.01;
 
 /** The two items of the title's menu, which is the menu this point reads. */
 const ITEMS = [TITLE_NEW_GAME_ITEM, TITLE_HOW_TO_ITEM];
@@ -118,16 +97,14 @@ it("draws the selected title item apart from the item beside it", async () => {
     const changed = differingCells(
       paintings[0][slot],
       paintings[1][slot],
-      CHANGE_INK,
     ).length;
-    assertGreaterThanOrEqual(
-      changed / grids[slot].cells,
-      CHANGE_SHARE,
-      `the share of item ${String(item)}'s own region the title drew ` +
-        `differently while that item was selected, against a change of at ` +
-        `least ${String(CHANGE_INK)} out of 441 per cell (specs/controls.md: ` +
-        `the selected item is drawn distinctly from the others) — ` +
-        `${String(changed)} of ${String(grids[slot].cells)} cells moved`,
+    assertGreaterThan(
+      changed,
+      0,
+      `item ${String(item)}'s own region drawn differently while that item ` +
+        "was selected (specs/controls.md: the selected item is drawn " +
+        `distinctly from the others) — ${String(changed)} of ` +
+        `${String(grids[slot].cells)} cells moved`,
     );
   }
 });

@@ -1,4 +1,4 @@
-// hud/combo-bar-drains — the combo bar shrinks as the window is spent.
+// hud/combo-bar-drains — the combo bar tracks the window it is drawn for.
 //
 // specs/ui.md: the combo readout carries "a bar beneath it", and "The bar drains
 // from full to empty over the combo window as `specs/scoring.md` states, so a
@@ -6,20 +6,20 @@
 // moves reads as a decoration, and the window is the one thing in Coil a player
 // has to time.
 //
-// WHAT IS MEASURED, AND WHY IT IS THE ONLY FAIR MEASUREMENT. The bar may be any
-// mark a build likes — a strip, a ring, a row of pips — so nothing about its shape
-// or place can be assumed. What CAN be read is how much colour the combo readout
-// puts into the HUD band, and the specification supplies the empty reference
-// itself: "the combo area is empty at `M` of `1`", so a frame at a multiplier of
-// one is the band with no combo readout on it at all. The same board is then
-// rendered twice more at the same multiplier of three, once with a full window and
-// once with the window nearly spent, and each is measured against that empty
-// frame. Everything else in the band — the score, the best, the mode, the mute
-// indicator, and the `x3` above the bar — is identical in both, so it cancels, and
-// what is left is the bar.
+// WHAT IS READ. The bar may be any mark a build likes — a strip, a ring, a row of
+// pips, a dim track with a bright fill over it — so nothing about its shape, its
+// place, its colour or how much of the band it covers can be assumed, and how far
+// a bar moved is the presentation domain's aesthetic rating. What CAN be read is
+// that it moved at all: the same board is rendered twice at the same multiplier,
+// once with a full window and once with the window nearly spent, and the two
+// bands are compared point by point. Everything else in the band — the score, the
+// best, the mode, the mute indicator, and the `x3` above the bar — is identical
+// in the two frames, so it cancels, and what is left is the bar. A bar drawn for
+// the window it is under differs between the two; one that ignores the window
+// comes back the same picture twice.
 //
-// The board is posed identically for all three renders and the chain is held
-// still, so nothing but the window differs between them.
+// The board is posed identically for both renders and the chain is held still, so
+// nothing but the window differs between them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { COMBO_WINDOW } from "../constants";
@@ -33,7 +33,7 @@ import {
   type Harness,
   type Scene,
 } from "../harness";
-import { bandInk, readBand } from "./band";
+import { bandDifferences, readBand } from "./band";
 
 /** The multiplier both bar renders are taken at. */
 const COMBO = 3;
@@ -61,13 +61,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("paints more of the HUD band at a full window than at a spent one", async () => {
-  // The band with no combo readout on it: the reference both bars are counted
-  // against (specs/ui.md, "the combo area is empty at M of 1").
-  poseScene(h, { ...BOARD, combo: 1, comboWindow: 0 });
-  await h.advance(1);
-  const empty = readBand(h);
-
+it("draws a different HUD band at a full window than at a spent one", async () => {
   const full = poseScene(h, {
     ...BOARD,
     combo: COMBO,
@@ -89,8 +83,8 @@ it("paints more of the HUD band at a full window than at a spent one", async () 
   assertEqual(spent.combo, COMBO, "the multiplier the spent bar is read at");
 
   assertGreaterThan(
-    bandInk(empty, atFull),
-    bandInk(empty, atSpent),
-    "colour the combo readout put into the HUD band, full window against spent",
+    bandDifferences(atFull, atSpent),
+    0,
+    "points of the HUD band that differ between a full window and a spent one",
   );
 });

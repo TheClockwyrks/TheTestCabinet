@@ -372,8 +372,7 @@ source = "specs/instrumentation.md.hbs"
 source = "specs/showcase.md.hbs"
 
 # No `[[reference]]`, no `[[proof]]`, and no `[[check]]`: the specification fixes
-# behavior, and the appearance it does fix is a legibility floor decided from the
-# pixels rather than a layout to reproduce, so there is no visual target to seed
+# behavior and leaves the look to the build, so there is no visual target to seed
 # or to score against. Every piece of evidence a reviewer sees comes from this
 # case's validators, which pose each scenario against the game the build wrote and
 # capture what it renders. The automated load check still runs.
@@ -1124,20 +1123,22 @@ id = "fog"
 title = "Fog of war"
 [[review.categories.items]]
 id = "unrevealed-black"
-title = "Unrevealed maze is flat dark fog"
-description = "A tile nothing has touched reports visibility u and is drawn as flat darkness — sampled at the tile's center, no brighter than a tenth of full brightness — and a rock tile and a corridor tile that are both unrevealed are drawn alike, within an RGB distance of 25 of 441, so the fog does not leak the layout."
+title = "An untouched tile reports u"
+description = "A rock tile and a corridor tile that neither the forager's light, a sonar pulse nor a flare has reached both report visibility u, so the maze the player has never lit stays behind the fog."
 domains = ["sensing"]
-failure_cap = "scuffed"
+failure_cap = "passable"
+# How dark that fog is drawn, and how alike the rock tile and the corridor tile
+# under it look, are the look and the reviewer reads them off the still.
 # Automated validation: pose a board, keep the forager far from a chosen rock tile
-# and a chosen corridor tile, and sample both against the brightness ceiling and
-# against each other. See validation/<engine>/fog/unrevealed-black.test.ts.
+# and a chosen corridor tile, and read the visibility of both. See
+# validation/<engine>/fog/unrevealed-black.test.ts.
 validation = { script = "fog/unrevealed-black.test.ts", outputs = [
   { id = "fog", name = "The unrevealed maze", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "remembered-persists"
 title = "Revealed terrain is remembered"
-description = "A tile the forager's light has lit reports visibility r once the light moves off it, stays r for the rest of the maze, and is still drawn — sampled at its center it differs from the unrevealed fog by more than 25 of 441 RGB distance."
+description = "A tile the forager's light has lit reports visibility r once the light moves off it, stays r for the rest of the maze, and is still drawn — sampled at its center it reads as something other than the unrevealed fog, in whatever palette and however dim."
 domains = ["sensing"]
 failure_cap = "scuffed"
 # Automated validation: light a tile, swim well clear of it, then read its
@@ -1423,9 +1424,11 @@ validation = { script = "lanternjaw/ink-shakes.test.ts", outputs = [
 [[review.categories.items]]
 id = "bulb-visible"
 title = "Its bulb shows at any distance"
-description = "A Lanternjaw standing on an unrevealed tile far beyond the forager's light, with lit false, still draws its amber mote: the brightest warm pixel found within 12 units of its reported center is well above the surrounding fog and reads amber, with its red channel above its blue."
+description = "A Lanternjaw standing on an unrevealed tile far beyond the forager's light, with lit false, still draws its bulb: the light drawn within 12 units of its reported center differs from the surrounding fog by more than an RGB distance of 25 of 441."
 domains = ["predators"]
 failure_cap = "scuffed"
+# What color the bulb is drawn in is the look and the reviewer reads it off the
+# still.
 # Automated validation: pose a Lanternjaw in unrevealed fog far from the forager,
 # confirm `lit` is false, and search its neighborhood for the mote. See
 # validation/<engine>/lanternjaw/bulb-visible.test.ts.
@@ -1447,11 +1450,11 @@ validation = { script = "lanternjaw/wander-disguise.test.ts", outputs = [
 [[review.categories.items]]
 id = "additive-reveal"
 title = "Lighting it leaves the bulb where it was"
-description = "Bringing the forager's light onto a Lanternjaw adds its body without disturbing its tell: the amber mote is found in the same place within 4 units of where it was unlit and still reads amber, while the pixels around it, sampled clear of the mote, go from fog to a drawn body."
+description = "Bringing the forager's light onto a Lanternjaw adds its body without disturbing its tell: a light is still drawn at the place the mote was drawn at unlit, still red-leaning, while the pixels around it, sampled clear of the mote, go from that fog to a drawn body."
 domains = ["predators", "presentation"]
 failure_cap = "great"
 # Automated validation: find the mote unlit, bring the light onto the creature,
-# find the mote again, and sample the body ring in both states. See
+# read the same place again, and sample the body ring in both states. See
 # validation/<engine>/lanternjaw/additive-reveal.test.ts.
 validation = { script = "lanternjaw/additive-reveal.test.ts", outputs = [
   { id = "reveal", name = "The bulb unchanged as the body appears around it", kind = "replay" },
@@ -1751,8 +1754,7 @@ failure_cap = "passable"
 # The cap is `passable` rather than `great`: a spurious flash over a Lanternjaw
 # is not a stray decoration, it resolves the one hunter whose whole design is
 # that it hides among the amber lights, and the player who learns to read it
-# never has to commit to a glimmer again. `amber.lookalikes` caps the same bluff
-# at `scuffed` from the look's side, and this is the same bluff from the alert's.
+# never has to commit to a glimmer again.
 # Automated validation: earn a fresh Lanternjaw acquisition and sample `alert`
 # every step across the window that would carry one. See
 # validation/<engine>/alert/lanternjaw-none.test.ts.
@@ -1775,24 +1777,12 @@ validation = { script = "alert/refresh-fires-nothing.test.ts", outputs = [
 
 # --- Amber look-alikes --------------------------------------------------------
 # The bluff at the center of the game: a glimmer in the dark is a free 200 points
-# or a hunter, and nothing but committing to it tells you which. The look is
-# sampled by searching each creature's neighborhood for the brightest warm pixel,
-# because a build may draw the mote anywhere on the body.
+# or a hunter, and nothing but committing to it tells you which. How alike the two
+# lights look is the reviewer's to judge; these items grade the drifter's own
+# behavior, which is the half of the bluff a check can decide.
 [[review.categories]]
 id = "amber"
 title = "Amber look-alikes"
-[[review.categories.items]]
-id = "lookalikes"
-title = "A drifter and a Lanternjaw's bulb read alike"
-description = "A bonus drifter and a wandering Lanternjaw posed side by side in unrevealed fog, both beyond the forager's light, each draw a warm mote whose red channel exceeds its blue, and the two motes differ from each other by no more than an RGB distance of 40 of 441, so one glimmer is not told from the other."
-domains = ["sensing", "predators"]
-failure_cap = "scuffed"
-# Automated validation: pose the two on separate corridors well beyond V, search
-# each neighborhood for its brightest warm pixel, and compare them. See
-# validation/<engine>/amber/lookalikes.test.ts.
-validation = { script = "amber/lookalikes.test.ts", outputs = [
-  { id = "amber", name = "The amber look-alikes side by side", kind = "image" },
-] }
 [[review.categories.items]]
 id = "drifter-permanent"
 title = "A drifter stays until it is eaten"
@@ -1816,7 +1806,7 @@ failure_cap = "scuffed"
 # bluff: specs/gameplay.md has a wandering Lanternjaw drift at this same figure
 # so the two amber lights are alike "in look and in motion", and a drifter moving
 # at any other rate is told from a Lanternjaw across the maze without committing
-# to it. `amber.lookalikes` caps the look at `scuffed` for the same reason.
+# to it.
 # Automated validation: spawn a drifter on a posed corridor with a long straight
 # run and measure the ground it covers against the simulated time it took. See
 # validation/<engine>/amber/drifter-speed.test.ts.
@@ -2498,12 +2488,11 @@ validation = { script = "touch/howto-returns.test.ts", outputs = [
 # the gauges.
 #
 # WHAT IS AND IS NOT ASSERTED. That the element is drawn, that it is drawn in the
-# strip specs/ui.md gives it, that it reports the figure the snapshot reports at
-# the same moment, and that it is legible where it stands — its own pixels more
-# than 50 of 441 in RGB distance from the strip behind them, sampled well inside
-# a stroke. Where inside its strip it sits, what color it is, what type it is set
-# in and how it is styled are the build's, and specs/ui.md says so in as many
-# words, so nothing here reads a position or a hue. How good the HUD LOOKS is the
+# strip specs/ui.md gives it, and that it reports the figure the snapshot reports
+# at the same moment. Where inside its strip it sits, what color it is, what type
+# it is set in and how it is styled are the build's, and specs/ui.md says so in as
+# many words, so nothing here reads a position, a hue or a contrast. How good the
+# HUD LOOKS, and whether each element reads against the strip behind it, is the
 # aesthetic rating's.
 #
 # The sixth element, the dive label, is the one thing on screen the two dives
@@ -2515,7 +2504,7 @@ title = "The HUD"
 [[review.categories.items]]
 id = "score"
 title = "The score is on the top strip"
-description = "While a maze is on screen the running score is drawn legibly in the top strip, y in [0, 80], reading the figure the snapshot reports, and it reads the new figure once the forager has eaten a plankton."
+description = "While a maze is on screen the running score is drawn in the top strip, y in [0, 80], reading the figure the snapshot reports, and it reads the new figure once the forager has eaten a plankton."
 domains = ["progression", "presentation"]
 failure_cap = "passable"
 # Automated validation: open a dive with a posed score, read the drawn text and
@@ -2527,7 +2516,7 @@ validation = { script = "hud/score.test.ts", outputs = [
 [[review.categories.items]]
 id = "lives"
 title = "The lives are on the bottom strip"
-description = "While a maze is on screen the lives in reserve are drawn legibly in the bottom strip, y in [656, 720], as that many small forager icons, and one icon fewer is drawn for each life fewer the reserve holds."
+description = "While a maze is on screen the lives in reserve are drawn in the bottom strip, y in [656, 720], as that many small forager icons, and one icon fewer is drawn for each life fewer the reserve holds."
 domains = ["progression", "presentation"]
 failure_cap = "passable"
 # Automated validation: open a dive with an emptied board, pose the reserve down
@@ -2540,7 +2529,7 @@ validation = { script = "hud/lives.test.ts", outputs = [
 [[review.categories.items]]
 id = "depth"
 title = "The depth is on the bottom strip"
-description = "While a maze is on screen the current depth is drawn legibly in the bottom strip, y in [656, 720], as DEPTH 1, DEPTH 2 and so on for the depth the snapshot reports, and it names the deeper figure once the depth has moved on."
+description = "While a maze is on screen the current depth is drawn in the bottom strip, y in [656, 720], as DEPTH 1, DEPTH 2 and so on for the depth the snapshot reports, and it names the deeper figure once the depth has moved on."
 domains = ["progression", "presentation"]
 failure_cap = "passable"
 # Automated validation: open a dive at a posed depth, read the drawn text and
@@ -2553,7 +2542,7 @@ validation = { script = "hud/depth.test.ts", outputs = [
 [[review.categories.items]]
 id = "sonar-gauge"
 title = "The sonar gauge is on the bottom strip"
-description = "While a maze is on screen a gauge drawn legibly in the bottom strip, y in [656, 720], reports whether the sonar pulse is ready: it is drawn at its full extent while sonar.ready is true, drawn short of full on the step a pulse is emitted, and drawn longer again as sonar.cooldown runs down."
+description = "While a maze is on screen a gauge drawn in the bottom strip, y in [656, 720], reports whether the sonar pulse is ready: it is drawn at its full extent while sonar.ready is true, drawn short of full on the step a pulse is emitted, and drawn longer again as sonar.cooldown runs down."
 domains = ["sensing", "progression"]
 failure_cap = "passable"
 # Automated validation: open live play with the pulse ready, measure what the
@@ -2565,7 +2554,7 @@ validation = { script = "hud/sonar-gauge.test.ts", outputs = [
 [[review.categories.items]]
 id = "ink-gauge"
 title = "The ink gauge is on the bottom strip"
-description = "While a maze is on screen a gauge drawn legibly in the bottom strip, y in [656, 720], reports whether ink is ready: it is drawn at its full extent while ink.ready is true, drawn short of full on the step a cloud is released, and drawn longer again as ink.cooldown runs down."
+description = "While a maze is on screen a gauge drawn in the bottom strip, y in [656, 720], reports whether ink is ready: it is drawn at its full extent while ink.ready is true, drawn short of full on the step a cloud is released, and drawn longer again as ink.cooldown runs down."
 domains = ["sensing", "progression"]
 failure_cap = "passable"
 # Automated validation: open live play with ink ready, measure what the gauge
@@ -2777,14 +2766,16 @@ id = "presentation"
 title = "Presentation"
 [[review.categories.items]]
 id = "window-fit"
-title = "The stage is fitted and centered"
-description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface at its own aspect ratio, centered with even letterboxing, and the bars carry the stage's background color within an RGB distance of 25 of 441."
+title = "The build draws into the fitted stage"
+description = "Over a window wider than the stage and one taller than it, the build draws in the logical STAGE_W x STAGE_H (1280 x 720) space rather than in device pixels: the forager's own tile is drawn at the logical coordinate the snapshot reports it at, mapped through the fit, standing more than an RGB distance of 25 of 441 from unrevealed fog read in the same frame. Where the build derives the fit itself, the canvas backing store is the window at its device pixel ratio and the whole stage sits inside it at its own aspect ratio, centered with even letterboxing."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: stand the game up over several surface sizes and pixel
-# ratios, measure where the stage lands and what the bars are painted with, and on
-# a letterboxed window read the drawn light's own midpoint off the canvas against
-# where the specified fit puts the forager. See
+# What the letterbox bars are painted with, and what the fitted stage looks like,
+# are the look and the reviewer reads them off the captured still.
+# Automated validation: stand the game up over a letterboxed window, pose a lit
+# room, and read the forager's own tile against unrevealed fog of the same frame;
+# under `none`, where the build derives the fit, measure the backing store and the
+# specified fit over six surface shapes as well. See
 # validation/<engine>/presentation/window-fit.test.ts.
 validation = { script = "presentation/window-fit.test.ts", outputs = [
   { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },

@@ -3,10 +3,13 @@
 //
 // specs/assets.md: "The screen shake: a short render-space jitter of the world on
 // a gas detonation, an explosives blast, a hard landing, or the Core Sample's
-// detonation, scaled to the event and decaying out." specs/hazards.md says the
-// same from the hazard's side: a pocket that goes off shakes the screen. The
-// frames just after a blast are therefore displaced from the frames before it,
-// and the frames well after it are back where they started.
+// detonation, scaled to the event and decaying out. The jitter displaces the
+// drawn world by at least `SHAKE_MIN` (`2`) logical units at its peak, and the
+// world is back where it started within `SHAKE_SETTLE` (`3`) seconds of the
+// event." specs/hazards.md says the same from the hazard's side: a pocket that
+// goes off shakes the screen. The frames just after a blast are therefore
+// displaced from the frames before it, and the frames well after it are back
+// where they started.
 //
 // THE READING IS A DISPLACEMENT, NOT A DIFFERENCE. A blast also lights a flash,
 // throws a produced particle burst and opens a crater, so a check that only asked
@@ -45,7 +48,7 @@ import {
   assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
-import { TILE } from "../constants";
+import { SHAKE_MIN, SHAKE_SETTLE, TILE } from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -76,12 +79,6 @@ const MAX_SHIFT = 24;
 
 /** How many frames after the blast the jitter is looked for. */
 const SHAKE_FRAMES = 48;
-
-/** How far the picture must slide, in units, for the shake to be visible. */
-const SHAKE_MIN = 2;
-
-/** How long after the blast the jitter must have decayed out, in seconds. */
-const SETTLE_SECONDS = 3;
 
 /** How many frames the settled picture is sampled over. */
 const SETTLED_FRAMES = 12;
@@ -180,7 +177,7 @@ it("jitters the drawn world after a detonation and lets the jitter decay", async
   });
 
   // And well after it, the picture is back where it was.
-  await h.advanceSeconds(SETTLE_SECONDS, SETTLE_SECONDS * 30);
+  await h.advanceSeconds(SHAKE_SETTLE, SHAKE_SETTLE * 30);
   let settled = 0;
   for (let frame = 0; frame < SETTLED_FRAMES; frame += 1) {
     await h.advance(1);
@@ -205,6 +202,6 @@ it("jitters the drawn world after a detonation and lets the jitter decay", async
   assertLessThanOrEqual(
     settled,
     SETTLED_MAX,
-    `the jitter decayed out ${SETTLE_SECONDS}s after the detonation, in units of slide under the camera's own mapping`,
+    `the jitter decayed out ${SHAKE_SETTLE}s after the detonation, in units of slide under the camera's own mapping`,
   );
 });

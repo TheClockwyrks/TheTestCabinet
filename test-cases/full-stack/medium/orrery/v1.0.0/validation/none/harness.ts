@@ -174,31 +174,6 @@ export interface HarnessOptions {
    * first frame a check drives.
    */
   armAudio?: boolean;
-  /**
-   * Produced files whose REQUEST PATH matches are not served, so the build's load
-   * of them fails.
-   *
-   * `specs/assets.md`: "A load that fails leaves the game running... so a missing
-   * file costs the game its polish rather than its playability." This is how a
-   * check poses that: the page is routed so every matching request is refused,
-   * reloaded, and put back where a fresh harness leaves it, and what is read back
-   * is that the game still initializes, still ticks, still takes input and still
-   * draws.
-   *
-   * THE PATTERN IS TESTED AGAINST THE REQUEST'S PATHNAME, WHICH IS THE BUNDLER'S
-   * NAME RATHER THAN THE AUTHORED ONE. A build's `dist/` is a bundle, so
-   * `assets/audio/place.wav` is served as something like
-   * `/assets/place-C7eSjQc3.wav` — match the stem (`/place/`) or the extension
-   * (`/\.wav$/`) rather than the authored path.
-   *
-   * AND A FILE THE BUILD NEVER REQUESTS CANNOT BE WITHHELD. A bundler is free to
-   * inline a small produced PNG as a `data:` URI, which is still the committed
-   * file and is still conformant; such a build simply makes no request to refuse,
-   * so a check that withholds it observes a game that never missed anything. That
-   * is the honest outcome rather than a gap: the requirement is about a load that
-   * FAILS, and no load happened.
-   */
-  withoutAssets?: RegExp;
 }
 
 /**
@@ -225,6 +200,23 @@ export interface Harness {
   readonly cues: TimedCue[][];
   /** Every produced file the build asked for and did not get, oldest first. */
   readonly assetFailures: AssetFailure[];
+  /**
+   * Every produced file the build asked for, oldest first, and each one served.
+   *
+   * WHAT THE BUILD REACHED FOR is a reading in its own right: a point about which
+   * of two committed files the game runs is decided by which of them the build
+   * requested, and nothing about the request is interfered with. Read off the
+   * page's own resource timeline, so a file fetched before this harness was handed
+   * over is named here too, and a path appears whether its load went on to succeed
+   * or not.
+   *
+   * THE PATHS ARE THE BUNDLER'S NAMES RATHER THAN THE AUTHORED ONES. A build's
+   * `dist/` is a bundle, so `assets/audio/music.wav` is served as something like
+   * `/assets/music-C7eSjQc3.wav` — match the stem and the extension rather than
+   * the authored path. A file a bundler inlined as a `data:` URI is not a request
+   * and is not named here.
+   */
+  assetRequests(): Promise<string[]>;
   /** Everything the runtime logged as an error or threw, oldest first. */
   readonly pageErrors: string[];
 
@@ -406,10 +398,6 @@ export async function createHarness(
     });
   });
 
-  if (options.withoutAssets !== undefined) {
-    await withheldAssets(base, options.withoutAssets);
-  }
-
   // The kit stamps every sound with the frame it sounded on and pushes it into
   // the sinks it holds. Orrery's cue carries two more fields — the name, and
   // whether it looped — so this harness keeps sinks of its own and drains the
@@ -486,6 +474,12 @@ export async function createHarness(
     surfaceFault: base.surfaceFault,
     cues,
     assetFailures,
+    assetRequests: async () =>
+      await base.page.evaluate(() =>
+        performance
+          .getEntriesByType("resource")
+          .map((entry) => new URL(entry.name, document.baseURI).pathname),
+      ),
     pageErrors: base.pageErrors,
 
     frame: () => base.frame(),
@@ -599,37 +593,6 @@ export async function createHarness(
   };
 
   return harness;
-}
-
-/**
- * Reload the page with every request matching `pattern` refused, and put the game
- * back where a fresh harness leaves it.
- *
- * The route has to be installed BEFORE the document loads, and the kit's factory
- * navigates as it opens, so the page is routed and then reloaded. The two calls
- * the kit's opening makes — off the wall clock, and back to the title — are made
- * again afterwards, because the reload undid them.
- */
-async function withheldAssets(
-  base: KitHarness<OrrerySnapshot, OrrerySurface>,
-  pattern: RegExp,
-): Promise<void> {
-  await base.page.route(
-    (url) => pattern.test(url.pathname),
-    (route) => route.abort(),
-  );
-  await base.page.reload({ waitUntil: "load" });
-  await base.page
-    .waitForFunction(
-      (handle) =>
-        (window as unknown as Record<string, unknown>)[handle] !== undefined,
-      ORRERY_SURFACE_KEY,
-      { timeout: base.config.surfaceTimeoutMs },
-    )
-    .catch(() => undefined);
-  if (base.surfaceFault !== null) return;
-  await base.debug.setAutoStep?.(false);
-  await base.debug.reset();
 }
 
 /* -------------------------------------------------------------------------- */

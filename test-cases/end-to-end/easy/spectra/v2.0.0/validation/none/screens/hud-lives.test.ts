@@ -38,33 +38,15 @@ import {
   startPosed,
   type Harness,
 } from "../harness";
-import { BOTTOM_STRIP, changedSamples, driftOverOneFrame } from "./reading";
+import {
+  BOTTOM_STRIP,
+  PAINT_MIN,
+  changedSamples,
+  driftOverOneFrame,
+} from "./reading";
 
 /** The lives the two readings are taken at. */
 const FEWER_LIVES = 1;
-
-/**
- * How far a sample must move to count as repainted, as a Euclidean RGB distance
- * out of the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to
- * the build: `40` is about a tenth of the space, which is the least a player reads
- * as a change at a glance, and far above the nothing that separates two readings
- * of one unchanged pixel.
- */
-const REPAINT_MIN = 40;
-
-/**
- * How many samples of the strip must be repainted.
- *
- * The lattice below is one sample every two logical units in each direction, so
- * `16` samples is about `64` square units of the strip — an eight-by-eight mark,
- * which is smaller than one digit of type legible at the stage's `1280 x 720`
- * (`specs/ui.md`) and smaller than one life icon in a `64`-unit-tall strip. It is
- * a floor under anti-aliasing noise on a single glyph edge rather than a demand on
- * how a build draws the readout.
- */
-const REPAINT_MIN_SAMPLES = 16;
 
 /** One sample every two logical units: `20480` over the whole strip. */
 const READ_STEP = 2;
@@ -90,12 +72,7 @@ it("repaints the bottom strip when the lives remaining change", async () => {
   );
 
   // What the strip does on its own across one frame, with nothing posed.
-  const drift = await driftOverOneFrame(
-    h,
-    BOTTOM_STRIP,
-    READ_STEP,
-    REPAINT_MIN,
-  );
+  const drift = await driftOverOneFrame(h, BOTTOM_STRIP, READ_STEP, PAINT_MIN);
   const atFull = drift.reading;
 
   await h.debug.setLives(FEWER_LIVES);
@@ -109,8 +86,8 @@ it("repaints the bottom strip when the lives remaining change", async () => {
   await captureStill(h, "lives");
 
   assertGreaterThan(
-    changedSamples(atFull, atFewer, REPAINT_MIN),
-    Math.max(drift.count, REPAINT_MIN_SAMPLES),
+    changedSamples(atFull, atFewer, PAINT_MIN),
+    drift.count,
     `samples of the bottom HUD strip repainted when the lives went from ` +
       `${START_LIVES} to ${FEWER_LIVES} — the lives readout "changes as the ` +
       `lives change" (specs/ui.md) and sits in that strip (specs/field.md); ` +

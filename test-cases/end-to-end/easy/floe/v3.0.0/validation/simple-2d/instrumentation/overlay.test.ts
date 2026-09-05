@@ -14,7 +14,9 @@
 // through the same recorded context as everything else, so the check collects the
 // text a steady frame draws WITHOUT the panel and then the text the toggle's frame
 // draws WITH it: the difference is the panel's own lines. What the toggle itself
-// does is `controls/overlay-backquote`'s point; this one reads what the panel says.
+// does is `controls/overlay-backquote`'s point, and that item is
+// `engines = ["none"]` because the key and the panel are the engine's here; this
+// one reads what the panel says, which is the build's under every engine.
 //
 // THE STRAIT IS POSED SO EVERY FACT IS A NUMBER NOTHING ELSE ON THE PANEL HAS TO
 // PRODUCE, and every one of them is a whole number or a fixed word, so no rounding

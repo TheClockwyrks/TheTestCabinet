@@ -4,9 +4,9 @@
 // neighbourhood, and a number a frame drew, so those readings live beside the
 // checks that use them rather than in the shared harness next door. Like
 // everything there they fix a READING alone — which square of the stage a readout
-// may sit in, how many of its pixels moved, and which runs of text carry a number
-// — and never a threshold: every distance, count and tolerance a check asserts is
-// stated in that check, derived from the figure `specs/` fixes for it.
+// may sit in, which of its pixels moved, and which runs of text carry a number —
+// and never a threshold: every count and tolerance a check asserts is stated in
+// that check, derived from the figure `specs/` fixes for it.
 //
 // WHY A HUD CHECK READS A WHOLE STRIP. `specs/field.md` puts each readout in one of
 // the two strips and then says, in as many words, that "how each is composed and
@@ -113,6 +113,21 @@ export async function drawFrame(h: Harness): Promise<DrawCall[]> {
 /* Comparing two readings of one region                                       */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * How far a place must move between two readings to count as repainted, as a
+ * Euclidean RGB distance out of the `441` an RGB cube is across.
+ *
+ * THIS IS THE READING, NOT A THRESHOLD. It decides which places of a region
+ * count as having been drawn on again, and how far a readout moves beyond that
+ * is never asserted: `specs/ui.md` fixes each readout's CONTENT and
+ * `specs/field.md` leaves its composition and placement within its strip to the
+ * build, so the palette, the type and the treatment are the reviewer's to rate.
+ * Two readings of one place nothing was drawn on are identical, so anything
+ * above zero would do; `12` is a little above the rounding one composite can put
+ * on a pixel.
+ */
+export const PAINT_MIN = 12;
+
 /** Two readings of one region are the same size, or they are not comparable. */
 function sameShape(before: Uint8ClampedArray, after: Uint8ClampedArray): void {
   if (before.length !== after.length || before.length === 0) {
@@ -130,8 +145,8 @@ function sameShape(before: Uint8ClampedArray, after: Uint8ClampedArray): void {
  * The harness's own `paintedFraction` holds a reading against ONE colour, which is
  * the question "how much of this square is not the field behind it". The question
  * every HUD check here asks is the other one: how much of this square changed when
- * the value it reports changed. `minDistance` is the caller's, because what counts
- * as a pixel having moved is the check's own figure.
+ * the value it reports changed. `minDistance` is the caller's; every check in this
+ * group passes {@link PAINT_MIN}.
  */
 export function countMoved(
   before: Uint8ClampedArray,

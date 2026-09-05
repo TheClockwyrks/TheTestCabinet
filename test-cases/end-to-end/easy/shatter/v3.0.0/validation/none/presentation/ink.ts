@@ -3,28 +3,28 @@
 // LOCAL TO THIS GROUP ON PURPOSE. `validation/none/harness.ts` owns the compound
 // sequences the whole project shares and the small colour vocabulary every group
 // uses (`sampleColor`, `sampleField`, `colorDistance`, `luminance`); what is here
-// is the sampling geometry only these seventeen checks want, so it lives beside
-// them and leaves the shared file alone.
+// is the sampling geometry only this group's checks want, so it lives beside them
+// and leaves the shared file alone.
 //
-// NOTHING HERE FIXES A BOUND. `specs/overview.md` closes its Visual design
+// NOTHING HERE FIXES A COLOUR. `specs/overview.md` closes its Visual design
 // section with the sentence that the palette, the type and every other aspect of
 // the look are the build's, so no colour, no font and no drawn dimension is
-// asserted anywhere in this project. Every check here reads two things the BUILD
-// drew and compares them, and the DISTANCE it demands is the check's own figure,
-// stated and derived in the check. This file only says WHERE a reading is taken
+// asserted anywhere in this project. What a reading here decides is whether the
+// BUILD drew something where a requirement says something is drawn, always against
+// the field the build itself painted. This file only says WHERE a reading is taken
 // and how a set of readings is reduced to one number.
 //
 // THE DISC OF SAMPLES, AND WHY IT IS POLAR. A body is posed at a centre and is
 // drawn around it; a build may put its mark anywhere on it — a filled body, a bare
 // outline, a canopy on one side. So the samples are laid on concentric rings,
 // staggered by half a step so they do not fall into spokes, covering the whole
-// disc rather than a patch of it. A ring mean is very nearly invariant under a
-// rotation, which is what lets `star-halo-fades-outward` read a ramp off a build
+// disc rather than a patch of it, and no reading depends on the bearing a spoke
+// happened to land on — which is what lets `star-halo-fades-outward` read a build
 // free to draw its halo with any texture it likes.
 
 import { TAU } from "../constants";
 import { wrap, type Vec } from "../geometry";
-import { colorDistance, luminance, type Harness, type Rgb } from "../harness";
+import { colorDistance, type Harness, type Rgb } from "../harness";
 
 /* ---- A disc of samples over a body --------------------------------------- */
 
@@ -100,33 +100,6 @@ export function markedCount(
   return marked;
 }
 
-/**
- * The mean colour of the marked samples: what the build drew this body IN, as
- * opposed to what it left the field behind it.
- *
- * `null` when nothing was marked, which the caller reports as the body not having
- * been drawn rather than as a colour comparison it could not make.
- */
-export function markedColor(
-  look: readonly Rgb[],
-  background: Rgb,
-  threshold: number,
-): Rgb | null {
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  let marked = 0;
-  for (const sample of look) {
-    if (colorDistance(sample, background) <= threshold) continue;
-    r += sample.r;
-    g += sample.g;
-    b += sample.b;
-    marked += 1;
-  }
-  if (marked === 0) return null;
-  return { r: r / marked, g: g / marked, b: b / marked };
-}
-
 /** How many samples moved by more than `threshold` between two readings. */
 export function changedSamples(
   before: readonly Rgb[],
@@ -151,21 +124,6 @@ export function meanDistance(look: readonly Rgb[], background: Rgb): number {
   return total / look.length;
 }
 
-/** The mean luminance of a set of readings, out of 255. */
-export function meanLuminance(look: readonly Rgb[]): number {
-  if (look.length === 0) return 0;
-  let total = 0;
-  for (const sample of look) total += luminance(sample);
-  return total / look.length;
-}
-
-/** The middle value of a list of numbers; the low middle when there are two. */
-export function median(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length - 1) / 2)];
-}
-
 /** The value `fraction` of the way up a sorted list, by linear position. */
 export function percentile(
   values: readonly number[],
@@ -180,7 +138,7 @@ export function percentile(
   return sorted[at];
 }
 
-/* ---- A ring of samples, for a ramp --------------------------------------- */
+/* ---- A ring of samples ---------------------------------------------------- */
 
 /** Samples around one ring, for a reading that must not depend on an angle. */
 export function ringPoints(
@@ -386,37 +344,27 @@ export function changedCells(
 }
 
 /**
- * How many separated marks a band of cells holds, reading left to right.
+ * How many cells inside `band` carry a reading beyond `threshold`.
  *
- * A column counts as inked when any row of the band inside it is; a run of inked
- * columns is one mark, and two marks are separated when at least `gap` bare columns
- * lie between them. What `hud-lives-are-drawn` counts glyphs with, since the glyphs
- * `specs/ui.md` puts "in a row" are separated marks by construction.
+ * The ink a band holds, in cells. What `hud-lives-are-drawn` reads a row of reserve
+ * glyphs with: the ink the row carries, held against the ink ONE GLYPH THE BUILD
+ * ITSELF DREW carries. Measuring the row against the build's own glyph is what lets
+ * the reading sit at the sensing floor — a speck of a decorated field is a cell or
+ * two where a glyph is scores of them, so the field a build paints behind its HUD
+ * moves the count by a fraction of a glyph and never by one.
  */
-export function marksInBand(
+export function inkedInBand(
   grid: InkGrid,
   band: { fromRow: number; toRow: number; fromCol: number; toCol: number },
   threshold: number,
-  gap: number,
 ): number {
-  let marks = 0;
-  let bare = gap;
-  for (let col = band.fromCol; col <= band.toCol; col += 1) {
-    if (col < 0 || col >= grid.cols) continue;
-    let inked = false;
-    for (let row = band.fromRow; row <= band.toRow; row += 1) {
-      if (row < 0 || row >= grid.rows) continue;
-      if (inkAt(grid, col, row) > threshold) {
-        inked = true;
-        break;
-      }
-    }
-    if (inked) {
-      if (bare >= gap) marks += 1;
-      bare = 0;
-    } else {
-      bare += 1;
+  let cells = 0;
+  for (let row = band.fromRow; row <= band.toRow; row += 1) {
+    if (row < 0 || row >= grid.rows) continue;
+    for (let col = band.fromCol; col <= band.toCol; col += 1) {
+      if (col < 0 || col >= grid.cols) continue;
+      if (inkAt(grid, col, row) > threshold) cells += 1;
     }
   }
-  return marks;
+  return cells;
 }

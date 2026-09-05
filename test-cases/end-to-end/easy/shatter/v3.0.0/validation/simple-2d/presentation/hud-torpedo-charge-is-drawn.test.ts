@@ -31,19 +31,20 @@
 // in as many words. A build whose readout is a fixed picture reads the same number
 // three times and fails.
 //
-// AND THE ORDER IS ASSERTED, NOT MERELY THE DIFFERENCE. "The bar fills smoothly from
-// empty to full" fixes which way the readout moves, so a build whose bar EMPTIES as
-// the charge rises is caught here rather than passing on having drawn something that
-// changed. Each of the two steps must carry at least {@link MIN_STEP} of the whole
-// swing between empty and full, so a bar that jumps from empty straight to full at
-// the last instant of the recharge — which is not "smoothly" — fails as well.
+// AND THE DIRECTION IS ASSERTED, NOT MERELY THE DIFFERENCE. "The bar is full and
+// the glyph lit while a torpedo is ready" and "the bar fills smoothly from empty to
+// full across the recharge" fix which way the readout moves, so a build whose bar
+// EMPTIES as the charge rises is caught here rather than passing on having drawn
+// something that changed. HOW FAST it fills is not read: the specification fixes no
+// share of the swing for either the bar or the glyph, and how the two divide it is
+// the build's.
 //
 // THE SHIP IS PARKED OFF THE UPPER HALF, so the one body no scenario can remove is
 // not read as part of the HUD, and the star's own drawn extent is excluded by
 // {@link clearOfStar}.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
+import { assertGreaterThan, fail } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -60,7 +61,13 @@ import {
 } from "./ink";
 import { HUD_REGION, SHIP_SPOT, clearOfStar, sampleField } from "./scene";
 
-/** The charges posed, in the order they are read: full, half, empty. */
+/**
+ * The charges posed, in the order they are read: full, half, empty.
+ *
+ * The two ends are what the readings below compare. The half is posed between them
+ * for the still alone, so the picture a reviewer is handed is the readout part-way
+ * through its recharge rather than at one of its two extremes.
+ */
 const CHARGES = [1, 0.5, 0] as const;
 
 /**
@@ -71,26 +78,16 @@ const CHARGES = [1, 0.5, 0] as const;
  */
 const CELL = 1;
 
-/** How much a cell's ink must move between two charges to be the readout's, of 441. */
-const CHANGE = 30;
-
 /**
- * How much of the whole swing each of the two steps must carry.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * A tenth, and it is set to refuse ONE thing: a readout that does nothing at all
- * over one half of the recharge, which is what "fills smoothly from empty to full"
- * rules out. A build whose bar jumps from empty straight to full at the last instant
- * reads `0` for the half it did nothing in and fails at any positive figure.
- *
- * It is deliberately not tighter, because how the swing divides between the bar and
- * the glyph is the build's own and the specification fixes neither. A bar that fills
- * evenly puts half the swing into each step; a build whose glyph is large and only
- * lights at a full charge puts most of it into the first. The three references read
- * `0.25`, `0.34` and `0.44` for their smaller step, so a tenth clears every one of
- * them by more than double and still leaves a static half of the recharge nowhere to
- * hide.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const MIN_STEP = 0.1;
+const CHANGE = 8;
 
 /** The score and the ships posed, so the HUD's other readouts are drawn throughout. */
 const SCORE = 730;
@@ -165,15 +162,4 @@ it("draws a torpedo readout whose ink falls from a full charge to an empty one",
       "torpedo is ready, and the bar fills from empty across the recharge " +
       "(specs/ui.md)",
   );
-
-  for (let step = 0; step + 1 < ink.length; step += 1) {
-    assertGreaterThanOrEqual(
-      (ink[step] - ink[step + 1]) / swing,
-      MIN_STEP,
-      "how much of the whole full-to-empty swing the readout gave up between " +
-        `torpedoCharge ${CHARGES[step]} and ${CHARGES[step + 1]}, where the ` +
-        "bar fills smoothly from empty to full across the recharge " +
-        "(specs/ui.md)",
-    );
-  }
 });

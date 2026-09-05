@@ -21,7 +21,10 @@
 // preview held or the tower selected, and the ring is what MOVED. The floor art,
 // the grid and the tower itself are identical in the two frames and cancel exactly.
 // How much the picture moves on its own is measured rather than assumed: two quiet
-// frames are read first, and the ring has to beat that movement.
+// frames are read first, and the ring has to beat that movement by `NOISE_MARGIN`.
+// No figure here says how strongly a ring must be drawn — `specs/overview.md` hands
+// the palette and the glow to the build — so a quiet hairline over the floor reads
+// exactly as a bright one does.
 //
 // AND WHY THE CIRCLE IS READ AT EVERY ANGLE. Sixteen bearings around the centre,
 // each read across a narrow band of radii. A build that centred its ring on the
@@ -31,7 +34,8 @@
 // hope.
 //
 // HOW THE RADIUS IS PINNED. A second band of the same sixteen bearings, two tiles
-// further out, must stay quiet. A ring drawn too small is already refused by the
+// further out, must stay inside its OWN measured movement — nothing new drawn
+// there. A ring drawn too small is already refused by the
 // first band finding nothing; this refuses one drawn too large, and one drawn
 // across the whole floor. There is deliberately no equivalent band INSIDE the
 // ring: `specs/building.md` says a ring at the range and says nothing against a
@@ -54,31 +58,7 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-import { readPixels, type Point } from "./read";
-
-/**
- * How far a pixel must move, out of the 441 the RGB cube spans, to count as the
- * ring having been drawn there.
- *
- * A LOW BAR, ON PURPOSE. `specs/building.md` requires a ring and fixes nothing
- * about how strongly it is drawn; a build is free to lay a quiet hairline over its
- * floor, and this item is about WHERE the ring is rather than how loud. 24 is
- * about five per cent of the scale — under an eighth of what this group calls
- * "plainly apart", far more than the movement two identical frames show, and low
- * enough that a ring drawn at a tenth of full strength still reads.
- */
-const DRAWN_MIN = 24;
-
-/**
- * How far a pixel outside the ring may move and still count as untouched.
- *
- * Half of `DRAWN_MIN`, so no reading can satisfy both bands at once and the
- * bracket has no gap to hide in.
- */
-const QUIET_MAX = DRAWN_MIN / 2;
-
-/** How far above two identical frames' own movement a reading must sit. */
-const NOISE_MARGIN = DRAWN_MIN;
+import { NOISE_MARGIN, readPixels, type Point } from "./read";
 
 /** The bearings the circle is read at. */
 const BEARINGS = 16;
@@ -169,7 +149,12 @@ async function ringReading(
   radius: number,
   show: () => Promise<void>,
   outputId?: string,
-): Promise<{ ring: number[]; quiet: number[]; noise: number[] }> {
+): Promise<{
+  ring: number[];
+  quiet: number[];
+  noise: number[];
+  quietNoise: number[];
+}> {
   const ring = bandPoints(centre, radius);
   const outside = bandPoints(centre, radius + QUIET_TILES_OUT * TILE);
   const points = [...ring, ...outside];
@@ -189,6 +174,7 @@ async function ringReading(
     ring: shiftPerBearing(second.slice(0, split), shown.slice(0, split)),
     quiet: shiftPerBearing(second.slice(split), shown.slice(split)),
     noise: shiftPerBearing(first.slice(0, split), second.slice(0, split)),
+    quietNoise: shiftPerBearing(first.slice(split), second.slice(split)),
   };
 }
 
@@ -212,7 +198,7 @@ it("draws a range ring at the held type's range around the held footprint", asyn
   for (let n = 0; n < BEARINGS; n += 1) {
     assertGreaterThanOrEqual(
       reading.ring[n],
-      Math.max(DRAWN_MIN, reading.noise[n] + NOISE_MARGIN),
+      reading.noise[n] + NOISE_MARGIN,
       `a held ${PREVIEW_TYPE} on tile (${PREVIEW_AT.col}, ${PREVIEW_AT.row}): ` +
         `something is drawn ${radius} units from its footprint centre ` +
         `(${centre.x}, ${centre.y}) on bearing ${n} of ${BEARINGS} that was ` +
@@ -223,7 +209,7 @@ it("draws a range ring at the held type's range around the held footprint", asyn
     );
     assertLessThanOrEqual(
       reading.quiet[n],
-      QUIET_MAX,
+      reading.quietNoise[n] + NOISE_MARGIN,
       `a held ${PREVIEW_TYPE}: the floor ${QUIET_TILES_OUT} tiles OUTSIDE that ` +
         `ring, on bearing ${n} of ${BEARINGS}, is untouched, so the ring is at ` +
         `the ${radius / TILE}-tile range rather than a larger one ` +

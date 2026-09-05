@@ -83,17 +83,12 @@ const POINTS = gridPoints(STAGE_RECT, SAMPLE_COLS, SAMPLE_ROWS);
 const PITCH_X = STAGE_RECT.w / SAMPLE_COLS;
 const PITCH_Y = STAGE_RECT.h / SAMPLE_ROWS;
 
-/**
- * How far a point must sit from the bare table to count as painted, out of the
- * `441` a colour distance runs to.
- *
- * `90`, the figure `presentation/face-distinct-from-table` fixes for
- * `specs/overview.md`'s requirement that "a card of either face reads apart from
- * the table it sits on". The painted layer is made of cards stamped onto the
- * table, so the reading that says a card is distinguishable from felt is the
- * reading that says a point has been painted.
+/*
+ * A point counts as painted when it reads DIFFERENTLY from the same point on the
+ * bare table, and how far apart the two sit is not measured: `specs/overview.md`
+ * fixes no palette, so that is the reviewer's. Rendering is deterministic and each
+ * point is compared against itself, so any difference at all is the paint.
  */
-const PAINTED_APART = 90;
 
 /**
  * How many painted points the cascade must have left, before the reset.
@@ -113,8 +108,8 @@ const MIN_PAINTED_POINTS = 6;
  *
  * `8`. Both readings are the same build drawing states the specification makes
  * identical, so the only distance between them is the rasterizer's own; this is
- * that noise floor with room to spare, and it is under a tenth of
- * {@link PAINTED_APART}, so a surviving stamp cannot hide inside it.
+ * that noise floor with room to spare, and a stamp of a whole card cannot hide
+ * inside it.
  */
 const CLEAN_DISTANCE = 8;
 
@@ -173,7 +168,7 @@ it("clears the painted layer and returns trailStamps to 0", async () => {
   await h.advance(1);
   const buried = await h.snapshot();
   const painted = (await h.pixels(POINTS)).filter(
-    (pixel, index) => distance(pixel, bare[index]) >= PAINTED_APART,
+    (pixel, index) => distance(pixel, bare[index]) > 0,
   ).length;
 
   // ---- The reset ------------------------------------------------------------
@@ -204,9 +199,9 @@ it("clears the painted layer and returns trailStamps to 0", async () => {
   assertGreaterThanOrEqual(
     painted,
     MIN_PAINTED_POINTS,
-    `the sampled points of the table further than ${PAINTED_APART} from the ` +
-      `bare felt after that cascade, of ${POINTS.length} read — the layer has ` +
-      `to have been painted for a reading of a cleared one to mean anything`,
+    `the sampled points of the table reading differently from the bare felt ` +
+      `after that cascade, of ${POINTS.length} read — the layer has to have ` +
+      `been painted for a reading of a cleared one to mean anything`,
   );
 
   assertEqual(

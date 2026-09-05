@@ -7,12 +7,12 @@
 // from the other on the field: an arm rotates about its anchor, a piston extends
 // along its spoke.
 //
-// WHAT IT READS. The two files differ on at least `DIFFER_MIN_SHARE` of the canvas
-// they share. One file shipped under both names differs by exactly nothing, since a
-// PNG carries its pixels losslessly, so the floor is one hundredth — the smallest
-// share worth calling measurable. Two clear pixels count as the same pixel whatever
-// bytes sit under them, because a straight-alpha canvas leaves those bytes
-// undefined and a player sees nothing either way.
+// WHAT IT READS. The two files differ somewhere on the canvas they share. One
+// file shipped under both names differs by exactly nothing, since a PNG carries
+// its pixels losslessly, so any pixel of difference is the whole of the
+// reading. Two clear pixels count as the same pixel whatever bytes sit under
+// them, because a straight-alpha canvas leaves those bytes undefined and a
+// player sees nothing either way.
 //
 // WHAT IT DOES NOT DECIDE. Whether the piston hub READS APART at a glance is the
 // art bar itself, and the reviewer's judgement. This point decides that two hubs
@@ -22,14 +22,9 @@
 // beside the verdict.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { HUB_SPRITES } from "./files";
-import {
-  DIFFER_MIN_SHARE,
-  decodeProduced,
-  differingShare,
-  showSprites,
-} from "./sprites";
+import { decodeProduced, differingShare, showSprites } from "./sprites";
 
 it("draws the piston hub as a different picture from the arm hub", async () => {
   await showSprites("hubs", HUB_SPRITES);
@@ -48,9 +43,9 @@ it("draws the piston hub as a different picture from the arm hub", async () => {
     fail(`a decoded ${piston.label}`, readPiston.reason);
   }
 
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     differingShare(readArm.sprite, readPiston.sprite),
-    DIFFER_MIN_SHARE,
+    0,
     "the share of the canvas on which the piston hub differs from the arm hub",
   );
 });

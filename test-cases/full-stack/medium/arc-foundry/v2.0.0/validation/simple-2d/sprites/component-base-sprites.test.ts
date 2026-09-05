@@ -16,12 +16,6 @@ import {
 } from "../harness";
 import { COMPONENT_TYPES } from "../constants";
 import { canvasOf, componentBase } from "./png";
-import { serveProducedAssets } from "./host";
-
-// The produced files, served to the engine off disk, so the still beside this
-// point's verdict shows the art the run made rather than the fallback a build
-// draws when nothing arrived.
-serveProducedAssets();
 
 it("produces a mount for every base component type", async () => {
   for (const type of COMPONENT_TYPES) {

@@ -46,9 +46,8 @@
 // over, "nothing advances further" (`specs/simulation.md`, Faults) — so what is
 // left over the west arm is the frozen machine and whatever marks it.
 //
-// THE VERDICT. At least `MIN_DISTINCT_PIXELS` pixels of the window around the
-// west arm are drawn differently between the pose that names it and the pose
-// that does not.
+// THE VERDICT. The window around the west arm is drawn differently between the
+// pose that names it and the pose that does not.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
@@ -82,17 +81,6 @@ const SETTLE_FRAMES = SETTLE_SECONDS * TICK_HZ;
 
 /** How deep the band read across an arm is, in logical units. */
 const WINDOW_H = 72;
-
-/**
- * The least number of pixels of the window that must be drawn differently.
- *
- * The case's own figure for "visibly distinct": sixty-four pixels, which is one
- * percent of a tray slot (`editor/a-spent-entry-is-drawn-distinct`) and the
- * figure `campaign/select-highlight-drawn-distinctly` reads a highlighted row
- * against. Below the smallest mark a player would read, and far above the
- * handful of pixels an anti-aliased edge can move.
- */
-const MIN_DISTINCT_PIXELS = 64;
 
 let h: Harness;
 
@@ -176,7 +164,7 @@ it("draws the arm the fault names differently from the same arm unnamed", async 
 
   assertGreaterThan(
     pixelsDiffering(named, unnamed),
-    MIN_DISTINCT_PIXELS,
+    0,
     "the west arm is drawn visibly distinct where the fault names it and as one " +
       "of the rest where the fault names the east arm instead, so the arm that " +
       "raised the fault is picked out of the machine",

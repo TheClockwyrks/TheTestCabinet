@@ -18,16 +18,10 @@
 // asked for strictly more of these than the same frame without it, whatever shape
 // the build chose to draw it as."
 //
-// TWO READINGS OF THAT COUNT, BECAUSE ONE OF THEM CANNOT ALWAYS FIRE. The first is
-// the item's own: every frame of the stretch is compared against the frame the same
-// drive produced with `assets/particles/fault.json` UNAVAILABLE. A build that plays
-// the fault system through a clean run draws more in the run that has the file than
-// in the run that does not. A build that inlined the document into its bundle —
-// which is conformant, and which `assets/degraded.ts` sets out — makes no request to
-// refuse, so both runs are the same build and that comparison says only that the two
-// runs agree. The second reading covers that case: every frame draws exactly what
-// the FIRST frame of the same run drew, so anything an effect added part-way through
-// the stretch is a difference, and there is none.
+// THE READING OF THAT COUNT. Every frame of the stretch draws exactly what the
+// FIRST frame of the same run drew, so anything an effect added part-way through
+// the stretch is a difference, and there is none. The scene below is fixed for the
+// whole stretch, so a count that moves is a count something was added to.
 //
 // THE WORLD IS POSED SO THAT THE COUNTS CANNOT MOVE FOR ANY OTHER REASON. The
 // machine is one arm with a blank tape, "which every part rests on"
@@ -42,13 +36,11 @@
 //
 // THE STRETCH IS TWELVE CYCLES, watched two frames at a time, and the run's status
 // and fault are read on every one of them, so the premise of the point — "with
-// `sim.status` running and `sim.fault` null" — is checked rather than assumed. Both
-// runs are driven identically, frame for frame, from the same opener.
+// `sim.status` running and `sim.fault` null" — is checked rather than assumed.
 //
 // THE VERDICT. Across the whole stretch the run is running and unfaulted, and every
-// frame issues exactly the drawing operations, image draws and distinct sources both
-// the first frame of the run and the same frame of the run without the fault system
-// issued.
+// frame issues exactly the drawing operations, image draws and distinct sources the
+// first frame of the run issued.
 //
 // THE EVIDENCE is the clean stretch itself, recorded as it is driven.
 
@@ -67,17 +59,12 @@ import {
   type DrawCall,
   type Harness,
 } from "../harness";
-import { withoutFile } from "../assets/degraded";
-import { PARTICLE_FILES } from "../assets/files";
 
 /** How many cycles the running machine is watched over. */
 const CYCLES = 12;
 
 /** How many frames each of those cycles is divided into. */
 const FRAMES_PER_CYCLE = 2;
-
-/** The pattern that withholds the fault system, under all three engines. */
-const WITHHELD = withoutFile(PARTICLE_FILES.fault);
 
 /** What a frame drew, as three counts nothing but an addition to the picture moves. */
 interface Shape {
@@ -103,12 +90,8 @@ function shapeOf(calls: readonly DrawCall[]): Shape {
 /**
  * Open the bare run on one arm resting on a blank tape, drive the stretch, and
  * keep what every frame of it drew.
- *
- * `capture` is the output id under the run that HAS the fault system, and null
- * under the run that does not, so the evidence a reviewer opens is the stretch the
- * point is about rather than the control beside it.
  */
-async function watch(h: Harness, capture: string | null): Promise<Watched> {
+async function watch(h: Harness, capture: string): Promise<Watched> {
   await openBareRun(h, {
     challenge: BARE,
     machine: solution([armPart("arm", ORIGIN.q, ORIGIN.r, 0, 1, [])]),
@@ -142,8 +125,7 @@ async function watch(h: Harness, capture: string | null): Promise<Watched> {
       frames.push(shapeOf(await h.lastCalls()));
     }
   };
-  if (capture === null) await drive();
-  else await captureReplay(h, capture, drive);
+  await captureReplay(h, capture, drive);
 
   const ended = await h.snapshot();
   assertEqual(
@@ -155,55 +137,26 @@ async function watch(h: Harness, capture: string | null): Promise<Watched> {
 }
 
 let h: Harness;
-let bare: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
-  bare = await createHarness({ withoutAssets: WITHHELD });
 });
 
 afterEach(async () => {
   await h.dispose();
-  await bare.dispose();
 });
 
 it("draws exactly the same operations on every frame of a clean run", async () => {
   const played = await watch(h, "no-fault-effect");
-  const withheld = await watch(bare, null);
 
   assertGreaterThan(
     played.first.ops,
     0,
     "the first frame of the run draws something, so the counts below mean something",
   );
-  assertEqual(
-    withheld.frames.length,
-    played.frames.length,
-    "the run with the fault system unavailable was driven over the same stretch, frame for frame",
-  );
 
   for (let frame = 0; frame < played.frames.length; frame += 1) {
     const shape = played.frames[frame] as Shape;
-    const control = withheld.frames[frame] as Shape;
-
-    assertEqual(
-      shape.ops,
-      control.ops,
-      `frame ${frame + 1} of a run with no fault draws what the same drive draws with ` +
-        "assets/particles/fault.json unavailable, so the fault effect marks a fault " +
-        "rather than playing throughout the run",
-    );
-    assertEqual(
-      shape.images,
-      control.images,
-      `frame ${frame + 1} adds no image draw the run without the fault system made, ` +
-        "which is how a composited system reaches a frame",
-    );
-    assertEqual(
-      shape.sources,
-      control.sources,
-      `frame ${frame + 1} draws no source the run without the fault system drew`,
-    );
 
     assertEqual(
       shape.ops,

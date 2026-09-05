@@ -23,10 +23,13 @@
 // THE TOLERANCE. `SLOT_HALF` is `ICON_SIZE` (`24`) units either side of the
 // icon, twice the icon the slot holds, which covers a slot drawn generously
 // around its icon with its pips and its cooldown state and reaches no further
-// than a neighbouring slot's own icon could stand. `CHANGE_MIN` is eight pixels:
-// a cooldown state a player reads off a slot at a glance is at least a small
-// mark, and eight pixels is under a three-by-three dot. Neither figure is the
-// specification's; both are the allowance a reading of an unfixed layout needs.
+// than a neighbouring slot's own icon could stand. `CHANGE_MIN` is one pixel:
+// the difference mask is built at a channel floor of `0`, and two frames of one
+// posed scene differ on no pixels at all, so a single changed pixel is already
+// above anything the sampling could invent out of eight-bit rounding or the
+// host's antialiasing. It reads whether the slot was drawn differently, not how
+// much of it moved. Neither figure is the specification's; `SLOT_HALF` is the
+// allowance a reading of an unfixed layout needs.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ICON_SIZE } from "../constants";
@@ -46,8 +49,12 @@ import { drawFrame, poseNight } from "./stage";
 /** How far out from the icon's centre the slot around it is read. */
 const SLOT_HALF = ICON_SIZE.width;
 
-/** How many pixels of the slot must change for the change to be one a player sees. */
-const CHANGE_MIN = 8;
+/**
+ * The fewest changed pixels a sampling can tell from none. The mask is built at
+ * a channel floor of `0` and two renders of one posed scene differ nowhere, so
+ * anything the build painted into the slot clears this.
+ */
+const CHANGE_MIN = 1;
 
 let h: Harness;
 

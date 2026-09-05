@@ -17,7 +17,6 @@ import { COMBO_IDS } from "../constants";
 import { assertDeepEqual } from "../assert";
 import { createHarness, openYard, standCombo, type Harness } from "../harness";
 import { cycleFrames, decodeAll, evidence, missing } from "./images";
-import { serveProducedAssets } from "./produced";
 
 const FRAMES = COMBO_IDS.flatMap((id) => cycleFrames(`combos/${id}/fire`));
 
@@ -29,7 +28,6 @@ const ANCHORS = [10, 24].flatMap((row) =>
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

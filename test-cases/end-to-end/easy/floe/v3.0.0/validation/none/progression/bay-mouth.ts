@@ -13,11 +13,11 @@
 // tile the critter stands on and holds still for as long as a check runs.
 // Nothing else is put on the strait.
 //
-// Local to this group rather than on the shared harness because only three
-// checks here need it — `timer-resets-on-bay`, `victory-on-level-8` and
-// `bonus-life-per-boundary`, the three whose requirement is what a COMPLETED
-// crossing leads to. Every other check in this group reaches its scenario
-// without ever entering a bay.
+// Local to this group rather than on the shared harness because only four checks
+// here need it — `timer-resets-on-bay`, `level-advances`,
+// `reached-level-follows-level` and `victory-on-level-8`, the four whose
+// requirement is what a COMPLETED crossing leads to. Every other check in this
+// group reaches its scenario without ever entering a bay.
 
 import { BAYS, WATER_TOP } from "../constants";
 import { poseLane, type Harness } from "../harness";

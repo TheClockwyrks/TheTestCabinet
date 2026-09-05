@@ -16,9 +16,8 @@
 //     as a NUMBER TOKEN in some run, never as a literal.
 //
 // THIS FILE FIXES NO FIGURE AND NO TOLERANCE. Every margin a point grows a text
-// run's box by, every colour distance it calls a visible difference, and every
-// count of changed pixels it calls "drawn apart" is stated in the point that
-// uses it, beside the rule `specs/screens.md` gives it.
+// run's box by, and every floor it puts under a reading of the picture, is stated
+// in the point that uses it, beside the rule `specs/screens.md` gives it.
 //
 // WHY IT IS LOCAL TO THIS GROUP. Every reading below is a reading of a SCREEN —
 // the runs of text a menu drew, the pixels over one of its rows. No other group
@@ -180,21 +179,19 @@ export function pixelsOver(h: Harness, rect: ControlRect): Rgb[] {
 }
 
 /**
- * How many of the paired pixels differ by an RGB distance of at least
- * `distance`, out of the 441 a full swing across the colour cube is.
+ * How far the furthest-moved of two readings of one region moved, on the 0-441
+ * scale a full swing across the RGB cube spans.
  *
- * `specs/overview.md` fixes no palette, so every colour reading in this project
- * is a comparison between two things the build itself drew, and the distance a
- * point demands is the point's own figure.
+ * The whole region is read and the DIVERGENCE at its widest point is what comes
+ * back, so a mark one pixel wide reads and a build that drew nothing there moves
+ * no pixel at all. How much of the region moved is never counted: how large a
+ * mark is and what it looks like are `specs/overview.md`'s to leave to the build,
+ * and what a point here decides is whether the build drew a mark at all.
  */
-export function differing(
-  a: readonly Rgb[],
-  b: readonly Rgb[],
-  distance: number,
-): number {
-  let count = 0;
+export function largestShift(a: readonly Rgb[], b: readonly Rgb[]): number {
+  let most = 0;
   for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
-    if (colorDistance(a[i], b[i]) >= distance) count += 1;
+    most = Math.max(most, colorDistance(a[i], b[i]));
   }
-  return count;
+  return most;
 }

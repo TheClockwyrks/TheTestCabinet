@@ -48,6 +48,7 @@ import {
   type Harness,
 } from "../harness";
 import {
+  PAINT_MIN,
   countMoved,
   driftOverOneFrame,
   readRegion,
@@ -57,28 +58,6 @@ import {
 /** The two indices the highlight is posed at: every index TITLE_ITEMS has. */
 const FIRST_INDEX = 0;
 const SECOND_INDEX = 1;
-
-/**
- * How far a pixel must move to count as repainted, as a Euclidean RGB distance out of
- * the `441` an RGB cube is across.
- *
- * The case's figure, since `specs/ui.md` states the rule and leaves the palette to the
- * build: `40` is about a tenth of the space, which is the least a player reads as a
- * different treatment at a glance, and far above the rounding two readings of one
- * unchanged pixel differ by.
- */
-const REPAINT_MIN = 40;
-
-/**
- * How many pixels of an entry's neighbourhood must be repainted.
- *
- * At the harness's default shape the canvas is the stage at one device pixel per
- * logical unit, so `64` pixels is an eight-by-eight mark — a fraction of the area a
- * single capital letter of menu type legible at `1280 x 720` covers. It is a floor
- * under anti-aliasing noise on one glyph edge rather than a demand on how a build
- * draws its highlight, which `specs/ui.md` leaves open.
- */
-const REPAINT_MIN_PIXELS = 64;
 
 let h: Harness;
 
@@ -111,9 +90,9 @@ it("repaints each title-menu entry when the highlight index moves to it", async 
   const secondBox = menuRect(h, SECOND_INDEX);
 
   // What each square does on its own across one frame, with nothing posed.
-  const firstDrift = await driftOverOneFrame(h, firstBox, REPAINT_MIN);
+  const firstDrift = await driftOverOneFrame(h, firstBox, PAINT_MIN);
   const secondAtFirstIndex = readRegion(h, secondBox);
-  const secondDrift = await driftOverOneFrame(h, secondBox, REPAINT_MIN);
+  const secondDrift = await driftOverOneFrame(h, secondBox, PAINT_MIN);
   const firstAtFirstIndex = readRegion(h, firstBox);
 
   h.debug.setMenuIndex(SECOND_INDEX);
@@ -128,16 +107,16 @@ it("repaints each title-menu entry when the highlight index moves to it", async 
   captureStill(h, "highlight");
 
   assertGreaterThan(
-    countMoved(firstAtFirstIndex, firstAtSecondIndex, REPAINT_MIN),
-    Math.max(firstDrift.count, REPAINT_MIN_PIXELS),
+    countMoved(firstAtFirstIndex, firstAtSecondIndex, PAINT_MIN),
+    firstDrift.count,
     `pixels of the ${items[0]} entry redrawn once the index no longer names ` +
       "it — the highlighted item is the one menuIndex names and is drawn " +
       "distinctly from the others (specs/ui.md); its square moved on its own " +
       `across one frame in ${String(firstDrift.count)} pixels`,
   );
   assertGreaterThan(
-    countMoved(secondAtFirstIndex, secondAtSecondIndex, REPAINT_MIN),
-    Math.max(secondDrift.count, REPAINT_MIN_PIXELS),
+    countMoved(secondAtFirstIndex, secondAtSecondIndex, PAINT_MIN),
+    secondDrift.count,
     `pixels of the ${items[1]} entry redrawn once the index names it — the ` +
       "highlighted item is the one menuIndex names and is drawn distinctly " +
       "from the others (specs/ui.md); its square moved on its own across one " +

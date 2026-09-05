@@ -22,12 +22,10 @@ import {
   type Harness,
 } from "../harness";
 import { cycleFrames, decodeAll, duplicatePairs, evidence } from "./images";
-import { serveProducedAssets } from "./produced";
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

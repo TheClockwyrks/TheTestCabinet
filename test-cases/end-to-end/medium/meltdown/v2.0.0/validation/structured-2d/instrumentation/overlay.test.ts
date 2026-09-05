@@ -1,5 +1,4 @@
-// Meltdown — instrumentation/overlay: the debug overlay reports the game, and
-// watching it leaves the game as it is.
+// Meltdown — instrumentation/overlay: the debug overlay reports the game.
 //
 // Under this engine the overlay is ENGINE CHROME: the backtick key toggles it and
 // the engine draws it. Meltdown's whole part is to REGISTER the values it wants on
@@ -8,8 +7,7 @@
 // wave, and the score; the lengths of the two routes; for each tower, its id, its
 // type, its level, its heat, its redline, whether it is tripped, and its kills;
 // for each surge unit, its id, its type, the tile it stands on, its hp, and
-// whether it is slowed." And: "keep every source a pure read, so watching the
-// overlay leaves the game exactly as it is."
+// whether it is slowed."
 //
 // THE OVERLAY'S LINES ARE THE ONES THE TOGGLE ADDS. The engine draws through the
 // same context this harness records, so the overlay's text arrives as ordinary
@@ -34,37 +32,29 @@
 // the same way, and so are the KILLS, which no pose can set: the gun is given a
 // mark it can kill and its line must differ once it has taken it.
 //
-// A PURE READ IS THE LAST LEG, and it is read the one way the specification
-// allows: `simTime` "accumulates the game time the simulation advanced by" on
-// every screen, and a toggle costs a frame — so `simTime` is compared as exactly
-// that one frame's advance and every other field must be identical. The floor is
-// made static first: the trip flag and its timer down, the slow and its timer
-// down, the tower's heat pinned, the unit's motion held and out of every range,
-// the phase `wave` so no build timer counts, and the world gate off so nothing
-// arrives. Anything that moved across that frame would be the overlay's doing.
+// A PURE READ IS NOT ASSERTED HERE. "keep every source a pure read, so watching
+// the overlay leaves the game exactly as it is" is a requirement on the OVERLAY,
+// and under this engine the overlay is the engine's: the backtick key, the panel,
+// the hidden-at-start state and the read-only-ness all are. A check on any of
+// them returns the same verdict for every build on this engine. It is
+// `instrumentation.overlay-is-read-only`, which only `none` carries, where the
+// build writes the overlay itself.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertDeepEqual,
-  assertGreaterThan,
-  assertNotEqual,
-  fail,
-} from "../assert";
+import { assertGreaterThan, assertNotEqual, fail } from "../assert";
 import { TOWER_DEFS } from "../constants";
 import {
   captureStill,
   clearCalls,
   createHarness,
   drawnText,
-  seconds,
   startRun,
   ticksFor,
   tileCenter,
   toggleOverlay,
   type Harness,
 } from "../harness";
-import { readTower, readUnit } from "./ground";
+import { readTower } from "./ground";
 
 /** The run figures posed, each one distinctive on a panel full of numbers. */
 const MONEY = 4321;
@@ -93,9 +83,6 @@ const UNIT_SLOW_SECONDS = 1000;
 const MARK_AT = { col: 9, row: 4 };
 const MARK_HP = 1;
 const KILL_FRAMES = ticksFor(6);
-
-/** How closely `simTime` must match one frame's advance, in decimal places. */
-const SIM_TIME_DIGITS = 6;
 
 let h: Harness;
 
@@ -160,7 +147,7 @@ function lineWithNumber(
   return found;
 }
 
-it("draws every registered fact and changes nothing about the game", async () => {
+it("draws every registered fact the specification lists", async () => {
   startRun(h, "bottleneck");
   h.debug.setDifficulty("hard");
   // `building` while the facts are read, because it is a word that appears
@@ -286,40 +273,5 @@ it("draws every registered fact and changes nothing about the game", async () =>
     lineContaining(scored, TOWER_TYPE, "the tower's line, once it has a kill"),
     beforeTower,
     "the tower's overlay line, against the same line before the kill",
-  );
-
-  // ---- A pure read -------------------------------------------------------
-  // The floor is made static, so anything that moves across the toggle's frame
-  // moved because of the overlay.
-  h.debug.setPhase("wave");
-  h.debug.setTowerTripTimer(tower, 0);
-  assertGreaterThan(
-    readUnit(h.snapshot(), unit, "the unit the overlay reports").hp,
-    0,
-    "precondition: the unit whose line the overlay carries is still on the floor",
-  );
-  await h.advance(2);
-
-  const still = h.snapshot();
-  clearCalls(h);
-  await toggleOverlay(h);
-  const down = new Set(drawnText(h.calls));
-  const settled = h.snapshot();
-
-  assertDeepEqual(
-    { ...settled, simTime: 0 },
-    { ...still, simTime: 0 },
-    "every field but simTime, across the frame the overlay came down on",
-  );
-  assertCloseTo(
-    settled.simTime,
-    still.simTime + seconds(1),
-    SIM_TIME_DIGITS,
-    "simTime across the toggle: exactly the one frame it ran",
-  );
-  assertDeepEqual(
-    added.filter((line) => down.has(line)),
-    [],
-    "the overlay's own lines, once the overlay is down again",
   );
 });

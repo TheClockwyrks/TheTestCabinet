@@ -831,11 +831,25 @@ validation = { script = "instrumentation/set-score-pays-nothing.test.ts", output
 [[review.categories.items]]
 id = "overlay"
 title = "The debug overlay reports the game"
-description = "Toggling the overlay over a posed floor draws the facts specs/instrumentation.md lists, and the snapshot is identical before and after."
+description = "Toggling the overlay over a posed floor draws every fact specs/instrumentation.md lists as a diagnostic source, at the values the floor was posed to."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay.test.ts", outputs = [
   { id = "overlay", name = "The debug overlay over a posed floor", kind = "image" },
+] }
+# Only `none`: under an engine the overlay's panel, its backtick toggle, its
+# hidden-at-start state and its read-only-ness are the engine's, so the check
+# would return the same verdict for every build on that engine. What a build
+# registers into it, and the values those sources report, are every engine's and
+# stay with `overlay` above.
+[[review.categories.items]]
+id = "overlay-is-read-only"
+title = "Watching the overlay changes nothing"
+description = "Over a floor posed to be motionless, toggling the overlay leaves every snapshot field as it was but simTime, which gains the one frame the press ran."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/overlay-is-read-only.test.ts", engines = ["none"], outputs = [
+  { id = "unmoved", name = "The overlay open over a motionless floor", kind = "image" },
 ] }
 
 # --- The reactor floor ---------------------------------------------------------
@@ -874,8 +888,8 @@ validation = { script = "floor/no-floor-in-the-strip.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "casing-band"
-title = "The casing rings the floor"
-description = "An 18-unit band on all four sides is drawn distinctly from the floor inside it, unbroken except at the four openings."
+title = "The casing rings the floor eighteen units thick"
+description = "On all four sides a tower standing on the first rank of floor changes the picture 21 units in from the wall's outer face and not 9 or 14 units in, so the floor's edge is where the 18-unit band leaves it."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "floor/casing-band.test.ts", outputs = [
@@ -892,8 +906,8 @@ validation = { script = "floor/tile-map.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "grid-visible"
-title = "The tile grid is always visible"
-description = "The floor carries a grid a player can read tiles from, drawn over the floor at all times including with no tower placed."
+title = "The tile grid is drawn on the floor"
+description = "Lines are drawn at the floor's tile boundaries, across and down, both with no tower placed and with the floor in play."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "floor/grid-visible.test.ts", outputs = [
@@ -3737,8 +3751,8 @@ validation = { script = "hud/shop-lists-eight.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "shop-disabled-when-unaffordable"
-title = "An unaffordable entry is drawn disabled"
-description = "With money below a type's cost, that entry is drawn plainly apart from an affordable one."
+title = "An unaffordable entry is drawn differently"
+description = "A type's shop entry is drawn differently at one money short of its cost from at exactly its cost, while the entry affordable at both is drawn the same."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "hud/shop-disabled-when-unaffordable.test.ts", outputs = [
@@ -3836,8 +3850,8 @@ validation = { script = "hud/unit-health-bars.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "mute-read"
-title = "The mute control shows its state"
-description = "The control reads plainly differently muted and unmuted, and changes on the frame muted does. It drives the state through the mute key alone; that the control itself toggles mute is controls.mute-control's requirement."
+title = "The mute control changes with the mute bit"
+description = "The control is drawn differently once the mute bit moves, on the frame it moves, beyond the movement two unchanged frames show. It drives the state through the mute key alone; that the control itself toggles mute is controls.mute-control's requirement."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "hud/mute-read.test.ts", outputs = [
@@ -3855,76 +3869,56 @@ validation = { script = "hud/touch-targets.test.ts", outputs = [
 ] }
 
 # --- Look and legibility -------------------------------------------------------
-# Every item here checks presence and distinguishability against a stated RGB
-# distance out of 441. None asserts a hex value, and none asserts an animation:
-# where the legibility table says a thing reads apart, the item checks that it
-# reads apart and nothing more. Nor does any item enumerate what the floor may not
-# draw -- a reactor-plate texture, lane markings, a vignette or a scanline are
-# ordinary art direction the appearance rule leaves to the build. What such an item
-# would have protected is already carried positively by floor.panel-strip,
-# floor.no-floor-in-the-strip, hud.touch-targets, towers-read-apart-from-the-floor,
-# surge-reads-apart-from-the-floor and floor.grid-visible.
+# Every item here reads pixels only to decide that the build drew something where
+# the specification says something is drawn, or that the same region changed when
+# one thing about the world did. Where a mark has no frame without it to be read
+# against -- an opening cut into the casing, the ink of a run of text -- the ground
+# it is held against is the build's own plain casing or the run's own commonest
+# color, and the bar is how far that ground varies by on its own. No item asserts
+# a color, a contrast, a hex value or how far apart two things read, and none
+# measures how large a drawn mark is: the palette, the type and the glow are the
+# build's, and how the result looks is what the reviewer's presentation rating
+# judges. Nor does any item enumerate what the floor may not draw -- a
+# reactor-plate texture, lane markings, a vignette or a scanline are ordinary art
+# direction the appearance rule leaves to the build. What such an item would have
+# protected is already carried positively by floor.panel-strip,
+# floor.no-floor-in-the-strip, floor.casing-band, hud.touch-targets,
+# towers-read-apart-from-the-floor, surge-reads-apart-from-the-floor and
+# floor.grid-visible.
 [[review.categories]]
 id = "presentation"
 title = "Look and legibility"
 [[review.categories.items]]
 id = "heat-glow-ramp"
-title = "An emitter's glow tracks its heat"
-description = "A tower drawn at five heats from 0 to 99 shows five readings, and the coldest and the hottest read plainly apart."
+title = "An emitter's drawing changes with its heat"
+description = "A tower drawn at the cold end of its heat range and at the near-redline end is drawn differently, past the movement two unchanged frames show."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/heat-glow-ramp.test.ts", outputs = [
-  { id = "ramp", name = "One emitter drawn along its heat ramp", kind = "image" },
+  { id = "ramp", name = "One emitter at the top of its heat range", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "towers-read-apart-from-the-floor"
-title = "A tower reads apart from the floor"
-description = "A placed tower's pixels are plainly distinct from the floor around it, at every heat."
+title = "A tower is drawn on its footprint"
+description = "Every tower type's body changes when the tower is taken off the floor, at every heat, past the movement two unchanged frames show."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/towers-read-apart-from-the-floor.test.ts", outputs = [
-  { id = "towers", name = "Towers against the floor behind them", kind = "image" },
+  { id = "towers", name = "The whole roster standing on the floor", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "surge-reads-apart-from-the-floor"
-title = "A unit reads apart from the floor"
-description = "Each surge type's pixels are plainly distinct from the floor it stands on."
+title = "A unit is drawn where it stands"
+description = "Each surge type's centre changes when the surge is taken off the floor, past the movement two unchanged frames show."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/surge-reads-apart-from-the-floor.test.ts", outputs = [
-  { id = "surge", name = "The surge against the floor", kind = "image" },
-] }
-[[review.categories.items]]
-id = "surge-off-the-heat-axis"
-title = "The surge never reads as heat"
-description = "Each surge type's color is plainly distinct from every color a tower shows anywhere across its heat range, tripped included."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/surge-off-the-heat-axis.test.ts", outputs = [
-  { id = "apart", name = "The surge against every color the ramp shows", kind = "image" },
-] }
-[[review.categories.items]]
-id = "ground-flyer-boss-read-apart"
-title = "Ground, flyers and the boss read apart"
-description = "A Mote, a Drift and a Core are drawn plainly apart from one another."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/ground-flyer-boss-read-apart.test.ts", outputs = [
-  { id = "kinds", name = "Ground, flyers and the boss together", kind = "image" },
-] }
-[[review.categories.items]]
-id = "radiator-faces-read"
-title = "Radiator faces are drawn distinctly"
-description = "A tower's radiator faces are drawn plainly apart from its plain faces."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/radiator-faces-read.test.ts", outputs = [
-  { id = "faces", name = "Radiator faces against plain ones", kind = "image" },
+  { id = "surge", name = "Every surge type on the floor", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "radiator-faces-follow-the-rotation"
 title = "Radiator faces turn with the tower"
-description = "The faces drawn distinctly on a tower placed at rotation 1 are the world faces its rotation gives it, not the ones rotation 0 gives it."
+description = "The two faces a quarter-turn gives or takes the marking from are drawn differently at the two rotations, and the two it marks at both are drawn the same."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/radiator-faces-follow-the-rotation.test.ts", outputs = [
@@ -3932,18 +3926,9 @@ validation = { script = "presentation/radiator-faces-follow-the-rotation.test.ts
   { id = "turned", name = "The faces after it", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "casing-reads-as-a-wall"
-title = "The casing reads as a wall"
-description = "The casing band is plainly distinct from the floor inside it and from the space outside the stage."
-domains = ["presentation"]
-failure_cap = "passable"
-validation = { script = "presentation/casing-reads-as-a-wall.test.ts", outputs = [
-  { id = "casing", name = "The casing enclosing the floor", kind = "image" },
-] }
-[[review.categories.items]]
 id = "vents-and-exhausts-read-apart"
-title = "A vent and an exhaust read apart"
-description = "The two openings are drawn plainly apart from each other and from the rest of the casing."
+title = "Every opening is drawn on the casing"
+description = "Each of the four openings carries something the plain casing on the same wall does not."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/vents-and-exhausts-read-apart.test.ts", outputs = [
@@ -3952,7 +3937,7 @@ validation = { script = "presentation/vents-and-exhausts-read-apart.test.ts", ou
 [[review.categories.items]]
 id = "valid-and-invalid-previews-read-apart"
 title = "A refused footprint reads refused"
-description = "A valid preview footprint and an invalid one are drawn plainly apart."
+description = "The same held footprint is drawn differently at one short of the type's cost from at its cost, past the movement two unchanged frames show."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/valid-and-invalid-previews-read-apart.test.ts", outputs = [
@@ -3980,7 +3965,7 @@ validation = { script = "presentation/range-ring-on-a-selection.test.ts", output
 [[review.categories.items]]
 id = "build-zone-drawn"
 title = "A restricted zone is drawn"
-description = "In Bottleneck the buildable zone is drawn plainly apart from the floor outside it."
+description = "In Bottleneck each edge of the buildable zone carries something Containment's identical floor does not, and something within a tile of it is untouched."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "presentation/build-zone-drawn.test.ts", outputs = [
@@ -3988,8 +3973,8 @@ validation = { script = "presentation/build-zone-drawn.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "tripped-reads-apart"
-title = "A tripped tower reads apart from an online one"
-description = "A tripped tower is drawn plainly apart from an online tower at the same heat."
+title = "A tripped tower is drawn apart from an online one"
+description = "A tower's body is drawn differently once it trips, on the same tile at the same heat, past the movement two unchanged frames show."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/tripped-reads-apart.test.ts", outputs = [
@@ -3998,8 +3983,8 @@ validation = { script = "presentation/tripped-reads-apart.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "text-legible"
-title = "Every readout is legible"
-description = "Every readout and screen's text is drawn at a contrast a player can read at the logical stage size."
+title = "Every readout's text reaches the picture"
+description = "Every readout and every screen's text run leaves ink on the finished frame at the logical stage size."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/text-legible.test.ts", outputs = [
@@ -4119,14 +4104,29 @@ failure_cap = "passable"
 validation = { script = "audio/menu-cue-on-pointer.test.ts", outputs = [
   { id = "menu", name = "The row the pointer reached", kind = "image" },
 ] }
+# Only `none`: specs/audio.md gives the mute bit and the silencing to the BUILD
+# under `none` ("the build plays no muted cue at all") and to the ENGINE under the
+# other two ("the engine plays each of them at an amplitude of zero"), so a check
+# on the silence under an engine returns the same verdict for every build on it.
+# What stays every engine's is that the game goes on resolving the events, which
+# is `mute-changes-nothing-else` below.
 [[review.categories.items]]
 id = "mute-silences"
 title = "Mute silences everything"
-description = "With muted true, none of the ten cues emits anything."
+description = "With muted true, none of the ten cues emits anything: no audio source started and no clip played, on any frame or off one."
 domains = ["presentation"]
 failure_cap = "scuffed"
-validation = { script = "audio/mute-silences.test.ts", outputs = [
+validation = { script = "audio/mute-silences.test.ts", engines = ["none"], outputs = [
   { id = "muted", name = "The game running silent", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute-changes-nothing-else"
+title = "Mute changes nothing but the sound"
+description = "With the mute bit set, the same drive that carries all ten cues resolves every one of their events, exactly as it does unmuted."
+domains = ["run", "presentation"]
+failure_cap = "scuffed"
+validation = { script = "audio/mute-changes-nothing-else.test.ts", outputs = [
+  { id = "playable", name = "The game playing on with the bus muted", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "no-autoplay"

@@ -60,6 +60,13 @@ const EXCLUDED = new Set([
 /** Where `npm run build` may put the site, in the order the runner looks. */
 const BUILD_OUTPUTS = ["dist", "build", "out"] as const;
 
+/**
+ * The schemes that carry their own content rather than naming a location: a
+ * reference under one of them fetches nothing, so it does not reach outside
+ * the built site.
+ */
+const SELF_CONTAINED_SCHEME = /^(?:data|blob|about):/i;
+
 export interface RebuildResult {
   /** `npm run build` exited 0. */
   completed: boolean;
@@ -70,7 +77,9 @@ export interface RebuildResult {
   /**
    * `src`/`href` values in the rebuilt site's `index.html` that name a
    * location outside the site itself: a URL with a scheme, or a
-   * protocol-relative `//host` reference.
+   * protocol-relative `//host` reference. A `data:`, `blob:`, or `about:`
+   * reference carries its own content and fetches nothing, so it names no
+   * outside location and is not one of these.
    */
   externalHtmlRefs: string[];
   /** The rebuilt output directory existed and held files. */
@@ -146,6 +155,7 @@ export function rebuildWithoutTools(): RebuildResult {
           /(?:src|href)\s*=\s*["']([^"']+)["']/gi,
         )) {
           const ref = match[1];
+          if (SELF_CONTAINED_SCHEME.test(ref)) continue;
           if (/^[a-z][a-z0-9+.-]*:/i.test(ref) || ref.startsWith("//")) {
             externalHtmlRefs.push(ref);
           }

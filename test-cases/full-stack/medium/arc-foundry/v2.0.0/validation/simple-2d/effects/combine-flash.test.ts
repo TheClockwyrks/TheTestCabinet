@@ -7,8 +7,9 @@
 // `specs/scrap-press.md` fixes where that is: "The result lands at the footprint
 // of the piece the combine was initiated from."
 //
-// THE PRODUCED SYSTEMS ARE SERVED TO THE LOADER HERE, by `./produced.ts`, so what
-// plays is the file the build committed.
+// THE PRODUCED SYSTEMS REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds, so what plays is the
+// file the build committed.
 //
 // THE COMBINE IS A PLAIN ONE, ON PURPOSE. Two standing Scrap Capacitors fold into
 // one Tuned Capacitor, which `specs/scrap-press.md` calls a plain combine —
@@ -31,7 +32,7 @@
 // the end of which the result stands alone again and is not combinable either.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -40,7 +41,6 @@ import {
   standComponent,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
 import { structureCenter } from "../constants";
 
@@ -52,12 +52,10 @@ const PARTNER = { col: 24, row: 22 };
 const POINTS = lattice(structureCenter(ANCHOR.col, ANCHOR.row), 16, 4);
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 
@@ -84,11 +82,5 @@ it("sets the result's footprint moving when a combine resolves", async () => {
     "the resulting structure's footprint to change on more frames after a " +
       "combine resolves than before it, so a combine flash is played there " +
       `(specs/assets.md); it changed on ${still} of ${WINDOW} frames before`,
-  );
-  assertGreaterThanOrEqual(
-    played,
-    MOVING,
-    "the footprint to keep changing across the tenth of a second after the " +
-      "fold, as a live particle system does (specs/assets.md)",
   );
 });

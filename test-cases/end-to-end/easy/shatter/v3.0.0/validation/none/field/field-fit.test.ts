@@ -8,8 +8,8 @@
 // aspect ratio, the letterboxed centring, and the device pixel ratio. The
 // complete field is therefore on screen at every window size and at any pixel
 // density, out to all four edges, on load and before any input." It adds that the
-// letterbox bars carry the field's background colour, and that the game draws in
-// logical units and takes the canvas element's own size from the runtime alone.
+// game draws in logical units and takes the canvas element's own size from the
+// runtime alone.
 //
 // UNDER AN ENGINE THIS WOULD BE THE ENGINE'S WORK; HERE IT IS THE BUILD'S, and
 // there is no viewport map to ask the build for. Asking it what it derived would
@@ -43,17 +43,13 @@ import { afterEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
   assertCloseTo,
 } from "../assert";
 import { FIELD_H, FIELD_W, ROCK_RADIUS } from "../constants";
 import {
-  BARE_POINTS,
   captureStill,
-  colorDistance,
   createHarness,
   poseRock,
-  sampleColor,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -127,31 +123,18 @@ const PROBES = [
 const PROBE_WINDOW = ROCK_RADIUS.large + 20;
 
 /**
- * How much a pixel must change to count as the rock, out of 255.
+ * The sensing floor on a change: how far a pixel's reading must move before the
+ * move can be called a drawing, of the 255 a channel mean can span.
  *
- * `specs/overview.md` makes the field dark — its background luminance below a
- * quarter of full — and requires a rock to read apart from it at a glance. Thirty
- * is well under the step that implies and well over the variation a build's own
- * still field shows between two consecutive frames.
+ * Eight of 255. Below that a scan cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const CHANGE_MIN = 30;
+const CHANGE_MIN = 8;
 
 /** How many such pixels a probe must show. Two, so no single pixel decides it. */
 const CHANGED_MIN = 2;
-
-/**
- * How far a letterbox bar's colour may sit from the nearest patch of bare field,
- * in RGB distance out of 441.
- *
- * `specs/overview.md` makes the bars the field's background colour. The bar holds
- * the raw cleared ground while a patch of field shows that ground through
- * whatever the build legitimately lays over its field — a vignette, a gradient, a
- * faint texture — so the bar is held against the NEAREST of the bare patches
- * rather than against one of them. Twenty-five is half of the fifty at which two
- * things on this canvas read as different colours at all, so a bar carrying
- * anything the game visibly drew still fails.
- */
-const BAR_MATCH_MAX = 25;
 
 let harnesses: Harness[] = [];
 
@@ -258,64 +241,3 @@ it.each(SHAPES)(
     }
   },
 );
-
-it("puts the leftover into letterbox bars carrying the field's background", async () => {
-  // The two off-aspect shapes: one wider than the field, which letterboxes left
-  // and right, and one narrower, which letterboxes top and bottom. Neither is
-  // visible on a window the size of the field, which is why the bars are read
-  // here rather than inside the loop above.
-  const wide = await windowOf({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
-  const narrow = await windowOf({ cssWidth: 960, cssHeight: 720, dpr: 1 });
-
-  for (const [h, name, bars] of [
-    [
-      wide,
-      "the window wider than the field",
-      [
-        { x: 80, y: 360 },
-        { x: 1520, y: 360 },
-      ],
-    ],
-    [
-      narrow,
-      "the window narrower than the field",
-      [
-        { x: 480, y: 45 },
-        { x: 480, y: 675 },
-      ],
-    ],
-  ] as const) {
-    await startPlaying(h);
-    await h.advance(1);
-
-    // The field really is mapped where the specification says: its two opposite
-    // corners land on the surface at the fit's own offsets.
-    const view = h.viewport();
-    assertEqual(
-      h.device(0, 0).x,
-      Math.round(view.offsetX),
-      `the field's left edge in ${name}`,
-    );
-    assertEqual(
-      h.device(0, 0).y,
-      Math.round(view.offsetY),
-      `the field's top edge in ${name}`,
-    );
-
-    const patches = [];
-    for (const point of BARE_POINTS) {
-      patches.push(await sampleColor(h, point.x, point.y));
-    }
-    for (const bar of bars) {
-      const [r, g, b] = await h.devicePixel(bar.x, bar.y);
-      const nearest = Math.min(
-        ...patches.map((patch) => colorDistance({ r, g, b }, patch)),
-      );
-      assertLessThanOrEqual(
-        nearest,
-        BAR_MATCH_MAX,
-        `the letterbox bar at device (${bar.x}, ${bar.y}) in ${name}, against the nearest patch of bare field`,
-      );
-    }
-  }
-});

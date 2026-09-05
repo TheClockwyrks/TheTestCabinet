@@ -252,7 +252,7 @@ validation = { script = "armor/health-falls-by-one.test.ts", outputs = [
 [[review.categories.items]]
 id = "hit-flash"
 title = "A chipped rock flashes"
-description = "The rock's drawn pixels brighten measurably on the tick a non-fatal hit lands and are back to their prior state 0.2 s later."
+description = "The rock is drawn differently on the tick a non-fatal hit lands from 0.2 s later, by more than its own cosmetic spin redraws over the same span."
 domains = ["presentation"]
 failure_cap = "passable"
 validation = { script = "armor/hit-flash.test.ts", outputs = [
@@ -652,8 +652,8 @@ id = "presentation"
 title = "Look and readouts"
 [[review.categories.items]]
 id = "torpedo-is-drawn-and-distinct"
-title = "The torpedo reads apart from the bullets"
-description = "Pixels inside a posed torpedo differ from the background by more than 60 of 441, and the color it was drawn in differs from a posed bullet's by more than 40."
+title = "The torpedo is drawn on the field"
+description = "Pixels inside a posed torpedo differ from the background the build drew."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/torpedo-is-drawn-and-distinct.test.ts", outputs = [
@@ -662,7 +662,7 @@ validation = { script = "presentation/torpedo-is-drawn-and-distinct.test.ts", ou
 [[review.categories.items]]
 id = "hud-torpedo-charge-is-drawn"
 title = "The torpedo charge is drawn in the HUD"
-description = "With setTorpedoCharge posed at 1, 0.5 and 0, a torpedo readout is drawn in the upper portion of the field clear of the star, and the ink it carries falls with the charge: each of the two steps gives up at least a tenth of the whole full-to-empty swing."
+description = "A torpedo readout is drawn in the upper portion of the field clear of the star, drawn differently at a full charge from at an empty one, and carrying more ink at the full charge than at the empty one."
 domains = ["presentation"]
 failure_cap = "scuffed"
 validation = { script = "presentation/hud-torpedo-charge-is-drawn.test.ts", outputs = [

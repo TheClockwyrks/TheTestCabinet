@@ -158,7 +158,7 @@ shape, subject to the snapshot that same file fixes.
 
 `src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
 background. `src/main.ts` hands it to the engine as the color the canvas is
-cleared to each frame, so the letterbox bars around the stage match the field.
+cleared to each frame.
 The seeded stub exports a placeholder; replace it with the color your game
 uses.
 
@@ -204,7 +204,7 @@ stub whose instance throws `"not implemented"`. Implement it.
 
 `src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
 background. `src/main.ts` hands it to the engine as the color the canvas is
-cleared to each frame, so the letterbox bars around the stage match the field.
+cleared to each frame.
 The seeded stub exports a placeholder; replace it with the color your game
 uses.
 
@@ -340,7 +340,6 @@ angular conventions every rule uses.
   ratio, the letterboxed centering, and the device pixel ratio. The complete
   stage is therefore on screen at every window size, on load and at any pixel
   density, filling the window's short side.
-- The letterbox bars around the stage carry the stage's background color.
 - Draw in logical units, and take the canvas element's own size from the
   runtime alone.
 

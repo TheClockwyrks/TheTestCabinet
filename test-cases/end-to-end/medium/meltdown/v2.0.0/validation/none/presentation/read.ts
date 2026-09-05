@@ -1,39 +1,48 @@
-// presentation — reading colour off the canvas, for the fourteen checks in this
-// group that decide whether a player can tell two things apart.
+// presentation — reading the picture, for the checks in this group that decide
+// whether the build drew something where the specification says something is
+// drawn.
 //
-// WHAT THIS GROUP MEASURES, AND WHAT IT NEVER MEASURES. `specs/overview.md` fixes
-// no palette: "The palette, the type, the glow, and every other aspect of the
-// look are yours." What it fixes instead is a table of things a player "reads at
-// a glance". So every reading in this group is a DISTANCE between two things the
-// same build drew, out of the 441 the RGB cube spans, and no check anywhere in it
-// names a colour. A build that draws its reactor in greys and its surge in pastels
-// passes exactly where a build that draws them in neon does.
+// WHAT THIS GROUP READS, AND WHAT IT NEVER READS. `specs/overview.md` fixes no
+// palette: "The palette, the type, the glow, and every other aspect of the
+// look are yours." So no reading in this group is a colour, a contrast, or a
+// distance between two things the build drew. A reading is one of two shapes:
+// the patch the specification puts a thing on differs from the same patch with
+// that thing taken away through the debug surface, or the patch changes when one
+// thing about the world changes. Either way the build's own art cancels between
+// the two frames and what is left is what the build drew for the requirement.
+//
+// HOW FAR A READING HAS TO MOVE. Not a stated distance. A build animates — a
+// glow pulses, a scanline creeps — so how much the picture moves on its own is
+// MEASURED, by reading the same points on two frames with nothing changed, and a
+// reading has to beat that measurement by {@link NOISE_MARGIN}.
 //
 // WHY RAW PIXELS AND NOT `sampleColor`. The harness's `sampleColor` averages a
 // five-point cluster four units wide. That is right for "what colour is a tower"
 // and wrong for most of this group: a radiator face is a band a few units deep, a
 // surge Swarm is a few units across, and a range ring is a hairline. So the
-// readings here are single pixels, gathered in batches and reduced by the two
+// readings here are single pixels, gathered in batches and reduced by the
 // summaries below.
 //
-// THE TWO SUMMARIES, AND WHY THEY ARE NOT AVERAGES. An average of a set of pixels
+// THE SUMMARIES, AND WHY THEY ARE NOT AVERAGES. An average of a set of pixels
 // over a tower's body is dragged about by whatever else the build drew there — the
 // label on the footprint, the heat read across it — and an average of a set over a
 // surge unit is dragged toward the floor showing between the unit's edges. So:
 //
-//   - {@link medoid} answers "what colour is MOST of this patch", by taking the
-//     sample nearest all the others. A patch with two furniture pixels in twelve
-//     still reads as its own body.
+//   - {@link widestGap} answers "did anything here move", by taking the position
+//     at which two readings of the same points diverge most. A mark one pixel
+//     wide still reads, and a failure names where it was looked for.
+//   - {@link medoid} answers "what colour is MOST of this patch", for the checks
+//     that need a reference to read a patch AGAINST rather than a verdict.
 //   - {@link farthest} answers "what is drawn HERE at all", by taking the sample
 //     furthest from a reference the check names. A hollow silhouette, a unit
 //     smaller than the patch, or a ring one pixel wide all still read.
 //
 // WHY IT IS LOCAL TO THIS GROUP. None of it is a threshold and none of it is a
 // scenario: every figure a check leans on is declared in the check, with its
-// derivation from the specification beside it. This is the batching and the two
-// summaries the fourteen share, and no other group reads colour this way.
+// derivation from the specification beside it. This is the batching and the
+// summaries the group shares, and no other group reads the picture this way.
 
-import { SIDES, TILE, tileCX, tileCY, tileLeft, tileTop } from "../constants";
+import { SIDES, TILE, tileLeft, tileTop } from "../constants";
 import type { Side } from "../constants";
 import { colorDistance } from "../harness";
 import type { Harness, Rgb, TowerView, UnitView } from "../harness";
@@ -71,6 +80,22 @@ export function showRgb(c: Rgb): string {
 }
 
 /**
+ * How far above the movement two unchanged frames show a reading must sit for
+ * the build to count as having drawn something, out of the 441 the RGB cube
+ * spans.
+ *
+ * NOT A LEGIBILITY BAR. `specs/overview.md` gives the palette, the glow and
+ * every other aspect of the look to the build, so no figure here says how far
+ * apart two things a build drew must read. This is the tolerance on the noise
+ * measurement itself: two frames of an animated build do not move by exactly the
+ * same amount every pair, so a reading has to clear the measured movement by a
+ * little rather than by nothing. Eight units is under two per cent of the scale
+ * — far below anything a player would call a difference, and far above the
+ * rounding a repeated read of an unchanged frame shows.
+ */
+export const NOISE_MARGIN = 8;
+
+/**
  * The colour most of a patch shows: the sample nearest all the others.
  *
  * Not the mean, because the mean of a patch is moved by everything drawn over it
@@ -105,20 +130,6 @@ export function farthest(reference: Rgb, colors: readonly Rgb[]): Rgb {
   return best;
 }
 
-/** The nearest of `colors` to `reference`: a comparison's worst case. */
-export function nearest(reference: Rgb, colors: readonly Rgb[]): Rgb {
-  let best = colors[0];
-  let bestDistance = Infinity;
-  for (const candidate of colors) {
-    const distance = colorDistance(candidate, reference);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = candidate;
-    }
-  }
-  return best;
-}
-
 /** How far the two readings at some one position sit apart, and where. */
 export interface Divergence {
   distance: number;
@@ -130,10 +141,11 @@ export interface Divergence {
 /**
  * The position at which two equal-length runs of samples diverge most.
  *
- * The reading behind every "these two read apart" comparison over a patch rather
- * than a point: the two runs cover the same positions, so the largest distance
- * between a pair is the strongest difference a player could see anywhere in the
- * patch, and where it fell is what a failure names.
+ * The reading behind every "something changed here" check over a patch rather
+ * than a point: the two runs are the SAME points read on two frames, so the
+ * largest distance between a pair is the strongest movement anywhere in the
+ * patch, and where it fell is what a failure names. Everything the build drew
+ * that did not change cancels, so the reading is about the one thing that did.
  */
 export function widestGap(
   left: readonly Rgb[],
@@ -191,33 +203,6 @@ export function bodyPoints(tower: TowerView): Point[] {
     });
   }
   return points;
-}
-
-/** The colour a tower's body shows: {@link medoid} over {@link bodyPoints}. */
-export async function bodyColor(h: Harness, tower: TowerView): Promise<Rgb> {
-  return medoid(await readPixels(h, bodyPoints(tower)));
-}
-
-/** How far clear of a footprint the floor beside it is read, in tiles. */
-const FLOOR_PROBE_GAP = 2;
-
-/**
- * Four tile centres on the open floor around a footprint, one off each side.
- *
- * `FLOOR_PROBE_GAP` tiles clear of the footprint, so nothing a build draws
- * hugging its towers — a shadow, a base plate, a glow — is read as the floor,
- * and at tile centres, so the grid `specs/floor.md` puts on every tile boundary
- * is not either.
- */
-export function floorProbePoints(tower: TowerView): Point[] {
-  const gap = FLOOR_PROBE_GAP;
-  const far = tower.size + gap;
-  return [
-    { x: tileCX(tower.col - gap - 1), y: tileCY(tower.row) },
-    { x: tileCX(tower.col + far), y: tileCY(tower.row) },
-    { x: tileCX(tower.col), y: tileCY(tower.row - gap - 1) },
-    { x: tileCX(tower.col), y: tileCY(tower.row + far) },
-  ];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -308,8 +293,8 @@ const UNIT_REACH = 3;
  * how big it is drawn or what shape — "the radius the unit is drawn at" is the
  * build's. So the patch is three units either way from the centre, which the
  * smallest thing a player could be expected to see covers, and it is reduced by
- * {@link farthest} against the floor rather than averaged, so a unit drawn as an
- * outline reads as its outline rather than as the floor inside it.
+ * {@link widestGap} rather than averaged, so a unit drawn as an outline reads as
+ * its outline rather than as the floor showing between its edges.
  */
 export function unitPoints(unit: UnitView): Point[] {
   const points: Point[] = [{ x: unit.x, y: unit.y }];
@@ -322,24 +307,4 @@ export function unitPoints(unit: UnitView): Point[] {
     );
   }
   return points;
-}
-
-/** The colour a unit shows: the pixel on it furthest from the floor under it. */
-export async function unitColor(
-  h: Harness,
-  unit: UnitView,
-  floor: Rgb,
-): Promise<Rgb> {
-  return farthest(floor, await readPixels(h, unitPoints(unit)));
-}
-
-/** Four tile centres on the open floor around a unit, one off each side. */
-export function unitFloorProbePoints(unit: UnitView): Point[] {
-  const gap = FLOOR_PROBE_GAP;
-  return [
-    { x: tileCX(unit.col - gap), y: tileCY(unit.row) },
-    { x: tileCX(unit.col + gap), y: tileCY(unit.row) },
-    { x: tileCX(unit.col), y: tileCY(unit.row - gap) },
-    { x: tileCX(unit.col), y: tileCY(unit.row + gap) },
-  ];
 }

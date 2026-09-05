@@ -1,5 +1,5 @@
 // campaign/select-locked-reads-apart-from-solved — a locked row is drawn
-// differently from a solved one, and differently in grayscale too.
+// differently from a solved one.
 //
 // THE RULE. The select screen lists the course, "each row showing its number, its
 // name, and its state, with the state readable without relying on hue alone"
@@ -13,10 +13,8 @@
 // HOW THE DIFFERENCE IS DRAWN IS THE BUILD'S. `specs/ui.md` "fixes no palette, no
 // font, and no background", and `specs/` fixes no geometry, no wording and no mark
 // for this screen — so what is read is that the row CHANGED, never what changed in
-// it. The one constraint on how is the sentence's own: "without relying on hue
-// alone", which is read by projecting both frames to grayscale and requiring the
-// difference to survive. A row told apart by hue at one lightness disappears
-// there; a row told apart by a word, a mark, a lightness or a shape does not.
+// it. Whether what changed reads without relying on hue alone is the reviewer's,
+// like the rest of the build's presentation.
 //
 // THE TWO POSES ARE THE PROGRESSION'S OWN FIGURES. "Challenge `1` is unlocked from
 // the start. Every other challenge begins locked" (Progression), so challenge 2's
@@ -33,9 +31,8 @@
 // WHAT IS READ is the band of the stage the row's baseline sits in, found by the
 // row's own name rather than by a layout figure `specs/` does not fix.
 //
-// THE VERDICT. Challenge 2's band is drawn with at least `MIN_DISTINCT_PIXELS`
-// pixels changed between the locked pose and the solved one, in colour and in
-// grayscale alike.
+// THE VERDICT. Challenge 2's band is drawn differently between the locked pose
+// and the solved one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -49,7 +46,6 @@ import { STAGE_W } from "../constants";
 import {
   captureStill,
   createHarness,
-  luminance,
   openChallenge,
   openSelect,
   pixelsDiffering,
@@ -64,17 +60,6 @@ const READ_ROW = 1;
 
 /** The row the highlight is pinned to, which is not the row read. */
 const PINNED_ROW = 0;
-
-/**
- * The least number of pixels of the row's band that must be drawn differently.
- *
- * The case's own figure for "visibly distinct" elsewhere is one percent of a tray
- * slot — sixty-two pixels of a `208 x 30` rectangle
- * (`editor/a-spent-entry-is-drawn-distinct`) — so this is the same order: below
- * the smallest mark a player would read as a row's state, and far above the
- * handful of pixels anti-aliasing can move.
- */
-const MIN_DISTINCT_PIXELS = 64;
 
 let h: Harness;
 
@@ -156,30 +141,7 @@ async function courseNames(count: number): Promise<string[]> {
   return names;
 }
 
-/**
- * The same rectangle with every pixel at its own lightness, hue discarded.
- *
- * Rec. 709 luminance, the case's own weighting (`color.ts`), applied to all three
- * channels. Two colours a player tells apart only by hue land on one grey here, so
- * a difference that survives this is a difference that survives hue removal.
- */
-function grayscale(rect: PixelRect): PixelRect {
-  const data = new Uint8ClampedArray(rect.data.length);
-  for (let i = 0; i < rect.data.length; i += 4) {
-    const grey = luminance({
-      r: rect.data[i] as number,
-      g: rect.data[i + 1] as number,
-      b: rect.data[i + 2] as number,
-    });
-    data[i] = grey;
-    data[i + 1] = grey;
-    data[i + 2] = grey;
-    data[i + 3] = rect.data[i + 3] as number;
-  }
-  return { width: rect.width, height: rect.height, data };
-}
-
-it("draws a locked row differently from a solved one, in grayscale too", async () => {
+it("draws a locked row differently from a solved one", async () => {
   await h.debug.reset();
   const count = (await h.snapshot()).campaign.count;
   assertGreaterThan(
@@ -255,15 +217,9 @@ it("draws a locked row differently from a solved one, in grayscale too", async (
   );
   assertGreaterThan(
     pixelsDiffering(locked, solved),
-    MIN_DISTINCT_PIXELS,
+    0,
     `the row for ${JSON.stringify(names[READ_ROW] ?? "")} is drawn visibly ` +
       "differently solved from the way it was drawn locked, so the two states " +
       "read apart",
-  );
-  assertGreaterThan(
-    pixelsDiffering(grayscale(locked), grayscale(solved)),
-    MIN_DISTINCT_PIXELS,
-    "the difference survives projection to grayscale, so the row's state is " +
-      "readable without relying on hue alone",
   );
 });

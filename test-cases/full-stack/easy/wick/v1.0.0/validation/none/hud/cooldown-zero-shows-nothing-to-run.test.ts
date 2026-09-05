@@ -24,8 +24,9 @@
 // level `1` (specs/weapons.md — "Taper"), so it is a timer the weapon could
 // really be carrying. `SLOT_HALF` and `CHANGE_MIN` are as
 // `hud/cooldown-state-changes-on-fire` states them: `ICON_SIZE` (`24`) units
-// either side of the icon covers a slot drawn around it, and eight pixels is
-// under a three-by-three dot, the smallest mark a player reads off a slot.
+// either side of the icon covers a slot drawn around it, and one pixel is the
+// fewest a sampling can tell from none, the mask being built at a channel floor
+// of `0` and the three idle ticks above differing nowhere at all.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ICON_SIZE } from "../constants";
@@ -46,8 +47,12 @@ const RESTING = 1.0;
 /** How far out from the icon's centre the slot around it is read. */
 const SLOT_HALF = ICON_SIZE.width;
 
-/** How many pixels must change for the resting slot to look different at all. */
-const CHANGE_MIN = 8;
+/**
+ * The fewest changed pixels a sampling can tell from none. The mask is built at
+ * a channel floor of `0` and two renders of one posed scene differ nowhere, so
+ * anything the build painted differently into the slot clears this.
+ */
+const CHANGE_MIN = 1;
 
 let h: Harness;
 

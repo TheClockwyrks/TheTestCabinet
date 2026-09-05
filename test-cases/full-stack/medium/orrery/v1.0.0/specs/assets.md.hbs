@@ -82,12 +82,6 @@ and each audio cue below is bound to its produced file with `api.audio.load`
 under its name in `CUES`, awaited in the instance's `initialize`, so every
 asset is decoded before the first frame and survives every level transition.
 {{/if}}
-
-A load that fails leaves the game running. The game still initializes, still
-ticks, still takes keyboard and pointer input, and still draws a legible field,
-tray, and tape panel when a sprite, a sheet frame, a system, or a sound is
-unavailable, so a missing file costs the game its polish rather than its
-playability.
 {{#if (ne engine.slug "none")}}
 
 ### The names in `src/constants.ts`

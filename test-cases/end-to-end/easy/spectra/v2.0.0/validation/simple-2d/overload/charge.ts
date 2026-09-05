@@ -122,6 +122,19 @@ export function footprint(
 }
 
 /**
+ * How far apart two readings of the same place must sit to count as repainted, on
+ * the 0-to-441 scale an RGB distance runs on.
+ *
+ * THIS IS THE READING, NOT A THRESHOLD. It decides which places of a footprint
+ * count as having been drawn on again, and how far they moved is never asserted:
+ * specs/mode.md leaves "where on the drone the telegraph sits and how it is drawn"
+ * to the build, so the treatment is the reviewer's to rate. Two readings of one
+ * place nothing was drawn on are identical, so anything above zero would do; 12 is
+ * a little above the rounding one composite can put on a pixel.
+ */
+export const PAINT_MIN = 12;
+
+/**
  * How many pixels of two readings of the SAME region sit further apart than
  * `minDistance`.
  *
@@ -131,8 +144,8 @@ export function footprint(
  * pair of different sizes is not comparable and says so rather than quietly
  * comparing the prefix.
  *
- * `minDistance` is the caller's, because what counts as "a pixel that changed" is
- * the check's own figure.
+ * `minDistance` is the caller's; every check in this group passes
+ * {@link PAINT_MIN}.
  */
 export function differingPixels(
   a: Region,

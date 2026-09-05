@@ -81,14 +81,15 @@ const WEDGE_FAR = 48;
 const WEDGE_HALF_ANGLE = Math.PI / 4;
 
 /**
- * How much a square unit's reading must move between two frames to count as
- * changed, of 441.
+ * The sensing floor on a change: how far a reading must move between two frames
+ * before the move can be called a redrawing, of the 441 an RGB distance can span.
  *
- * Half the `60` a unit must sit from the field by to be called drawn at all, so a
- * flame drawn faint enough to be only just visible still registers, and a build's
- * own dithering between two frames of the same picture does not.
+ * Eight. Below that a sampling cannot tell a redrawing from the rounding of an
+ * 8-bit channel and the host's own anti-aliasing; above it nothing is decided
+ * about how strongly the two readings differ. Anything the build drew differently
+ * clears it, however faintly it drew it.
  */
-const CHANGE = 30;
+const CHANGE = 8;
 
 /**
  * How many square units of the wedge must change when the burn starts.

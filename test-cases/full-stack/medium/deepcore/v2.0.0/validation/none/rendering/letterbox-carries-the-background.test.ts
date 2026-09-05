@@ -1,14 +1,15 @@
 // rendering/letterbox-carries-the-background — the bars are one painted colour.
 //
-// specs/overview.md letterboxes the fitted stage, and the bars are part of the
-// picture a player sees, so they are painted with the game's own background
-// rather than left showing through to the page.
+// specs/overview.md letterboxes the fitted stage and fixes what the bars hold:
+// "The letterbox bars around the stage carry the stage's background color." So
+// the bars are painted rather than left showing through to the page, and one
+// colour covers all of them.
 //
-// THIS POINT DECIDES THE BARS: every letterbox pixel is painted rather than left
-// transparent, every bar of one window shape carries the same colour, and the
-// three shapes all carry the same one — 25 of the 441 the RGB cube spans is how
-// far two readings may sit apart. What COLOUR the build chose is the build's, so
-// nothing here compares it against a figure.
+// THIS POINT DECIDES THE BARS: every letterbox pixel is opaque, and every bar
+// reads as the same colour as the first — within one window shape and across the
+// three. Flat paint through a blit is exact, so the readings are held EQUAL
+// rather than held inside a distance. What COLOUR the build chose is the
+// build's, and nothing here compares it against a figure of any kind.
 //
 // THREE POINTS. The requirement names three separable things — the whole stage
 // inside the surface at its own aspect, the stage CENTRED with even bars, and the
@@ -23,28 +24,13 @@
 // requirement is about, since the fit has to be right on load.
 
 import { afterEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLessThanOrEqual,
-} from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
-  colorDistance,
   createHarness,
   type Harness,
   type Rgb,
 } from "../harness";
-
-/**
- * How far a bar may sit from the background it is held against, in RGB distance.
- *
- * The review item's figure: 25 of the 441 the RGB cube spans. Wider than the
- * rounding a scaled blit can introduce, and half of DISTINCT_MIN, the scale's own
- * line for two colours a player would call different — so a bar carrying
- * anything the game visibly drew still fails.
- */
-const BAR_MATCH_MAX = 25;
 
 /** Where the letterbox bars fall on this surface, in the canvas's own pixels. */
 function barPoints(
@@ -105,6 +91,13 @@ async function surface(options: {
   return h;
 }
 
+/** One bar reading held against the first, channel by channel. */
+function assertSameColor(bar: Rgb, first: Rgb, context: string): void {
+  assertEqual(bar.r, first.r, `${context}: red`);
+  assertEqual(bar.g, first.g, `${context}: green`);
+  assertEqual(bar.b, first.b, `${context}: blue`);
+}
+
 it("paints every letterbox bar with one background", async () => {
   const bars: Rgb[] = [];
 
@@ -127,21 +120,19 @@ it("paints every letterbox bar with one background", async () => {
       points.map((point) => h.devicePixel(point.x, point.y)),
     );
     const sampled: Rgb[] = [];
-    for (const [pixel, alpha] of read.map(
-      (p) => [{ r: p[0], g: p[1], b: p[2] }, p[3]] as const,
-    )) {
+    for (const pixel of read) {
       assertEqual(
-        alpha,
+        pixel[3],
         255,
         `the letterbox painted rather than left transparent on ${shape.name}`,
       );
-      sampled.push(pixel);
+      sampled.push({ r: pixel[0], g: pixel[1], b: pixel[2] });
     }
     for (const pixel of sampled) {
-      assertLessThanOrEqual(
-        colorDistance(pixel, sampled[0]),
-        BAR_MATCH_MAX,
-        `one background across every bar of ${shape.name}, in RGB distance`,
+      assertSameColor(
+        pixel,
+        sampled[0],
+        `one background across every bar of ${shape.name}`,
       );
     }
     bars.push(sampled[0]);
@@ -150,10 +141,10 @@ it("paints every letterbox bar with one background", async () => {
   // The same background again on a window letterboxed along the other axis, and
   // on a window at another pixel ratio.
   for (const [index, bar] of bars.entries()) {
-    assertLessThanOrEqual(
-      colorDistance(bar, bars[0]),
-      BAR_MATCH_MAX,
-      `the letterbox on ${SURFACES[index].name} carrying the same background as on ${SURFACES[0].name}, in RGB distance`,
+    assertSameColor(
+      bar,
+      bars[0],
+      `the letterbox on ${SURFACES[index].name} carrying the same background as on ${SURFACES[0].name}`,
     );
   }
 });

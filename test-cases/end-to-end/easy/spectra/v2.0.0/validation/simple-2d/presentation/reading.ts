@@ -2,31 +2,25 @@
 //
 // Only the `presentation` group reads a frame this way, so these live beside the
 // checks that use them rather than in the shared harness next door. Like
-// everything there they fix a READING alone — which pixels a colour is taken
-// from, how two patches of stage are held against each other, and what shape a
-// build blitted — and never a threshold: every distance, share, agreement and
-// bound a check asserts is stated in that check, derived from the figure
-// `specs/` fixes for it.
+// everything there they fix a READING alone — which places of a region a thing
+// painted, and what shape a build blitted — and never a threshold: every share,
+// agreement and bound a check asserts is stated in that check, derived from the
+// figure `specs/` fixes for it.
 //
-// WHY A THING'S COLOUR IS THE COLOUR OF WHAT IT PAINTED, AND WHY THE CONTROL IS
-// THE SAME SQUARE OF THE SAME FIELD. `specs/overview.md` fixes no palette — the
-// colours, the type and the glow are the build's — and `specs/field.md` puts a
-// starfield behind the play field and leaves a build free to place a banner, a
-// hint or a watermark anywhere it likes. So a reading held against a fixed
-// colour, or against some other patch of the stage, would read a build's own
-// stars as an entity. Every reading below is therefore taken TWICE at the same
-// place — once with the thing on the field and once with it gone — and only the
-// places that MOVED between the two are read as the thing. What is left cannot
-// be the field, the starfield, or anything else the build drew there, because
-// both readings carry it.
+// WHAT IS READ OF A REGION IS PRESENCE, NEVER APPEARANCE. `specs/overview.md`
+// fixes no palette — the colours, the type and the glow are the build's — so
+// nothing here answers what a thing LOOKS like. The one question a region
+// reading answers is whether the build DREW something in a place the
+// specification says something is drawn.
 //
-// AND WHY IT IS NOT THE HARNESS'S OWN `sampleColor`. That reading is five points
-// of a small cluster averaged, which is the right reading for a check asking
-// whether a place CHANGED. It is the wrong reading for a check asking what
-// colour a body IS: `specs/assets.md` seeds sparse pixel art with straight
-// alpha, so a cluster centred on a drone commonly lands half on the field
-// showing through it, and how much it does is a fact about the silhouette rather
-// than about the colour.
+// AND WHY THE CONTROL IS THE SAME SQUARE OF THE SAME FIELD. `specs/field.md`
+// puts a starfield behind the play field and leaves a build free to place a
+// banner, a hint or a watermark anywhere it likes, so a reading held against a
+// fixed colour would read a build's own stars as an entity. Every region reading
+// below is therefore taken TWICE at the same place — once with the thing on the
+// field and once with it gone — and only the places that MOVED between the two
+// are read as the thing. What is left cannot be the field, the starfield, or
+// anything else the build drew there, because both readings carry it.
 //
 // WHAT IS COMPARED WHEN A CHECK ASKS WHETHER THE SEEDED ART WAS DRAWN IS THE
 // ALPHA SILHOUETTE, NOT THE PIXELS. `specs/assets.md` asks for one silhouette in
@@ -90,14 +84,12 @@ export function boxOf(x: number, y: number, w: number, h: number): Box {
  * How far a place must move between the two readings to count as painted, as a
  * Euclidean RGB distance out of the `441` an RGB cube is across.
  *
- * THIS IS THE READING, NOT A TOLERANCE: it decides which pixels a colour is
- * taken from, and every bound a check asserts against what comes out of it is
- * stated in that check. Two readings of one place nothing was drawn on are
- * identical, so anything above zero would do to separate painted from unpainted;
- * `12` is a little above the rounding one composite can put on a pixel and far
- * below the `40` this checklist calls the least a player reads at a glance, so a
- * faint glow a build lays around a body counts as part of it and an untouched
- * pixel never does.
+ * THIS IS THE READING, NOT A THRESHOLD: it decides which places of a region
+ * count as drawn on, and it is the whole of what a region check asserts. Two
+ * readings of one place nothing was drawn on are identical, so anything above
+ * zero would do to separate painted from unpainted; `12` is a little above the
+ * rounding one composite can put on a pixel, so a faint glow a build lays around
+ * a body counts as part of it and an untouched pixel never does.
  */
 export const PAINT_MIN = 12;
 
@@ -124,106 +116,24 @@ function movedAt(bare: Region, now: Region, pixel: number): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
-/* The colour a thing renders in                                              */
+/* What a thing painted                                                       */
 /* -------------------------------------------------------------------------- */
 
-/** What a thing painted inside one region: its colour, and how much of it. */
-export interface Painted {
-  /** The mean of the places the thing painted. */
-  color: Rgb;
-  /** How many places it painted. */
-  count: number;
-  /** How many places the region holds at all. */
-  total: number;
-}
-
 /**
- * The colour a thing renders in: the mean of the places it painted inside a
- * region, held against a reading of that same region with the thing gone.
+ * How many places of a region a thing painted: the places that moved between a
+ * reading taken with the thing on the field and a reading of the same region
+ * with the thing gone.
  *
- * The reading a check comparing two things of DIFFERENT shapes or sizes takes,
- * since two regions of different extents cannot be held against each other place
- * for place. A thing that painted nothing reports a count of `0`, and the check
- * that asked says so as the precondition it is rather than comparing black.
+ * The reading every region check in this group takes. A thing that painted
+ * nothing reports `0`, which is the failure those checks name.
  */
-export function paintedColor(bare: Region, now: Region): Painted {
+export function paintedCount(bare: Region, now: Region): number {
   const total = sameLattice(bare, now);
-  let r = 0;
-  let g = 0;
-  let b = 0;
   let count = 0;
   for (let pixel = 0; pixel < total; pixel += 1) {
-    if (!movedAt(bare, now, pixel)) continue;
-    const here = colorOf(now, pixel);
-    r += here.r;
-    g += here.g;
-    b += here.b;
-    count += 1;
+    if (movedAt(bare, now, pixel)) count += 1;
   }
-  if (count === 0) return { color: { r: 0, g: 0, b: 0 }, count: 0, total };
-  return { color: { r: r / count, g: g / count, b: b / count }, count, total };
-}
-
-/** How many places a thing painted inside a region. */
-export function paintedCount(bare: Region, now: Region): number {
-  return paintedColor(bare, now).count;
-}
-
-/* -------------------------------------------------------------------------- */
-/* How far apart two pictures read                                            */
-/* -------------------------------------------------------------------------- */
-
-/** How far apart two pictures read, and over how much of them. */
-export interface Apart {
-  /** The mean RGB distance over the places either picture painted. */
-  distance: number;
-  /** How many places that was. */
-  samples: number;
-}
-
-/**
- * How far apart two pictures read: the mean distance, place for place, over
- * every place EITHER of them painted.
- *
- * The reading a check comparing two things drawn at the same footprint takes —
- * one drone against another, one band of a thing against its other band, a
- * shimmering Flux against a settled one. Held place for place rather than as two
- * mean colours, so two pictures that carry the same colours in different places
- * read apart rather than reading the same; and restricted to what was painted,
- * so the answer does not fall as the box around the pair grows.
- *
- * The two regions must have been read over the same extent, which is what makes
- * place `i` of one comparable with place `i` of the other.
- */
-export function apartness(
-  bareA: Region,
-  a: Region,
-  bareB: Region,
-  b: Region,
-): Apart {
-  sameLattice(bareA, a);
-  sameLattice(bareB, b);
-  const total = sameLattice(a, b);
-  let sum = 0;
-  let samples = 0;
-  for (let pixel = 0; pixel < total; pixel += 1) {
-    if (!movedAt(bareA, a, pixel) && !movedAt(bareB, b, pixel)) continue;
-    sum += colorDistance(colorOf(a, pixel), colorOf(b, pixel));
-    samples += 1;
-  }
-  return { distance: samples === 0 ? 0 : sum / samples, samples };
-}
-
-/**
- * How far a thing reads from the field behind it: {@link apartness} between a
- * reading and its own control.
- *
- * The same arithmetic with the second picture the bare field, so "the drone
- * against the empty field behind it" and "the cyan drone against the magenta
- * one" are one reading asked twice rather than two readings that could disagree.
- */
-export function apartFromField(bare: Region, now: Region): Apart {
-  return apartness(bare, now, bare, bare);
+  return count;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -434,13 +344,4 @@ export function describeBlits(blits: readonly Blit[]): string {
       );
     })
     .join("; ");
-}
-
-/* -------------------------------------------------------------------------- */
-/* Naming what was found                                                      */
-/* -------------------------------------------------------------------------- */
-
-/** A sampled colour, written the way a failure message reads it. */
-export function rgb(color: Rgb): string {
-  return `rgb(${color.r.toFixed(0)}, ${color.g.toFixed(0)}, ${color.b.toFixed(0)})`;
 }

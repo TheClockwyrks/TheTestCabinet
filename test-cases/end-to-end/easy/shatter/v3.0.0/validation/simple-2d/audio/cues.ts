@@ -23,9 +23,9 @@
 // assert that it sounded exactly ONCE on its tick — which is the "at most once on
 // that tick" half of the requirement, and a half an engineless build's checks
 // cannot reach at all. A play is announced whether or not the bus has been
-// unlocked and whether or not it is muted, so nothing here has to arm audio; the
-// announcement carries `gain`, which is `0` exactly when the bus is muted, and
-// that is how `audio/mute-silences` reads a silenced cue.
+// unlocked and whether or not it is muted, so nothing here has to arm audio. The
+// announcement also carries `gain`, which the engine zeroes while its mute bit is
+// set; that is the runtime's own doing and nothing in this project reads it.
 //
 // THE HELD CUE IS ANNOUNCED THROUGH THE OTHER TWO DOORS. `specs/audio.md` makes
 // `thrust` a HELD sound rather than a struck one, and the bus expresses a held cue

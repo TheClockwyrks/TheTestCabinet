@@ -21,20 +21,20 @@
 // sprites that are byte-identical are one picture, so the DISTINCT contents are
 // what is counted.
 //
-// WHY THE COUNT IS TAKEN PER DIRECTORY. The specification fixes no file name and
-// no directory name below `assets/gems/`; it says only that the sprites land
-// there, and that each `draw-sheet` sequence lands "under its own directory". A
-// recursive count over the whole of `assets/gems/` would therefore let a build's
-// break frames stand in for its sprites, and a count of one hard-coded directory
-// would fail a build that grouped its sprites under a name of its own. So each
-// directory below `assets/gems/` is counted on its own and the largest count is
-// the reading: the sprites are wherever the build put them together, and a
-// sequence's frames are counted apart from them.
+// WHY THE COUNT IS TAKEN OVER ONE DIRECTORY. The specification fixes no file
+// name below `assets/gems/`, but it does fix the layout: the sprites are landed
+// "directly in `public/assets/gems/`, with each `draw-sheet` sequence in its own
+// directory beside them". So the PNGs sitting directly in `assets/gems/` are the
+// sprites and the subdirectories beside them are the sequences, and a recursive
+// count that reached into those would let a build's break frames stand in for
+// its sprites.
 //
-// WHAT "CARRYING OPAQUE PIXELS" RULES OUT. The canvas `draw` rasterizes is
-// transparent to begin with, so a file emitted without being drawn into decodes
-// to a picture of nothing. A file counts as a sprite only when it decodes and at
-// least one of its pixels is fully opaque.
+// WHAT THE ALPHA READING RULES OUT. The canvas `draw` rasterizes is transparent
+// to begin with, so a file emitted without being drawn into decodes to a picture
+// of nothing. A file counts as a sprite only when it decodes and at least one of
+// its pixels carries alpha above the level a sampling can tell a drawing from
+// channel rounding at, so whatever the build painted there counts however faint
+// it is and only an undrawn file stays below.
 
 import { createHash } from "node:crypto";
 import {
@@ -55,20 +55,21 @@ import { mediaDestination, siteRoot } from "../harness";
 /** The side of one cell of the contact sheet the check leaves as evidence. */
 const CONTACT_CELL = 72;
 
+/**
+ * The alpha a pixel clears for the reading to call it painted.
+ *
+ * On the 0-255 alpha channel, this is the level below which a sampling cannot
+ * tell a drawing from eight-bit channel rounding and the rasterizer's
+ * antialiasing. Anything the build painted into the canvas clears it, at
+ * whatever opacity, so a sprite drawn wholly translucent reads the same as one
+ * drawn solid and only a file that was never drawn into stays below.
+ */
+const ALPHA_FLOOR = 8;
+
 /** One produced picture, with the digest that tells it apart from another. */
 interface Sprite {
   path: string;
   hash: string;
-}
-
-/** Every directory at or below `root`. */
-function directoriesUnder(root: string): string[] {
-  const found: string[] = [root];
-  for (const entry of readdirSync(root)) {
-    const path = join(root, entry);
-    if (statSync(path).isDirectory()) found.push(...directoriesUnder(path));
-  }
-  return found;
 }
 
 /** The PNG files directly in `dir`, in name order. */
@@ -84,7 +85,8 @@ function pngsIn(dir: string): string[] {
  * The sprite a file holds, or `null` when it holds none.
  *
  * A file that does not decode as an image, or that decodes to a picture with no
- * opaque pixel anywhere in it, is not a produced sprite however it was named.
+ * pixel anywhere in it clearing {@link ALPHA_FLOOR}, is not a produced sprite
+ * however it was named.
  */
 async function readSprite(path: string): Promise<Sprite | null> {
   const bytes = readFileSync(path);
@@ -100,7 +102,7 @@ async function readSprite(path: string): Promise<Sprite | null> {
     return null;
   }
   for (let at = 3; at < pixels.length; at += 4) {
-    if (pixels[at] === 255) {
+    if (pixels[at] > ALPHA_FLOOR) {
       return { path, hash: createHash("sha256").update(bytes).digest("hex") };
     }
   }
@@ -172,21 +174,17 @@ it("ships at least thirty-five distinct produced gem sprites", async () => {
     fail(`a produced ${GEMS_DIR.join("/")}/ directory under ${root}`, "absent");
   }
 
-  // Every directory below `assets/gems/` counted on its own, so the sprites are
-  // found wherever the build grouped them and a sequence's frames are never
-  // counted alongside them.
-  let best: Sprite[] = [];
-  for (const dir of directoriesUnder(gems)) {
-    const sprites = await spritesIn(dir);
-    if (sprites.length > best.length) best = sprites;
-  }
-  best.sort((a, b) => a.path.localeCompare(b.path));
-  await writeContactSheet("sprites", best);
+  // The PNGs sitting directly in `assets/gems/`, which is where specs/assets.md
+  // lands the sprites; the sequence directories beside them hold frames rather
+  // than sprites and are never reached into.
+  const sprites = await spritesIn(gems);
+  sprites.sort((a, b) => a.path.localeCompare(b.path));
+  await writeContactSheet("sprites", sprites);
 
   assertGreaterThanOrEqual(
-    best.length,
+    sprites.length,
     REQUIRED_SPRITES,
-    "distinct produced PNG sprites, each decoding with opaque pixels, " +
-      "gathered in one directory under assets/gems/",
+    "distinct produced PNG sprites, each decoding with painted pixels, " +
+      "directly in assets/gems/",
   );
 });

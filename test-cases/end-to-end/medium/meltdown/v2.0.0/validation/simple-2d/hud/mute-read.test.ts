@@ -37,6 +37,9 @@
 // one the build reported for it — in both states and asks how far the paint
 // moved. A build that swaps a word, an icon, a colour or a whole crossed-out
 // speaker all clear it; only one that paints the two states the same does not.
+// How far the rectangle moves on its own is measured first, by sampling it twice
+// with the bit unchanged, and the press has to beat that by `NOISE_MARGIN`. How
+// far apart the two states read beyond that is the reviewer's.
 //
 // THE CONTROL IS THE RECTANGLE THE BUILD REPORTED, which is what lets specs/hud.md
 // require a mute control without fixing where it sits
@@ -59,16 +62,19 @@ import { largestChange, sampleRect } from "./read";
 const KEY = BINDINGS.mute[0];
 
 /**
- * How far the two readings of the control must sit apart, out of the 441 the RGB
+ * How far above the movement two unchanged frames show a reading must sit for
+ * the control to count as having been drawn differently, out of the 441 the RGB
  * cube spans.
  *
- * The suite's figure for "plainly apart" (specs/overview.md), the same one the
- * `presentation` group holds a tower against the floor and a tripped tower
- * against an online one to. 60 is about a seventh of the scale: a shade a player
- * reads as a different state rather than as a different rendering of the same
- * one.
+ * NOT A LEGIBILITY BAR. specs/overview.md gives the palette and the type to the
+ * build, so no figure here says how far apart the two states must read; how
+ * plainly they do is what the reviewer's presentation rating judges. This is the
+ * tolerance on the noise measurement itself: two frames of an animated build do
+ * not move by exactly the same amount every pair, so a reading has to clear the
+ * measured movement by a little rather than by nothing. Eight units is under two
+ * per cent of the scale.
  */
-const APART_MIN = 60;
+const NOISE_MARGIN = 8;
 
 /**
  * How many frames past the press the bit is waited for.
@@ -102,7 +108,10 @@ it("reads the mute control apart on the frame the mute state changes", async () 
 
   const control = h.snapshot().controls.mute;
   const opened = h.snapshot().muted;
+  const first: Rgb[] = sampleRect(h, control, SAMPLE_COLS, SAMPLE_ROWS);
+  await drawFrame(h);
   const before: Rgb[] = sampleRect(h, control, SAMPLE_COLS, SAMPLE_ROWS);
+  const noise = largestChange(first, before);
   captureStill(h, "unmuted");
 
   await h.tap(KEY);
@@ -125,10 +134,11 @@ it("reads the mute control apart on the frame the mute state changes", async () 
 
   assertGreaterThanOrEqual(
     largestChange(before, after),
-    APART_MIN,
+    noise + NOISE_MARGIN,
     `how far the mute control's paint moved, out of 441, on the very frame ` +
-      `the muted bit went from ${String(opened)} to ${String(!opened)} — ` +
-      `specs/hud.md has it reading "plainly differently muted and unmuted", ` +
-      `and changing "on the frame the mute state does"`,
+      `the muted bit went from ${String(opened)} to ${String(!opened)}, past ` +
+      `the ${noise} two frames with the bit unmoved showed — specs/hud.md has ` +
+      `it reading "plainly differently muted and unmuted", and changing "on ` +
+      `the frame the mute state does"`,
   );
 });

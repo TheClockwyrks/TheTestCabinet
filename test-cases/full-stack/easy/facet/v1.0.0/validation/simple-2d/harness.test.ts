@@ -83,7 +83,6 @@ import {
   framesPast,
   framesShortOf,
   loadBoard,
-  meanColor,
   patchDistance,
   poseBoard,
   requestSwap,
@@ -468,10 +467,9 @@ describe("the patch instrument", () => {
     ).toThrow(/Expected:/);
   });
 
-  it("reads a patch of no pixels as no distance and no color", () => {
-    // A degenerate patch is a reading rather than a division. Both instruments
-    // answer for it, so a box that came back empty fails the check that asked
-    // the question rather than filling the pair with NaN.
+  it("reads a patch of no pixels as no distance", () => {
+    // A degenerate patch is a reading rather than a division, so a box that came
+    // back empty fails the check that asked the question rather than answering NaN.
     const empty = (): Patch => ({
       half: 0,
       width: 0,
@@ -479,7 +477,6 @@ describe("the patch instrument", () => {
       data: new Uint8ClampedArray(0),
     });
     expect(patchDistance(empty(), empty())).toBe(0);
-    expect(meanColor(empty())).toEqual({ r: 0, g: 0, b: 0 });
   });
 });
 
@@ -851,11 +848,12 @@ describe("the harness stands a build up", () => {
   });
 
   it("reads one box shape at a board edge and at its middle", async () => {
-    // `patchDistance` is a MEAN over the box and PATCH_DISTINCT_MIN is one
-    // threshold under all three engines, so the box is the same shape wherever
-    // the cell sits: at a canvas edge the ORIGIN slides inward rather than the
-    // box shrinking. A `half` of 120 logical units runs off the bottom of the
-    // 1280x720 stage at the last row, which is what makes this readable at all.
+    // The box is the same shape wherever the cell sits: at a canvas edge the
+    // ORIGIN slides inward rather than the box shrinking. `patchDistance` is a
+    // MEAN over the box, so two readings of one cell answer for what was drawn
+    // in it rather than for how the box was cut. A `half` of 120 logical units
+    // runs off the bottom of the 1280x720 stage at the last row, which is what
+    // makes this readable at all.
     loadBoard(h, quietBoard());
     await h.advance(1);
     const middle = h.patch(3, 3, 120);

@@ -165,28 +165,6 @@ export async function scanWhen(
   return readings;
 }
 
-/** The mean brightness of a set of points, `0` to `255`. */
-export function brightness(h: Harness, points: readonly Point[]): number {
-  const sampled = h.pixels(points);
-  let total = 0;
-  for (const [r, g, b] of sampled) total += (r + g + b) / 3;
-  return total / sampled.length;
-}
-
-/** The mean brightness of a region across `frames` frames, the drawn one first. */
-export async function brightnessOverFrames(
-  h: Harness,
-  points: readonly Point[],
-  frames: number,
-): Promise<number> {
-  let total = brightness(h, points);
-  for (let i = 0; i < frames; i += 1) {
-    await h.advance(1);
-    total += brightness(h, points);
-  }
-  return total / (frames + 1);
-}
-
 /**
  * Write a point's declared still, and never let taking it decide the point.
  *

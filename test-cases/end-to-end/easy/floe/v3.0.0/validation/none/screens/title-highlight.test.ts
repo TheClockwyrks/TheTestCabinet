@@ -4,9 +4,10 @@
 // `specs/ui.md` fixes it for every menu in the game, in one line under the
 // screens table: "The highlighted item is drawn distinctly from the others."
 // HOW it is made distinct is the build's — a colour, a weight, a size, a marker,
-// a bar behind it — so what is measured here is separation alone, in the one
-// currency every one of those choices shows up in: the pixels the build painted
-// on the item's own line of the screen.
+// a bar behind it — so what is read here is that the line was DRAWN DIFFERENTLY
+// at all, in the one currency every one of those choices shows up in: the pixels
+// the build painted on the item's own line of the screen. How far apart the two
+// drawings are is appearance, which the reviewer judges.
 //
 // THE COMPARISON IS ONE ITEM AGAINST ITSELF. The two title entries are different
 // words of different lengths, so "the highlighted one against the plain one"
@@ -14,8 +15,8 @@
 // is the FIRST ITEM's line drawn with the highlight on it and the same line
 // drawn without. Everything else on the line is identical between the two
 // frames, so every pixel that differs is the highlight and nothing else, and a
-// build that draws the highlighted entry exactly as it draws a plain one reads
-// as `0` rather than as some small number.
+// build that draws the highlighted entry exactly as it draws a plain one leaves
+// every sampled pixel identical.
 //
 // THE LINE IS READ WHOLE, ACROSS THE STAGE. A build may mark its highlight
 // beside the entry rather than on it — a caret, a bracket pair, a bar behind the
@@ -33,7 +34,7 @@
 // that changes between the two frames is which item is highlighted.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual, fail } from "../assert";
+import { assertGreaterThan, fail } from "../assert";
 import { STAGE_W, TITLE_ITEMS } from "../constants";
 import {
   captureStill,
@@ -44,18 +45,6 @@ import {
   type Rgb,
   type TextDraw,
 } from "../harness";
-
-/**
- * How far apart the two drawings of the line must be, in RGB distance.
- *
- * The item's own figure: `40` of the `441` the RGB cube spans corner to corner,
- * about a twelfth of it. It is the same order as the `50` Carom v3.0.0 asks of a
- * ball against its field, set a little lower because a highlight may be a shift
- * of one channel — a warm accent against a cool one — rather than a wholly
- * different colour. Below it a difference is not one a player reads as a
- * highlight; a build that draws the two states identically reads `0`.
- */
-const HIGHLIGHT_MIN_DISTANCE = 40;
 
 /**
  * The band of the item's line that is read, as fractions of the menu's step.
@@ -149,11 +138,11 @@ it("draws the highlighted title item apart from the same item unhighlighted", as
     apart = Math.max(apart, colorDistance(rgb(lit[i]), rgb(plain[i])));
   }
 
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     apart,
-    HIGHLIGHT_MIN_DISTANCE,
+    0,
     `the highlighted ${TITLE_ITEMS[0]} drawn distinctly from the plain one, ` +
-      `as the furthest apart any pixel of its line is between the two ` +
+      `as at least one pixel of its line drawn differently between the two ` +
       `(specs/ui.md)`,
   );
 });

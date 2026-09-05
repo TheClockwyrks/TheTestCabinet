@@ -20,21 +20,18 @@
 //      same way: under either engine the cue bus announces the play, and under no
 //      engine the harness watches the doors a browser emits audio through.
 //
-//   2. AND WHAT IT PLAYS IS THAT CUE'S OWN FILE. A second run of the game has all
-//      six produced cue files WITHHELD, and what is read is the ledger of produced
-//      files the build asked for and did not get: it names all six, one per cue,
-//      at six different paths. A build that synthesized its cues instead of
+//   2. AND WHAT IT PLAYS IS THAT CUE'S OWN FILE. The produced files this build
+//      asked for are read back off the same run, and they name all six, one per
+//      cue, at six different paths. A build that synthesized its cues instead of
 //      playing the files asks for nothing; a build that shipped one clip under six
 //      names asks for one file six times.
 //
-// WHY THE WITHHELD RUN IS READ FOR ITS REQUESTS RATHER THAN FOR ITS SILENCE.
-// `specs/assets.md` requires that "A load that fails leaves the game running ...
-// so a missing file costs the game its polish rather than its playability", and a
-// build is free to meet that by falling back to something it synthesizes — so a
-// cue that still sounds with its file withheld is conformant, and silence is not
-// a reading a check may demand. What the withheld run can honestly see is what
-// the build REACHED FOR, and reaching for `assets/audio/halt.wav` is the whole of
-// what binding the `halt` cue to its produced file means.
+// WHY THE REQUESTS ARE THE READING RATHER THAN THE SOUND. Every produced file is
+// served here, exactly as it is to every other check, so what a cue SOUNDS LIKE
+// is never compared against a file — that is the reviewer's. What the run can
+// honestly see is what the build REACHED FOR, and reaching for
+// `assets/audio/halt.wav` is the whole of what binding the `halt` cue to its
+// produced file means.
 //
 // WHAT THIS POINT DOES NOT DECIDE. Which frame a cue lands on, that it sounds at
 // most once for an event, and that the right cue sounds for the right event are
@@ -95,9 +92,6 @@ const READY_MACHINE = solution([
 /** How many frames a cue is given to land on after the event that raised it. */
 const CUE_FRAMES = 2;
 
-/** How many frames the withheld run is given to ask for its files in. */
-const LOAD_FRAMES = 3;
-
 /** How many quiet frames in a row {@link untilQuiet} settles for. */
 const QUIET_FRAMES = 6;
 
@@ -115,11 +109,6 @@ const QUIET_BOUND = 240;
 function requestFor(cue: CueName): RegExp {
   return new RegExp(`(^|/)${cue}([-.][^/]*)?\\.wav$`);
 }
-
-/** Every one-shot cue's file at once, for the run that withholds them. */
-const EVERY_CUE_FILE = new RegExp(
-  `(^|/)(${ONE_SHOT_CUES.join("|")})([-.][^/]*)?\\.wav$`,
-);
 
 /**
  * Run frames until the build has stopped emitting sound, so the window each
@@ -289,30 +278,21 @@ it("plays each of the six cues from the file CUE_PATHS names for it", async () =
     );
   });
 
-  // And what each of them plays is that cue's own produced file: a run with all
-  // six withheld names all six, one per cue, at six different paths.
-  //
-  // Unarmed, deliberately: this half reads what the build REACHED FOR and never
-  // listens, so it is handed no gesture.
-  const withheld = await createHarness({ withoutAssets: EVERY_CUE_FILE });
-  try {
-    await withheld.advance(LOAD_FRAMES);
-    const asked = withheld.assetFailures.map((failure) => failure.path);
-    const reached: string[] = [];
-    for (const [index, cue] of ONE_SHOT_CUES.entries()) {
-      const match = asked.find((path) => requestFor(cue).test(path));
-      assertNotNull(
-        match ?? null,
-        `a request for the ${cue} cue's produced file, ${CUE_FILES[index]}, among ${JSON.stringify(asked)}`,
-      );
-      if (match !== undefined) reached.push(match);
-    }
-    assertLength(
-      [...new Set(reached)],
-      ONE_SHOT_CUES.length,
-      "the different files the six cues reached for, which CUE_PATHS names one apiece",
+  // And what each of them plays is that cue's own produced file: the files this
+  // build asked for name all six, one per cue, at six different paths.
+  const asked = await h.assetRequests();
+  const reached: string[] = [];
+  for (const [index, cue] of ONE_SHOT_CUES.entries()) {
+    const match = asked.find((path) => requestFor(cue).test(path));
+    assertNotNull(
+      match ?? null,
+      `a request for the ${cue} cue's produced file, ${CUE_FILES[index]}, among ${JSON.stringify(asked)}`,
     );
-  } finally {
-    await withheld.dispose();
+    if (match !== undefined) reached.push(match);
   }
+  assertLength(
+    [...new Set(reached)],
+    ONE_SHOT_CUES.length,
+    "the different files the six cues reached for, which CUE_PATHS names one apiece",
+  );
 });

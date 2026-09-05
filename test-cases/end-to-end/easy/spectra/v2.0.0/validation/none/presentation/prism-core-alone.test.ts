@@ -3,86 +3,72 @@
 // `specs/assets.md`: "When the shell is broken, only the core is drawn: the inner
 // layer alone, at `PRISM_CORE_SIZE`, so a Prism with its shell intact and one
 // with only its core left are told apart at a glance."
-// `specs/overview.md`'s legibility table carries the same row, and
 // `specs/drones.md` puts the figures beside each other: `PRISM_SIZE` (`56`) with
 // the shell standing, `PRISM_CORE_SIZE` (`26`) with only the core left. It is not
 // decoration — the two states fall to shots of OPPOSITE bands, so a player who
 // cannot see that a shell has broken keeps firing the band that no longer works.
 //
-// THE READING IS HOW MUCH OF THE SQUARE EACH ONE PAINTS. `specs/overview.md`
-// fixes no palette and `specs/assets.md` lets a build lay a glow of its own
-// around a body, so what a broken Prism is drawn IN is not a question this point
-// may ask. What it may ask is the one thing the specification does fix: the
-// broken Prism draws the inner layer ALONE, which is a smaller region. Each Prism
-// is read through a square of the whole Prism's own `PRISM_SIZE` (`56`)
-// footprint, and the places that moved from a reading of that same square with
-// the Prisms gone are counted — see `presentation/reading`. Held against the same
-// squares of the same field, so a build's own starfield is in both readings and
-// cannot be what was counted.
+// SO THE READING IS THE DESTINATION BOX, NOT THE PIXELS ON THE STAGE. Every
+// `drawImage` the frame issued is captured with the box it drew into, in logical
+// stage units, and the box drawn for the shell-broken Prism is held against
+// `PRISM_CORE_SIZE`, the one figure the specification fixes for that state. The
+// pixels would not do: `specs/overview.md` fixes no palette and `specs/assets.md`
+// lets a build lay a glow of its own around a body, so the lit patch a broken
+// Prism leaves is wider than its core by however much the build chose — a figure
+// the specification does not fix and this point must not demand.
 //
-// WHY A SHARE RATHER THAN A FIGURE. The specification fixes the two footprints
-// but not how much of either square the art inside it inks, nor how far a build's
-// glow reaches, so no absolute count is available to assert. The ratio of the two
-// AREAS is: `PRISM_CORE_SIZE` squared over `PRISM_SIZE` squared is `0.22`, so a
-// build drawing the inner layer alone paints about a fifth of what the whole
-// Prism does, and the ceiling below is set well above that so a build that rings
-// its lone core in light still passes.
+// WHICH DRAW IS THE CORE'S. A build is free to blit a halo, a shadow or a
+// pre-rendered glow beside the body, so the draw this point is about is the one
+// whose source looks most like `prism.png`, among the draws centred within the
+// core's own footprint. Whether that source really is the seeded art is
+// `presentation/prism-from-sprite`'s question and is not asked again here, and
+// the INTACT Prism's `PRISM_SIZE` box is `presentation/drone-scaled-to-footprint`'s.
 //
 // THE TWO ARE POSED SIDE BY SIDE IN ONE FRAME, both storing cyan — the band
 // `prism.png` is seeded in — and both props with every faculty off, so neither
 // moves, fires or is drawn into a dive between the pose and the frame that is
-// read. Nothing here breaks a shell by shooting it: what a matching shot does to
-// a shell is `bands/prism-shell-flips-effective-band`'s question, and this point
-// poses the two states directly so that a build whose shot rules are broken still
-// has its drawing graded.
+// read; the whole Prism stands beside the broken one so the still carries the
+// pair a reviewer compares. Nothing here breaks a shell by shooting it: what a
+// matching shot does to a shell is `bands/prism-shell-flips-effective-band`'s
+// question, and this point poses the two states directly so that a build whose
+// shot rules are broken still has its drawing graded.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import { PRISM_CORE_SIZE, PRISM_SIZE } from "../constants";
+import { assertBetween, assertEqual, fail } from "../assert";
+import { PRISM_CORE_SIZE, SPRITE_SIZE } from "../constants";
 import {
+  blitsNear,
+  blitsOfFrame,
   captureStill,
   createHarness,
-  footprint,
   poseDrone,
-  readRegion,
   requireDrone,
   startPosed,
   type Harness,
-  type Rgb,
 } from "../harness";
-import { paintedCount } from "./reading";
+import { bestBlit, describeBlits } from "./reading";
 
 /**
- * The most of the whole Prism's painted region a broken one may paint, as a
- * share of it.
+ * How far the drawn box may stand from the core's own footprint, as a fraction
+ * of it.
  *
- * `specs/drones.md` draws the two at `PRISM_SIZE` (`56`) and `PRISM_CORE_SIZE`
- * (`26`), whose areas stand at `(26/56)^2 = 0.22`, so the inner layer alone is
- * about a fifth of the whole. `0.6` is nearly three times that — room for a build
- * that lays a wide glow around its lone core, or inks the core densely and the
- * shell sparsely — and still far below the `1.0` a build that draws the same
- * picture for both states scores.
+ * The same 15% `presentation/drone-scaled-to-footprint` holds every drone's box
+ * to, so a `PRISM_CORE_SIZE` (`26`) core may be drawn between `22.1` and `29.9`
+ * units across. Wide enough for a build that insets a sprite's transparent
+ * border or rounds a box to whole device pixels, and far too narrow to admit the
+ * `PRISM_SIZE` (`56`) box a build that kept drawing the whole Prism would issue.
  */
-const MAX_CORE_SHARE = 0.6;
+const SCALE_TOLERANCE = 0.15;
 
 /** The row the two stand on: inside the play field, clear of the ship's lane. */
 const ROW_Y = 400;
 
 /**
- * Where the two stand, `440` units apart — nearly eight whole Prisms — so no glow
- * a build lays around one can reach the square the other is read through.
+ * Where the two stand, `440` units apart — nearly eight whole Prisms — so no draw
+ * a build issues for one can be attributed to the other.
  */
 const WHOLE_X = 420;
 const BROKEN_X = 860;
-
-/**
- * The lattice each square is read on, in logical units.
- *
- * One sample per logical unit, which is one device pixel at this harness's own
- * viewport, so a `PRISM_SIZE` (`56`) square is every one of its `3136` pixels and
- * a shell drawn as a thin ring is counted rather than falling between samples.
- */
-const READ_STEP = 1;
 
 let h: Harness;
 
@@ -94,7 +80,7 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("paints a visibly smaller region for a Prism whose shell is gone", async () => {
+it("draws a shell-broken Prism into a box the size of its core", async () => {
   await startPosed(h);
   const whole = await poseDrone(h, "prism", WHOLE_X, ROW_Y, {
     band: "cyan",
@@ -104,55 +90,48 @@ it("paints a visibly smaller region for a Prism whose shell is gone", async () =
     band: "cyan",
     shell: false,
   });
-  await h.advance(1);
+
+  const blits = await blitsOfFrame(h);
+  const posed = await h.snapshot();
 
   // A whole Prism beside a shell-broken one.
   await captureStill(h, "pair");
 
-  const posed = await h.snapshot();
-  const read = [
-    { id: whole, name: "the whole Prism", shellAlive: true },
-    { id: broken, name: "the shell-broken Prism", shellAlive: false },
-  ].map(({ id, name, shellAlive }) => {
-    const drone = requireDrone(posed, id, name);
-    assertEqual(
-      drone.shellAlive,
-      shellAlive,
-      `precondition: ${name} is posed with its outer shell ` +
-        `${shellAlive ? "standing" : "gone"} (specs/drones.md)`,
+  assertEqual(
+    requireDrone(posed, whole, "the whole Prism").shellAlive,
+    true,
+    "precondition: the first Prism is posed with its outer shell standing " +
+      "(specs/drones.md)",
+  );
+  const core = requireDrone(posed, broken, "the shell-broken Prism");
+  assertEqual(
+    core.shellAlive,
+    false,
+    "precondition: the second Prism is posed with its outer shell gone " +
+      "(specs/drones.md)",
+  );
+
+  const at = { x: core.x, y: core.y };
+  // Half the core's own footprint: a box whose centre left it is drawn somewhere
+  // other than on the Prism (specs/assets.md: centred on its position).
+  const near = blitsNear(blits, at, PRISM_CORE_SIZE / 2);
+  const drawn = bestBlit(near, "prism");
+  if (drawn === undefined) {
+    fail(
+      `a bitmap blitted within ${PRISM_CORE_SIZE / 2} units of the ` +
+        `shell-broken Prism's centre at (${at.x.toFixed(0)}, ` +
+        `${at.y.toFixed(0)}) (specs/assets.md: when the shell is broken, only ` +
+        `the core is drawn — the inner layer alone, at PRISM_CORE_SIZE)`,
+      describeBlits(blitsNear(blits, at, SPRITE_SIZE)),
     );
-    return { name, square: footprint(drone.x, drone.y, PRISM_SIZE) };
-  });
-
-  const drawn: Rgb[][] = [];
-  for (const { square } of read) {
-    drawn.push(await readRegion(h, square, READ_STEP));
   }
-
-  // The same two squares of the same field with no Prism on them: the control
-  // every place counted above is held against.
-  await h.debug.clearDrones();
-  await h.advance(1);
-  const bare: Rgb[][] = [];
-  for (const { square } of read) {
-    bare.push(await readRegion(h, square, READ_STEP));
-  }
-
-  const wholeCount = paintedCount(bare[0], drawn[0]);
-  const brokenCount = paintedCount(bare[1], drawn[1]);
-  assertGreaterThan(
-    wholeCount,
-    0,
-    `precondition: the whole Prism painted the PRISM_SIZE (${PRISM_SIZE}) ` +
-      `square it stands on at all`,
-  );
-  assertLessThan(
-    brokenCount / wholeCount,
-    MAX_CORE_SHARE,
-    `the shell-broken Prism to paint less than ${MAX_CORE_SHARE} of what the ` +
-      `whole one paints inside the same PRISM_SIZE (${PRISM_SIZE}) square ` +
-      `(specs/assets.md: when the shell is broken, only the core is drawn — ` +
-      `the inner layer alone, at PRISM_CORE_SIZE (${PRISM_CORE_SIZE})); it ` +
-      `painted ${brokenCount} places against the whole Prism's ${wholeCount}`,
-  );
+  const low = PRISM_CORE_SIZE * (1 - SCALE_TOLERANCE);
+  const high = PRISM_CORE_SIZE * (1 + SCALE_TOLERANCE);
+  const where =
+    `the shell-broken Prism drawn PRISM_CORE_SIZE (${PRISM_CORE_SIZE}) units ` +
+    `across, within ${SCALE_TOLERANCE * 100}% (specs/assets.md: when the ` +
+    `shell is broken, only the core is drawn — the inner layer alone, at ` +
+    `PRISM_CORE_SIZE)`;
+  assertBetween(drawn.width, low, high, `${where}: the box's width`);
+  assertBetween(drawn.height, low, high, `${where}: the box's height`);
 });

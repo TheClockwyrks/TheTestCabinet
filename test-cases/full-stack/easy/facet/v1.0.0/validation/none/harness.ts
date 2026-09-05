@@ -115,7 +115,6 @@ import {
   type RecordedOp,
   type Recording,
   type ResolvedConfig,
-  type Rgb,
   type Viewport,
 } from "./case-harness/index";
 import { fail } from "./assert";
@@ -125,7 +124,6 @@ import {
   DEFAULT_SEED,
   HANDLE,
   MAX_CHAIN_STEPS,
-  MAX_REPLAY_FRAMES,
   PATCH_HALF,
   STAGE_H,
   STAGE_W,
@@ -256,13 +254,12 @@ export interface AssetFailure {
 }
 
 /**
- * A color read off the canvas, and a device pixel as the canvas holds it.
+ * A device pixel as the canvas holds it.
  *
  * THE SHARED HARNESS'S. `Rgba` is this case's name for the package's `Pixel`,
  * kept because the two engine projects' harnesses spell it that way too and the
  * same suite text has to compile against all three.
  */
-export type { Rgb } from "./case-harness/index";
 export type Rgba = Pixel;
 
 /** A square of device pixels read off the canvas, centered on a cell. */
@@ -295,27 +292,14 @@ export interface HarnessOptions {
   /** The seed the opening `reset` carries. Defaults to `DEFAULT_SEED`. */
   seed?: number;
   /**
-   * Whether the build's produced assets are served at all. Defaults to `true`.
-   *
-   * `false` answers every request for a PRODUCED file with a 404 — the sprites,
-   * the particle systems and the `.wav`s `specs/assets.md` commits under
-   * `public/assets/{gems,fx,audio}/`. It is how a check poses a build whose art
-   * and audio never arrive, and it is the same option under all three engines;
-   * only the mechanism differs, since under this one the assets travel over HTTP.
-   * The build's own bundle is not an asset in this sense and still loads, so what
-   * is posed is a game with nothing to draw with rather than a page with nothing
-   * to run.
-   */
-  assets?: boolean;
-  /**
    * The sub-path the built site is served from. Defaults to `"/"`.
    *
    * `specs/assets.md` says the site "is not guaranteed to be served from the root
-   * of its origin; it is played back mounted under a per-run sub-path", and that a
-   * root-absolute URL "resolves against the origin root and 404s under a
-   * sub-path". So a non-root value here does BOTH halves of that sentence: the
-   * page is opened under the sub-path, and everything the build then asks for
-   * outside it is answered 404 exactly as a real sub-path mount would answer it.
+   * of its origin; it is played back mounted under a per-run sub-path". A non-root
+   * value opens the page under that sub-path, so a page-relative URL resolves
+   * from there and a root-absolute one resolves somewhere else — which is what
+   * `assets/assets-load-page-relative` reads off the request log. Every request
+   * is still answered, whichever of the two it is.
    */
   basePath?: string;
 }
@@ -536,10 +520,13 @@ export interface Harness {
   /**
    * Run one frame and hand back every string that frame put on screen.
    *
-   * The union of the frame's canvas text and the page's own DOM text, because
-   * `specs/assets.md` says the chrome is "drawn in code (canvas or DOM)" and an
-   * engineless build is entitled to either. The canvas strings come first, in the
-   * order the frame drew them, and the DOM strings after.
+   * The union of the frame's canvas text and the page's own RENDERED DOM text,
+   * because `specs/assets.md` says the chrome is "drawn in code (canvas or DOM)"
+   * and an engineless build is entitled to either. The canvas strings come first,
+   * in the order the frame drew them, and the DOM strings after. A DOM string
+   * counts only where it is on screen: an element hidden by `display`,
+   * `visibility`, a zero `opacity` or a zero-sized box has drawn nothing, so a
+   * check that reads an ABSENCE reads the frame rather than the document.
    *
    * The pieces are as the build drew them, which is not always a word: a build
    * that letter-spaces a title issues one `fillText` per GLYPH, and the array then
@@ -872,7 +859,6 @@ export async function createHarness(
   const dpr = options.dpr ?? 1;
   const clock = options.clock ?? new ConstantClock(TICK_MS);
   const seed = options.seed ?? DEFAULT_SEED;
-  const serveAssets = options.assets ?? true;
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const context = await contextFor({ cssWidth, cssHeight, dpr }, CASE);
   const page = await context.newPage();
@@ -914,36 +900,25 @@ export async function createHarness(
     }
   });
 
-  // What a sub-path mount and a stripped asset tree both are, on this engine: the
-  // page asks over HTTP, so both are answered on the wire rather than in a loader.
-  // A route is installed only when one of them is actually posed, so the ordinary
-  // harness carries no interception at all.
-  //
   // THE MOUNT IS THE HARNESS'S, NOT THE SERVER'S. The static server the shared
-  // harness runs publishes the build at the root and nowhere else, which is what
-  // makes it strict; the sub-path `specs/assets.md` describes — "it is played
-  // back mounted under a per-run sub-path, a path like `/runs/<id>/build/`" — is
-  // posed here, by refusing anything that reaches outside the mount and stripping
-  // the mount off everything that stays inside it. So the request the build made
-  // is what a check reads, and the file the server hands back is the one that
-  // request would have found under the mount.
-  if (basePath !== "/" || !serveAssets) {
+  // harness runs publishes the build at the origin root and nowhere else, so the
+  // sub-path `specs/assets.md` describes — "it is played back mounted under a
+  // per-run sub-path, a path like `/runs/<id>/build/`" — is posed here: the page
+  // is opened at the mount, and a request that stays inside it has the mount
+  // stripped off before the server sees it.
+  //
+  // NOTHING IS REFUSED. Every request the build makes is answered, including one
+  // the build rooted at the origin, which reaches the published tree unchanged.
+  // The record of what the build asked for is what a check reads — `requests`
+  // holds every URL — so `assets/assets-load-page-relative` decides its point off
+  // the paths the build resolved rather than off a withheld file, and every
+  // produced file stands up for every check this project runs. A route is
+  // installed only when a mount is actually posed, so the ordinary harness
+  // carries no interception at all.
+  if (basePath !== "/") {
     await page.route("**/*", (route, request) => {
       const path = pathOf(request.url());
-      // A root-absolute URL under a sub-path mount reaches the ORIGIN root, where
-      // nothing of this build is published. `specs/assets.md` says exactly that
-      // and calls it a 404, so that is what it gets.
       if (!path.startsWith(basePath)) {
-        void route.fulfill({ status: 404, body: "not found" });
-        return;
-      }
-      // A produced file alone. The bundle shares the `assets/` root and is not
-      // what `assets: false` is about.
-      if (!serveAssets && isAssetPath(path)) {
-        void route.fulfill({ status: 404, body: "not found" });
-        return;
-      }
-      if (basePath === "/") {
         void route.continue();
         return;
       }
@@ -1339,6 +1314,33 @@ export async function createHarness(
           "TITLE",
           "TEMPLATE",
         ]);
+        // WHAT IS RENDERED, NOT WHAT IS IN THE DOCUMENT. A build that keeps a
+        // readout in the DOM and hides it while it does not apply has drawn
+        // nothing, and a reading that could not tell that apart from an absent
+        // element would decide document membership rather than the frame. So a
+        // text node whose nearest rendered ancestor is hidden — by `display`, by
+        // `visibility`, by a zero `opacity`, or by carrying no box at all — is
+        // not text this frame put on screen.
+        //
+        // `display: contents` IS EXEMPT FROM THE BOX. Such an element carries no
+        // box of its own while every word inside it is drawn, so reading its
+        // rectangle would take a conformant build's whole HUD off the frame.
+        const shown = (element: Element | null): boolean => {
+          for (let at = element; at !== null; at = at.parentElement) {
+            const style = getComputedStyle(at);
+            if (
+              style.display === "none" ||
+              style.visibility === "hidden" ||
+              style.opacity === "0"
+            ) {
+              return false;
+            }
+            if (style.display === "contents") continue;
+            const box = at.getBoundingClientRect();
+            if (box.width === 0 && box.height === 0) return false;
+          }
+          return true;
+        };
         const walker = document.createTreeWalker(
           document.body,
           NodeFilter.SHOW_TEXT,
@@ -1346,6 +1348,7 @@ export async function createHarness(
         while (walker.nextNode()) {
           const parent = walker.currentNode.parentElement;
           if (parent !== null && skip.has(parent.tagName)) continue;
+          if (!shown(parent)) continue;
           const text = (walker.currentNode.nodeValue ?? "").trim();
           if (text !== "") found.push(text);
         }
@@ -1686,21 +1689,6 @@ export function drawOps(calls: readonly DrawCall[]): number {
 /* Pixels                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** The color of one logical point of the stage. */
-export async function sampleColor(
-  h: Harness,
-  x: number,
-  y: number,
-): Promise<Rgb> {
-  const [r, g, b] = await h.pixel(x, y);
-  return { r, g, b };
-}
-
-/** Euclidean distance between two colors, 0..441. */
-export function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
-
 /**
  * The device-pixel box centered on a cell's center.
  *
@@ -1721,9 +1709,9 @@ export function colorDistance(a: Rgb, b: Rgb): number {
  * device pixels on a side — ODD, so it is centered on the cell center rather
  * than half a pixel off it — and it is that size wherever the cell sits, since
  * at a canvas edge the ORIGIN slides inward and the size holds. `patchDistance`
- * is a MEAN over the box, and `PATCH_DISTINCT_MIN` and `PATCH_SAME_MAX` are one
- * pair of thresholds under all three engines, so a box that changed shape near
- * an edge would make them mean different things.
+ * is a MEAN over the box, so a box that changed shape near an edge would make
+ * two readings of one cell answer differently for the box rather than for what
+ * was drawn in it.
  */
 export function readPatch(
   h: Harness,
@@ -1737,13 +1725,12 @@ export function readPatch(
 /**
  * The mean per-pixel Euclidean RGB distance between two patches, 0 to about 441.
  *
- * THE DISTINGUISHABILITY INSTRUMENT. Per-pixel rather than between the two mean
- * colors, because a build is entitled to tell two kinds apart by FORM — the same
- * hue, a different facet pattern — and two patches with identical means can still
- * differ in every pixel. A hue difference and a form difference both register
- * here, which is what makes this reading fair to a build whose look is not the
- * reference's. It says nothing about which colors were used, and no check may
- * ask it to.
+ * THE PRESENCE INSTRUMENT. Per-pixel rather than between the two mean colors,
+ * because two patches with identical means can still differ in every pixel, so a
+ * mean would call a cell unchanged that the build redrew. Every check that reads
+ * it asks one question of the number — whether it is zero — and a check that
+ * asked how LARGE it is would be grading a build's palette, its contrast or its
+ * treatment, which the reviewer judges and no check here may.
  *
  * Two patches of different shapes are a fixture fault rather than a reading, and
  * a patch of no pixels at all measures no distance.
@@ -1767,22 +1754,6 @@ export function patchDistance(a: Patch, b: Patch): number {
     );
   }
   return total / pixels;
-}
-
-/** The mean color of a patch, or black when the patch holds no pixels. */
-export function meanColor(patch: Patch): Rgb {
-  const pixels = patch.width * patch.height;
-  if (pixels === 0) return { r: 0, g: 0, b: 0 };
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (let i = 0; i < pixels; i += 1) {
-    const at = i * 4;
-    r += patch.data[at];
-    g += patch.data[at + 1];
-    b += patch.data[at + 2];
-  }
-  return { r: r / pixels, g: g / pixels, b: b / pixels };
 }
 
 /* -------------------------------------------------------------------------- */

@@ -120,23 +120,15 @@ export interface MarkOptions {
    * nothing here assumes the field is flat, or that a mark is brighter than it: a
    * pixel is ink when it differs from the field BOTH sides of it, which a small
    * bright dot and a small dark one both do and a gradient, a vignette or a wash
-   * does not. It follows that `span` has to clear the widest thing being counted,
-   * so it is always set above half of {@link MarkOptions.maxExtent}.
+   * does not. The span is part of the reading rather than a bound the caller
+   * asserts.
    */
   span: number;
-  /**
-   * The largest a mark may be, in logical units, on either axis.
-   *
-   * A bound on what the word "mark" can mean: anything wider or taller than this
-   * is a body, a panel or a wash, and is discarded rather than counted.
-   */
-  maxExtent: number;
 }
 
 /**
  * How many separate marks `box` holds: connected blobs of pixels that stand out
- * from the field either side of them and are no larger than `maxExtent` on either
- * axis.
+ * from the field either side of them.
  *
  * Four-connected, at the canvas's OWN resolution rather than on a lattice, so a
  * mark a single pixel across is counted once and a mark four across is not counted
@@ -151,7 +143,6 @@ export function countMarksByContrast(
 ): number {
   const { scale } = h.engine.viewport();
   const span = Math.max(1, Math.round(options.span * scale));
-  const maxExtent = options.maxExtent * scale;
   const region = readRegion(h, box);
   const { width, height } = region;
 
@@ -184,20 +175,12 @@ export function countMarksByContrast(
   const stack: number[] = [];
   for (let seed = 0; seed < ink.length; seed += 1) {
     if (ink[seed] !== 1) continue;
-    let minX = width;
-    let maxX = -1;
-    let minY = height;
-    let maxY = -1;
     ink[seed] = 2;
     stack.push(seed);
     while (stack.length > 0) {
       const at = stack.pop() as number;
       const x = at % width;
       const y = (at - x) / width;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
       if (x > 0 && ink[at - 1] === 1) {
         ink[at - 1] = 2;
         stack.push(at - 1);
@@ -215,8 +198,7 @@ export function countMarksByContrast(
         stack.push(at + width);
       }
     }
-    if (maxX - minX + 1 <= maxExtent && maxY - minY + 1 <= maxExtent)
-      marks += 1;
+    marks += 1;
   }
   return marks;
 }

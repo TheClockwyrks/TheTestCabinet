@@ -69,11 +69,19 @@
 // sub-steps cover", and specs/ui.md freezes the field — so a build that advances
 // it across the toggle and one that does not are both conformant.
 //
-// WHAT THIS DOES NOT DECIDE. The binding, which is `controls/overlay-backquote`,
-// and that the panel is off when the game starts, which is that point's too.
+// WHAT THIS DOES NOT DECIDE. The binding, the panel itself, and that it is off
+// when the game starts, all of which this engine supplies to every build on it.
+// What is read here is the sources the BUILD registered into it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { RESONANCE_MAX, fluxHold, fluxWindow } from "../constants";
+import {
+  FLIP_LOCKOUT,
+  INVERSION_TIME,
+  RESONANCE_MAX,
+  START_LIVES,
+  fluxHold,
+  fluxWindow,
+} from "../constants";
 import { assertDeepEqual, assertEqual, fail } from "../assert";
 import {
   captureStill,
@@ -89,7 +97,7 @@ import { poseBursts } from "./bursts";
 
 /** The run posed: three figures no other value on this field carries. */
 const SCORE = 4271;
-const LIVES = 14;
+const LIVES = START_LIVES + 1;
 const SHIP_X = 417;
 
 /**
@@ -101,9 +109,17 @@ const STAGE = 9;
 /** The meter, posed at the ceiling so a discharge is ready to be reported. */
 const RESONANCE = RESONANCE_MAX;
 
-/** The two durations, in seconds. Both are whole, so any scale reads cleanly. */
-const INVERSION = 4;
-const LOCKOUT = 8;
+/**
+ * The two durations, in seconds, each at the top of the range its own rule fixes.
+ *
+ * `specs/bands.md` runs an inversion for `INVERSION_TIME` (`5.0`) seconds and
+ * `specs/ship.md` sets the fire lockout to `FLIP_LOCKOUT` (`0.30`) on a flip, so
+ * these are the largest values the game can hold and no value here is one the
+ * game could never produce. Both read cleanly at every scale a build may print
+ * them in, from seconds to milliseconds.
+ */
+const INVERSION = INVERSION_TIME;
+const LOCKOUT = FLIP_LOCKOUT;
 
 /** Where the three drones stand, at coordinates no other figure here carries. */
 const SHARD_AT = { x: 688, y: 296 } as const;
@@ -123,7 +139,7 @@ const BAND_CLOCK = 1.5;
 /** How many drones are popped for the bursts the panel must count. */
 const BURSTS = 2;
 
-/** Where the five posed bullets hang: three of the player's, two of the enemy's. */
+/** Where the six posed bullets hang: three of the player's and three of the enemy's. */
 const FRIENDLY_AT: readonly { x: number; y: number }[] = [
   { x: 100, y: 620 },
   { x: 180, y: 620 },
@@ -132,6 +148,7 @@ const FRIENDLY_AT: readonly { x: number; y: number }[] = [
 const ENEMY_AT: readonly { x: number; y: number }[] = [
   { x: 1100, y: 120 },
   { x: 1200, y: 160 },
+  { x: 1020, y: 208 },
 ];
 
 /** The one key the engine binds the overlay toggle to. */

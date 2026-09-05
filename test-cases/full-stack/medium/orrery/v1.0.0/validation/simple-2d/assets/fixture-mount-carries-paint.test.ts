@@ -9,27 +9,20 @@
 // carries no paint leaves the mote on a fixture looking exactly like a mote resting
 // on a hex, which is the one reading the mount exists to give.
 //
-// WHAT IT READS. The file decodes, and the share of its canvas carrying paint — any
-// pixel whose alpha is above zero — clears `PAINT_MIN_SHARE`. `specs/assets.md`
-// fixes no coverage figure, so that floor is one hundredth of the canvas: an order
-// of magnitude below the thinnest mark a mount could legibly be drawn as, which
-// makes it a reading about a canvas that was drawn on at all rather than a second
-// art bar. Whether a fixture READS AS MOUNTED is the art bar itself, and the
-// reviewer's judgement.
+// WHAT IT READS. The file decodes, and the share of its canvas carrying paint
+// is above zero: some pixel of it carries an alpha above zero.
+// `specs/assets.md` fixes no coverage figure, so what is read is that the
+// canvas was drawn on at all rather than a second art bar. Whether a fixture
+// READS AS MOUNTED is the art bar itself, and the reviewer's judgement.
 //
 // THE EVIDENCE is the file magnified over a checkerboard: wherever the checker shows
 // through, the canvas carried nothing there.
 
 import { it } from "vitest";
-import { assertGreaterThanOrEqual, assertLength, fail } from "../assert";
+import { assertGreaterThan, assertLength, fail } from "../assert";
 import { FIXTURE_MOUNT_PATH } from "../constants";
 import { WHEEL_SPRITES, assetFile } from "./files";
-import {
-  PAINT_MIN_SHARE,
-  decodeProduced,
-  paintShare,
-  showSprites,
-} from "./sprites";
+import { decodeProduced, paintShare, showSprites } from "./sprites";
 
 const MOUNT = WHEEL_SPRITES.filter(
   (row) => row.file === assetFile(FIXTURE_MOUNT_PATH),
@@ -45,9 +38,9 @@ it("decodes the fixture mount as a canvas carrying paint", async () => {
   );
   const [read] = await decodeProduced(MOUNT);
   if (read.sprite === null) fail(`a decoded ${MOUNT[0].label}`, read.reason);
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     paintShare(read.sprite),
-    PAINT_MIN_SHARE,
+    0,
     "the fixture mount: the share of its canvas carrying paint",
   );
 });

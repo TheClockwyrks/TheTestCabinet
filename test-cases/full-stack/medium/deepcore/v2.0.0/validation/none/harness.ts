@@ -1227,18 +1227,6 @@ export async function driveFall(
 /* -------------------------------------------------------------------------- */
 
 /**
- * The RGB distance two sampled colours must exceed to count as "clearly apart".
- *
- * `specs/overview.md` requires that a player tells one band's rock from the next,
- * an ore vein from plain rock, a gemstone from an ore, and lava from safe ground,
- * and it deliberately fixes no palette — so distinguishability is the whole of
- * what a visibility check can read, and a number is the only way to read it. 50
- * of the 441 the RGB cube spans: comfortably crossed by two colours a player
- * would call different, and not by two shades of the same one.
- */
-export const DISTINCT_MIN = 50;
-
-/**
  * How far out a colour sample's four neighbours sit, in logical units.
  *
  * Six, which at an 80-unit tile stays well inside the cell whatever the build

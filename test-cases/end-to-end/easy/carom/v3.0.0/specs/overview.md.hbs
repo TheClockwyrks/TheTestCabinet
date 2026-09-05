@@ -311,8 +311,9 @@ palette, type, glow, and every other aspect of the look are yours.
 - A dashed center net is drawn at `x = NET_X` (`640`). It is decoration and has
   no collision.
 - During a match the two scores are drawn near the top of the field, player one's
-  left of center and player two's right of center, and a label naming the mode
-  is drawn somewhere on the field. The label's copy is yours.
+  at a position left of `FIELD_CX` and player two's at a position right of it,
+  and a label naming the mode is drawn somewhere on the field. The label's copy
+  is yours.
 {{#if (eq variant.slug "multi")}}
 - Every moving ball has a motion trail: behind the ball, draw its path over the
   last `TRAIL_TIME` (`0.13`) seconds of travel, from the samples the state

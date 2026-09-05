@@ -17,7 +17,7 @@
 //     fixes.
 //
 // THIS FILE FIXES NO FIGURE AND NO TOLERANCE. Every window a point compares a
-// number in, every pixel distance it calls "plainly apart", and every margin it
+// number in, every pixel distance it holds a reading to, and every margin it
 // allows a glyph outside a box is stated in the point that uses it, beside the
 // figure `specs/hud.md` gives it.
 //
@@ -660,23 +660,20 @@ export function pixelsOver(h: Harness, rect: ControlRect): Rgb[] {
 }
 
 /**
- * How many of the paired pixels differ by an RGB distance of at least
- * `distance`, out of the 441 a full swing across the cube is.
+ * The largest RGB distance between two readings of the same pixels, out of the
+ * 441 a full swing across the cube is.
  *
- * `specs/overview.md` fixes no palette, so every colour reading in this project
- * is a comparison between two things the build drew and the distance it demands
- * is the point's own figure.
+ * `specs/overview.md` fixes no palette, so no reading in this project says what
+ * a control looks like. What a reading can say is whether the SAME rectangle was
+ * drawn differently once one thing about the game changed, and everything the
+ * build drew there that did not change cancels between the two.
  */
-export function differing(
-  a: readonly Rgb[],
-  b: readonly Rgb[],
-  distance: number,
-): number {
-  let count = 0;
+export function largestChange(a: readonly Rgb[], b: readonly Rgb[]): number {
+  let most = 0;
   for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
-    if (colorDistance(a[i], b[i]) >= distance) count += 1;
+    most = Math.max(most, colorDistance(a[i], b[i]));
   }
-  return count;
+  return most;
 }
 
 /* ---- Roster rows and controls this group posed ---------------------------- */

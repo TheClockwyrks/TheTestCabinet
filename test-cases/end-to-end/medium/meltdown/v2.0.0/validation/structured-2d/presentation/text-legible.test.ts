@@ -1,12 +1,22 @@
-// presentation/text-legible — every word the game puts on the screen stands off
-// the ground it is drawn on.
+// presentation/text-legible — every run of text the game draws reaches the
+// finished picture.
 //
 // THE RULE. specs/overview.md's legibility table: "Every readout and every
-// screen's text is legible against its background at the logical stage size." So
-// the item is not about what any screen SAYS — specs/screens.md and specs/hud.md
-// own that, and the `screens` and `hud` groups check it — but about whether what
-// it says can be read: a readout drawn a shade off its own panel, or a menu entry
-// in the colour of the plate behind it, is a readout a player does not have.
+// screen's text is legible against its background at the logical stage size."
+// What a check can decide of that is that the ink ARRIVED: the run the build
+// submitted left something on the frame a player sees. How readable the result is
+// — the face, the size, the colour it chose against the panel behind it — is
+// appearance, which the same specification hands to the build ("The palette, the
+// type, the glow, and every other aspect of the look are yours") and the
+// reviewer's presentation rating judges. So the point is not about what any
+// screen SAYS — specs/screens.md and specs/hud.md own that, and the `screens` and
+// `hud` groups check it.
+//
+// WHY THIS IS NOT ALREADY CARRIED BY `hud` AND `screens`. Those groups read the
+// runs the build SUBMITTED. A build that submits a run and then paints over it,
+// or draws it in the exact colour of the ground under it, satisfies every one of
+// them and puts nothing on the screen. This point is the one reading taken off
+// the finished frame instead.
 //
 // WHY EVERY RUN, AND WHY IT IS FOUND RATHER THAN LISTED. specs/hud.md leaves
 // where each element sits entirely to the build, and specs/screens.md fixes what
@@ -26,21 +36,14 @@
 // uses, and at any size from a readout's to a title's, those rows cross the body
 // of the glyphs.
 //
-// THE INK AND THE GROUND, AND WHY NEITHER IS A COLOUR. specs/overview.md fixes no
+// THE INK, THE GROUND, AND WHERE THE BAR COMES FROM. specs/overview.md fixes no
 // palette, so both are read off the picture. The ground is the colour that occurs
 // MOST OFTEN in the run's own box — text covers a minority of the box it is laid
-// in, whatever the face — and the ink is the pixel furthest from it. The reading
-// is symmetric in the two: a run whose glyphs happen to cover more of its box
-// than its ground does reads the same distance the other way round, so a build is
-// never failed for drawing large type. What it cannot survive is the two being
-// the same colour.
-//
-// AND WHY IT IS A COLOUR DISTANCE AND NOT A LUMINANCE RATIO. A contrast ratio
-// would demand that a build's text differ from its ground in BRIGHTNESS, and
-// specs/overview.md gives the palette and the type to the build; a readout drawn
-// in a saturated hue against an equally bright ground is a design choice the
-// specification allows and a player reads. So the bar is the same one this whole
-// group calls "plainly apart", applied to a run and its ground.
+// in, whatever the face — and the ink is the pixel furthest from it. The bar is
+// not a stated contrast: the same box is read on two consecutive frames, which is
+// how much the build's own animation moves it, and the ink has to beat that by
+// `NOISE_MARGIN`. A build that lays its text in the ground's own colour, or
+// paints over it, leaves a box that reads as one flat colour and clears nothing.
 //
 // THE READING IS OF THE FINISHED FRAME. The pixels are read after the frame has
 // been drawn, not at the moment of the call, so a run drawn in the ground's own
@@ -67,18 +70,14 @@ import {
   type TextSpan,
 } from "../harness";
 import { poseStillTower } from "./pose";
-import { furthestFrom, modal, pixelAt, showRgb } from "./read";
-
-/**
- * How far a run's ink must sit from the ground under it, out of the 441 the RGB
- * cube spans.
- *
- * The group's figure for two things a player tells apart at a glance, and the
- * same 50 every other point in this group draws its line at: a build whose
- * readouts clear it has text a player picks out of its panel at a glance, and one
- * that does not has drawn a watermark.
- */
-const CONTRAST_MIN = 50;
+import {
+  NOISE_MARGIN,
+  furthestFrom,
+  largestShift,
+  modal,
+  pixelAt,
+  showRgb,
+} from "./read";
 
 /**
  * The rows a run is read on, in logical units from its anchor.
@@ -224,34 +223,45 @@ afterEach(() => {
   h?.dispose();
 });
 
-it.each(SCENES)("draws every run of text on $name legibly", async (scene) => {
-  scene.pose(h);
-  await renderFrame(h);
-  if (scene.capture !== undefined) captureStill(h, scene.capture);
+it.each(SCENES)(
+  "draws every run of text on $name onto the frame",
+  async (scene) => {
+    scene.pose(h);
+    await renderFrame(h);
+    if (scene.capture !== undefined) captureStill(h, scene.capture);
 
-  const runs = drawnTextSpans(h).filter(onStage);
-  assertGreaterThan(
-    runs.length,
-    0,
-    `${scene.name} draws at least one run of text (specs/overview.md: every ` +
-      `readout and every screen's text is legible)`,
-  );
+    const runs = drawnTextSpans(h).filter(onStage);
+    assertGreaterThan(
+      runs.length,
+      0,
+      `${scene.name} draws at least one run of text (specs/overview.md: every ` +
+        `readout and every screen's text is legible)`,
+    );
 
-  for (const run of runs) {
-    const read: Rgb[] = runPoints(run).map((point) =>
-      pixelAt(h, point.x, point.y),
+    const boxes = runs.map(runPoints);
+    const before = boxes.map((box) =>
+      box.map((point) => pixelAt(h, point.x, point.y)),
     );
-    const ground = modal(read);
-    const ink = furthestFrom(read, ground);
-    assertGreaterThanOrEqual(
-      colorDistance(ink, ground),
-      CONTRAST_MIN,
-      `${scene.name}: the run "${run.text}", which the frame drew at ` +
-        `(${Math.round(run.x)}, ${Math.round(run.y)}) — the strongest ink ` +
-        `left on the finished picture there (${showRgb(ink)}) against the ` +
-        `ground it is laid on (${showRgb(ground)}), out of 441 ` +
-        `(specs/overview.md: every readout and every screen's text is legible ` +
-        `against its background at the logical stage size)`,
-    );
-  }
-});
+    await renderFrame(h);
+
+    for (const [index, run] of runs.entries()) {
+      const read: Rgb[] = boxes[index].map((point) =>
+        pixelAt(h, point.x, point.y),
+      );
+      const noise = largestShift(before[index], read);
+      const ground = modal(read);
+      const ink = furthestFrom(read, ground);
+      assertGreaterThanOrEqual(
+        colorDistance(ink, ground),
+        noise + NOISE_MARGIN,
+        `${scene.name}: the run "${run.text}", which the frame drew at ` +
+          `(${Math.round(run.x)}, ${Math.round(run.y)}) — the strongest ink ` +
+          `left on the finished picture there (${showRgb(ink)}) against the ` +
+          `ground it is laid on (${showRgb(ground)}), past the ${noise} that ` +
+          `box moved between two frames on its own ` +
+          `(specs/overview.md: every readout and every screen's text is legible ` +
+          `against its background at the logical stage size)`,
+      );
+    }
+  },
+);

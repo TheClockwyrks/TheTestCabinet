@@ -1,8 +1,7 @@
 // audio/no-autoplay — nothing sounds between the page loading and the first key.
 //
 // `specs/ui.md`: "No sound is started between the page loading and the player's
-// first key press, and a build whose audio cannot start still runs and still
-// plays."
+// first key press: the game plays no cue before that first input."
 //
 // So the measurement is: load the build, run the screen it opens on without ever
 // delivering a key, and read the raw source count.

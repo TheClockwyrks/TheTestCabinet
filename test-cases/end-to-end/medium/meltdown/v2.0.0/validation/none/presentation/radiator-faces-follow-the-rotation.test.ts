@@ -1,56 +1,59 @@
-// presentation/radiator-faces-follow-the-rotation — the faces drawn distinctly on
-// a tower placed at rotation 1 are the ones its rotation gives it.
+// presentation/radiator-faces-follow-the-rotation — the marking a tower puts on
+// its faces is on the faces its rotation gives it.
 //
-// THE RULE. `specs/towers.md`: "The rotation turns the local faces into world
-// faces in the order `N -> E -> S -> W`, so rotation `1` turns a local `N` into a
-// world `E` ... A tower's radiator faces are reported and drawn in world
-// orientation." So at rotation `1` a Stutter, whose local radiators are N and E,
-// sheds well on its world E and S faces, and the marking `specs/overview.md`
-// requires has to be on those two.
+// THE RULE. `specs/overview.md`'s legibility table asks that "a tower's radiator
+// faces are drawn distinctly from its plain faces, so the player can see which
+// sides shed heat", and `specs/towers.md` fixes which sides those are: "The
+// rotation turns the local faces into world faces in the order `N -> E -> S -> W`
+// ... A tower's radiator faces are reported and drawn in world orientation." So a
+// tower placed at rotation `1` draws its radiators one step round from its local
+// ones, and on its local ones no longer. It matters because of what
+// `specs/heat.md` does with them: `RAD_K` (`3.6`) against `BASE_K` (`1.1`) per
+// edge-tile, so which way a tower is turned is worth better than three times the
+// air cooling on that face, and a player who cannot see which sides they are
+// cannot lay out a maze.
 //
-// WHY A STUTTER AND WHY ROTATION 1. The set has to be one that every wrong model
-// gets wrong differently, and `specs/towers.md` supplies exactly one asymmetric
-// pair: the Stutter's local N and E. Turned one step it becomes `{E, S}`. A build
-// that never turns its faces leaves them at `{N, E}`; one that turns them the
-// wrong way round reaches `{W, N}`; one that turns them two steps reaches
-// `{S, W}`. All four sets are different, which is what lets the two readings below
-// name which of them the build implemented. A symmetric pair — the Arc's `{N, S}`,
-// which turns into `{E, W}` — could not tell a build that turned the right way
-// from one that turned the wrong way at all.
+// THE TOWER, AND WHY THE ANSWER IS UNAMBIGUOUS. The Rime, whose local radiators
+// are N, S and E, so exactly one of its four faces is plain (`specs/towers.md`).
+// One step turns that set into E, S and W. Each of the four faces therefore
+// answers a different way, and between them they say the whole rule:
 //
-// THE TWO READINGS, AND WHY BOTH ARE NEEDED.
+//   N   marked at rotation 0 and not at rotation 1  -> it must CHANGE
+//   W   marked at rotation 1 and not at rotation 0  -> it must CHANGE
+//   E   marked at both                              -> it must NOT change
+//   S   marked at both                              -> it must NOT change
 //
-//   1. AT ROTATION 1, EACH FACE THE ROTATION MAKES A RADIATOR READS APART FROM
-//      EACH ONE IT LEAVES PLAIN. That refuses a build that never turned the faces
-//      (its world E and N are both radiators, so the pair reads alike) and one that
-//      turned them two steps (its E and N are both plain).
-//   2. THE FACE THAT CHANGES ACROSS THE TURN HAS CHANGED. World N is a radiator at
-//      rotation `0` and is not one at rotation `1`, so the same band on the same
-//      tile must read differently in the two frames. This is the reading that
-//      refuses a build that turns its faces the WRONG WAY: `{W, N}` keeps N a
-//      radiator, and every pair in reading 1 is radiator-against-plain there, so
-//      reading 1 alone would pass it.
+// and every wrong model of the rotation reads as a different number. A build that
+// ignores the rotation, one that turns two steps, and one that turns the wrong way
+// all leave N marked, so all three fail on N. A build that draws no marking at all
+// fails on N and W, because a face that carries nothing cannot change. A build
+// that simply redraws its whole tower differently whenever the rotation changes
+// fails on E and S. Only one step, the way `specs/towers.md` states it, answers
+// all four.
 //
-// WHY THE SECOND READING IS FAIR. The two frames differ in ONE thing. The tower is
-// the same type on the same tile at the same heat with the same faculties, so the
-// footprint is the same rectangle (`specs/towers.md`: "A footprint's size and shape
-// are the same at every rotation"), the body is the same colour, and anything
-// `specs/hud.md` lets a build draw on the footprint is drawn the same way. The only
-// thing the check changed is which faces are radiators, so a band that moved is a
-// band whose face treatment moved.
+// HOW IT IS READ, AND WHERE THE BAR COMES FROM. The SAME band of the SAME face of
+// the SAME tower on the SAME tile at the SAME heat, on a tower posed at rotation
+// `0` and one posed at rotation `1`. No colour is named and no two things the
+// build drew are compared: whatever a build draws on a footprint that does not
+// depend on the rotation — a body, an outline, a label, the heat read
+// `specs/hud.md` asks for — is identical in both frames and cancels out of every
+// reading, and what is left is exactly what the rotation moved. How far a band
+// moves on its own is measured, by reading each band twice at one rotation, and a
+// face that must change has to beat that by `NOISE_MARGIN` while a face that must
+// not stays inside it.
 //
 // WHY THE SECOND TOWER IS A SECOND TOWER. `specs/building.md`: "A tower's
 // orientation is fixed at the moment it is placed: a placed tower's rotation and
 // its world radiator faces never change again." So the rotation-1 reading is taken
 // on a tower posed at rotation 1, not on the first one turned.
 //
-// WHAT IT DOES NOT DECIDE. That a radiator face is drawn distinctly AT ALL is
-// `presentation/radiator-faces-read`, and what the snapshot REPORTS for
-// `radiatorFaces` is `towers/`'s item. This is pixels, and it is about which faces.
+// WHAT IT DOES NOT DECIDE. What the snapshot REPORTS for `radiatorFaces` is
+// `towers/`'s item, and that the rotation is fixed at placement is `building/`'s.
+// This is pixels, and it is about which faces carry the marking.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
-import { SIDES, worldRadiators } from "../constants";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import { worldRadiators } from "../constants";
 import type { Side } from "../constants";
 import {
   captureStill,
@@ -61,45 +64,39 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-import { faceBands, showRgb, widestGap } from "./read";
+import { NOISE_MARGIN, faceBands, widestGap } from "./read";
 
 /**
- * How far two face bands must sit apart to count as drawn differently, out of the
- * 441 the RGB cube spans.
+ * The type read, and where it stands: clear of the casing and both corridors.
  *
- * This group's figure for "plainly apart" (`specs/overview.md`), the same one
- * `presentation/radiator-faces-read` holds a radiator face against a plain one to
- * — deliberately the same, because both readings below are asking exactly that
- * question, once within a frame and once across two.
+ * The Rime, because `specs/towers.md` gives it radiators on local N, S and E —
+ * the one layout in the roster whose four faces each answer the turn differently.
  */
-const APART_MIN = 50;
-
-/** The type read, and where it stands: clear of the casing and both corridors. */
-const TYPE = "stutter";
+const TYPE = "rime";
 const AT = { col: 12, row: 8 } as const;
 
-/** The two rotations, and the radiator sets `specs/towers.md` gives each. */
-const AT_ZERO: readonly Side[] = worldRadiators(TYPE, 0);
-const AT_ONE: readonly Side[] = worldRadiators(TYPE, 1);
-const PLAIN_AT_ONE: readonly Side[] = SIDES.filter(
-  (side) => !AT_ONE.includes(side),
-);
-/** The faces the turn takes the marking OFF: a radiator at 0 and not at 1. */
-const RELEASED: readonly Side[] = AT_ZERO.filter(
-  (side) => !AT_ONE.includes(side),
-);
+/** The faces exactly one of the two rotations marks, and the two it marks at both. */
+const CHANGES: readonly Side[] = ["N", "W"];
+const KEEPS: readonly Side[] = ["E", "S"];
 
-/** Pose the type at `rotation`, render a frame, and read its four face bands. */
-async function bandsAt(
-  h: Harness,
-  rotation: 0 | 1,
-): Promise<Record<Side, Rgb[]>> {
+/** One rotation's four face bands, read twice so the frame's own movement shows. */
+interface Reading {
+  first: Record<Side, Rgb[]>;
+  second: Record<Side, Rgb[]>;
+}
+
+/** Pose the type at `rotation` and read its four face bands on two frames. */
+async function bandsAt(h: Harness, rotation: 0 | 1): Promise<Reading> {
   await h.debug.clearTowers();
   const id = await posePinnedTower(h, TYPE, AT.col, AT.row, 0, rotation);
+  await h.debug.setTowerFiring(id, false);
+  await h.advance(1);
+  const tower = requireTower(await h.snapshot(), id, `rotation ${rotation}`);
+  const first = await faceBands(h, tower);
   await h.advance(1);
   await captureStill(h, rotation === 0 ? "unturned" : "turned");
-  const tower = requireTower(await h.snapshot(), id, `rotation ${rotation}`);
-  return faceBands(h, tower);
+  const second = await faceBands(h, tower);
+  return { first, second };
 }
 
 let h: Harness;
@@ -112,41 +109,45 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("marks the faces rotation 1 gives it, and not the ones it leaves plain", async () => {
-  await startRun(h);
-  const turned = await bandsAt(h, 1);
-
-  for (const radiator of AT_ONE) {
-    for (const plain of PLAIN_AT_ONE) {
-      const gap = widestGap(turned[radiator], turned[plain]);
-      assertGreaterThanOrEqual(
-        gap.distance,
-        APART_MIN,
-        `a ${TYPE} at rotation 1: its world ${radiator} face, which its ` +
-          `rotation makes a radiator (${showRgb(gap.left)}), against its ` +
-          `world ${plain} face, which it leaves plain (${showRgb(gap.right)}) ` +
-          `(specs/towers.md turns local ${AT_ZERO.join(" and ")} into world ` +
-          `${AT_ONE.join(" and ")} at rotation 1)`,
-      );
-    }
-  }
-});
-
-it("takes the marking off the face the turn releases", async () => {
+it("marks the faces rotation 1 gives, and no longer rotation 0's", async () => {
   await startRun(h);
   const unturned = await bandsAt(h, 0);
   const turned = await bandsAt(h, 1);
 
-  for (const side of RELEASED) {
-    const gap = widestGap(unturned[side], turned[side]);
+  const rule =
+    `a ${TYPE}, whose world radiator faces are ` +
+    `${worldRadiators(TYPE, 0).join(", ")} at rotation 0 and ` +
+    `${worldRadiators(TYPE, 1).join(", ")} at rotation 1 (specs/towers.md: ` +
+    `the rotation turns the local faces N -> E -> S -> W)`;
+
+  /** How far the band on `side` moves between two frames at one rotation. */
+  const noiseOn = (side: Side): number =>
+    Math.max(
+      widestGap(unturned.first[side], unturned.second[side]).distance,
+      widestGap(turned.first[side], turned.second[side]).distance,
+    );
+
+  for (const side of CHANGES) {
+    const noise = noiseOn(side);
     assertGreaterThanOrEqual(
-      gap.distance,
-      APART_MIN,
-      `a ${TYPE}'s world ${side} face, a radiator at rotation 0 ` +
-        `(${showRgb(gap.left)}) and not one at rotation 1 ` +
-        `(${showRgb(gap.right)}): the same band on the same tile is drawn ` +
-        `differently at the two rotations (specs/towers.md: radiator faces ` +
-        `are drawn in world orientation, so turning the tower moves them)`,
+      widestGap(unturned.second[side], turned.second[side]).distance,
+      noise + NOISE_MARGIN,
+      `${rule}: its world ${side} face, which exactly one of the two ` +
+        `rotations marks, is drawn differently at rotation 1 than at ` +
+        `rotation 0 — past the ${noise} that band moves between two frames at ` +
+        `one rotation`,
+    );
+  }
+
+  for (const side of KEEPS) {
+    const noise = noiseOn(side);
+    assertLessThanOrEqual(
+      widestGap(unturned.second[side], turned.second[side]).distance,
+      noise + NOISE_MARGIN,
+      `${rule}: its world ${side} face, which is a radiator at BOTH ` +
+        `rotations, is drawn the same way at rotation 1 as at rotation 0 — ` +
+        `within the ${noise} that band moves between two frames at one ` +
+        `rotation`,
     );
   }
 });

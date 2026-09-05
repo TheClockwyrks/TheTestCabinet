@@ -136,9 +136,9 @@ export async function readBand(h: Harness): Promise<Rgb[]> {
  * How many blocks of the band `other` painted differently from `base`.
  *
  * The two renders are of the same board under the same fit, so a block that
- * differs at all differs because something was drawn there. The floor is well
- * under the distance two colours must hold to be told apart and well over the
- * nothing a deterministic canvas varies by.
+ * differs at all differs because something was drawn there. The floor is a noise
+ * floor and nothing more: well over the nothing a deterministic canvas varies
+ * by, and far under anything a build meant to draw.
  */
 export function bandDifferences(
   base: readonly Rgb[],
@@ -178,24 +178,4 @@ export function matchingRuns(
   pattern: RegExp,
 ): TextDraw[] {
   return textDraws(calls).filter((run) => pattern.test(run.text));
-}
-
-/**
- * How much ink `other` laid over `base`, summed over every block of the band.
- *
- * The measure a bar is read by, and it is chosen over counting the blocks that
- * differ because of a design the specification plainly allows: a bar drawn as a
- * dim track with a bright fill over the part of the window that is left COVERS
- * the same blocks however full it is, so a count of covered blocks reads the same
- * at a full window and at a spent one while the bar itself is obviously drained.
- * Summing the distance instead reads how much of the band the readout actually
- * put colour into, which is the same figure for a plain bar, for a track and
- * fill, and for a row of pips.
- */
-export function bandInk(base: readonly Rgb[], other: readonly Rgb[]): number {
-  let ink = 0;
-  for (let i = 0; i < base.length && i < other.length; i += 1) {
-    ink += colorDistance(base[i], other[i]);
-  }
-  return ink;
 }

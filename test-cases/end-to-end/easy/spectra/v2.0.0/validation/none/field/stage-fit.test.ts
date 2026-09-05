@@ -32,20 +32,19 @@
 //     holds SOMETHING other than its own panel: where each readout sits inside
 //     its strip is the build's, and `screens/hud-*` grades what they say.
 //   - THE LETTERBOX BARS, where the shape leaves any. They lie outside the
-//     logical stage, so they are read in device pixels and compared against the
-//     field the build painted. This is also what catches a build that fitted the
-//     stage LARGER than the window: the bars then carry game rather than
-//     background.
+//     logical stage, so they are read in device pixels, and each is read twice:
+//     once before a field of drones is posed and once after. A bar that did not
+//     move carries nothing the game drew. This is also what catches a build that
+//     fitted the stage LARGER than the window, whose bars then carry game.
 //
-// No colour is assumed anywhere: each reading is a change, or a distance, against
-// something the build itself painted.
+// No colour is assumed anywhere, and no two colours are held apart: every reading
+// is a CHANGE at one place, against what that same place held a frame earlier.
 
 import { afterEach, it } from "vitest";
 import {
   assertCloseTo,
   assertEqual,
   assertGreaterThan,
-  assertGreaterThanOrEqual,
   assertLessThanOrEqual,
 } from "../assert";
 import {
@@ -64,7 +63,6 @@ import {
   createHarness,
   poseDrone,
   sampleColor,
-  sampleField,
   startPosed,
   type Harness,
   type Rgb,
@@ -72,43 +70,32 @@ import {
 import { countApart, modeColor, readLattice } from "./canvas";
 
 /**
- * How far a point's colour must move when a drone is posed on it, on the 0–441
- * RGB scale, for the point to count as having been drawn on.
+ * How far a point's colour must move between two readings of it for the point to
+ * count as having been drawn on, as a Euclidean RGB distance out of the `441` an
+ * RGB cube is across.
  *
- * The reading is a CHANGE at the same point rather than a colour, so the build's
- * own palette is never assumed — specs/overview.md fixes none. 25 is about a
- * twentieth of the scale: far below anything the legibility table's "told apart
- * from the field behind it" could measure, and far above the rounding a canvas
- * round trip and a fractional scale leave. It is the bar for "something was
- * painted", not for how well it reads.
+ * THIS IS THE READING, NOT A THRESHOLD. It is the level below which a sampling
+ * cannot tell a drawing from eight-bit channel rounding and the host's
+ * antialiasing, so anything the build painted at that point clears it. How far a
+ * point moved beyond it is never asserted: specs/overview.md fixes no palette, so
+ * what the stage looks like is the reviewer's rating. Two readings of one place
+ * nothing was drawn on are identical, so anything above zero would do; `12` is a
+ * little above the rounding one composite can put on a pixel.
  */
-const PAINTED_MIN = 25;
+const PAINT_MIN = 12;
 
 /**
- * How far a letterbox bar may sit from the field the build painted, on the same
- * 0–441 scale, and still count as carrying the stage's background colour.
+ * How far a letterbox bar may sit from its own earlier reading and still count as
+ * the same reading, on the 0–441 RGB scale.
  *
- * specs/overview.md fixes no palette, so the bar is compared against the field
- * the build drew, which is the only reading of "the stage's background color"
- * available here. A build may legitimately clear the stage to one colour and lay
- * its play field a shade off it, so the tolerance has to allow that much; it must
- * not allow anything the game DREW, which the legibility table requires to read
- * at a glance. 25 leaves room for a shade and none for a body.
+ * This is the lenient side of an absence claim rather than a presence floor: each
+ * bar is asserted to be AT MOST this far from what it held before the field was
+ * posed, so the figure is slack on "the bar did not move" and says nothing about
+ * how anything looks. `25` leaves room for the rounding a fractional scale and a
+ * canvas round trip put on a device pixel while still catching a bar the game
+ * painted into.
  */
-const BAR_MATCH_MAX = 25;
-
-/**
- * How many samples of a HUD strip must sit clear of the strip's own panel colour
- * for the strip to count as being on the canvas and carrying its readouts.
- *
- * The strips are read on a lattice STRIP_STEP units apart, so a single digit of
- * a readout drawn at a size legible at the logical stage size — say 20 units tall
- * and 12 wide — covers about fifteen samples on its own, and specs/field.md puts
- * two readouts in the top strip and four in the bottom one. Sixteen is therefore
- * about one digit's worth: a floor that only a strip drawn blank, or mapped off
- * the canvas, falls under, and never a demand on where a build puts a readout.
- */
-const STRIP_MARKS_MIN = 16;
+const BAR_TOLERANCE = 25;
 
 /** How finely each HUD strip is read, in logical units. */
 const STRIP_STEP = 4;
@@ -211,41 +198,26 @@ it.each(SURFACES)(
     for (const corner of CORNERS) {
       bare.push(await sampleColor(h, corner.x, corner.y));
     }
-    const field = await sampleField(h);
 
-    // Both strips carry their readouts, so both are on the canvas.
+    // Both strips are on the canvas under the fit, with something drawn in each.
+    // How MUCH is drawn there, and what it says, is deliberately not read: what a
+    // strip carries is `screens/hud-*`, and how each readout is composed and
+    // placed within its strip is the build's (specs/field.md).
     for (const strip of STRIPS) {
       const reading = await readLattice(h, strip.rect, STRIP_STEP);
       const panel = modeColor(reading);
-      assertGreaterThanOrEqual(
-        countApart(reading, panel, PAINTED_MIN),
-        STRIP_MARKS_MIN,
-        `${strip.where} carrying its readouts (specs/field.md)`,
-      );
-    }
-
-    for (const corner of CORNERS) {
-      await poseDrone(h, "shard", corner.x, corner.y);
-    }
-    await h.advance(1);
-    if (capture) await captureStill(h, "fitted");
-
-    // Every corner of the play field is on the canvas, under its own logical
-    // coordinate mapped through the fit the specification requires.
-    for (const [index, corner] of CORNERS.entries()) {
-      const moved = colorDistance(
-        bare[index],
-        await sampleColor(h, corner.x, corner.y),
-      );
       assertGreaterThan(
-        moved,
-        PAINTED_MIN,
-        `the drone at ${corner.where} of the play field, under the specified fit`,
+        countApart(reading, panel, PAINT_MIN),
+        0,
+        `${strip.where} standing on the canvas with something drawn in it ` +
+          `(specs/field.md)`,
       );
     }
 
-    // Where this shape leaves bars, they carry the stage's background. The bars
-    // sit outside the logical stage, so they are read in device pixels directly.
+    // Where this shape leaves bars, nothing the game draws reaches them. The bars
+    // sit outside the logical stage, so they are read in device pixels directly,
+    // and each is read once here — before anything is posed — so that the reading
+    // below is a CHANGE this build made rather than a colour this check assumed.
     const view = h.viewport();
     const bars: { x: number; y: number; where: string }[] = [];
     if (view.offsetX > 2) {
@@ -278,12 +250,43 @@ it.each(SURFACES)(
         });
       }
     }
+    const barsBefore: Rgb[] = [];
     for (const bar of bars) {
       const [r, g, b] = await h.devicePixel(bar.x, bar.y);
+      barsBefore.push({ r, g, b });
+    }
+
+    for (const corner of CORNERS) {
+      await poseDrone(h, "shard", corner.x, corner.y);
+    }
+    await h.advance(1);
+    if (capture) await captureStill(h, "fitted");
+
+    // Every corner of the play field is on the canvas, under its own logical
+    // coordinate mapped through the fit the specification requires.
+    for (const [index, corner] of CORNERS.entries()) {
+      const moved = colorDistance(
+        bare[index],
+        await sampleColor(h, corner.x, corner.y),
+      );
+      assertGreaterThan(
+        moved,
+        PAINT_MIN,
+        `the drone at ${corner.where} of the play field, under the specified fit`,
+      );
+    }
+
+    // Nothing the game drew reached the bars: each sits exactly where it sat
+    // before a field of drones was posed, so the stage's content stopped at the
+    // stage (specs/overview.md). Only the bar's own earlier reading is compared
+    // against, so no palette is assumed and no two colours are held apart.
+    for (const [index, bar] of bars.entries()) {
+      const [r, g, b] = await h.devicePixel(bar.x, bar.y);
       assertLessThanOrEqual(
-        colorDistance({ r, g, b }, field),
-        BAR_MATCH_MAX,
-        `${bar.where} against the field the build painted`,
+        colorDistance(barsBefore[index], { r, g, b }),
+        BAR_TOLERANCE,
+        `${bar.where}, against what that same bar held before the field was ` +
+          `posed — the bars carry nothing the game drew`,
       );
     }
   },

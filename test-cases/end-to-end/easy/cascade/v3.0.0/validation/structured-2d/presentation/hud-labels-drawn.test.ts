@@ -9,8 +9,8 @@
 // WHAT IT DECIDES, AND WHAT IT LEAVES ALONE. That each of the three literal
 // labels is drawn, and drawn inside the rectangle that control answers. What
 // each control DOES is the `screens` group's (`hud-new-game-deals`,
-// `hud-menu-returns`, `hud-sound-mutes`), and whether the labels read against
-// the strip is `presentation/text-legible`.
+// `hud-menu-returns`, `hud-sound-mutes`), and how legibly the labels read
+// against the strip is the reviewer's.
 //
 // HOW A LABEL IS FOUND. Every `fillText` and `strokeText` the frame made, placed
 // in logical units through the transform and the alignment it was drawn with,

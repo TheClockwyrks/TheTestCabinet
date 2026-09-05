@@ -33,8 +33,7 @@
 // `instrumentation/snapshot-shape`'s business.
 //
 // WHAT THIS DOES NOT DECIDE. Whether the burst is painted at all is
-// `bursts/drawn`, what it is scaled to is `bursts/scaled-to-drone`, and that
-// successive bursts scatter differently is `bursts/varies`.
+// `bursts/drawn`, and what it is scaled to is `bursts/scaled-to-drone`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

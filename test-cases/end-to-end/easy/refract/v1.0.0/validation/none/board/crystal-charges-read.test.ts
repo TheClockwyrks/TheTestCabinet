@@ -1,19 +1,28 @@
 // board/crystal-charges-read — a crystal's charge count reads from its form.
 //
 // specs/board.md: a crystal carries 1 to MAX_CHARGES (3) charges and a running
-// spent count, and its form shows both, readable without counting slowly. How
-// it shows the charge count is the build's — pips, numerals, a dimming form —
-// so the reading is that the RENDER moves with the number: a 1-charge and a
-// 3-charge crystal differ within NODE_R of their centers. The regions are
-// compared point against point, and the item's figure — more than 50 of 441 at
-// some paired sample — is met where the differing detail is drawn.
+// spent count, and its form shows both. How it shows the charge count is the
+// build's — pips, numerals, a dimming form — so what is decided is that the
+// RENDER MOVES WITH THE NUMBER, and nothing about what it moves to.
 //
-// THE POSE. "T1.3T": one channel across a 5x1 row — the two triangle emitters
-// the board has to declare (specs/board.md "Channels": a board declares 1 to 3
-// channels) at the ends, the 1-charge and the 3-charge crystal between them,
-// one cell apart. The emitters sit a full CELL_PITCH (96) from either sampled
-// center, so their forms — NODE_R (30), plus the ornament specs/board.md
-// grants out to CELL_PITCH / 2 (48) — stay clear of both sampled disks.
+// THE SAME CELL, POSED TWICE. The 1-charge and the 3-charge readings are taken
+// at one cell center on two boards that differ in that cell alone: "T1..T" and
+// "T3..T". Comparing two DIFFERENT cells of one board instead would let any
+// gradient, vignette or dithered texture between the two positions answer for
+// the crystal, so a build drawing identical art for 1 and 3 charges would still
+// read as differing — the exact failure this point exists to catch. Posed in
+// turn at the same cell, the neighbouring cells and the background behind the
+// region are identical between the two readings and the only thing that moved
+// is the charge count.
+//
+// THE POSE. One channel across a 5x1 row: the two triangle emitters the board
+// has to declare (specs/board.md "Channels": a board declares 1 to 3 channels)
+// at the ends, the crystal one cell in. The emitters sit a full CELL_PITCH (96)
+// from the sampled center, so their forms stay clear of the sampled disk.
+//
+// THE STILL is a third pose carrying both counts at once, because a reviewer
+// judging whether a charge count reads without counting slowly wants the two
+// forms side by side; the decision above is taken on the two same-cell frames.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
@@ -24,13 +33,17 @@ import {
   loadBoard,
   type Harness,
 } from "../harness";
-import { DISTINCT_MIN, maxPairedDistance, sampleDisk } from "./sampling";
+import { maxPairedDistance, sampleDisk } from "./sampling";
 
-/**
- * One channel across a 5x1 row: emitters at the ends, a 1-charge and a
- * 3-charge crystal between them, one cell apart.
- */
-const ONE_AND_THREE = "T1.3T";
+/** The two poses the reading is taken on: one cell, two charge counts. */
+const ONE_CHARGE = "T1..T";
+const THREE_CHARGES = "T3..T";
+
+/** The cell the crystal stands in on both of them. */
+const CRYSTAL_CELL = { col: 1, row: 0 };
+
+/** The reviewer's frame: both counts on one board, side by side. */
+const BOTH_COUNTS = "T1.3T";
 
 let h: Harness;
 
@@ -43,17 +56,19 @@ afterEach(async () => {
 });
 
 it("renders a 1-charge and a 3-charge crystal differently", async () => {
-  const board = await loadBoard(h, ONE_AND_THREE);
+  await loadBoard(h, BOTH_COUNTS);
   await captureStill(h, "charges");
 
-  const one = center(board, { col: 1, row: 0 });
-  const three = center(board, { col: 3, row: 0 });
-  const oneDisk = await sampleDisk(h, one.x, one.y);
-  const threeDisk = await sampleDisk(h, three.x, three.y);
+  const first = await loadBoard(h, ONE_CHARGE);
+  const at = center(first, CRYSTAL_CELL);
+  const one = await sampleDisk(h, at.x, at.y);
+
+  await loadBoard(h, THREE_CHARGES);
+  const three = await sampleDisk(h, at.x, at.y);
 
   assertGreaterThan(
-    maxPairedDistance(oneDisk, threeDisk),
-    DISTINCT_MIN,
-    "the 1-charge region against the 3-charge region, point against point",
+    maxPairedDistance(one, three),
+    0,
+    "the same cell posed at 1 charge and at 3 charges, point against point",
   );
 });

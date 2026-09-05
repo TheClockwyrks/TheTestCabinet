@@ -1,15 +1,17 @@
-// instrumentation/overlay — the debug overlay reports the game, and watching it
-// leaves the game exactly as it is.
+// instrumentation/overlay — the debug overlay reports the game.
 //
 // WHAT IS THE BUILD'S PART UNDER THIS ENGINE. `specs/instrumentation.md` puts the
-// panel, the backtick key that toggles it, and its read-only-ness with the engine,
-// and leaves the build one job: registering its diagnostic sources through
-// `InitApi.diagnostics`. So what this point decides is that the values the
-// "Diagnostics" section lists were registered — the screen, the score, the lives
-// and the wave; the ship's position, velocity, speed, facing and remaining respawn
-// grace; how many bullets and how many rocks are in play; whether a saucer is up
-// and where; and the accumulated simulation time — and that reading them costs the
-// game nothing.
+// panel, the backtick key that toggles it, its hidden-at-start state and its
+// read-only-ness with the ENGINE, so a check on any of those returns the same
+// verdict for every build on it. They are
+// `instrumentation/overlay-is-a-read-only-toggle`, which names
+// `engines = ["none"]`, where the build writes the runtime itself. What is left is
+// the build's under every engine and is what this point decides: that the values
+// the "Diagnostics" section lists were registered — the screen, the score, the
+// lives and the wave; the ship's position, velocity, speed, facing and remaining
+// respawn grace; how many bullets and how many rocks are in play; whether a saucer
+// is up and where; and the accumulated simulation time. The overlay is toggled on
+// to read what it drew, and nothing about the toggle itself is asserted.
 //
 // HOW THE LINES ARE READ. The engine draws the overlay after the game's `render`,
 // through the same recorded context every other rendering check reads. So the text
@@ -31,12 +33,9 @@
 // unique.
 //
 // THE FIELD IS POSED AND THEN PAUSED. `specs/ui.md` freezes the field behind the
-// pause menu — "No body moves, no timer runs down" — which is what makes "the
-// snapshot is identical before and after" a reading about the OVERLAY rather than
-// about the two frames of play that ran underneath it. `simTime` is the documented
-// exception: `specs/ui.md` has it go on rising while paused and
-// `specs/instrumentation.md` accumulates every tick's `TICK_DT` "whatever the
-// screen", so it must advance by exactly the toggle's one frame and no more.
+// pause menu — "No body moves, no timer runs down" — so the figures the panel is
+// read for are the figures that were posed rather than whatever the two frames of
+// play would have moved them to.
 //
 // WHAT THE VARIANT ADDS IS ITS OWN ITEM. `specs/instrumentation.md`'s Diagnostics
 // list adds the torpedo charge and the torpedoes in flight under `warhead`, and
@@ -55,7 +54,7 @@
 // two frames that are read.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertDeepEqual, fail } from "../assert";
+import { fail } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -63,7 +62,6 @@ import {
   poseBullet,
   poseRock,
   poseSaucer,
-  secondsFor,
   startPlaying,
   ticksFor,
   type Harness,
@@ -183,7 +181,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws every registered value and changes nothing in the game", async () => {
+it("draws every registered value the specification lists", async () => {
   // A quiet, empty run from a known zero, carried to the game time the panel has
   // to report. Two of the twenty-three seconds' ticks are left for the baseline
   // frame and the toggle's frame below, so the reading lands on the figure.
@@ -214,7 +212,6 @@ it("draws every registered value and changes nothing in the game", async () => {
   h.clearCalls();
   await h.advance(1);
   const baseline = drawnText(h.calls);
-  const before = h.snapshot();
 
   // …then the toggle's frame, with it. `Backquote` is the engine's own key,
   // outside every action `specs/controls.md` binds, so nothing the game
@@ -224,7 +221,6 @@ it("draws every registered value and changes nothing in the game", async () => {
   await h.advance(1);
   h.release("Backquote");
   captureStill(h, "overlay");
-  const after = h.snapshot();
 
   const overlay = newLines(baseline, drawnText(h.calls)).filter(
     (line) => !ENGINE_METRICS.test(line),
@@ -259,21 +255,5 @@ it("draws every registered value and changes nothing in the game", async () => {
     overlay,
     SIM_SECONDS,
     "the accumulated simulation time, in seconds",
-  );
-
-  // ---- And the game is exactly as it was ----------------------------------
-
-  assertDeepEqual(
-    { ...after, simTime: 0 },
-    { ...before, simTime: 0 },
-    "every diagnostic source is a pure read, so watching the overlay leaves " +
-      "the game as it is (specs/instrumentation.md)",
-  );
-  assertCloseTo(
-    after.simTime - before.simTime,
-    secondsFor(1),
-    6,
-    "simTime advances by exactly the toggle's one frame, and nothing more " +
-      "(specs/instrumentation.md, specs/ui.md)",
   );
 });

@@ -3,97 +3,88 @@
 // `specs/rocks.md`, Damage feedback: "Each hit that leaves a rock standing produces
 // a brief bright flash on the struck rock lasting `HIT_FLASH_TIME` (`0.1` seconds),
 // after which the rock returns to the appearance its remaining health gives it."
-// This item decides that the flash is BRIGHT and that it is BRIEF, which is one
-// requirement read in one direction: the rock's drawn pixels on the tick the hit
-// landed are measurably brighter than the same rock's before the round was fired
-// AND than the same rock's `0.2` seconds later, twice `HIT_FLASH_TIME` on.
 //
-// BOTH NEIGHBOURS, BECAUSE EITHER ALONE PASSES A DIFFERENT WRONG BUILD. A build
-// that never flashes fails the first comparison; a build that flashes and never
-// stops — which is the same defect a player sees as a rock stuck bright — fails the
-// second and only the second. And measuring the flash against the rock's OWN
-// appearance on both sides is what keeps this independent of `armor/damaged-look`:
-// nothing here assumes a chipped rock is drawn lighter or darker than a whole one,
-// only that the flash tick is brighter than what stands either side of it.
+// WHAT IS READ, AND AGAINST WHAT. `specs/overview.md` fixes no palette and
+// `specs/rocks.md` fixes no colour for the flash, so nothing here compares the
+// canvas against a value of its own and nothing here reads a brightness. The rock
+// is read TWICE and the two readings are compared: once on the tick the hit lands,
+// and once `HIT_FLASH_TIME * 2` later, by which time the specification has the
+// flash over and the rock back to the appearance its REMAINING health gives it.
+// Both readings are of the same rock at the same health, so the damaged look
+// `armor/damaged-look` grades cancels out of the comparison and what is left is the
+// flash — the thing the rule says is on one of the two ticks and gone on the other.
 //
 // THE NOISE FLOOR IS MEASURED, NOT ASSUMED. `specs/rocks.md` gives every rock "a
-// slow drawn rotation for visual life", so the pixels inside the reading box change
-// from tick to tick even with nothing happening. The quiet window before the round
-// is fired measures exactly how much, and the flash has to clear that swing several
-// times over. A build whose rock is drawn perfectly steadily still has to clear the
-// absolute floor below, so a zero-jitter build cannot pass on an imperceptible
-// change.
+// slow drawn rotation for visual life", so the samples inside the rock move from
+// tick to tick with nothing happening. Before the round is placed the same rock is
+// read across a span of exactly the same length with no hit in it, and how many
+// samples that span redrew is the floor the flash has to clear as well as the fixed
+// one. A build whose rock spins visibly is held to its own spin.
 //
-// THE BOX FOLLOWS THE ROCK. `specs/gravity.md`'s well pulls a rock left at rest, so
-// over the scenario it slides a couple of units; every reading is taken about the
+// THE SAMPLES FOLLOW THE ROCK. `specs/gravity.md`'s well pulls a rock left at rest,
+// so over the scenario it slides a couple of units; every reading is laid on the
 // rock's centre as the snapshot reports it on that tick, so the figure is the
-// rock's brightness rather than how much of it happened to be inside a fixed box.
+// rock's own drawing rather than how much of it happened to be inside a fixed box.
 //
 // A CHIPPING HIT, NOT A FATAL ONE: the Large arrives at its full
 // `ROCK_HEALTH.large` (`3`) and the round leaves it standing, which is the case
-// `specs/rocks.md` attaches the flash to. That it survived is asserted as the
-// PRECONDITION and nothing more about its health is read — what the health then
-// reads is `armor/health-falls-by-one`'s point.
+// `specs/rocks.md` attaches the flash to.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { HIT_FLASH_TIME, ROCK_HEALTH, ROCK_RADIUS } from "../constants";
-import { assertGreaterThanOrEqual } from "../assert";
+import { HIT_FLASH_TIME, ROCK_RADIUS } from "../constants";
+import { assertGreaterThan } from "../assert";
 import {
   captureStill,
+  colorDistance,
   createHarness,
-  meanLuminance,
   poseRock,
   requireRock,
   startPlaying,
   ticksFor,
   type Harness,
+  type Rgb,
 } from "../harness";
 import { ARMOR_GROUND, chipRock } from "./scene";
 
-/** The hits a Large carries, from which one round leaves it standing. */
-const FULL = ROCK_HEALTH.large;
-
-/**
- * The radius of the box every brightness reading is taken over: a Large's whole
- * collision circle plus a margin, so the rock stays wholly inside it even as the
- * well slides it a unit or two over the scenario.
- */
-const GLOW_R = ROCK_RADIUS.large + 8;
-
-/** Ticks run before the quiet window, so nothing of the first frame is in it. */
+/** Ticks run before the quiet span, so nothing of the first frame is in it. */
 const SETTLE_TICKS = ticksFor(0.1);
 
 /**
- * Ticks of quiet observation before the round is fired: twice `HIT_FLASH_TIME`, so
- * the swing the rock's own cosmetic spin produces is measured over a stretch as
- * long as the flash the check is about.
- */
-const QUIET_TICKS = ticksFor(HIT_FLASH_TIME * 2);
-
-/**
- * How many times the quiet window's own swing the flash must clear.
+ * The span the flash is read across, and the quiet span too.
  *
- * The spin's frame-to-frame wobble is what a reading of "brighter" has to be
- * distinguished from; three times the largest of it is a rise that cannot be the
- * spin.
+ * Twice `HIT_FLASH_TIME`, so the flash has been over for a whole flash-length by
+ * the time the rock is read again and no build is asked to end it early.
  */
-const JITTER_MARGIN = 3;
+const SPAN_TICKS = ticksFor(HIT_FLASH_TIME * 2);
+
+/** The side of the sample grid: 21 by 21 is the 441 points this group reads in. */
+const GRID = 21;
 
 /**
- * The absolute floor the rise must clear whatever the quiet window measured, in
- * units of mean luminance on the 0–255 scale.
+ * Half the side of the square the grid covers: the square INSCRIBED in a Large's
+ * collision circle, so all 441 points lie inside the rock's outline rather than on
+ * the field behind it.
+ */
+const HALF_SIDE = ROCK_RADIUS.large / Math.SQRT2;
+
+/**
+ * How far a sample's colour must move to count as changed, on the 0–441 scale
+ * `colorDistance` measures in.
  *
- * `specs/rocks.md` calls the flash BRIGHT and puts it there for the player to see,
- * so a change too small to see is not one. A build drawn so steadily that its quiet
- * swing is zero still has to move the rock's mean brightness by this much.
+ * The figure `armor/damaged-look` reads its own redraw at, so the two pixel checks
+ * in this group share one bound: sixteen is about a twentieth of one channel, below
+ * which two colours are the same colour to a player.
  */
-const RISE_FLOOR = 2;
+const SAMPLE_DELTA = 16;
 
 /**
- * When the rock is read again: twice `HIT_FLASH_TIME`, so the flash
- * `specs/rocks.md` gives `0.1` seconds has had that long again to be over.
+ * How many of the 441 must have moved, whatever the spin did.
+ *
+ * `armor/damaged-look`'s figure, for the same reason: about seven per cent of the
+ * rock, which is enough that a build must really redraw part of it and little
+ * enough that a build flashing a rim or a crack rather than the whole body passes.
  */
-const AFTER_TICKS = ticksFor(HIT_FLASH_TIME * 2);
+const MIN_CHANGED = 30;
 
 let h: Harness;
 
@@ -105,60 +96,66 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** How bright the rock with that id is drawn, over the box around where it stands. */
-function glow(rockId: number, stage: string): number {
+/** The 441 points read inside the rock with that id, about where it stands now. */
+function look(rockId: number, stage: string): Rgb[] {
   const rock = requireRock(h.snapshot(), rockId, stage);
-  return meanLuminance(h, rock.x, rock.y, GLOW_R);
+  const step = (2 * HALF_SIDE) / (GRID - 1);
+  const out: Rgb[] = [];
+  for (let row = 0; row < GRID; row += 1) {
+    for (let column = 0; column < GRID; column += 1) {
+      const [r, g, b] = h.pixel(
+        rock.x - HALF_SIDE + column * step,
+        rock.y - HALF_SIDE + row * step,
+      );
+      out.push({ r, g, b });
+    }
+  }
+  return out;
 }
 
-it("brightens the struck rock on the tick the hit lands, and briefly", async () => {
+/** How many of the 441 samples moved by more than {@link SAMPLE_DELTA}. */
+function changed(before: readonly Rgb[], after: readonly Rgb[]): number {
+  return after.filter(
+    (colour, index) => colorDistance(colour, before[index]) > SAMPLE_DELTA,
+  ).length;
+}
+
+it("redraws the struck rock on the tick the hit lands, and briefly", async () => {
   startPlaying(h);
   const rock = poseRock(h, "large", ARMOR_GROUND.x, ARMOR_GROUND.y);
   await h.advance(SETTLE_TICKS);
 
-  // The quiet window: the rock drawn with nothing happening to it, which is both
-  // the brightness the flash has to rise above and the measure of how much the
-  // rock's own cosmetic spin moves that figure tick to tick.
-  const quiet: number[] = [];
-  for (let tick = 1; tick <= QUIET_TICKS; tick += 1) {
-    await h.advance(1);
-    quiet.push(glow(rock, "the rock in the quiet window before the round"));
-  }
-  const before = quiet.reduce((sum, value) => sum + value, 0) / quiet.length;
-  const jitter = Math.max(...quiet.map((value) => Math.abs(value - before)));
-  const margin = Math.max(RISE_FLOOR, JITTER_MARGIN * jitter);
+  // The quiet span: the same rock, over the same number of ticks, with nothing
+  // happening to it. How many samples the build's own cosmetic spin redraws across
+  // that span is the floor the flash has to clear.
+  const quietFrom = look(rock, "the rock at the start of the quiet span");
+  await h.advance(SPAN_TICKS);
+  const quietTo = look(rock, "the rock at the end of the quiet span");
+  const spin = changed(quietFrom, quietTo);
 
   const chip = await chipRock(h, rock);
-  const standing = requireRock(
+  requireRock(
     chip.at,
     rock,
-    `the Large, one of its ROCK_HEALTH.large (${FULL}) hits spent and still ` +
-      "standing on the tick the round landed, which is the case " +
+    "the Large still standing on the tick the round landed, which is the case " +
       "specs/rocks.md attaches the flash to",
   );
 
-  const flash = meanLuminance(h, standing.x, standing.y, GLOW_R);
+  const flashing = look(rock, "the rock on the tick the hit landed");
   captureStill(h, "flash");
 
-  await h.advance(AFTER_TICKS);
-  const after = glow(rock, "the rock once the flash has run out");
+  await h.advance(SPAN_TICKS);
+  const settled = look(rock, "the rock once the flash has run out");
 
-  assertGreaterThanOrEqual(
-    flash - before,
-    margin,
-    "how much brighter the struck rock is drawn on the tick the hit landed " +
-      `than in the ${QUIET_TICKS} ticks before the round, in mean luminance ` +
-      `over its own circle: specs/rocks.md gives a chipping hit a bright ` +
-      `flash. The bound is ${JITTER_MARGIN} times the ` +
-      `${jitter.toFixed(2)} the rock's own spin moved that figure, floored ` +
-      `at ${RISE_FLOOR}`,
-  );
-  assertGreaterThanOrEqual(
-    flash - after,
-    margin,
-    "how much brighter that same tick is than the same rock " +
-      `${HIT_FLASH_TIME * 2} s later: specs/rocks.md makes the flash BRIEF, ` +
-      `lasting HIT_FLASH_TIME (${HIT_FLASH_TIME} s), after which the rock ` +
-      "returns to the appearance its remaining health gives it",
+  assertGreaterThan(
+    changed(flashing, settled),
+    Math.max(MIN_CHANGED, spin),
+    `of ${GRID * GRID} samples inside the rock's outline, how many the build ` +
+      "drew differently on the tick the hit landed from " +
+      `${HIT_FLASH_TIME * 2} s later, once specs/rocks.md has the flash over ` +
+      "and the rock back to the appearance its remaining health gives it. " +
+      `The bound is the larger of ${MIN_CHANGED} and the ${spin} the same ` +
+      "rock's own spin redrew across a span of the same length with no hit " +
+      "in it",
   );
 });

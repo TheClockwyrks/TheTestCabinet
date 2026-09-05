@@ -622,14 +622,16 @@ validation = { script = "gameplay/ai-deadzone.test.ts", outputs = [
 [[review.categories.items]]
 id = "advances-in-real-time"
 title = "The game advances itself in real time"
-description = "On a real wall clock, with nothing stepping the game from outside, a served ball's position changes over a stretch of real time."
+description = "With nothing stepping the game from outside, the game's own clock gains and a ball in flight moves over a stretch of real time."
 domains = ["single-player", "versus"]
 failure_cap = "broken"
-# Automated validation: hand the game a real wall clock, let the loop run itself for
-# a stretch of real time, and confirm the ball moved — a build that only advances
-# when something pokes it stays where it was put. See
-# validation/<engine>/gameplay/advances-in-real-time.test.ts.
-validation = { script = "gameplay/advances-in-real-time.test.ts", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
+# Automated validation: hand the game back to its own frame loop with
+# setAutoStep(true), let it run for a stretch of real time, and confirm the game's
+# clock gained and the ball moved — a build that only advances when something pokes
+# it stays where it was put. Scoped to `none`, where the build writes the frame loop
+# itself; under an engine the runtime pumps the frames and every build on it gets
+# this for free. See validation/none/gameplay/advances-in-real-time.test.ts.
+validation = { script = "gameplay/advances-in-real-time.test.ts", engines = ["none"], outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 # The simulation is driven by elapsed time, not by a count of frames. The frame clock
 # is the engine's and a validator supplies it, so this is checkable head-on: the same
 # scenario is replayed under several clocks and the outcomes must agree.
@@ -1931,91 +1933,90 @@ validation = { script = "touch/matchover-tap-confirms.test.ts", outputs = [
 
 # --- Visibility (sampled from the rendered canvas) ----------------------------
 # Each point samples the pixels the build actually RENDERS at a known on-field
-# location (a paddle center, an obstacle center, the ball) and at an empty patch of
-# field, and measures the RGB distance between them: two samples are told apart when
-# their distance exceeds 50 on a 0-441 scale. Each sample is taken well inside the
-# shape, because a rounded edge is anti-aliased. The palette itself is the build's.
+# location (a paddle center, an obstacle center, the ball) TWICE: once with the body
+# standing there, and once with the field bare under it after the body has been
+# taken off the field or moved away through the debug API. A body the build drew
+# separates the two readings; one it never drew leaves them the same ground. Each
+# sample is taken well inside the shape, because a rounded edge is anti-aliased.
+# The palette itself is the build's, and how it looks is the reviewer's to rate.
 #
 # THE BALL IS THE EXCEPTION among these four caps, and it is deliberate. A paddle or
-# an obstacle drawn in the field's own color is still findable: a paddle sits on a
-# known edge and the player is the one driving it, and an obstacle sits where the
-# field always puts it, so losing either is normal play made unpleasant (`scuffed`).
-# A ball that cannot be seen cannot be tracked, and tracking the ball is the whole
-# of what a player does here, so that point is `broken` — the game cannot be played
-# as intended at all.
+# an obstacle the build never drew is still findable: a paddle sits on a known edge
+# and the player is the one driving it, and an obstacle sits where the field always
+# puts it, so losing either is normal play made unpleasant (`scuffed`). A ball that
+# is not drawn cannot be tracked, and tracking the ball is the whole of what a
+# player does here, so that point is `broken` — the game cannot be played as
+# intended at all.
 [[review.categories]]
 id = "visibility"
 title = "Visibility"
 [[review.categories.items]]
 id = "left-paddle"
-title = "Left paddle stands apart"
-description = "The pixel at the left paddle's center is more than 50/441 in RGB distance from an empty patch of field and from the pixel at the right paddle's center."
+title = "The left paddle is drawn"
+description = "On a posed field, the pixels at the left paddle's center differ from the pixels the same point holds once both paddles have moved off it."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
-# Automated validation: sample the rendered pixels at the left paddle, right paddle,
-# and an empty patch of field, and compare the distances. See
+# Automated validation: sample the rendered pixels at the left paddle's center, move
+# both paddles to the top of their travel, and sample the same point again. See
 # validation/<engine>/visibility/left-paddle.test.ts.
 validation = { script = "visibility/left-paddle.test.ts", outputs = [
-  { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
+  { id = "scene", name = "The posed field showing the paddles and the obstacles", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "right-paddle"
-title = "Right paddle stands apart"
-description = "The pixel at the right paddle's center is more than 50/441 in RGB distance from an empty patch of field and from the pixel at the left paddle's center."
+title = "The right paddle is drawn"
+description = "On a posed field, the pixels at the right paddle's center differ from the pixels the same point holds once both paddles have moved off it."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
-# Automated validation: sample the rendered pixels at the right paddle, left paddle,
-# and an empty patch of field, and compare the distances. See
+# Automated validation: sample the rendered pixels at the right paddle's center, move
+# both paddles to the top of their travel, and sample the same point again. See
 # validation/<engine>/visibility/right-paddle.test.ts.
 validation = { script = "visibility/right-paddle.test.ts", outputs = [
-  { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
+  { id = "scene", name = "The posed field showing the paddles and the obstacles", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "obstacle"
-title = "Obstacles stand apart"
-description = "The pixel at an obstacle's center is more than 50/441 in RGB distance from an empty patch of field and from the pixels at both paddle centers."
+title = "An obstacle is drawn"
+description = "On a posed field, the pixels at an obstacle's center differ from the pixels the same point holds once the obstacles have been taken off the field."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
-# Automated validation: sample the rendered pixels at an obstacle center, both paddle
-# centers, and an empty patch of field, and compare the distances. See
+# Automated validation: sample the rendered pixels at an obstacle's center, clear the
+# obstacles off the field, and sample the same point again. See
 # validation/<engine>/visibility/obstacle.test.ts.
 validation = { script = "visibility/obstacle.test.ts", outputs = [
-  { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
+  { id = "scene", name = "The posed field showing the paddles and the obstacles", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "ball"
-title = "Ball stands apart"
-description = "The pixel at the ball's center is more than 50/441 in RGB distance from an empty patch of field."
+title = "The ball is drawn"
+description = "On a posed field, the pixels at the ball's center differ from the pixels the same point holds once the ball has moved away."
 domains = ["single-player", "versus"]
 failure_cap = "broken"
-# Automated validation: sample the rendered pixels at the ball and an empty patch of
-# field, and compare the distance. See validation/<engine>/visibility/ball.test.ts.
+# Automated validation: sample the rendered pixels at the ball's center, send the ball
+# down the field, and sample the same point again. See
+# validation/<engine>/visibility/ball.test.ts.
 validation = { script = "visibility/ball.test.ts", outputs = [
-  { id = "scene", name = "The posed field showing the ball color", kind = "image" },
+  { id = "scene", name = "The posed field showing the ball", kind = "image" },
 ] }
 
 # --- HUD ----------------------------------------------------------------------
 # The two scores are read from what the build draws: after setScore(7, 9) the frame's
-# text draws are inspected for the digits, player one's left of center and player
-# two's right of it. Where the text sits and how it is set is the build's.
+# text draws are inspected for the digits, player one's anchored left of center and
+# player two's anchored right of it. Where the text sits and how it is set is the
+# build's.
 #
-# WHAT "LEFT OF CENTER" IS MEASURED FROM DIFFERS BY PROJECT, and it is recorded here
-# rather than in one suite's header because it is the item's business. The two engine
-# projects read the drawn run's MIDPOINT, which their runtimes measure for them; the
-# `none` harness reads the point the run's ANCHOR names, because measuring every
-# drawn string costs a round trip into the page per frame read. The two agree on
-# every build that draws its scoreboard near the top of the field, as
-# specs/overview.md requires; they part only on a run anchored just short of the net
-# and spilling across it, which the engine projects fail and `none` passes. The gap
-# is accepted rather than closed: closing it either drops a reading the engines have
-# or adds a per-frame measurement to every `none` HUD check.
+# WHAT "LEFT OF CENTER" IS MEASURED FROM is the run's ANCHOR, in all three projects.
+# specs/overview.md fixes the position each score is DRAWN AT, and the anchor is that
+# position mapped through whatever transform and alignment the build drew under, so
+# the three projects decide the point one way and a build grades the same on every
+# engine.
 [[review.categories]]
 id = "hud"
 title = "HUD"
 [[review.categories.items]]
 id = "score-p1"
 title = "Player one's score is drawn"
-description = "After setScore(7, 9), a frame of the live match draws the text 7 left of the field's center."
+description = "After setScore(7, 9), a frame of the live match draws the text 7 anchored left of the field's center."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
 # Automated validation: pose the scores, render, and find the text draw. See
@@ -2026,7 +2027,7 @@ validation = { script = "hud/score-p1.test.ts", outputs = [
 [[review.categories.items]]
 id = "score-p2"
 title = "Player two's score is drawn"
-description = "After setScore(7, 9), a frame of the live match draws the text 9 right of the field's center."
+description = "After setScore(7, 9), a frame of the live match draws the text 9 anchored right of the field's center."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
 # Automated validation: pose the scores, render, and find the text draw. See
@@ -2038,10 +2039,9 @@ validation = { script = "hud/score-p2.test.ts", outputs = [
 # --- UI -----------------------------------------------------------------------
 # What is drawn and which screens are reachable. The rendering points assert SOME of
 # the figures the specification fixes about drawing — the field's containment and
-# scale, its letterboxing, the color of the bars, the trail reaching the length
-# TRAIL_TIME gives it — and the screen points reach each screen, read back the copy
-# the spec fixes for it, and capture it. How a screen looks is rated through the
-# domains, not here.
+# scale, its letterboxing, and a trail behind a moving ball — and the screen points
+# reach each screen, read back the copy the spec fixes for it, and capture it. How a
+# screen looks is rated through the domains, not here.
 #
 # WHAT THE SPECIFICATION FIXES AND NOTHING HERE ASSERTS, said plainly so the gap is
 # on the record: specs/overview.md's "Visual design" requires a dashed center net
@@ -2053,13 +2053,29 @@ validation = { script = "hud/score-p2.test.ts", outputs = [
 # in the authoring guide). They reach the score through the reviewer's aesthetic
 # rating instead, which is where a field drawn white or a missing net is judged.
 #
+# Two more of the same kind: the same "Visual design" list makes the bars around
+# the field the field's background color, and the trail behind the ball its path
+# over the last TRAIL_TIME seconds, so the streak's length follows the ball's
+# speed. Neither is graded either. A check on the first reads a color the case
+# fixes no value for, and a check on the second measures how far a drawn mark
+# reaches, which are both appearance. What the two rendering points below assert is
+# that nothing the game drew reaches the bars and that a ball in flight leaves the
+# lane behind it painted, and the stills they capture are what the reviewer rates
+# the look from.
+#
 # The FIT is two points rather than one, because the two failures cost different
 # things. A field that is cropped, stretched, scaled differently on the two axes, or
 # drawn somewhere other than where the fit puts it takes part of the playfield away
 # from the player, distorts the geometry the whole game is written in, or moves what
-# the player reaches for, so `window-fit` is `scuffed`. Bars painted in something
-# other than the clear color leave the game untouched entirely, so `window-fit-bars`
-# is `great`.
+# the player reaches for, so `window-fit` is `scuffed`. A field that spilled into the
+# bars beside it leaves the game untouched entirely, so `window-fit-bars` is `great`.
+#
+# `window-fit` IS SCOPED TO `none`, because under an engine the fit is the engine's:
+# it owns the canvas element, the uniform scale, the centering and the device pixel
+# ratio, and every build on that engine draws in logical units and gets the same
+# verdict. Under `none` the build derives the fit itself, which is where the point
+# grades the model's own code. What the bars hold is every engine's, because a build
+# that draws outside the fitted field reaches them under any runtime.
 #
 # The SCREEN points are split the same way and for the same reason: a build that
 # draws its menu but no heading is not the same build as one that draws neither. The
@@ -2076,53 +2092,45 @@ title = "UI"
 [[review.categories.items]]
 id = "window-fit"
 title = "The whole field fits the surface at one scale"
-description = "Over surfaces wider than the field, taller than it, and at a raised device pixel ratio, the whole 1280x720 field is inside the surface, its aspect ratio is preserved, and it is centered: one scale on both axes, nothing cropped, and each body drawn at the device coordinate the centered fit puts it at. The fit is read on the first frame before any input."
+description = "Over surfaces wider than the field, taller than it, and at a raised device pixel ratio, the whole 1280x720 field is inside the surface, its aspect ratio is preserved, and it is centered: one scale on both axes, nothing cropped, and each body drawn at the device coordinate the centered fit puts it at. The fit is read on the first frame, before any input."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
-# Automated validation: build the game over several differently-shaped surfaces, read
-# the viewport the engine derived back, and sample the field itself at the device
-# coordinate that viewport implies, so the point says the build DREW into the map it
-# reported rather than only computing it. See
-# validation/<engine>/rendering/window-fit.test.ts.
-validation = { script = "rendering/window-fit.test.ts", outputs = [
+# Automated validation: build the game over several differently-shaped surfaces, and
+# over each one check the canvas the build sized against the surface and sample the
+# field at the device coordinate the fit the SPECIFICATION states implies, so the
+# point says the build DREW into that map rather than only computing it. Scoped to
+# `none`, where the build derives the fit; under an engine the runtime owns it. See
+# validation/none/rendering/window-fit.test.ts.
+validation = { script = "rendering/window-fit.test.ts", engines = ["none"], outputs = [
   { id = "fit", name = "The whole field inside an off-aspect window", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "window-fit-bars"
-title = "The letterbox bars show the field's background"
-description = "On a surface wider than the field, the letterbox bars either side of the fitted field show the field's background clear color: within an RGB distance of 25/441 of the nearest sampled empty-field patch, and under an engine within rounding of the exported BACKGROUND."
+title = "The letterbox bars hold nothing the game drew"
+description = "On a surface wider than the field, the pixels in the letterbox bars either side of the fitted field are unchanged between two poses of the same match that move every body on the field."
 domains = ["single-player", "versus"]
 failure_cap = "great"
-# Automated validation: sample the bar pixels against the clear color and the
-# empty-field patches. The 25 is bar-versus-field shading room: the bar holds the
-# raw clear while an empty patch shows it through the build's own field styling. See
+# Automated validation: sample four device columns across the two bars over a posed
+# scene, re-pose the field with the obstacles removed and the paddles at the top of
+# their travel, and sample the same columns again. A field that spilled past its fit
+# paints those columns with content that moved between the two poses. What color the
+# bars carry is the reviewer's to rate. See
 # validation/<engine>/rendering/window-fit-bars.test.ts.
 validation = { script = "rendering/window-fit-bars.test.ts", outputs = [
   { id = "bars", name = "The letterbox bars beside the fitted field", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "trail-length"
-title = "Trail length follows TRAIL_TIME"
-description = "Behind a ball in steady flight, the drawn trail reaches back along the ball's path between 0.5 and 1.5 times speed * TRAIL_TIME, plus up to two ball radii."
+title = "A moving ball leaves a trail"
+description = "Behind a ball in steady flight down an empty lane, the lane holds pixels the same lane did not hold before the ball entered it."
 domains = ["single-player", "versus"]
 failure_cap = "great"
-# Automated validation: drive a rally, then read the frame the build drew: the
-# geometry or lit pixels behind the ball reach roughly speed * TRAIL_TIME along its
-# recent path. See validation/<engine>/rendering/trail-length.test.ts.
+# Automated validation: read the lane bare, drive the ball down it, and read the lane
+# behind the ball again: a build that draws a trail changed it. How long the streak
+# is, how it tapers and what it is colored are the reviewer's to rate. See
+# validation/<engine>/rendering/trail-length.test.ts.
 validation = { script = "rendering/trail-length.test.ts", outputs = [
   { id = "trail", name = "The trail behind a ball at speed", kind = "image" },
-] }
-[[review.categories.items]]
-id = "trail-scales"
-title = "Trail length scales with speed"
-description = "The drawn trail behind a ball at a high speed is longer than the drawn trail behind the same ball at a low speed."
-domains = ["single-player", "versus"]
-failure_cap = "great"
-# Automated validation: read the trail's reach behind a slow ball and a fast one and
-# compare. See validation/<engine>/rendering/trail-scales.test.ts.
-validation = { script = "rendering/trail-scales.test.ts", outputs = [
-  { id = "slow", name = "The trail behind a slow ball", kind = "image" },
-  { id = "fast", name = "The trail behind a fast ball", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "state-title"

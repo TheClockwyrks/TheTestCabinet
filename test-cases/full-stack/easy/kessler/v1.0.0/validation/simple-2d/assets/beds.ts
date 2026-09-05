@@ -4,19 +4,21 @@
 // `assets/audio/music-title.wav` and `assets/audio/music-play.wav`, and states
 // three separate things about each: that it is produced with `music` and is what
 // the game plays, that it "runs at least 12 seconds", and that it "loops without
-// an audible seam, the file's end running into its start with no click, no gap,
-// and no jump in level".
+// an audible seam" — the end-to-start step no larger than the largest step the
+// bed's own material takes, the half second either side of the junction carrying
+// at least a tenth of the bed's own level, and the level across the junction,
+// read over the second either side, moving by no more than 6 decibels.
 //
 // Each of those is a point per bed, because a build that produced one bed and
 // not the other, or whose play bed alone is a two-second stub, must grade
 // differently from one that missed both. The readings live here so the six thin
 // suites state only which bed they are about.
 //
-// EVERY THRESHOLD BELOW IS A TOLERANCE, NOT A SPEC FIGURE. The specification
-// names the faults — silence, a click, a gap, a jump in level — and no numbers
-// for them, so each line here is the perceptual bar that fault names, stated
-// once. The one genuine spec figure, the twelve seconds, comes from the
-// project's own `constants.ts`.
+// THE FIGURES COME FROM `constants.ts`: the twelve seconds, the tenth of the
+// bed's own level the junction must carry, the six decibels the level may move
+// across it, and the two window lengths those two are read over. What is left
+// here is tolerance alone — the rounding a whole sample frame costs a length,
+// and the floors under "this file carries signal at all".
 
 import {
   assertGreaterThan,
@@ -24,7 +26,13 @@ import {
   assertLessThanOrEqual,
   fail,
 } from "../assert";
-import { MUSIC_MIN_SECONDS } from "../constants";
+import {
+  MUSIC_LEVEL_WINDOW_SECONDS,
+  MUSIC_MIN_SECONDS,
+  MUSIC_SEAM_LEVEL_JUMP_DB,
+  MUSIC_SEAM_LEVEL_SHARE,
+  MUSIC_SEAM_WINDOW_SECONDS,
+} from "../constants";
 import {
   maxStep,
   monoMix,
@@ -49,14 +57,13 @@ const SILENCE_RMS = 0.001;
  */
 const ROUNDING = 0.01;
 
-/** A seam step no larger than this is below what anyone hears as a click. */
+/**
+ * The floor under the seam step's SELF-RELATIVE bound. The step across the
+ * junction is held to the largest step the bed's own material takes; for a bed
+ * whose material is unusually smooth this floors that bound, so a step no one
+ * could hear is not failed by a quiet neighbour.
+ */
 const CLICK_FLOOR = 0.02;
-/** A junction more than 20 dB under the bed's own RMS is heard as a dropout. */
-const GAP_SHARE = 0.1;
-/** A doubling of perceived level across the junction is a jump. */
-const LEVEL_JUMP_DB = 6;
-const SEAM_WINDOW_S = 0.5;
-const LEVEL_WINDOW_S = 1;
 
 function decodeOrFail(
   name: string,
@@ -138,7 +145,7 @@ export function assertSeamless(
   );
   writeImage(
     outputId,
-    paintSeam(`${name} — the loop junction`, wav, SEAM_WINDOW_S),
+    paintSeam(`${name} — the loop junction`, wav, MUSIC_SEAM_WINDOW_SECONDS),
   );
 
   // No click, read on every channel: a click in one speaker is a click.
@@ -155,7 +162,7 @@ export function assertSeamless(
   const mono = monoMix(wav);
   const whole = rms(mono);
   const seamWindow = Math.min(
-    Math.round(SEAM_WINDOW_S * wav.sampleRate),
+    Math.round(MUSIC_SEAM_WINDOW_SECONDS * wav.sampleRate),
     Math.floor(wav.frames / 2),
   );
   const seamLevel = Math.sqrt(
@@ -165,12 +172,12 @@ export function assertSeamless(
   );
   assertGreaterThanOrEqual(
     seamLevel,
-    whole * GAP_SHARE,
+    whole * MUSIC_SEAM_LEVEL_SHARE,
     `${path}: the second around the junction carries level (no gap)`,
   );
 
   const levelWindow = Math.min(
-    Math.round(LEVEL_WINDOW_S * wav.sampleRate),
+    Math.round(MUSIC_LEVEL_WINDOW_SECONDS * wav.sampleRate),
     Math.floor(wav.frames / 2),
   );
   const head = rms(mono, 0, levelWindow);
@@ -180,7 +187,7 @@ export function assertSeamless(
   );
   assertLessThanOrEqual(
     jumpDb,
-    LEVEL_JUMP_DB,
+    MUSIC_SEAM_LEVEL_JUMP_DB,
     `${path}: the level across the junction, in dB (no jump in level)`,
   );
 }

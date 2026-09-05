@@ -72,8 +72,8 @@ const STATIONS = [0.1, 0.25, 0.4] as const;
  * The case's own figure, because specs/overview.md fixes no palette and leaves the
  * tail's colour to the build. `12` is a twentieth of the range, which is more than
  * the nothing that separates two renders of one unchanged pixel and far less than
- * a tail drawn to be read at a glance against a field whose background
- * specs/overview.md holds below a quarter of full.
+ * a tail drawn to be read at a glance against the dark field specs/overview.md
+ * requires.
  */
 const DISTINCT_MIN = 12;
 

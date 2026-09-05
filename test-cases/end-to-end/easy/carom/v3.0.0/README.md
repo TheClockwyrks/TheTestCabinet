@@ -30,7 +30,9 @@ what the manifest's `[workspaces]` table is for:
 The game all three projects describe is the same one, so the review items are the
 same under any engine and a score recorded under one is comparable with a score
 recorded under another. The specs and the validators branch where the deliverable
-differs.
+differs, and two points drop out under an engine entirely: the fit of the field
+into its window and the game advancing on its own frame loop belong to the
+runtime there, so both are scoped to `none`, where the model writes that runtime.
 
 ## Contents
 

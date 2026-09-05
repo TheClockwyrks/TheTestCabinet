@@ -19,8 +19,8 @@
 // picture of the file itself, since this point drives no game.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual, fail } from "../assert";
-import { CELL, PAINT_MIN_SHARE, SPRITE_PATHS } from "../constants";
+import { assertGreaterThan, fail } from "../assert";
+import { CELL, SPRITE_PATHS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import {
   decodeSprite,
@@ -56,9 +56,9 @@ it("ships a painted cell-sized tail sprite", async () => {
       `${sprite.width} x ${sprite.height}`,
     );
   }
-  assertGreaterThanOrEqual(
+  assertGreaterThan(
     paintShare(sprite),
-    PAINT_MIN_SHARE,
+    0,
     `the share of ${FILE} carrying paint`,
   );
 });

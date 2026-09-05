@@ -32,11 +32,7 @@
 // `cascade/trail-survives-completion` grade those.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { CARD_H, CARD_W } from "../constants";
 import {
   captureStill,
@@ -65,17 +61,13 @@ const READ_RECT: Rect = { x: START.x, y: START.y, w: CARD_W, h: CARD_H };
 const SAMPLE_COLS = 3;
 const SAMPLE_ROWS = 4;
 
-/**
- * The smallest MEAN colour distance a MARKED table must show over that
- * rectangle, against the same points read bare.
- *
- * `24` on a scale that runs to about `441`: a weak floor rather than a
- * measurement. `specs/overview.md` requires a card to read apart from the table
- * "at a glance", and a build whose card ground were within `24` of its felt would
- * fail the `presentation` group's own legibility points long before it reached
- * this one.
+/*
+ * A MARKED table only has to read DIFFERENTLY over that rectangle from the same
+ * points read bare, and how far apart the two sit is not measured:
+ * `specs/overview.md` fixes no palette, so that is the reviewer's. Rendering is
+ * deterministic and each point is compared against itself, so any difference at
+ * all is the stamp.
  */
-const PAINTED_DISTANCE = 24;
 
 /** The colour distance between two sampled pixels. */
 function distance(
@@ -138,14 +130,11 @@ it("reports the gate on again and marks the table over a second of flight", asyn
       `(specs/instrumentation.md), so a build that never paints fails here ` +
       `rather than passing on a gate it ignores`,
   );
-  assertGreaterThanOrEqual(
-    paintedPixels
-      .map((p, i) => distance(p, bare[i]))
-      .reduce((total, d) => total + d, 0) / paintedPixels.length,
-    PAINTED_DISTANCE,
-    `the mean colour distance across ${points.length} points of the rectangle ` +
-      `the card was posed on, against the same points read bare — a card of ` +
-      `either face reads apart from the table it sits on (specs/overview.md), ` +
-      `so a build that counted a stamp it never laid is caught here`,
+  assertGreaterThan(
+    Math.max(...paintedPixels.map((p, i) => distance(p, bare[i]))),
+    0,
+    `the largest colour distance across ${points.length} points of the ` +
+      `rectangle the card was posed on, against the same points read bare — ` +
+      `a build that counted a stamp it never laid is caught here`,
   );
 });

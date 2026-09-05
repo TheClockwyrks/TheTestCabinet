@@ -57,7 +57,7 @@ const WATCH_FRAMES = 120;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

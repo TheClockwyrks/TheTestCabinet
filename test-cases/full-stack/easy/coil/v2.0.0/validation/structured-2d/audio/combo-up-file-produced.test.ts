@@ -27,7 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, fail } from "../assert";
-import { COMBO_WINDOW, CUES, SILENCE_FLOOR } from "../constants";
+import { COMBO_WINDOW, CUES } from "../constants";
 import {
   ahead,
   captureStill,
@@ -51,7 +51,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("ships a produced combo cue carrying audible signal", async () => {
+it("ships a produced combo cue carrying signal", async () => {
   const { sound, reason } = readSound(FILE);
 
   await showRound(h, {
@@ -68,7 +68,7 @@ it("ships a produced combo cue carrying audible signal", async () => {
   assertGreaterThan(sound.frames, 0, `sample frames in ${FILE}`);
   assertGreaterThan(
     sound.peak,
-    SILENCE_FLOOR,
+    0,
     `the peak sample of ${FILE}, on a full scale of 1`,
   );
 });

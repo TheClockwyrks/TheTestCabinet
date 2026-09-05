@@ -7,13 +7,13 @@
 // `INVERSION_TIME` (`5.0`) seconds — and `specs/field.md` fixes the play field as
 // `y` in `[FIELD_TOP, FIELD_BOTTOM]` (`[64, 656]`).
 //
-// WHAT IS MEASURED, AND WHY IT IS A MEAN. "Field-wide" is the word the
-// specification chose, so what is read is the MEAN distance between the field with
-// an inversion running and the same field without one, over a lattice spread
-// across the whole of it. A mean, not a maximum: a mark on one corner would clear
-// any maximum and is not field-wide, while a wash, a tint, a scanline, a border
-// pattern repeated across the field or an inverted palette all move the mean. The
-// review item states the figure: at least `20` of the `441` an RGB cube is across.
+// WHAT IS MEASURED. How many places of the play field the inversion repainted,
+// over a lattice spread across the whole of it: the field with an inversion
+// running, held place for place against the same field without one. A wash, a
+// tint, a scanline, a border pattern repeated across the field and an inverted
+// palette all repaint places the plain field does not carry; a build that draws
+// nothing at all repaints none. How BROADLY the mark reads across the field, and
+// what it looks like, are the reviewer's presentation rating.
 //
 // THE FIELD IS EMPTY AND NOTHING ELSE MOVES. `startPosed` clears the four rosters
 // and shuts the three world gates, so the two readings differ by exactly one thing
@@ -23,8 +23,7 @@
 //
 // THE CONTROL. `specs/field.md` lets a build's starfield move if it likes, so the
 // field's own frame-to-frame drift is measured first, with no inversion posed
-// between the two readings, and the inversion's mark has to beat it as well as the
-// stated figure.
+// between the two readings, and the inversion's mark has to beat it.
 //
 // THE INVERSION IS POSED, NOT TRIGGERED. `setInversion` is what
 // `specs/instrumentation.md` provides, and `inversionActive` is read back off the
@@ -39,22 +38,10 @@ import {
   captureStill,
   createHarness,
   readRegion,
-  regionDistance,
   startPosed,
   type Harness,
 } from "../harness";
-import { PLAY_FIELD } from "./reading";
-
-/**
- * How far apart the two fields must read, as a mean Euclidean RGB distance out of
- * the `441` an RGB cube is across.
- *
- * The figure the review item states. `20` is about a twentieth of the space
- * averaged over the WHOLE field, which a wash, a tint or a repeated pattern all
- * reach and which a mark on one corner cannot — and it is far above the fraction
- * of a unit two readings of one unchanged field differ by.
- */
-const MARK_MIN = 20;
+import { PAINT_MIN, PLAY_FIELD, changedSamples } from "./reading";
 
 /**
  * The lattice the field is read on, in logical units.
@@ -93,7 +80,7 @@ it("marks the whole play field while an inversion runs and not otherwise", async
   await h.advance(1);
   const plain = await readRegion(h, PLAY_FIELD, READ_STEP);
   await captureStill(h, "plain");
-  const drift = regionDistance(plainFirst, plain);
+  const drift = changedSamples(plainFirst, plain, PAINT_MIN);
 
   await h.debug.setInversion(INVERSION_TIME);
   await h.advance(1);
@@ -107,14 +94,12 @@ it("marks the whole play field while an inversion runs and not otherwise", async
   const marked = await readRegion(h, PLAY_FIELD, READ_STEP);
   await captureStill(h, "inverted");
 
-  const moved = regionDistance(plain, marked);
   assertGreaterThan(
-    moved,
-    Math.max(MARK_MIN, drift),
-    `the mean RGB distance of 441 between the play field with an inversion ` +
-      `running and the same field without one, sampled across the whole field ` +
-      `— an active inversion carries a FIELD-WIDE mark that is absent ` +
-      `otherwise (specs/ui.md); the field moved on its own across one frame by ` +
-      `${drift.toFixed(2)}`,
+    changedSamples(plain, marked, PAINT_MIN),
+    drift,
+    `places of the play field the inversion repainted, over a lattice spread ` +
+      `across the whole of it — an active inversion carries a mark that is ` +
+      `absent otherwise (specs/ui.md); the field moved on its own across one ` +
+      `frame in ${drift} places`,
   );
 });

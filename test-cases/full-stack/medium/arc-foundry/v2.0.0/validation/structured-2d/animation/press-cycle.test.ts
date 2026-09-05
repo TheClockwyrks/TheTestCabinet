@@ -32,14 +32,12 @@ import {
   evidence,
   missing,
 } from "./images";
-import { serveProducedAssets } from "./produced";
 
 const FRAMES = cycleFrames("press");
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 

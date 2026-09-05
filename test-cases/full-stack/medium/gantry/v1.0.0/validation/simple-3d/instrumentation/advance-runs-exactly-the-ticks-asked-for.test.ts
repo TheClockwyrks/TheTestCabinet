@@ -1,12 +1,11 @@
 // instrumentation/advance-runs-exactly-the-ticks-asked-for — a frame advance
 // runs the whole frames it was asked for, and no others.
 //
-// `specs/instrumentation.md` § The clock: "`advance(ticks)` | Runs `ticks` whole
-// frames, immediately and in order", and "During a run at watch speed `1` a
-// frame covers exactly one tick of the pipeline `specs/program.md` fixes, so
-// `advance(n)` runs `n` ticks." A run's tick count is what the pipeline
-// increments — "A tick that ends the run counts like any other" — and the
-// snapshot reports it as `run.tick`, so the run's own counter is the ruler.
+// A run at watch speed `1` takes exactly one tick of the pipeline
+// `specs/program.md` fixes for each frame the game is given, so `n` frames run
+// `n` ticks. A run's tick count is what the pipeline increments — "A tick that
+// ends the run counts like any other" — and the snapshot reports it as
+// `run.tick` (`specs/state.md`), so the run's own counter is the ruler.
 //
 // EVERY SCENARIO IN THIS PROJECT RESTS ON THIS. A check that drives forty ticks
 // and reads a force is measuring the build's simulation only if forty ticks is
@@ -16,10 +15,10 @@
 // into a single step fails on the first size that catches it.
 //
 // The watch speed is left where the run starts it — index `0`, `RUN_SPEEDS[0]`
-// (`1`) (`specs/state.md`) — because "The watch speed scales what a frame covers
-// exactly as it scales a real frame, so a scenario counting ticks leaves the
-// speed where a run starts it". What a speed above `1` does is its own
-// requirement next door.
+// (`1`) (`specs/state.md`) — because "speed changes how many ticks a second of
+// watching covers and nothing else" (`specs/program.md`), so a scenario counting
+// ticks leaves it alone. What a speed above `1` does is its own requirement next
+// door.
 //
 // THE TAPE IS ONE LONG GRIP MOVE, so the run is still in progress at the last
 // reading: a run that ended would stop counting and the check would be reading

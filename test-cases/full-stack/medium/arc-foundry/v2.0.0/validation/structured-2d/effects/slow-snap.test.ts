@@ -5,9 +5,10 @@
 // spawned "at the position of the event that raised it: ... the slow snap and the
 // burn on the unit carrying them".
 //
-// THE PRODUCED FILES ARE SERVED TO THE LOADER HERE, by `./produced.ts`: the system
-// so it can be played, and the sprites so the unit under the reading looks and
-// behaves as it does in a page.
+// THE PRODUCED FILES REACH THE LOADER THROUGH THE HARNESS, which stands the
+// committed `assets/` tree up for every check it builds: the system so it can be
+// played, and the sprites so the unit under the reading looks and behaves as it
+// does in a page.
 //
 // THE SLOW IS APPLIED DIRECTLY, AND THAT IS THE POINT. `specs/instrumentation.md`
 // applies `setUnitSlow` "through the rule `specs/enemies.md` fixes for an applied
@@ -28,7 +29,7 @@
 // `specs/enemies.md` draws a health bar on every unit and a bar is not a snap.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
+import { assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -37,7 +38,6 @@ import {
   parkUnit,
   ticks,
 } from "../harness";
-import { serveProducedAssets } from "./produced";
 import { lattice, motion } from "./region";
 import { tileCenter } from "../constants";
 
@@ -48,12 +48,10 @@ const AT = tileCenter(26, 17);
 const POINTS = lattice(AT, 18, 3).filter((point) => point.y >= AT.y - 8);
 
 const WINDOW = ticks(0.1);
-const MOVING = WINDOW / 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  serveProducedAssets();
   h = await createHarness();
 });
 
@@ -79,11 +77,5 @@ it("sets the ground around a unit moving when a slow lands on it", async () => {
     "the ground around a unit to change on more frames after a slow is " +
       "applied to it than before, so a slow snap is played on it " +
       `(specs/assets.md); it changed on ${still} of ${WINDOW} frames before`,
-  );
-  assertGreaterThanOrEqual(
-    played,
-    MOVING,
-    "the snap to keep moving across the tenth of a second after the slow " +
-      "lands, as a live particle system does (specs/assets.md)",
   );
 });

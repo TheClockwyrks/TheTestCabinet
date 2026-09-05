@@ -85,7 +85,7 @@ function apart(a: readonly number[], b: readonly number[]): number {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

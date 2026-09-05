@@ -21,9 +21,8 @@
 // canvas the evidence picture is painted on.
 //
 // THE TOLERANCE. The canvas is exact, because the specification states it
-// exactly. The paint floor is `PAINT_MIN_SHARE`, one pixel in a thousand;
-// a tile of ground is opaque across its whole face, so a conformant file
-// clears the floor a thousandfold.
+// exactly. The paint reading is presence: at least one pixel not clear, which a
+// tile of ground opaque across its whole face answers everywhere.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { captureStill, createHarness, type Harness } from "../harness";

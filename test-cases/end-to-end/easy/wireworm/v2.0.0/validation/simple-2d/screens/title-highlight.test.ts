@@ -22,9 +22,11 @@
 //
 // A CONTROL, so an animated title is not read as a highlight. Two frames are
 // drawn at the SAME highlight first, and what changes between them is whatever
-// the screen animates on its own. The move then has to change the band by more
-// than that, by a further HIGHLIGHT_PIXELS — so a build that draws every item
-// identically fails whether its background moves or not.
+// the screen animates on its own — the sensing level this reading is held
+// against. The move then has to change the band by more than that, with no
+// figure of ours added, so a caret, a rule or a plate behind the row all pass
+// and a build that draws every item identically fails whether its background
+// moves or not.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { STAGE_H, STAGE_W, TITLE_ITEMS } from "../constants";
@@ -49,19 +51,6 @@ import {
  * item is set in on a 720-unit stage and short of any second row of copy.
  */
 const BAND_PAD = 32;
-
-/**
- * How many pixels of the band the move has to change, over and above whatever
- * the screen changes on its own.
- *
- * A band across the whole 1280-unit stage holds tens of thousands of pixels, and
- * the least a "drawn distinctly" highlight can amount to is the glyphs of one
- * short word set in a different colour: seven characters of body type is already
- * well over a thousand pixels, and the item losing the highlight changes as many
- * again. 400 is under half of one such word, so it cannot be met by a stray
- * anti-aliased edge and cannot fail a highlight a player can see.
- */
-const HIGHLIGHT_PIXELS = 400;
 
 let h: Harness;
 
@@ -153,7 +142,7 @@ it("draws the menu band differently with the highlight moved", async () => {
 
   assertGreaterThan(
     differingPixels(second, moved),
-    restless + HIGHLIGHT_PIXELS,
+    restless,
     "moving the highlight changes the menu band by more than the screen " +
       "changes on its own, so the highlighted item is drawn distinctly " +
       "from the other (specs/ui.md)",

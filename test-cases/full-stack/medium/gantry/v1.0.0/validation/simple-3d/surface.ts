@@ -391,8 +391,8 @@ export interface GantrySnapshot {
  *
  * A check that asks what the build DREW asks this and never the picture. The
  * reading is the frame's own description of what it put on screen, so it says
- * what a build chose — which model stands where, which marks are up, what colour
- * a member came out — without a validator ever reading a pixel, and without the
+ * what a build chose — which model stands where, which marks are up, how large
+ * each was drawn — without a validator ever reading a pixel, and without the
  * specification fixing a palette, a form or a layout.
  */
 export interface DrawnEntry {
@@ -413,7 +413,6 @@ export interface DrawnEntry {
   readonly z: number;
   readonly yaw: number;
   readonly size: readonly [number, number, number];
-  readonly color: readonly [number, number, number];
   readonly text: string | null;
 }
 

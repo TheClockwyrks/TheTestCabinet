@@ -24,9 +24,8 @@
 // asserts a position, a size or a colour.
 //
 // WHAT THIS DOES NOT DECIDE. The menu beneath the copy, which is
-// `screens/title-menu-entries`' and `screens/title-menu-highlight`'s; that the
-// text reads against what is behind it, which is
-// `presentation/screen-text-is-legible`'s.
+// `screens/title-menu-entries`' and `screens/title-menu-highlight`'s; or that the
+// text reads against what is behind it, which the reviewer judges.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TAGLINE_TEXT, TITLE_TEXT } from "../constants";

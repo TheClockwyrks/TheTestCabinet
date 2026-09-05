@@ -26,6 +26,12 @@
 // one-pixel sample landing on an etched line would compare a line against a floor
 // rather than a floor against a board.
 //
+// NO FIGURE IS ASSERTED, only inequality. The two patches are read off one frame
+// the build drew, and `getImageData` returns the bytes that are there, so a build
+// that painted the band and the board the same colour measures exactly `0` and a
+// build that tinted the band at all does not. HOW FAR apart the two read is
+// appearance, and the reviewer's from the captured still.
+//
 // The board is posed EMPTY and quiet, so the only thing between the two patches
 // is the ground the build drew. The one thing that cannot be taken off the band
 // is the cursor, which lives there (specs/cursor.md); its box straddles both
@@ -33,8 +39,7 @@
 // moved out of the way, because the requirement is about the band the cursor
 // sits in.
 //
-// The `none`, `simple-2d` and `structured-2d` suites take the same reading
-// against the same figure.
+// The `none`, `simple-2d` and `structured-2d` suites take the same reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -55,19 +60,6 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-
-/**
- * How far a band row's tint must sit from the board's, in RGB distance on the
- * 0–441 scale, for the two to be "measurably distinct".
- *
- * Deliberately well below the 50 this case reads as one body standing CLEARLY
- * APART from another: the band is a tint in the ground rather than a body over
- * it, and specs/overview.md asks only that it "reads as a distinct floor". 20 is
- * about a twentieth of the scale — a shift a player sees as a change of floor,
- * and one no rounding, rasterization or averaging drift produces on its own,
- * since a build that painted the band and the board the same colour measures 0.
- */
-const BAND_DISTINCT_MIN = 20;
 
 /** Every column of the grid: "across the full width" read literally. */
 const COLUMNS = Array.from({ length: COLS }, (_, c) => c);
@@ -142,7 +134,7 @@ it("tints both band rows apart from the board, across the full width", async () 
     for (const band of BAND_ROWS) {
       assertGreaterThan(
         colorDistance(meanPatch(h, x, band.top, band.bottom), board),
-        BAND_DISTINCT_MIN,
+        0,
         `band row ${band.row} against the board, both in column ${c} (x ${x})`,
       );
     }

@@ -1,5 +1,5 @@
 // instrumentation/overlay — toggling the debug overlay over a posed field draws
-// the facts the specification lists, and watching it leaves the game as it is.
+// the facts the specification lists.
 //
 // THE RULE. `specs/instrumentation.md`, Diagnostics: "The debug overlay is
 // read-only and shows the values the game registers with it as diagnostic
@@ -10,6 +10,13 @@
 // simulation time." Under this engine "registering those values is the whole of
 // Shatter's part ... Drawing the panel and toggling it are the engine's", and
 // `specs/controls.md` fixes the toggle as the backtick key.
+//
+// SO ONLY THE VALUES ARE READ HERE. The panel, the backtick key, the hidden-at-start
+// state and the read-only-ness are the ENGINE's under this engine, and a check on
+// any of them returns the same verdict for every build on it; they are
+// `instrumentation/overlay-is-a-read-only-toggle`, which names
+// `engines = ["none"]`. The overlay is toggled on below to read what it drew, and
+// nothing about the toggle itself is asserted.
 //
 // WHAT IS ASSERTED IS THE VALUE, NEVER THE WORDING. A build names its sources
 // itself, so every reading below is of a NUMBER the game holds, posed to a
@@ -57,24 +64,9 @@
 // pause menu — "No body moves, no timer runs down" — so the ship the velocity was
 // posed onto is still standing where the reading expects it when the panel is
 // drawn.
-//
-// THE READ-ONLY HALF IS ITS OWN LEG, over an EMPTY, QUIET, STILL field. On that
-// field a tick changes exactly one reported number — `simTime`, which
-// `specs/instrumentation.md` has accumulating "every tick's `TICK_DT`, whatever
-// the screen" — because there is no body to move, no timer to run down and no
-// spawner running. So "the snapshot is identical before and after" can be read
-// as literally as it is written: every other field must match exactly, and
-// `simTime` must have moved by exactly the one frame the toggle costs. Posing
-// the full field for this leg instead would have meant excusing every rock the
-// well moved, which is a weaker claim about a different thing.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertCloseTo,
-  assertDeepEqual,
-  assertGreaterThan,
-  fail,
-} from "../assert";
+import { fail } from "../assert";
 import {
   captureStill,
   clearCalls,
@@ -83,7 +75,6 @@ import {
   poseBullet,
   poseRock,
   poseSaucer,
-  seconds,
   startPlaying,
   ticksFor,
   toggleOverlay,
@@ -132,9 +123,6 @@ const BULLET_SPOTS = [
 /** How many of each the overlay must therefore report. */
 const ROCK_COUNT = ROCK_ROWS.length * ROCK_COLUMNS.length;
 const BULLET_COUNT = BULLET_SPOTS.length;
-
-/** How closely `simTime` must equal one frame's worth, in decimal places. */
-const SIM_TIME_DIGITS = 6;
 
 let h: Harness;
 
@@ -226,8 +214,6 @@ it("draws the facts the specification lists, over a posed field", async () => {
   // shows it.)
   captureStill(h, "overlay");
 
-  assertGreaterThan(added.length, 0, "the toggle draws the overlay's lines");
-
   assertForm(added, /paused/i, "the current screen, 'paused'");
   assertFigure(added, POSED.score, "the score");
   assertFigure(added, POSED.lives, "the lives");
@@ -255,57 +241,5 @@ it("draws the facts the specification lists, over a posed field", async () => {
     added,
     SIM_SECONDS,
     "the accumulated simulation time, in seconds",
-  );
-});
-
-it("is read-only: the snapshot is identical across the toggle, but for the frame", async () => {
-  // An empty, quiet, still field: no body to move, no timer to run down, no
-  // spawner running, so a tick changes exactly one reported number.
-  startPlaying(h);
-
-  // A baseline frame of the bare playing screen's own text, so the lines the
-  // toggle adds can be told from the ones the game draws either way.
-  clearCalls(h);
-  await h.advance(1);
-  const bare = new Set(drawnText(h.calls));
-
-  const before = h.snapshot();
-
-  clearCalls(h);
-  await toggleOverlay(h);
-  const added = drawnText(h.calls).filter((line) => !bare.has(line));
-  assertGreaterThan(added.length, 0, "the toggle draws the overlay's lines");
-
-  const after = h.snapshot();
-  assertDeepEqual(
-    { ...after, simTime: 0 },
-    { ...before, simTime: 0 },
-    "every reported field but simTime is identical with the overlay up",
-  );
-  assertCloseTo(
-    after.simTime,
-    before.simTime + seconds(1),
-    SIM_TIME_DIGITS,
-    "simTime advanced by exactly the one frame the toggle ran",
-  );
-
-  // Toggling again takes it down, and leaves the game exactly as it was too.
-  clearCalls(h);
-  await toggleOverlay(h);
-  const stillDrawn = new Set(drawnText(h.calls));
-  const lingering = added.filter((line) => stillDrawn.has(line));
-  assertDeepEqual(lingering, [], "the overlay's lines leave with the toggle");
-
-  const down = h.snapshot();
-  assertDeepEqual(
-    { ...down, simTime: 0 },
-    { ...before, simTime: 0 },
-    "every reported field but simTime is identical after the overlay comes down",
-  );
-  assertCloseTo(
-    down.simTime,
-    before.simTime + seconds(2),
-    SIM_TIME_DIGITS,
-    "simTime advanced by exactly the two frames the two toggles ran",
   );
 });

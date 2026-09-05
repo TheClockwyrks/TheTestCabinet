@@ -1,15 +1,15 @@
 // assets/site — serving the built site under conditions the shared server
 // never varies.
 //
-// Two review items in this category are about HOW the built site is served:
+// One review item in this category is about HOW the built site is served:
 // specs/assets.md requires that "the site runs unchanged whether it is served
-// from the root of a static host or mounted under a sub-path", and that "a
-// load that fails leaves the game running". The project's shared server
-// (`globalSetup.ts`) serves `dist/` at the root with every file present, so
-// those two suites bring their own: the same handful of lines, with the two
-// knobs the requirements vary — the path the site is mounted under, and a
-// file withheld with a 404. The page opens in the project's one shared
-// Chromium, in a context of this module's own that is closed with the site.
+// from the root of a static host or mounted under a sub-path". The project's
+// shared server (`globalSetup.ts`) serves `dist/` at the root, so that suite
+// brings its own: the same handful of lines, with the one knob the requirement
+// varies — the path the site is mounted under. Every produced file is served
+// exactly as the shared server serves it. The page opens in the project's one
+// shared Chromium, in a context of this module's own that is closed with the
+// site.
 
 import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -58,37 +58,26 @@ export interface Site {
   page: Page;
   /** Every same-origin request the page made, in order. */
   requests: SiteRequest[];
-  /** Requests the `block` pattern answered with a 404. */
-  blocked: string[];
   close(): Promise<void>;
 }
 
 export interface SiteOptions {
   /** The path the site is mounted under, e.g. `/mounted/deep/`. Default `/`. */
   prefix?: string;
-  /** Requests whose path matches are answered 404, as an unavailable file. */
-  block?: RegExp;
 }
 
 /**
  * Serve the build output on a loopback port — optionally mounted under a
- * sub-path, optionally with matching files withheld — and open it in a fresh
- * page of the project's shared Chromium.
+ * sub-path — and open it in a fresh page of the project's shared Chromium.
  */
 export async function openSite(options: SiteOptions = {}): Promise<Site> {
   const prefix = options.prefix ?? "/";
   const root = buildOutput();
-  const blocked: string[] = [];
 
   const server: Server = createServer((request, response) => {
     const path = normalize(
       decodeURI(new URL(request.url ?? "/", "http://localhost").pathname),
     );
-    if (options.block?.test(path)) {
-      blocked.push(path);
-      response.writeHead(404).end("not found");
-      return;
-    }
     if (path === "/favicon.ico") {
       response.writeHead(204).end();
       return;
@@ -151,7 +140,6 @@ export async function openSite(options: SiteOptions = {}): Promise<Site> {
   return {
     page,
     requests,
-    blocked,
     close: async () => {
       await context.close().catch(() => undefined);
       await browser.close().catch(() => undefined);

@@ -47,7 +47,7 @@ const RADIUS = TILE * 1.5;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {

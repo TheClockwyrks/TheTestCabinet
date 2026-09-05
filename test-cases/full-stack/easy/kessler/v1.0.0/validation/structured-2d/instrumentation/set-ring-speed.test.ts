@@ -8,24 +8,24 @@
 // "each ring's angle advances by its orbit speed in step 2 of the tick order,
 // positive speeds toward `+theta`", wrapping modulo 360.
 //
-// RING 1 IS THE WITNESS, because its wave formula is `0` (stationary): every
-// degree it turns after the pose is the posed speed's and nothing else's. A
-// second of ticks under `+90` degrees per second must leave it at `90`, a
-// half-second under `-90` at `315` — the sign read — and after all of it the
-// snapshot still reports the posed figure, the holding read. The tolerance is
-// float integration slack over 60 fixed ticks, nothing more.
+// THE TWO MOVING RINGS ARE THE WITNESSES, each posed at the ceiling its own
+// formula caps at — ring 2 at `+45`, ring 3 at `-30`. Wave 1 gives them `+12`
+// and `-8`, so a second of ticks under the pose lands ring 2 on `45` and ring 3
+// on `330` only if the posed figure, and not the wave formula, drove the
+// advance; the two signs read the direction in both directions; and after all
+// of it the snapshot still reports the posed figures, the holding read. The
+// tolerance is float integration slack over 60 fixed ticks, nothing more.
 //
-// Two targets ride the ring so the replay shows the orbit; nothing can reach
+// One target rides each ring so the replay shows the orbits; nothing can reach
 // them (there is no ball), so they decide nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
+import { RING2_SPEED_CAP, RING3_SPEED_CAP } from "../constants";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 
-/** The posed rate, and the tick spans that turn it into readable angles. */
-const POSED_SPEED = 90;
-const FORWARD_TICKS = 60;
-const REVERSE_TICKS = 30;
+/** The tick span that turns the posed rates into readable angles. */
+const TICKS = 60;
 
 let h: Harness;
 
@@ -37,44 +37,57 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("advances ring 1 at the posed rate, signed, and holds it", async () => {
+it("advances rings 2 and 3 at the posed rates, signed, and holds them", async () => {
   isolate(h);
-  h.debug.spawnTarget(1, 0, 1);
-  h.debug.spawnTarget(1, 6, 1);
-  h.debug.setRingAngle(1, 0);
+  h.debug.spawnTarget(2, 0, 2);
+  h.debug.spawnTarget(3, 0, 1);
+  h.debug.setRingAngle(2, 0);
+  h.debug.setRingAngle(3, 0);
 
-  h.debug.setRingSpeed(1, POSED_SPEED);
+  h.debug.setRingSpeed(2, RING2_SPEED_CAP);
+  h.debug.setRingSpeed(3, RING3_SPEED_CAP);
+  const posed = h.snapshot();
   assertCloseTo(
-    h.snapshot().rings[0].speedDegPerSec,
-    POSED_SPEED,
+    posed.rings[1].speedDegPerSec,
+    RING2_SPEED_CAP,
     6,
-    "ring 1's reported speed after the pose",
+    "ring 2's reported speed after the pose",
   );
-
-  const forward = await captureReplay(h, "orbit", () => h.tick(FORWARD_TICKS));
   assertCloseTo(
-    forward.rings[0].angleDeg,
-    (POSED_SPEED * FORWARD_TICKS) / 60,
-    3,
-    "ring 1's angle after a second at +90 deg/s",
-  );
-
-  // The sign: a negative pose turns the other way (toward -theta).
-  h.debug.setRingAngle(1, 0);
-  h.debug.setRingSpeed(1, -POSED_SPEED);
-  const reverse = await h.tick(REVERSE_TICKS);
-  assertCloseTo(
-    reverse.rings[0].angleDeg,
-    360 - (POSED_SPEED * REVERSE_TICKS) / 60,
-    3,
-    "ring 1's angle after a half-second at -90 deg/s",
-  );
-
-  // The hold: no tick restored the wave formula's 0.
-  assertCloseTo(
-    reverse.rings[0].speedDegPerSec,
-    -POSED_SPEED,
+    posed.rings[2].speedDegPerSec,
+    RING3_SPEED_CAP,
     6,
-    "ring 1's reported speed after the ticks",
+    "ring 3's reported speed after the pose",
+  );
+
+  const orbit = await captureReplay(h, "orbit", () => h.tick(TICKS));
+
+  // The rates, and with them the signs: +45 carries ring 2 to 45, -30 carries
+  // ring 3 the other way, to 330 through the wrap.
+  assertCloseTo(
+    orbit.rings[1].angleDeg,
+    (RING2_SPEED_CAP * TICKS) / 60,
+    3,
+    "ring 2's angle after a second at the posed +45 deg/s",
+  );
+  assertCloseTo(
+    orbit.rings[2].angleDeg,
+    360 + (RING3_SPEED_CAP * TICKS) / 60,
+    3,
+    "ring 3's angle after a second at the posed -30 deg/s",
+  );
+
+  // The hold: no tick restored wave 1's +12 and -8.
+  assertCloseTo(
+    orbit.rings[1].speedDegPerSec,
+    RING2_SPEED_CAP,
+    6,
+    "ring 2's reported speed after the ticks",
+  );
+  assertCloseTo(
+    orbit.rings[2].speedDegPerSec,
+    RING3_SPEED_CAP,
+    6,
+    "ring 3's reported speed after the ticks",
   );
 });

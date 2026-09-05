@@ -143,8 +143,12 @@ screen — is drawn in code.
 The case fixes no palette and no typeface. What the specification fixes about
 appearance is stated as legibility a player depends on: the five bands told apart
 at a glance, deep water distinct from a floe on the same row, a submerged bear
-still trackable, a vehicle reading as covering every tile it spans. How good the
-strait looks is rated through the run-wide aesthetic rating instead.
+still trackable. Whether a build achieves any of that is the reviewer's to judge,
+through the `presentation` domain and the run-wide aesthetic rating: deciding it
+in a check means holding the build's own colors against a figure this case does
+not state. Where a checklist point reads a pixel at all it reads presence — that
+the picture at a point changed when the thing the specification puts there was
+posed or taken away.
 
 The case declares no reference mockups and no proof captures. The media a
 reviewer looks at is produced by the validators under `validation/`, from
@@ -153,7 +157,7 @@ reference build to produce the baseline it is shown beside.
 
 ## Validation
 
-This case is validator-rated: every one of the `216` points on the checklist
+This case is validator-rated: every one of the `257` points on the checklist
 carries a Vitest suite, and the validators decide the functional rating through
 each point's failure cap. A reviewer rates the run's aesthetics separately and
 may override a verdict.
@@ -203,8 +207,8 @@ reference's side by side.
 A run is rated on four domains — `hunter` (the bear), `crossing` (the hop, the
 two bands and the bays), `run` (the lives, the timer, the levels, the score and
 the screens) and `presentation` (the art, the HUD, the legibility and the audio)
-— and its overall functional rating is the worst of the four. The `216` checklist
-points are grouped into thirteen categories, and each point names the domains its
+— and its overall functional rating is the worst of the four. The `257` checklist
+points are grouped into sixteen categories, and each point names the domains its
 failure lowers and how far it lowers them.
 
 ## Versioning

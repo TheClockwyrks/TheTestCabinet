@@ -1,13 +1,14 @@
 // Refract — cascade/hud-tier: the tier is on screen while playing.
 //
 // specs/modes/cascade.md "The count": during playing, show the current tier
-// beside the label HUD_TIER_LABEL (TIER), clear of the board, whose extent
-// specs/board.md gives. A fresh sequence opens at tier 1, and the playing
-// frame's text draws are read back: a run carrying the label, a run reading 1
-// beside it — within one CELL_PITCH, the spec's own unit of adjacent
-// placement, or in the label's own run — and both clear of the current
-// board's extent widened by NODE_R. The fresh sequence's other readout reads
-// "SOLVED 0", so no other figure on the frame reads 1 by accident.
+// beside the label HUD_TIER_LABEL (TIER), clear of the board in play, whose
+// extent specs/board.md gives for its own cols and rows, widened by NODE_R.
+// A fresh sequence opens at tier 1, and the playing frame's text draws are
+// read back: a run carrying the label, a run reading 1 beside it — within
+// HUD_VALUE_GAP (96), the figure specs/modes/cascade.md states for "beside",
+// or in the label's own run — and both clear of the extent of the BOARD IN
+// PLAY widened by NODE_R. The fresh sequence's other readout reads "SOLVED
+// 0", so no other figure on the frame reads 1 by accident.
 //
 // The frame's text is read as COALESCED RUNS rather than as raw `fillText`
 // calls, because a build is free to letter-space its HUD and canvas has no

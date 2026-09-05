@@ -14,7 +14,7 @@
 //
 // THE TOLERANCES. Every path and every canvas is an exact figure and is read
 // exactly. That each file carries a drawing rather than an empty canvas is read
-// against `PAINT_MIN_SHARE`, whose reasoning `assets/sprites.ts` states.
+// as presence: at least one pixel of the canvas is not clear.
 //
 // WHAT IT DELIBERATELY DOES NOT READ. The six evolved effects are
 // `assets/evolved-effect-sprites-produced`; that each effect is drawn over its

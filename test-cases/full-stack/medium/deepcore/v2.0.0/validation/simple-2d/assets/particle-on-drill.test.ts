@@ -13,8 +13,7 @@
 //
 // The miner's travel is held so it neither sinks into the cut nor walks out of the
 // frame the readings are taken over, and the mine is cleared so no other effect
-// can be playing anywhere near it. The produced systems are stood up off disk,
-// because a system this engine's loader was refused is one the build cannot play.
+// can be playing anywhere near it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { BAND_HEALTH, PLAYABLE_COL_MIN, TILE } from "../constants";
@@ -45,7 +44,7 @@ const CUTTING_FRAMES = 24;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ assets: true });
+  h = await createHarness();
 });
 
 afterEach(() => {
