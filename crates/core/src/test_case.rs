@@ -3074,12 +3074,18 @@ pub struct AudioSpec {
 
 /// The resolved `[model]` of a voxel-animation case: the rig the model must
 /// produce — named parts in a parent/child hierarchy and the named joints a
-/// consuming game (or an auto-play clip) drives. This is the **required** contract
-/// (the scoring targets and the stable, game-facing joint interface); at run time
-/// the model may add further parts and joints of its own, which are recorded in
-/// the produced `rig.json` but are not required here. Carried into the run record
-/// (see [`crate::validation::VoxelGenResult`]) so the review and viewer UIs know
-/// the joint interface without a separate catalog lookup.
+/// consuming game (or an auto-play clip) drives. This is the **required**
+/// interface, the parts and joints a consuming game may rely on by name; a
+/// produced rig may carry further parts and joints of its own, which `rig.json`
+/// records and nothing here requires.
+//
+// Note for maintainers, deliberately NOT a doc comment: this type is emitted into
+// `@clockwyrks/asset-contract`, which is vendored into a model's own workspace, and
+// `ts_rs` copies doc comments through verbatim. Anything written above with `///`
+// is read by the model. So the internal half lives here instead: the spec is
+// carried into the run record on `crate::validation::VoxelGenResult`, which is how
+// the review and viewer UIs know the joint interface without a catalog lookup.
+// `scripts/ci/seeded-contract-check.sh` is the gate that keeps the two apart.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]

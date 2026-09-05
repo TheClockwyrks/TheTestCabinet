@@ -525,25 +525,25 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
     std::fs::write(workspace.join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
 
     // A fake host package store: particle-runtime (with a `dist/`) depending on
-    // run-record via the relative sibling `file:` the staging script writes, so the
-    // vendoring closure must follow the edge and copy run-record too.
+    // asset-contract via the relative sibling `file:` the staging script writes, so the
+    // vendoring closure must follow the edge and copy asset-contract too.
     let store = tempfile::tempdir().expect("store dir");
     let pr = store.path().join("@clockwyrks/particle-runtime");
-    let rr = store.path().join("@clockwyrks/run-record");
+    let ac = store.path().join("@clockwyrks/asset-contract");
     std::fs::create_dir_all(pr.join("dist")).expect("pr dist");
-    std::fs::create_dir_all(rr.join("dist")).expect("rr dist");
+    std::fs::create_dir_all(ac.join("dist")).expect("ac dist");
     std::fs::write(
         pr.join("package.json"),
-        r#"{"name":"@clockwyrks/particle-runtime","version":"0.0.0","dependencies":{"@clockwyrks/run-record":"file:../run-record"}}"#,
+        r#"{"name":"@clockwyrks/particle-runtime","version":"0.0.0","dependencies":{"@clockwyrks/asset-contract":"file:../asset-contract"}}"#,
     )
     .expect("pr manifest");
     std::fs::write(pr.join("dist/index.js"), "// runtime").expect("pr dist file");
     std::fs::write(
-        rr.join("package.json"),
-        r#"{"name":"@clockwyrks/run-record","version":"0.0.0"}"#,
+        ac.join("package.json"),
+        r#"{"name":"@clockwyrks/asset-contract","version":"0.0.0"}"#,
     )
-    .expect("rr manifest");
-    std::fs::write(rr.join("dist/index.js"), "// types").expect("rr dist file");
+    .expect("ac manifest");
+    std::fs::write(ac.join("dist/index.js"), "// types").expect("ac dist file");
 
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve demo");
     let base = version.variant("base").expect("base variant");
@@ -573,7 +573,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
         "the declared package is vendored"
     );
     assert!(
-        vendor.join("run-record/package.json").is_file(),
+        vendor.join("asset-contract/package.json").is_file(),
         "the transitive @clockwyrks dependency is vendored too"
     );
     let vendored_dist = vendor.join("particle-runtime/dist/index.js");
@@ -592,7 +592,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
         "the vendored dist must be committed despite the `dist/` gitignore rule; tracked:\n{tracked}"
     );
     assert!(
-        tracked.contains(".vendor/packages/@clockwyrks/run-record/package.json"),
+        tracked.contains(".vendor/packages/@clockwyrks/asset-contract/package.json"),
         "the whole vendored closure is committed"
     );
 }

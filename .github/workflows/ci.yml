@@ -211,3 +211,6 @@ jobs:
       # If this step ever needs to come back, the thing to check first is whether something
       # taught the contract generator to build gg again.
       - run: ./scripts/ci/contract-drift.sh
+      # Runs after the drift check, so it greps a package the generator has just
+      # re-emitted rather than whatever was committed.
+      - run: ./scripts/ci/seeded-contract-check.sh

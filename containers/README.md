@@ -328,7 +328,7 @@ package store** rather than fetched from a registry. The store lives at
 [driver image](../deployments/images/services.Dockerfile) — the image that seeds
 runs — each a publish-shaped copy: its `package.json` plus its built `dist/`. Any
 dependency **between** two shippable packages (for example `particle-runtime`'s
-type-only dependency on `run-record`) is rewritten to a relative `file:` path
+type-only dependency on `asset-contract`) is rewritten to a relative `file:` path
 within the store, so the staged set resolves with no npm-published
 `@clockwyrks/*` package required.
 

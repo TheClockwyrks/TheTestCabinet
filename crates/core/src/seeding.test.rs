@@ -198,7 +198,7 @@ fn the_replay_journal_lives_under_the_excluded_dotdir() {
 fn fake_engine_store(version: &str, docs: bool) -> tempfile::TempDir {
     let store = tempfile::tempdir().expect("store dir");
     let engine = store.path().join("@clockwyrks/simple-2d");
-    let dep = store.path().join("@clockwyrks/run-record");
+    let dep = store.path().join("@clockwyrks/asset-contract");
     std::fs::create_dir_all(engine.join("dist")).expect("engine dist");
     std::fs::create_dir_all(dep.join("dist")).expect("dep dist");
     std::fs::write(
@@ -207,7 +207,7 @@ fn fake_engine_store(version: &str, docs: bool) -> tempfile::TempDir {
             r#"{{
   "name": "@clockwyrks/simple-2d",
   "version": "{version}",
-  "dependencies": {{ "@clockwyrks/run-record": "file:../run-record" }}
+  "dependencies": {{ "@clockwyrks/asset-contract": "file:../asset-contract" }}
 }}
 "#
         ),
@@ -220,7 +220,7 @@ fn fake_engine_store(version: &str, docs: bool) -> tempfile::TempDir {
     }
     std::fs::write(
         dep.join("package.json"),
-        r#"{"name":"@clockwyrks/run-record","version":"0.0.0"}"#,
+        r#"{"name":"@clockwyrks/asset-contract","version":"0.0.0"}"#,
     )
     .expect("dep manifest");
     std::fs::write(dep.join("dist/index.js"), "// types").expect("dep dist file");
@@ -320,7 +320,7 @@ fn vendor_engine_vendors_the_closure_the_docs_and_the_dependency() {
         "the engine package is vendored, build output included"
     );
     assert!(
-        vendored.join("run-record/package.json").is_file(),
+        vendored.join("asset-contract/package.json").is_file(),
         "the transitive @clockwyrks dependency is vendored too, so the staged \
          package's relative `file:` link still resolves"
     );
@@ -377,7 +377,7 @@ fn init_repo_commits_both_the_vendored_packages_and_the_vendored_engine() {
     let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
     std::fs::write(repo.path().join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
     seeder
-        .vendor_packages(repo.path(), &["@clockwyrks/run-record".to_string()])
+        .vendor_packages(repo.path(), &["@clockwyrks/asset-contract".to_string()])
         .expect("vendor the case's packages");
     seeder
         .vendor_engine(repo.path(), &simple_2d())
@@ -387,7 +387,7 @@ fn init_repo_commits_both_the_vendored_packages_and_the_vendored_engine() {
 
     let tracked = git_stdout(repo.path(), &["ls-files"]);
     assert!(
-        tracked.contains(".vendor/packages/@clockwyrks/run-record/dist/index.js"),
+        tracked.contains(".vendor/packages/@clockwyrks/asset-contract/dist/index.js"),
         "the case's vendored packages are committed despite `dist/`: {tracked}"
     );
     assert!(

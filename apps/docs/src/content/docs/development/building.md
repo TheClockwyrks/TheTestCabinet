@@ -65,6 +65,14 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
 - `packages/run-record`: `@clockwyrks/run-record`. Shared TypeScript types
   and JSON Schema for the [run record](/components/core/run-records/), the
   central data contract.
+- `packages/asset-contract`: `@clockwyrks/asset-contract`. The rig and F-curve
+  shapes a produced model is described by, generated in the same pass from the
+  same Rust types. Its own package because it is the only slice of the contract
+  that may be **seeded**: the voxel and particle runtimes depend on it and are
+  vendored into a model's workspace, so whatever they depend on travels with
+  them. `run-record` re-exports these types, so a console keeps importing them
+  from there. `scripts/ci/seeded-contract-check.sh` is the gate that keeps the
+  evaluation half out of a run.
 - `packages/run-stats`: `@clockwyrks/run-stats`. The framework-free rules for
   scoring a reviewed run, each mirroring a counterpart in
   `crates/core/src/review.rs`, plus the set-level rollup that keeps a figure
@@ -384,10 +392,11 @@ test-case authoring and variant guides refer to under "Validate your work".
 The run-record (and arena, job-API, backend) data contract has a single source of
 truth: the Rust types that derive `ts_rs::TS` and `schemars::JsonSchema` behind
 their `contract` feature, in `crates/core` and `crates/backend`. The TypeScript
-bindings under `packages/run-record/src/` and the JSON Schemas under
-`apps/docs/public/schema/` are generated from those types by
-`crates/contract-codegen`. After changing any contract type, regenerate and
-commit:
+bindings under `packages/run-record/src/` and `packages/asset-contract/src/` —
+one generator, two packages, because only the latter may be seeded into a run —
+and the JSON Schemas under `apps/docs/public/schema/` are generated from those
+types by `crates/contract-codegen`. After changing any contract type, regenerate
+and commit:
 
 ```sh
 npm run gen:contract

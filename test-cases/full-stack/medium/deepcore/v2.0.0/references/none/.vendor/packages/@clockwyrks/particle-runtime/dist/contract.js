@@ -2,7 +2,7 @@
  * The contract types the particle runtime operates on — the `system.json` shape the
  * `particle-2d` / `particle-3d` binaries emit.
  *
- * The run-record's generated `AssetKind` union and any generated `system.json` type
+ * The generated `AssetKind` union and any generated `system.json` type
  * are produced from Rust via contract-codegen; at the time of writing that codegen has
  * not yet emitted a particle-system type, so the system shapes below are declared
  * locally, matching the documented `system.json` contract (see

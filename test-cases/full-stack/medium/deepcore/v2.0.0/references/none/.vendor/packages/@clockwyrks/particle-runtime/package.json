@@ -24,7 +24,7 @@
     "dist"
   ],
   "dependencies": {
-    "@clockwyrks/run-record": "file:../run-record"
+    "@clockwyrks/asset-contract": "file:../asset-contract"
   },
   "peerDependencies": {
     "three": "~0.182.0"

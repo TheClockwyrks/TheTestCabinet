@@ -8,7 +8,7 @@
  * frame, each trilerping 8 lattice corners, each corner a SplitMix64 hash carried in
  * `BigInt` to stay exact — about 400 wrapping 64-bit multiplies for a single
  * particle's turbulence, every frame. Native Rust absorbs that; JavaScript does not,
- * and a system with turbulence on could pin a review tab at a couple of frames a
+ * and a system with turbulence on could pin a browser tab at a couple of frames a
  * second while its preview GIF played perfectly.
  *
  * Two properties rescue it, and neither changes a single output value:
