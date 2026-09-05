@@ -42,6 +42,17 @@ class Driver {
   }
 }
 
+/** Every argument `spawnUnit` and `waveCount` take (specs/instrumentation.md). */
+const SPAWNABLE_TYPES = [
+  "mote",
+  "spark",
+  "slug",
+  "cluster",
+  "filament",
+  "dynamo",
+  "overload",
+];
+
 describe("the surface", () => {
   let d: Driver;
   let api: FoundryDebugApi;
@@ -53,7 +64,7 @@ describe("the surface", () => {
   });
 
   it("reports the version the specification fixes", () => {
-    expect(api.version).toBe(3);
+    expect(api.version).toBe(4);
   });
 
   it("fails loudly on an argument outside its stated domain", () => {
@@ -143,6 +154,43 @@ describe("the surface", () => {
     d.apply((s) => api.setStamps(s, 0));
     d.apply((s) => api.placeRock(s, 20, 20));
     expect(d.snapshot().structures).toHaveLength(1);
+  });
+
+  it("counts the live wave's own schedule (specs/instrumentation.md)", () => {
+    d.apply((s) => api.startRun(s));
+    // Off a wave, every type reads 0.
+    for (const type of SPAWNABLE_TYPES) {
+      expect(d.read((s) => api.waveCount(s, type))).toBe(0);
+    }
+    // The driver's hold opens a wave whose schedule is empty, so a unit released
+    // through it is not a unit the wave counts.
+    d.apply((s) => api.spawnUnit(s, "mote"));
+    expect(d.snapshot().waveActive).toBe(true);
+    expect(d.read((s) => api.waveCount(s, "mote"))).toBe(0);
+    expect(() => d.read((s) => api.waveCount(s, "gremlin"))).toThrow(
+      /type to be one of/,
+    );
+
+    // A wave the harvest launched counts what it will release, from the frame it
+    // launched — and goes on counting a unit that has been swept away.
+    d.apply((s) => api.reset(s));
+    d.apply((s) => api.setDifficulty(s, "easy"));
+    d.apply((s) => api.startRun(s));
+    d.apply((s) => api.setWave(s, 19));
+    d.apply((s) => api.setNextRoll(s, "regulator", 1));
+    d.apply((s) => api.placeRock(s, 10, 10));
+    d.apply((s) => api.clearHeld(s));
+    const stood = d.snapshot().structures;
+    const candidate = stood[stood.length - 1]!.id;
+    d.apply((s) => api.keep(s, candidate));
+    expect(d.snapshot().wave).toBe(20);
+    // Wave 20 of the 40-wave Easy run is a milestone and a multiple of four.
+    expect(d.read((s) => api.waveCount(s, "dynamo"))).toBe(1);
+    expect(d.read((s) => api.waveCount(s, "filament"))).toBeGreaterThan(0);
+    expect(d.read((s) => api.waveCount(s, "overload"))).toBe(0);
+    const motes = d.read((s) => api.waveCount(s, "mote"));
+    d.apply((s) => api.clearUnits(s));
+    expect(d.read((s) => api.waveCount(s, "mote"))).toBe(motes);
   });
 
   it("refuses to change the Overload Dynamo's health", () => {

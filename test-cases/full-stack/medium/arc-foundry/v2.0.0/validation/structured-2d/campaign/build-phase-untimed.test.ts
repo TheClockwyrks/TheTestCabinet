@@ -14,22 +14,47 @@
 // The minute is driven as real frames through the game's own update, so
 // everything else in the game runs while it passes; what is being read is that
 // nothing in the game turned that time into a wave.
+//
+// THE MINUTE IS THE SAMPLE; THE FRAMES IT IS CUT INTO ARE NOT. What this point
+// asserts is that sixty seconds of simulation start no wave, and the simulation
+// is frame-division independent (`specs/controls.md`: "an interval of simulation
+// time reaches the same state however it was divided into frames and whatever
+// frame rate produced it"), so the minute is driven at a coarse step. Nothing
+// read across it is positional and no projectile is in flight — the yard is
+// empty — so the one step size this project has to respect does not arise.
+//
+// WHAT IS KEPT DENSE IS THE SAMPLING, IN SIMULATION TERMS. The phase and the
+// counter are read every `0.2` seconds of simulation, so a wave that started AND
+// cleared inside the minute is caught rather than stepped over. The counter is a
+// latch either way — clearing a wave leaves it naming that wave — but the phase
+// is not, so the poll stays where a jump would have missed it.
 
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
-import { captureReplay, openYard, type Harness } from "../harness";
-import { createRunHarness, RUN_HZ } from "./runs";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
+
+/** 10 Hz: coarse, and the simulation is defined to be indifferent to it. */
+const HZ = 10;
+
+/** That frame, in milliseconds. */
+const CLOCK_MS = 1000 / HZ;
 
 /** Sixty seconds of simulation, in seconds. */
 const WAIT = 60;
 
-/** Frames between two readings of the phase, at the harness's own clock. */
-const POLL = 20;
+/** Frames between two readings of the phase: `0.2` seconds of simulation. */
+const POLL = 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createRunHarness();
+  h = await createHarness({ clock: new ConstantClock(CLOCK_MS) });
 });
 
 afterEach(() => {
@@ -46,7 +71,7 @@ it("starts no wave over a minute of simulation with no harvest committed", async
     // Sampled rather than jumped, so a wave that started and cleared inside the
     // minute is caught rather than passed over.
     let started: string | null = null;
-    for (let n = 0; n < WAIT * RUN_HZ; n += POLL) {
+    for (let n = 0; n < WAIT * HZ; n += POLL) {
       await h.advance(POLL);
       const s = h.snapshot();
       if (s.phase !== "build" && started === null) started = String(s.phase);

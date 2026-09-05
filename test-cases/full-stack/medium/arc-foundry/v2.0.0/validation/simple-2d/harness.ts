@@ -238,13 +238,15 @@ const game = build as unknown as Game<FoundryState, FoundrySurface>;
  *
  * A pose `(state, ...args) => S` becomes `(...args) => void`: the driver runs it
  * through `engine.apply`, so the state it returns is the state the next frame
- * receives. A reading `(state) => R` becomes `() => R`: the driver hands it
- * `engine.state`. Anything else (`version`) is carried as it is.
+ * receives. A reading `(state, ...args) => R` becomes `(...args) => R`: the driver
+ * hands it `engine.state` and passes on whatever else the reading takes, which is
+ * nothing for six of the eight and a type for `waveCount`. Anything else
+ * (`version`) is carried as it is.
  */
 type Driven<S, M> = M extends (state: DeepReadonly<S>, ...args: infer A) => S
   ? (...args: A) => void
-  : M extends (state: DeepReadonly<S>) => infer R
-    ? () => R
+  : M extends (state: DeepReadonly<S>, ...args: infer A) => infer R
+    ? (...args: A) => R
     : M;
 
 /**
@@ -596,10 +598,10 @@ function readDebugSurface(
  * missing surface or a missing operation fails the check that needed it and never
  * the `beforeEach` that built the harness.
  *
- * A reading is called with `engine.state` and its result handed back. A pose is run
- * through `engine.apply`, so the engine stores what it returned and the next
- * frame's `update` receives it; a pose that returns nothing is refused by the
- * engine with a message naming the rule.
+ * A reading is called with `engine.state`, followed by whatever else it takes, and
+ * its result handed back. A pose is run through `engine.apply`, so the engine
+ * stores what it returned and the next frame's `update` receives it; a pose that
+ * returns nothing is refused by the engine with a message naming the rule.
  */
 function driveSurface(
   engine: Engine<FoundryState, FoundrySurface>,
@@ -617,7 +619,8 @@ function driveSurface(
         ...args: unknown[]
       ) => unknown;
       if (readings.includes(property)) {
-        return (): unknown => op.call(raw, engine.state);
+        return (...args: unknown[]): unknown =>
+          op.call(raw, engine.state, ...args);
       }
       return (...args: unknown[]): void => {
         engine.apply((state) => op.call(raw, state, ...args) as FoundryState);

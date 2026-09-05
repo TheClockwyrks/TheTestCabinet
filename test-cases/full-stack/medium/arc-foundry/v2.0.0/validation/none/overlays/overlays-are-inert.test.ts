@@ -19,6 +19,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureReplay,
+  ConstantClock,
   createHarness,
   lastUnit,
   openYard,
@@ -28,13 +29,38 @@ import {
 
 /** The span specs/hud.md's point is stated over. */
 const SPAN = 10;
+
+/**
+ * The frame all three runs are stepped in: `20` Hz, a sixth of this project's
+ * default.
+ *
+ * THE STEP CANCELS OUT, BECAUSE THE CLAIM IS THAT THE THREE RUNS AGREE. What is
+ * compared is one run against another, and all three take the same clock from the
+ * same seed, so whatever a coarser frame does to where a Mote stands after ten
+ * seconds it does identically three times. Nothing here is measured against a
+ * figure the specs state — no speed, no distance, no rate — and no projectile
+ * flies, so the one step size this project has to respect does not arise.
+ *
+ * `specs/instrumentation.md` fixes no frame size and guarantees that an interval
+ * of simulation time reaches the same state however it was divided into frames,
+ * which `instrumentation/frame-division-movement` and
+ * `instrumentation/frame-division-projectile` are the two items that decide. The
+ * ten seconds `specs/hud.md`'s point is stated over are unchanged; only the frames
+ * they are divided into are.
+ */
+const SPAN_HZ = 20;
+
+/** Frames of that clock covering `s` seconds of simulation, rounded up. */
+function spanFrames(seconds: number): number {
+  return Math.ceil(seconds * SPAN_HZ);
+}
 /** A thousandth of a unit: floating point, not a rule about the game. */
 const DIGITS = 3;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / SPAN_HZ) });
 });
 
 afterEach(async () => {
@@ -56,7 +82,7 @@ async function tenSeconds(
   await openYard(h);
   if (overlay !== null) await h.debug.setOverlay(overlay, true);
   await releaseUnit(h, "mote");
-  await h.advanceSeconds(SPAN);
+  await h.advance(spanFrames(SPAN));
   const snapshot = await h.snapshot();
   const unit = lastUnit(snapshot);
   return {

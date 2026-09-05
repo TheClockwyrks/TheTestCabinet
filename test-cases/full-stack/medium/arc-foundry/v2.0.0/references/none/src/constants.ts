@@ -1260,6 +1260,6 @@ export const ACTION_BY_CODE: ReadonlyMap<string, Action> = new Map(
 export const OVERLAY_KEY = "Backquote";
 
 // ---- The debug and automation surface (specs/instrumentation.md) --------------
-export const FOUNDRY_DEBUG_VERSION = 3;
+export const FOUNDRY_DEBUG_VERSION = 4;
 // The seed `reset` falls back to when it is given none.
 export const DEFAULT_SEED = 1;

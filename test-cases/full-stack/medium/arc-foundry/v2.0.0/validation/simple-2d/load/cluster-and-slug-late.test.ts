@@ -6,16 +6,28 @@
 // components the press has had no chance to roll.
 //
 // The rule bars them from waves `1` through `4`, and those four waves are
-// composed and launched by the game itself and read back unit by unit. Waves `1`
-// through `3` are held to a stricter rule of their own — Motes and Sparks alone —
-// which is the sibling `opening-waves` check, so what this one adds is wave `4`,
-// the first wave the roster opens up on and the last one these two are barred
-// from.
+// composed and launched by the game itself and their schedules read back type by
+// type. Waves `1` through `3` are held to a stricter rule of their own — Motes
+// and Sparks alone — which is the sibling `opening-waves` check, so what this one
+// adds is wave `4`, the first wave the roster opens up on and the last one these
+// two are barred from.
+//
+// WHAT IS READ is `waveCount("cluster")` and `waveCount("slug")` on the frame the
+// harvest launched the wave: the live wave's own schedule, which is the array the
+// spawner is working through (specs/instrumentation.md). That the schedule and
+// what the spawner actually releases are the same thing is
+// `instrumentation/wave-count-matches-the-spawner`'s requirement, decided once
+// there over a wave driven to its clear.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureReplay, type Harness } from "../harness";
-import { collectWave, countOf, createWaveHarness, openWave } from "./waves";
+import type { Harness } from "../harness";
+import {
+  composedWave,
+  composedWaveOnCamera,
+  countIn,
+  createWaveHarness,
+} from "./waves";
 
 const DIFFICULTY = "easy";
 
@@ -37,19 +49,18 @@ afterEach(() => {
 
 it("releases no Cluster and no Slug on waves 1 through 4", async () => {
   for (const wave of EARLY) {
-    openWave(h, wave, DIFFICULTY);
-    const released =
+    const counts =
       wave === EVIDENCE
-        ? await captureReplay(h, "early", () => collectWave(h, wave))
-        : await collectWave(h, wave);
+        ? await composedWaveOnCamera(h, wave, DIFFICULTY, "early")
+        : composedWave(h, wave, DIFFICULTY);
 
     assertEqual(
-      countOf(released, "cluster"),
+      countIn(counts, "cluster"),
       0,
       `wave ${wave} is before wave 5, so it carries no Cluster`,
     );
     assertEqual(
-      countOf(released, "slug"),
+      countIn(counts, "slug"),
       0,
       `wave ${wave} is before wave 5, so it carries no Slug`,
     );

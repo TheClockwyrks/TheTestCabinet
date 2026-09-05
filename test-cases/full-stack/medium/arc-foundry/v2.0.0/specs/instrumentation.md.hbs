@@ -156,7 +156,7 @@ and everything else in the game, carries on untouched.
 
 ## The operations
 
-The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `3`), a plain number, and the
+The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `4`), a plain number, and the
 operations below. Values are plain numbers, strings, and booleans. `x` and `y` are in the
 stage's logical units, `col` and `row` are tile coordinates, durations are in seconds,
 and an `id` is a structure's or a unit's identifier as `snapshot` reports it.
@@ -221,6 +221,7 @@ already doing, so a scenario that must be reproducible calls `setAutoStep(false)
 | `statusControls` | The status bar's overlay, speed, pause, and mute controls, in the order they are drawn. |
 | `statusReadouts` | The status bar's readouts — the reads it draws that are not controls — in the order they are drawn. |
 | `recipeEntries` | Every ingredient cell the recipe book currently draws, in the order the book draws them. |
+| `waveCount(type)` | How many units of `type` the live wave releases across the whole of its schedule, those it has already released and those still to come. |
 
 `panelButtons`, `pressControls`, and `menuButtons` each return an array of
 `{ action, label, x, y, w, h, disabled }`. `label` is the text as drawn, `x`, `y`, `w`,
@@ -257,6 +258,20 @@ are the cell's rectangle. It returns an empty array while the recipe book is clo
 Because a cell's rectangle is the one the book was laid out at, it reports the cells of
 the frame the book was last drawn on: a caller opens the book, advances a frame, and
 reads.
+
+`waveCount` reports the live wave's OWN schedule — the sequence of releases the spawner
+is working through — so it counts a unit the wave has yet to release exactly as it counts
+one already walking the yard, and it goes on counting a unit that has since died, leaked,
+or been swept away by `clearUnits`. The count is that schedule rather than a figure kept
+beside it: the units a wave releases are exactly the ones it counts, so a wave whose
+schedule holds six Motes reads `6` for `mote` from the frame it launched to the frame it
+cleared. `type` is one of the seven identifiers `spawnUnit` takes. It reads `0` for every
+type when no wave is running, which covers every screen off the yard, a build phase, and
+the finale, and it reads `0` for every type on a wave the driver's hold on the spawner
+opened, because that wave's schedule is empty — `spawnUnit` and `setPhase("wave")`
+release units without composing a wave, as the driver above states. `overload` therefore
+reads `0` always: the Overload Dynamo of the finale is not a unit a wave releases, and
+`specs/enemies.md` keeps it distinct from the Dynamo boss.
 
 The status bar and the build panel are drawn on `playing` and on `paused` alone, as
 `specs/hud.md` states, so `panelButtons`, `pressControls`, `statusControls`, and
@@ -303,7 +318,7 @@ which is what the maze-length hover of `specs/controls.md` acts on. A `recipeEnt
 rectangle is where that ingredient cell is drawn, so whatever the book draws to tell the
 cell's `state` apart is inside it.
 
-All seven readings are pure. Reading a menu never moves the highlight and never activates
+All eight readings are pure. Reading a menu never moves the highlight and never activates
 a choice, and reading the recipe book never opens or closes it.
 
 ### The run
@@ -491,7 +506,7 @@ down at a time, a `touchMove` or a `touchEnd` with none down does nothing, and a
 
 ```js
 {
-  version: 3,
+  version: 4,
   screen: "title" | "mapselect" | "difficultyselect" | "howto"
         | "playing" | "paused" | "victory" | "overload",
   phase: "build" | "wave" | "finale" | null,   // null off the yard

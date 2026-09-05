@@ -19,28 +19,65 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { baseStat } from "../constants";
+import { baseStat, PROJECTILE_HIT_R, PROJECTILE_SPEED } from "../constants";
 import {
   captureReplay,
+  ConstantClock,
   createHarness,
   openYard,
   parkUnit,
   standComponent,
   structureById,
-  ticks,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
 const ANCHOR = { col: 10, row: 10 };
 
-/** Inside the Scrap Capacitor's `100`, and a flight of about fourteen frames. */
+/** Inside the Scrap Capacitor's `100`, and a flight of about a tenth of a second. */
 const TARGET_RANGE = 60;
 
 /** The counted interval, in seconds of simulation time. */
 const SECONDS = 10;
 
-/** Frames between samples, well inside one shot's flight at this range. */
-const SAMPLE_FRAMES = 4;
+/**
+ * The frame the counted interval is stepped in, in Hz.
+ *
+ * TWO BOUNDS SET IT, AND BOTH ARE COMPUTED FROM FIGURES THE SPECS STATE.
+ *
+ * A shot must land where the game says it lands. `specs/components.md` flies a
+ * projectile straight at the point it was aimed at, at `PROJECTILE_SPEED`, and
+ * lands it "when the projectile comes within `PROJECTILE_HIT_R` of that
+ * position": the target here is held still, so the aim point does not move and
+ * the flight closes on it monotonically. A step shorter than the full width of
+ * that window — `2 * PROJECTILE_HIT_R` — therefore cannot carry a shot from
+ * outside the window to outside it in one frame, which makes
+ * `PROJECTILE_SPEED / (2 * PROJECTILE_HIT_R)` the floor on the rate.
+ *
+ * And the step must divide the flight, because what is counted is distinct
+ * projectile identities: a shot has to be on the yard at a sample to be counted at
+ * all. That is the sampling bound below rather than a bound on the step.
+ *
+ * `specs/instrumentation.md` fixes no frame size otherwise — an interval of
+ * simulation time reaches the same state however it was divided into frames, which
+ * `instrumentation/frame-division-movement` and
+ * `instrumentation/frame-division-projectile` are the two items that decide — so
+ * the interval takes half the project's own frame, which clears the floor with
+ * room to spare.
+ */
+const COUNT_HZ = Math.max(
+  TICK_HZ / 2,
+  Math.ceil(PROJECTILE_SPEED / (2 * PROJECTILE_HIT_R)),
+);
+
+/** How long one shot is in flight at this range, in seconds. */
+const FLIGHT_SECONDS = TARGET_RANGE / PROJECTILE_SPEED;
+
+/**
+ * Frames between samples: a third of one shot's flight, so no shot can be
+ * launched and land between two readings and go uncounted.
+ */
+const SAMPLE_FRAMES = Math.max(1, Math.floor((FLIGHT_SECONDS / 3) * COUNT_HZ));
 
 /** The Capacitor's cadence, flat across the quality ladder. */
 const FIRE_RATE = baseStat("capacitor").fireRate;
@@ -48,7 +85,7 @@ const FIRE_RATE = baseStat("capacitor").fireRate;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / COUNT_HZ) });
 });
 
 afterEach(async () => {
@@ -80,7 +117,10 @@ it("launches fireRate shots a second over a counted interval", async () => {
         for (const projectile of s.projectiles) seen.add(projectile.id);
         return false;
       },
-      { maxFrames: ticks(SECONDS), poll: SAMPLE_FRAMES },
+      {
+        maxFrames: Math.ceil(SECONDS * COUNT_HZ),
+        poll: SAMPLE_FRAMES,
+      },
     );
     return seen.size;
   });

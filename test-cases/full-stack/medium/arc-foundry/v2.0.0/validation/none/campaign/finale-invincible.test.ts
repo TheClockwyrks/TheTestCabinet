@@ -23,12 +23,29 @@
 //
 // The towers' own tallies are read alongside it, because a Dynamo that took no
 // fire at all would otherwise pass this check without proving anything.
+//
+// TEN SECONDS, NOT TWELVE HUNDRED FRAMES. The sample is the span — many cadences
+// of all three towers and several burn durations — and not the number of frames
+// it was divided into, so the span is kept and the window runs on `RUN_HZ`, the
+// rate `campaign/runs.ts` already fires this project's Capacitor at while it
+// reads a bounty off a kill. specs/instrumentation.md guarantees that "an
+// interval of simulation time reaches the same state however it was divided into
+// frames", and `instrumentation/frame-division-projectile` is the point that
+// decides that guarantee for a shot in flight — it covers a fifth of a second in
+// ONE frame, eight times the step taken here.
+//
+// A NOTE ON THE STEP AND THE HIT RADIUS. `PROJECTILE_SPEED` (`520`) against
+// `PROJECTILE_HIT_R` (`6`) puts a shot's travel inside its hit radius only below
+// a frame of `11.5` ms, which is `87` Hz — so no frame size worth taking makes
+// that the bound, and the bound relied on is the specification's own guarantee
+// above rather than the arithmetic of one build's integration. Nothing positional
+// is read across the window in any case: what is read is a health figure, a
+// damage tally and a kill count.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
-  createHarness,
   openYard,
   parkUnit,
   standCombo,
@@ -37,6 +54,7 @@ import {
   unitById,
   type Harness,
 } from "../harness";
+import { createRunHarness, RUN_HZ } from "./runs";
 
 /** The heaviest fire the game holds, all of it in reach of one point. */
 const RUPTURE = { col: 10, row: 10 };
@@ -45,12 +63,12 @@ const RECTIFIER = { col: 13, row: 14 };
 const TARGET = { x: 280, y: 320 };
 
 /** Ten seconds: many cadences of all three, and several burn durations. */
-const WINDOW = 10 * 120;
+const WINDOW = 10 * RUN_HZ;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createRunHarness();
 });
 
 afterEach(async () => {

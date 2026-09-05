@@ -374,6 +374,19 @@ export interface FoundryDebugApi<S = unknown> {
   statusReadouts(state: DeepReadonly<S>): StatusReadout[];
   recipeEntries(state: DeepReadonly<S>): RecipeEntry[];
 
+  /**
+   * How many units of `type` the LIVE wave releases across the whole of its
+   * schedule, those it has already released and those still to come
+   * (specs/instrumentation.md).
+   *
+   * The wave's OWN schedule — the sequence of releases the spawner is working
+   * through — so a unit that has died, leaked or been swept away by `clearUnits`
+   * goes on counting, and the figure does not move across the wave. `0` for every
+   * type with no wave running and on a wave the driver's hold on the spawner
+   * opened, whose schedule is empty; `overload` reads `0` always.
+   */
+  waveCount(state: DeepReadonly<S>, type: SpawnType): number;
+
   /* The run. */
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   setMap(state: DeepReadonly<S>, map: MapId): S;
@@ -464,6 +477,7 @@ export const READINGS = [
   "statusControls",
   "statusReadouts",
   "recipeEntries",
+  "waveCount",
 ] as const;
 
 /**
@@ -485,6 +499,7 @@ export const REQUIRED_OPS = [
   "statusControls",
   "statusReadouts",
   "recipeEntries",
+  "waveCount",
   // The run.
   "reset",
   "setMap",

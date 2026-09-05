@@ -26,6 +26,7 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import { PAUSE_ITEMS, structureCenter } from "../constants";
 import {
   captureStill,
+  ConstantClock,
   createHarness,
   openYard,
   standComponent,
@@ -36,8 +37,28 @@ import { colorDistance, drewText, sampleColor } from "./reading";
 /** A corner of the yard a centred pause menu does not reach. */
 const CORNER = { col: 2, row: 29 };
 
+/**
+ * The frame rate the frozen span is driven at: `10` Hz, a twelfth of this
+ * project's default.
+ *
+ * What is read across the span is one number that must not move — the simulation
+ * clock, which `specs/controls.md` says "advances by nothing" while the pause menu
+ * is open. Nothing positional, no projectile and no rate is measured over it, so
+ * no bound on the size of a frame arises; `specs/instrumentation.md` fixes none,
+ * and `instrumentation/frame-division-movement` and
+ * `instrumentation/frame-division-projectile` are the two items that decide that
+ * guarantee. The ten seconds the claim is stated over are unchanged; the frames
+ * they are divided into are a hundred rather than twelve hundred.
+ */
+const FROZEN_HZ = 10;
+
+/** Frames of that clock covering `s` seconds, rounded up. */
+function frozenFrames(seconds: number): number {
+  return Math.ceil(seconds * FROZEN_HZ);
+}
+
 /** How long the frozen yard is watched for. */
-const FROZEN_FRAMES = 1_200; // 10 s
+const FROZEN_SECONDS = 10;
 
 /**
  * How far apart the two samples must sit before the structure counts as visible
@@ -55,7 +76,7 @@ const VISIBLE_MIN = 8;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ clock: new ConstantClock(1000 / FROZEN_HZ) });
 });
 
 afterEach(async () => {
@@ -97,7 +118,7 @@ it("draws its three entries over a yard that is visible and frozen", async () =>
 
   // And frozen: the simulation clock does not move while the menu is up.
   const before = (await h.snapshot()).simTime;
-  await h.advance(FROZEN_FRAMES);
+  await h.advance(frozenFrames(FROZEN_SECONDS));
   assertEqual(
     (await h.snapshot()).simTime,
     before,

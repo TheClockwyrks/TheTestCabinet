@@ -130,6 +130,7 @@ export interface FoundryDebugApi {
   statusControls(): StatusControl[];
   statusReadouts(): StatusReadout[];
   recipeEntries(): RecipeEntry[];
+  waveCount(type: string): number;
 
   // The run.
   reset(options?: { seed?: number }): void;
@@ -349,6 +350,14 @@ export function installDebugApi(ctx: DebugContext): void {
     recipeEntries() {
       ctx.refreshControls();
       return ctx.recipeEntries();
+    },
+
+    // The live wave's own schedule, filtered — the array the spawner is working
+    // through, so the count and what arrives are one thing (specs/instrumentation.md).
+    waveCount(type) {
+      return game.liveWaveCount(
+        oneOf("waveCount", "type", type, LOAD_TYPES) as LoadType | "overload",
+      );
     },
 
     // ---- The run ---------------------------------------------------------------

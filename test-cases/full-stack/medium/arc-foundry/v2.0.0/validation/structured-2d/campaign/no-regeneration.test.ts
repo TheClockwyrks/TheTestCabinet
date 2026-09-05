@@ -16,6 +16,17 @@
 // specs/scrap-press.md prices `R1` at. The combine is a quality fold of two
 // matching Scrap components, which specs/scrap-press.md makes available in every
 // phase and prices at nothing.
+//
+// THE WAIT IS A MINUTE OF SIMULATION, NOT A COUNT OF FRAMES. The claim the wait
+// tests is that nothing accrues over time, so what it has to be is long — and it
+// is kept at a minute. How that minute is divided is the check's to choose:
+// specs/instrumentation.md guarantees that "an interval of simulation time reaches
+// the same state however it was divided into frames", and
+// `instrumentation/frame-division-movement` and
+// `instrumentation/frame-division-projectile` are the two points that decide that
+// guarantee. Nothing here is positional and nothing here is a projectile — four
+// readings of one integer counter are — so the whole check runs at `STEADY_HZ`
+// and every span it covers is the span it always covered.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -25,7 +36,7 @@ import {
   openYard,
   standComponent,
 } from "../harness";
-import { clearWave, createRunHarness, harvestWave, RUN_HZ } from "./runs";
+import { clearWave, createRunHarness, harvestWave } from "./runs";
 import { refinementCost } from "../constants";
 
 /** Where the counter is dropped to, well below the `20` a run opens with. */
@@ -34,8 +45,11 @@ const INTEGRITY = 7;
 /** Enough to buy the first refinement several times over. */
 const CHARGE = 300;
 
+/** The frame rate the whole check runs at: see the header. */
+const STEADY_HZ = 5;
+
 /** A minute of simulation sat through in a build phase. */
-const IDLE = 60 * RUN_HZ;
+const IDLE = 60 * STEADY_HZ;
 
 /** The wave launched and cleared, and the two anchors the fold stands on. */
 const WAVE = 6;
@@ -47,7 +61,7 @@ const PAIR = [
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createRunHarness();
+  h = await createRunHarness(STEADY_HZ);
 });
 
 afterEach(() => {

@@ -19,6 +19,23 @@
 // taken to its clear, and the phase is read on the frame it clears: `finale`, on
 // the `playing` screen, with an Overload Dynamo released. What happens once the
 // finale has run is the sibling point `finale-ends-in-victory`.
+//
+// THIS IS THE ONE CHECK IN THE FAMILY THAT PLAYS THE COMPOSED WAVE `N`. Its
+// requirement IS the transition out of that wave, so the wave the game itself
+// composed is the wave that has to clear here: the harvest launches it, its own
+// schedule runs to exhaustion, and the phase behind it is what is read. The
+// sibling finale points pose that clear instead, with the empty-schedule wave
+// `spawnUnit` opens (`campaign/runs.ts`'s `poseFinale`), so the half minute of
+// simulation wave `N` costs is spent once, here, where it is the requirement.
+//
+// WHAT IT COSTS IS THE SPAN, NOT THE FRAMES. Wave `N` is half a minute of
+// simulation whatever frame size it is divided into, and this check reads no
+// position and no projectile across it — only the wave counter, the phase and the
+// screen. specs/instrumentation.md guarantees that "an interval of simulation time
+// reaches the same state however it was divided into frames", which
+// `instrumentation/frame-division-movement` and
+// `instrumentation/frame-division-projectile` decide, so the wave is played out at
+// `WAVE_HZ` and the span is untouched.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -28,10 +45,13 @@ import { difficultyById } from "../constants";
 
 const DIFFICULTY = "easy";
 
+/** The frame rate wave `N` is played out at: see the header. */
+const WAVE_HZ = 5;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createRunHarness();
+  h = await createRunHarness(WAVE_HZ);
 });
 
 afterEach(() => {

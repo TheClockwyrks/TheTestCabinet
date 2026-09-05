@@ -592,6 +592,19 @@ validation = { script = "instrumentation/spawner-hold.test.ts", outputs = [
   { id = "hold", name = "The single released unit walking an otherwise empty wave", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "wave-count-matches-the-spawner"
+title = "waveCount counts the units the wave actually releases"
+description = "The units a live wave releases are exactly the ones waveCount counts, in both directions, and the count reads the same figure from the frame the wave launched to the frame it cleared."
+domains = ["simulation"]
+failure_cap = "broken"
+# Automated validation: launch one milestone wave, read the count of every type,
+# then drive that wave to its clear and hold what arrived against what was
+# counted. See validation/<engine>/instrumentation/wave-count-matches-the-
+# spawner.test.ts.
+validation = { script = "instrumentation/wave-count-matches-the-spawner.test.ts", outputs = [
+  { id = "arrives", name = "A milestone wave arriving as counted", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "overload-driver-wave-clears"
 title = "A driver-released Overload Dynamo leaves the phase where it found it"
 description = "spawnUnit(\"overload\") reads phase finale while the Dynamo is on the yard, and once it has gone the wave clears the ordinary way: the phase reads build, the wave number is unchanged, and no Overload Dynamo remains."
@@ -2180,9 +2193,9 @@ title = "A crit deals its multiplier of the shot's damage"
 description = "A tower carrying crit rolls the stated chance on each shot off the game's seeded generator, and a shot that crits removes critMult times its damage instead of its damage: over a long run at a fixed seed both figures appear and neither is any other value."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: park a frozen invincible target under a Slag Driver
-# and record the damage of every shot over a long run at a fixed seed. See
-# validation/<engine>/combos/crit.test.ts.
+# Automated validation: park a frozen invincible target inside a ring of Slag
+# Drivers and record the damage of every shot the ring lands over a counted
+# interval at a fixed seed. See validation/<engine>/combos/crit.test.ts.
 validation = { script = "combos/crit.test.ts", outputs = [
   { id = "crit", name = "The critical hit among the ordinary ones", kind = "replay" },
 ] }
@@ -2341,9 +2354,9 @@ title = "Every firing type removes health from every unit type"
 description = "There is no armour and no damage type: each of the seven firing base types removes health from each of the six Load types, ground and flying alike, and no unit resists or is immune."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: park each unit type in range of each firing type in
-# turn and read the health each shot removed. See validation/<engine>/load/no-
-# armour.test.ts.
+# Automated validation: one round per firing type, six of that type standing
+# with one unit of each roster type held in range, read to the frame the last of
+# the six is struck. See validation/<engine>/load/no-armour.test.ts.
 validation = { script = "load/no-armour.test.ts", outputs = [
   { id = "matrix", name = "The Load taking damage from every type", kind = "replay" },
 ] }
@@ -2364,8 +2377,8 @@ title = "Filaments arrive every fourth wave and no other"
 description = "A wave whose number is a multiple of 4 carries Filaments, and no other wave carries one, across a whole run."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: play a run's waves through and record the type of
-# every unit each wave released. See validation/<engine>/load/air-
+# Automated validation: launch each sampled wave from its own build phase and
+# read the Filaments its schedule holds. See validation/<engine>/load/air-
 # cadence.test.ts.
 validation = { script = "load/air-cadence.test.ts", outputs = [
   { id = "air", name = "A Filament wave arriving", kind = "replay" },
@@ -2376,8 +2389,9 @@ title = "Wave round(N / 2) and wave N each carry one Dynamo"
 description = "Exactly one Dynamo arrives on wave round(N / 2) and exactly one on wave N, and no other wave of the run carries one."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: play a run's waves through and count the Dynamos each
-# wave released. See validation/<engine>/load/milestone-dynamos.test.ts.
+# Automated validation: launch each sampled wave from its own build phase and
+# read the Dynamos its schedule holds. See validation/<engine>/load/milestone-
+# dynamos.test.ts.
 validation = { script = "load/milestone-dynamos.test.ts", outputs = [
   { id = "milestone", name = "The milestone Dynamo arriving", kind = "replay" },
 ] }
@@ -2387,8 +2401,8 @@ title = "Waves 1 through 3 carry Motes and Sparks only"
 description = "The first three waves of a run release Motes and Sparks and nothing else."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: play the first three waves and record the type of
-# every unit released. See validation/<engine>/load/opening-waves.test.ts.
+# Automated validation: launch each of the first three waves and read the types
+# its schedule holds. See validation/<engine>/load/opening-waves.test.ts.
 validation = { script = "load/opening-waves.test.ts", outputs = [
   { id = "opening", name = "The opening wave's composition", kind = "replay" },
 ] }
@@ -2398,8 +2412,9 @@ title = "Neither Clusters nor Slugs appear before wave 5"
 description = "No wave numbered 1 through 4 releases a Cluster or a Slug."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: play the first four waves and record the type of every
-# unit released. See validation/<engine>/load/cluster-and-slug-late.test.ts.
+# Automated validation: launch each of the first four waves and read the
+# Clusters and Slugs its schedule holds. See validation/<engine>/load/cluster-
+# and-slug-late.test.ts.
 validation = { script = "load/cluster-and-slug-late.test.ts", outputs = [
   { id = "early", name = "The early waves without Clusters or Slugs", kind = "replay" },
 ] }
@@ -2409,9 +2424,9 @@ title = "A wave's health pool never falls"
 description = "Each wave's total health pool, summed over the maximum health of every unit it releases, is at least that of the wave before it, across a whole run."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: play a run's waves through, sum each wave's released
-# health, and compare consecutive sums. See validation/<engine>/load/wave-
-# growth.test.ts.
+# Automated validation: launch each sampled wave, sum the scaled health of the
+# units its schedule holds, and compare consecutive sums. See
+# validation/<engine>/load/wave-growth.test.ts.
 validation = { script = "load/wave-growth.test.ts", outputs = [
   { id = "growth", name = "The Load's growing pool", kind = "replay" },
 ] }
@@ -2501,8 +2516,11 @@ title = "Clearing a wave pays its flat bonus"
 description = "Clearing wave n pays WAVE_BONUS_BASE + WAVE_BONUS_STEP * n in Charge, with WAVE_BONUS_BASE 8 and WAVE_BONUS_STEP 2, so wave 1 pays 10 and wave 6 pays 20."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: clear several waves and read the Charge the clear paid
-# at each. See validation/<engine>/campaign/wave-clear-bonus.test.ts.
+# Automated validation: pose a live wave at each of several wave numbers, empty
+# it, and read the Charge its clear paid, then launch a low wave through the
+# level's harvest and read the same bonus off the clear of a wave the game
+# composed for itself. See
+# validation/<engine>/campaign/wave-clear-bonus.test.ts.
 validation = { script = "campaign/wave-clear-bonus.test.ts", outputs = [
   { id = "bonus", name = "The bonus landing as the wave clears", kind = "replay" },
 ] }
@@ -2723,8 +2741,9 @@ title = "The milestone waves follow the difficulty"
 description = "The Dynamo waves are round(N / 2) and N for the chosen difficulty: 20 and 40 on Easy, 25 and 50 on Medium, 30 and 60 on Hard."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: set each difficulty and read the composition of the
-# waves either side of round(N / 2) and N. See
+# Automated validation: set each difficulty, launch the waves either side of
+# round(N / 2) and N, and read how many Dynamos each launched wave's schedule
+# holds off waveCount. See
 # validation/<engine>/difficulty/milestones-by-difficulty.test.ts.
 validation = { script = "difficulty/milestones-by-difficulty.test.ts", outputs = [
   { id = "milestone", name = "The milestone wave at each difficulty", kind = "replay" },

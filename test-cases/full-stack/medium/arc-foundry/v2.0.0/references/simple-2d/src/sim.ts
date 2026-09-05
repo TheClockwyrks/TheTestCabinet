@@ -2068,6 +2068,30 @@ export function waveProgress(w: FoundryView): number {
   return Math.min(1, w.spawnCursor / wave.events.length);
 }
 
+/**
+ * How many units of `type` the LIVE wave releases across the whole of its schedule
+ * (specs/instrumentation.md).
+ *
+ * A filter over the very array the spawner is indexing into with `spawnCursor`, so the
+ * count and what arrives are one thing rather than two that could disagree. A unit
+ * already released counts, one still to come counts, and one that has died, leaked or
+ * been swept away by `clearUnits` goes on counting.
+ *
+ * `0` for every type with no wave running, and `0` for every type on a wave the
+ * spawner hold opened, whose schedule is empty. `overload` is never a wave's to
+ * release, so it reads `0` always.
+ */
+export function liveWaveCount(
+  w: FoundryView,
+  type: LoadType | "overload",
+): number {
+  const wave = w.activeWave;
+  if (!wave) return 0;
+  let n = 0;
+  for (const e of wave.events) if (e.type === type) n++;
+  return n;
+}
+
 /** The dev launcher for a wave. No control is wired to it; a harvest starts a wave. */
 export function startWave(w: FoundryWorld): void {
   if (w.screen !== "playing" || w.phase !== "build") return;

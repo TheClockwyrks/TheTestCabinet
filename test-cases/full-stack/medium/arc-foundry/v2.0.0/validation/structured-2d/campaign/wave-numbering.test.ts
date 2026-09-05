@@ -18,19 +18,38 @@
 //
 // The waves are the ones the game composed for itself, cleared through the
 // emptying of `runs.ts` rather than by waiting out three waves' worth of walking.
+// They stay composed waves here: the harvest raising the counter and the clear
+// opening the next build phase IS the requirement, so neither end is posed.
+//
+// THE FRAMES THE THREE WAVES ARE CUT INTO ARE NOT THE SAMPLE. What is read at
+// each transition is a phase and a counter, never a position and never a
+// projectile, and the simulation is frame-division independent
+// (`specs/controls.md`: "an interval of simulation time reaches the same state
+// however it was divided into frames and whatever frame rate produced it"), so
+// the three waves are driven at a coarse step. The same three waves are composed,
+// launched, emptied and cleared; only the number of frames that takes goes.
 
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureReplay, openYard, type Harness } from "../harness";
-import { clearWave, createRunHarness, harvestWave } from "./runs";
+import {
+  captureReplay,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
+import { clearWave, harvestWave } from "./runs";
 
 /** How many levels are walked. */
 const LEVELS = 3;
 
+/** 10 Hz: coarse, and the simulation is defined to be indifferent to it. */
+const CLOCK_MS = 100;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createRunHarness();
+  h = await createHarness({ clock: new ConstantClock(CLOCK_MS) });
 });
 
 afterEach(() => {
