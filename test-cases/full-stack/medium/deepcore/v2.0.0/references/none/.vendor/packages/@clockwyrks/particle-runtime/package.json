@@ -27,7 +27,7 @@
     "@clockwyrks/asset-contract": "file:../asset-contract"
   },
   "peerDependencies": {
-    "three": "~0.182.0"
+    "three": "~0.185.0"
   },
   "peerDependenciesMeta": {
     "three": {
