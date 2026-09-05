@@ -119,3 +119,76 @@ it("arms a keyed case without disturbing what it opened on", async () => {
     await h.dispose();
   }
 });
+
+/* ---- The gesture as a method, at a moment the harness arranged nothing ------ */
+//
+// `HarnessOptions.armAudio` fires the gesture in the one place the harness
+// controls: before the opening `reset`, with settling frames after it, so the
+// restore erases whatever it moved. That is the safe position and it is why the
+// option exists — but it is a position only the harness can occupy, because it is
+// inside `createHarness`. A case whose specification has a screen the audio must
+// open ON, rather than before, needs the gesture where its own check has reached.
+
+it("delivers the same gesture at a moment of the check's choosing", async () => {
+  const h = await pressing.createHarness();
+  try {
+    // Nothing armed at open: the page is exactly the one the previous check saw.
+    expect((await h.snapshot()).pointer).toEqual({ x: -1, y: -1 });
+
+    await h.armAudio();
+
+    // The same genuine browser event the option delivers, at the same logical
+    // point taken through the same fit — the press landed where the case says it
+    // does, and the DOM handler latched it.
+    const snapshot = await h.snapshot();
+    expect(snapshot.pointer).toEqual({ x: ARM_AT.x, y: ARM_AT.y });
+    expect(snapshot.clicks).toBe(1);
+  } finally {
+    await h.dispose();
+  }
+});
+
+it("leaves the game exactly where the check had it, and drives no frame", async () => {
+  const h = await createHarness();
+  try {
+    // The half a case has to reason about. The method is the gesture and NOTHING
+    // else: no settling frames and no reset, because it is called at a moment the
+    // harness arranged nothing about, and repairing the state afterwards would
+    // erase the check's own arrangement along with the gesture's. A case reaching
+    // for it is stating that its gesture is inert where it stands — which the
+    // fixture's is, since it binds no key.
+    await h.debug.startPlaying();
+    await h.advance(3);
+
+    await h.armAudio();
+
+    const snapshot = await h.snapshot();
+    expect(snapshot.screen).toBe("playing");
+    expect(snapshot.frames).toBe(3);
+    expect(h.frame()).toBe(3);
+    // A key press does leave the key held for as long as the gesture holds it,
+    // and this one is a press and a release: nothing is left down.
+    expect(snapshot.keys).toEqual([]);
+
+    // And the sound the build makes afterwards is heard, which is the whole point
+    // of arming at all.
+    const before = await h.sounds();
+    await h.debug.blip();
+    expect(await h.sounds()).toBe(before + 1);
+  } finally {
+    await h.dispose();
+  }
+});
+
+it("leaves the option it does not replace working exactly as it did", async () => {
+  // Both routes on one page: the option fires before the opening reset and this
+  // one after it, so a case may use either or both.
+  const h = await pressing.createHarness({ armAudio: true });
+  try {
+    expect((await h.snapshot()).clicks).toBe(0);
+    await h.armAudio();
+    expect((await h.snapshot()).clicks).toBe(1);
+  } finally {
+    await h.dispose();
+  }
+});

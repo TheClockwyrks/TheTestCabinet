@@ -59,6 +59,18 @@
       clicks: 0,
       taken: 0,
       pointer: { x: -1, y: -1 },
+      /**
+       * Every call the SECONDS-FRAMES step operation received, as
+       * `[seconds, frames]`, in order.
+       *
+       * The one thing a build can report and a harness cannot see for itself:
+       * WHO divided the interval. `advance(count)` below runs whole ticks of this
+       * build's own length and logs nothing; `advanceSpan(seconds, frames)` is
+       * the other shape `specs/instrumentation.md` fixes, and it records the call
+       * it was made with — so a check can tell one call covering a second in
+       * sixty frames from sixty calls covering a sixtieth each.
+       */
+      spans: [],
     };
     const held = new Set();
 
@@ -168,7 +180,7 @@
     });
 
     window.__fixture = {
-      version: 3,
+      version: 4,
       setAutoStep(on) {
         state.auto = on === true;
       },
@@ -180,6 +192,7 @@
         state.heldTicks = 0;
         state.clicks = 0;
         state.taken = 0;
+        state.spans = [];
         state.seed = options?.seed ?? null;
         held.clear();
         bedSource?.stop();
@@ -188,6 +201,21 @@
       },
       advance(count) {
         for (let i = 0; i < count; i += 1) tick();
+      },
+      // The other step shape a case's specification may fix: a span of simulated
+      // time the BUILD divides into whole frames. It runs the same ticks
+      // `advance` does — this build's frames are of one fixed length whatever it
+      // is told — and records the call, which is the only way a check can see
+      // that the interval was handed over undivided.
+      advanceSpan(seconds, frames) {
+        state.spans.push([seconds, frames]);
+        for (let i = 0; i < frames; i += 1) tick();
+      },
+      // Somewhere to put a value, so a batch of surface calls has an order that
+      // can be read back and an argument that can be typed.
+      setX(value) {
+        state.x = value;
+        draw();
       },
       startPlaying() {
         state.screen = "playing";
@@ -208,6 +236,7 @@
           taken: state.taken,
           keys: [...held].sort(),
           pointer: { ...state.pointer },
+          spans: state.spans.map((span) => [...span]),
         };
       },
     };
