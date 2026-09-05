@@ -1,0 +1,37 @@
+{
+  "name": "@clockwyrks/particle-runtime",
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "Framework-agnostic particle-system simulator plus optional three.js and 2D-canvas bindings, consumed by the in-repo viewer and real games. The particle analogue of @clockwyrks/voxel-runtime: a system is simulated, not posed.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./three": {
+      "types": "./dist/three/index.d.ts",
+      "default": "./dist/three/index.js"
+    },
+    "./canvas": {
+      "types": "./dist/canvas/index.d.ts",
+      "default": "./dist/canvas/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@clockwyrks/asset-contract": "file:../asset-contract"
+  },
+  "peerDependencies": {
+    "three": "~0.185.0"
+  },
+  "peerDependenciesMeta": {
+    "three": {
+      "optional": true
+    }
+  }
+}
