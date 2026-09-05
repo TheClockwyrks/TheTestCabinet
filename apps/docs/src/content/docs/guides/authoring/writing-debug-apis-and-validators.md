@@ -390,6 +390,28 @@ Under an engine the scene and the draw calls answer presence exactly, so they ar
 the reading and pixels are the last resort. Under `none` a validator holds a page
 rather than an engine, so a sample is more often the only reading presence has.
 
+Deciding presence takes an instrument, and an instrument carries a floor: the
+sampled region differs from the ground the build cleared to, the region holds more
+than one value, a produced sound rises above digital silence. Such a floor is set
+where any drawing at all clears it, and it stays a presence reading. A floor tuned
+so that some drawings pass and others fail is a threshold, and it needs a figure
+the specs state.
+
+Which of the two a figure is follows from the direction it is compared in. A
+figure a reading must EXCEED is a floor, and raising it makes the check stricter,
+so a build that drew what the spec asks for in a colour near its ground fails. A
+floor therefore sits at the level below which a sampling cannot tell a drawing from
+the rounding of eight-bit channels and the host's antialiasing, which is around
+eight of the four hundred and forty-one the RGB cube spans. A figure a reading must
+stay UNDER is a tolerance on a claim that two readings are the same reading, and
+raising it only makes the check more lenient, so it cannot fail a conformant build
+and it is set wherever the claim stays honest.
+
+A check whose claim is that nothing was drawn takes its bound from a measurement
+rather than a figure: sample the same region over several idle frames and compare
+against the spread those frames show. A number chosen for that bound is a threshold
+wearing a floor's clothes.
+
 ### Under `none`, nothing is on the canvas until a frame is driven
 
 An engineless harness hands over a page whose build has installed its debug
