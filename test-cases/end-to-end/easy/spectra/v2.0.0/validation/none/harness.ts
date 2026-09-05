@@ -153,6 +153,7 @@ export const REQUIRED_OPS = [
   "setStageClearing",
   "setShipContact",
   "setDiveClock",
+  "setDiveGap",
   // The ship and its cannon.
   "setShipX",
   "setShipBand",
@@ -319,6 +320,7 @@ export interface SpectraSnapshot {
   diveLaunching: boolean;
   stageClearing: boolean;
   diveClock: number;
+  diveGap: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
   diveGapScale: number;
@@ -370,6 +372,7 @@ export interface SpectraDebugApi {
   setStageClearing(enabled: boolean): Promise<void>;
   setShipContact(enabled: boolean): Promise<void>;
   setDiveClock(seconds: number): Promise<void>;
+  setDiveGap(seconds: number): Promise<void>;
 
   setShipX(x: number): Promise<void>;
   setShipBand(band: Band): Promise<void>;

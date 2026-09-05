@@ -242,6 +242,11 @@ it("reports every documented field, from a field carrying one of everything", as
     "snapshot().diveClock, the wave's own dive timer",
   );
   assertEqual(
+    typeof s.diveGap,
+    "number",
+    "snapshot().diveGap, the figure that timer must reach",
+  );
+  assertEqual(
     typeof s.droneSpeedScale,
     "number",
     "snapshot().droneSpeedScale, derived from stage (specs/stages.md)",

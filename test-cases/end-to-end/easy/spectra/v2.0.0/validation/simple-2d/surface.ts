@@ -210,6 +210,8 @@ export interface SpectraSnapshot {
   stageClearing: boolean;
   /** Seconds since the wave's last dive launch. */
   diveClock: number;
+  /** Seconds that clock must reach for the next dive to launch. */
+  diveGap: number;
   /** Derived from `stage`. */
   droneSpeedScale: number;
   /** Derived from `stage`. */
@@ -294,6 +296,7 @@ export interface SpectraDebugApi<S = unknown> {
   setShipContact(state: DeepReadonly<S>, enabled: boolean): S;
   /** Sets the seconds since the wave's last dive launch. It launches nothing. */
   setDiveClock(state: DeepReadonly<S>, seconds: number): S;
+  setDiveGap(state: DeepReadonly<S>, seconds: number): S;
 
   // ---- The ship and its cannon -------------------------------------------
 
@@ -406,6 +409,7 @@ export const REQUIRED_OPS = [
   "setStageClearing",
   "setShipContact",
   "setDiveClock",
+  "setDiveGap",
 
   "setShipX",
   "setShipBand",

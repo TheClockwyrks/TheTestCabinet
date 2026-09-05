@@ -629,7 +629,7 @@ validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
 [[review.categories.items]]
 id = "poses-read-back"
 title = "Every pose is reported by the snapshot"
-description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, the extra-life latch, stage, resonance, inversion, the ship's x, band, lockout and cooldown, a drone's position, band (on a Shard, a Flux and a Prism alike, since band is the stored field on every kind), phase, slot, band clock, shell and three faculties, a bullet's velocity, the four world gates, and the dive clock. Mute is not in the list: there is no setMuted."
+description = "Each pose operation's value is read back by snapshot: screen, phase, phase timer, menu index, score, lives, the extra-life latch, stage, resonance, inversion, the ship's x, band, lockout and cooldown, a drone's position, band (on a Shard, a Flux and a Prism alike, since band is the stored field on every kind), phase, slot, band clock, shell and three faculties, a bullet's velocity, the four world gates, the dive clock and the dive gap. Mute is not in the list: there is no setMuted."
 domains = ["polarity", "swarm", "arcade", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/poses-read-back.test.ts", outputs = [
@@ -2097,7 +2097,7 @@ validation = { script = "stages/scaling-bullet-speed-cap.test.ts", outputs = [
 [[review.categories.items]]
 id = "scaling-dive-gap"
 title = "Dives come faster at a later stage"
-description = "The game reports diveGapScale(7) as 0.70 exactly; over a posed complete formation with the dive clock posed at 0 and dive launching on, the mean of twenty stage-7 dive gaps is 1.40 s within 20%, and none of a hundred drawn gaps launches with the wave's clock under 0.98 s or fails to launch with it past 1.82 s."
+description = "The game reports diveGapScale(7) as 0.70 exactly; over a posed complete formation with dive launching on, a stage-7 wave left to run on its own clock launches each dive within two frames of the diveGap it was carrying, over one gap posed at 0.98 s and three the build drew; and each of a hundred drawn gaps read off the wave sits inside [0.98, 1.82] s, with none launching with the wave's clock under 0.98 s or failing to launch with it past 1.82 s."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-dive-gap.test.ts", outputs = [

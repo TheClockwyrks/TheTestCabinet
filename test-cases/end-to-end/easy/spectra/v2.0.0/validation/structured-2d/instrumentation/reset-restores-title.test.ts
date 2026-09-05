@@ -11,9 +11,9 @@
 // it turns the four world gates `waveEntry`, `diveLaunching`, `stageClearing`,
 // and `ship.contact`
 // back on; it returns the wave's clocks to their fresh-wave values, `diveClock` at
-// `0`; it sets `extraLifeAwarded` to `false` and `challengeHits` to `0`; and it
-// sets `simTime` to `0`. Every one of those is read below, in that order, except
-// the wave's entry and sway clocks and the gap the next dive waits for, which no
+// `0` and `diveGap` at `DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false`
+// and `challengeHits` to `0`; and it sets `simTime` to `0`. Every one of those is
+// read below, in that order, except the wave's entry and sway clocks, which no
 // field of the snapshot reports.
 //
 // EVERY FIELD IS POSED AWAY FROM ITS TITLE VALUE FIRST. A reset that restored
@@ -58,6 +58,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import {
   BINDINGS,
   DISCHARGE_TIME,
+  DIVE_FIRST_DELAY,
   PLAYER_BULLET_HALF,
   PLAYER_BULLET_SPEED,
   RESONANCE_MAX,
@@ -116,6 +117,15 @@ const SHIP_BAND = "magenta" as const;
 const LOCKOUT = 0.2;
 const COOLDOWN = 0.1;
 const DIVE_CLOCK = 1.7;
+
+/**
+ * The gap the messy run's next dive is posed to wait for, in seconds.
+ *
+ * Off `DIVE_FIRST_DELAY` (`2.0`), which is the fresh-wave figure a reset restores,
+ * and inside `[DIVE_GAP_MIN, DIVE_GAP_MAX]` at `diveGapScale(1)` so it is a gap the
+ * wave could itself have drawn (specs/swarm.md).
+ */
+const DIVE_GAP = 1.55;
 const POSED_CHALLENGE_HITS = 12;
 
 /** Where the drones that outlive the kill stand, and where the popped one does. */
@@ -219,6 +229,7 @@ it("restores every declared field to its title value and leaves muted alone", as
   h.debug.setExtraLifeAwarded(true);
   h.debug.setChallengeHits(POSED_CHALLENGE_HITS);
   h.debug.setDiveClock(DIVE_CLOCK);
+  h.debug.setDiveGap(DIVE_GAP);
   h.debug.setWaveEntry(false);
   h.debug.setDiveLaunching(false);
   h.debug.setStageClearing(false);
@@ -338,6 +349,11 @@ it("restores every declared field to its title value and leaves muted alone", as
     title.diveClock,
     0,
     "snapshot().diveClock, in seconds since the last launch, after reset()",
+  );
+  assertEqual(
+    title.diveGap,
+    DIVE_FIRST_DELAY,
+    "snapshot().diveGap, the fresh wave's DIVE_FIRST_DELAY, after reset()",
   );
   assertEqual(
     title.extraLifeAwarded,

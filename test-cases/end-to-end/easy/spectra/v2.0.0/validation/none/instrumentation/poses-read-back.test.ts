@@ -90,6 +90,14 @@ const LOCKOUT = 0.22;
 const COOLDOWN = 0.09;
 const DIVE_CLOCK = 1.25;
 
+/**
+ * The figure `setDiveGap` poses, in seconds.
+ *
+ * Inside `[DIVE_GAP_MIN, DIVE_GAP_MAX]` (`[1.4, 2.6]`) at `diveGapScale(1)`, so it
+ * is a gap the wave could itself have drawn (specs/swarm.md).
+ */
+const DIVE_GAP = 1.75;
+
 /** Where the three posed drones stand, and where the posed bullet hangs. */
 const SHARD_AT = { x: 300, y: 300 } as const;
 const FLUX_AT = { x: 500, y: 300 } as const;
@@ -292,6 +300,13 @@ it("reports every posed field back through snapshot", async () => {
     DIVE_CLOCK,
     `snapshot().diveClock, in seconds since the last launch, after ` +
       `setDiveClock(${DIVE_CLOCK})`,
+  );
+  await readsBack(
+    () => h.debug.setDiveGap(DIVE_GAP),
+    (s) => s.diveGap,
+    DIVE_GAP,
+    `snapshot().diveGap, the figure the dive clock must reach, after ` +
+      `setDiveGap(${DIVE_GAP})`,
   );
 
   // ---- The drones ----------------------------------------------------------

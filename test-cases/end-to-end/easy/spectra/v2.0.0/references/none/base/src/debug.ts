@@ -131,6 +131,7 @@ export interface SpectraSnapshot {
   diveLaunching: boolean;
   stageClearing: boolean;
   diveClock: number;
+  diveGap: number;
   droneSpeedScale: number;
   bulletSpeedScale: number;
   diveGapScale: number;
@@ -176,6 +177,7 @@ export interface SpectraDebugApi {
   setStageClearing(enabled: boolean): void;
   setShipContact(enabled: boolean): void;
   setDiveClock(seconds: number): void;
+  setDiveGap(seconds: number): void;
 
   setShipX(x: number): void;
   setShipBand(band: Band): void;
@@ -282,6 +284,7 @@ export function createDebugApi(
         diveLaunching: state.diveLaunching,
         stageClearing: state.stageClearing,
         diveClock: state.diveClock,
+        diveGap: state.diveGap,
         droneSpeedScale: droneSpeedScale(state.stage),
         bulletSpeedScale: bulletSpeedScale(state.stage),
         diveGapScale: diveGapScale(state.stage),
@@ -461,6 +464,11 @@ export function createDebugApi(
     /** The seconds the wave's dive timer has accumulated. It launches nothing. */
     setDiveClock(value) {
       state.diveClock = seconds(value);
+    },
+
+    /** The figure that timer must reach. It launches nothing and redraws nothing. */
+    setDiveGap(value) {
+      state.diveGap = seconds(value);
     },
 
     /* ---- The ship and its cannon ---------------------------------------- */

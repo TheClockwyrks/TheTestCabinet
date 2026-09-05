@@ -35,17 +35,16 @@ export default defineConfig({
     coverage: { enabled: false },
     // Every scenario is posed and stepped in process, so a suite costs
     // milliseconds on a quiet host, and the longest suite in either engine
-    // project — the stage-seven dive-gap window, which renders some three
-    // thousand frames for a reading taken over twenty drawn gaps — measures 12 to
-    // 14 s of them.
+    // project — one that builds a whole wave and plays it out rather than posing
+    // its way to the frame it reads — measures a handful of seconds of them.
     //
     // The ceiling is not a figure any check is sized against: what it bounds is a
-    // suite that never returns. It stands more than forty times over that longest
+    // suite that never returns. It stands a hundred times over that longest
     // reading, because a check cut short by the runner reports a build's failure
     // that never happened, and how busy the machine was is not a property of the
     // build. Ten minutes rather than five for the room, which costs nothing: the
-    // whole project finishes in twenty seconds, so this ceiling is reached only by
-    // a suite that has genuinely stopped.
+    // whole project finishes in well under a minute, so this ceiling is reached
+    // only by a suite that has genuinely stopped.
     testTimeout: 600_000,
     // The same ceiling on the hooks, because every suite builds its harness in a
     // `beforeEach`: a build whose `initialize` is slow must fail on its own
