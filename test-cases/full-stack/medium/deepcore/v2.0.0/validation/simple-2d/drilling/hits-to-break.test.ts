@@ -11,6 +11,14 @@
 // each of the five drill tiers, with the hits counted off the falls in the
 // cell's health rather than off the clock. The miner's body is held still, so
 // each cut starts from the same pose and the count is the drill's alone.
+//
+// Every cut is driven at two frames per hit interval, the step `./hits` explains:
+// `specs/instrumentation.md` has a span of game time reach the same outcome
+// however it is divided into frames, and half an interval is the coarsest
+// division that still leaves at most one hit to a frame whatever phase the
+// build's hit timer is in. The hundred and ten hits the twenty pairings take
+// therefore cost two hundred and twenty frames rather than the sixteen hundred a
+// step of `1 / TICK_HZ` spends mostly waiting between them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
