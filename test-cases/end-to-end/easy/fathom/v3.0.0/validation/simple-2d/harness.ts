@@ -1030,9 +1030,11 @@ function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
  * identically is written once and named two hundred times, and every index a
  * frame carries addresses the table it was interned into.
  *
- * Exported for the suite beside this file: a recording carrying an own field
- * named `__proto__` is one the engine's recorder writes and this one has to
- * rewrite as a field rather than as a prototype, and no drawing the reference
+ * Exported as part of this project's harness surface, the way the engineless
+ * project re-exports the shared harness's own `retable`, though inside this file
+ * only `thinReplay` calls it. A recording carrying an own field named
+ * `__proto__` is one the engine's recorder writes and this one has to rewrite as
+ * a field rather than as a prototype, and no drawing the reference
  * implementation makes produces one.
  */
 export function retable(

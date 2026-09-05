@@ -2180,10 +2180,10 @@ function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
  * rewritten entry, so an operation two hundred frames issue identically is
  * written once and named two hundred times.
  *
- * Exported for the suite beside this file, which drives it over a recording a
- * browser cannot deliver: Playwright's serializer drops an own field named
- * `__proto__` on the way out of the page, so handing one to this directly is the
- * only way to check that the rewrite carries it.
+ * Exported so the rewrite can be driven directly, over a recording a browser
+ * cannot deliver: Playwright's serializer drops an own field named `__proto__`
+ * on the way out of the page, so no capture taken through it carries one, and
+ * nothing short of handing a recording to this function reaches that branch.
  */
 export function retable(
   recording: Recording,
@@ -2317,8 +2317,8 @@ export function retable(
  * was measured from, which is what keeps the kept deltas summing to the elapsed
  * time.
  *
- * Exported for the suite beside this file, which reaches it over frame counts a
- * driven section cannot hand it.
+ * Exported so the thinning can be driven directly, over frame counts a driven
+ * section cannot produce.
  */
 export function thinReplay(recording: Recording): Recording {
   const { frames } = recording;

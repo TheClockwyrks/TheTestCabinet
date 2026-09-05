@@ -90,6 +90,12 @@ unit per engine that validator covers. Every engine the case supports has a
 validator project of its own under `validation/<engine>/`, and a review item
 names its suite relative to that project.
 
+Every suite that project holds is named by a review item, so the files a case
+ships and the points its checklist declares are one list. The shared harness
+keeps its own tests with the harness, in the `@clockwyrks/case-harness`
+package as `test/*.spec.ts` files, since a suite a case ships without an item
+naming it is loaded by no run and decides nothing.
+
 A validation's `engines` key names the engines its validator decides its point
 on. Absent or empty, the validator covers every engine the case supports.
 Non-empty, it covers exactly the engines named, which is how a case scopes a

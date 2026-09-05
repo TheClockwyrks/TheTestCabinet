@@ -1779,6 +1779,14 @@ export function watchCues(h: Harness): TimedCue[] {
  * `captureReplay` recordings: the engine closes its recorder before the
  * overlay draws, which is right — the overlay is chrome, not the build's
  * picture.)
+ *
+ * No suite in this project presses the toggle at present. Under this engine,
+ * registering the sources is the whole of the build's part, so
+ * `instrumentation/overlay` reads the registry through `engine.diagnostics()`
+ * rather than the drawn panel. It stays because the engineless sibling's
+ * overlay check does press the key — there the panel is the build's own layer
+ * and the only place the readings surface — and the three projects' harnesses
+ * answer to one vocabulary.
  */
 export async function toggleOverlay(h: Harness): Promise<void> {
   h.hold("Backquote");

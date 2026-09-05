@@ -13,8 +13,9 @@
 //
 // `harness.ts` imports this module before it imports anything of the build's, so
 // the surfaces are in place by the time the build's own module graph is
-// evaluated. `harness.test.ts` asserts they are, so a shim that stopped working
-// fails once and loudly rather than as a wave of build failures.
+// evaluated. Nothing asserts that they are, so a shim that stopped working
+// would show up as a wave of build failures rather than as one loud fault of
+// its own.
 //
 // Each is installed ONLY IF ABSENT, so a host that offers the real thing keeps
 // it and nothing here can displace a browser's own.

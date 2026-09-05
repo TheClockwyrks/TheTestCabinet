@@ -22,9 +22,9 @@
 // implementation the harness draws the stage into. `harness.ts` imports this
 // module FIRST, before anything of the build's, so the shim is in place before
 // any module of the build has been evaluated and long before its state is
-// built. `harness.test.ts` asserts it is there, so a shim that stopped working
-// fails as one loud self-check rather than as a wave of build failures nobody
-// can read.
+// built. Nothing asserts that it is there, so a shim that stopped working would
+// fail as a wave of build failures nobody can read rather than as one loud fault
+// of its own.
 //
 // Installed ONLY where the host has none, so this never displaces a real
 // browser: a suite that one day runs under a DOM environment gets the DOM's own
@@ -59,14 +59,4 @@ if (!("document" in globalThis)) {
     },
     configurable: true,
   });
-}
-
-/**
- * Whether both drawing surfaces are reachable from this host.
- *
- * Read by `harness.test.ts` alone. A validator never asks: a build reaches for
- * whichever one it likes and finds it.
- */
-export function drawingSurfacesAvailable(): boolean {
-  return "OffscreenCanvas" in globalThis && "document" in globalThis;
 }

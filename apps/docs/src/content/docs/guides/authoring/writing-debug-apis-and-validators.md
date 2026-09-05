@@ -274,6 +274,18 @@ re-exports under the case's own names. `assert.ts`, `setup.ts`, `globalSetup.ts`
 and `vitest.config.ts` are thin files over the same package, and the case's
 compound sequences sit beside them.
 
+### A project holds only the suites the checklist names
+
+Every `.test.ts` in a validator project is a validator a review item names. The
+checklist's script paths are the file filters vitest is handed, so the project's
+suites and the checklist's points are one list, and a suite standing outside that
+list is loaded by no run and decides nothing.
+
+The shared harness's own tests live with the harness, in the
+`@clockwyrks/case-harness` package as `test/*.spec.ts` files, where that
+package's suite drives them against a fixture site laid out the way a staged
+validator project is.
+
 ### One requirement per validator
 
 A validator decides one requirement in one direction. A build with a working
@@ -562,6 +574,7 @@ When designing or revising a case's debug API and validators:
   transcribed from the specs.
 - An engineless project is built on the shared `@clockwyrks/case-harness`
   package, with only what is genuinely the case's held beside it.
+- Every `.test.ts` the project holds is a validator a review item names.
 - `constants.ts` re-exports only what the specs leave to the build, `harness.ts`
   takes only the build's entry, and every other reference the project makes
   resolves inside the project.

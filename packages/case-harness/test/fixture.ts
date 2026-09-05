@@ -1,10 +1,11 @@
 // The case the package's own suite is a case of.
 //
-// Every check in the four repository cases' `harness.test.ts` files drives that
-// case's REFERENCE IMPLEMENTATION, which is why those files could only ever pin
-// the harness's behaviour down as far as the reference happened to exercise it —
-// and why four copies of the same machinery drifted apart without anything
-// failing. This suite drives a build written for the purpose instead
+// Each of the four repository cases once carried a self-check suite of its own,
+// and every check in one drove that case's REFERENCE IMPLEMENTATION, which is why
+// they could only ever pin the harness's behaviour down as far as the reference
+// happened to exercise it — and why four copies of the same machinery drifted
+// apart without anything failing. Those suites are gone. This one drives a build
+// written for the purpose instead
 // (`test/build/index.html`): the smallest thing that conforms to what
 // `specs/instrumentation.md` asks of an engineless build, whose every answer is
 // known in advance. A check here can therefore say what the harness does rather

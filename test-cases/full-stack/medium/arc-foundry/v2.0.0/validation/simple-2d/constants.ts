@@ -1025,21 +1025,6 @@ export const STATUS_READOUTS = [
 export type StatusReadoutName = (typeof STATUS_READOUTS)[number];
 
 /**
- * The four reads the bar carries on every frame it is drawn on.
- *
- * `paused` and `overload` are the two `specs/hud.md` makes conditional, "present
- * only on the frames the bar is actually drawing them"
- * (`specs/instrumentation.md`), so they are not expected of an ordinary build
- * phase.
- */
-export const ALWAYS_DRAWN_READOUTS = [
-  "charge",
-  "integrity",
-  "wave",
-  "maze-length",
-] as const;
-
-/**
  * The three states every ingredient of every recipe is drawn in, "told apart at a
  * glance" (`specs/hud.md`), as `recipeEntries` reports them.
  */

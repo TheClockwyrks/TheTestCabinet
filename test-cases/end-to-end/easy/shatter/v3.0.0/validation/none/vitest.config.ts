@@ -41,11 +41,11 @@
 // than a fraction to reason from. Against the `warhead` reference build, 291 suite
 // files and 324 checks finished in 45 s of wall clock at the package's eight
 // workers, with the slowest FILE at 8.0 s (`saucer/at-most-one-at-a-time`, which
-// flies a saucer out to its lifetime) and the next three at 5.3, 4.6 and 4.5 s
-// (`harness.test.ts`, `waves/speed-scales-per-wave`, `saucer/avoids-the-core`).
-// The reading was taken on a twenty-core box carrying four of these case
-// worktrees at load average ~13 — a loaded host rather than an idle one, so it is
-// an upper bound. Against that, the fifteen minutes
+// flies a saucer out to its lifetime) and the next two at 4.6 and 4.5 s
+// (`waves/speed-scales-per-wave`, `saucer/avoids-the-core`). The reading was
+// taken on a twenty-core box carrying four of these case worktrees at load
+// average ~13 — a loaded host rather than an idle one, and it counted one suite
+// since removed, so it is an upper bound. Against that, the fifteen minutes
 // `guides/authoring/writing-debug-apis-and-validators.md` asks a case to finish
 // in is two orders of magnitude away, and no per-check allowance is anywhere near
 // its five minutes.

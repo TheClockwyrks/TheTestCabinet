@@ -20,10 +20,10 @@
   //
   // It is deliberately NOT a game: it is the smallest thing that satisfies what
   // `specs/instrumentation.md` asks of an engineless build, so the harness can be
-  // checked against a build whose every answer is known in advance. A case's own
-  // `harness.test.ts` can only check the harness against that case's reference
-  // implementation, which is why the four cases could never agree on what the
-  // shared machinery does — this can.
+  // checked against a build whose every answer is known in advance. The per-case
+  // self-check suites this replaced could only check the harness against their own
+  // case's reference implementation, which is why the four cases could never agree
+  // on what the shared machinery does — this can.
   //
   // What it conforms to, and what each part is here to let a check pin down:
   //

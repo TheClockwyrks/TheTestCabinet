@@ -1472,9 +1472,9 @@ function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
  * Dropping a frame drops the last reference to whatever only that frame drew
  * with, so the four shared tables are rebuilt from the kept frames alone,
  * every reference rewritten as it is reached, transitively, and the rewritten
- * entries deduplicated. Exported for the suite beside this file.
+ * entries deduplicated.
  */
-export function retable(
+function retable(
   recording: Recording,
   frames: readonly RecordedFrame[],
 ): Recording {

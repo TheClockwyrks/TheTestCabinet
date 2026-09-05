@@ -1324,15 +1324,11 @@ function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
  * identically is written once and named two hundred times, and every index a
  * frame carries addresses the table it was interned into.
  *
- * Exported for the suite beside this file, which drives it over a recording a
- * browser cannot deliver: Playwright's serializer drops an own field named
- * `__proto__` on the way out of the page, so handing one to this directly is
- * the only way to check that the rewrite carries it.
+ * A field named `__proto__` is rewritten like any other, defensively: no
+ * recording this project writes arrives carrying one, because Playwright's
+ * serializer drops such a field on the way out of the page.
  */
-export function retable(
-  recording: Recording,
-  frames: RecordedFrame[],
-): Recording {
+function retable(recording: Recording, frames: RecordedFrame[]): Recording {
   const images: unknown[] = [];
   const imageAt = new Map<number, number>();
   const resources: RecordedResource[] = [];
@@ -1464,11 +1460,11 @@ export function retable(
  * What survives is then re-expressed against tables of its own, so the file
  * carries what the kept frames draw with and nothing the dropped ones did.
  *
- * Exported for the suite beside this file, which reaches it over frame counts a
- * driven section cannot hand it: the injected recorder decimates in the page as
- * the section runs, so a written recording is thinned twice.
+ * A written recording is thinned twice: the injected recorder decimates in the
+ * page as the section runs, and this thins whatever survived that on the way
+ * out.
  */
-export function thinReplay(recording: Recording): Recording {
+function thinReplay(recording: Recording): Recording {
   const { frames } = recording;
   if (frames.length === 0) return recording;
 

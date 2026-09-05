@@ -1093,13 +1093,8 @@ function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
  * deduplicated is the rewritten entry, so an operation two hundred frames issue
  * identically is written once and named two hundred times, and every index a
  * frame carries addresses the table it was interned into.
- *
- * Exported for the suite beside this file: a recording carrying an own field
- * named `__proto__` is one the engine's recorder writes and this one has to
- * rewrite as a field rather than as a prototype, and no drawing the reference
- * implementation makes produces one.
  */
-export function retable(
+function retable(
   recording: Recording,
   frames: readonly RecordedFrame[],
 ): Recording {
@@ -1873,7 +1868,7 @@ export const ACTION_KEY = Object.fromEntries(
   Object.entries(ACTIONS).map(([action, codes]) => [action, codes[0]]),
 ) as Record<ActionName, string>;
 
-/** A code no action in `ACTIONS` is bound to, for a check about an ignored key. */
+/** A code no action in `ACTIONS` is bound to, so pressing it changes nothing. */
 export const UNBOUND_KEY = "KeyZ";
 
 /**

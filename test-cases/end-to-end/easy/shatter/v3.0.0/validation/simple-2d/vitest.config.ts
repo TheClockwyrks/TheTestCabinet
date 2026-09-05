@@ -42,11 +42,12 @@ export default defineConfig({
     // that saturates a core per worker may take from a host it shares.
     //
     // WHAT EIGHT ACTUALLY COSTS, MEASURED. Against the `warhead` reference build,
-    // 291 suite files and 311 checks finished in 10.6 s of wall clock at eight workers,
-    // with the slowest FILE at 2.5 s (`harness.test.ts`, the project's own self-check; the slowest GRADED file was `saucer/entry-row-inside-the-range` at 1.1 s). The reading was taken on
-    // a twenty-core box carrying four of these case worktrees at load average
-    // ~13 — a loaded host rather than an idle one, so it is an upper bound rather
-    // than a best case. Against that, the fifteen minutes
+    // 291 suite files and 311 checks finished in 10.6 s of wall clock at eight
+    // workers, with the slowest FILE at 1.1 s
+    // (`saucer/entry-row-inside-the-range`). The reading was taken on a twenty-core
+    // box carrying four of these case worktrees at load average ~13 — a loaded
+    // host rather than an idle one, and it counted one suite since removed, so it
+    // is an upper bound rather than a best case. Against that, the fifteen minutes
     // `guides/authoring/writing-debug-apis-and-validators.md` asks a case to
     // finish in, and the forty-five the runner caps the WHOLE suite run at
     // (`VITEST_TIMEOUT`, `crates/core/src/vitest_validator.rs`), are both orders

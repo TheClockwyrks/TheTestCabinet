@@ -1596,10 +1596,11 @@ function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
  * written once and named two hundred times, and every index a frame carries
  * addresses the table it was interned into.
  *
- * Exported for the suite beside this file: a recording carrying an own field
- * named `__proto__` is one the engine's recorder writes and this one has to
- * rewrite as a field rather than as a prototype, and no drawing the reference
- * implementation makes produces one.
+ * Exported so the `__proto__` path can be reached directly: a recording carrying
+ * an own field named `__proto__` is one the engine's recorder writes and this one
+ * has to rewrite as a field rather than as a prototype, and no drawing the
+ * reference implementation makes produces one — so nothing that captures a build
+ * ever reaches that branch. No suite in this project exercises it at present.
  */
 export function retable(
   recording: Recording,

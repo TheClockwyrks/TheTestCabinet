@@ -165,8 +165,7 @@ const game = build as unknown as GameDefinition<WickDebugApi>;
 // `engine.advance`, so one frame on `playing` consumes exactly one tick, and a
 // clock of any other length poses a partial frame". The delta each frame
 // supplies is the very float the build's accumulator compares against and
-// subtracts, so the arithmetic is exact frame after frame — which the harness
-// self-test proves against the reference rather than assumes.
+// subtracts, so the arithmetic is exact frame after frame.
 
 /**
  * A clock worth `stepMs` a frame, except for the frames a check has queued a
@@ -2941,9 +2940,9 @@ function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
  * with, so the tables in front of a thinned recording are rebuilt: every
  * entry here is reached from a kept frame, every reference inside one is
  * rewritten as it is reached, transitively, and what is deduplicated is the
- * rewritten entry. Exported for the harness self-test beside this file.
+ * rewritten entry.
  */
-export function retable(
+function retable(
   recording: Recording,
   frames: readonly RecordedFrame[],
 ): Recording {

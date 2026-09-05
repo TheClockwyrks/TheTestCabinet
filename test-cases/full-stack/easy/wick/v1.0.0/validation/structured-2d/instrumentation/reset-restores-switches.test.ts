@@ -6,8 +6,9 @@
 // "every driver switch on". `specs/state.md`: the nine "each `true` from
 // `initialize` and after `reset`".
 //
-// THE POSE. `isolate` turns all nine off (the harness self-test proves it);
-// `reset` is the whole operation under test, read back before any frame.
+// THE POSE. `isolate` turns all nine off, which the check reads back before
+// posing anything else; `reset` is the whole operation under test, read back
+// before any frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual } from "../assert";

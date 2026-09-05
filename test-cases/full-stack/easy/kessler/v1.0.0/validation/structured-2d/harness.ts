@@ -124,8 +124,9 @@ const game = build as unknown as GameDefinition<KesslerSurface>;
 // "a scenario pairs a `ConstantClock` of `1000 / 60` milliseconds with
 // `engine.advance`, so one frame consumes exactly one tick". The delta each
 // frame supplies is the very float the build's accumulator compares against
-// and subtracts, so the arithmetic is exact frame after frame — which the
-// harness self-test proves against the reference rather than assumes.
+// and subtracts, so the arithmetic is exact frame after frame: no residue
+// accumulates, and a section resolves the ticks it asked for however long it
+// runs.
 
 /** Frames covering `ticks` whole ticks of simulation time: one for one. */
 export const FRAMES_PER_TICK = 1;
@@ -1352,9 +1353,9 @@ function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
  * with, so the tables in front of a thinned recording are rebuilt: every
  * entry here is reached from a kept frame, every reference inside one is
  * rewritten as it is reached, transitively, and what is deduplicated is the
- * rewritten entry. Exported for the harness self-test beside this file.
+ * rewritten entry.
  */
-export function retable(
+function retable(
   recording: Recording,
   frames: readonly RecordedFrame[],
 ): Recording {

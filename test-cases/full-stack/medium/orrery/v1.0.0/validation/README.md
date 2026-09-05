@@ -29,7 +29,7 @@ the three:
 | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `constants.ts`, `field.ts`, `parts.ts`, `formats.ts`, `challenges.ts`, `fixtures.ts`           | `harness.ts`                                              |
 | `driver.ts`, `snapshot.ts`, `scenario.ts`, `drawing.ts`, `color.ts`, `viewport.ts`, `media.ts` | `surface.ts`                                              |
-| `assets/*.ts`, `harness.test.ts`, `tsconfig.json`                                              | `vitest.config.ts`                                        |
+| `assets/*.ts`, `tsconfig.json`                                                                 | `vitest.config.ts`                                        |
 |                                                                                                | `assert.ts`                                               |
 |                                                                                                | `none/` also: `globalSetup.ts`, `setup.ts`, `chromium.ts` |
 
@@ -41,10 +41,12 @@ engine projects write the same 26 names out, byte-identical to each other. A sui
 says `from "../assert"` in all three and gets the same names, the same signatures
 and the same message shape, which is what the rule above is actually about.
 
-If you change a shared file, change it in all three. `harness.test.ts` is the
-same text three times as well, and it is where the property is exercised rather
-than merely intended: a change to one project's `harness.ts` that makes that file
-need editing has broken the rule.
+If you change a shared file, change it in all three. Nothing in the case compares
+the three copies, and nothing drives a `harness.ts` through its whole surface, so
+a member that drifts under one engine is caught only where some suite happens to
+use it. A change to one project's harness that makes a suite need editing under
+that engine alone has broken the rule, quietly — read the other two before
+landing it.
 
 **Every member of the harness answers a promise**, even where an in-process call
 has nothing to wait for. A suite that awaited under one engine and did not under

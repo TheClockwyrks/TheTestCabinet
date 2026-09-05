@@ -9,9 +9,9 @@
 // copies at once; two copies that differ are a defect in the case.
 //
 // Everything here is PURE. It imports `./constants` and `./assert` and nothing
-// else — no engine, no browser, no harness — which is what lets `harness.test.ts`
-// drive every function below without standing a build up, and what lets one text
-// serve three architectures.
+// else — no engine, no browser, no harness — which is what lets a check recompute
+// a rule, pose a fixture or measure a distance without standing a build up, and
+// what lets one text serve three architectures.
 //
 // WHY A NOTATION MODULE IS THE CENTER OF THIS SUITE. specs/instrumentation.md
 // gives the surface `loadBoard(rows)`, which poses an arbitrary board written in
@@ -33,10 +33,11 @@
 //    as bounds a build satisfies rather than as a figure a build must match.
 //  - The FIXTURES (`quietBoard`, `deadBoard`, `ESCAPE_CELLS`, and the helpers
 //    that write cells over them) are the case's own scenery, chosen so a scenario
-//    poses exactly one thing and nothing else. `harness.test.ts` proves each
-//    fixture really has the property its name claims, against the predicates
-//    rather than against the construction that produced it — a fixture that
-//    quietly stopped being quiet would turn every check built on it into a lie.
+//    poses exactly one thing and nothing else. No check stands here to prove a
+//    fixture once and for all, so a scenario that rests on one asserts it with
+//    the predicates below over the board it actually posed, rather than
+//    trusting the construction that produced it — a fixture that quietly
+//    stopped being quiet would turn every check built on it into a lie.
 //
 // The predicates are never the build's answer to anything. A check that wants to
 // know what the BUILD thinks reads `snapshot().legalSwap` and compares it with
@@ -405,8 +406,9 @@ export function renderCell(
  * put there. That has a consequence a check must know about, and
  * {@link quietRowsWith} states it.
  *
- * `harness.test.ts` proves both properties against {@link maximalRuns} and
- * {@link legalSwapExists} rather than trusting the argument above.
+ * Both properties rest on the argument above and on nothing else, so a scenario
+ * that leans on either one asserts it with {@link maximalRuns} or
+ * {@link legalSwapExists} over the board it actually posed.
  */
 export function quietBoard(): string[] {
   const rows: string[] = [];
@@ -490,8 +492,9 @@ export function withCol(
  * scenario clears and refills. It makes TWO swaps legal, both in that corner:
  * {@link ESCAPE_SWAP}, which completes the bottom row, and `(1,6)` with `(2,6)`,
  * which completes column 1 against the beryl the filler already holds at
- * `(1,5)`. Two is as good as one for the purpose — the round goes on — and
- * `harness.test.ts` proves the count so it cannot drift.
+ * `(1,5)`. Two is as good as one for the purpose — the round goes on — and the
+ * count is argued here rather than proved: a check that must know a swap is
+ * still there reads {@link legalSwaps} over the board it actually posed.
  */
 export const ESCAPE_CELLS: readonly PlacedToken[] = [
   { col: 0, row: 7, token: "B0" },
@@ -551,8 +554,10 @@ export function quietRowsWithEscape(cells: readonly PlacedToken[]): string[] {
  * are always three different kinds and the board holds no run; and exchanging
  * any two orthogonally adjacent cells leaves every line still free of three of
  * one kind, so R3 refuses every swap R1 would accept. Written out rather than
- * computed so a reader sees the board the check poses, and proved by the
- * predicates below in `harness.test.ts` so it cannot rot.
+ * computed so a reader sees the board the check poses, and asserted with
+ * {@link hasAnyRun} and {@link legalSwapExists} by the scenarios whose point
+ * turns on the board being dead, so the literals written here cannot rot
+ * unnoticed.
  */
 export function deadBoard(): string[] {
   return [
@@ -1282,8 +1287,9 @@ export function insideCell(
  *
  * `(40, 40)`: the nearest center is `(388, 144)`, some 363 units away, and the
  * point is on the stage that specs/overview.md fixes, so a build that clamps a
- * pointer to the stage still receives it. `harness.test.ts` proves the distance
- * against {@link distanceToNearestCell} rather than trusting this arithmetic.
+ * pointer to the stage still receives it. A check that presses here asserts the
+ * distance with {@link distanceToNearestCell} rather than trusting this
+ * arithmetic.
  */
 export function offBoardPoint(): { x: number; y: number } {
   return { x: 40, y: 40 };

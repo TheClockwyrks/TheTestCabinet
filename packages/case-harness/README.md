@@ -32,7 +32,10 @@ tree, and there is none.
 - **It ships no `*.test.ts`.** A case's vitest include is
   `validation/**/*.test.ts`, and this package lands inside that tree, so a test
   file here would be collected by every case's run. The package's own suite lives
-  in `test/` — outside `package.json`'s `files` — and is named `*.spec.ts`.
+  in `test/` — outside `package.json`'s `files` — and is named `*.spec.ts`. It is
+  also the only place this machinery is self-checked: a case's `validation/` tree
+  carries the suites its review items name and nothing else, so a case writes no
+  harness self-check of its own.
 
 - **It never reaches a run repository.** It is staged into the host package store
   beside the engine runtimes, and read only _after_ the run's container is gone.
