@@ -216,6 +216,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "guides/authoring/writing-case-specifications",
+                "guides/authoring/writing-workspaces-and-references",
                 "guides/authoring/writing-debug-apis-and-validators",
                 "guides/authoring/authoring-a-case-showcase",
                 "guides/authoring/authoring-an-end-to-end-test-case",
