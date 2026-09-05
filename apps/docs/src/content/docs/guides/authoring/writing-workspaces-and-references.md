@@ -138,6 +138,23 @@ a `.prettierrc.json`, a `.prettierignore`, an `eslint.config.js`, `prettier` and
 `lint` command with nothing to run under, and the run's recorded figure says
 nothing about the code.
 
+### Dependencies track the newest usable version
+
+Every package a workspace and its reference declare is pinned to the newest
+version that works with the rest of the set. A case authored against current
+tooling measures a model against the ecosystem it was trained to write for, and
+a stale pin measures it against a dialect that has moved on.
+
+Usable is what bounds it. A package's peer range caps the packages around it,
+so the newest TypeScript a case can carry is the newest one the pinned
+typescript-eslint accepts. A package the engines also depend on is pinned to the
+version the engine was built against, because a build resolving two copies of a
+runtime library is a defect the case would be handing the model.
+
+Every project in a case version pins a shared package at one version, so a
+reference installs the tool its workspace does. Revisit the set when you add a
+case version, and move each pin to the newest usable release then.
+
 ### Both tools ignore what the build did not write
 
 The lint and format configuration covers the `.ts` and `.js` files a run holds:
@@ -197,6 +214,10 @@ confirm each of the following.
 - Both `.prettierignore` and `eslint.config.js` ignore `specs/`, along with the
   installed packages, build output, report directories, vendored code, and
   produced assets.
+- Every package is pinned to the newest release the rest of the set accepts, and
+  a package the engines also depend on matches the engine's version.
+- A shared package is pinned at one version across every project in the case
+  version, and every reference's `package-lock.json` is in sync with it.
 - `prettier --check .` and `eslint .` both pass in every reference
   implementation.
 - `prettier --check .` passes in every seeded workspace.
