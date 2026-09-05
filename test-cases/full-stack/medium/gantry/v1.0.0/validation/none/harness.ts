@@ -977,7 +977,7 @@ async function poseAll(h: Harness, calls: readonly PoseCall[]): Promise<void> {
         (surface[name] as (...a: unknown[]) => unknown)(...args);
       }
     },
-    { handle: HANDLE, ops: calls as (string | number | boolean)[][] },
+    { handle: HANDLE, ops: calls },
   );
 }
 
@@ -1272,33 +1272,6 @@ async function onScreen<T>(
   const was = (await h.snapshot()).screen;
   if (was === screen) return body();
   await h.debug.setScreen(screen);
-  try {
-    return await body();
-  } finally {
-    await h.debug.setScreen(was);
-  }
-}
-
-/**
- * Run `body` on a screen the SITE poses apply on, and put the screen back.
- *
- * `specs/instrumentation.md`: "The site poses apply on the build and program
- * screens, with no run in progress." Either of the two will do, so a check
- * already standing on the program screen is left there and only one that is
- * somewhere else is moved — to `build`, which is where a site opening leaves a
- * check anyway.
- *
- * THE SECOND HALF OF THAT PRECONDITION IS THE CALLER'S. A run in progress refuses
- * every site pose whatever screen is showing, and nothing here aborts a run to get
- * around it: a helper that ended a check's run to empty its yard would be posing
- * an outcome. A check that wants a different yard poses it before it starts the
- * run, which is also the only order in which it means anything — "the loads a run
- * carries are the ones standing when it starts".
- */
-async function onEditScreen<T>(h: Harness, body: () => Promise<T>): Promise<T> {
-  const was = (await h.snapshot()).screen;
-  if (was === "build" || was === "program") return body();
-  await h.debug.setScreen("build");
   try {
     return await body();
   } finally {

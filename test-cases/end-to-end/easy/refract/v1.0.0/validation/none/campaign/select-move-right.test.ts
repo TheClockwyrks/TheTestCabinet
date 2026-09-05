@@ -20,7 +20,6 @@ import {
   startCampaign,
   type Harness,
 } from "../harness";
-import { GRID_COLS } from "./reading";
 
 let h: Harness;
 
