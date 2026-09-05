@@ -488,6 +488,29 @@ reactive player to reach its later states, such as a paddle game, has unit
 validators only, because a validator-side AI would grade the AI as much as the
 build.
 
+### Each validator finishes in seconds
+
+Most validators run in one to three seconds, and a validator stays under five.
+Ten seconds is the hard cap for every validator other than an integration
+validator, and a validator that reaches the cap is redesigned to a cheaper shape.
+
+The budget follows from where validators run. Production grades every run with
+them, a case ships hundreds, and each one is paid again on every run of every
+case, so a validator that takes minutes is a defect in the check whatever verdict
+it reaches.
+
+Frames are what a validator spends, so it poses the state its requirement needs
+and reads the result. A scenario that sits minutes of play away is posed through
+the debug API rather than simulated toward, a requirement behind a timer sets the
+timer and advances past it, and a requirement about a seeded random draw chooses
+the seed that produces the case it is about. An integration validator is the one
+shape that replays a game end to end, and it carries that cost because the replay
+is the requirement.
+
+Reaching for a longer allowance is the wrong direction. A ceiling wide enough for
+a slow validator is wide enough to turn how busy the host was into a lost point,
+so the validator is made cheaper and the ceiling stays where it is.
+
 ### The suite finishes inside its budget
 
 A run is validated on a two-core host, and the runner caps a case's whole suite
@@ -496,10 +519,9 @@ reached undecided. A case is authored to finish in fifteen minutes there,
 measured by running the suites against the reference implementation, which
 leaves the margin a loaded host needs.
 
-Frames are what a suite spends. A validator advances the clock by the frames its
-requirement needs, so a scenario whose requirement sits behind a timer sets the
-timer and advances past it. A project's suites run across eight workers sharing
-one browser, so the wall clock follows the longest file rather than the sum.
+A project's suites run across eight workers sharing one browser, so the wall
+clock follows the longest file rather than the sum. A single validator inside its
+own budget is what keeps that longest file short.
 
 ### Failure caps
 
@@ -563,6 +585,8 @@ When designing or revising a case's debug API and validators:
   refuses, or intercepts a load.
 - Each replay brackets the behavior its check backs, with a short run-up and a
   short settle around it.
+- Most validators finish in one to three seconds, each stays under five, and
+  every validator other than an integration validator is under ten.
 - The whole suite finishes in fifteen minutes on a two-core host.
 - Integration validators exist only where the game replays to a known outcome
   without a validator-side player.
