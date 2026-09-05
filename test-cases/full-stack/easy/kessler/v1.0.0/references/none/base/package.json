@@ -19,6 +19,7 @@
   "devDependencies": {
     "@eslint/js": "^10",
     "@napi-rs/canvas": "^1",
+    "@types/node": "^26",
     "@vitest/coverage-istanbul": "^5",
     "eslint": "^10",
     "playwright": "^1.63.0",
