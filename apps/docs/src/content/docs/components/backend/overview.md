@@ -71,8 +71,10 @@ The generation is pinned to the shape of the run record contract. The build
 records the contract shape each generation was decided against, and a change to
 that shape fails the build's tests until it is either recorded under the current
 generation, which asserts that stored records survive it, or given a new
-generation. The generation is therefore a fact about the contract rather than a
-constant somebody remembers to raise.
+generation. The shape covers the record schema together with every schema it
+references, such as the gg capability set a gg run's record embeds, so a change
+anywhere in the record's tree moves it. The generation is therefore a fact about
+the contract rather than a constant somebody remembers to raise.
 
 A run the build cannot read is still reachable on its own terms. `GET
 /runs/unreadable` lists each such run's lifted identity together with the error

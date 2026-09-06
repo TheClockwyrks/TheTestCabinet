@@ -130,11 +130,13 @@ const PUBLISH_JOB_STALE_AFTER: time::Duration = time::Duration::hours(1);
 /// re-decides that row once at startup ([`Db::revalidate_run_records`]).
 ///
 /// Bump it in the same change as anything that can stop an existing stored record
-/// deserializing: a new required field on `RunRecord` or anything in its tree, a
-/// removed or retyped variant, a renamed wire key. A change that only adds
-/// optional or defaulted fields leaves every stored record readable and needs no
-/// bump.
-pub const RUN_RECORD_FORMAT: u32 = 1;
+/// deserializing: a new required field on `RunRecord` or anything in its tree —
+/// the gg capability set a gg run's record embeds included — a removed or retyped
+/// variant, a renamed wire key. A change that only adds optional or defaulted
+/// fields leaves every stored record readable and needs no bump. The pin in the
+/// readability tests holds the whole tree's shape against this constant, so a
+/// change anywhere in it forces the decision.
+pub const RUN_RECORD_FORMAT: u32 = 2;
 
 /// The `run` query narrowed to the rows this build can read — the single seam
 /// every run listing starts from, so a listing's `COUNT(*)` and the page it serves

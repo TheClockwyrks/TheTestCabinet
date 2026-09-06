@@ -532,6 +532,13 @@ pub(crate) async fn run_gg_session(
         command,
         harness_version,
     } = prepared;
+    // A kill that landed before this point finds no session to wind down: launching gg
+    // only to stop it at its first boundary would produce a record of nothing, which is
+    // exactly what a killed run's record must never be. Refuse the launch instead, and
+    // let the engine stop the container it started.
+    if cancel.is_canceled() {
+        return Err(Error::CanceledBeforeSession);
+    }
     let mut sink = GgIngestSink::new(events);
     // Launch gg against the invocation file and ingest its NDJSON telemetry line by
     // line, bridging each event to the sink and summing usage and cost.

@@ -357,6 +357,22 @@ async fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some(Err(failure)) => {
+            // The kill landed before the session was launched — during the driver's own
+            // setup, the image pull, the sandbox start or the seeding — and the run
+            // refused to go further. There is no session's work to preserve and no
+            // streamed telemetry worth anchoring, so this is a destroyed run in every
+            // respect but the sandbox it may have started: record nothing, post nothing
+            // (the job is already terminally `canceled`), tear the sandbox down, exit.
+            if failure.canceled_before_session {
+                tracing::info!(
+                    job_id = %config.job_id,
+                    "run canceled before its session was launched; recording nothing"
+                );
+                if !teardown_sandbox(&config).await {
+                    return ExitCode::FAILURE;
+                }
+                return ExitCode::SUCCESS;
+            }
             // A gg run that was canceled and then errored on its way out — the sandbox
             // went away under it, say — is still a canceled run, not a failure to
             // report against the model. Record it as one, from what the driver holds.
@@ -432,10 +448,11 @@ const CANCELED_DETAIL: &str = "canceled by operator";
 /// run list at all. Everything here is best-effort — the job is already terminal and the
 /// sandbox teardown still has to happen, so a failure to record is logged, never fatal.
 ///
-/// Both call sites are on the wind-down branch, so this is reached for a gg run only. A
-/// canceled run of any other harness is destroyed and recorded nowhere, which is what the
-/// operator asked for: there is no early state to anchor, because there was no session
-/// that could be asked to leave one.
+/// Both call sites are on the wind-down branch, so this is reached for a gg run only, and
+/// only for one whose session had been launched. A canceled run of any other harness, and
+/// a gg run killed before its session was launched, is destroyed and recorded nowhere,
+/// which is what the operator asked for: there is no early state to anchor, because there
+/// was no session that could be asked to leave one.
 #[allow(clippy::too_many_arguments)]
 async fn report_canceled(
     client: &JobClient,

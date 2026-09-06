@@ -261,6 +261,11 @@ bare record. Either way the run is recorded as
 carries no fault to attribute, so it is retained for inspection only and stays
 unpublishable.
 
+A kill that lands before the gg session has been launched destroys the run
+instead. Nothing has been produced that a record could preserve, so the driver
+records nothing and tears the sandbox down, and the run is absent from the run
+list like a destroyed run of any other harness.
+
 A kill destroys a run of any other harness. It has no wind-down protocol to be
 asked for, so the driver abandons the run and records it nowhere.
 

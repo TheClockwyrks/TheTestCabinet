@@ -926,6 +926,13 @@ where
             },
         };
 
+        // A kill that landed during the setup above (the image pull is the long stage)
+        // has nothing to wind down yet. Refuse to start a sandbox for it: the run ends
+        // here, recorded nowhere, exactly as the session launch below refuses.
+        if cancel.is_canceled() {
+            return Err(Error::CanceledBeforeSession);
+        }
+
         events.emit(&HarnessEvent::system(
             SystemStage::StartContainer,
             SystemStatus::Started,
@@ -1219,6 +1226,12 @@ where
                 scheduling_wait,
                 session_elapsed,
             }),
+            // The launch was refused against an already-raised latch: no session ran,
+            // so there is no journal to salvage — just the container to stop.
+            Err(err @ Error::CanceledBeforeSession) => {
+                let _ = self.runtime.stop(&handle).await;
+                Err(err)
+            }
             Err(err) => {
                 self.abandon_container(
                     &handle, run_id, test_case, variant, seeded, request, cancel,
