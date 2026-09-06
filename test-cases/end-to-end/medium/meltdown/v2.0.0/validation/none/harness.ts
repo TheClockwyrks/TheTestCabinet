@@ -65,10 +65,16 @@
 // floor, whether resuming runs it again, and what the speed toggle does are all
 // read over stated numbers of frames driven through `advance`, so the same game
 // time lands on any machine and a verdict never depends on how busy the host
-// was. Nothing in this project hands the clock back to the build or waits on a
-// stretch of real time, and the one claim only real time could decide — that the
-// build's own loop advances the game with nothing stepping it — is left to the
-// engines, where the loop is the engine's and the frames are the suite's.
+// was. The one claim only real time could decide — that the build's own loop
+// advances the game with nothing stepping it — is left to the engines, where the
+// loop is the engine's and the frames are the suite's.
+//
+// AND THE WALL CLOCK IS NOT ON THE HANDLE TO REACH FOR. The shared harness offers
+// two operations that hand the loop back and wait on real time, `runFor(ms)` and
+// `runUntil`, which are what a case with no scripted clock has to use. Meltdown
+// has one, so this project takes both off the handle it returns, in the type and
+// on the object: a check that reached for either would not compile, and every
+// frame this project spends is a frame a check asked for.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
@@ -643,12 +649,23 @@ export interface CoastResult {
 /**
  * Everything a check reads off one page running this build.
  *
- * The shared harness's, with the three things that are Meltdown's own laid
- * over it: the coarse off-camera `coast` and `coastUntil`, which cover a span
- * of GAME TIME in frames of a size the caller chooses, and `armAudio`, which
- * this case delivers from the check rather than at the harness's opening.
+ * The shared harness's, less the two operations that spend REAL time, with the
+ * three things that are Meltdown's own laid over it: the coarse off-camera
+ * `coast` and `coastUntil`, which cover a span of GAME TIME in frames of a size
+ * the caller chooses, and `armAudio`, which this case delivers from the check
+ * rather than at the harness's opening.
+ *
+ * `runFor` and `runUntil` are the two that go. Both hand the build's own loop
+ * back and wait on the wall clock, which is how a case with no scripted clock has
+ * to work; `specs/instrumentation.md` gives Meltdown one, so every frame this
+ * project spends is a frame a check asked for, and the two are off the handle
+ * rather than merely unused.
  */
 export type Harness = BaseHarness<MeltdownSnapshot, MeltdownDebugApi> & {
+  /** Off this handle: it hands the build's loop back for a stretch of wall clock. */
+  runFor: never;
+  /** Off this handle: it polls the build's own loop against the wall clock. */
+  runUntil: never;
   /**
    * Run `duration` seconds of GAME TIME, diced into `hz` frames a second,
    * WITHOUT opening a recorded frame.
@@ -727,7 +744,7 @@ export async function createHarness(
     }
   };
 
-  return Object.assign(base, {
+  const handle = Object.assign(base, {
     async coast(duration: number, hz = 60) {
       await run(duration, Math.ceil(duration * hz));
     },
@@ -761,6 +778,20 @@ export async function createHarness(
     // and `Backquote`), so arming changes no game state and toggles no overlay.
     armAudio: () => page.keyboard.press(UNBOUND_KEY),
   });
+
+  // AND THE TWO OPERATIONS THAT SPEND REAL TIME COME OFF THE HANDLE. The shared
+  // harness offers `runFor(ms)` and `runUntil`, which hand the build's own loop
+  // back and wait on the wall clock; they are what a case with no scripted clock
+  // has to use, and `specs/instrumentation.md` gives Meltdown one. Taking them off
+  // is what makes the claim above about the SURFACE rather than about the checks
+  // that happen to be written over it: no check here can reach real time, whoever
+  // writes the next one. Nothing the shared kit exports calls either.
+  const removable = handle as Partial<
+    BaseHarness<MeltdownSnapshot, MeltdownDebugApi>
+  >;
+  delete removable.runFor;
+  delete removable.runUntil;
+  return handle as unknown as Harness;
 }
 
 /* ---- The long-drive clock ------------------------------------------------- */
