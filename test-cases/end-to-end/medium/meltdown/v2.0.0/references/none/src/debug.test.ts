@@ -129,6 +129,7 @@ describe("reset", () => {
     api.setSpeed(2);
     api.setMenuIndex(2);
     api.setWaveSpawning(false);
+    api.setSpawnVent("top");
     const id = api.addTower("arc", 20, 20);
     api.addUnit("mote", "left");
     api.setSelected(id);
@@ -157,17 +158,8 @@ describe("reset", () => {
     expect(shot.towers).toEqual([]);
     expect(shot.surge).toEqual([]);
     expect(shot.waveSpawning).toBe(true);
+    expect(shot.spawnVent).toBeNull();
     expect(state.spawnClock).toBe(0);
-  });
-
-  it("seeds every draw, so the same seed replays the same vents", () => {
-    const { api, state } = surface();
-    api.reset(99);
-    const first = state.rng.seed;
-    api.reset(99);
-    expect(state.rng.seed).toBe(first);
-    api.reset();
-    expect(state.rng.seed).toBe(1);
   });
 
   it("leaves the mute bit, the pointer and the clock exactly as they stand", () => {
@@ -312,6 +304,50 @@ describe("the world gate", () => {
     expect(api.snapshot().waveSpawning).toBe(true);
     api.setWaveSpawning(false);
     expect(api.snapshot().waveSpawning).toBe(false);
+  });
+});
+
+describe("the vent pose", () => {
+  it("is null by default, holds a vent, and is reported", () => {
+    const { api } = surface();
+    expect(api.snapshot().spawnVent).toBeNull();
+    api.setSpawnVent("top");
+    expect(api.snapshot().spawnVent).toBe("top");
+    api.setSpawnVent("left");
+    expect(api.snapshot().spawnVent).toBe("left");
+    api.setSpawnVent(null);
+    expect(api.snapshot().spawnVent).toBeNull();
+  });
+
+  it("moves no live unit and takes no unit off the floor", () => {
+    const { api } = playing();
+    api.addUnit("mote", "left");
+    api.setSpawnVent("top");
+    const unit = api.snapshot().surge[0];
+    expect(unit.vent).toBe("left");
+    expect(unit.exhaust).toBe("right");
+  });
+});
+
+describe("the vent draw", () => {
+  it("returns one of the two vents and uses both over a run of draws", () => {
+    const { api } = surface();
+    const drawn = new Set<string>();
+    for (let i = 0; i < 200; i += 1) {
+      const vent = api.drawVent();
+      expect(["left", "top"]).toContain(vent);
+      drawn.add(vent);
+    }
+    expect(drawn.size).toBe(2);
+  });
+
+  it("adds no unit, and leaves a posed vent standing", () => {
+    const { api } = playing();
+    api.setSpawnVent("top");
+    api.addUnit("mote", "left");
+    const before = api.snapshot();
+    for (let i = 0; i < 50; i += 1) api.drawVent();
+    expect(api.snapshot()).toEqual(before);
   });
 });
 
@@ -827,6 +863,7 @@ describe("the snapshot shape", () => {
         "screen",
         "selected",
         "simTime",
+        "spawnVent",
         "speed",
         "startLives",
         "startMoney",

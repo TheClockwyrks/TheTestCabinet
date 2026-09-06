@@ -152,8 +152,8 @@ only the arguments its heading names, arranges the running game through the same
 systems play uses, and returns nothing; a **reading** returns plain data built at
 the call and changes nothing.
 
-- `reset(options?)` and `snapshot()` — return to the title screen (seedable) and
-  read a JSON-serializable view of the whole state: the run, the routes, every
+- `reset()` and `snapshot()` — return to the title screen and read a
+  JSON-serializable view of the whole state: the run, the routes, every
   panel control's hit rectangle, every tower with its live heat, damage and
   radiator faces, and every surge unit.
 - The **run**: `setScreen`, `setPhase`, `setMenuIndex`, `setMode`,
@@ -164,6 +164,11 @@ the call and changes nothing.
 - The **world gate**: `setWaveSpawning(false)` stops the run releasing surge of
   its own accord, so a scenario can put exactly the units it means on the floor
   and nothing else arrives.
+- The **vent pose** and the **vent draw**: `setSpawnVent("left" | "top" | null)`
+  fixes the vent every unit the run releases enters at in place of the draw,
+  and `null` returns the release to the draw; `drawVent()` performs one draw on
+  its own and returns the vent, so a scenario can sample the draw without
+  releasing anything.
 - The **towers**: `addTower`, `removeTower`, `clearTowers`, and the poses
   `setTowerHeat`, `setTowerTripped`, `setTowerTripTimer`, `setTowerLevel`,
   `setTowerFresh`, plus two gates — `setTowerFiring` and `setTowerThermal` —

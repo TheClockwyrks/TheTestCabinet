@@ -151,30 +151,27 @@ describe("the release", () => {
     expect(state.surge).toHaveLength(0);
   });
 
-  it("draws every vent from the seeded generator, so a seed replays", () => {
-    const first = createState(7);
-    first.mode = "containment";
-    startRun(first);
-    startWave(first);
-    run(first, WAVE_SPAWN_INTERVAL * 8, 80);
-    const second = createState(7);
-    second.mode = "containment";
-    startRun(second);
-    startWave(second);
-    run(second, WAVE_SPAWN_INTERVAL * 8, 80);
-    expect(second.surge.map((unit) => unit.vent)).toEqual(
-      first.surge.map((unit) => unit.vent),
-    );
-    expect(new Set(first.surge.map((unit) => unit.vent)).size).toBe(2);
+  it("uses both vents across a long release with no vent posed", () => {
+    const state = running();
+    state.lives = 1_000;
+    state.wave = 4;
+    startWave(state);
+    state.wavePending = 200;
+    run(state, WAVE_SPAWN_INTERVAL * 200, 2000);
+    expect(new Set(state.surge.map((unit) => unit.vent)).size).toBe(2);
   });
 
-  it("leaves the generator alone when the gate held the release back", () => {
-    const state = running();
-    state.waveSpawning = false;
-    startWave(state);
-    const before = state.rng.seed;
-    run(state, 10, 100);
-    expect(state.rng.seed).toBe(before);
+  it("enters every released unit at the posed vent while one is posed", () => {
+    for (const vent of ["left", "top"] as const) {
+      const state = running();
+      state.spawnVent = vent;
+      startWave(state);
+      run(state, WAVE_SPAWN_INTERVAL * 8, 80);
+      expect(state.surge.length).toBeGreaterThan(1);
+      expect(new Set(state.surge.map((unit) => unit.vent))).toEqual(
+        new Set([vent]),
+      );
+    }
   });
 
   it("scales every released unit's hp for the wave it belongs to", () => {

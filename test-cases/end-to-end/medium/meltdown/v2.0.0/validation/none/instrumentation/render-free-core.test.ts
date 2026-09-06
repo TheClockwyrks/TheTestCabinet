@@ -1,10 +1,11 @@
-// Meltdown — instrumentation/deterministic-core: the simulation advances on the
+// Meltdown — instrumentation/render-free-core: the simulation advances on the
 // elapsed game time alone, so one second reaches the same place however it was
 // divided into frames.
 //
-// THE RULE. `specs/instrumentation.md`: "every rate integrated against the game
-// time each frame advances by, so an interval of game time reaches the same state
-// however it was divided into frames", and, of the clock, "`advance(1, 1)` and
+// THE RULE. `specs/instrumentation.md`, A render-free core: "Every rate is
+// integrated against the game time each frame advances by, so an interval of game
+// time reaches the same state however it was divided into frames", and, of the
+// clock, "`advance(1, 1)` and
 // `advance(1, 120)` cover the same second and reach the same outcome, beyond the
 // drift a change in step size explains". `specs/waves.md` says the same of the
 // game itself: "The game advances by the elapsed time of every frame ... and
@@ -19,7 +20,7 @@
 //
 // TWO GAMES, NOT TWO SPANS OF ONE. The same second cannot be run twice on one
 // floor, because the second run would start where the first ended. So two
-// harnesses open two pages on the same build, are posed identically, and are each
+// harnesses open two pages on the same build, are posed alike, and are each
 // given one second: one as a SINGLE frame a second long, the other as `TICK_HZ`
 // (`120`) frames of a hundred-and-twentieth each.
 //
@@ -31,8 +32,8 @@
 // (`specs/floor.md`), so the two runs differ in step size and in NOTHING ELSE: no
 // corner is turned, where a hundred and twenty small steps and one large one
 // legitimately round a bend differently. The unit's position is POSED rather than
-// taken from wherever the entry put it, so the two games open at the identical
-// point by construction.
+// taken from wherever the entry put it, so the two games open at one point by
+// construction.
 //
 // AND THE UNIT MUST HAVE MOVED. A build frozen solid would put the two readings
 // in the same place too, so the travel is held to a floor first. How fast it

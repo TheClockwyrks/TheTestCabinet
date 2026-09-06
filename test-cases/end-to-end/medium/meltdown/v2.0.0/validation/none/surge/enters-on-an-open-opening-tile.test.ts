@@ -32,20 +32,16 @@
 // than wherever it has walked to: a Mote covers a tile of floor in a third of a
 // second and the interval between two samples is `1 / 120` of one.
 //
-// ONLY THE LEFT VENT'S UNITS ARE READ. The vent each unit draws is seeded
-// (`surge/vent-drawn-from-the-seed`), so a wave puts some units through the top
-// vent, whose opening is untouched here and whose entry tile this item says
-// nothing about. The sweep runs until enough have come through the walled vent,
-// and that count is the precondition.
-//
-// THE WAVE IS THE FORTY-UNIT ONE, and the reason is the seeded draw rather than
-// anything about the wave. The three left-vent entries this item reads have to
-// ARRIVE, and how many of a wave go left is the generator's business, not a rule
-// any build can be held to: over twelve draws a conformant build with a different
-// generator would fall short of three about one run in fifty, which would be a
-// check that failed a correct build. Over forty it is one run in a thousand
-// million. The sweep stops the moment the third arrives, so the long wave costs
-// nothing in the ordinary case.
+// EVERY UNIT IS SENT THROUGH THE WALLED VENT. `specs/waves.md` draws each unit's
+// vent at random, so the left vent is POSED through `setSpawnVent("left")`
+// (`specs/instrumentation.md`): every unit the wave releases enters at the walled
+// vent in place of the draw, and the reading is taken on a fixed number of them
+// rather than on however many a draw happened to send left. The sweep stops the
+// moment that many have arrived, so the wave costs nothing past its first units.
+// A build whose pose fails to hold sends units through the top vent, whose
+// opening is untouched and whose entry tile this item says nothing about; those
+// are passed over, and `instrumentation/spawn-vent-pose` is the item that names
+// the pose.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertGreaterThanOrEqual } from "../assert";
@@ -66,9 +62,9 @@ import {
 } from "../harness";
 import { openWave } from "./roster";
 
-/** The run and the wave read: wave 4 of a twenty-wave run, forty Swarms. */
+/** The run and the wave read: wave 1 of a twenty-wave run, twelve Motes. */
 const WAVE_COUNT = 20;
-const WAVE = 4;
+const WAVE = 1;
 
 /**
  * The two 2x2 footprints that wall three of the left vent's four opening tiles.
@@ -88,14 +84,13 @@ const OPEN_TILE = { col: 0, row: LEFT_VENT_ROWS[3] } as const;
 /**
  * How many units must come through the walled vent before the reading is taken.
  *
- * The vent is drawn from the seeded generator, so how many of the wave's forty
- * arrive at the left one is not fixed by any rule this item is about. Three is
- * enough that a build choosing a tile at random from the vent's run passes only
- * one time in sixty-four, and it is a fifteenth of what an equal draw sends left,
- * so no conformant generator falls short of it. It is a precondition on the
- * scenario, not a threshold on the build.
+ * Every unit is posed to the left vent, so the count is the item's own choice of
+ * sample: six is enough that a build choosing a tile at random from the vent's
+ * run passes only one time in four thousand, and it is half the wave, so the
+ * sweep ends well before the wave does. It is a precondition on the scenario, not
+ * a threshold on the build.
  */
-const LEFT_UNITS_READ = 3;
+const LEFT_UNITS_READ = 6;
 
 /** How long the sweep may run: the whole of the wave's release, with a second over. */
 const SWEEP_FRAMES = driveFrames(
@@ -115,6 +110,7 @@ afterEach(async () => {
 it("enters every left-vent unit on the one opening tile no footprint covers", async () => {
   await openWave(h, WAVE, "medium", async () => {
     for (const wall of WALLS) await poseTower(h, "arc", wall.col, wall.row);
+    await h.debug.setSpawnVent("left");
   });
 
   // Each unit at the tile it was first seen on, sampled every frame of the
@@ -160,7 +156,7 @@ it("enters every left-vent unit on the one opening tile no footprint covers", as
   assertGreaterThanOrEqual(
     entries.length,
     LEFT_UNITS_READ,
-    "precondition: units the seeded draw sent through the walled left vent " +
+    "precondition: units the posed release sent through the walled left vent " +
       `inside wave ${WAVE}'s release`,
   );
   for (const entry of entries) {

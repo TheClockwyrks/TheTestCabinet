@@ -424,6 +424,12 @@ export const BUILD_PHASE_TIME = 15;
 /** The seconds between one unit's release and the next, within a wave. */
 export const WAVE_SPAWN_INTERVAL = 0.6;
 
+/**
+ * The probability a released unit's vent draw lands on either vent: the two
+ * vents equally likely (specs/waves.md).
+ */
+export const VENT_PROBABILITY = 0.5;
+
 /** The types waves 1 through 8 carry, in order. */
 export const WAVE_OPENING = [
   "mote",

@@ -6,7 +6,6 @@
 // states.
 
 import {
-  DEFAULT_SEED,
   DIFFICULTIES,
   DIFFICULTY_ITEMS,
   DIFFICULTY_TABLE,
@@ -48,12 +47,12 @@ export function createInitialState(): MeltdownState {
     build: null,
 
     waveSpawning: true,
+    spawnVent: null,
     pointer: { x: 0, y: 0, down: false },
     muted: false,
 
     nextId: 1,
     simTime: 0,
-    rngState: DEFAULT_SEED,
   };
 }
 
@@ -62,13 +61,12 @@ export function createInitialState(): MeltdownState {
  * stand because both mirror something the runtime owns
  * (specs/instrumentation.md).
  */
-export function resetState(state: MeltdownState, seed: number): MeltdownState {
+export function resetState(state: MeltdownState): MeltdownState {
   const fresh = createInitialState();
   return {
     ...fresh,
     pointer: state.pointer,
     muted: state.muted,
-    rngState: seed,
   };
 }
 

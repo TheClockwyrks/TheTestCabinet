@@ -163,12 +163,12 @@ export interface MeltdownState {
   readonly build: BuildState | null;
 
   readonly waveSpawning: boolean;
+  readonly spawnVent: VentName | null;
   readonly pointer: PointerState;
   readonly muted: boolean;
 
   readonly nextId: number;
   readonly simTime: number;
-  readonly rngState: number;
 }
 
 // ---- Actions -------------------------------------------------------------

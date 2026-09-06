@@ -40,7 +40,7 @@ import {
 import { menuRects } from "./menus";
 import { modeFigures, type BuildZone } from "./modes";
 import { panelControls, type PanelControls } from "./panel";
-import { addUnit, clearSurge, removeUnit } from "./sim";
+import { addUnit, clearSurge, drawVent, removeUnit } from "./sim";
 import { resetState, type MeltdownState, type Tower } from "./state";
 import {
   damageOf,
@@ -166,6 +166,7 @@ export interface MeltdownSnapshot {
   speed: Speed;
   muted: boolean;
   waveSpawning: boolean;
+  spawnVent: Vent | null;
   autoStep: boolean;
   pointer: { x: number; y: number; down: boolean };
   selected: number | null;
@@ -213,7 +214,7 @@ export interface DebugHost {
 export interface MeltdownDebugApi {
   version: number;
 
-  reset(seed?: number): void;
+  reset(): void;
   snapshot(): MeltdownSnapshot;
 
   setAutoStep(enabled: boolean): void;
@@ -233,6 +234,8 @@ export interface MeltdownDebugApi {
   setSpeed(speed: Speed): void;
 
   setWaveSpawning(enabled: boolean): void;
+  setSpawnVent(vent: Vent | null): void;
+  drawVent(): Vent;
 
   addTower(
     type: TowerType,
@@ -346,6 +349,7 @@ export function readSnapshot(
     speed: state.speed,
     muted: state.muted,
     waveSpawning: state.waveSpawning,
+    spawnVent: state.spawnVent,
     autoStep,
     pointer: { ...state.pointer },
     selected: state.selected,
@@ -396,8 +400,8 @@ export function createDebugApi(host: DebugHost): MeltdownDebugApi {
   return {
     version: MELTDOWN_DEBUG_VERSION,
 
-    reset(seed) {
-      resetState(host.state, seed);
+    reset() {
+      resetState(host.state);
     },
 
     snapshot() {
@@ -462,6 +466,14 @@ export function createDebugApi(host: DebugHost): MeltdownDebugApi {
 
     setWaveSpawning(enabled) {
       host.state.waveSpawning = Boolean(enabled);
+    },
+
+    setSpawnVent(vent) {
+      host.state.spawnVent = vent === "left" || vent === "top" ? vent : null;
+    },
+
+    drawVent() {
+      return drawVent();
     },
 
     addTower(type, col, row, rotation = 0) {

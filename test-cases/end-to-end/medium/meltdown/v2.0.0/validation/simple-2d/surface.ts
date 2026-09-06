@@ -45,9 +45,6 @@ import type { DeepReadonly } from "ts-essentials";
 /** The surface's version, reported as `version` (`MELTDOWN_DEBUG_VERSION`). */
 export const MELTDOWN_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
-
 /** The eight screens the game moves between. */
 export type Screen =
   | "title"
@@ -258,6 +255,8 @@ export interface MeltdownSnapshot {
   muted: boolean;
   /** The world gate: the run's own release of surge. */
   waveSpawning: boolean;
+  /** The vent posed for the run's own release, or `null` while it draws. */
+  spawnVent: VentName | null;
   /** The pointer's OWN position, in logical stage units, and whether pressed. */
   pointer: { x: number; y: number; down: boolean };
   selected: number | null;
@@ -309,7 +308,7 @@ export interface MeltdownDebugApi<S = unknown> {
   // ---- The core ----------------------------------------------------------
 
   /** Restore every declared field to its title-screen value. */
-  reset(state: DeepReadonly<S>, seed?: number): S;
+  reset(state: DeepReadonly<S>): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): MeltdownSnapshot;
 
@@ -340,6 +339,20 @@ export interface MeltdownDebugApi<S = unknown> {
    * Nothing else.
    */
   setWaveSpawning(state: DeepReadonly<S>, enabled: boolean): S;
+
+  // ---- The vent pose and the vent draw -----------------------------------
+
+  /**
+   * Poses the vent the run's own release enters units at, `null` to return the
+   * release to the draw. It moves no live unit.
+   */
+  setSpawnVent(state: DeepReadonly<S>, vent: VentName | null): S;
+  /**
+   * A reading that performs one vent draw as the release performs it and
+   * returns the vent drawn. It poses nothing: no unit is added and a posed
+   * `spawnVent` stands.
+   */
+  drawVent(state: DeepReadonly<S>): VentName;
 
   // ---- The towers --------------------------------------------------------
 
@@ -423,7 +436,7 @@ export interface MeltdownDebugApi<S = unknown> {
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "drawVent"] as const;
 
 /**
  * Every operation the surface must carry, in the order
@@ -450,6 +463,9 @@ export const REQUIRED_OPS = [
   "setSpeed",
 
   "setWaveSpawning",
+
+  "setSpawnVent",
+  "drawVent",
 
   "addTower",
   "removeTower",

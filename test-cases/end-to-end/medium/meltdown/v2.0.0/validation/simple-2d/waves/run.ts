@@ -100,7 +100,7 @@ export const WALK_TILE = { col: 2, row: RIGHT_EXHAUST_ROWS[0] } as const;
  * of `60` logical units per second, which is the figure every travel floor in this
  * group is derived from. Its motion is on and nothing else about it is touched, so
  * the walk is the game's own; its position is posed so the row it walks is the
- * straight one whatever tile the vent's seeded draw put it on.
+ * straight one whatever tile the vent's entry put it on.
  */
 export function poseMote(h: Harness): number {
   const id = poseWalker(h, "mote", "left");

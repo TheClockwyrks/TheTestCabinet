@@ -201,6 +201,9 @@ export const REQUIRED_OPS = [
   "setSpeed",
   // The world gate.
   "setWaveSpawning",
+  // The vent pose and the vent draw.
+  "setSpawnVent",
+  "drawVent",
   // The towers.
   "addTower",
   "removeTower",
@@ -403,6 +406,8 @@ export interface MeltdownSnapshot {
   muted: boolean;
   /** The world gate: the run's own release of surge. */
   waveSpawning: boolean;
+  /** The vent posed for the run's own release, or `null` while it draws. */
+  spawnVent: Vent | null;
   /** Who drives the clock. This engine only. */
   autoStep: boolean;
   /** The pointer's own position, in logical stage units, and whether it is down. */
@@ -439,7 +444,7 @@ export interface MeltdownDebugApi {
   advance(seconds: number, frames?: number): Promise<void>;
 
   // The core.
-  reset(seed?: number): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<MeltdownSnapshot>;
 
   // The screen and the run.
@@ -458,6 +463,10 @@ export interface MeltdownDebugApi {
 
   // The world gate.
   setWaveSpawning(enabled: boolean): Promise<void>;
+
+  // The vent pose and the vent draw.
+  setSpawnVent(vent: Vent | null): Promise<void>;
+  drawVent(): Promise<Vent>;
 
   // The towers.
   addTower(
@@ -513,7 +522,7 @@ export interface MeltdownDebugApi {
 // heat model's two-phase rule is what makes a single frame's result exact rather
 // than order-dependent. So a build must reach the same place however that time
 // was divided, and the check that is ABOUT the division
-// (`instrumentation/deterministic-core`) drives the same second as one frame and
+// (`instrumentation/render-free-core`) drives the same second as one frame and
 // as many.
 //
 // The default is a steady 120 Hz, for two reasons. It is the rate the two
@@ -1024,7 +1033,7 @@ export async function createHarness(
 // SAYS SO. `specs/waves.md` mandates no fixed timestep: every rate is per second
 // and integrated against the game time a frame advances by, so "an interval of
 // game time reaches the same state however it was divided into frames", and
-// `instrumentation/deterministic-core` is the point that grades that claim on its
+// `instrumentation/render-free-core` is the point that grades that claim on its
 // own. {@link TICK_HZ} is this suite's convenience for stating tolerances in
 // frames, not a figure any specification fixes.
 //
@@ -1644,6 +1653,32 @@ export async function poseWalker(
     );
   }
   return added.id;
+}
+
+/**
+ * A run of `count` vent draws through `drawVent`, in order.
+ *
+ * The first goes through the harness's own operation, so a missing or
+ * malformed `drawVent` fails the way every other missing operation does; the
+ * rest run inside the page in one round trip, which is what lets a sampling
+ * check make thousands of draws in well under a second. Each is one independent
+ * draw and poses nothing (`specs/instrumentation.md`).
+ */
+export async function drawVents(h: Harness, count: number): Promise<Vent[]> {
+  const first = await h.debug.drawVent();
+  if (count <= 1) return [first];
+  const rest = await h.page.evaluate(
+    ([handle, n]) => {
+      const api = (window as unknown as Record<string, { drawVent(): Vent }>)[
+        handle
+      ];
+      const out: Vent[] = [];
+      for (let i = 0; i < n; i += 1) out.push(api.drawVent());
+      return out;
+    },
+    [HANDLE, count - 1] as const,
+  );
+  return [first, ...rest];
 }
 
 /**

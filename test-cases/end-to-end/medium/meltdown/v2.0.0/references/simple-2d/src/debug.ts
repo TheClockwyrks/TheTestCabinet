@@ -24,7 +24,6 @@
 // rather than poses.
 
 import {
-  DEFAULT_SEED,
   MAX_LEVEL,
   MELTDOWN_DEBUG_VERSION,
   TRIP_HEAT,
@@ -55,7 +54,7 @@ import {
 } from "./pointer";
 import { routesOf } from "./routes";
 import { snapshotOf, type MeltdownSnapshot } from "./snapshot";
-import { newUnit } from "./surge";
+import { drawVent, newUnit } from "./surge";
 import type { DeepReadonly } from "ts-essentials";
 import type {
   MeltdownState,
@@ -69,8 +68,7 @@ import type {
 export interface MeltdownDebugApi {
   readonly version: number;
 
-  /** `seed` seeds all of the game's randomness, defaulting to `DEFAULT_SEED`. */
-  reset(state: DeepReadonly<MeltdownState>, seed?: number): MeltdownState;
+  reset(state: DeepReadonly<MeltdownState>): MeltdownState;
   snapshot(state: DeepReadonly<MeltdownState>): MeltdownSnapshot;
 
   setScreen(state: DeepReadonly<MeltdownState>, screen: Screen): MeltdownState;
@@ -96,6 +94,12 @@ export interface MeltdownDebugApi {
     state: DeepReadonly<MeltdownState>,
     enabled: boolean,
   ): MeltdownState;
+  setSpawnVent(
+    state: DeepReadonly<MeltdownState>,
+    vent: VentName | null,
+  ): MeltdownState;
+  /** One vent draw as the release makes it; a reading, so it poses nothing. */
+  drawVent(state: DeepReadonly<MeltdownState>): VentName;
 
   addTower(
     state: DeepReadonly<MeltdownState>,
@@ -263,7 +267,7 @@ export function createDebugApi(): MeltdownDebugApi {
   return {
     version: MELTDOWN_DEBUG_VERSION,
 
-    reset: (state, seed) => resetState(held(state), seed ?? DEFAULT_SEED),
+    reset: (state) => resetState(held(state)),
     snapshot: (state) => snapshotOf(held(state)),
 
     setScreen: (state, screen) => ({ ...held(state), screen }),
@@ -286,6 +290,11 @@ export function createDebugApi(): MeltdownDebugApi {
       ...held(state),
       waveSpawning: enabled,
     }),
+    setSpawnVent: (state, vent) => ({
+      ...held(state),
+      spawnVent: vent === "left" || vent === "top" ? vent : null,
+    }),
+    drawVent: () => drawVent(),
 
     addTower: (state, type, col, row, rotation = 0) =>
       addTowerAt(held(state), type, col, row, rotation),

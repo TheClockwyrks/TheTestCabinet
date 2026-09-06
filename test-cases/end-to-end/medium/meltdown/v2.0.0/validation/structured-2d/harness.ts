@@ -40,7 +40,7 @@
 // `addTower` builds a tower that blocks its footprint and re-paths the floor,
 // `addUnit` enters a unit into the same pathing and combat systems the spawner
 // uses, and `reset` gives everything back. Posing through it is how a scenario
-// is reproducible, and it is the seam the case's specification documents.
+// is arranged, and it is the seam the case's specification documents.
 // `surface.ts` is that specification as types, and it is the only description of
 // the surface this harness reads: the build's own module for it is never
 // imported.
@@ -76,7 +76,7 @@
 // integrated against the delta the frame hands the game, which is why
 // `[instrumentation]` carries no `tick_hz` — so the fixed clock is the SUITE's
 // choice. A check that is specifically about the step size
-// (heat/two-phase-resolution, instrumentation/deterministic-core) builds its own
+// (heat/two-phase-resolution, instrumentation/render-free-core) builds its own
 // harnesses with clocks of its own.
 //
 // AND A CHECK ABOUT WHETHER TIME PASSES MEASURES ON THE BUILD'S OWN CLOCK. Never
@@ -274,7 +274,7 @@ export function ticksFor(duration: number): number {
 // SAYS SO. `specs/waves.md`: every rate is per second and integrated against the
 // game time a frame advances by, so "an interval of game time reaches the same
 // state however it was divided into frames"; no fixed timestep is mandated
-// anywhere, and `instrumentation.deterministic-core` is the point that grades
+// anywhere, and `instrumentation.render-free-core` is the point that grades
 // that claim on its own. The suite's {@link TICK_HZ} is a convenience for
 // stating tolerances in ticks, not a figure any specification fixes.
 //
@@ -759,16 +759,16 @@ export const captureStill = kit.captureStill;
 // about a tower's cooling poses no unit.
 
 /**
- * `reset(seed)`: the title screen, a seeded generator, every declared field at
- * its title-screen value, both rosters empty and the world gate back on.
+ * `reset()`: the title screen, every declared field at its title-screen value,
+ * both rosters empty, the vent pose cleared and the world gate back on.
  *
  * No frame is advanced. A pose acts on the live game at the call under this
  * engine (specs/instrumentation.md), so the state is restored when this returns,
  * and a check about what `reset` restores — `simTime` among them — reads a game
  * that has run no frame since.
  */
-export function resetTo(h: Harness, seed?: number): void {
-  h.debug.reset(seed);
+export function resetTo(h: Harness): void {
+  h.debug.reset();
 }
 
 /** The money a run on this pair opens with (specs/modes.md). */
@@ -814,9 +814,9 @@ export function startLivesOf(mode: ModeName): number {
  * requirement, and a helper that seeded from the build's own reading would fail
  * every scenario standing on that purse for a fault belonging to that one item.
  *
- * The generator is left as `reset` seeded it, so a check that wants a particular
- * seed calls {@link resetTo} first — this helper's own `reset` takes the default.
- * No frame is advanced: every pose here lands at the call.
+ * The vent pose is left as `reset` cleared it, so every vent the run draws is
+ * its own unless a check poses one. No frame is advanced: every pose here lands
+ * at the call.
  */
 export function startRun(
   h: Harness,
@@ -992,6 +992,18 @@ export function poseWalker(
   vent: VentName,
 ): number {
   return poseUnit(h, type, vent);
+}
+
+/**
+ * A run of `count` vent draws through `drawVent`, in order.
+ *
+ * Each is one independent draw and poses nothing (`specs/instrumentation.md`),
+ * so a sampling check makes thousands of them in well under a second.
+ */
+export function drawVents(h: Harness, count: number): VentName[] {
+  const out: VentName[] = [];
+  for (let i = 0; i < count; i += 1) out.push(h.debug.drawVent());
+  return out;
 }
 
 /** `addUnit`, with the id read off the roster it was appended to. */

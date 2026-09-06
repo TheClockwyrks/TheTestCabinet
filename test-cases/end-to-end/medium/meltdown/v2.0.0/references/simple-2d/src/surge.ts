@@ -27,6 +27,14 @@ import type { UnitState } from "./game";
 /** The slack every countdown comparison carries; see `src/combat.ts`. */
 const EPS = 1e-9;
 
+/**
+ * One vent draw, the two equally likely: the only randomness in the game
+ * (specs/waves.md, The release).
+ */
+export function drawVent(): VentName {
+  return Math.random() < 0.5 ? "left" : "top";
+}
+
 /** The route length a unit still has to travel, in tiles. */
 export function remainingOf(
   unit: Pick<UnitState, "type" | "x" | "y" | "vent">,

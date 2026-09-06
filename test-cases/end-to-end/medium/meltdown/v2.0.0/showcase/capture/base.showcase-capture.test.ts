@@ -8,12 +8,11 @@
 // control, and lets the build's own rules decide everything that happens.
 //
 // NOTHING IS POSED MID-PLAY. The one call this file makes to the debug surface
-// is `reset(seed)`, before the take begins, because the vent each unit enters
-// at is the game's only randomness and a chosen seed is what makes a take
-// reproducible. From the title screen on, every input is a key edge or a pointer
-// event at the engine's own event target: the same path a human uses. The heat
-// that climbs, the emitters that trip, the units that die and the waves that
-// clear are all the game's own arithmetic under that input.
+// is `reset()`, before the take begins. From the title screen on, every input is
+// a key edge or a pointer event at the engine's own event target: the same path
+// a human uses. The heat that climbs, the emitters that trip, the units that die
+// and the waves that clear are all the game's own arithmetic under that input,
+// and the vent each unit enters at is the game's own draw.
 //
 // WHAT THE PLAYER IS. A script, not an AI. Its decisions are the ones a player
 // makes with the floor in front of them, and the shape of the take is the shape
@@ -41,7 +40,9 @@
 // Two of those are reactive and both are read off the floor rather than
 // arranged: WHICH gun trips depends on where the surge walked, and where the
 // Sink goes depends on which side of that gun is open. Everything else is a
-// fixed script, which is what makes a take reproducible from its seed.
+// fixed script. Because the vents are the game's own draw, no take can be played
+// again: every take is RECORDED as it is auditioned, under its own output names,
+// and the one that judged best is the one to keep.
 //
 // Run from the reference workspace root:
 //   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2600 \
@@ -392,8 +393,9 @@ interface State {
   lastBuilt: number;
 }
 
-/** Whether each still has been written yet. */
+/** Whether each still has been written yet, and the take's output prefix. */
 interface Stills {
+  label: string;
   mid: boolean;
   inspector: boolean;
 }
@@ -503,7 +505,7 @@ async function fightWave(
       if (gun !== undefined) {
         await p.select(gun);
         await p.beat(0.9);
-        if (record) captureStill(p.h, "inspector");
+        if (record) captureStill(p.h, `${stills.label}-inspector`);
         stills.inspector = true;
         await p.beat(0.7);
         await p.deselect();
@@ -523,7 +525,7 @@ async function fightWave(
       snapshot.surge.length >= 6 &&
       (snapshot.towers.some((t) => t.tripped) || state.built >= 9)
     ) {
-      if (record) captureStill(p.h, "mid-wave");
+      if (record) captureStill(p.h, `${stills.label}-mid-wave`);
       stills.mid = true;
     }
 
@@ -538,16 +540,15 @@ async function fightWave(
 /**
  * Play one take start to finish and report what it turned out to be.
  *
- * `record` gates only the writing of the stills. Every input the player makes
- * is made either way, so the take that was judged is exactly the take that is
- * kept.
+ * `record` gates only the writing of the stills, under `label`. Every input the
+ * player makes is made either way.
  */
 async function runTake(
   h: Harness,
-  seed: number,
+  label: string,
   record: boolean,
 ): Promise<Take> {
-  h.debug.reset(seed);
+  h.debug.reset();
   await h.advance(1);
   const p = new Player(h);
 
@@ -567,7 +568,7 @@ async function runTake(
     built: 0,
     lastBuilt: 0,
   };
-  const stills: Stills = { mid: false, inspector: false };
+  const stills: Stills = { label, mid: false, inspector: false };
 
   // Wave 1: the short wall, sent early, and the takings spent on making the
   // guns that are already there better rather than on more of them.
@@ -626,8 +627,8 @@ function judge(take: Take): number {
   );
 }
 
-const report = (seed: number, take: Take): string =>
-  `seed=${seed}: ${take.seconds.toFixed(1)}s, ${take.towers} towers, ` +
+const report = (label: string, take: Take): string =>
+  `${label}: ${take.seconds.toFixed(1)}s, ${take.towers} towers, ` +
   `${take.kills} kills, ${take.leaks} leaks, ${take.trips} trips, ` +
   `peak ${take.peakHeat.toFixed(0)}, sink ${take.sinkPlaced ? "in" : "no"}, ` +
   `settled ${take.settledHeat === null ? "-" : take.settledHeat.toFixed(0)}, ` +
@@ -646,21 +647,21 @@ afterEach(() => {
 
 it("records a gameplay clip", async () => {
   const h = harness;
-  const seeds = (process.env.TCAB_SHOWCASE_SEEDS ?? "1,2,3,4,5,6")
-    .split(",")
-    .map((s) => Number(s.trim()));
+  const takes = Number(process.env.TCAB_SHOWCASE_TAKES ?? "6");
 
-  let best: { seed: number; rating: number } | null = null;
-  for (const seed of seeds) {
-    const take = await runTake(h, seed, false);
+  // Every take is recorded as it plays, because a take cannot be played again:
+  // the vents are the game's own draw. The winner is named at the end, and its
+  // three outputs are the ones to keep.
+  let best: { label: string; rating: number } | null = null;
+  for (let index = 1; index <= takes; index += 1) {
+    const label = `take-${index}`;
+    const take = await captureReplay(h, `${label}-gameplay`, () =>
+      runTake(h, label, true),
+    );
     const rating = judge(take);
-    console.log(report(seed, take));
-    if (best === null || rating > best.rating) best = { seed, rating };
+    console.log(report(label, take));
+    if (best === null || rating > best.rating) best = { label, rating };
   }
 
-  console.log(`recording seed=${best!.seed}`);
-  const final = await captureReplay(h, "gameplay", () =>
-    runTake(h, best!.seed, true),
-  );
-  console.log(report(best!.seed, final));
+  console.log(`best ${best!.label}`);
 }, 1_800_000);

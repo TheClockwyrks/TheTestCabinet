@@ -1,11 +1,11 @@
-// Meltdown — instrumentation/deterministic-core: the simulation advances on
+// Meltdown — instrumentation/render-free-core: the simulation advances on
 // elapsed time alone.
 //
-// `specs/instrumentation.md`, A deterministic core: "every rate integrated
+// `specs/instrumentation.md`, A render-free core: "Every rate is integrated
 // against the game time each frame advances by, so an interval of game time
 // reaches the same state however it was divided into frames", and "Game state
-// advances from the elapsed time the game is handed, independent of a canvas, of
-// the frame loop that measured it, and of wall-clock time." `specs/waves.md` says
+// advances from the elapsed game time the game is handed, independent of a
+// canvas, of the frame loop that measured it, and of wall-clock time." `specs/waves.md` says
 // the same of the run: "The game advances by the elapsed time of every frame ...
 // and `simTime` accumulates it, so an interval of game time reaches the same
 // state however it was divided into frames."

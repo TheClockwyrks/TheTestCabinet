@@ -1,12 +1,12 @@
-// Meltdown — instrumentation/deterministic-core: the simulation advances on
+// Meltdown — instrumentation/render-free-core: the simulation advances on
 // elapsed time alone.
 //
-// specs/instrumentation.md, A deterministic core: "every rate integrated against
+// specs/instrumentation.md, A render-free core: "Every rate is integrated against
 // the game time each frame advances by, so an interval of game time reaches the
-// same state however it was divided into frames", and "Render-free core. Game
-// state advances from the elapsed time the game is handed, independent of a
-// canvas, of the frame loop that measured it, and of wall-clock time. The
-// dependency runs one way: the simulation reads nothing from the renderer."
+// same state however it was divided into frames", and "Game state advances from
+// the elapsed game time the game is handed, independent of a canvas, of the
+// frame loop that measured it, and of wall-clock time. The dependency runs one
+// way: the simulation reads nothing from the renderer."
 // specs/waves.md states the same rule of the run: "The game advances by the
 // elapsed time of every frame ... so an interval of game time reaches the same
 // state however it was divided into frames."
@@ -145,7 +145,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("covers one second identically as one frame and as 120", async () => {
+it("covers one second the same way as one frame and as 120", async () => {
   // The divided second, on the suite's own clock.
   const divided = await coverASecond(h, TICK_HZ);
   captureStill(h, "advanced");

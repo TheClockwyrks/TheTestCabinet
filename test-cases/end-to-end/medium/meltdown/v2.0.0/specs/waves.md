@@ -89,9 +89,11 @@ A wave releases its units one at a time, one every `WAVE_SPAWN_INTERVAL` (`0.6`)
 seconds of game time, the first on the frame the wave begins. There is no
 variation in that cadence.
 
-Each unit's vent is drawn from the game's seeded generator, the two vents equally
-likely. That draw is the only randomness in the game, so a run replayed from the
-same seed releases the same sequence of vents.
+Each unit's vent is drawn at random as it is released, the two vents equally
+likely. That draw is the only randomness in the game. The debug surface of
+`specs/instrumentation.md` poses the vent the release enters units at through
+`setSpawnVent`, which replaces the draw for every unit released while the pose
+holds, and performs one draw on its own through `drawVent`.
 
 ## Per-wave scaling
 

@@ -27,10 +27,12 @@
 //
 // WHY THE UNITS ARE RELEASED RATHER THAN ADDED. The item is about what the vent
 // RELEASES, so the world gate goes back on and the run's own spawner does the
-// entering. Its vent is drawn from the seeded generator (`specs/waves.md`), so
-// roughly half the wave arrives at the top vent instead; those are not this point's
-// and are passed over, and the precondition below states how many left-vent
-// arrivals the reading was actually taken on.
+// entering. `specs/waves.md` draws each unit's vent at random, so the left vent is
+// POSED through `setSpawnVent("left")` (`specs/instrumentation.md`) and every unit
+// the spawner releases enters at the walled vent. A unit the top vent released
+// anyway is not this point's and is passed over; the precondition below states how
+// many left-vent arrivals the reading was actually taken on, and
+// `instrumentation/spawn-vent-pose` is the item that names the pose.
 //
 // WHY EACH ARRIVAL IS HELD WHERE IT ARRIVED. The requirement is about the moment of
 // entry, so every unit is stopped on the frame it is first seen
@@ -84,15 +86,15 @@ const WALLS = [
 /** The wave the units are released for; its type is nothing to do with this point. */
 const WAVE = 1;
 
-/** Units the spawner is handed, of which roughly half arrive at the left vent. */
-const PENDING = 24;
+/** Units the spawner is handed, every one posed to the left vent. */
+const PENDING = 12;
 
 /**
- * Seconds of game time the release is watched for: eighteen.
+ * Seconds of game time the release is watched for: ten.
  *
- * Geometry rather than a tolerance. Twenty-four units at `specs/waves.md`'s
- * `0.6`-second cadence are all out inside fifteen seconds; eighteen leaves room for
- * a build whose release clock runs a little slow.
+ * Geometry rather than a tolerance. Twelve units at `specs/waves.md`'s
+ * `0.6`-second cadence are all out inside seven seconds; ten leaves room for a
+ * build whose release clock runs a little slow.
  */
 /*
  * The window is counted in frames of the long-drive clock (`harness.ts`, The
@@ -100,7 +102,7 @@ const PENDING = 24;
  * finely they are diced is this check's to choose, and a thirtieth of a second is
  * eighteen frames inside one release interval.
  */
-const WATCH_TICKS = driveFrames(18);
+const WATCH_TICKS = driveFrames(10);
 
 /**
  * Frames between two samples: two of the long-drive clock's, a fifteenth of a
@@ -124,6 +126,7 @@ afterEach(() => {
 it("enters every left-vent unit on the one opening tile left open", async () => {
   poseWavePhase(h, WAVE, PENDING, "containment", "medium");
   for (const wall of WALLS) poseIdleTower(h, "arc", wall.col, wall.row);
+  h.debug.setSpawnVent("left");
 
   const watch = await watchReleases(h, WATCH_TICKS, {
     poll: POLL_FRAMES,
@@ -138,8 +141,8 @@ it("enters every left-vent unit on the one opening tile left open", async () => 
     arrivals.length,
     MIN_ARRIVALS,
     `precondition: the left vent released enough units for the reading ` +
-      `(${watch.releases.length} units arrived in all, their vents drawn from ` +
-      `the seeded generator)`,
+      `(${watch.releases.length} units arrived in all, every one posed to the ` +
+      `left vent)`,
   );
 
   const walled = h.snapshot();

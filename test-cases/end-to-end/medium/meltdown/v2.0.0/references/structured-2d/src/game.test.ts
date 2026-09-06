@@ -2,7 +2,7 @@
 // one field derived beside them.
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_SEED, DIFFICULTY_TABLE, START_LIVES } from "./constants";
+import { DIFFICULTY_TABLE, START_LIVES } from "./constants";
 import { BACKGROUND, MeltdownState, game, meltdownState } from "./game";
 import { createHarness, poseTower, startRun } from "./harness";
 
@@ -51,10 +51,10 @@ describe("the declared fields", () => {
       hoverShop: null,
       build: null,
       waveSpawning: true,
+      spawnVent: null,
       muted: false,
       nextId: 1,
       simTime: 0,
-      rngState: DEFAULT_SEED,
     });
     expect(state.towers).toEqual([]);
     expect(state.surge).toEqual([]);

@@ -117,22 +117,37 @@ describe("reset", () => {
     harness.dispose();
   });
 
-  it("seeds the generator, so the same seed replays the same vents", async () => {
-    const vents = async (seed: number): Promise<string[]> => {
-      const harness = await createHarness();
-      harness.debug.reset(seed);
+  it("poses the vent the release enters at, and reads it back", async () => {
+    const harness = await createHarness();
+    for (const vent of ["left", "top"] as const) {
+      harness.debug.reset();
       harness.debug.setScreen("playing");
       harness.debug.setPhase("wave");
+      harness.debug.setSpawnVent(vent);
+      expect(harness.debug.snapshot().spawnVent).toBe(vent);
       harness.debug.setWavePending(6);
       harness.debug.setWaveSpawning(true);
       await harness.engine.advance(400);
       const drawn = harness.debug.snapshot().surge.map((u) => u.vent);
-      harness.dispose();
-      return drawn;
-    };
-    const first = await vents(7);
-    expect(first.length).toBeGreaterThan(3);
-    expect(await vents(7)).toEqual(first);
+      expect(drawn.length).toBeGreaterThan(3);
+      expect(new Set(drawn)).toEqual(new Set([vent]));
+    }
+    harness.debug.reset();
+    expect(harness.debug.snapshot().spawnVent).toBeNull();
+    harness.dispose();
+  });
+
+  it("draws a vent on its own, both over a run, and poses nothing", async () => {
+    const harness = await createHarness();
+    harness.debug.setScreen("playing");
+    harness.debug.setSpawnVent("top");
+    harness.debug.addUnit("mote", "left");
+    const before = harness.debug.snapshot();
+    const drawn = new Set<string>();
+    for (let i = 0; i < 200; i += 1) drawn.add(harness.debug.drawVent());
+    expect([...drawn].sort()).toEqual(["left", "top"]);
+    expect(harness.debug.snapshot()).toEqual(before);
+    harness.dispose();
   });
 });
 

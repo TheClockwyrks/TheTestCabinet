@@ -27,7 +27,7 @@
 // THREE READINGS ON THE SHUT LEG, because the gate holds the START and not the
 // COUNTDOWN: the phase is still `building`, the timer has run down to `0` rather
 // than stopping early, and nothing was released. And the open leg poses the
-// identical run and must reach `wave`, because a build with no auto-start at all
+// same run and must reach `wave`, because a build with no auto-start at all
 // passes the shut leg outright.
 
 import { afterEach, beforeEach, it } from "vitest";

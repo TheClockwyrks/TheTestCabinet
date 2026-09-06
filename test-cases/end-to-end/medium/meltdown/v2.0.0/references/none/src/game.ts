@@ -17,7 +17,7 @@
 // operation of that surface resolves outside the loop entirely
 // (specs/instrumentation.md).
 
-import { ACTIONS, BINDINGS, DEFAULT_SEED } from "./constants";
+import { ACTIONS, BINDINGS } from "./constants";
 import { CUE_SPECS } from "./audio";
 import { registerDiagnostics } from "./diagnostics";
 import { applyPointerSample, performAction, type InputHost } from "./input";
@@ -60,7 +60,7 @@ export function createGame(): Game<MeltdownState> {
         api.input.register(action, BINDINGS[action]);
       for (const [cue, spec] of CUE_SPECS) api.audio.define(cue, spec);
       registerDiagnostics(api);
-      return createState(DEFAULT_SEED);
+      return createState();
     },
 
     update(state: MeltdownState, api: UpdateApi, dt: number): void {

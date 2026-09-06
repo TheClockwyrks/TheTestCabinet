@@ -37,7 +37,7 @@
 // its operations, so they mean the same thing in every build: `addTower` costs
 // nothing and runs no placement check, `removeTower` pays no refund, a faculty
 // gate stays off until something turns it back on, and `reset` gives everything
-// back. Posing through it is how a scenario is reproducible, and it is the seam
+// back. Posing through it is how a scenario is arranged, and it is the seam
 // the case's specification documents. `surface.ts` is that specification as types,
 // and it is the only description of the surface this harness reads: the build's
 // own module for it is never imported.
@@ -274,7 +274,7 @@ export const TICK_MS = 1000 / TICK_HZ;
 // SAYS SO. `specs/waves.md`: every rate is per second and integrated against the
 // game time a frame advances by, so "an interval of game time reaches the same
 // state however it was divided into frames"; no fixed timestep is mandated
-// anywhere, and `instrumentation.deterministic-core` is the point that grades
+// anywhere, and `instrumentation.render-free-core` is the point that grades
 // that claim on its own. The suite's {@link TICK_HZ} is a convenience for
 // stating tolerances in ticks, not a figure any specification fixes.
 //
@@ -1093,6 +1093,18 @@ export function poseWalker(
 ): number {
   h.debug.addUnit(type, vent);
   return lastUnit(h.snapshot()).id;
+}
+
+/**
+ * A run of `count` vent draws through `drawVent`, in order.
+ *
+ * Each is one independent draw and poses nothing (specs/instrumentation.md), so
+ * a sampling check makes thousands of them in well under a second.
+ */
+export function drawVents(h: Harness, count: number): VentName[] {
+  const out: VentName[] = [];
+  for (let i = 0; i < count; i += 1) out.push(h.debug.drawVent());
+  return out;
 }
 
 /**

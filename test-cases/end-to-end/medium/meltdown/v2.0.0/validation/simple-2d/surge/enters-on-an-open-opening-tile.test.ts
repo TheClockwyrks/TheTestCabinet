@@ -33,10 +33,12 @@
 //
 // THE UNITS COME FROM THE RUN'S OWN RELEASE, with the world gate on and the wave
 // begun by the send key (surge/release.ts), because "every unit that vent releases"
-// is what the requirement is about. Two waves are driven rather than one, so the
-// number of units drawn to the left vent — half of them, by the seeded draw
-// specs/waves.md fixes — is a comfortable sample rather than whatever one wave
-// happened to give.
+// is what the requirement is about. specs/waves.md draws each unit's vent at
+// random, so the left vent is POSED through `setSpawnVent("left")`
+// (specs/instrumentation.md) and every unit the wave releases enters at the walled
+// vent: one wave is a whole sample rather than whatever a draw happened to send
+// left. A unit the top vent released anyway is passed over, and
+// `instrumentation/spawn-vent-pose` is the item that names the pose.
 //
 // THE READING IS TAKEN TWICE, FROM TWO PLACES IN THE SNAPSHOT. `col` and `row` are
 // what the build says the unit stands on; `x` and `y` are where the build put it.
@@ -86,8 +88,8 @@ const WALLS = [
   { col: 0, row: LEFT_VENT_ROWS[1] },
 ] as const;
 
-/** The waves driven, so the seeded draw sends a comfortable sample left. */
-const WAVES = [1, 2] as const;
+/** The wave driven; every unit it releases is posed to the left vent. */
+const WAVES = [1] as const;
 
 /** The fewest left-vent arrivals the reading is taken across. */
 const MIN_ARRIVALS = 4;
@@ -120,6 +122,7 @@ it("enters every left-vent unit on the one opening tile no wall covers", async (
   for (const wave of WAVES) {
     poseWaveReady(h, wave);
     for (const wall of WALLS) poseTower(h, WALL, wall.col, wall.row);
+    h.debug.setSpawnVent("left");
     const released = await watchRelease(h, {
       seconds: watchSecondsFor(sizeOfWave(wave, waves)),
     });
@@ -136,7 +139,7 @@ it("enters every left-vent unit on the one opening tile no wall covers", async (
   assertGreaterThanOrEqual(
     arrivals.length,
     MIN_ARRIVALS,
-    "precondition: the units the seeded draw sent through the left vent",
+    "precondition: the units the posed release sent through the left vent",
   );
 
   const openRow = open[0];

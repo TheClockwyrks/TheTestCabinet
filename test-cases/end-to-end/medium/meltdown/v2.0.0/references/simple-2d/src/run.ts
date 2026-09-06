@@ -1,8 +1,8 @@
 // Meltdown — the run: phases, the release, and how a run is won and lost.
 //
 // specs/waves.md fixes the three phases, the untimed opening, the 15-second
-// build countdown and its auto-start, the release cadence and the seeded vent
-// draw, and what clearing a wave does. specs/economy.md fixes the four income
+// build countdown and its auto-start, the release cadence and the vent draw,
+// and what clearing a wave does. specs/economy.md fixes the four income
 // lines, and the ORDER of two of them: the wave-clear bonus lands first and the
 // interest is taken on the money it left.
 //
@@ -33,9 +33,8 @@ import {
   waveCountOf,
   waveSizeOf,
 } from "./modes";
-import { drawVent } from "./rng";
 import { routesOf } from "./routes";
-import { newUnit } from "./surge";
+import { drawVent, newUnit } from "./surge";
 import type { MeltdownState } from "./game";
 
 /** The slack every countdown comparison carries; see `src/combat.ts`. */
@@ -182,7 +181,6 @@ export function stepRelease(state: MeltdownState, dt: number): MeltdownState {
   if (pending <= 0) return { ...next, spawnClock: clock };
   clock -= dt;
   let surge = next.surge;
-  let rngState = next.rngState;
   let nextId = next.nextId;
   const size = waveSizeOf(next.mode, next.wave, waveCountFor(next));
   const scale = hpScaleOf(next.mode, next.wave);
@@ -192,9 +190,9 @@ export function stepRelease(state: MeltdownState, dt: number): MeltdownState {
     guard += 1;
     const index = Math.max(0, size - pending);
     const type = unitTypeOf(next.mode, next.wave, waveCountFor(next), index);
-    const draw = drawVent(rngState);
-    rngState = draw.state;
-    surge = [...surge, newUnit(nextId, type, draw.vent, scale, routes)];
+    // The posed vent while one is posed, else the draw (specs/waves.md).
+    const vent = next.spawnVent ?? drawVent();
+    surge = [...surge, newUnit(nextId, type, vent, scale, routes)];
     nextId += 1;
     pending -= 1;
     clock += WAVE_SPAWN_INTERVAL;
@@ -204,7 +202,6 @@ export function stepRelease(state: MeltdownState, dt: number): MeltdownState {
     surge,
     wavePending: pending,
     spawnClock: clock,
-    rngState,
     nextId,
   };
 }

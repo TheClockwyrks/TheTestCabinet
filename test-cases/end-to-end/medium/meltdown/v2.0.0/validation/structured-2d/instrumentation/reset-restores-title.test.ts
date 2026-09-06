@@ -107,6 +107,7 @@ it("restores every declared field to its title value and leaves muted alone", as
   h.debug.setWavePending(POSED_PENDING);
   h.debug.setSpeed(2);
   h.debug.setWaveSpawning(false);
+  h.debug.setSpawnVent("top");
 
   const site = quietSite(0);
   h.debug.addTower("arc", site.col, site.row, 0);
@@ -157,6 +158,7 @@ it("restores every declared field to its title value and leaves muted alone", as
   assertLength(title.towers, 0, "the tower roster");
   assertLength(title.surge, 0, "the surge roster");
   assertEqual(title.waveSpawning, true, "waveSpawning, turned back on");
+  assertNull(title.spawnVent, "spawnVent, cleared");
   assertEqual(
     Math.abs(title.simTime) < SIM_TIME_TOLERANCE,
     true,

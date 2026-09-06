@@ -37,7 +37,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
-import { DEFAULT_SEED, modeFigures } from "../constants";
+import { modeFigures } from "../constants";
 import { freeSite } from "../fixtures";
 import {
   captureStill,
@@ -89,6 +89,7 @@ async function poseADivergentRun(): Promise<void> {
   await debug.setWavePending(17);
   await debug.setSpeed(2);
   await debug.setWaveSpawning(false);
+  await debug.setSpawnVent("top");
 
   const site = freeSite(0);
   const tower = await poseTower(h, "lance", site.col, site.row);
@@ -155,6 +156,7 @@ it("restores every declared field to its title value", async () => {
   assertLength(s.towers, 0, "reset empties the tower roster");
   assertLength(s.surge, 0, "reset empties the surge roster");
   assertEqual(s.waveSpawning, true, "reset turns the world gate back on");
+  assertEqual(s.spawnVent, null, "reset clears the vent pose");
 });
 
 it("leaves muting exactly as it stands, both ways", async () => {
@@ -174,7 +176,7 @@ it("leaves muting exactly as it stands, both ways", async () => {
   await tapAction(h, "mute");
   const pressed = (await h.snapshot()).muted;
   await poseADivergentRun();
-  await h.debug.reset(DEFAULT_SEED);
+  await h.debug.reset();
   assertEqual(
     (await h.snapshot()).muted,
     pressed,

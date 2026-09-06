@@ -206,7 +206,7 @@ export const ONSLAUGHT_SECONDS = 70;
  * COARSER THAN THE SUITE'S `120`, AND THE REASON IS COST RATHER THAN
  * MEASUREMENT. The specification "deliberately fixes no timestep ... an interval
  * of game time reaches the same state however it was divided into frames"
- * (specs/waves.md), and `instrumentation.deterministic-core` is the point that
+ * (specs/waves.md), and `instrumentation.render-free-core` is the point that
  * grades that claim, so a scenario is free to choose how finely it dices the game
  * time it needs. What this one needs is seventy seconds OF GAME TIME, which at the
  * suite's clock is eight thousand four hundred frames, each of them a full update

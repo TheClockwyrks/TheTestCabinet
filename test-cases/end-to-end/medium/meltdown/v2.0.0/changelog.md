@@ -191,8 +191,8 @@ Seven rules `v1.0.0` left to each build to invent, or left contradicting
 themselves, could not be checked as they stood. Each is now stated exactly, and
 every value chosen sits inside what `v1.0.0` described.
 
-The wave composition, size and cadence are closed forms with a seeded per-unit
-vent draw, where `v1.0.0` said the per-wave count, spawn timing and vent split
+The wave composition, size and cadence are closed forms with a per-unit vent
+draw, where `v1.0.0` said the per-wave count, spawn timing and vent split
 were the build's to design. The Hundred's flat HP factor and its hundred-unit
 composition are stated. Bottleneck's "marked central zone" is stated as exact
 columns and rows. The order heat flows resolve in within a frame is stated as a
