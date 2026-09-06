@@ -30,8 +30,10 @@
 // that differs between them. That is what makes a difference in the bar
 // attributable to the lives readout rather than to anything the build animates
 // there: a difference cannot be the clock, because the clock reads the same in
-// all three — and `reset` seeds the randomness (`specs/instrumentation.md`), so
-// it cannot be a build's randomly placed ornament either.
+// all three — and it cannot be anything the game draws at random, because all
+// of that is the strait's (the lanes' phases, `specs/ice.md` and
+// `specs/water.md`; the bonus bay, `specs/bays.md`) and nothing drawn on the
+// strait is drawn inside the HUD bar (`specs/ui.md`).
 //
 // ONLY THE HUD BAR IS READ, over `y` in `[0, HUD_H]` (`specs/strait.md`), so
 // nothing the build draws on the strait — where `specs/ui.md` puts no readout —
