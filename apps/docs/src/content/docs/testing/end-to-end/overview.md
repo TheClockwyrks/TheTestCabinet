@@ -434,7 +434,7 @@ Every end-to-end test case must satisfy the following.
 - It must be possible to specify behavior precisely enough that a validator can
   decide every review point from the spec.
 - It must mandate the instrumentation that lets a run be validated
-  automatically: a debug API on a case-specific global, a deterministic core
+  automatically: a debug API on a case-specific global, a render-free core
   beneath it, and a read-only debug overlay. The debug API is a hard
   requirement; a build that does not expose the contract the case declares fails
   the checklist points that contract backs. See

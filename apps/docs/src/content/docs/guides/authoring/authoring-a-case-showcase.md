@@ -37,7 +37,7 @@ learns what the validator checked, not what the game is.
 
 Showcase media comes from the variant's reference implementation, and what it
 shows must be something the game actually did. Driving the game is expected —
-a scripted player, a staged solve path, a chosen seed — but every outcome on
+a scripted player, a staged solve path — but every outcome on
 screen arises from the game's own rules under that input. Arranging the input
 is authoring; posing the outcome through the debug surface is fabrication.
 
@@ -55,10 +55,9 @@ to other cases:
   opponent. Where the player needs to be good, plan its inputs through the
   build's exported rules (simulate candidate returns through the game's own
   physics and AI) rather than by relaxing the game.
-- Capture is deterministic: a fixed seed replays the identical session. Audition
-  several takes with the recorder off — varying the seed and the player's shot
-  rotation — judge them on points landed, action cadence, the longest lull, and
-  a clean ending, then re-run the winning take under the recorder.
+- Audition several takes under the recorder, varying the player's shot
+  rotation, and judge them on points landed, action cadence, the longest lull,
+  and a clean ending. Keep the winning take and discard the rest.
 - End the clip on a settled beat, such as the hold after a point, rather than
   mid-flight.
 

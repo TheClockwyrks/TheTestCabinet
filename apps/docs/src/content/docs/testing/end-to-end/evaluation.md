@@ -37,7 +37,7 @@ its similarity against the reference baseline. The result is a similarity signal
 recorded with the run rather than a strict match requirement, and a view that
 cannot be reached or captured is recorded as not reached. Because driving an
 arbitrary implementation into a deep state is unreliable, most cases check only
-a few deterministic views even though they seed more references as targets.
+a few stable views even though they seed more references as targets.
 
 ## Proofs
 
@@ -59,8 +59,8 @@ scenario the harness constructed, and it backs an automatically decided verdict.
 
 An end-to-end case requires the build to ship
 [instrumentation](/testing/end-to-end/instrumentation/): a debug API that puts
-the game into a precise state and reports the state it is in, a deterministic
-core that makes that reproducible, and a read-only debug overlay. This is what
+the game into a precise state and reports the state it is in, a render-free
+core that lets the harness step it, and a read-only debug overlay. This is what
 lets validation reach past gross failures. For an objective review item, the
 harness resets the build to a known start, calls the case's control operations
 to establish the item's precondition, steps the real simulation forward, and

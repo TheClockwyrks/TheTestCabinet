@@ -103,6 +103,29 @@ applies to each one. Setting the score to `10–8` is a precondition; an
 operation that ends the match is an outcome, and the outcome is what the
 validator observes after the real systems run.
 
+### Random draws are posed as outcomes
+
+Where the specs state a draw as a distribution, the debug API carries an
+operation that sets the outcome the draw decides. A spec saying an enemy type is
+drawn uniformly over the roster at each spawn gives the API `spawnEnemy(type, x,
+y)`; a spec saying a hit crits with probability 0.1 gives it
+`setNextHitCrit(crit)`; a spec dealing a shuffled board gives it an operation
+that deals an exact one. The operation decides what the draw would have
+decided, and the systems that follow from it run for real.
+
+Where the game keeps drawing on its own, the API carries a gate that stops the
+automatic draw while a scenario is posed, such as `setSpawning(enabled)`, which
+a validator switches off before it spawns by hand. The gate is a field of the
+declared state like any other, reported by `snapshot()` and reset with the
+rest.
+
+The API exposes the game's random behavior through nothing else. It carries no
+seed on `reset`, no operation that seeds or skips draws, and no generator state
+in the declared state, because each of those makes how a build draws a
+requirement, where the specs state only what it draws. A posed outcome is a
+precondition, and an operation posing one is graded under the case's
+instrumentation items like every other control operation.
+
 ## Validators
 
 ### Validators assert the specification, not the reference
@@ -365,6 +388,32 @@ than past it. What it varies instead is the host: the frame lengths a real
 machine delivers are the case's to state and the validator's to drive, because
 the frame is the world's, not the ball's.
 
+### Validators pose what the game would draw
+
+A validator whose requirement touches a random draw poses the outcome through
+the [operation the API carries for it](#random-draws-are-posed-as-outcomes),
+switches off any gate that would draw over it, runs the real systems, and reads
+the result. It seeds nothing, reads no generator state, counts no draws, never
+compares two runs for sameness, and never searches for the input that produces
+an outcome. Each of those grades how a build draws, which the specs leave to the
+build.
+
+A figure the simulation integrates is compared within the tolerance the spec's
+precision allows, such as within `0.1` of the expected value or a named
+tolerance in the project's `constants.ts`, wherever floating point could put two
+correct builds a rounding apart. Exact equality is for figures the specs state
+exactly: a count, a phase, a dealt card. A validator finishes in seconds, so
+drift over a longer run is never what it measures.
+
+A requirement that is itself a probability, such as a destroyed derelict
+shedding a pod with probability `0.25`, may be decided by a bounded sample. The
+debug API carries an operation that performs that one draw alone and nothing
+else, the validator calls it enough times to finish in seconds, and the
+acceptance band is at least six standard deviations wide, so a build honoring
+the stated probability never fails on chance. Wherever the probability is not
+what the item grades, the item is restated as a posed outcome instead, and the
+sample stays unused.
+
 ### Every produced file loads
 
 The produced files are a requirement of the build rather than a condition a
@@ -514,8 +563,8 @@ it reaches.
 Frames are what a validator spends, so it poses the state its requirement needs
 and reads the result. A scenario that sits minutes of play away is posed through
 the debug API rather than simulated toward, a requirement behind a timer sets the
-timer and advances past it, and a requirement about a seeded random draw chooses
-the seed that produces the case it is about. An integration validator is the one
+timer and advances past it, and a requirement about a random draw poses the
+outcome it is about through the debug API. An integration validator is the one
 shape that replays a game end to end, and it carries that cost because the replay
 is the requirement.
 
@@ -568,6 +617,17 @@ When designing or revising a case's debug API and validators:
   implementation, and every spec-honoring design passes.
 - Every threshold a check compares against is a figure the specs state, and a
   check wanting one they do not state is deleted or its figure is specified.
+- Every random draw a validator touches has an operation posing its outcome,
+  and a gate stops any draw the game would make on its own while a scenario is
+  posed.
+- No operation seeds, skips, or counts draws, and neither the declared state
+  nor `snapshot()` carries generator state.
+- No validator seeds, reads generator state, counts draws, compares two runs
+  for sameness, or searches for the input that produces an outcome.
+- A figure the simulation integrates is compared within a stated tolerance, and
+  a requirement that is itself a probability is sampled through an operation
+  performing that one draw, inside a band at least six standard deviations
+  wide.
 - No item decides behavior the engine owns, and an item that is the build's work
   under one engine alone carries `engines` naming it.
 - Every figure a suite asserts comes from the project's own `constants.ts`,

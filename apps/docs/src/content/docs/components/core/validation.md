@@ -69,7 +69,7 @@ from `@napi-rs/canvas` in the test process, a 3D engine's from
 `document.createElement("canvas")` in a headless Chromium page), a clock that
 supplies a scripted sequence of deltas, the engine's own initialization, and an
 exact number of frames stepped one call at a time. A scenario therefore runs
-reproducibly with nothing to wait for. Setup runs the real game forward, so a
+with nothing to wait for. Setup runs the real game forward, so a
 validator poses a situation through the game's own update and reads the outcome
 back from the state that update left.
 
@@ -289,7 +289,7 @@ captures its media from them, from a scenario the case controls.
 
 A run under no engine decides its objective points by driving the case's required
 [instrumentation](/testing/end-to-end/instrumentation/): the debug API the build
-installs on a case-specific global, backed by a deterministic core. This is what
+installs on a case-specific global, backed by a render-free core. This is what
 lets it check requirements a screenshot cannot. A script resets the build to a
 known state, calls the case's control operations to set up a verdict's
 precondition, steps the real simulation forward, and reads the outcome back from
