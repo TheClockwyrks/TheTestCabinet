@@ -123,8 +123,24 @@ function newLines(
 /** The separators a build may draw between the digit triples of a figure. */
 const GROUP = "[,'\\u00A0\\u202F\\u2009]";
 
-/** One drawn figure: digits grouped in threes, or a plain run of digits. */
-const FIGURE = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
+/**
+ * One drawn figure: digits grouped in threes, or a plain run of digits.
+ *
+ * THE GROUPED ALTERNATIVE MAY NOT OPEN INSIDE ANOTHER NUMBER, which is what the
+ * lookbehind is for. A separator this panel draws between two figures is a
+ * separator a figure may also be grouped with — the foe line spells a position
+ * as `176.0,192.0`, and without the guard the grouped form opens on the `0` of
+ * `176.0`, swallows `,192` as a digit triple and reports the figure `0192`. The
+ * y of that position is then nowhere in the reading, and a build that drew it
+ * plainly fails for the comma it put between its two coordinates. Refusing to
+ * open where a digit or a decimal point stands leaves `176`, `0`, `192` and `0`,
+ * which is what the line spells, while `SCORE 4,271` — where nothing precedes
+ * the `4` — still reads as the one figure `4271`.
+ */
+const FIGURE = new RegExp(
+  `(?<![\\d.])\\d{1,3}(?:${GROUP}\\d{3})+(?!\\d)|\\d+`,
+  "g",
+);
 
 /**
  * Every maximal run of digits the lines carry, with any grouping taken out.
@@ -136,13 +152,23 @@ const FIGURE = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
  * panel's lines are read as the build drew them, and a line reading `40 130`
  * drew the two figures `40` and `130`, not `40130`. Nor is the decimal point, so
  * a line drawing `1.5` still reads out `1` and `5` rather than one figure.
+ *
+ * A SEPARATED RUN IS READ BOTH WAYS, because which of the two it is cannot be
+ * told from the line. specs/instrumentation.md has the build report a foe's
+ * POSITION, and a build is free to spell that pair `176,192` — the same
+ * characters a build grouping a thousand would draw for the single figure
+ * `176192`. Nothing on the panel distinguishes them, so both readings are
+ * offered: the joined figure and each of its groups. A value the panel really
+ * carries is then found however the build set it, and the cost is only that a
+ * grouped figure also answers for its own groups, which the posed board keeps
+ * harmless by giving no two asserted values a figure in common.
  */
 function digitRuns(lines: readonly string[]): string[] {
-  return lines.flatMap(
-    (line) =>
-      line
-        .match(FIGURE)
-        ?.map((run) => run.replace(new RegExp(GROUP, "g"), "")) ?? [],
+  return lines.flatMap((line) =>
+    (line.match(FIGURE) ?? []).flatMap((run) => {
+      const parts = run.split(new RegExp(GROUP, "g"));
+      return parts.length > 1 ? [parts.join(""), ...parts] : parts;
+    }),
   );
 }
 
