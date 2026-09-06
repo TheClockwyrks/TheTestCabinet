@@ -18,8 +18,9 @@
 // passes one reading, and so does a build whose draw is nearly always right. The
 // check slings 5 Smalls through the star, one after another on a field emptied
 // between each, and holds every one of the 5 entry speeds against the window.
-// Nothing is reseeded between them, so each is a fresh draw off the generator's
-// running state (`specs/instrumentation.md`).
+// Nothing is posed for the speed: `setNextRockSpeed` is how a check that wants a
+// particular one gets it, and this check wants the build's own draw, made afresh at
+// each re-entry (`specs/rocks.md`).
 //
 // THE WINDOW IS THE SPECIFICATION'S AND THE TOLERANCE IS THE REVIEW ITEM'S, two
 // percent, which is `2.6` units per second below `130` and `4.2` above `210`. That

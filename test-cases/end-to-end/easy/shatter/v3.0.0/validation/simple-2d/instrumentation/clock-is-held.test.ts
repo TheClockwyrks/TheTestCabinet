@@ -15,7 +15,7 @@
 //   2. READING THE GAME DOES NOT MOVE IT. `specs/instrumentation.md` makes
 //      `snapshot()` "a pure read of the state" that "changes nothing", and this
 //      project reads the game through it hundreds of times per scenario. A
-//      `snapshot` that stepped a timer, consumed a queue, or reseeded the generator
+//      `snapshot` that stepped a timer, consumed a queue, or moved a clock
 //      on its way past would make every one of those readings a different reading
 //      from the one before it. So the same field is read many times over and the
 //      last reading is held against the first, exactly.

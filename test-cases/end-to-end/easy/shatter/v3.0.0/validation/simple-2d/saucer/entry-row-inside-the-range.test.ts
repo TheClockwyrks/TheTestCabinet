@@ -4,7 +4,7 @@
 // THE RULE. `specs/saucer.md`: a saucer enters "at a `y` drawn uniformly from
 // `SAUCER_R` to `FIELD_H - SAUCER_R`". The bound alone is this point's; that the
 // rows also SPREAD across that range is `saucer/enters-at-a-random-row`'s, read off
-// the same sixteen arrivals.
+// the same forty arrivals.
 //
 // THE BOUND IS THE RANGE ITSELF, not a tolerance around an observed one:
 // `[SAUCER_R, FIELD_H - SAUCER_R]` is `[18, 702]`, and half a unit of float slack is
@@ -14,14 +14,14 @@
 // WHICH WRONG MODEL THIS DECIDES, PLAINLY. It fails a build that puts a saucer
 // where half the craft is off the field — most sharply one drawing over the whole
 // `[0, FIELD_H]`, or clamping to `0`, or entering at a fixed `y` outside the band.
-// It is worth saying what it only SOMETIMES catches: sixteen draws over `[0, 720]`
-// each land outside `[18, 702]` with probability `36/720` = `1/20`, so sixteen of
-// them catch that particular build about `56` percent of the time. Sixteen is what
+// It is worth saying what it only SOMETIMES catches: forty draws over `[0, 720]`
+// each land outside `[18, 702]` with probability `36/720` = `1/20`, so forty of
+// them catch that particular build about `87` percent of the time. Forty is what
 // the spread half needs and what the arrivals cost; nothing here pretends the
 // reading is a certainty against a draw that is only slightly too wide, and a build
 // entering at `y = 0` on every arrival fails on the first one.
 //
-// SIXTEEN ARRIVALS UNDER FOUR SEEDS, four apiece, so the reading covers LATER
+// FORTY ARRIVALS OVER FOUR GAMES, ten apiece, so the reading covers LATER
 // arrivals as well as first ones. The gather is in `./rows`, shared with the spread
 // item, and the range is asserted PER ARRIVAL so a build that enters off the field
 // once fails on that one rather than being averaged out.
@@ -64,7 +64,7 @@ it("draws every entry row from inside the stated range", async () => {
       row.y,
       ROW_MIN - ROW_EPSILON,
       ROW_MAX + ROW_EPSILON,
-      `the entry row of saucer ${row.id} (seed ${row.seed}) against the ` +
+      `the entry row of saucer ${row.id} (game ${row.game + 1}) against the ` +
         `[SAUCER_R, FIELD_H - SAUCER_R] = [${ROW_MIN}, ${ROW_MAX}] a saucer's y ` +
         "is drawn uniformly from (specs/saucer.md)",
     );

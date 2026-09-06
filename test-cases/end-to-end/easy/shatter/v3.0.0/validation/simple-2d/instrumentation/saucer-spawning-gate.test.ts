@@ -23,9 +23,8 @@
 // AND THE CLOCK IS PUT BACK TO THE START OF A GAME'S CADENCE FIRST.
 // `specs/instrumentation.md` has `reset` return "the saucer's arrival clock to the
 // start of a game's cadence", so both legs are measured from a known zero rather
-// than from wherever the harness's own initialization left it. The seed is fixed
-// too, since `specs/saucer.md` draws the later gaps at random and a check should
-// not turn on which numbers a build happened to draw.
+// than from wherever the harness's own initialization left it. The first arrival
+// is the one watched for, and `specs/saucer.md` fixes when it comes.
 //
 // The field is otherwise empty and the wave loop is shut, so nothing but the gate
 // can put a body on it.
@@ -39,9 +38,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-
-/** The seed both legs are opened on, so neither turns on a lucky draw. */
-const SEED = 5;
 
 /**
  * The game time each leg watches for, in ticks: the minute the item names.
@@ -58,7 +54,7 @@ let h: Harness;
 
 /** Open a quiet, empty run at the start of a game's saucer cadence. */
 function openRun(gate: boolean): void {
-  h.debug.reset({ seed: SEED });
+  h.debug.reset();
   startPlaying(h);
   h.debug.setSaucerSpawning(gate);
 }

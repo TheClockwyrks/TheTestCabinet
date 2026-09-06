@@ -54,6 +54,7 @@ import {
 } from "../harness";
 import {
   BULLET_FIELDS,
+  POSED_DRAW_FIELDS,
   ROCK_FIELDS,
   SAUCER_FIELDS,
   SHIP_FIELDS,
@@ -134,6 +135,11 @@ it("reports the whole documented snapshot shape over a populated field", async (
 
   // Every top-level field the document lists, with the type it gives it.
   assertShape(s, SNAPSHOT_FIELDS, "snapshot()");
+  // And the five posed draws, present and `null` while no pose stands.
+  for (const field of POSED_DRAW_FIELDS) {
+    assertHasProperty(s, field, `snapshot().${field}`);
+    assertEqual(s[field], null, `snapshot().${field} with no pose standing`);
+  }
   assertContains(SCREENS, s.screen, "snapshot().screen");
 
   // The ship, and the reading built from the velocity beside it.

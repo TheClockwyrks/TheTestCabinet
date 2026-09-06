@@ -66,7 +66,9 @@ it("fires the next shot with the posed aim error and consumes the pose", async (
   for (const [index, errorDeg] of POSED_ERRORS_DEG.entries()) {
     await h.debug.setNextSaucerAim(errorDeg * DEG);
     assertEqual(
-      Math.abs(((await h.snapshot()).nextSaucerAim ?? Number.NaN) - errorDeg * DEG) < 1e-9,
+      Math.abs(
+        ((await h.snapshot()).nextSaucerAim ?? Number.NaN) - errorDeg * DEG,
+      ) < 1e-9,
       true,
       `setNextSaucerAim(${errorDeg} degrees) read back before the shot (specs/instrumentation.md)`,
     );

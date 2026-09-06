@@ -20,11 +20,12 @@
 // the star from the tick it exists, so the reading is taken on the first tick the
 // roster is not empty and carries one tick of travel as its only slack.
 //
-// TEN SEEDS, BECAUSE THE PLACEMENT IS A DRAW. `specs/simulation.md` lists a wave's
-// rock positions among the game's seeded draws, so one wave is one sample: a build
-// that places rocks anywhere at all satisfies the rule on some waves by luck. Ten
-// games at wave 10 is a hundred and thirty independent placements, and the verdict
-// is the CLOSEST of all of them.
+// TEN GAMES, BECAUSE THE PLACEMENT IS A DRAW. `specs/simulation.md` lists a wave's
+// rock positions among the draws the game makes, so one wave is one sample: a
+// build that places rocks anywhere at all satisfies the rule on some waves by
+// luck. Ten games at wave 10 is a hundred and thirty independent placements, and
+// the verdict is the CLOSEST of all of them. Nothing poses a position: the
+// placement is the build's own draw, read where it lands.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROCK_SPEED_MAX, TICK_DT, WAVE_MIN_STAR_DIST } from "../constants";
@@ -43,8 +44,8 @@ import {
 const POSED_WAVE = 9;
 const ARRIVING_WAVE = POSED_WAVE + 1;
 
-/** The seeds the placement is sampled on. `specs/simulation.md` seeds the draw. */
-const SEEDS = [21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
+/** How many games the placement is sampled on. */
+const GAMES = 10;
 
 /**
  * How far inside the stated clearance a rock may read: two logical units.
@@ -74,17 +75,17 @@ afterEach(() => {
 });
 
 it("spawns every rock of a wave at least 200 from the star", async () => {
-  let closest = { seed: -1, distance: Number.POSITIVE_INFINITY, what: "" };
+  let closest = { game: -1, distance: Number.POSITIVE_INFINITY, what: "" };
 
-  for (const seed of SEEDS) {
-    h.debug.reset({ seed });
+  for (let game = 1; game <= GAMES; game += 1) {
+    h.debug.reset();
     const cleared = await clearAWave(h, { wave: POSED_WAVE });
     const arrival = await arrivedWave(h, cleared);
 
     for (const rock of arrival.rocks) {
       const distance = starClearance(rock);
       if (distance < closest.distance) {
-        closest = { seed, distance, what: describeRock(rock) };
+        closest = { game, distance, what: describeRock(rock) };
       }
     }
   }
@@ -94,10 +95,10 @@ it("spawns every rock of a wave at least 200 from the star", async () => {
     closest.distance,
     FLOOR,
     `the shortest wrapped separation from the star at ${STAR_AT} of the ` +
-      `closest rock of ${SEEDS.length} wave-${ARRIVING_WAVE} spawns, which ` +
+      `closest rock of ${GAMES} wave-${ARRIVING_WAVE} spawns, which ` +
       `specs/progression.md puts at WAVE_MIN_STAR_DIST ` +
-      `(${WAVE_MIN_STAR_DIST}); the closest was ${closest.what} on seed ` +
-      `${closest.seed}`,
+      `(${WAVE_MIN_STAR_DIST}); the closest was ${closest.what} in game ` +
+      `${closest.game}`,
   );
 });
 

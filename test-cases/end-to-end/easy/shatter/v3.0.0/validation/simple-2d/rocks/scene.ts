@@ -27,7 +27,6 @@ import {
   STAR_X,
   STAR_Y,
 } from "../constants";
-import { DEFAULT_SEED } from "../surface";
 import { fail } from "../assert";
 import {
   directDistanceToStar,
@@ -175,11 +174,8 @@ export const MOST_HITS = 3;
  * that is why this route never calls `startPlaying`, and why it is the only place
  * in this group where the game's own wave loop runs at all.
  */
-export async function startGameFromTitle(
-  h: Harness,
-  seed: number = DEFAULT_SEED,
-): Promise<void> {
-  h.debug.reset({ seed });
+export async function startGameFromTitle(h: Harness): Promise<void> {
+  h.debug.reset();
   await tapAction(h, "confirm");
 }
 

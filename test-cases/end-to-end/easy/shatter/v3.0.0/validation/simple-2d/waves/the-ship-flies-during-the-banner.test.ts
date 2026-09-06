@@ -72,12 +72,11 @@ const THRUST_TICKS = ticksFor(THRUST_SECONDS);
 /**
  * How far the two speeds may differ: one percent, and half a unit either way.
  *
- * `specs/simulation.md` makes the game deterministic — "given the same seed and the
- * same sequence of calls and elapsed game time, the game reaches the same state
- * every time" — and the two runs here ARE the same sequence of calls, so a
- * conformant build produces the same number twice and this is insurance against a
- * float that made a round trip through JSON rather than a real allowance. A build
- * that freezes the ship under the banner misses by a hundred percent.
+ * The two runs here are the same sequence of calls over the same empty field, and
+ * `specs/simulation.md` fixes the timestep and the order of work inside a tick, so
+ * a conformant build produces the same number twice and this is insurance against
+ * a float that made a round trip through JSON rather than a real allowance. A
+ * build that freezes the ship under the banner misses by a hundred percent.
  */
 const MATCH_TOLERANCE = 0.01;
 const MATCH_FLOOR = 0.5;

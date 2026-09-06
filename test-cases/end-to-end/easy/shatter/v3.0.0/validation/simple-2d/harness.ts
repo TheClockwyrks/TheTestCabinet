@@ -469,11 +469,7 @@ export type PointerDevice = "mouse" | "pen" | "touch";
 
 /** The buttons a pointer may hold, as the engine names them. */
 export type PointerButton =
-  | "primary"
-  | "secondary"
-  | "auxiliary"
-  | "back"
-  | "forward";
+  "primary" | "secondary" | "auxiliary" | "back" | "forward";
 
 /** How one dispatched pointer event is shaped. */
 export interface PointerOptions {
@@ -1246,9 +1242,8 @@ const SIZE_ORDER: readonly RockSize[] = ["small", "medium", "large"];
 /**
  * The smallest rock on the field, ties broken by the lowest id.
  *
- * Deterministic on purpose: a scenario that shoots the field down has to make
- * the same choices twice for a seeded replay to reproduce, and "smallest" alone
- * does not order two Smalls.
+ * The tie-break is part of the rule: "smallest" alone does not order two Smalls,
+ * and a scenario that shoots the field down names one target per round.
  */
 export function smallestRock(snapshot: ShatterSnapshot): RockSnapshot {
   let best: RockSnapshot | undefined;
@@ -1448,8 +1443,8 @@ export function clearWorld(h: Harness): void {
  * that follows owns the clock from tick zero and `simTime` is untouched. A check
  * that wants the game to have drawn — a pixel read, a still — advances first.
  *
- * It does not call `reset` either. A check that needs a seeded, title-screen
- * ground calls `h.debug.reset({ seed })` itself, and a check that reaches its
+ * It does not call `reset` either. A check that needs a title-screen ground
+ * calls `h.debug.reset()` itself, and a check that reaches its
  * scenario through a real title-to-`PLAY` start does not call this at all: after
  * a `reset` both world gates are ON, which is how `waves/wave-one-spawns-four`
  * and `screens/play-starts-a-game` reach a real opening wave.

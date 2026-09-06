@@ -343,7 +343,7 @@ source = "specs/audio.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every variant must expose: a deterministic,
+# The debugging and automation surface every variant must expose: a render-free,
 # steppable core; an API to drive and inspect the game from code; and a read-only
 # debug overlay. Framed as an ordinary developer affordance of the game. It
 # branches on the engine for how the surface is reached and what shape its

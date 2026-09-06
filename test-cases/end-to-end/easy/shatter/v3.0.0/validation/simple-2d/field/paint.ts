@@ -22,22 +22,23 @@
 // crossing a body meets an outline twice however it is drawn and covers a filled
 // body along its whole chord, and one reading therefore serves both looks.
 //
-// WHY THE CONTROL IS THE SAME SEEDED GAME FLOWN TWICE. There is no colour to hold
+// WHY THE CONTROL IS THE SAME EMPTY GAME FLOWN TWICE. There is no colour to hold
 // a reading against, so the only honest baseline for "did the build draw a body
 // here" is the same canvas, at the same tick of the same game, without that body.
 // {@link paintedWithAndWithout} runs the scenario twice, each run opening with
-// `reset({ seed })` — which `specs/instrumentation.md` returns every declared
-// field to its title value and `simTime` to `0`, and which reseeds every draw the
-// game makes — so the two frames hold the same world at the same moment and
-// differ only by the thing being looked for. Anything the build legitimately
-// paints over its field (a vignette, a starfield, a HUD readout, a pulsing halo)
-// is painted identically in both and cancels.
+// `reset()` — which `specs/instrumentation.md` returns every declared field to
+// its title value and `simTime` to `0` — and `startPlaying`, which empties the
+// field and shuts every spawner. The field holds no rock, no round and no saucer,
+// so the game makes no draw between the reset and the reading, the two frames
+// hold the same world at the same moment, and they differ only by the thing being
+// looked for. Anything the build legitimately paints over its field (a vignette, a
+// starfield, a HUD readout, a pulsing halo) is painted identically in both and
+// cancels.
 //
 // NO THRESHOLD LIVES HERE. What counts as "changed" and how many changed pixels a
 // verdict takes are each check's own figures, stated in the check beside the
 // specification rule they serve.
 
-import { DEFAULT_SEED } from "../surface";
 import { startPlaying, type Harness, type Rgb } from "../harness";
 
 /** One whole frame of the backing store, as raw RGBA bytes. */
@@ -148,8 +149,8 @@ export function changedOver(
 }
 
 /**
- * Flow the same posed, seeded game twice — once with `pose` applied and once
- * without — and hand back the frame each left on the canvas.
+ * Flow the same posed game twice — once with `pose` applied and once without —
+ * and hand back the frame each left on the canvas.
  *
  * The BARE run goes first, so the frame still on the canvas when this returns is
  * the one holding what the check is about, which is the frame `captureStill`
@@ -161,7 +162,7 @@ export async function paintedWithAndWithout(
   ticks: number,
 ): Promise<{ bare: Frame; drawn: Frame }> {
   const run = async (posed: boolean): Promise<Frame> => {
-    h.debug.reset({ seed: DEFAULT_SEED });
+    h.debug.reset();
     startPlaying(h);
     if (posed) pose();
     await h.advance(ticks);

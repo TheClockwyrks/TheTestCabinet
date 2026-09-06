@@ -28,11 +28,13 @@
 // reading against: the only honest control is the same canvas, at the same moment
 // of the same game, without the thing being looked for. {@link trailLane} flies
 // the scenario once with the round and once without, and each run begins with
-// `reset({ seed })` — which `specs/instrumentation.md` returns every declared
-// field to its title value and `simTime` to `0`, and which reseeds every draw the
-// game makes. The two runs therefore reach the same tick of the same seeded game
-// holding the same world, and specs/simulation.md's render-free core makes the
-// two frames identical but for the round and its tail. Nothing the build draws
+// `reset()` — which `specs/instrumentation.md` returns every declared field to
+// its title value and `simTime` to `0` — and `startPlaying`, which empties the
+// field and shuts every spawner. The field holds no rock, no round and no saucer,
+// so the game makes no draw between the reset and the reading; the two runs
+// therefore reach the same tick of the same game holding the same world, and
+// specs/simulation.md's render-free core makes the two frames identical but for
+// the round and its tail. Nothing the build draws
 // from the clock — a blinking readout, a pulsing halo, a HUD wherever it chose to
 // put it — can read as a trail, because it is drawn identically in both.
 //
@@ -46,7 +48,6 @@
 // and still be one streak, and how long a tail must be are each check's own
 // figures, stated in the check beside the specification rule it serves.
 
-import { DEFAULT_SEED } from "../surface";
 import { foldX } from "../geometry";
 import { fail } from "../assert";
 import { poseBullet, startPlaying, type Harness } from "../harness";
@@ -122,8 +123,8 @@ export interface TrailReading {
  * Fly `flight` along `lane` twice — once with the round on the field and once
  * with the field bare — and read the band at the end of each.
  *
- * Each run opens with `reset({ seed })` and `startPlaying`, so the two reach the
- * same tick of the same seeded game with the same world, and the only difference
+ * Each run opens with `reset()` and `startPlaying`, so the two reach the same
+ * tick of the same game with the same world, and the only difference
  * between the two frames is the round this reads.
  *
  * The bare run goes FIRST, so the reading the check is about is the frame left on
@@ -135,7 +136,7 @@ export async function trailLane(
   flight: Flight,
 ): Promise<TrailReading> {
   const run = async (round: boolean): Promise<Lane> => {
-    h.debug.reset({ seed: DEFAULT_SEED });
+    h.debug.reset();
     startPlaying(h);
     if (round) poseBullet(h, flight.x, lane.y, flight.speed, 0);
     await h.advance(flight.ticks);

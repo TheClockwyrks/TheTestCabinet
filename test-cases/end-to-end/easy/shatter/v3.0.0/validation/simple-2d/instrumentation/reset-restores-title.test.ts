@@ -19,9 +19,13 @@
 // would then pass this point on the strength of its omission while one that wrote
 // the torpedo and forgot to clear it would fail.
 //
-// AND WHY MUTE IS THE ONE EXCEPTION. `specs/instrumentation.md` says `options.seed`
-// seeds the randomness and that "`muted` is left exactly as it stands; muting is
-// the runtime's". Under this engine the bit itself belongs to the engine's audio
+// THE POSED DRAWS ARE DECLARED FIELDS TOO. `specs/instrumentation.md` has `reset`
+// return every one of them to `null`, so each is posed before the reset and read
+// back empty after it, beside the rest of the declared state.
+//
+// AND WHY MUTE IS THE ONE EXCEPTION. `specs/instrumentation.md` says that
+// "`muted` is left exactly as it stands; muting is the runtime's". Under this
+// engine the bit itself belongs to the engine's audio
 // bus and the snapshot reports the game's copy of it, refreshed in every update. So
 // the sound is turned off through the action `specs/controls.md` binds — the way a
 // player turns it off — before the reset, and it is read back BOTH at once and a
@@ -77,6 +81,11 @@ const BULLET_PLACE = { x: 260, y: 620 } as const;
 const ENEMY_BULLET_PLACE = { x: 1020, y: 180 } as const;
 const SAUCER_PLACE = { x: 640, y: 100 } as const;
 
+/** The posed draws the run is dressed in: none of them a value a fresh run holds. */
+const POSED_ROW = 333;
+const POSED_AIM = 0.05;
+const POSED_ROCK_SPEED = 95;
+
 /**
  * The decimal places a restored title figure is read back to.
  *
@@ -116,6 +125,11 @@ it("puts every declared field back to its title value", async () => {
   poseBullet(h, BULLET_PLACE.x, BULLET_PLACE.y, 0, 0);
   poseEnemyBullet(h, ENEMY_BULLET_PLACE.x, ENEMY_BULLET_PLACE.y, 0, 0);
   poseIdleSaucer(h, SAUCER_PLACE.x, SAUCER_PLACE.y);
+  h.debug.setNextSaucerEdge("right");
+  h.debug.setNextSaucerRow(POSED_ROW);
+  h.debug.setNextSaucerAim(POSED_AIM);
+  h.debug.setNextRockSpeed(POSED_ROCK_SPEED);
+  h.debug.setNextRecycleEdge("top");
   await h.advance(1);
 
   // Read with NO tick between the reset and the reading. Under this engine a pose
@@ -148,6 +162,12 @@ it("puts every declared field back to its title value", async () => {
   assertLength(s.bullets, 0, "reset empties the ship's bullets");
   assertLength(s.enemyBullets, 0, "reset empties the saucer bullets");
   assertNull(s.saucer, "reset removes the saucer");
+
+  assertNull(s.nextSaucerEdge, "reset clears the posed entry edge");
+  assertNull(s.nextSaucerRow, "reset clears the posed entry row");
+  assertNull(s.nextSaucerAim, "reset clears the posed aim error");
+  assertNull(s.nextRockSpeed, "reset clears the posed rock speed");
+  assertNull(s.nextRecycleEdge, "reset clears the posed re-entry edge");
 
   assertCloseTo(s.ship.x, SAFE_X, TITLE_DIGITS, "reset returns the ship's x");
   assertCloseTo(s.ship.y, SAFE_Y, TITLE_DIGITS, "and its y");
