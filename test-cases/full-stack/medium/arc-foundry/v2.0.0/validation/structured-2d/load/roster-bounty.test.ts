@@ -24,12 +24,12 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { LOAD_ROSTER } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { bountyFor, openField } from "./vitals";
+import { bountyFor, openField, VITALS_HZ } from "./vitals";
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: VITALS_HZ });
 });
 
 afterEach(() => {

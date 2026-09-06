@@ -23,7 +23,6 @@
 // (specs/instrumentation.md). A wave therefore ends the moment its schedule is
 // exhausted, and the two counters a campaign check reads are untouched on the way.
 
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { assertEqual, assertTruthy, fail } from "../assert";
 import {
   COLLECTOR_WAYPOINT,
@@ -42,7 +41,6 @@ import {
   releaseUnit,
   standComponent,
   startWave,
-  TICK_MS,
   type UnitView,
 } from "../harness";
 
@@ -69,29 +67,31 @@ export const KILL_AT = { x: GUN_CENTER.x + 60, y: GUN_CENTER.y };
 export const LEAK_FROM = tileCenter(46, 20);
 
 /**
- * The frame rate a check that plays whole waves runs at: `40` Hz.
+ * The frame rate a check that plays whole waves runs at: `20` Hz.
  *
- * A run's last wave is half a minute of simulation. The specification fixes no
- * frame size — "an interval of simulation time reaches the same state however it
- * was divided into frames and whatever frame rate produced it" — and nothing
- * these checks read is a projectile, so the one step size this project has to
- * respect does not arise.
+ * A run's last wave is half a minute of simulation, so the rate is what decides
+ * whether such a check costs hundreds of frames or thousands. The specification
+ * fixes no frame size — "an interval of simulation time reaches the same state
+ * however it was divided into frames and whatever frame rate produced it" — and
+ * nothing these checks read is a projectile, so the one step size this project
+ * has to respect does not arise. A `50` ms frame is an ordinary frame for a slow
+ * machine, and a build that cannot be read at it fails
+ * `instrumentation/frame-division-movement`, which is the point that requirement
+ * belongs to.
  */
-export const RUN_HZ = 40;
+export const RUN_HZ = 20;
 
-/** Frames between two samples while a wave is being emptied. */
-export const CLEAR_POLL = RUN_HZ / 2;
+/** Seconds between two samples while a wave is being emptied. */
+const CLEAR_POLL_SECONDS = 0.5;
 
 /**
- * How many frames a sweep for a wave's clear may run.
+ * How long a sweep for a wave's clear may run, in SECONDS of simulation.
  *
- * Three minutes of simulation at `RUN_HZ`, and longer at the coarser rate a caller
- * of `createRunHarness` may have chosen, so it is past any wave this game composes
- * either way. It is a cap on a build with no clear at all rather than a budget
- * anything spends, and it costs the same wall clock whatever the rate, because it
- * counts frames rather than seconds.
+ * Three minutes, counted in frames of whatever clock the caller's harness runs
+ * at, so it is past any wave this game composes at every rate. It is a cap on a
+ * build with no clear at all rather than a budget anything spends.
  */
-const CLEAR_MAX = 180 * RUN_HZ;
+const CLEAR_MAX_SECONDS = 180;
 
 /**
  * A harness whose clock runs at the rate a wave-playing check reads at.
@@ -107,7 +107,7 @@ const CLEAR_MAX = 180 * RUN_HZ;
  * under.
  */
 export function createRunHarness(hz: number = RUN_HZ): Promise<Harness> {
-  return createHarness({ clock: new ConstantClock((TICK_MS * 120) / hz) });
+  return createHarness({ hz });
 }
 
 /** Commit the level's harvest, and check the wave it launched is the one wanted. */
@@ -139,6 +139,8 @@ export interface Cleared {
  * last wave, the finale that follows it.
  */
 export async function clearWave(h: Harness): Promise<Cleared> {
+  const poll = h.ticks(CLEAR_POLL_SECONDS);
+  const cap = h.ticks(CLEAR_MAX_SECONDS);
   let sawFinale = false;
   let frames = 0;
   for (;;) {
@@ -146,16 +148,16 @@ export async function clearWave(h: Harness): Promise<Cleared> {
     if (s.phase === "finale") sawFinale = true;
     if (s.phase !== "wave") return { snapshot: s, sawFinale };
     if (s.units.length > 0) h.debug.clearUnits();
-    if (frames >= CLEAR_MAX) {
+    if (frames >= cap) {
       fail(
         `the live wave to clear once its schedule is exhausted ` +
           `(specs/campaign.md); it was still running after ` +
-          `${CLEAR_MAX} frames`,
+          `${CLEAR_MAX_SECONDS} seconds of simulation`,
         "a wave that never clears",
       );
     }
-    await h.advance(CLEAR_POLL);
-    frames += CLEAR_POLL;
+    await h.advance(poll);
+    frames += poll;
   }
 }
 
@@ -251,13 +253,27 @@ export function onlyUnit(
 }
 
 /**
- * How far a sweep for one unit's kill or leak may run.
+ * The rate a check that drives one kill or one leak covers those events at.
  *
- * `600` frames is five seconds at this project's default clock and fifteen at the
- * slower one above, and the slowest thing either sweep waits on is a Dynamo
+ * Both are readings of an EVENT — the Charge a kill paid, the Grid Integrity a
+ * leak cost — and the frames in between are a walk and a cadence being sat out.
+ * The specification fixes no frame size and guarantees that "an interval of
+ * simulation time reaches the same state however it was divided into frames and
+ * whatever frame rate produced it" (specs/instrumentation.md), so a walk covered
+ * in a sixth of the frames grounds out on the same tile for a sixth of the work.
+ * Nothing either sweep reads is a projectile in flight: the gun is `310` units
+ * from the leak walk, far outside its `100` reach.
+ */
+export const EVENT_HZ = 20;
+
+/**
+ * How far a sweep for one unit's kill or leak may run, in SECONDS.
+ *
+ * Ten seconds of simulation, counted in frames of whatever clock the caller's
+ * harness runs at, and the slowest thing either sweep waits on is a Dynamo
  * walking three tiles at `30` units per second, which is two.
  */
-const SWEEP = 600;
+const SWEEP_SECONDS = 10;
 
 /** Stand the Capacitor a check that needs a kill fires with. */
 export function standGun(h: Harness): number {
@@ -270,7 +286,7 @@ export async function killOne(h: Harness, type: LoadType): Promise<number> {
   const before = h.snapshot().charge;
   const removed = await h.until(
     (s) => !s.units.some((unit) => unit.id === id),
-    { maxFrames: SWEEP, poll: 6 },
+    { maxFrames: h.ticks(SWEEP_SECONDS), poll: 2 },
   );
   assertEqual(
     removed.hit,
@@ -295,7 +311,7 @@ export async function leakOne(
   }
   const grounded = await h.until(
     (s) => !s.units.some((live) => live.id === unit),
-    { maxFrames: SWEEP, poll: 2 },
+    { maxFrames: h.ticks(SWEEP_SECONDS), poll: 1 },
   );
   assertEqual(
     grounded.hit,

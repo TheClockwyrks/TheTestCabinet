@@ -32,7 +32,6 @@ import {
   holdWaveClear,
   openYard,
   releaseUnit,
-  ticks,
 } from "../harness";
 import { motion } from "./region";
 
@@ -63,12 +62,25 @@ const POINTS = ((): Point[] => {
   return points;
 })();
 
-const WINDOW = ticks(0.1);
+/**
+ * The rate this check is driven at.
+ *
+ * EVERY FRAME A PIXEL READING IS TAKEN OVER IS A FRAME THE HOST HAS TO RASTERIZE,
+ * so the frames a span is cut into are what such a check costs. The specification
+ * fixes no frame size and guarantees that "an interval of simulation time reaches
+ * the same state however it was divided into frames and whatever frame rate
+ * produced it" (specs/instrumentation.md), so each span below is the span it
+ * always was and only the number of frames it is divided into is this check's.
+ */
+const ALARM_HZ = 60;
+
+/** The window each reading covers, in seconds of simulation. */
+const WINDOW_SECONDS = 0.1;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: ALARM_HZ });
 });
 
 afterEach(() => {
@@ -79,7 +91,8 @@ it("sets the collector moving when a unit grounds out", async () => {
   openYard(h, { map: "substation", wave: 1 });
   holdWaveClear(h);
   await h.advance(1);
-  const bare = await motion(h, POINTS, WINDOW);
+  const window = h.ticks(WINDOW_SECONDS);
+  const bare = await motion(h, POINTS, window);
 
   // Released heading for the collector and left to walk in on its own legs, so
   // the leak is the game's rather than the reading's.
@@ -90,9 +103,9 @@ it("sets the collector moving when a unit grounds out", async () => {
 
   const played = await captureReplay(h, "leak", async () => {
     const leaked = await h.until((s) => s.integrity < START_INTEGRITY, {
-      maxFrames: ticks(6),
+      maxFrames: h.ticks(6),
     });
-    return { leaked: leaked.hit, moving: await motion(h, POINTS, WINDOW) };
+    return { leaked: leaked.hit, moving: await motion(h, POINTS, window) };
   });
 
   assertEqual(
@@ -106,6 +119,6 @@ it("sets the collector moving when a unit grounds out", async () => {
     bare,
     "the collector to change on more frames after a unit grounds out than it " +
       `did while nothing was there, so a leak alarm is played at it ` +
-      `(specs/assets.md); bare ground changed on ${bare} of ${WINDOW} frames`,
+      `(specs/assets.md); bare ground changed on ${bare} of ${window} frames`,
   );
 });

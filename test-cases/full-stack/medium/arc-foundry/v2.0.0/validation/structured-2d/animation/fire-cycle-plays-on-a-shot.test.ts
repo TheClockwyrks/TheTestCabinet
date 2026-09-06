@@ -45,7 +45,6 @@ import {
   openYard,
   parkUnit,
   standComponent,
-  ticks,
 } from "../harness";
 import { read } from "./region";
 import { type Point, structureCenter } from "../constants";
@@ -57,11 +56,23 @@ const CENTRE = structureCenter(ANCHOR.col, ANCHOR.row);
 /** The held target, ninety units to the `+x` side: inside the Scrap range of 100. */
 const TARGET = { x: CENTRE.x + 90, y: CENTRE.y };
 
-/** Frames of cooldown to settle on before the resting picture is read. */
-const REST_FRAMES = ticks(0.4);
+/**
+ * The rate this check is driven at.
+ *
+ * EVERY FRAME A PIXEL READING IS TAKEN OVER IS A FRAME THE HOST HAS TO RASTERIZE,
+ * so the frames a span is cut into are what such a check costs. The specification
+ * fixes no frame size and guarantees that "an interval of simulation time reaches
+ * the same state however it was divided into frames and whatever frame rate
+ * produced it" (specs/instrumentation.md), so each span below is the span it
+ * always was and only the number of frames it is divided into is this check's.
+ */
+const CYCLE_HZ = 60;
 
-/** Frames of the discharge the reading covers, from the shot's own frame. */
-const CYCLE_FRAMES = ticks(0.25);
+/** Cooldown to settle on before the resting picture is read, in seconds. */
+const REST_SECONDS = 0.4;
+
+/** How much of the discharge the reading covers, from the shot's own frame. */
+const CYCLE_SECONDS = 0.25;
 
 /** The footprint, sampled off the shot's lane: `|dy| >= 8`, inside `+/-16`. */
 function footprintPoints(): Point[] {
@@ -79,7 +90,7 @@ const POINTS = footprintPoints();
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: CYCLE_HZ });
 });
 
 afterEach(() => {
@@ -94,7 +105,7 @@ it("draws the footprint differently while it fires than while it holds fire", as
   // The first shot, so the head is aimed; then the cooldown, where the cycle has
   // run out and the projectile is long gone. That picture is the resting one.
   const first = await h.until((s) => s.projectiles.length > 0, {
-    maxFrames: ticks(2),
+    maxFrames: h.ticks(2),
   });
   assertEqual(
     first.hit,
@@ -102,15 +113,16 @@ it("draws the footprint differently while it fires than while it holds fire", as
     "a Scrap Capacitor with a unit ninety units away to fire within two " +
       "seconds, at its stated 1.6 shots per second (specs/components.md)",
   );
-  await h.advance(REST_FRAMES);
+  await h.advanceSeconds(REST_SECONDS);
   const resting = read(h, POINTS);
 
   const shot = await captureReplay(h, "shot", async () => {
     const next = await h.until((s) => s.projectiles.length > 0, {
-      maxFrames: ticks(2),
+      maxFrames: h.ticks(2),
     });
     const readings: string[] = [read(h, POINTS)];
-    for (let i = 0; i < CYCLE_FRAMES; i += 1) {
+    const cycle = h.ticks(CYCLE_SECONDS);
+    for (let i = 0; i < cycle; i += 1) {
       await h.advance(1);
       readings.push(read(h, POINTS));
     }

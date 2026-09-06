@@ -38,19 +38,25 @@
 // `campaign/final-wave-enters-the-finale`. Nothing about the walk itself is posed:
 // the Dynamo the finale released is followed from the entry to the collector.
 //
-// THE FRAME SIZE IS SET BY THE TIGHTER OF THE TWO TOLERANCES. The route is
-// measured as the sum of the chords between samples, so a sample interval is the
-// only thing that can lose length, and it loses it only where the route turns: a
-// chord across a right-angle corner is short of the two legs by at most
-// `1 - 1/sqrt(2)` of one sample's travel. The chain has seven legs, so at
-// `WALK_HZ` the sum can fall at most `7 * 0.3 * OVERLOAD_SPEED / WALK_HZ` — about
-// eight units — short of the route's `3360`. The figure that has to absorb it is
-// not the route comparison's `3` per cent but the SPEED comparison's half a
-// percent below, so the rate is set against the tighter of the two: the sampling
-// spends about a third of that half percent and leaves the rest of it to the
-// build. The step is well inside the frame-division guarantee
-// specs/instrumentation.md makes and `instrumentation/frame-division-movement`
-// decides, and nothing here reads a projectile.
+// THE FRAME SIZE, AND WHAT THE SAMPLING COSTS THE TWO COMPARISONS. A minute of
+// simulation covered frame by frame at the project's default rate is thousands of
+// frames for one verdict, and specs/instrumentation.md guarantees that "an
+// interval of simulation time reaches the same state however it was divided into
+// frames and whatever frame rate produced it", so the walk is covered at
+// `WALK_HZ`. That is well inside the frame-division guarantee
+// `instrumentation/frame-division-movement` decides, and nothing here reads a
+// projectile.
+//
+// The route is measured as the sum of the chords between samples, so the sample
+// interval is the only thing that can lose length, and it loses it only where the
+// route turns: a chord across a right-angle corner is short of the two legs by at
+// most `1 - 1/sqrt(2)` of one sample's travel. The chain has seven legs, so the
+// sum can fall at most `7 * 0.3 * OVERLOAD_SPEED / WALK_HZ` — about twenty-three
+// units — short of the route's `3360`, which is `SAMPLING_LOSS` of it. Both
+// comparisons below carry that share explicitly: the route's `3` per cent
+// swallows it whole, and the speed's `SPEED_TOLERANCE` is set at three times it,
+// which still separates `55` from every other speed the specs state, the nearest
+// of them `60`.
 //
 // THE SPEED IS MEASURED BETWEEN TWO READINGS, NOT PAST THE LAST ONE. The frame the
 // Dynamo grounds out on is the first frame it is NOT read on, so it left part-way
@@ -79,9 +85,9 @@ import { createRunHarness, onlyUnit, poseFinale } from "./runs";
 const DIFFICULTY = "easy";
 
 /** The frame rate the walk is sampled at: see the header. */
-const WALK_HZ = 15;
+const WALK_HZ = 5;
 
-/** Frames between two samples of the walk: `3.67` units of travel apart. */
+/** Frames between two samples of the walk: `11` units of travel apart. */
 const POLL = 1;
 
 /** Two minutes of simulation: past any maze this game can hold. */
@@ -89,6 +95,16 @@ const MAX_FRAMES = 120 * WALK_HZ;
 
 /** The route is sampled as chords, so the sum runs a shade under the true length. */
 const TOLERANCE = 0.03;
+
+/**
+ * The share of the route the chord sampling can lose across the chain's seven
+ * corners, as a fraction of the `168` tiles the chain runs to.
+ */
+const SAMPLING_LOSS =
+  (7 * (1 - 1 / Math.SQRT2) * OVERLOAD_SPEED) / (WALK_HZ * 168 * TILE);
+
+/** How far the walked speed may sit from `OVERLOAD_SPEED`: see the header. */
+const SPEED_TOLERANCE = 3 * SAMPLING_LOSS;
 
 /** How far the Dynamo may already have walked when the finale is first read. */
 const LEAD = (OVERLOAD_SPEED * (POLL + 1)) / WALK_HZ;
@@ -188,12 +204,13 @@ it("walks the whole chain from the entry to the collector at OVERLOAD_SPEED", as
     [1, 2, 3, 4, 5, 6, 7].join(", "),
     "it heads for every checkpoint of the chain in order, the collector last",
   );
-  assertCloseTo(
-    walk.walked / (OVERLOAD_SPEED * walk.walkedSeconds),
-    1,
-    2,
+  const walkedRatio = walk.walked / (OVERLOAD_SPEED * walk.walkedSeconds);
+  assertEqual(
+    walkedRatio > 1 - SPEED_TOLERANCE && walkedRatio < 1 + SPEED_TOLERANCE,
+    true,
     `it covered ${walk.walked.toFixed(1)} units in ` +
-      `${walk.walkedSeconds.toFixed(2)} s, against ${OVERLOAD_SPEED} a second`,
+      `${walk.walkedSeconds.toFixed(2)} s, against ${OVERLOAD_SPEED} a second, ` +
+      `within ${(SPEED_TOLERANCE * 100).toFixed(1)}%`,
   );
   const ratio = (lead + walk.covered) / (walk.mazeLength * TILE);
   assertEqual(

@@ -20,6 +20,11 @@
 // than its own file's duration" — and taking the span from the build's own file is
 // what makes it true of any build rather than of one length of bed.
 //
+// THE CLOCK IS THE CHECK'S. Every frame of the span is spent waiting rather than
+// reading, and `specs/instrumentation.md` guarantees that "an interval of
+// simulation time reaches the same state however it was divided into frames and
+// whatever frame rate produced it", so the span is covered at `LISTEN_HZ`.
+//
 // THE RUN IS OPENED THROUGH `startRun`, which `specs/instrumentation.md` says
 // "opens it on its first build phase", so what is listened to is exactly the moment
 // the requirement names. Nothing else is on the yard, so nothing else can end the
@@ -28,13 +33,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
-import {
-  captureReplay,
-  createHarness,
-  openRun,
-  ticks,
-  type Harness,
-} from "../harness";
+import { captureReplay, createHarness, openRun, type Harness } from "../harness";
 import { durationSeconds, fileOf, readWave } from "./wav";
 
 /** How long past the file's own end the bed must still be sounding. */
@@ -52,8 +51,11 @@ const MARGIN_SECONDS = 1;
  */
 const LONGEST_SPAN = 30;
 
-/** The frames of the first build phase the bed must start inside. */
-const OPENING = ticks(0.5);
+/** The rate the bed is listened to at. */
+const LISTEN_HZ = 10;
+
+/** The seconds of the first build phase the bed must start inside. */
+const OPENING_SECONDS = 0.5;
 
 /** One event the bus announced about the bed, in the order it arrived. */
 interface BedEvent {
@@ -64,7 +66,7 @@ interface BedEvent {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: LISTEN_HZ });
 });
 
 afterEach(() => {
@@ -88,7 +90,7 @@ it("starts the bed on the first build phase and keeps it sounding past its file"
 
   const run = await captureReplay(h, "music", async () => {
     openRun(h);
-    await h.advance(OPENING);
+    await h.advanceSeconds(OPENING_SECONDS);
     const opening = [...bed];
     await h.advanceSeconds(span);
     return { opening, all: [...bed], frame: h.engine.frame().count };

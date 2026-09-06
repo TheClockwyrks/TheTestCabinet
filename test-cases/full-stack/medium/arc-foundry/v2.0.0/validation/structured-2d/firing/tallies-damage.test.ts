@@ -16,13 +16,13 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";
 import { createHarness, type Harness } from "../harness";
-import { MOTE_HP, PLACES, clearsThreeMotes } from "./tally";
+import { MOTE_HP, PLACES, TALLY_HZ, clearsThreeMotes } from "./tally";
 import { componentDamage } from "../constants";
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: TALLY_HZ });
 });
 
 afterEach(() => {

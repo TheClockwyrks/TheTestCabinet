@@ -9,7 +9,15 @@
 // The Rectifier is taken off the yard the moment its shot lands, so nothing can
 // refresh the burn while its span is being measured. Two readings decide it:
 // `burnUntil` sits one duration past the hit, and the unit's health does not move
-// at all over five seconds once that moment has passed.
+// at all over the seconds that follow.
+//
+// THE CLOCK IS THE CHECK'S. The frames here are spent sitting out a duration
+// rather than reading one, and specs/instrumentation.md guarantees that "an
+// interval of simulation time reaches the same state however it was divided into
+// frames and whatever frame rate produced it", so the durations are sat out at
+// `WATCH_HZ`. That rate is chosen against `STAMP_SLACK` below: one frame of it is
+// a third of the slack the stamp is read within, so the frame the burn is first
+// seen on dates the hit well inside that tolerance.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
@@ -34,8 +42,11 @@ const TARGET_RANGE = 60;
 /** The tier the span is read at. */
 const TIER = 3;
 
+/** The rate the two spans are sat out at. */
+const WATCH_HZ = 60;
+
 /** How long past the expiry the health is watched, in seconds. */
-const AFTER = 5;
+const AFTER = 2;
 
 /** A margin past the expiry before the watching starts. */
 const MARGIN = 0.5;
@@ -46,7 +57,7 @@ const STAMP_SLACK = 0.05;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: WATCH_HZ });
 });
 
 afterEach(() => {

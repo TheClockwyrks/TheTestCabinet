@@ -22,12 +22,12 @@ import {
   openYard,
   type Harness,
 } from "../harness";
-import { travelling } from "./vitals";
+import { VITALS_HZ, travelling } from "./vitals";
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: VITALS_HZ });
 });
 
 afterEach(() => {

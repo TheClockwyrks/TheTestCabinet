@@ -39,7 +39,6 @@ import {
   type Harness,
   openYard,
   standComponent,
-  ticks,
 } from "../harness";
 import { annulus, motion } from "./region";
 import { structureCenter } from "../constants";
@@ -50,12 +49,25 @@ const ANCHOR = { col: 24, row: 17 };
 /** Outside the `2` by `2` footprint, inside the Scrap aura radius of `90`. */
 const POINTS = annulus(structureCenter(ANCHOR.col, ANCHOR.row), 26, 60, 4);
 
-const WINDOW = ticks(0.2);
+/**
+ * The rate this check is driven at.
+ *
+ * EVERY FRAME A PIXEL READING IS TAKEN OVER IS A FRAME THE HOST HAS TO RASTERIZE,
+ * so the frames a span is cut into are what such a check costs. The specification
+ * fixes no frame size and guarantees that "an interval of simulation time reaches
+ * the same state however it was divided into frames and whatever frame rate
+ * produced it" (specs/instrumentation.md), so each span below is the span it
+ * always was and only the number of frames it is divided into is this check's.
+ */
+const AURA_HZ = 60;
+
+/** One window, in seconds of simulation. */
+const WINDOW_SECONDS = 0.2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: AURA_HZ });
 });
 
 afterEach(() => {
@@ -69,13 +81,14 @@ it("marks the ground around a Regulator and not around a Capacitor", async () =>
   // with nothing in range so it never fires.
   standComponent(h, "capacitor", 1, ANCHOR.col, ANCHOR.row);
   await h.advance(1);
-  const unmarked = await motion(h, POINTS, WINDOW);
+  const window = h.ticks(WINDOW_SECONDS);
+  const unmarked = await motion(h, POINTS, window);
 
   emptyYard(h);
   const marked = await captureReplay(h, "aura", async () => {
     standComponent(h, "regulator", 1, ANCHOR.col, ANCHOR.row);
     await h.advance(1);
-    return motion(h, POINTS, WINDOW);
+    return motion(h, POINTS, window);
   });
 
   assertGreaterThan(
@@ -84,6 +97,6 @@ it("marks the ground around a Regulator and not around a Capacitor", async () =>
     "the ground around a standing Regulator to change on more frames than the " +
       "ground around a Capacitor standing at the same anchor, so the aura it " +
       `projects is marked (specs/assets.md); the Capacitor's changed on ` +
-      `${unmarked} of ${WINDOW} frames`,
+      `${unmarked} of ${window} frames`,
   );
 });

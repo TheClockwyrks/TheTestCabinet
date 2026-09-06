@@ -34,7 +34,6 @@ import {
   openYard,
   parkUnit,
   standComponent,
-  ticks,
 } from "../harness";
 import { read, scanWhen } from "./region";
 import { type Point, structureCenter } from "../constants";
@@ -59,10 +58,25 @@ const POINTS = ((): Point[] => {
 /** How far past the span the shot must be before a reading counts. */
 const CLEAR = 20;
 
+/**
+ * The rate this check is driven at.
+ *
+ * EVERY FRAME A PIXEL READING IS TAKEN OVER IS A FRAME THE HOST HAS TO RASTERIZE,
+ * so the frames a span is cut into are what such a check costs. The specification
+ * fixes no frame size and guarantees that "an interval of simulation time reaches
+ * the same state however it was divided into frames and whatever frame rate
+ * produced it" (specs/instrumentation.md), so each span below is the span it
+ * always was and only the number of frames it is divided into is this check's.
+ */
+const TRAIL_HZ = 60;
+
+/** How much of the flight the line is scanned over, in seconds. */
+const SCAN_SECONDS = 0.25;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: TRAIL_HZ });
 });
 
 afterEach(() => {
@@ -78,9 +92,9 @@ it("draws on the line behind a travelling shot, and nothing on it before", async
 
   const flight = await captureReplay(h, "bolt", async () => {
     const shot = await h.until((s) => s.projectiles.length > 0, {
-      maxFrames: ticks(3),
+      maxFrames: h.ticks(3),
     });
-    const readings = await scanWhen(h, POINTS, ticks(0.25), (s) =>
+    const readings = await scanWhen(h, POINTS, h.ticks(SCAN_SECONDS), (s) =>
       s.projectiles.some(
         (projectile) => projectile.x > HEAD.x + SPAN.to + CLEAR,
       ),

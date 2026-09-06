@@ -43,6 +43,18 @@ const ALONE = { col: 10, row: 10 };
 const PARTNER = { col: 18, row: 10 };
 /** Room around the footprint for a mark drawn as a ring rather than a wash. */
 const MARGIN = 12;
+/**
+ * The rate this check is driven at.
+ *
+ * EVERY FRAME A PIXEL READING IS TAKEN OVER IS A FRAME THE HOST HAS TO RASTERIZE,
+ * so the frames a span is cut into are what such a check costs. The specification
+ * fixes no frame size and guarantees that "an interval of simulation time reaches
+ * the same state however it was divided into frames and whatever frame rate
+ * produced it" (specs/instrumentation.md), so each span below is the span it
+ * always was and only the number of frames it is divided into is this check's.
+ */
+const MARK_HZ = 20;
+
 /** Moments spread across two seconds, which outlasts any plausible pulse. */
 const MOMENTS = 6;
 const APART = 0.35;
@@ -50,7 +62,7 @@ const APART = 0.35;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: MARK_HZ });
 });
 
 afterEach(() => {

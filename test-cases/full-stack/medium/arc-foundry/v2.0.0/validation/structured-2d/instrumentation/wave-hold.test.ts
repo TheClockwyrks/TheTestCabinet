@@ -30,7 +30,6 @@ import {
   openYard,
   parkUnit,
   standComponent,
-  ticks,
 } from "../harness";
 
 /** The wave the run is posed at, and the bonus clearing it pays. */
@@ -47,12 +46,22 @@ const KILL_AT = { x: GUN_CENTER.x + 60, y: GUN_CENTER.y };
 const MOTE = LOAD_ROSTER.find((def) => def.type === "mote")!;
 
 /** Long enough for a wave with nothing on it to have cleared several times over. */
-const WATCH_SECONDS = 5;
+const WATCH_SECONDS = 3;
+
+/**
+ * The rate the whole check is driven at.
+ *
+ * The frames are a kill and then an empty yard being sat out, and
+ * specs/instrumentation.md guarantees that "an interval of simulation time
+ * reaches the same state however it was divided into frames". A shot still steps
+ * well inside the `2 * PROJECTILE_HIT_R` window it has to be caught in.
+ */
+const WATCH_HZ = 60;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: WATCH_HZ });
 });
 
 afterEach(() => {
@@ -73,7 +82,7 @@ it("holds the wave from clearing while every other rule keeps running", async ()
     const id = parkUnit(h, "mote", KILL_AT, { hp: 1 });
     const killed = await h.until(
       (s) => !s.units.some((unit) => unit.id === id),
-      { maxFrames: ticks(5) },
+      { maxFrames: h.ticks(5) },
     );
     await h.advanceSeconds(WATCH_SECONDS);
     const held = h.snapshot();
@@ -81,7 +90,7 @@ it("holds the wave from clearing while every other rule keeps running", async ()
     // Then the hold comes off, and the wave resolves the ordinary way.
     holdWaveClear(h, false);
     const cleared = await h.until((s) => !s.waveActive, {
-      maxFrames: ticks(5),
+      maxFrames: h.ticks(5),
     });
     return { killed, held, cleared, opened };
   });

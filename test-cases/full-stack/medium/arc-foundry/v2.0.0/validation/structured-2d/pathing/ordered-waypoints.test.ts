@@ -25,15 +25,25 @@ import {
 /** The chain a unit walks: the six waypoints, then the collector. */
 const CHECKPOINTS = [1, 2, 3, 4, 5, 6, 7];
 
+/**
+ * The rate the walk is covered at.
+ *
+ * The walk is a SPAN rather than a reading, and specs/instrumentation.md
+ * guarantees that "an interval of simulation time reaches the same state however
+ * it was divided into frames and whatever frame rate produced it", so it is
+ * covered at half this project's default rate.
+ */
+const WALK_HZ = 60;
+
 /** The multiplier the walk is watched at, and how often it is sampled. */
 const WALK_SPEED = 8;
-const SAMPLE_FRAMES = 2;
+const SAMPLE_FRAMES = 1;
 const MAX_SAMPLES = 900;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: WALK_HZ });
 });
 
 afterEach(() => {

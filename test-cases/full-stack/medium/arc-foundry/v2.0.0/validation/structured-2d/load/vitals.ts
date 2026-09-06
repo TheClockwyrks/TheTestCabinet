@@ -51,11 +51,27 @@ const KILL_AT = { x: GUN_CENTER.x + 60, y: GUN_CENTER.y };
 /** Three tiles short of the Substation's collector, and `310` from the gun. */
 const LEAK_FROM = tileCenter(46, 20);
 
-/** Five seconds: past the slowest cadence and the slowest walk staged here. */
-const MAX_FRAMES = 600;
+/**
+ * The frame rate a field these readings are taken on runs at: `20` Hz.
+ *
+ * Both readings are of an EVENT — the Charge a kill paid, the Grid Integrity a
+ * leak cost — rather than of a rate, and the frames in between are a walk and a
+ * cadence being sat out. The specification fixes no frame size and guarantees
+ * that "an interval of simulation time reaches the same state however it was
+ * divided into frames and whatever frame rate produced it"
+ * (specs/instrumentation.md), so a walk covered in a sixth of the frames costs a
+ * sixth of the work and grounds out on the same tile. Nothing read here is a
+ * projectile in flight: the Capacitor is `310` units from the walk, far outside
+ * its `100` reach, so the one step size this project has to respect does not
+ * arise. A suite that reads a field builds its harness at this rate.
+ */
+export const VITALS_HZ = 20;
 
-/** Frames between two samples of a sweep. */
-const POLL = 6;
+/** Ten seconds of simulation: past the slowest cadence and the slowest walk here. */
+const SWEEP_SECONDS = 10;
+
+/** Frames between two samples of a sweep: a tenth of a second. */
+const POLL = 2;
 
 /** What one unit's leak revealed, read on the frame it grounded out. */
 export interface Grounded {
@@ -100,7 +116,7 @@ export async function bountyFor(h: Harness, type: LoadType): Promise<number> {
   const before = h.snapshot().charge;
   const removed = await h.until(
     (s) => !s.units.some((unit) => unit.id === id),
-    { maxFrames: MAX_FRAMES, poll: POLL },
+    { maxFrames: h.ticks(SWEEP_SECONDS), poll: POLL },
   );
   assertEqual(
     removed.hit,
@@ -122,7 +138,7 @@ export async function leakFor(h: Harness, type: LoadType): Promise<Grounded> {
   const before = h.snapshot().integrity;
   const grounded = await h.until(
     (s) => !s.units.some((unit) => unit.id === id),
-    { maxFrames: MAX_FRAMES, poll: POLL },
+    { maxFrames: h.ticks(SWEEP_SECONDS), poll: POLL },
   );
   assertEqual(
     grounded.hit,

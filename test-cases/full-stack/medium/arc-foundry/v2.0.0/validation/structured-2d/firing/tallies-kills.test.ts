@@ -13,12 +13,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
-import { PLACES, clearsThreeMotes } from "./tally";
+import { PLACES, TALLY_HZ, clearsThreeMotes } from "./tally";
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: TALLY_HZ });
 });
 
 afterEach(() => {

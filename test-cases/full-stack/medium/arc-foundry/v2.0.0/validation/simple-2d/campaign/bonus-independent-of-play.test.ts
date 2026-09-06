@@ -37,12 +37,11 @@
 //   within `PROJECTILE_HIT_R` of it. `MAX_STEP_MS` is that bound, computed from
 //   this project's own transcription of `specs/components.md`.
 //
-//   The interest reading holds an EMPTY yard for a minute — no unit, no
+//   The interest reading holds an EMPTY yard for `IDLE_SECONDS` — no unit, no
 //   structure, no projectile, nothing positional read across it — so it is driven
-//   on a harness of its own at a far coarser step. The minute is the sample and
-//   is unchanged; only the number of frames it is cut into is.
+//   on a harness of its own at a far coarser step. The span is the sample; only
+//   the number of frames it is cut into is the check's.
 
-import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
@@ -74,22 +73,22 @@ const INTEGRITY = 50;
 /** The longest frame a bolt in flight is still readable on, in milliseconds. */
 const MAX_STEP_MS = (2 * PROJECTILE_HIT_R * 1000) / PROJECTILE_SPEED;
 
-/** The clock the four clears run at: the coarsest whole `5` ms inside that. */
-const CLOCK_MS = Math.floor(MAX_STEP_MS / 5) * 5;
+/** The rate the four clears run at: the coarsest whole `5` ms step inside that. */
+const CLEAR_HZ = 1000 / (Math.floor(MAX_STEP_MS / 5) * 5);
 
 /** Five seconds of that clock: past two kills and two short walks. */
-const SWEEP = Math.round(5000 / CLOCK_MS);
+const SWEEP = Math.round(5 * CLEAR_HZ);
 
-/** The clock the interest reading runs at, in milliseconds: `10` Hz. */
-const IDLE_CLOCK_MS = 100;
+/** The rate the interest reading runs at, on an empty yard. */
+const IDLE_HZ = 5;
 
-/** A minute of simulation, in frames of that clock. */
-const IDLE = Math.round(60_000 / IDLE_CLOCK_MS);
+/** How long a bank is left sitting, in seconds of simulation. */
+const IDLE_SECONDS = 15;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(CLOCK_MS) });
+  h = await createHarness({ hz: CLEAR_HZ });
 });
 
 afterEach(() => {
@@ -165,18 +164,17 @@ it("pays the same bonus over an empty bank, a hoard, a kill and a leak", async (
   );
 
   // And a bank left sitting through a build phase earns nothing. The yard is
-  // empty for the whole minute, so this one span runs on a harness of its own at
-  // the coarser step above.
-  const idle = await createHarness({
-    clock: new ConstantClock(IDLE_CLOCK_MS),
-  });
+  // empty for the whole span, so this one runs on a harness of its own at the
+  // coarser step above.
+  const idle = await createHarness({ hz: IDLE_HZ });
   try {
     openYard(idle, { wave: WAVE, charge: 1234 });
-    await idle.advance(IDLE);
+    await idle.advanceSeconds(IDLE_SECONDS);
     assertEqual(
       idle.snapshot().charge,
       1234,
-      "a bank left across a minute of a build phase earns no interest",
+      `a bank left across ${IDLE_SECONDS} seconds of a build phase earns no ` +
+        "interest",
     );
   } finally {
     idle.dispose();

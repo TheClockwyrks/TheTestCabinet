@@ -32,12 +32,12 @@ import {
   openYard,
   type Harness,
 } from "../harness";
-import { killOne, standGun } from "./runs";
+import { EVENT_HZ, killOne, standGun } from "./runs";
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: EVENT_HZ });
 });
 
 afterEach(() => {

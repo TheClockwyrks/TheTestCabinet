@@ -59,6 +59,19 @@ const TARGET = {
   y: structureCenter(10, 10).y,
 };
 
+/**
+ * The rate the two firing spans are driven at.
+ *
+ * They are frames spent letting a cadence run rather than frames anything is read
+ * on, and specs/instrumentation.md guarantees that "an interval of simulation time
+ * reaches the same state however it was divided into frames". A shot still steps
+ * well inside the `2 * PROJECTILE_HIT_R` window it has to be caught in.
+ */
+const FIRE_HZ = 60;
+
+/** How long each structure is let fire for, in seconds of simulation. */
+const FIRE_SECONDS = 2;
+
 const TYPE = "capacitor";
 const TIER = 3;
 const COMBO = "forkarray";
@@ -67,17 +80,17 @@ const LEVEL = 2;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: FIRE_HZ });
 });
 
 afterEach(() => {
   h.dispose();
 });
 
-/** Let the selected structure fire on a parked unit for two seconds. */
+/** Let the selected structure fire on a parked unit for `FIRE_SECONDS`. */
 async function fireAt(id: number): Promise<void> {
   parkUnit(h, "dynamo", TARGET);
-  await h.advanceSeconds(2);
+  await h.advanceSeconds(FIRE_SECONDS);
   h.debug.select(id);
 }
 

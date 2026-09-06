@@ -40,7 +40,6 @@
 // all, so nothing can fire. The two sinks, refining and upgrading, are never
 // touched. What crosses the counter is the bonus.
 
-import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { WAVE_BONUS_BASE, WAVE_BONUS_STEP, waveBonus } from "../constants";
@@ -56,11 +55,8 @@ import { clearWave, harvestWave } from "./runs";
 /** The waves whose clears are read: the first, an early one, and a deep one. */
 const SAMPLE = [1, 6, 20];
 
-/** 20 Hz: coarse, and the simulation is defined to be indifferent to it. */
-const HZ = 20;
-
-/** That frame, in milliseconds. */
-const CLOCK_MS = 1000 / HZ;
+/** 10 Hz: coarse, and the simulation is defined to be indifferent to it. */
+const HZ = 10;
 
 /**
  * A second of the wave running before it is swept, in frames.
@@ -85,7 +81,7 @@ const COMPOSED = 3;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(CLOCK_MS) });
+  h = await createHarness({ hz: HZ });
 });
 
 afterEach(() => {

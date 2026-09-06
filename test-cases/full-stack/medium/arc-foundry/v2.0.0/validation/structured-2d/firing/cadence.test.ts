@@ -9,15 +9,15 @@
 // The target is one Overload Dynamo, which "cannot be killed" (specs/enemies.md),
 // held where it stands. That is what makes a counted interval a measurement of the
 // cadence and of nothing else: no kill can interrupt it, no bounty lands in the
-// middle of it, and the geometry never changes. Ten seconds is sixteen shots at
-// this cadence, so the one shot a drive can begin or end in the middle of is a
-// small share of the count.
+// middle of it, and the geometry never changes. The interval is eight shots at
+// this cadence, which separates `1.6` a second from the neighbouring rates
+// `BASE_STATS` gives the other types with the one shot a drive can begin or end
+// in the middle of to spare.
 //
 // Shots are counted as distinct projectile identities rather than as impacts,
 // because a cadence is about how often a structure FIRES. The samples fall every
 // few frames, which is well inside one shot's flight at this range.
 
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
 import {
@@ -42,7 +42,7 @@ const ANCHOR = { col: 10, row: 10 };
 const TARGET_RANGE = 60;
 
 /** The counted interval, in seconds of simulation time. */
-const SECONDS = 10;
+const SECONDS = 5;
 
 /**
  * The frame the counted interval is stepped in, in Hz.
@@ -89,7 +89,7 @@ const FIRE_RATE = componentFireRate("capacitor");
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(1000 / COUNT_HZ) });
+  h = await createHarness({ hz: COUNT_HZ });
 });
 
 afterEach(() => {

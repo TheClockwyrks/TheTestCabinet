@@ -22,7 +22,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { LOAD_ROSTER } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { bountyFor, openField } from "./vitals";
+import { bountyFor, openField, VITALS_HZ } from "./vitals";
 import {
   DEEP,
   DIFFICULTY,
@@ -34,7 +34,7 @@ import {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: VITALS_HZ });
 });
 
 afterEach(() => {

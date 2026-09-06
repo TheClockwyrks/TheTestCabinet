@@ -22,6 +22,15 @@
 // A row is found by the type it names, because a rank a player cannot attach to a
 // structure ranks nothing; the three types are named nowhere else on the stage
 // while the selection is clear.
+//
+// THE CLOCK IS THE CHECK'S. Both spans are frames spent letting cadences run
+// rather than frames anything is read on, and specs/instrumentation.md guarantees
+// that "an interval of simulation time reaches the same state however it was
+// divided into frames and whatever frame rate produced it", so they are covered
+// at `BOARD_HZ`. Each span is stated in seconds against the cadences
+// specs/components.md fixes: `KILLS_SECONDS` is past a shot from each of the
+// three, and `CLIMB_SECONDS` is several of the Emitter's `4.5` a second, which at
+// its `2` a shot carries it past the Capacitor's single `6`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -54,6 +63,12 @@ import {
 
 /** Deep enough that a unit only dies when its health is posed to one shot's worth. */
 const WAVE = 30;
+/** The rate the two spans are covered at. */
+const BOARD_HZ = 60;
+/** Seconds each gun is given to land its one kill. */
+const KILLS_SECONDS = 2;
+/** Seconds the Emitter is given to out-earn the Capacitor. */
+const CLIMB_SECONDS = 1.5;
 /** The overlay covers the stage, so the whole of it is read. */
 const OVERLAY: Region = { x0: 0, y0: 0, x1: STAGE_W, y1: STAGE_H };
 
@@ -73,7 +88,7 @@ const GUNS: readonly Gun[] = [
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: BOARD_HZ });
 });
 
 afterEach(() => {
@@ -122,13 +137,13 @@ it("ranks three structures by damage dealt, and re-ranks as they earn", async ()
         hp: componentDamage(gun.type, gun.tier),
       });
     }
-    await h.advanceSeconds(3);
+    await h.advanceSeconds(KILLS_SECONDS);
     const early = await h.frameCalls();
     const earlyState = h.snapshot();
 
     // A unit the Emitter cannot kill, so its cadence carries it past the Capacitor.
     parkUnit(h, "mote", inRangeOf(GUNS[2]!));
-    await h.advanceSeconds(3);
+    await h.advanceSeconds(CLIMB_SECONDS);
     const late = await h.frameCalls();
     const lateState = h.snapshot();
     return { early, earlyState, late, lateState };

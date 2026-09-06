@@ -585,12 +585,12 @@ title = "waveCount counts the units the wave actually releases"
 description = "The units a live wave releases are exactly the ones waveCount counts, in both directions, and the count reads the same figure from the frame the wave launched to the frame it cleared."
 domains = ["simulation"]
 failure_cap = "broken"
-# Automated validation: launch the opening wave, read the count of every type,
-# then drive that wave to its clear and hold what arrived against what was
-# counted. See validation/<engine>/instrumentation/wave-count-matches-the-
-# spawner.test.ts.
+# Automated validation: launch the opening wave and the middle milestone in
+# turn, read the count of every type, drive each to its clear and hold what
+# arrived against what was counted. See
+# validation/<engine>/instrumentation/wave-count-matches-the-spawner.test.ts.
 validation = { script = "instrumentation/wave-count-matches-the-spawner.test.ts", outputs = [
-  { id = "arrives", name = "The opening wave arriving as counted", kind = "replay" },
+  { id = "arrives", name = "The two waves arriving as counted", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "overload-driver-wave-clears"
@@ -1557,7 +1557,7 @@ validation = { script = "firing/fires-in-range.test.ts", outputs = [
 [[review.categories.items]]
 id = "holds-fire-out-of-range"
 title = "A structure holds fire with nothing in range"
-description = "A unit parked just outside the structure's radius draws no shot over five seconds: no projectile appears and the structure reports firing false."
+description = "A unit parked just outside the structure's radius draws no shot over three seconds: no projectile appears and the structure reports firing false."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: park a frozen unit one unit beyond the reported range
@@ -1653,7 +1653,7 @@ validation = { script = "firing/hits-air.test.ts", outputs = [
 [[review.categories.items]]
 id = "regulator-never-fires"
 title = "A Regulator never fires"
-description = "A Regulator with a unit standing on top of it launches no projectile over ten seconds and reports a null range, a null targeting priority and zero damage."
+description = "A Regulator with a unit standing on top of it launches no projectile over three seconds and reports a null range, a null targeting priority and zero damage."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: stand a Regulator, park a frozen unit on it, advance
@@ -1921,7 +1921,7 @@ validation = { script = "abilities/rectifier-burn-rate.test.ts", outputs = [
 [[review.categories.items]]
 id = "rectifier-burn-duration"
 title = "A burn runs RECTIFIER_BURN_DUR and stops"
-description = "The burn runs for RECTIFIER_BURN_DUR (2.0) seconds from the hit and then stops: the unit's health is unchanged over the five seconds after the burn expires."
+description = "The burn runs for RECTIFIER_BURN_DUR (2.0) seconds from the hit and then stops: the unit's health is unchanged over the two seconds after the burn expires."
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: hit a frozen unit once, advance past the duration, and
@@ -2516,10 +2516,10 @@ validation = { script = "campaign/wave-clears.test.ts", outputs = [
 [[review.categories.items]]
 id = "build-phase-untimed"
 title = "A build phase never starts a wave on its own"
-description = "The build phase is untimed: over sixty seconds of simulation with no harvest committed, the phase still reads build, the wave number is unchanged and no unit has been released."
+description = "The build phase is untimed: over thirty seconds of simulation with no harvest committed, the phase still reads build, the wave number is unchanged and no unit has been released."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: sit in a build phase for sixty seconds of simulation
+# Automated validation: sit in a build phase for thirty seconds of simulation
 # and read the phase, the wave and the unit count. See
 # validation/<engine>/campaign/build-phase-untimed.test.ts.
 validation = { script = "campaign/build-phase-untimed.test.ts", outputs = [

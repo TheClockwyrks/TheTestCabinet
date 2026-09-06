@@ -31,10 +31,21 @@ const OFFSET = { x: 60, y: 40 };
 /** How long the head is given to settle, and how long it is then watched. */
 const SETTLE = 2;
 
+/**
+ * The rate the settling spans are covered at.
+ *
+ * The spans are frames spent letting a head turn and a cadence run rather than
+ * frames anything is read on, and specs/instrumentation.md guarantees that "an
+ * interval of simulation time reaches the same state however it was divided into
+ * frames". A shot still steps well inside the `2 * PROJECTILE_HIT_R` window it
+ * has to be caught in at this rate.
+ */
+const SETTLE_HZ = 60;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: SETTLE_HZ });
 });
 
 afterEach(() => {

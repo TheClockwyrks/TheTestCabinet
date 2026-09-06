@@ -35,6 +35,14 @@
 // rock stamped, six of the seven Load types walking, and the Overload Dynamo. A
 // build that loads a file lazily is what it is for, and it is the replay this
 // point keeps as evidence.
+//
+// THE CLOCK IS THE CHECK'S. What the drive spends its frames on is reaching the
+// three phases rather than reading anything positional, and
+// `specs/instrumentation.md` guarantees that "an interval of simulation time
+// reaches the same state however it was divided into frames and whatever frame
+// rate produced it", so it runs at `DRIVE_HZ`. A shot still steps well inside the
+// `2 * PROJECTILE_HIT_R` window it has to be caught in, so the impacts that make
+// a build reach for its impact art still land.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -63,10 +71,19 @@ const ESCAPES = /^\/|^[a-z][a-z0-9+.-]*:/i;
 /** The one failure this host imposes on every build: no Web Audio to decode into. */
 const NO_AUDIO_CONTEXT = /this host has no AudioContext/;
 
+/** The rate the three phases are driven at. */
+const DRIVE_HZ = 60;
+
+/** Seconds spent in each of the three phases. */
+const BUILD_SECONDS = 0.5;
+const STANDING_SECONDS = 0.5;
+const WAVE_SECONDS = 1.5;
+const FINALE_SECONDS = 1;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: DRIVE_HZ });
 });
 
 afterEach(() => {
@@ -90,21 +107,21 @@ it("asks the site for nothing it does not carry, across all three phases", async
     await pressAction(h, "stamp");
     const rock = structureCenter(20, 20);
     h.pointerMove(rock.x, rock.y);
-    await h.advanceSeconds(0.5);
+    await h.advanceSeconds(BUILD_SECONDS);
     h.debug.placeRock(20, 20);
     clearHand(h);
     standComponent(h, "capacitor", 4, 10, 10);
-    await h.advanceSeconds(1);
+    await h.advanceSeconds(STANDING_SECONDS);
 
     // A wave: every Load type the roster carries, walking and being shot at.
     holdWave(h);
     for (const type of LOAD_TYPES) releaseUnit(h, type);
-    await h.advanceSeconds(4);
+    await h.advanceSeconds(WAVE_SECONDS);
 
     // The finale: the Overload Dynamo, which no wave carries.
     h.debug.clearUnits();
     releaseUnit(h, "overload");
-    await h.advanceSeconds(2);
+    await h.advanceSeconds(FINALE_SECONDS);
   });
 
   const asked = [

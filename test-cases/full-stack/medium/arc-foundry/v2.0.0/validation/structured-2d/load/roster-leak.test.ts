@@ -21,7 +21,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { LOAD_ROSTER } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
-import { leakFor, openField } from "./vitals";
+import { leakFor, openField, VITALS_HZ } from "./vitals";
 
 /** Comfortably above the eleven Grid Integrity the six leaks below cost. */
 const INTEGRITY = 200;
@@ -29,7 +29,7 @@ const INTEGRITY = 200;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: VITALS_HZ });
 });
 
 afterEach(() => {

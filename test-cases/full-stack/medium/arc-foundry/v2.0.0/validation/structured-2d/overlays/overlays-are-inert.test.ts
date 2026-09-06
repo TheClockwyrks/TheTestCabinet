@@ -11,7 +11,6 @@
 // speed. The unit is released travelling rather than held, because a held unit
 // would still be where it started under an overlay that froze everything.
 
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertLessThan } from "../assert";
 import {
@@ -28,14 +27,14 @@ import {
 const SPAN = 10;
 
 /**
- * The frame the runs are stepped in: `20` Hz, a sixth of this project's default.
+ * The frame the runs are stepped in: `10` Hz, a twelfth of this project's default.
  *
  * Nothing here is measured against a distance or a rate, and no projectile flies,
  * so the one step size this project has to respect does not arise. The ten
  * seconds `specs/hud.md`'s point is stated over are unchanged; only the frames
  * they are divided into are.
  */
-const SPAN_HZ = 20;
+const SPAN_HZ = 10;
 
 /** Frames of that clock covering `s` seconds of simulation, rounded up. */
 function spanFrames(seconds: number): number {
@@ -47,7 +46,7 @@ const DIGITS = 3;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(1000 / SPAN_HZ) });
+  h = await createHarness({ hz: SPAN_HZ });
 });
 
 afterEach(() => {

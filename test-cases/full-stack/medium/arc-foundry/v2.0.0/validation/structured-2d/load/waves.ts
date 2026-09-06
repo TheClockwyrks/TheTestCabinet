@@ -48,7 +48,6 @@
 // advance". A wave therefore ends the moment its schedule is exhausted rather than
 // tens of seconds later when its last unit finally grounds out.
 
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { assertEqual, assertTruthy, fail } from "../assert";
 import {
   difficultyById,
@@ -66,7 +65,6 @@ import {
   type Harness,
   openYard,
   startWave,
-  TICK_MS,
 } from "../harness";
 
 /** One unit a wave released, as the snapshot first reported it. */
@@ -79,7 +77,7 @@ export interface Released {
 const HARVEST = { col: 10, row: 10 };
 
 /**
- * The frame rate a wave is driven at: `20` Hz, a sixth of this project's default.
+ * The frame rate a wave is driven at: `5` Hz.
  *
  * ONE check spends frames on a wave — `instrumentation/wave-count-matches-the-
  * spawner`, which drives one to its clear — and the composition checks spend a few
@@ -89,12 +87,12 @@ const HARVEST = { col: 10, row: 10 };
  * divided into frames and whatever frame rate produced it"
  * (specs/instrumentation.md). Nothing read across a wave here is a projectile, so
  * the one step size this project has to respect — a shot's travel staying inside
- * its hit radius — does not arise, and a `50` ms frame is an ordinary frame for a
- * slow machine rather than an exotic one. A build that cannot be read at it fails
+ * its hit radius — does not arise, and a `200` ms frame is exactly the step
+ * `instrumentation/frame-division-projectile` already covers in a single frame. A build that cannot be read at it fails
  * `instrumentation/frame-division-movement`, which is the point that requirement
  * belongs to.
  */
-const HZ = 20;
+const HZ = 5;
 
 /** Frames between two readings of the yard: half a second. */
 const POLL = Math.max(1, Math.round(HZ / 2));
@@ -104,7 +102,7 @@ const MAX_FRAMES = 180 * HZ;
 
 /** A harness whose clock runs at the rate a composition is read at. */
 export function createWaveHarness(): Promise<Harness> {
-  return createHarness({ clock: new ConstantClock((TICK_MS * 120) / HZ) });
+  return createHarness({ hz: HZ });
 }
 
 /**
@@ -189,7 +187,7 @@ export function countOf(
 /* ---- The composition a wave was composed with ---------------------------- */
 
 /** The seconds of a wave a check keeps as its replay clip, once its subject is on. */
-const CLIP_SECONDS = 4;
+const CLIP_SECONDS = 3;
 
 /**
  * How long a clip waits for the thing it is a clip OF before recording anyway.
