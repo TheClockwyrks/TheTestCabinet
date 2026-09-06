@@ -59,27 +59,18 @@ exports its type, `SpectraDebugApi`.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic. Every rate is integrated
-against the delta time the game is given, and every frame is divided into whole
-sub-steps of at most `SUBSTEP_MAX` as `specs/simulation.md` states, so an interval of
-game time reaches the same state however it was divided into frames. Two more
-properties make the game driveable from code:
+The surface rests on a render-free core. Game state advances from the elapsed time
+the game is handed, independent of a canvas, of the frame loop that measured it, and
+of wall-clock time. Every rate is integrated against the delta time the game is
+given, and every frame is divided into whole sub-steps of at most `SUBSTEP_MAX` as
+`specs/simulation.md` states, so an interval of game time reaches the same state
+however it was divided into frames.
 
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the renderer.
-  What a shot destroys, what a discharge takes, and where a dive goes are all decided
-  from the field alone.
-- Seeded randomness. Any randomness the game uses runs off a generator seeded from
-  the state's generator field, and it keeps its whole generator state in that field,
-  so reseeding and replaying the same calls reproduces the same result exactly. The
-  wave's layout, the choice of which drone dives next, the gap before the next dive,
-  a Flux's starting phase, and each burst's scatter are all drawn from it.
-
-Given the same seed and the same sequence of calls and elapsed game time, the game
-reaches the same state every time.
+The dependency runs one way: the simulation reads nothing from the renderer. What a
+shot destroys, what a discharge takes, and where a dive goes are all decided from
+the field alone.
 
 ## What the runtime provides instead
 
@@ -145,7 +136,7 @@ and changes nothing.
 
 | Operation | Effect |
 | --- | --- |
-| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+| `reset()` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 | `menuItemRect(index)` | A pure read of the hit region of item `index` on the menu the current screen shows. It changes nothing. |
 
@@ -159,12 +150,11 @@ it turns the four world gates `waveEntry`, `diveLaunching`, `stageClearing`, and
 gap the next dive waits for, to their fresh-wave values, `diveClock` at `0` and
 `diveGap` at `DIVE_FIRST_DELAY`; it sets `extraLifeAwarded` to `false` and
 `challengeHits` to `0`; and it sets `simTime` to `0` and the counter the next
-entity's id is taken from back to the first id, so two runs reset with the same seed
-report the same ids for the same scenario.
+entity's id is taken from back to the first id, so the same scenario posed after two
+resets reports the same ids both times.
 
-`options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
-randomness. `muted` is left exactly as it stands, because muting is a player
-preference the runtime owns.
+`muted` is left exactly as it stands, because muting is a player preference the
+runtime owns.
 
 `menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
 region's top-left corner and `w` and `h` its size: the region a pointer or a touch

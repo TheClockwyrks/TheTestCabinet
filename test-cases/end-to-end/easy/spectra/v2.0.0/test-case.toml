@@ -321,7 +321,7 @@ source = "specs/field.md"
 
 # How a frame advances: every rate is per second and integrated against the delta
 # time the frame hands the game, the sub-step rule and the order a sub-step
-# resolves in, that all randomness runs off one seeded generator, and SOLE
+# resolves in, where each random draw the game makes is stated, and SOLE
 # OWNERSHIP of the contact model. Seeded verbatim.
 [[spec]]
 source = "specs/simulation.md"
@@ -420,8 +420,8 @@ source = "specs/assets.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; every operation by name, signature and effect, the three world
+# The debugging and automation surface every build must expose: a render-free
+# core; every operation by name, signature and effect, the three world
 # gates and the three per-drone faculty switches among them; the snapshot shape; and
 # a read-only debug overlay. Framed as an ordinary developer affordance of the game.
 # It branches on the engine for where the surface is reached, the operation shape,
@@ -592,7 +592,8 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These points check that it is really there, really
-# wired to the running game, really deterministic, and that each pose reads back — a
+# wired to the running game, really stepped by elapsed time, and that each pose
+# reads back — a
 # surface that reports a plausible-looking object unconnected to what is on screen
 # is the failure mode worth naming.
 #
@@ -644,26 +645,16 @@ failure_cap = "broken"
 validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
   { id = "title", name = "The title values reset restored", kind = "image" },
 ] }
-# `reset({ seed })` is what makes a wave reproducible, and a wave is what six
-# other groups pose against. This is the one point that turns the wave entry gate
-# back on outside the swarm and stages groups, because the thing under test IS the
-# wave the game builds for itself.
+# The one point about the division of a frame itself. Every other point drives the
+# game at one frame rate; this one spends the same posed second at three of them and
+# holds each to the figures the specification states for that second.
 [[review.categories.items]]
-id = "reset-seeds-randomness"
-title = "reset seeds the game's randomness"
-description = "Two runs started after reset({ seed: 7 }) build the identical stage-1 wave — the same drone kinds at the same slots with the same bands — and a run after reset({ seed: 8 }) builds a different one."
-domains = ["polarity", "swarm", "arcade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
-  { id = "seeded", name = "The wave the seeded reset built", kind = "image" },
-] }
-[[review.categories.items]]
-id = "deterministic-core"
+id = "elapsed-time-steps"
 title = "The simulation advances on elapsed time alone"
-description = "One second of game time covered as 1 frame, as 60 frames and as 120 frames leaves the identical snapshot, because every frame resolves in whole SUBSTEP_MAX sub-steps."
+description = "One second of game time covered as 1 frame, as 60 frames and as 120 frames resolves the same way at each division, because every frame runs in whole SUBSTEP_MAX sub-steps: a shot fired under a Shard destroys it, a Flux posed short of its window's end flips its band with the remainder carried into the next window, an enemy bullet falls ENEMY_BULLET_SPEED units, and simTime reads the second."
 domains = ["polarity", "swarm", "arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+validation = { script = "instrumentation/elapsed-time-steps.test.ts", outputs = [
   { id = "stepped", name = "The field one second of game time reached", kind = "image" },
 ] }
 # The only point on the checklist that waits on the wall clock rather than

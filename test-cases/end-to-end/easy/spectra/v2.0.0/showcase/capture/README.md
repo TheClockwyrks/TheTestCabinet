@@ -5,9 +5,10 @@
 implementation, playing a real run: the title menu is confirmed into a run, and
 the resonator-fighter is then flown with scripted keyboard input against the
 game's own rules, several takes are auditioned, and the most watchable one is
-replayed under the recorder. Nothing is posed once play has begun — the only
-debug call either driver makes is `reset`, before the run opens, so that a take
-can be auditioned recorder-off and then re-run recorder-on identically.
+kept. Nothing is posed once play has begun — the only debug call either driver
+makes is `reset`, before the run opens. The game lays out its own wave and draws
+its own dives, so no take can be played twice: every take is recorded as it is
+auditioned, and the winner's files are the ones kept.
 
 ## Why `references/none`
 
@@ -61,7 +62,7 @@ PY
 TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
   TCAB_SHOWCASE_MAX_REPLAY_FRAMES=900 \
   TCAB_SHOWCASE_MIN_SECONDS=28 TCAB_SHOWCASE_MAX_SECONDS=38 \
-  TCAB_SHOWCASE_SEEDS=1,2,3,5,7,11,13,17 \
+  TCAB_SHOWCASE_TAKES=8 \
   npx vitest run --config validation/vitest.config.ts \
   validation/showcase-capture.test.ts
 ```
@@ -79,18 +80,17 @@ then remove the staged `validation/` directory from the reference workspace.
 | `TCAB_VALIDATION_MEDIA_DIR`                               | Where the outputs are written. Unset, the driver plays and reports but writes nothing, which is how an audition is run.             |
 | `TCAB_SHOWCASE_MAX_REPLAY_FRAMES`                         | The staged harness's replay cap. See _The frame rate and the weight_ below for why the committed clips were written at `900`.       |
 | `TCAB_SHOWCASE_MIN_SECONDS` / `TCAB_SHOWCASE_MAX_SECONDS` | The bounds a take is played between. It ends on the first settled beat past the minimum, and is cut at the maximum if none arrives. |
-| `TCAB_SHOWCASE_SEEDS` / `TCAB_SHOWCASE_PHASES`            | The seeds and pilot phases auditioned, comma-separated. Every seed is played at every phase.                                        |
-| `TCAB_SHOWCASE_SEED` / `TCAB_SHOWCASE_PHASE`              | Skip the audition and record exactly this take. How a committed clip is reproduced.                                                 |
+| `TCAB_SHOWCASE_TAKES` / `TCAB_SHOWCASE_PHASES`            | How many takes are played at each pilot phase, and the phases auditioned, comma-separated.                                          |
 | `TCAB_SHOWCASE_QA_STILLS`                                 | `1` writes a still every three seconds of the recorded take, for eyeballing it.                                                     |
 
-A take's `phase` varies it beyond what the seed does: how long the pilot commits
+A take's `phase` varies it beyond what the game's own draws do: how long the pilot commits
 to an aim before re-reading the field, and how much better the other band's field
 has to look before it spends a flip on re-tuning to hunt it.
 
 ## How a take is judged
 
-The capture is deterministic: the same seed and phase replay the identical run.
-A take is rated on what makes a watchable clip rather than on anything the
+No two takes play the same run, so each is recorded as it is played and rated
+afterwards. A take is rated on what makes a watchable clip rather than on anything the
 validators care about — matched kills, bullets absorbed on the hull, flips spent,
 dives launched at the ship, Prism shells broken and cores destroyed, spectral
 inversions, discharges and how much each took off the field, stages cleared, the
@@ -129,13 +129,13 @@ both are far inside the 25 MiB per-file cap.
 
 ## What is committed
 
-Twenty-four takes were auditioned for each variant, eight seeds at three pilot
-phases each, with `TCAB_SHOWCASE_MIN_SECONDS=28` and
+Twenty-four takes were auditioned for each variant, eight at each of three pilot
+phases, with `TCAB_SHOWCASE_MIN_SECONDS=28` and
 `TCAB_SHOWCASE_MAX_SECONDS=38`.
 
 ### `showcase/base/`
 
-The winner was **seed 17, pilot phase 1**, from `references/none/base`:
+The winner was a **pilot phase 1** take from `references/none/base`:
 
 - `gameplay.json.gz` — 883 frames spanning 29.4 s, thinned from 60 Hz to 30 fps.
   Stage 1 flown to a clear and stage 2 opened: 28 drones destroyed on matched
@@ -147,11 +147,11 @@ The winner was **seed 17, pilot phase 1**, from `references/none/base`:
   the spectral inversion: both bands slotted overhead, a shot climbing, an enemy
   bullet coming down, the ship under it.
 - `title.png` — the title screen the take opened on, taken after the recorder
-  closed by resetting to the same seed.
+  closed by resetting to the title.
 
 ### `showcase/overload/`
 
-The winner was **seed 3, pilot phase 1**, from `references/none/overload`:
+The winner was a **pilot phase 1** take from `references/none/overload`:
 
 - `gameplay.json.gz` — 846 frames spanning 28.2 s, thinned from 60 Hz to 30 fps.
   Stage 1 flown to a clear: 29 drones destroyed, 7 bullets absorbed, 8 flips,
@@ -163,14 +163,19 @@ The winner was **seed 3, pilot phase 1**, from `references/none/overload`:
   overhead with the telegraph standing on several drones.
 - `title.png` — the OVERLOAD title screen, taken the same way.
 
-## Reproducing them
+## Re-recording them
+
+A committed clip is one take the game played once, and the game lays out its
+own wave and draws its own dives, so no command plays it again. Re-recording
+runs the audition over: the commands below play eight takes at the winning
+phase and keep the best, which is a different clip each time.
 
 ```sh
 # base, from references/none/base
 TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
   TCAB_SHOWCASE_MAX_REPLAY_FRAMES=900 \
   TCAB_SHOWCASE_MIN_SECONDS=28 TCAB_SHOWCASE_MAX_SECONDS=38 \
-  TCAB_SHOWCASE_SEED=17 TCAB_SHOWCASE_PHASE=1 \
+  TCAB_SHOWCASE_TAKES=8 TCAB_SHOWCASE_PHASES=1 \
   npx vitest run --config validation/vitest.config.ts \
   validation/showcase-capture.test.ts
 
@@ -178,7 +183,7 @@ TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
 TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
   TCAB_SHOWCASE_MAX_REPLAY_FRAMES=900 \
   TCAB_SHOWCASE_MIN_SECONDS=28 TCAB_SHOWCASE_MAX_SECONDS=38 \
-  TCAB_SHOWCASE_SEED=3 TCAB_SHOWCASE_PHASE=1 \
+  TCAB_SHOWCASE_TAKES=8 TCAB_SHOWCASE_PHASES=1 \
   npx vitest run --config validation/vitest.config.ts \
   validation/showcase-capture.test.ts
 ```

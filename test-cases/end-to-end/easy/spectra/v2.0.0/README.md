@@ -42,11 +42,11 @@ build that is nearly right in many places is told apart from one that is right.
 The case supports three engines and seeds a different project for each, which is
 what the manifest's `[workspaces]` table is for:
 
-| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------             |
-| `none`          | The toolchain configuration, `index.html`, and the art and particle system under `assets/`. There is no `src/`: the build writes the game and the runtime beneath it — the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, image loading, the overlay and the `window.__spectra` surface. The surface additionally carries the clock, because nothing outside the build owns it.                                     |
-| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts` and a `src/game.ts` stub. The build writes `src/game.ts`: `SpectraState`, the debug surface `specs/instrumentation.md` specifies, `BACKGROUND`, and the three functions. Its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`.                                        |
-| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus `src/constants.ts` and `src/main.ts`. `src/game.ts` is deliberately absent from the seed, so the first `tsc` fails on the missing module. The build writes the `GameDefinition`, the instance whose `initialize` returns the debug surface, the mode whose `gameStateClass` is the live `SpectraState`, and the actors the field is drawn and driven by.             |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `none`          | The toolchain configuration, `index.html`, and the art and particle system under `assets/`. There is no `src/`: the build writes the game and the runtime beneath it — the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, image loading, the overlay and the `window.__spectra` surface. The surface additionally carries the clock, because nothing outside the build owns it.                         |
+| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts` and a `src/game.ts` stub. The build writes `src/game.ts`: `SpectraState`, the debug surface `specs/instrumentation.md` specifies, `BACKGROUND`, and the three functions. Its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`.                            |
+| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus `src/constants.ts` and `src/main.ts`. `src/game.ts` is deliberately absent from the seed, so the first `tsc` fails on the missing module. The build writes the `GameDefinition`, the instance whose `initialize` returns the debug surface, the mode whose `gameStateClass` is the live `SpectraState`, and the actors the field is drawn and driven by. |
 
 Spectra runs in **one** world for the whole session under `structured-2d`: every
 screen is a value of the state's `screen` field rather than a level of its own, so
@@ -94,26 +94,26 @@ is asked to build, and those are what one build already contains.
 The specification is split across `specs/` by concern, and every file is seeded
 for every run. Each rule lives in exactly one file.
 
-| Spec                 | Covers                                                                                                                                                                                        |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `overview.md`        | What is built, what stays as it is, the `1280 x 720` stage and the center convention, the code quality, the commands run over the finished repository, and the legibility table.              |
-| `field.md`           | The two HUD strips and the play field between them, the ship's lane and its clamp, the formation slot grid and the sway, where a drone enters and a bullet leaves, and the starfield.         |
-| `simulation.md`      | How a frame advances: per-second rates integrated against the frame's delta time, the sub-step ceiling and the order a sub-step resolves in, the one seeded generator, and the contact model. |
-| `bands.md`           | The two bands and what a band decides: the effective band and the swaps that produce it, match-to-destroy, the dual-use shield, the flip and its lockout, and the spectral inversion.         |
-| `ship.md`            | The ship's footprint and half-extent, how it moves and stops, where a shot spawns and how fast it climbs, the fire interval and the bullet cap, and what blocks firing.                       |
-| `resonance.md`       | What fills the meter and by how much, that it caps, does not decay and survives a death, when a discharge is available, and what the burst takes and what it spares.                          |
-| `swarm.md`           | How any drone behaves: the four phases, the staggered entrance, the formation hold and the sway, the wave's dive clock, where a diver fires, and what a standard wave holds.                  |
-| `drones.md`          | The fixed-band Shard, the Flux's held window and shimmer, and the Prism's two layers, its escort, its two-band burst and the inversion it triggers at the bottom.                             |
-| `stages.md`          | The stage sequence, the level-clear rule stated as a moment, the challenge flyover, and the four scaling formulas with their caps and floors.                                                 |
-| `progression.md`     | The starting lives, what costs one, the ready hold and the respawn, the extra life and the latch that pays it once, and the game over.                                                        |
-| `scoring.md`         | Every score figure the game pays, including what a drone destroyed out of formation is worth.                                                                                                 |
-| `mode.md`            | The playable mode: what a mismatched shot does to the drone it hits, and, under Overload, the telegraph, the three overload reactions and the tenth cue.                                      |
-| `controls.md`        | Every action the game answers to and the keys bound to it, menu navigation and confirm, back, pause, mute, and the overlay toggle.                                                            |
-| `ui.md`              | The seven screens and what each shows, the five HUD readouts, the mute indicator and the inversion overlay, and the audio cues with the mute requirement.                                     |
-| `assets.md`          | The four PNGs, which band-state each depicts, the ring and diamond glyph convention, how the other band-state is derived, and the drone-burst and how it is played.                           |
-| `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                  |
-| `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the world gates and the faculty switches, the snapshot shape, and the debug overlay.                             |
-| `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                                |
+| Spec                 | Covers                                                                                                                                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overview.md`        | What is built, what stays as it is, the `1280 x 720` stage and the center convention, the code quality, the commands run over the finished repository, and the legibility table.                      |
+| `field.md`           | The two HUD strips and the play field between them, the ship's lane and its clamp, the formation slot grid and the sway, where a drone enters and a bullet leaves, and the starfield.                 |
+| `simulation.md`      | How a frame advances: per-second rates integrated against the frame's delta time, the sub-step ceiling and the order a sub-step resolves in, where each random draw is stated, and the contact model. |
+| `bands.md`           | The two bands and what a band decides: the effective band and the swaps that produce it, match-to-destroy, the dual-use shield, the flip and its lockout, and the spectral inversion.                 |
+| `ship.md`            | The ship's footprint and half-extent, how it moves and stops, where a shot spawns and how fast it climbs, the fire interval and the bullet cap, and what blocks firing.                               |
+| `resonance.md`       | What fills the meter and by how much, that it caps, does not decay and survives a death, when a discharge is available, and what the burst takes and what it spares.                                  |
+| `swarm.md`           | How any drone behaves: the four phases, the staggered entrance, the formation hold and the sway, the wave's dive clock, where a diver fires, and what a standard wave holds.                          |
+| `drones.md`          | The fixed-band Shard, the Flux's held window and shimmer, and the Prism's two layers, its escort, its two-band burst and the inversion it triggers at the bottom.                                     |
+| `stages.md`          | The stage sequence, the level-clear rule stated as a moment, the challenge flyover, and the four scaling formulas with their caps and floors.                                                         |
+| `progression.md`     | The starting lives, what costs one, the ready hold and the respawn, the extra life and the latch that pays it once, and the game over.                                                                |
+| `scoring.md`         | Every score figure the game pays, including what a drone destroyed out of formation is worth.                                                                                                         |
+| `mode.md`            | The playable mode: what a mismatched shot does to the drone it hits, and, under Overload, the telegraph, the three overload reactions and the tenth cue.                                              |
+| `controls.md`        | Every action the game answers to and the keys bound to it, menu navigation and confirm, back, pause, mute, and the overlay toggle.                                                                    |
+| `ui.md`              | The seven screens and what each shows, the five HUD readouts, the mute indicator and the inversion overlay, and the audio cues with the mute requirement.                                             |
+| `assets.md`          | The four PNGs, which band-state each depicts, the ring and diamond glyph convention, how the other band-state is derived, and the drone-burst and how it is played.                                   |
+| `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                          |
+| `instrumentation.md` | The render-free core, every operation of the debug and automation surface, the world gates and the faculty switches, the snapshot shape, and the debug overlay.                                       |
+| `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                                        |
 
 `field.md`, `simulation.md`, `bands.md`, `ship.md`, `resonance.md`, `swarm.md`,
 `drones.md`, `stages.md`, `progression.md` and `scoring.md` are plain Markdown,
@@ -239,16 +239,17 @@ either variant's build, on any engine:
 npx tsc --noEmit -p validation/tsconfig.json    # from a build's root
 ```
 
-### Three captures move between runs
+### Which captures move between runs
 
-`tcab capture-baselines` writes `1784` files across the six engine/variant
-targets: `1673` stills and `111` recorded replays. Six of those stills are not
-rendered at all: `showcase.exists__carousel` is a `.png` the point copies out of
-the build's own showcase, so the baseline for it is the reference's own picture.
-Thirteen of the stills are taken off a clock rather than off a posed frame, so
-two runs of the command over unchanged code write different bytes for them, and
-the committed baseline for each is one sample rather than a fixed picture. They
-are three outputs:
+`tcab capture-baselines` writes the stills and recorded replays for the six
+engine/variant targets. Six of the stills are not rendered at all:
+`showcase.exists__carousel` is a `.png` the point copies out of the build's own
+showcase, so the baseline for it is the reference's own picture. Two kinds of
+output differ between two runs of the command over unchanged code, so the
+committed baseline for each is one sample rather than a fixed picture.
+
+The first kind is taken off a clock rather than off a posed frame. They are three
+outputs:
 
 | Output                                         | Targets | Why it moves                                                                                                                                      |
 | ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -266,14 +267,19 @@ reads a fixed number of driven frames and winds the build's own timers on rather
 than sitting through a stretch of the wall clock, so its still is the same
 picture on every host and any movement in it is the build's.
 
-The churn is bounded and it is all there is. Captures of the same code differ
-inside those thirteen files and in nothing else, and a delta within a file is no
-more than 2291 pixels of the 921600 in a frame, inside the panel's text band or on
-one moving entity. The other 1660 stills and all 111 replays are byte-identical
-from one capture to the next.
+The second kind shows a drone-burst. `specs/assets.md` has each burst scatter at
+random, and the reference draws that scatter from a private source of its own,
+so a still or a replay taken while a burst plays carries a different scatter on
+each capture. The particle count the snapshot reports, the burst's centre, its
+footprint and its elapsed time are the same; only where each spark landed moves.
+Every check that reads a burst reads those figures rather than the picture, so
+the verdicts are the same on every capture and the pictures differ only in the
+sparks.
 
-So a recapture that leaves only those thirteen files dirty has changed nothing
-and is not worth committing. One that moves anything else has changed the
+Captures of the same code differ inside those files and in nothing else, and a
+delta inside one of the clock-timed stills is inside the panel's text band or on
+one moving entity. So a recapture that leaves only those files dirty has changed
+nothing and is not worth committing. One that moves anything else has changed the
 picture a reviewer is shown, and is.
 
 ## Scoring

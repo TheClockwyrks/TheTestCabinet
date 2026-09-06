@@ -1,8 +1,8 @@
 # Spectra — The frame
 
 This file defines how a frame advances the game, how a frame is divided, the order
-a division resolves in, how a contact is decided, and where the game's randomness
-comes from.
+a division resolves in, how a contact is decided, and where each random draw the
+game makes is stated.
 
 ## Rates and the delta time
 
@@ -52,8 +52,10 @@ lies inside the wave's current radius. `specs/resonance.md` states the wave.
 
 ## Randomness
 
-Every random choice the game makes runs off one seeded generator whose whole state
-lives in the game's state: which drone dives next, the gap before the next dive, a
-Flux's starting phase, the wave's layout, and the scatter of each drone-burst. Given
-the same seed and the same sequence of calls and elapsed game time, the game
-reaches the same state every time.
+The game draws at random where the spec that owns the rule states the draw: which
+formation drone a dive launch takes and the gap before the next launch in
+`specs/swarm.md`, the band clock a Flux starts its first window at in
+`specs/drones.md`, the scatter of each drone-burst in `specs/assets.md`, and any
+draw `specs/mode.md` states for the mode this build ships. Each draw is stated as
+the set it is drawn from and the chance each outcome carries. A choice a spec leaves
+to the build, such as which slots a wave fills, is the build's to draw or to fix.

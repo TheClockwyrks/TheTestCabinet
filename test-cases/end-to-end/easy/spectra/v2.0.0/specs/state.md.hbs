@@ -60,9 +60,6 @@ Whatever its shape, the state carries the following.
 
 - The simulation time, in seconds, as `specs/simulation.md` defines it.
 - Whether sound is muted, refreshed from the runtime's mute bit in every update.
-- The state of the seeded random generator, which the wave's layout, the choice of
-  which drone dives next, the gap before the next dive, a Flux's starting phase, and
-  each burst's scatter are all drawn from.
 - Whatever the game needs to hand a fresh id to the next drone, bullet, or burst it
   creates, so no two entities live at one moment share an id.
 
@@ -186,7 +183,6 @@ export interface SpectraState {
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 }
 ```
 {{else}}
@@ -209,8 +205,8 @@ place, and each field initializer below is that field's title-screen value, the 
 value the debug surface's `reset` restores.
 
 `GameState` comes from the engine's package, `ParticleSimulator` from
-`@clockwyrks/particle-runtime`, and `DEFAULT_SEED`, `DIVE_FIRST_DELAY`, and
-`START_LIVES` from `src/constants.ts`.
+`@clockwyrks/particle-runtime`, and `DIVE_FIRST_DELAY` and `START_LIVES` from
+`src/constants.ts`.
 
 ```ts
 export type Screen =
@@ -323,7 +319,6 @@ export class SpectraState extends GameState {
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 }
 ```
 {{/if}}
@@ -428,9 +423,6 @@ is appended to it.
   states.
 - `muted` — the game's readable copy of the runtime's mute bit, refreshed in every
   update. The runtime owns muting, and this field is what the debug surface reports.
-- `rngState` — the state of the game's seeded random generator. The wave's layout,
-  the choice of which drone dives next, the gap before the next dive, a Flux's
-  starting phase, and each burst's scatter are all drawn from it.
 
 A drone's effective band, whether a Flux is shimmering, whether a discharge is
 ready, whether the stage is a challenge stage, whether the ship is alive, and the

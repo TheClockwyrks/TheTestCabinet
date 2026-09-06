@@ -52,7 +52,7 @@ Each kind overloads in a way true to it.
 | --- | --- |
 | Shard | It enters phase `diving` in the frame it overloads and plunges down the field toward the ship's current `x`, at `OVERLOAD_DIVE_SCALE` (`1.6`) times the dive speed `specs/swarm.md` states for the stage. |
 | Flux | Its stored band flips to the opposite one and its band clock returns to `0`, ending the window it was in, and it fires `OVERLOAD_FLUX_SPREAD` (`3`) enemy bullets at once, all carrying its new band, fanned symmetrically about straight down on headings `OVERLOAD_FLUX_SPREAD_ANGLE` (`20`) degrees apart, so an odd spread puts its middle shot straight down. It then runs its rhythm on from the fresh window. |
-| Prism | Its exposed layer bursts, firing exactly two enemy bullets at once, one cyan and one magenta. If the exposed layer is the shell, it also adds `OVERLOAD_PRISM_ESCORTS` (`1`) Shard beside it, of a band drawn from the game's own generator, entering as an escort does. With only the core left it adds none. |
+| Prism | Its exposed layer bursts, firing exactly two enemy bullets at once, one cyan and one magenta. If the exposed layer is the shell, it also adds `OVERLOAD_PRISM_ESCORTS` (`1`) Shard beside it, of a band chosen at random, each band equally likely, entering as an escort does. With only the core left it adds none. |
 
 An overload destroys nothing, takes no layer off a Prism, and leaves the drone's
 band, slot, and shell exactly as they were except where the table above changes
