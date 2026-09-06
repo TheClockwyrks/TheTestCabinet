@@ -33,7 +33,7 @@ export function droneLine(state: SpectraState, drone: Drone): string {
     `#${drone.id}`,
     drone.kind,
     `${drone.band}/${droneEffectiveBand(drone, inverted, state.stage)}`,
-    `${round(drone.x)},${round(drone.y)}`,
+    `(${round(drone.x)}, ${round(drone.y)})`,
     drone.phase,
   ];
   if (drone.kind === "flux") {
