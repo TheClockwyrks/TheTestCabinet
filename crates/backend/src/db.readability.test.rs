@@ -318,15 +318,25 @@ async fn a_published_run_this_build_cannot_read_is_deletable() {
 // The generation's pin to the contract
 // ---------------------------------------------------------------------------
 
-/// The generated JSON Schema of the run record contract, relative to this crate.
+/// The published schema root the generated contract schemas live under, relative to
+/// this crate.
 ///
-/// The schema is the contract's structural form: it is generated from the very
-/// `RunRecord` this build deserializes stored records into, and CI regenerates and
-/// diffs it, so a Rust change that has not reached it fails there rather than here.
-const RECORD_SCHEMA: &str = "../../apps/docs/public/schema/core/run-record.schema.json";
+/// A schema is the contract's structural form: it is generated from the very types
+/// this build deserializes stored records into, and CI regenerates and diffs it, so
+/// a Rust change that has not reached it fails there rather than here.
+const SCHEMA_ROOT: &str = "../../apps/docs/public/schema";
+
+/// The run record's own schema, relative to [`SCHEMA_ROOT`]. The pin starts here and
+/// follows every published schema it references.
+const RECORD_SCHEMA: &str = "core/run-record.schema.json";
+
+/// The base every cross-schema `$ref` in a published schema is written against. A
+/// reference under it names a file under [`SCHEMA_ROOT`] by the same relative path.
+const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 
 /// The contract shape each [`RUN_RECORD_FORMAT`] generation was decided against, as
-/// a digest of that schema with its prose removed.
+/// a digest of the record schema and every schema it references, with their prose
+/// removed.
 ///
 /// This is what makes the generation a fact about the contract. A change to the
 /// contract's shape moves the digest and fails the test below, which leaves two
@@ -334,16 +344,27 @@ const RECORD_SCHEMA: &str = "../../apps/docs/public/schema/core/run-record.schem
 /// stored records still deserialize against it, or add a generation and raise
 /// [`RUN_RECORD_FORMAT`] to it, which makes every stored row re-decide its
 /// readability at the next boot.
-/// Generation 1's digest last moved when `DebugScriptResult` gained
-/// [`inconclusive`](tcab_core::validation::Inconclusive), which tells the
-/// inconclusive outcomes apart instead of reporting them all as one boolean. The
-/// generation did NOT rise with it, because a record stored before the change still
-/// deserializes: `precondition_unmet` is still carried and still `#[serde(default)]`,
-/// and the new field is an `Option` that is `None` on exactly those older records.
-const RECORD_SHAPES: &[(u32, &str)] = &[(
-    1,
-    "e78f2e3b68b2f1ae6a78b421f36a8c4c34adf1580a25f8afa7058749b57b64b2",
-)];
+///
+/// The referenced schemas are part of the shape because a stored record embeds what
+/// they describe: a gg run's record carries its whole capability set, agent profiles
+/// included, and a required field added there stops every gg record stored before it
+/// from deserializing exactly as one added to `RunRecord` itself would.
+///
+/// Generation 2 is the gg agent profile's `openingTurn` becoming required: every gg
+/// record stored before it lacks the key and no longer reads. Generation 1's digest
+/// last moved when `DebugScriptResult` gained
+/// [`inconclusive`](tcab_core::validation::Inconclusive), a change stored records
+/// survived because the new field is an `Option` that is `None` on older records.
+const RECORD_SHAPES: &[(u32, &str)] = &[
+    (
+        1,
+        "e78f2e3b68b2f1ae6a78b421f36a8c4c34adf1580a25f8afa7058749b57b64b2",
+    ),
+    (
+        2,
+        "5bf07ee93ada473ab4c75bb34281b598f5286e4788a722e169141b4bc27c1e9e",
+    ),
+];
 
 /// Render `value` canonically with its prose removed: object keys in sorted order,
 /// and every schema `description` dropped, so a rustdoc edit leaves the digest
@@ -380,17 +401,94 @@ fn shape(value: &serde_json::Value, out: &mut String) {
     }
 }
 
-/// The digest of the committed schema's shape.
+/// Collect into `out` the relative path of every published schema `value` references
+/// through a `$ref` under [`SCHEMA_BASE_URL`], fragment dropped. A `$ref` into the
+/// schema's own definitions is not a file and is left alone.
+fn referenced_schemas(value: &serde_json::Value, out: &mut std::collections::BTreeSet<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::String(target)) = map.get("$ref")
+                && let Some(relative) = target.strip_prefix(SCHEMA_BASE_URL)
+            {
+                let file = relative.split('#').next().unwrap_or(relative);
+                out.insert(file.to_string());
+            }
+            for nested in map.values() {
+                referenced_schemas(nested, out);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                referenced_schemas(item, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The digest of the committed record schema's shape together with the shape of
+/// every published schema it references, transitively.
+///
+/// Each schema is rendered canonically and keyed by its relative path, in path
+/// order, so the digest depends on which schemas the record's tree spans and on
+/// their shapes, and on nothing else.
 fn record_shape_digest() -> String {
     use sha2::{Digest, Sha256};
 
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(RECORD_SCHEMA);
-    let schema = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("reading {}: {err}", path.display()));
-    let schema: serde_json::Value = serde_json::from_str(&schema).expect("the schema is JSON");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(SCHEMA_ROOT);
+    let mut pending = vec![RECORD_SCHEMA.to_string()];
+    let mut shapes = std::collections::BTreeMap::new();
+    while let Some(relative) = pending.pop() {
+        if shapes.contains_key(&relative) {
+            continue;
+        }
+        let path = root.join(&relative);
+        let schema = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("reading {}: {err}", path.display()));
+        let schema: serde_json::Value = serde_json::from_str(&schema)
+            .unwrap_or_else(|err| panic!("{relative} is not JSON: {err}"));
+        let mut referenced = std::collections::BTreeSet::new();
+        referenced_schemas(&schema, &mut referenced);
+        pending.extend(referenced);
+        let mut canonical = String::new();
+        shape(&schema, &mut canonical);
+        shapes.insert(relative, canonical);
+    }
+
     let mut canonical = String::new();
-    shape(&schema, &mut canonical);
+    for (relative, rendered) in shapes {
+        canonical.push_str(&relative);
+        canonical.push('=');
+        canonical.push_str(&rendered);
+        canonical.push('\n');
+    }
     hex::encode(Sha256::digest(canonical.as_bytes()))
+}
+
+#[test]
+fn the_pin_spans_every_schema_the_record_references() {
+    // The gap this closes: a required field added to a gg agent profile stopped every
+    // stored gg record deserializing without moving the digest, because the profile
+    // lives in the capability-set schema the record schema only references. The pin
+    // has to see through that reference, and the others beside it.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(SCHEMA_ROOT);
+    let record: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(root.join(RECORD_SCHEMA)).expect("the record schema is committed"),
+    )
+    .expect("the record schema is JSON");
+    let mut referenced = std::collections::BTreeSet::new();
+    referenced_schemas(&record, &mut referenced);
+    assert!(
+        referenced.contains("gg/capability-set.schema.json"),
+        "the record schema references the gg capability set; the pin follows that reference, \
+         got {referenced:?}",
+    );
+    for relative in &referenced {
+        assert!(
+            root.join(relative).is_file(),
+            "{relative} is referenced by the record schema but is not a published schema file",
+        );
+    }
 }
 
 #[test]
