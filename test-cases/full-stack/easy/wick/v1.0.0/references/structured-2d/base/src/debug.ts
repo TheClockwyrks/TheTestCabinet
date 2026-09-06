@@ -31,9 +31,9 @@ import {
   type PickupKind,
   type WeaponId,
 } from "./constants";
-import { RUN_SCREENS, SILENT, choose, setSwitch } from "./flow";
+import { RUN_SCREENS, SILENT, choose, rngOf, setSwitch } from "./flow";
 import { menuRects, tabRects, type WickRect } from "./menus";
-import { forgetHits } from "./sim/effects";
+import { drawDrop, forgetHits } from "./sim/effects";
 import {
   aliveCommons,
   isEnemyId,
@@ -198,6 +198,7 @@ export interface WickDebugApi {
   setNextStrikeTarget(id: number): void;
   setNextChestItem(id: WeaponId | PassiveId): void;
   setNextDrop(kind: NextDrop): void;
+  rollDrop(): NextDrop;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;
@@ -553,6 +554,9 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
       pose(() => {
         run().nextDrop = value;
       });
+    },
+    rollDrop() {
+      return drawDrop(rngOf(state()));
     },
 
     setPlayerPosition(x, y) {

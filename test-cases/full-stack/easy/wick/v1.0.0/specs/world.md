@@ -287,4 +287,4 @@ with probability `DRAFT_CHANCE`, so a kill drops one pickup or none. The pickup
 lands at the enemy's position beside its gem. Elites and the Dark make no roll;
 an elite drops its chest, and the Dark drops nothing.
 `specs/instrumentation.md` states how a scenario poses what the next roll
-drops.
+drops, and how it makes one roll on its own.

@@ -97,6 +97,7 @@ export const REQUIRED_OPS = [
   "setNextStrikeTarget",
   "setNextChestItem",
   "setNextDrop",
+  "rollDrop",
   "setPlayerPosition",
   "setFacing",
   "setHp",
@@ -169,7 +170,12 @@ export const SWITCH_OPS: Readonly<Record<SwitchName, OperationName>> = {
  * current state and hand back, and which to run through `engine.apply`; the
  * surface's shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot", "menuRects", "tabRects"] as const;
+export const READINGS = [
+  "snapshot",
+  "menuRects",
+  "tabRects",
+  "rollDrop",
+] as const;
 
 /**
  * One rectangle a menu reading reports, in stage coordinates, "`0` to `STAGE_W`
@@ -418,7 +424,7 @@ export interface WickDebugApi<S = unknown> {
   setNextSpawnAngle(state: DeepReadonly<S>, degrees: number): S;
   /** Poses the direction of the next gnat swarm, `0` up to `360`. */
   setNextSwarmAngle(state: DeepReadonly<S>, degrees: number): S;
-  /** Poses where the next firing's first puddle lands, about the lamplighter. */
+  /** Poses where one puddle of the next firing lands, about the lamplighter. */
   setNextPuddleOffset(state: DeepReadonly<S>, dx: number, dy: number): S;
   /** Poses the enemy the next Spark firing's first strike lands on. */
   setNextStrikeTarget(state: DeepReadonly<S>, id: number): S;
@@ -426,6 +432,8 @@ export interface WickDebugApi<S = unknown> {
   setNextChestItem(state: DeepReadonly<S>, id: string): S;
   /** Poses what the next common kill drops in place of its roll. */
   setNextDrop(state: DeepReadonly<S>, kind: NextDrop): S;
+  /** Makes one drop roll alone and returns what it decided. Poses nothing. */
+  rollDrop(state: DeepReadonly<S>): NextDrop;
 
   /** Sets the lamplighter's center; nothing else moves. */
   setPlayerPosition(state: DeepReadonly<S>, x: number, y: number): S;

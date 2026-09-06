@@ -24,6 +24,7 @@
 // how far apart the ring poses the lamplighter — is named here; every figure
 // the specification states is imported from `../constants`.
 
+import { fail } from "../assert";
 import { SPAWN_WINDOW, TICK_HZ, type EnemyId } from "../constants";
 import {
   placeEnemy,
@@ -109,6 +110,48 @@ export async function driveArrivals(
     if (stopAfter !== undefined && arrivals.length >= stopAfter) break;
   }
   return { arrivals, snapshot, ticks: driven };
+}
+
+/**
+ * How many spawns a window's cadence is read over: the spawn a posed timer of
+ * `0` lands at once and one more at the end of each of two whole intervals.
+ */
+export const CADENCE_SPAWNS = 3;
+
+/** How many spawns a window's type reading is drawn over. */
+export const TYPE_DRAWS = 60;
+
+/**
+ * Draw `count` window spawns one to a tick, each posed by setting the timer to
+ * `0` so the next tick spawns and cleared away as it lands, and answer the
+ * type of each in order.
+ *
+ * The cap never binds, since nothing is left standing, and every draw is the
+ * window's own: "spawn one enemy of a type chosen uniformly from the window's
+ * types" (`specs/enemies.md`, "The spawn timer"). Sixty is what makes a
+ * reading that every type of a row was drawn honest against chance: a uniform
+ * draw over three types leaves one of them undrawn across sixty draws about
+ * once in ten thousand million runs, past six standard deviations, while a
+ * build that draws from one type alone, or from a roster short of the row's,
+ * fails it every time.
+ */
+export async function drawTypes(
+  h: Harness,
+  count = TYPE_DRAWS,
+): Promise<EnemyId[]> {
+  const types: EnemyId[] = [];
+  for (let draw = 0; draw < count; draw += 1) {
+    h.debug.setSpawnTimer(0);
+    const drive = await driveArrivals(h, 1, { removeOnArrival: true });
+    if (drive.arrivals.length !== 1) {
+      fail(
+        `one enemy spawned on a tick the window's timer was due, draw ${draw + 1} (specs/enemies.md, The spawn timer)`,
+        drive.arrivals.length,
+      );
+    }
+    types.push(drive.arrivals[0].enemy.type);
+  }
+  return types;
 }
 
 /**

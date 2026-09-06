@@ -27,7 +27,7 @@
 //
 // THE DRIVE. `director/windows.ts` states it in full: the clock posed to the
 // window's first tick with `spawning` alone, the cadence read over two whole
-// intervals, thirty spawns drawn one per tick with the field cleared between so
+// intervals, sixty spawns drawn one per tick with the field cleared between so
 // the cap never binds, and then the cap posed full with 170 commons for two
 // more intervals.
 //

@@ -381,6 +381,7 @@ export interface WickDebugApi {
     id: WeaponId | PassiveId,
   ): WickState;
   setNextDrop(state: DeepReadonly<WickState>, kind: NextDrop): WickState;
+  rollDrop(state: DeepReadonly<WickState>): NextDrop;
   setPlayerPosition(
     state: DeepReadonly<WickState>,
     x: number,

@@ -24,7 +24,7 @@ import {
   type PickupKind,
   type WeaponId,
 } from "./constants";
-import { choose as chooseOffer } from "./flow";
+import { choose as chooseOffer, rngOf } from "./flow";
 import type {
   NextDrop,
   Screen,
@@ -47,7 +47,7 @@ import {
   spawnEnemy,
   spawnWindow,
 } from "./sim/enemies";
-import { forgetHits } from "./sim/effects";
+import { drawDrop, forgetHits } from "./sim/effects";
 import { unit } from "./sim/geometry";
 import { DAWN_TICK } from "./sim/lamplighter";
 import { candidatePool, isOfferId, isPassiveId } from "./sim/progression";
@@ -407,6 +407,9 @@ export function createDebugApi(): WickDebugApi {
       return pose(state, (draft) => {
         draft.run.nextDrop = value;
       });
+    },
+    rollDrop(state) {
+      return drawDrop(rngOf(state));
     },
 
     setPlayerPosition(state, x, y) {

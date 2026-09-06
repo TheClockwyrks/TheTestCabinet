@@ -1,5 +1,5 @@
 // Wick — instrumentation/set-next-puddle-offset-consumed: the firing that lands
-// its first puddle at a posed offset consumes it, so `nextPuddleOffset` reads
+// a puddle at a posed offset consumes it, so `nextPuddleOffset` reads
 // `null` afterwards.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "Drawn

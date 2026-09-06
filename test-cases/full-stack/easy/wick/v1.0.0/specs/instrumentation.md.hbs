@@ -417,12 +417,13 @@ Sets `spawnTimer` to `seconds`, at least `0`. Applies on a run screen.
 
 ### Drawn outcomes
 
-Where the game draws at random, each operation below sets what the next such
-draw decides. Each value is held in the run under the name its snapshot field
+Where the game draws at random, each pose below sets what the next such draw
+decides. Each value is held in the run under the name its snapshot field
 carries, is `null` on the idle run and after the draw that consumed it, is left
 standing by `setScreen`, and is consumed by one draw alone. A value that is not
 valid at the moment its draw is made is discarded and the draw is made at
-random. Each operation applies on a run screen.
+random. Each pose applies on a run screen. `rollDrop`, the one reading here,
+makes a drop roll on its own and returns it.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setNextSpawnAngle(state, degrees)`
@@ -452,10 +453,10 @@ direction `d` is the unit vector at that angle, and that swarm consumes it.
 {{/if}}
 
 Sets `nextPuddleOffset` to `(dx, dy)`, real numbers whose length is at most
-`OIL_SCATTER` (`400`); a longer offset is invalid. The first puddle the next
-Oil Splash or Blaze firing places lands at the lamplighter's center of that
-tick plus the offset, the firing's other puddles land at random, and that
-firing consumes it.
+`OIL_SCATTER` (`400`); a longer offset is invalid. One puddle of the next Oil
+Splash or Blaze firing lands at the lamplighter's center of that tick plus the
+offset, the firing's other puddles land at random, and that firing consumes
+it.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setNextStrikeTarget(state, id)`
@@ -492,6 +493,18 @@ value is invalid. The next common enemy killed by a weapon while `drops` is on
 drops that pickup beside its gem, or nothing for `none`, in place of its roll,
 and that kill consumes it. A death while `drops` is off, an elite's death, and
 the Dark's death leave it standing.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `rollDrop(state)`
+{{else}}
+#### `rollDrop()`
+{{/if}}
+
+Makes one drop roll exactly as `specs/world.md` states under The drop roll and
+returns what it decided: `bread`, `draft`, or `none`. It is a reading of the
+roll alone: nothing drops, nothing dies, no cue sounds, and every field of the
+state stands as it was, `nextDrop` included, since a posed drop has no part in
+it. Applies on every screen.
 
 ### The lamplighter
 
@@ -877,6 +890,7 @@ export interface WickDebugApi {
     id: WeaponId | PassiveId,
   ): WickState;
   setNextDrop(state: DeepReadonly<WickState>, kind: NextDrop): WickState;
+  rollDrop(state: DeepReadonly<WickState>): NextDrop;
   setPlayerPosition(
     state: DeepReadonly<WickState>,
     x: number,
@@ -1024,6 +1038,7 @@ export interface WickDebugApi {
   setNextStrikeTarget(id: number): void;
   setNextChestItem(id: WeaponId | PassiveId): void;
   setNextDrop(kind: NextDrop): void;
+  rollDrop(): NextDrop;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;

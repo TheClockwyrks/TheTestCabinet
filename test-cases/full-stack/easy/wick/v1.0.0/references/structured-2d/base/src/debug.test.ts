@@ -850,6 +850,22 @@ describe("the switches", () => {
   });
 });
 
+describe("the drop roll reading", () => {
+  const KINDS: readonly string[] = ["bread", "draft", "none"];
+
+  it("returns one of the three kinds and changes nothing, on every screen", () => {
+    const { debug } = playing();
+    debug.setNextDrop("bread");
+    const before = debug.snapshot();
+    for (let i = 0; i < 500; i += 1) {
+      expect(KINDS).toContain(debug.rollDrop());
+    }
+    expect(debug.snapshot()).toEqual(before);
+    debug.setScreen("title");
+    expect(KINDS).toContain(debug.rollDrop());
+  });
+});
+
 describe("the drawn outcome poses", () => {
   it("set each field, read back by the snapshot, on a run screen alone", () => {
     const { debug } = playing();

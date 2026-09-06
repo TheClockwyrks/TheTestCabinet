@@ -721,6 +721,22 @@ describe("poses sound nothing", () => {
   });
 });
 
+describe("the drop roll reading", () => {
+  const KINDS: readonly string[] = ["bread", "draft", "none"];
+
+  it("returns one of the three kinds and changes nothing, on every screen", () => {
+    const { api } = playing();
+    api.setNextDrop("bread");
+    const before = api.snapshot();
+    for (let i = 0; i < 500; i += 1) {
+      expect(KINDS).toContain(api.rollDrop());
+    }
+    expect(api.snapshot()).toEqual(before);
+    api.setScreen("title");
+    expect(KINDS).toContain(api.rollDrop());
+  });
+});
+
 describe("the drawn outcome poses", () => {
   it("set each field, read back by the snapshot, on a run screen alone", () => {
     const { api } = playing();

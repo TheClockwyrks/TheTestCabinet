@@ -63,9 +63,9 @@ export const MUSIC_SCREENS: readonly Screen[] = [
 /** The game's private random source, drawn from where nothing is posed. */
 const rng = new Rng();
 
-/** The random source a transition over `draft` draws from. */
-export function rngOf(draft: Draft): Rng {
-  void draft;
+/** The random source a transition over `state` draws from. */
+export function rngOf(state: DeepReadonly<WickState>): Rng {
+  void state;
   return rng;
 }
 

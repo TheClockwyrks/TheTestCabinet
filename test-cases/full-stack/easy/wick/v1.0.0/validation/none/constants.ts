@@ -193,6 +193,7 @@ export const REQUIRED_OPS: readonly string[] = [
   "setNextStrikeTarget",
   "setNextChestItem",
   "setNextDrop",
+  "rollDrop",
   // The lamplighter
   "setPlayerPosition",
   "setFacing",
@@ -2262,20 +2263,20 @@ export const GROUND_SHIFT_MATCH_MIN = 0.9;
 
 /**
  * The drop roll (specs/world.md — "The drop roll"), read over a fixed number
- * of common kills.
+ * of rolls made alone through `rollDrop()`.
  *
- * `4000` kills at `BREAD_CHANCE` (`0.02`) expect `80` breads; the binomial
- * tails below `40` and above `125` each fall under one in a hundred thousand,
- * and the band is nearly ten standard deviations wide. A draft drops only when
- * no bread did, so `4000` kills expect `4000 × 0.98 × 0.005 = 19.6` drafts,
- * and the tails below `3` and above `45` fall under the same bound. A
- * conformant build fails these by chance less than once in fifty thousand
- * runs, and a build that never rolls, or rolls at the wrong rate by a factor
- * of two, fails them every time.
+ * `40000` rolls at `BREAD_CHANCE` (`0.02`) expect `800` breads, with a
+ * standard deviation of `28`; `632` and `968` are six deviations either side,
+ * so a conformant build lands outside them about once in a thousand million
+ * runs, while a build rolling at half the chance expects `400` and one at
+ * twice it `1600`. A draft drops only when no bread did, so `40000` rolls
+ * expect `40000 × 0.98 × 0.005 = 196` drafts with a deviation of `14`, and
+ * `112` and `280` are six deviations either side, with half the chance at
+ * `98` and twice it at `392`, outside the band every time.
  */
-export const DROP_ROLL_KILLS = 4000;
-export const BREAD_COUNT_RANGE = { min: 40, max: 125 } as const;
-export const DRAFT_COUNT_RANGE = { min: 3, max: 45 } as const;
+export const DROP_ROLLS = 40000;
+export const BREAD_COUNT_RANGE = { min: 632, max: 968 } as const;
+export const DRAFT_COUNT_RANGE = { min: 112, max: 280 } as const;
 
 /* -------------------------------------------------------------------------- */
 /* The snapshot's fields (specs/instrumentation.md — "Snapshot shape")         */

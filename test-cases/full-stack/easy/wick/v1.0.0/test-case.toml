@@ -747,7 +747,7 @@ validation = { script = "instrumentation/set-next-swarm-angle-out-of-range.test.
 [[review.categories.items]]
 id = "set-next-puddle-offset"
 title = "setNextPuddleOffset poses where the next puddle lands"
-description = "setNextPuddleOffset(-120, 200) on playing sets nextPuddleOffset to (-120, 200), the snapshot reads it back, and the next Oil Splash firing lands its first puddle at the lamplighter's center plus that offset."
+description = "setNextPuddleOffset(-120, 200) on playing sets nextPuddleOffset to (-120, 200), the snapshot reads it back, and the next level-1 Oil Splash firing lands its one puddle at the lamplighter's center plus that offset."
 domains = ["arsenal"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-next-puddle-offset.test.ts", outputs = [ { id = "landed", name = "The puddle landing at the posed offset", kind = "image" } ] }
@@ -755,7 +755,7 @@ validation = { script = "instrumentation/set-next-puddle-offset.test.ts", output
 [[review.categories.items]]
 id = "set-next-puddle-offset-consumed"
 title = "The firing consumes the posed offset"
-description = "The Oil Splash firing that lands its first puddle at a posed offset consumes it, so nextPuddleOffset reads null after the firing tick."
+description = "The Oil Splash firing that lands a puddle at a posed offset consumes it, so nextPuddleOffset reads null after the firing tick."
 domains = ["arsenal"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-next-puddle-offset-consumed.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by its firing", kind = "image" } ] }
@@ -863,6 +863,22 @@ description = "setNextDrop('chest') throws and leaves the snapshot exactly as it
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-next-drop-unknown-kind.test.ts", outputs = [ { id = "refused", name = "The state unchanged by the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "roll-drop"
+title = "rollDrop makes one drop roll and returns it"
+description = "Each of a hundred rollDrop() calls on playing, and each of a hundred more on title, returns one of bread, draft, and none."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/roll-drop.test.ts", outputs = [ { id = "rolled", name = "The run the rolls were made on", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "roll-drop-changes-nothing"
+title = "rollDrop changes nothing"
+description = "With a moth alive, Taper held, and setNextDrop('bread') posed on playing, a hundred rollDrop() calls leave the snapshot exactly as it was, nextDrop still bread."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/roll-drop-changes-nothing.test.ts", outputs = [ { id = "unchanged", name = "The state unchanged by the rolls", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-title"
@@ -5815,7 +5831,7 @@ validation = { script = "director/last-window-runs-to-dawn.test.ts", outputs = [
 [[review.categories.items]]
 id = "window-0"
 title = "Window 0 spawns moth every 1 s up to 20"
-description = "With the clock posed into window 0 (from 0:00), spawning on alone, and the timer at 0, the director spawns one enemy every 60 ticks, every spawn is one of moth and each of those types appears across thirty spawns, and with 20 commons posed alive no spawn lands, as row 0 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 0 (from 0:00), spawning on alone, and the timer at 0, the director spawns one enemy every 60 ticks, every spawn is one of moth and each of those types appears across sixty spawns, and with 20 commons posed alive no spawn lands, as row 0 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-0.test.ts", outputs = [ { id = "window", name = "Window 0's spawns", kind = "replay" } ] }
@@ -5823,7 +5839,7 @@ validation = { script = "director/window-0.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-1"
 title = "Window 1 spawns moth, bat every 0.8 s up to 30"
-description = "With the clock posed into window 1 (from 0:30), spawning on alone, and the timer at 0, the director spawns one enemy every 48 ticks, every spawn is one of moth, bat and each of those types appears across thirty spawns, and with 30 commons posed alive no spawn lands, as row 1 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 1 (from 0:30), spawning on alone, and the timer at 0, the director spawns one enemy every 48 ticks, every spawn is one of moth, bat and each of those types appears across sixty spawns, and with 30 commons posed alive no spawn lands, as row 1 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-1.test.ts", outputs = [ { id = "window", name = "Window 1's spawns", kind = "replay" } ] }
@@ -5831,7 +5847,7 @@ validation = { script = "director/window-1.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-2"
 title = "Window 2 spawns moth, bat, rat every 0.6 s up to 40"
-description = "With the clock posed into window 2 (from 1:00), spawning on alone, and the timer at 0, the director spawns one enemy every 36 ticks, every spawn is one of moth, bat, rat and each of those types appears across thirty spawns, and with 40 commons posed alive no spawn lands, as row 2 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 2 (from 1:00), spawning on alone, and the timer at 0, the director spawns one enemy every 36 ticks, every spawn is one of moth, bat, rat and each of those types appears across sixty spawns, and with 40 commons posed alive no spawn lands, as row 2 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-2.test.ts", outputs = [ { id = "window", name = "Window 2's spawns", kind = "replay" } ] }
@@ -5839,7 +5855,7 @@ validation = { script = "director/window-2.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-3"
 title = "Window 3 spawns bat, rat, beetle every 0.5 s up to 50"
-description = "With the clock posed into window 3 (from 1:30), spawning on alone, and the timer at 0, the director spawns one enemy every 30 ticks, every spawn is one of bat, rat, beetle and each of those types appears across thirty spawns, and with 50 commons posed alive no spawn lands, as row 3 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 3 (from 1:30), spawning on alone, and the timer at 0, the director spawns one enemy every 30 ticks, every spawn is one of bat, rat, beetle and each of those types appears across sixty spawns, and with 50 commons posed alive no spawn lands, as row 3 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-3.test.ts", outputs = [ { id = "window", name = "Window 3's spawns", kind = "replay" } ] }
@@ -5847,7 +5863,7 @@ validation = { script = "director/window-3.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-4"
 title = "Window 4 spawns bat, rat, beetle every 0.5 s up to 60"
-description = "With the clock posed into window 4 (from 2:00), spawning on alone, and the timer at 0, the director spawns one enemy every 30 ticks, every spawn is one of bat, rat, beetle and each of those types appears across thirty spawns, and with 60 commons posed alive no spawn lands, as row 4 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 4 (from 2:00), spawning on alone, and the timer at 0, the director spawns one enemy every 30 ticks, every spawn is one of bat, rat, beetle and each of those types appears across sixty spawns, and with 60 commons posed alive no spawn lands, as row 4 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-4.test.ts", outputs = [ { id = "window", name = "Window 4's spawns", kind = "replay" } ] }
@@ -5855,7 +5871,7 @@ validation = { script = "director/window-4.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-5"
 title = "Window 5 spawns rat, beetle, wisp every 0.4 s up to 70"
-description = "With the clock posed into window 5 (from 2:30), spawning on alone, and the timer at 0, the director spawns one enemy every 24 ticks, every spawn is one of rat, beetle, wisp and each of those types appears across thirty spawns, and with 70 commons posed alive no spawn lands, as row 5 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 5 (from 2:30), spawning on alone, and the timer at 0, the director spawns one enemy every 24 ticks, every spawn is one of rat, beetle, wisp and each of those types appears across sixty spawns, and with 70 commons posed alive no spawn lands, as row 5 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-5.test.ts", outputs = [ { id = "window", name = "Window 5's spawns", kind = "replay" } ] }
@@ -5863,7 +5879,7 @@ validation = { script = "director/window-5.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-6"
 title = "Window 6 spawns beetle, wisp, spider every 0.4 s up to 80"
-description = "With the clock posed into window 6 (from 3:00), spawning on alone, and the timer at 0, the director spawns one enemy every 24 ticks, every spawn is one of beetle, wisp, spider and each of those types appears across thirty spawns, and with 80 commons posed alive no spawn lands, as row 6 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 6 (from 3:00), spawning on alone, and the timer at 0, the director spawns one enemy every 24 ticks, every spawn is one of beetle, wisp, spider and each of those types appears across sixty spawns, and with 80 commons posed alive no spawn lands, as row 6 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-6.test.ts", outputs = [ { id = "window", name = "Window 6's spawns", kind = "replay" } ] }
@@ -5871,7 +5887,7 @@ validation = { script = "director/window-6.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-7"
 title = "Window 7 spawns wisp, spider, crow every 0.35 s up to 90"
-description = "With the clock posed into window 7 (from 3:30), spawning on alone, and the timer at 0, the director spawns one enemy every 21 ticks, every spawn is one of wisp, spider, crow and each of those types appears across thirty spawns, and with 90 commons posed alive no spawn lands, as row 7 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 7 (from 3:30), spawning on alone, and the timer at 0, the director spawns one enemy every 21 ticks, every spawn is one of wisp, spider, crow and each of those types appears across sixty spawns, and with 90 commons posed alive no spawn lands, as row 7 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-7.test.ts", outputs = [ { id = "window", name = "Window 7's spawns", kind = "replay" } ] }
@@ -5879,7 +5895,7 @@ validation = { script = "director/window-7.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-8"
 title = "Window 8 spawns spider, crow, shade every 0.3 s up to 100"
-description = "With the clock posed into window 8 (from 4:00), spawning on alone, and the timer at 0, the director spawns one enemy every 18 ticks, every spawn is one of spider, crow, shade and each of those types appears across thirty spawns, and with 100 commons posed alive no spawn lands, as row 8 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 8 (from 4:00), spawning on alone, and the timer at 0, the director spawns one enemy every 18 ticks, every spawn is one of spider, crow, shade and each of those types appears across sixty spawns, and with 100 commons posed alive no spawn lands, as row 8 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-8.test.ts", outputs = [ { id = "window", name = "Window 8's spawns", kind = "replay" } ] }
@@ -5887,7 +5903,7 @@ validation = { script = "director/window-8.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-9"
 title = "Window 9 spawns crow, shade, moth every 0.3 s up to 110"
-description = "With the clock posed into window 9 (from 4:30), spawning on alone, and the timer at 0, the director spawns one enemy every 18 ticks, every spawn is one of crow, shade, moth and each of those types appears across thirty spawns, and with 110 commons posed alive no spawn lands, as row 9 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 9 (from 4:30), spawning on alone, and the timer at 0, the director spawns one enemy every 18 ticks, every spawn is one of crow, shade, moth and each of those types appears across sixty spawns, and with 110 commons posed alive no spawn lands, as row 9 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-9.test.ts", outputs = [ { id = "window", name = "Window 9's spawns", kind = "replay" } ] }
@@ -5895,7 +5911,7 @@ validation = { script = "director/window-9.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-10"
 title = "Window 10 spawns shade, crow, hound every 0.25 s up to 120"
-description = "With the clock posed into window 10 (from 5:00), spawning on alone, and the timer at 0, the director spawns one enemy every 15 ticks, every spawn is one of shade, crow, hound and each of those types appears across thirty spawns, and with 120 commons posed alive no spawn lands, as row 10 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 10 (from 5:00), spawning on alone, and the timer at 0, the director spawns one enemy every 15 ticks, every spawn is one of shade, crow, hound and each of those types appears across sixty spawns, and with 120 commons posed alive no spawn lands, as row 10 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-10.test.ts", outputs = [ { id = "window", name = "Window 10's spawns", kind = "replay" } ] }
@@ -5903,7 +5919,7 @@ validation = { script = "director/window-10.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-11"
 title = "Window 11 spawns bat, shade, hound every 0.25 s up to 130"
-description = "With the clock posed into window 11 (from 5:30), spawning on alone, and the timer at 0, the director spawns one enemy every 15 ticks, every spawn is one of bat, shade, hound and each of those types appears across thirty spawns, and with 130 commons posed alive no spawn lands, as row 11 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 11 (from 5:30), spawning on alone, and the timer at 0, the director spawns one enemy every 15 ticks, every spawn is one of bat, shade, hound and each of those types appears across sixty spawns, and with 130 commons posed alive no spawn lands, as row 11 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-11.test.ts", outputs = [ { id = "window", name = "Window 11's spawns", kind = "replay" } ] }
@@ -5911,7 +5927,7 @@ validation = { script = "director/window-11.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-12"
 title = "Window 12 spawns rat, spider, hound every 0.2 s up to 140"
-description = "With the clock posed into window 12 (from 6:00), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of rat, spider, hound and each of those types appears across thirty spawns, and with 140 commons posed alive no spawn lands, as row 12 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 12 (from 6:00), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of rat, spider, hound and each of those types appears across sixty spawns, and with 140 commons posed alive no spawn lands, as row 12 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-12.test.ts", outputs = [ { id = "window", name = "Window 12's spawns", kind = "replay" } ] }
@@ -5919,7 +5935,7 @@ validation = { script = "director/window-12.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-13"
 title = "Window 13 spawns beetle, crow, hound every 0.2 s up to 150"
-description = "With the clock posed into window 13 (from 6:30), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of beetle, crow, hound and each of those types appears across thirty spawns, and with 150 commons posed alive no spawn lands, as row 13 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 13 (from 6:30), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of beetle, crow, hound and each of those types appears across sixty spawns, and with 150 commons posed alive no spawn lands, as row 13 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-13.test.ts", outputs = [ { id = "window", name = "Window 13's spawns", kind = "replay" } ] }
@@ -5927,7 +5943,7 @@ validation = { script = "director/window-13.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-14"
 title = "Window 14 spawns wisp, shade, hound every 0.2 s up to 160"
-description = "With the clock posed into window 14 (from 7:00), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of wisp, shade, hound and each of those types appears across thirty spawns, and with 160 commons posed alive no spawn lands, as row 14 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 14 (from 7:00), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of wisp, shade, hound and each of those types appears across sixty spawns, and with 160 commons posed alive no spawn lands, as row 14 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-14.test.ts", outputs = [ { id = "window", name = "Window 14's spawns", kind = "replay" } ] }
@@ -5935,7 +5951,7 @@ validation = { script = "director/window-14.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-15"
 title = "Window 15 spawns spider, crow, hound every 0.15 s up to 170"
-description = "With the clock posed into window 15 (from 7:30), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of spider, crow, hound and each of those types appears across thirty spawns, and with 170 commons posed alive no spawn lands, as row 15 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 15 (from 7:30), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of spider, crow, hound and each of those types appears across sixty spawns, and with 170 commons posed alive no spawn lands, as row 15 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-15.test.ts", outputs = [ { id = "window", name = "Window 15's spawns", kind = "replay" } ] }
@@ -5943,7 +5959,7 @@ validation = { script = "director/window-15.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-16"
 title = "Window 16 spawns crow, shade, hound every 0.15 s up to 180"
-description = "With the clock posed into window 16 (from 8:00), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of crow, shade, hound and each of those types appears across thirty spawns, and with 180 commons posed alive no spawn lands, as row 16 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 16 (from 8:00), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of crow, shade, hound and each of those types appears across sixty spawns, and with 180 commons posed alive no spawn lands, as row 16 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-16.test.ts", outputs = [ { id = "window", name = "Window 16's spawns", kind = "replay" } ] }
@@ -5951,7 +5967,7 @@ validation = { script = "director/window-16.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-17"
 title = "Window 17 spawns shade, hound, bat every 0.15 s up to 190"
-description = "With the clock posed into window 17 (from 8:30), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of shade, hound, bat and each of those types appears across thirty spawns, and with 190 commons posed alive no spawn lands, as row 17 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 17 (from 8:30), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of shade, hound, bat and each of those types appears across sixty spawns, and with 190 commons posed alive no spawn lands, as row 17 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-17.test.ts", outputs = [ { id = "window", name = "Window 17's spawns", kind = "replay" } ] }
@@ -5959,7 +5975,7 @@ validation = { script = "director/window-17.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-18"
 title = "Window 18 spawns shade, hound, crow every 0.1 s up to 200"
-description = "With the clock posed into window 18 (from 9:00), spawning on alone, and the timer at 0, the director spawns one enemy every 6 ticks, every spawn is one of shade, hound, crow and each of those types appears across thirty spawns, and with 200 commons posed alive no spawn lands, as row 18 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 18 (from 9:00), spawning on alone, and the timer at 0, the director spawns one enemy every 6 ticks, every spawn is one of shade, hound, crow and each of those types appears across sixty spawns, and with 200 commons posed alive no spawn lands, as row 18 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-18.test.ts", outputs = [ { id = "window", name = "Window 18's spawns", kind = "replay" } ] }
@@ -5967,7 +5983,7 @@ validation = { script = "director/window-18.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-19"
 title = "Window 19 spawns hound, shade, spider every 0.1 s up to 200"
-description = "With the clock posed into window 19 (from 9:30), spawning on alone, and the timer at 0, the director spawns one enemy every 6 ticks, every spawn is one of hound, shade, spider and each of those types appears across thirty spawns, and with 200 commons posed alive no spawn lands, as row 19 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 19 (from 9:30), spawning on alone, and the timer at 0, the director spawns one enemy every 6 ticks, every spawn is one of hound, shade, spider and each of those types appears across sixty spawns, and with 200 commons posed alive no spawn lands, as row 19 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-19.test.ts", outputs = [ { id = "window", name = "Window 19's spawns", kind = "replay" } ] }
@@ -6377,18 +6393,18 @@ validation = { script = "pickups/drafts-drop.test.ts", outputs = [ { id = "draft
 [[review.categories.items]]
 id = "bread-rate"
 title = "Bread drops at BREAD_CHANCE"
-description = "Over 4000 common kills with nothing posed for the roll, the bread count is between 40 and 125, the expected 80 at 0.02 with both tails below one in a hundred thousand and the band more than nine deviations wide."
+description = "Over 40000 rollDrop() calls on playing with nothing posed for the roll, the count of rolls that decided bread is between 632 and 968: the expected 800 at 0.02 with each bound six deviations from it."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "pickups/bread-rate.test.ts", outputs = [ { id = "rate", name = "The bread count over the sample", kind = "image" } ] }
+validation = { script = "pickups/bread-rate.test.ts", outputs = [ { id = "rate", name = "The run the sample was rolled on", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "draft-rate"
 title = "A draft drops at DRAFT_CHANCE"
-description = "Over 4000 common kills with nothing posed for the roll, the draft count is between 3 and 45, the expected 19.6 at 0.005 on the kills that dropped no bread with both tails below one in a hundred thousand and the band more than nine deviations wide."
+description = "Over 40000 rollDrop() calls on playing with nothing posed for the roll, the count of rolls that decided a draft is between 112 and 280: the expected 196 at 0.005 on the rolls that dropped no bread with each bound six deviations from it."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "pickups/draft-rate.test.ts", outputs = [ { id = "rate", name = "The draft count over the sample", kind = "image" } ] }
+validation = { script = "pickups/draft-rate.test.ts", outputs = [ { id = "rate", name = "The run the sample was rolled on", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "elites-make-no-draw"

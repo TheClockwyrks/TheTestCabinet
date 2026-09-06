@@ -1521,17 +1521,18 @@ export const INTEGRATION_TOLERANCE = 0.1;
 
 /**
  * The drop roll's sample and bounds, from specs/world.md's BREAD_CHANCE (0.02)
- * and DRAFT_CHANCE (0.005) over DROP_SAMPLE common kills. The bread count is
- * Binomial(4000, 0.02), mean 80 and deviation 8.85; a draft drops only when
- * no bread did, so the draft count is Binomial(4000, 0.98 × 0.005), mean 19.6
- * and deviation 4.42. Each bound sits where the tail past it is below one in
- * a hundred thousand, and each band is more than nine deviations wide, so a
- * conformant build fails these at most once in a hundred thousand runs while
- * a build that never drops, or drops on every kill, fails them every time.
+ * and DRAFT_CHANCE (0.005) over DROP_ROLLS rolls made alone through
+ * `rollDrop`. The bread count is Binomial(40000, 0.02), mean 800 and deviation
+ * 28; a draft drops only when no bread did, so the draft count is
+ * Binomial(40000, 0.98 × 0.005), mean 196 and deviation 14. Each bound sits
+ * six deviations from the mean, so a conformant build lands outside a band
+ * about once in a thousand million runs, while a build rolling at half the
+ * chance (400 breads, 98 drafts) or twice it (1600, 392) lands outside every
+ * time.
  */
-export const DROP_SAMPLE = 4000;
-export const BREAD_COUNT_RANGE: readonly [number, number] = [40, 125];
-export const DRAFT_COUNT_RANGE: readonly [number, number] = [3, 45];
+export const DROP_ROLLS = 40000;
+export const BREAD_COUNT_RANGE: readonly [number, number] = [632, 968];
+export const DRAFT_COUNT_RANGE: readonly [number, number] = [112, 280];
 
 /**
  * How far into a bar's fill a "scales with" reading is trusted: a bar whose

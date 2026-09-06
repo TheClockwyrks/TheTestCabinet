@@ -2,32 +2,30 @@
 //
 // WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"):
 // "Probability a common kill drops bread | `BREAD_CHANCE` | `0.02`", and "The
-// roll drops bread with probability `BREAD_CHANCE`." Every common kill makes
-// that roll, so over `DROP_ROLL_KILLS` (`4000`) kills the count is binomial
-// with mean `80`. `BREAD_COUNT_RANGE` (`40` to `125`) is the interval
-// `constants.ts` computes from that distribution: both tails outside it fall
-// under one in a hundred thousand, so a conformant build lands inside it and a
-// build that never rolls, or rolls at half or twice the stated chance, lands
-// outside it every time.
+// roll drops bread with probability `BREAD_CHANCE`." The roll is a
+// probability, so it is read over a sample of the roll alone: `rollDrop()`
+// "Makes one drop roll exactly as `specs/world.md` states under The drop roll
+// and returns what it decided" (specs/instrumentation.md, "Drawn outcomes").
+// Over `DROP_ROLLS` (`40000`) rolls the bread count is binomial with mean
+// `800` and deviation `28`. `BREAD_COUNT_RANGE` (`632` to `968`) is the band
+// `constants.ts` computes from that distribution, six deviations either side
+// of the mean, so a conformant build lands inside it and a build that never
+// rolls, or rolls at half or twice the stated chance, lands outside it every
+// time.
 //
-// WHY THE WORLD IS POSED AS IT IS. `sweepCommonKills` in `./stage` poses the
-// sample: an isolated night, every driver switch off but `drops` and no slot
-// held, so `spawning` and `events` bring nothing in, no weapon of the
-// lamplighter's own fires, and the only rolls the ticks make are the kills'
-// own; `DROP_ROLL_KILLS` real kills of a moth by a level-1 Ember bolt, each at
-// its own point, every one far outside the radii that attract or collect, so
-// nothing a kill drops is taken off the field before it is counted. Nothing is
-// posed for the roll itself, so each kill's roll is the build's own.
+// WHY THE WORLD IS POSED AS IT IS. An isolated night, so the picture is the
+// run the rolls were made on; the rolls themselves touch nothing on it.
+// Nothing is posed for the roll, so each roll is the build's own.
 //
-// THE TOLERANCE. The interval itself is the tolerance, and it is the
+// THE TOLERANCE. The band itself is the tolerance, and it is the
 // specification's probability carried through the binomial rather than an
 // allowance chosen by hand.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { BREAD_COUNT_RANGE, DROP_ROLL_KILLS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { sweepCommonKills } from "./stage";
+import { BREAD_COUNT_RANGE, DROP_ROLLS } from "../constants";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
+import { rollDrops } from "./stage";
 
 let h: Harness;
 
@@ -39,15 +37,16 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("drops a bread count inside the binomial interval over 4000 common kills", async () => {
-  const sweep = await sweepCommonKills(h);
+it("rolls a bread count inside the six-deviation band over 40000 rolls", async () => {
+  await isolate(h);
+  const sample = await rollDrops(h);
   await captureStill(h, "rate");
 
-  assertEqual(sweep.kills, DROP_ROLL_KILLS, "the kills the sample made");
+  assertEqual(sample.rolls, DROP_ROLLS, "the rolls the sample made");
   assertBetween(
-    sweep.counts.bread,
+    sample.counts.bread,
     BREAD_COUNT_RANGE.min,
     BREAD_COUNT_RANGE.max,
-    `the breads dropped over ${DROP_ROLL_KILLS} kills, expected 80 at BREAD_CHANCE`,
+    `the breads rolled over ${DROP_ROLLS} rolls, expected 800 at BREAD_CHANCE`,
   );
 });

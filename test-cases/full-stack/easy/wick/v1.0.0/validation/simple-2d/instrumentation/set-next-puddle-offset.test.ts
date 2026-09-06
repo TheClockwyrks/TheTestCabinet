@@ -1,12 +1,13 @@
 // instrumentation/set-next-puddle-offset — `setNextPuddleOffset(-120, 200)`
 // on `playing` sets `nextPuddleOffset` to `(-120, 200)`, the snapshot reads it
-// back, and the next Oil Splash firing's first puddle lands at the
-// lamplighter's center plus that offset.
+// back, and the next Oil Splash firing lands a puddle at the lamplighter's
+// center plus that offset.
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md ("Drawn outcomes",
-// `setNextPuddleOffset(dx, dy)`): "The first puddle the next Oil Splash or
-// Blaze firing places lands at the lamplighter's center of that tick plus the
-// offset, the firing's other puddles land at random".
+// `setNextPuddleOffset(dx, dy)`): "One puddle of the next Oil Splash or Blaze
+// firing lands at the lamplighter's center of that tick plus the offset, the
+// firing's other puddles land at random". A level-1 row fires one puddle, so
+// that puddle is the posed one.
 //
 // THE POSE. An isolated night with the lamplighter off the origin, Oil Splash
 // at level 1, whose row fires one puddle, armed through the shared

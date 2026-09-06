@@ -724,6 +724,23 @@ describe("the switches", () => {
   });
 });
 
+describe("the drop roll reading", () => {
+  const KINDS: readonly string[] = ["bread", "draft", "none"];
+
+  it("returns one of the three kinds and leaves the state as it was", () => {
+    const d = playing();
+    d.pose((s) => d.api.setNextDrop(s, "bread"));
+    const before = JSON.stringify(d.state);
+    for (let i = 0; i < 500; i += 1) {
+      expect(KINDS).toContain(d.api.rollDrop(d.state));
+    }
+    expect(JSON.stringify(d.state)).toBe(before);
+    expect(d.snap().run.nextDrop).toBe("bread");
+    d.pose((s) => d.api.setScreen(s, "title"));
+    expect(KINDS).toContain(d.api.rollDrop(d.state));
+  });
+});
+
 describe("the drawn outcome poses", () => {
   it("set each field, read back by the snapshot, on a run screen alone", () => {
     const d = playing();

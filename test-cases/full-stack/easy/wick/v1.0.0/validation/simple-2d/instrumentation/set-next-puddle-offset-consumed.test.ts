@@ -1,5 +1,5 @@
-// instrumentation/set-next-puddle-offset-consumed — the firing that lands its
-// first puddle at a posed offset consumes it, so `nextPuddleOffset` reads
+// instrumentation/set-next-puddle-offset-consumed — the firing that lands a
+// puddle at a posed offset consumes it, so `nextPuddleOffset` reads
 // `null` afterwards.
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md ("Drawn outcomes"):

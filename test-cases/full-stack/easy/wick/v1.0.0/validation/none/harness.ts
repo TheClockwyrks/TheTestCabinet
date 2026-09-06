@@ -389,7 +389,7 @@ export interface WickDebugApi {
   setNextSpawnAngle(degrees: number): Promise<void>;
   /** Pose the direction of the next gnat swarm, `0` up to `360`. */
   setNextSwarmAngle(degrees: number): Promise<void>;
-  /** Pose where the next firing's first puddle lands, about the lamplighter. */
+  /** Pose where one puddle of the next firing lands, about the lamplighter. */
   setNextPuddleOffset(dx: number, dy: number): Promise<void>;
   /** Pose the enemy the next Spark firing's first strike lands on. */
   setNextStrikeTarget(id: number): Promise<void>;
@@ -397,6 +397,8 @@ export interface WickDebugApi {
   setNextChestItem(id: string): Promise<void>;
   /** Pose what the next common kill drops in place of its roll. */
   setNextDrop(kind: NextDrop): Promise<void>;
+  /** Make one drop roll alone and read what it decided; nothing changes. */
+  rollDrop(): Promise<NextDrop>;
   setPlayerPosition(x: number, y: number): Promise<void>;
   setFacing(facing: Facing): Promise<void>;
   /** Set `hp`, at most `maxHp`; at or below `0` ends the run on the next tick. */

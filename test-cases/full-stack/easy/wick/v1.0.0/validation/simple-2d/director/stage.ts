@@ -20,6 +20,7 @@
 // the two positions this file chooses for itself (the ring a posed crowd stands
 // on, and the margin a sweep allows) are named and are not assertions.
 
+import { assertLength } from "../assert";
 import {
   SPAWN_WINDOW,
   SPAWN_WINDOWS,
@@ -115,6 +116,49 @@ export async function collectSpawns(
     h.debug.clearEnemies();
   }
   return spawns;
+}
+
+/**
+ * How many spawns a window's cadence is read over: the spawn a posed timer of
+ * `0` lands at once and one more at the end of each of two whole intervals.
+ */
+export const CADENCE_SPAWNS = 3;
+
+/** How many spawns a window's type reading is drawn over. */
+export const TYPE_DRAWS = 60;
+
+/**
+ * Draw `count` window spawns one to a tick, each posed by emptying the field
+ * and setting the timer to `0` so the next tick spawns, and answer the type of
+ * each in order. The field is left empty.
+ *
+ * The cap never binds, since the field is empty on every due tick, and every
+ * draw is the window's own: "spawn one enemy of a type chosen uniformly from
+ * the window's types" (specs/enemies.md, "The spawn timer"). Sixty is what
+ * makes a reading that every type of a row was drawn honest against chance: a
+ * uniform draw over three types leaves one of them undrawn across sixty draws
+ * about once in ten thousand million runs, past six standard deviations,
+ * while a build that draws from one type alone, or from a roster short of the
+ * row's, fails it every time.
+ */
+export async function drawTypes(
+  h: Harness,
+  count = TYPE_DRAWS,
+): Promise<EnemyId[]> {
+  const types: EnemyId[] = [];
+  for (let draw = 0; draw < count; draw += 1) {
+    h.debug.clearEnemies();
+    h.debug.setSpawnTimer(0);
+    const s = await h.tick(1);
+    assertLength(
+      s.run.enemies,
+      1,
+      `enemies the window spawned on a tick its timer was due (draw ${draw + 1})`,
+    );
+    types.push(s.run.enemies[0].type);
+  }
+  h.debug.clearEnemies();
+  return types;
 }
 
 /** The ticks between consecutive spawns, in order. */

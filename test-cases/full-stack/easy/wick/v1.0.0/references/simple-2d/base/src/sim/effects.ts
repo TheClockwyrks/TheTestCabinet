@@ -13,6 +13,7 @@ import {
   TICK_DT,
 } from "../constants";
 import type { DraftRun, Enemy, Projectile, Zone } from "../state";
+import type { Rng } from "../rng";
 import type { TickContext } from "./context";
 import { countDown, isDue } from "./timers";
 import { placeLantern } from "./weapons";
@@ -106,9 +107,19 @@ export function forgetHits(run: DraftRun, dead: ReadonlySet<number>): void {
 }
 
 /**
- * The drop roll of specs/world.md: the posed `nextDrop` when one stands,
- * consumed here; otherwise bread with probability `BREAD_CHANCE`, and only
- * when no bread dropped a draft with probability `DRAFT_CHANCE`.
+ * One drop roll of specs/world.md, drawn from `rng`: bread with probability
+ * `BREAD_CHANCE`, and only when no bread dropped a draft with probability
+ * `DRAFT_CHANCE`. The surface's `rollDrop` makes this roll alone.
+ */
+export function drawDrop(rng: Rng): "bread" | "draft" | "none" {
+  if (rng.next() < BREAD_CHANCE) return "bread";
+  if (rng.next() < DRAFT_CHANCE) return "draft";
+  return "none";
+}
+
+/**
+ * What a common kill drops: the posed `nextDrop` when one stands, consumed
+ * here; otherwise the drop roll.
  */
 function rollDrop(ctx: TickContext): "bread" | "draft" | "none" {
   const posed = ctx.run.nextDrop;
@@ -116,9 +127,7 @@ function rollDrop(ctx: TickContext): "bread" | "draft" | "none" {
     ctx.run.nextDrop = null;
     return posed;
   }
-  if (ctx.rng.next() < BREAD_CHANCE) return "bread";
-  if (ctx.rng.next() < DRAFT_CHANCE) return "draft";
-  return "none";
+  return drawDrop(ctx.rng);
 }
 
 /**

@@ -23,8 +23,8 @@
 // LANDING A PUDDLE ON AN ENEMY. Where a puddle lands is a random draw, so a
 // check that needs an enemy under the puddle on the tick it appears poses the
 // draw: `specs/instrumentation.md` ("Drawn outcomes"), `setNextPuddleOffset(dx,
-// dy)`: "The first puddle the next Oil Splash or Blaze firing places lands at
-// the lamplighter's center of that tick plus the offset". `fireOntoEnemy`
+// dy)`: "One puddle of the next Oil Splash or Blaze firing lands at the
+// lamplighter's center of that tick plus the offset". `fireOntoEnemy`
 // poses the offset, stands the enemy at the point it names, and fires. A build
 // whose firing lands elsewhere has broken that stated rule, and the point
 // fails on it.
@@ -136,7 +136,7 @@ export interface Landing {
 
 /**
  * Fire Oil Splash at `level` on an isolated night with one enemy of `type`
- * standing exactly where the firing's first puddle is posed to land, and
+ * standing exactly where one puddle of the firing is posed to land, and
  * answer the firing, the enemy as posed, and the puddle.
  *
  * The landing point is {@link POSED_OFFSET} from the lamplighter's center,

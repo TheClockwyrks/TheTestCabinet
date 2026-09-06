@@ -2,24 +2,23 @@
 //
 // WHERE THE THRESHOLD COMES FROM. `specs/world.md` ("The drop roll"): "|
 // Probability a common kill drops bread | `BREAD_CHANCE` | `0.02` |", applied
-// as "The roll drops bread with probability `BREAD_CHANCE`". Every common kill
-// makes that roll, so over `DROP_TRIALS` (`4000`) kills the bread count is
-// binomial with `n` `4000` and `p` `0.02`: mean `80`, standard deviation
-// `8.85`. `BREAD_COUNT_BOUNDS` (`[40, 125]`) puts both tails below one in a
-// hundred thousand and spans more than nine deviations, so a conformant build
-// fails by chance about never, while a build that never drops bread reads `0`,
-// one that drops it on every kill reads `4000`, and one that mistook the
-// chance for `DRAFT_CHANCE` (`0.005`) reads about `20` and one that mistook it
-// for `0.2` reads about `800`. Where each bound comes from is spelled on
+// as "The roll drops bread with probability `BREAD_CHANCE`". The roll is a
+// probability, so it is read over a sample of the roll alone: `rollDrop()`
+// "Makes one drop roll exactly as `specs/world.md` states under The drop roll
+// and returns what it decided" (`specs/instrumentation.md`, Drawn outcomes).
+// Over `DROP_ROLLS` (`40000`) rolls the bread count is binomial with `n`
+// `40000` and `p` `0.02`: mean `800`, standard deviation `28`.
+// `BREAD_COUNT_BOUNDS` (`[632, 968]`) sits six deviations either side of the
+// mean, so a conformant build fails by chance about once in a thousand
+// million runs, while a build that never rolls bread reads `0`, one that
+// rolls it on every call reads `40000`, one that mistook the chance for
+// `DRAFT_CHANCE` (`0.005`) reads about `200` and one that mistook it for `0.2`
+// about `8000`. Where each bound comes from is spelled on
 // `BREAD_COUNT_BOUNDS` in `constants.ts`.
 //
-// WHY THE WORLD IS POSED AS IT IS. `pickups/roll` makes the sample: an isolated
-// night, every driver switch off but `drops`, and four thousand moths killed
-// by their own level-1 Oil Splash puddles on a lattice `200` units apart, far
-// enough from the lamplighter that nothing is attracted or collected, so every
-// drop is still on the field when its tick's snapshot is read. Nothing is
-// posed for the roll itself, so each kill's roll is the build's own. Every
-// kill is a moth, rank `common`, which is what makes a kill roll at all.
+// WHY THE WORLD IS POSED AS IT IS. An isolated night, which the rolls leave as
+// it is: `pickups/roll` makes the sample as forty thousand calls of `rollDrop`
+// over it, with nothing posed for the roll, so each roll is the build's own.
 //
 // THE TOLERANCE. The interval itself: a rate is only readable as a count in a
 // range, and `BREAD_COUNT_BOUNDS` is that range, wide enough that a conformant
@@ -27,9 +26,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { BREAD_CHANCE, BREAD_COUNT_BOUNDS, DROP_TRIALS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { countOf, sampleDrops } from "./roll";
+import { BREAD_CHANCE, BREAD_COUNT_BOUNDS, DROP_ROLLS } from "../constants";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
+import { rollDrops } from "./roll";
 
 const [LOW, HIGH] = BREAD_COUNT_BOUNDS;
 
@@ -43,16 +42,17 @@ afterEach(() => {
   h.dispose();
 });
 
-it("drops between 40 and 125 bread over 4000 common kills", async () => {
-  const sample = await sampleDrops(h, DROP_TRIALS);
-  // The still is the last batch's own frame: the field its kills left.
+it("rolls between 632 and 968 breads over 40000 rolls", async () => {
+  isolate(h);
+  const sample = rollDrops(h, DROP_ROLLS);
+  await h.frameDraw();
   captureStill(h, "rate");
 
-  assertEqual(sample.kills, DROP_TRIALS, "the common kills the sample made");
+  assertEqual(sample.rolls, DROP_ROLLS, "the rolls the sample made");
   assertBetween(
-    countOf(sample.drops, "bread"),
+    sample.counts.bread,
     LOW,
     HIGH,
-    `the bread ${DROP_TRIALS} common kills dropped, against the ${DROP_TRIALS * BREAD_CHANCE} expected at BREAD_CHANCE (specs/world.md, The drop roll)`,
+    `the breads ${DROP_ROLLS} rolls decided, against the ${DROP_ROLLS * BREAD_CHANCE} expected at BREAD_CHANCE (specs/world.md, The drop roll)`,
   );
 });

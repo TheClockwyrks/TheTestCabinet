@@ -42,7 +42,7 @@ import {
   spawnEnemy,
   spawnWindow,
 } from "./sim/enemies";
-import { forgetHits } from "./sim/effects";
+import { drawDrop, forgetHits } from "./sim/effects";
 import { unit } from "./sim/geometry";
 import { candidatePool, isOfferId, isPassiveId } from "./sim/progression";
 import {
@@ -197,6 +197,7 @@ export interface WickDebugApi {
   setNextStrikeTarget(id: number): void;
   setNextChestItem(id: string): void;
   setNextDrop(kind: string): void;
+  rollDrop(): NextDrop;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;
@@ -560,6 +561,9 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       pose(() => {
         run().nextDrop = value;
       });
+    },
+    rollDrop() {
+      return drawDrop(game.rng);
     },
 
     setPlayerPosition(x, y) {

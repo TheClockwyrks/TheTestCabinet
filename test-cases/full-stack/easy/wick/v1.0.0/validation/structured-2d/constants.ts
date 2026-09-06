@@ -1513,17 +1513,17 @@ export const MOTION_EPS = 1e-6;
 export const ANGLE_EPS = 1e-6;
 
 /**
- * How many common kills the drop-roll checks make, and the bounds the bread
- * and draft counts must fall in, as the checklist states them: the expected
- * counts are `80` at `BREAD_CHANCE` and `19.6` at `DRAFT_CHANCE` on the kills
- * that dropped no bread, both tails of each bound are below one in a hundred
- * thousand, and each band is more than nine deviations wide, so a conformant
- * build fails by chance about never while a build that never drops, or drops
- * on every kill, fails outright.
+ * How many drop rolls the drop-roll checks make alone through `rollDrop`, and
+ * the bounds the bread and draft counts must fall in, as the checklist states
+ * them: the expected counts are `800` at `BREAD_CHANCE` (deviation `28`) and
+ * `196` at `DRAFT_CHANCE` on the rolls that dropped no bread (deviation `14`),
+ * and each bound sits six deviations from the mean, so a conformant build
+ * fails by chance about once in a thousand million runs while a build rolling
+ * at half the chance (`400`, `98`) or twice it (`1600`, `392`) fails outright.
  */
-export const DROP_TRIALS = 4000;
-export const BREAD_COUNT_BOUNDS: readonly [number, number] = [40, 125];
-export const DRAFT_COUNT_BOUNDS: readonly [number, number] = [3, 45];
+export const DROP_ROLLS = 40000;
+export const BREAD_COUNT_BOUNDS: readonly [number, number] = [632, 968];
+export const DRAFT_COUNT_BOUNDS: readonly [number, number] = [112, 280];
 
 /**
  * How close a HUD bar's measured fill ratio must be to `hp / maxHp` or

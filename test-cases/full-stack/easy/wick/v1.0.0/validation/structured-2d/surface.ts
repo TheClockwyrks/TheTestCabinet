@@ -140,6 +140,7 @@ export const REQUIRED_OPS = [
   "setNextStrikeTarget",
   "setNextChestItem",
   "setNextDrop",
+  "rollDrop",
   "setPlayerPosition",
   "setFacing",
   "setHp",
@@ -437,7 +438,7 @@ export interface WickDebugApi {
   setNextSpawnAngle(degrees: number): void;
   /** Poses the direction of the next gnat swarm, `0` up to `360`. A run screen. */
   setNextSwarmAngle(degrees: number): void;
-  /** Poses where the next firing's first puddle lands, about the lamplighter. A run screen. */
+  /** Poses where one puddle of the next firing lands, about the lamplighter. A run screen. */
   setNextPuddleOffset(dx: number, dy: number): void;
   /** Poses the enemy the next Spark firing's first strike lands on. A run screen. */
   setNextStrikeTarget(id: number): void;
@@ -445,6 +446,8 @@ export interface WickDebugApi {
   setNextChestItem(id: string): void;
   /** Poses what the next common kill drops in place of its roll. A run screen. */
   setNextDrop(kind: NextDrop): void;
+  /** Makes one drop roll alone and returns what it decided. Changes nothing. Every screen. */
+  rollDrop(): NextDrop;
 
   /** Sets the lamplighter's center; nothing else moves. A run screen. */
   setPlayerPosition(x: number, y: number): void;

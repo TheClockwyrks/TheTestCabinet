@@ -8,6 +8,7 @@ import {
 import { Rng } from "../rng";
 import { freshRun, initialState, type Draft } from "../state";
 import { NOTHING_HELD } from "./context";
+import { drawDrop } from "./effects";
 import { spawnEnemy } from "./enemies";
 import { tick } from "./tick";
 import { makeProjectile, makePuddle } from "./weapons";
@@ -177,6 +178,14 @@ describe("deaths", () => {
     );
     expect(killDrops(draws(BREAD_CHANCE, DRAFT_CHANCE)).kind).toBe("none");
     expect(killDrops(draws(0.5, 0.5)).kind).toBe("none");
+  });
+
+  it("makes one roll alone through drawDrop", () => {
+    expect(drawDrop(new Rng(draws(BREAD_CHANCE - 1e-9, 0)))).toBe("bread");
+    expect(drawDrop(new Rng(draws(BREAD_CHANCE, DRAFT_CHANCE - 1e-9)))).toBe(
+      "draft",
+    );
+    expect(drawDrop(new Rng(draws(BREAD_CHANCE, DRAFT_CHANCE)))).toBe("none");
   });
 
   it("drops what nextDrop posed, in place of the roll, and consumes it", () => {

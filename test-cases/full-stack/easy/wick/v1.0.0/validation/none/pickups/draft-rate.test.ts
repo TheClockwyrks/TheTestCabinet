@@ -1,29 +1,33 @@
-// pickups/draft-rate — drafts drop at DRAFT_CHANCE after a failed bread roll.
+// pickups/draft-rate — a draft drops at DRAFT_CHANCE, on the rolls that
+// dropped no bread.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"):
 // "Probability a common kill drops a draft | `DRAFT_CHANCE` | `0.005`", and
 // "only when it dropped no bread it drops a draft with probability
-// `DRAFT_CHANCE`." Over `DROP_ROLL_KILLS` (`4000`) kills the count is binomial
-// with mean `4000 × 0.98 × 0.005 = 19.6`. `DRAFT_COUNT_RANGE` (`3` to `45`) is
-// the interval `constants.ts` computes from that distribution: both tails
-// outside it fall under one in a hundred thousand, so a conformant build lands
-// inside it and a build that never rolls for a draft, or rolls at ten times the
-// stated chance, lands outside it every time.
+// `DRAFT_CHANCE`." The roll is a probability, so it is read over a sample of
+// the roll alone: `rollDrop()` "Makes one drop roll exactly as `specs/world.md`
+// states under The drop roll and returns what it decided"
+// (specs/instrumentation.md, "Drawn outcomes"). A draft is rolled for on the
+// `1 − BREAD_CHANCE` share of rolls that dropped no bread, so over `DROP_ROLLS`
+// (`40000`) rolls the draft count is binomial with mean `196` and deviation
+// `14`. `DRAFT_COUNT_RANGE` (`112` to `280`) is the band `constants.ts`
+// computes from that distribution, six deviations either side of the mean, so
+// a conformant build lands inside it and a build that never rolls a draft, or
+// rolls at half or twice the stated chance, lands outside it every time.
 //
-// WHY THE WORLD IS POSED AS IT IS. `sweepCommonKills` in `./stage` poses the
-// sample, as `pickups/bread-rate` describes: an isolated night with `drops`
-// alone, `DROP_ROLL_KILLS` real kills at distinct points far outside the radii
-// that attract or collect, and nothing posed for the roll itself.
+// WHY THE WORLD IS POSED AS IT IS. An isolated night, so the picture is the
+// run the rolls were made on; the rolls themselves touch nothing on it.
+// Nothing is posed for the roll, so each roll is the build's own.
 //
-// THE TOLERANCE. The interval itself is the tolerance, and it is the
+// THE TOLERANCE. The band itself is the tolerance, and it is the
 // specification's probability carried through the binomial rather than an
 // allowance chosen by hand.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual } from "../assert";
-import { DRAFT_COUNT_RANGE, DROP_ROLL_KILLS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { sweepCommonKills } from "./stage";
+import { DRAFT_COUNT_RANGE, DROP_ROLLS } from "../constants";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
+import { rollDrops } from "./stage";
 
 let h: Harness;
 
@@ -35,15 +39,16 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("drops a draft count inside the binomial interval over 4000 common kills", async () => {
-  const sweep = await sweepCommonKills(h);
+it("rolls a draft count inside the six-deviation band over 40000 rolls", async () => {
+  await isolate(h);
+  const sample = await rollDrops(h);
   await captureStill(h, "rate");
 
-  assertEqual(sweep.kills, DROP_ROLL_KILLS, "the kills the sample made");
+  assertEqual(sample.rolls, DROP_ROLLS, "the rolls the sample made");
   assertBetween(
-    sweep.counts.draft,
+    sample.counts.draft,
     DRAFT_COUNT_RANGE.min,
     DRAFT_COUNT_RANGE.max,
-    `the drafts dropped over ${DROP_ROLL_KILLS} kills, expected 19.6 at DRAFT_CHANCE after a failed bread roll`,
+    `the drafts rolled over ${DROP_ROLLS} rolls, expected 196 at DRAFT_CHANCE after a failed bread roll`,
   );
 });

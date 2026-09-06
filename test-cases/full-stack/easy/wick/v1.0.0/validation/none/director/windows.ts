@@ -28,10 +28,15 @@
 // THE THREE PARTS. The interval is read as a cadence: the ticks a spawn lands
 // on across two whole intervals, which the timer rule fixes at `1`, `1 + k` and
 // `1 + 2k` with `k` = `round(interval × TICK_HZ)`, and no tick between. The
-// types are read across thirty spawns, each posed by clearing the field and
+// types are read across sixty spawns, each posed by clearing the field and
 // setting the timer to `0` so the next tick spawns, so the cap never binds and
 // every draw is the window's own; every draw must be one of the row's types,
-// and each of them must come up at least once. The cap is read by posing
+// and each of them must come up at least once. Sixty is what makes that
+// second reading honest against chance: a uniform draw over a row's three
+// types leaves one of them undrawn across sixty draws about once in ten
+// thousand million runs, past six standard deviations, while a build that
+// draws from one type alone, or from a roster short of the row's, fails it
+// every time. The cap is read by posing
 // exactly `cap` commons alive and running two whole intervals: nothing spawns,
 // and the timer rests at `0`, as "When the cap is full the timer rests at `0`"
 // states. That reading is one-sided on its own — a build whose cap is BELOW the
@@ -42,8 +47,8 @@
 // sides, so each row's own check decides that row's figure.
 //
 // WHY THE FIELD IS CLEARED BETWEEN SPAWNS. `aliveCommons` is "the number of
-// live enemies of rank `common` other than gnats", and rows 0 to 9 cap it below
-// thirty, so thirty spawns left standing would hit the cap and stop the timer.
+// live enemies of rank `common` other than gnats", and rows 0 to 3 cap it below
+// sixty, so sixty spawns left standing would hit the cap and stop the timer.
 // Clearing is a pose of the field alone and decides nothing the check reads:
 // which type each spawn is, is the draw the tick made.
 //
@@ -73,7 +78,7 @@ import {
 } from "../harness";
 
 /** How many spawns the type reading draws. */
-export const TYPE_DRAWS = 30;
+export const TYPE_DRAWS = 60;
 
 /** The common posed to fill the cap: rank `common` and not a gnat, so it counts. */
 export const CAP_FILLER: EnemyId = "moth";
@@ -212,7 +217,7 @@ async function readCap(
  *
  * `film` wraps the cadence run alone, which is the part of the drive a reviewer
  * watches: the two runs after it pose two hundred commons and clear the field
- * thirty times, and neither is a picture of the window.
+ * sixty times, and neither is a picture of the window.
  */
 export async function readWindow(
   h: Harness,
