@@ -562,10 +562,10 @@ const kit = createEngineCaseHarness<
     // too long. Nothing measured here depends on wall-clock time — every check
     // supplies its own clock and the engine reads no other — so the turn changes no
     // reading.
-    let since = Date.now();
+    let sinceYield = 0;
     const step = async (frames: number): Promise<void> => {
       await runFrames(frames);
-      since = await breathe(since);
+      sinceYield = await breathe(sinceYield + frames);
     };
 
     /**

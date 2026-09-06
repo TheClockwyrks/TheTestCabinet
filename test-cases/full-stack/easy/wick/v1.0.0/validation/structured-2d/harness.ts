@@ -1410,12 +1410,13 @@ export async function createHarness(
       const maxTicks = untilOptions.maxTicks ?? 600;
       let snapshot = debug.snapshot();
       if (predicate(snapshot)) return { hit: true, ticks: 0, snapshot };
-      let since = Date.now();
+      let sinceYield = 0;
       for (let ticks = 1; ticks <= maxTicks; ticks += 1) {
         await drive(FRAMES_PER_TICK);
+        sinceYield += FRAMES_PER_TICK;
         snapshot = debug.snapshot();
         if (predicate(snapshot)) return { hit: true, ticks, snapshot };
-        since = await breathe(since);
+        sinceYield = await breathe(sinceYield);
       }
       return { hit: false, ticks: maxTicks, snapshot };
     },

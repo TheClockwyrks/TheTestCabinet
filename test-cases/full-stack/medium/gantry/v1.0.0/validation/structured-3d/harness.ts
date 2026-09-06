@@ -766,7 +766,7 @@ const decodeCue = (bytes: Uint8Array): AudioBufferLike =>
 const ZERO_CLOCK: Clock = { delta: () => 0 };
 
 /**
- * When this worker last let its event loop turn.
+ * Frames this worker has driven since it last let its event loop turn.
  *
  * WHY A DRIVE HANDS THE EVENT LOOP A TURN. `engine.advance(n)` returns a promise,
  * but the `n` frames have already run by the time it does: the engine steps them
@@ -776,14 +776,19 @@ const ZERO_CLOCK: Clock = { delta: () => 0 };
  * microtask, which runs before the loop is reached at all. Vitest reports a
  * running file to its runner over a socket served by that same loop, and a report
  * left unanswered for long enough is abandoned, which spoils the RUN over a check
- * that passed. The package's `breathe` lets one real turn through whenever the
- * frames just run have held the loop long enough. Nothing measured here depends on
- * wall-clock time — every check supplies its own clock and the engine reads no
- * other — so the turn changes no reading.
+ * that passed. The package's `breathe` lets one real turn through every so many
+ * frames driven.
+ *
+ * THE COUNT IS FRAMES AND NEVER ELAPSED TIME. A clock read here would make how
+ * often this harness yields a property of the host it runs on, and two hosts
+ * would drive the same check through different interleavings. Frames are what a
+ * check spends, they are the same number on every machine, and the turn changes
+ * no reading either way — every check supplies its own clock and the engine reads
+ * no other.
  *
  * Per WORKER rather than per harness, because the loop it is letting turn is.
  */
-let yieldedAt = Date.now();
+let framesSinceYield = 0;
 
 /**
  * The package's engine machinery, bound to Gantry on this engine.
@@ -1047,7 +1052,7 @@ export async function createHarness(
       base.calls.length = 0;
       await base.advance(1);
     }
-    yieldedAt = await breathe(yieldedAt);
+    framesSinceYield = await breathe(framesSinceYield + count);
   };
 
   const harness: Harness = {

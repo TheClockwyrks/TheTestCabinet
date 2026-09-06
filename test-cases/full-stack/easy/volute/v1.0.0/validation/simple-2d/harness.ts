@@ -1375,11 +1375,12 @@ export async function createHarness(
       }
 
       let ticks = 0;
-      let since = Date.now();
+      let sinceYield = 0;
       while (ticks < maxTicks) {
         const stride = Math.min(poll, maxTicks - ticks);
         await drive(stride);
         ticks += stride;
+        sinceYield += stride;
         snapshot = await debug.snapshot();
         if (predicate(snapshot)) {
           return { hit: true, frames: ticks, ticks, snapshot };
@@ -1387,7 +1388,7 @@ export async function createHarness(
         // A sweep of several hundred ticks runs inside one `await`, and the
         // reporter, the timers and every socket read live on the loop it is
         // holding. Nothing observable changes; the host stops looking hung.
-        since = await breathe(since);
+        sinceYield = await breathe(sinceYield);
       }
       return { hit: false, frames: ticks, ticks, snapshot };
     },
