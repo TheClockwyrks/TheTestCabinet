@@ -1324,7 +1324,7 @@ export interface SaucerSpec {
  * A check on how it TRAVELS poses `mind: false`, so a weave reroll cannot move the
  * reading. A check on its GUN poses `mind: false, travel: false` and reads shots
  * from a saucer standing still. And `saucer/avoids-the-core` poses `gun: false`, so
- * fifty-four crossings produce no bullets at all.
+ * thirty-six crossings produce no bullets at all.
  */
 export async function poseSaucer(
   h: Harness,

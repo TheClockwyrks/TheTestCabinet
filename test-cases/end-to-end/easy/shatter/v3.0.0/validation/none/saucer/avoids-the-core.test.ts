@@ -31,7 +31,7 @@
 // check hunting a build that came too close. `closestApproach` in `geometry.ts` is
 // that reading.
 //
-// THE GUN IS OFF, so fifty-four crossings put no round on the field at all. Its
+// THE GUN IS OFF, so thirty-six crossings put no round on the field at all. Its
 // mind is on, because the steering IS the requirement.
 //
 // THE SAMPLING RUNS INSIDE THE PAGE, for the reason `cadence.ts` sets out beside
@@ -96,7 +96,7 @@ const WINDOW = 320;
  * The eight ticks between two samples inside the window.
  *
  * A fifteenth of a second, over which a saucer travelling at its cruise and weaving
- * at full vertical speed covers `11.1` units. That is what makes fifty-four
+ * at full vertical speed covers `11.1` units. That is what makes thirty-six
  * crossings affordable, and it is why the distance is read to the LINE between
  * samples rather than to the samples themselves.
  */

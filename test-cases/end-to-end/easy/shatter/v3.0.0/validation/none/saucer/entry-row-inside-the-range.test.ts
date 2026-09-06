@@ -4,7 +4,7 @@
 // THE RULE. `specs/saucer.md`: a saucer enters "at a `y` drawn uniformly from
 // `SAUCER_R` to `FIELD_H - SAUCER_R`". The bound alone is this point's; that the
 // rows also SPREAD across that range is `saucer/enters-at-a-random-row`'s, read off
-// the same sixteen arrivals.
+// the same forty arrivals.
 //
 // THE BOUND IS THE RANGE ITSELF, not a tolerance around an observed one:
 // `[SAUCER_R, FIELD_H - SAUCER_R]` is `[18, 702]`, and half a unit of float slack is

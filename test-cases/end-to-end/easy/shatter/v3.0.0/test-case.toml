@@ -1522,7 +1522,7 @@ validation = { script = "rocks/spin-is-cosmetic.test.ts", outputs = [
 # The saucer has three separable faculties — it decides, it shoots, and it moves —
 # and each item below turns off the two it is not about, so every scenario reads
 # one requirement. `avoids-the-core` is the item the fold-in fix of changelog.md
-# reshaped: it flies 54 real crossings the specification's own entry rule produces
+# reshaped: it flies 36 real crossings the specification's own entry rule produces
 # and decides on the closest approach of all of them, rather than posing the saucer
 # where the behavior is impossible.
 [[review.categories]]

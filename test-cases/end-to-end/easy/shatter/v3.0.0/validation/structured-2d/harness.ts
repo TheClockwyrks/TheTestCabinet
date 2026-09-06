@@ -1726,7 +1726,7 @@ export async function toggleOverlay(h: Harness): Promise<void> {
  * the end of the stretch is in the answer.
  *
  * This is how a long scenario is watched without a snapshot every tick: a
- * crossing of the whole field is 1097 ticks, and a sweep that flies 54 of them
+ * crossing of the whole field is 1097 ticks, and a sweep that flies 36 of them
  * cannot afford to read them all. What a coarse stride costs is stated where it
  * is spent — a path sampled every eight ticks is a path whose closest approach
  * falls BETWEEN two samples far more often than on one, so a check that measures

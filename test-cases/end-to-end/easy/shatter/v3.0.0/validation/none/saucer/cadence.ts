@@ -81,7 +81,7 @@ export const SHORT_DUE = 0.25;
 // of game time — 14 400 of them — because what it is looking for is the tick
 // reporting no saucer between two visits, and a stride that stepped over that tick
 // would fail a conformant build. `avoids-the-core` needs the saucer's centre every
-// eight ticks of fifty-four crossings. The three aim items need the tick each of
+// eight ticks of thirty-six crossings. The three aim items need the tick each of
 // sixty shots was fired on. And every wait for an arrival covers eighteen to
 // thirty-five seconds of game time to read one id.
 //
