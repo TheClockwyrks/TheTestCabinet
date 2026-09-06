@@ -83,7 +83,7 @@ export async function movePointer(
  * Press and release the real pointer at one logical stage point.
  *
  * Both edges land inside whatever region holds the point, which is what
- * `specs/controls.md` requires of a choice: "A choice takes both of its edges
+ * `specs/controls.md` requires of a choice: "A choice requires both of its edges
  * inside one region".
  */
 export async function clickStage(
@@ -113,7 +113,7 @@ export function clickRegion(h: Harness, rect: HitRect): Promise<void> {
 /**
  * Press inside one reported region and release inside another.
  *
- * `specs/controls.md`: "A choice takes both of its edges inside one region: the
+ * `specs/controls.md`: "A choice requires both of its edges inside one region: the
  * press and its release for a pointer... Two edges falling in different regions,
  * and an edge falling outside every region, choose nothing." Each edge runs its
  * own frame, for the reason {@link clickStage} gives.

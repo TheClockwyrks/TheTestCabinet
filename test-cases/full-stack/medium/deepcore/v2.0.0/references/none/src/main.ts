@@ -207,7 +207,7 @@ async function main(): Promise<void> {
   /**
    * Route one completed contact: both edges have to land in the same region.
    *
-   * specs/controls.md: "A choice takes both of its edges inside one region... Two
+   * specs/controls.md: "A choice requires both of its edges inside one region... Two
    * edges falling in different regions, and an edge falling outside every region,
    * choose nothing."
    */

@@ -122,7 +122,7 @@ through, in logical stage units, so the menus keep the layout you designed.
 | A pointer is pressed and released inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
 | A touch contact lands and lifts inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
 
-A confirm takes both of its edges inside one item's region: the press and its
+A confirm requires both of its edges inside one item's region: the press and its
 release for a pointer, the landing and the lift for a touch contact. Two edges
 falling in different regions confirm no item, and so does an edge falling
 outside every region. The item a confirm acts on is the item at `menuIndex`

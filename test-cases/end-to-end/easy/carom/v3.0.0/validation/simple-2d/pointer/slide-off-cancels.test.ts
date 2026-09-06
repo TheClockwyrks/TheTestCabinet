@@ -1,7 +1,7 @@
 // Carom — pointer/slide-off-cancels: a press on one item released on another
 // confirms nothing.
 //
-// specs/ui.md, "Pointer and touch": a confirm takes both of its edges inside one
+// specs/ui.md, "Pointer and touch": a confirm requires both of its edges inside one
 // item's region, and two edges that fall in different regions confirm no item.
 // That is the affordance a player uses to back out of a control already pressed,
 // and this point reads it in the one direction the spec states it — nothing was

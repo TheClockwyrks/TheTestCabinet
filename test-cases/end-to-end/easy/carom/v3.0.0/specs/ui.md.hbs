@@ -188,7 +188,7 @@ item's region in logical units, so the menus keep the layout the build chose.
 | A pointer is pressed and released inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
 | A touch contact lands and lifts inside one item's region | `menuIndex` becomes that item's index, and that item is confirmed. |
 
-A confirm takes both of its edges inside one item's region: the press and its
+A confirm requires both of its edges inside one item's region: the press and its
 release for a pointer, the landing and the lift for a touch contact. Two edges
 that fall in different regions, and an edge that falls outside every region,
 confirm no item. The item every confirm acts on is the item at `menuIndex`,

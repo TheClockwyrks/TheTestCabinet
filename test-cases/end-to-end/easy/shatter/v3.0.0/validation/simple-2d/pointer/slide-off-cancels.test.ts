@@ -1,7 +1,7 @@
 // Shatter — pointer/slide-off-cancels: a press and a release in different regions
 // confirm nothing.
 //
-// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm takes both of its edges
+// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm requires both of its edges
 // inside one entry's region: the press and its release for a pointer... Two edges
 // that fall in different regions, and an edge that falls outside every region,
 // confirm no entry." This is the slide-off a player uses to change their mind

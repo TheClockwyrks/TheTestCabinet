@@ -4,7 +4,7 @@
 // build stands on no engine, so this layer is its own work. What is checked here
 // is the reading itself: a move, a press and the release that completes it, in
 // logical units, each news for exactly one frame — and a press that is HELD
-// across frames, because a confirm takes both of its edges and they may be frames
+// across frames, because a confirm requires both of its edges and they may be frames
 // apart.
 
 import { describe, expect, it } from "vitest";

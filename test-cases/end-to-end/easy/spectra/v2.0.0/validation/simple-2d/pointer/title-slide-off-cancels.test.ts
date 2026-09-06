@@ -1,7 +1,7 @@
 // Spectra — pointer/title-slide-off-cancels: two edges in different items take
 // neither.
 //
-// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm takes both of its edges
+// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm requires both of its edges
 // inside one item's region ... Two edges that fall in different regions, and an edge
 // that falls outside every region, confirm no item." This is the affordance that
 // lets a player who pressed the wrong entry slide off it and let go safely.

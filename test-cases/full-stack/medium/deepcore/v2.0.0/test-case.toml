@@ -4217,7 +4217,7 @@ validation = { script = "panels/pointer-hover-highlights-a-menu-item.test.ts", o
 [[review.categories.items]]
 id = "a-split-press-chooses-nothing"
 title = "A press and a release in different regions choose nothing"
-description = "A choice takes both of its edges inside one region, so a pointer pressed inside one menu item and released inside another chooses neither."
+description = "A choice requires both of its edges inside one region, so a pointer pressed inside one menu item and released inside another chooses neither."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: press inside the region the build reports for one title

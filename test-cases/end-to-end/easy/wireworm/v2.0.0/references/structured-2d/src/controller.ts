@@ -91,7 +91,7 @@ export class WirewormController extends PlayerController {
         break;
     }
 
-    // A confirm takes both of its edges on ONE menu, so a frame that changed
+    // A confirm requires both of its edges on ONE menu, so a frame that changed
     // the screen drops the presses in flight (`specs/ui.md`).
     if (state.screen !== opening) state.presses = [];
 

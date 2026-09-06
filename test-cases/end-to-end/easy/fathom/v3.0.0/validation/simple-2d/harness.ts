@@ -790,7 +790,7 @@ export async function dragBetweenItems(
 /**
  * Land a touch contact inside item `index`'s region and LEAVE IT DOWN.
  *
- * A confirm takes both of its edges inside one region and the lift is the second
+ * A confirm requires both of its edges inside one region and the lift is the second
  * of them (specs/ui.md), so a gesture that stops at the landing is the one
  * gesture that isolates what the landing alone did.
  */

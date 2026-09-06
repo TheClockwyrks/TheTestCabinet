@@ -1,7 +1,7 @@
 // pointer/slide-off-cancels — a press on one item released on another confirms
 // nothing.
 //
-// specs/ui.md, "Pointer and touch": a confirm takes both of its edges inside one
+// specs/ui.md, "Pointer and touch": a confirm requires both of its edges inside one
 // item's region, and two edges that fall in different regions confirm no item.
 // That is the affordance a player uses to back out of a control they have already
 // pressed, and this point checks it in the one direction it states — nothing was

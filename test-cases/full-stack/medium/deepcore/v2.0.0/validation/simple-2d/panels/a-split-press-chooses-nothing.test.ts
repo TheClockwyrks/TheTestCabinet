@@ -1,7 +1,7 @@
 // panels/a-split-press-chooses-nothing — a press and a release in different
 // regions choose neither.
 //
-// `specs/controls.md`: "A choice takes both of its edges inside one region: the
+// `specs/controls.md`: "A choice requires both of its edges inside one region: the
 // press and its release for a pointer, the landing and the lift for a touch
 // contact. Two edges falling in different regions, and an edge falling outside
 // every region, choose nothing."

@@ -57,7 +57,7 @@ export async function hoverStage(
 /**
  * Press at one logical stage point and release at another, then run the frame.
  *
- * `specs/controls.md`: "A choice takes both of its edges inside one region... Two
+ * `specs/controls.md`: "A choice requires both of its edges inside one region... Two
  * edges falling in different regions, and an edge falling outside every region,
  * choose nothing."
  */

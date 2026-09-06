@@ -101,7 +101,7 @@ export interface FathomState {
   /**
    * The menu item a pointer or a finger is currently pressed on, or `null`.
    *
-   * A confirm takes both of its edges inside ONE region (`specs/ui.md`), so the
+   * A confirm requires both of its edges inside ONE region (`specs/ui.md`), so the
    * region the press landed in has to outlive the frame it landed on. It is
    * derived from the gesture in flight and nothing else, and every screen change
    * drops it, so no pose can leave a press latched over a menu it was not made
@@ -613,7 +613,7 @@ function readMenu(
  *
  * A sample that lands on an item selects it, which is what makes a mouse move
  * select and a contact select on its landing, since a finger never hovers. A
- * confirm takes both of its edges inside ONE item's region, so the release
+ * confirm requires both of its edges inside ONE item's region, so the release
  * confirms only where it lands on the item the press landed on: two edges in
  * different regions, and an edge outside every region, confirm nothing.
  *

@@ -1,6 +1,6 @@
 // Spectra — touch/title-drag-cancels: a contact that lifts elsewhere takes nothing.
 //
-// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm takes both of its edges
+// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm requires both of its edges
 // inside one item's region: ... the landing and the lift for a touch contact. Two
 // edges that fall in different regions ... confirm no item." A finger that lands on
 // the wrong entry can be dragged off it and lifted safely.

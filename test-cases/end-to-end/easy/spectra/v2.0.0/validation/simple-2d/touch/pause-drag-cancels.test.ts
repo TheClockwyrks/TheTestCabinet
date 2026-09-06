@@ -1,7 +1,7 @@
 // Spectra — touch/pause-drag-cancels: a contact that lifts elsewhere on the pause
 // menu takes nothing.
 //
-// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm takes both of its edges
+// THE RULE. `specs/ui.md`, "Pointer and touch": "A confirm requires both of its edges
 // inside one item's region: ... the landing and the lift for a touch contact. Two
 // edges that fall in different regions ... confirm no item." It holds over the items
 // each of the three menu screens shows, and this point decides it on the PAUSED
