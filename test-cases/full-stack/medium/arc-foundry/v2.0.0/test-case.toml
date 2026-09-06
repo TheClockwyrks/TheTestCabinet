@@ -4602,11 +4602,11 @@ validation = { script = "animation/fire-cycle-plays-on-a-shot.test.ts", outputs 
 [[review.categories.items]]
 id = "load-cycle-animates"
 title = "A Load cycle plays while a unit travels"
-description = "The pixels drawn over a travelling unit differ between two frames a quarter of a second apart with the unit held at one position, so the idle cycle loops rather than holding frame 0."
+description = "The pixels drawn over a travelling unit take more than one picture across half a second with the unit held at one position, so the idle cycle loops rather than holding frame 0."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: freeze a unit's travel, advance a quarter second, and
-# compare the pixels drawn over it. See validation/<engine>/animation/load-
+# Automated validation: freeze a unit's travel and read the pixels drawn over
+# it every frame across half a second. See validation/<engine>/animation/load-
 # cycle-animates.test.ts.
 validation = { script = "animation/load-cycle-animates.test.ts", outputs = [
   { id = "cycle", name = "The Load cycle playing on a held unit", kind = "replay" },
