@@ -29,7 +29,7 @@ import {
 } from "./constants";
 import { addRockTo } from "./entities";
 import { addScore } from "./flow";
-import type { RockState, ShatterState } from "./game";
+import type { FieldEdge, RockState, ShatterState } from "./game";
 import { TAU, wrapX, wrapY, wrappedDistance } from "./geometry";
 import { applyGravity } from "./gravity";
 import { recordMove, type MoveTable } from "./motion";
@@ -52,8 +52,8 @@ const SCORE_BY_SIZE: Readonly<Record<RockSize, number>> = {
  * How fast a rock's drawn rotation turns, in radians per second.
  *
  * It is a function of the rock's id alone, so it is stable for the life of the
- * rock and costs the seeded generator nothing. The rotation itself is drawn from
- * that generator when the rock is created; only its rate is derived here.
+ * rock and costs no draw. The rotation itself is drawn when the rock is
+ * created; only its rate is derived here.
  */
 export function spinRateOf(id: number): number {
   const hash = Math.imul(id ^ 0x9e3779b9, 0x85ebca6b) >>> 0;
@@ -117,30 +117,32 @@ export function destroyRock(
  * health is not, so the damage it carried comes back with it.
  */
 export function recycleRock(state: ShatterState, rock: RockState): void {
-  const edge = nextIndex(state, 4);
-  const along = nextFloat(state);
-  const speed = nextRange(
-    state,
-    ROCK_SPEED_MIN[rock.size],
-    ROCK_SPEED_MAX[rock.size],
-  );
-  const spread = (nextFloat(state) - 0.5) * 2 * RECYCLE_SPREAD;
+  // The posed edge and base speed where the debug surface posed them, consumed
+  // here; else a draw, each edge a quarter of the time.
+  const edge = state.nextRecycleEdge ?? FIELD_EDGES[nextIndex(4)];
+  state.nextRecycleEdge = null;
+  const along = nextFloat();
+  const speed =
+    state.nextRockSpeed ??
+    nextRange(ROCK_SPEED_MIN[rock.size], ROCK_SPEED_MAX[rock.size]);
+  state.nextRockSpeed = null;
+  const spread = (nextFloat() - 0.5) * 2 * RECYCLE_SPREAD;
 
   let x: number;
   let y: number;
   let inward: number;
   switch (edge) {
-    case 0:
+    case "left":
       x = RECYCLE_MARGIN;
       y = along * FIELD_H;
       inward = 0;
       break;
-    case 1:
+    case "right":
       x = FIELD_W - RECYCLE_MARGIN;
       y = along * FIELD_H;
       inward = Math.PI;
       break;
-    case 2:
+    case "top":
       x = along * FIELD_W;
       y = RECYCLE_MARGIN;
       inward = Math.PI / 2;
@@ -164,7 +166,7 @@ export function recycleRock(state: ShatterState, rock: RockState): void {
  * ship and `WAVE_MIN_STAR_DIST` from the star, both by shortest wrapped
  * separation. The draw is repeated until it clears both; the best of the tries
  * stands in for the vanishingly rare case where none does, so the placement is
- * always decided and always deterministic.
+ * always decided.
  */
 function placeWaveRock(state: ShatterState): { x: number; y: number } {
   let bestX = 0;
@@ -172,8 +174,8 @@ function placeWaveRock(state: ShatterState): { x: number; y: number } {
   let bestClearance = -Infinity;
 
   for (let attempt = 0; attempt < WAVE_PLACE_TRIES; attempt += 1) {
-    const x = nextFloat(state) * FIELD_W;
-    const y = nextFloat(state) * FIELD_H;
+    const x = nextFloat() * FIELD_W;
+    const y = nextFloat() * FIELD_H;
     const fromShip =
       wrappedDistance(x, y, state.ship.x, state.ship.y) - WAVE_MIN_SHIP_DIST;
     const fromStar = wrappedDistance(x, y, STAR_X, STAR_Y) - WAVE_MIN_STAR_DIST;
@@ -203,14 +205,21 @@ export function spawnWave(state: ShatterState): void {
   const wave = state.wave;
   const factor = waveSpeedFactor(wave);
   const count = WAVE_BASE_ROCKS + wave;
+  // A posed `nextRockSpeed` is the base speed of every rock of this placement,
+  // and the placement consumes it (`specs/instrumentation.md`).
+  const posed = state.nextRockSpeed;
+  state.nextRockSpeed = null;
 
   for (let index = 0; index < count; index += 1) {
     const spot = placeWaveRock(state);
     const rock = addRockTo(state, "large", spot.x, spot.y);
-    const heading = nextAngle(state);
+    const heading = nextAngle();
     const speed =
-      nextRange(state, ROCK_SPEED_MIN.large, ROCK_SPEED_MAX.large) * factor;
+      (posed ?? nextRange(ROCK_SPEED_MIN.large, ROCK_SPEED_MAX.large)) * factor;
     rock.vx = Math.cos(heading) * speed;
     rock.vy = Math.sin(heading) * speed;
   }
 }
+
+/** The four edges, in the order a drawn index names them. */
+const FIELD_EDGES: readonly FieldEdge[] = ["left", "right", "top", "bottom"];

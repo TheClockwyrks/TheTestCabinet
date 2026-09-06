@@ -59,8 +59,7 @@ export function steerSaucer(state: ShatterState): void {
   if (saucer.weaveClock <= 1e-9) {
     // The weave reverses the vertical direction it is travelling in at that
     // moment; a saucer with no vertical motion yet takes a drawn direction.
-    const direction =
-      saucer.vy === 0 ? randomSign(state) : -Math.sign(saucer.vy);
+    const direction = saucer.vy === 0 ? saucer.weave : -Math.sign(saucer.vy);
     saucer.vy = SAUCER_WEAVE_SPEED * direction;
     saucer.weaveClock += SAUCER_WEAVE_INTERVAL;
   }
@@ -104,13 +103,18 @@ export function keepSaucerClearOfCore(saucer: SaucerState): void {
   }
 }
 
-/** One aimed shot, offset by an error drawn afresh for this shot alone. */
+/**
+ * One aimed shot, offset by an error drawn afresh for this shot alone, or by
+ * the error the debug surface posed for it, which the shot consumes.
+ */
 function fireSaucer(state: ShatterState, saucer: SaucerState): void {
   const bearing = Math.atan2(
     deltaY(saucer.y, state.ship.y),
     deltaX(saucer.x, state.ship.x),
   );
-  const error = randomRange(state, -SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+  const error =
+    state.nextSaucerAim ?? randomRange(-SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+  state.nextSaucerAim = null;
   const aim = bearing + error;
 
   addEnemyBulletTo(
@@ -122,12 +126,25 @@ function fireSaucer(state: ShatterState, saucer: SaucerState): void {
   );
 }
 
-/** The game's own arrival: an edge, a row, and a heading into the field. */
+/**
+ * The game's own arrival: an edge, a row, a weave direction, and a heading into
+ * the field. A posed edge or row is taken in place of its draw and consumed
+ * (`specs/instrumentation.md`).
+ */
 function arrive(state: ShatterState, cues: FrameCues): void {
-  const fromLeft = random(state) < 0.5;
-  const row = randomRange(state, SAUCER_R, FIELD_H - SAUCER_R);
+  const edge = state.nextSaucerEdge ?? (random() < 0.5 ? "left" : "right");
+  state.nextSaucerEdge = null;
+  const row = state.nextSaucerRow ?? randomRange(SAUCER_R, FIELD_H - SAUCER_R);
+  state.nextSaucerRow = null;
+  const fromLeft = edge === "left";
   const x = fromLeft ? SAUCER_R : FIELD_W - SAUCER_R;
-  addSaucerTo(state, x, row, fromLeft ? SAUCER_SPEED : -SAUCER_SPEED);
+  const saucer = addSaucerTo(
+    state,
+    x,
+    row,
+    fromLeft ? SAUCER_SPEED : -SAUCER_SPEED,
+  );
+  saucer.weave = randomSign();
   cues.saucer = true;
 }
 
@@ -146,7 +163,7 @@ export function runSaucerSystems(state: ShatterState, cues: FrameCues): void {
   if (saucer.age >= SAUCER_LIFETIME) {
     state.saucer = null;
     state.saucerClock = 0;
-    state.saucerDue = randomRange(state, SAUCER_GAP_MIN, SAUCER_GAP_MAX);
+    state.saucerDue = randomRange(SAUCER_GAP_MIN, SAUCER_GAP_MAX);
     return;
   }
 

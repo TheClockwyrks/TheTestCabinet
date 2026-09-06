@@ -26,7 +26,6 @@ import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { defineCues, noCues, playCues } from "./audio";
 import {
-  DEFAULT_SEED,
   FACE_UP,
   LEVELS,
   SAFE_X,
@@ -57,6 +56,8 @@ export const BACKGROUND: string = COLOR.space;
 // ---- The state contract (specs/state.md) ---------------------------------
 
 export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type SaucerEdge = "left" | "right";
+export type FieldEdge = "top" | "bottom" | "left" | "right";
 
 export interface ShipState {
   x: number;
@@ -100,6 +101,7 @@ export interface SaucerState {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  weave: 1 | -1;
   fireClock: number;
   weaveClock: number;
   age: number;
@@ -176,11 +178,16 @@ export class ShatterState extends GameState {
   saucerClock = 0;
   saucerDue = SAUCER_FIRST_DELAY;
 
+  nextSaucerEdge: SaucerEdge | null = null;
+  nextSaucerRow: number | null = null;
+  nextSaucerAim: number | null = null;
+  nextRockSpeed: number | null = null;
+  nextRecycleEdge: FieldEdge | null = null;
+
   tickClock = 0;
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 
   // ---- Added beside the declared fields ----------------------------------
 

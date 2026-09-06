@@ -28,12 +28,7 @@
 // runs until something calls it.
 
 import type { World } from "@clockwyrks/structured-2d";
-import {
-  DEFAULT_SEED,
-  ROCK_RADIUS,
-  SHATTER_DEBUG_VERSION,
-  type RockSize,
-} from "./constants";
+import { ROCK_RADIUS, SHATTER_DEBUG_VERSION, type RockSize } from "./constants";
 import {
   addBulletTo,
   addEnemyBulletTo,
@@ -45,6 +40,8 @@ import { menuItemRect, type Rect } from "./menus";
 import {
   shatterState,
   type BulletState,
+  type FieldEdge,
+  type SaucerEdge,
   type Screen,
   type ShatterState,
 } from "./game";
@@ -92,6 +89,7 @@ export interface SnapshotSaucer {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  weave: 1 | -1;
   fireClock: number;
   weaveClock: number;
   age: number;
@@ -110,6 +108,11 @@ export interface ShatterSnapshot {
   saucerSpawning: boolean;
   saucerClock: number;
   saucerDue: number;
+  nextSaucerEdge: SaucerEdge | null;
+  nextSaucerRow: number | null;
+  nextSaucerAim: number | null;
+  nextRockSpeed: number | null;
+  nextRecycleEdge: FieldEdge | null;
   ship: SnapshotShip;
   bullets: SnapshotBullet[];
   rocks: SnapshotRock[];
@@ -127,7 +130,7 @@ export interface ShatterSnapshot {
 export interface ShatterDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): ShatterSnapshot;
   menuItemRect(index: number): Rect | null;
 
@@ -166,7 +169,21 @@ export interface ShatterDebugApi {
   setSaucerMind(enabled: boolean): void;
   setSaucerGun(enabled: boolean): void;
   setSaucerTravel(enabled: boolean): void;
+  setSaucerWeave(direction: number): void;
+  setSaucerDue(seconds: number): void;
+
+  setNextSaucerEdge(edge: SaucerEdge): void;
+  setNextSaucerRow(y: number): void;
+  setNextSaucerAim(radians: number): void;
+  setNextRockSpeed(speed: number): void;
+  setNextRecycleEdge(edge: FieldEdge): void;
 }
+
+/** The two edges a saucer enters at. */
+const SAUCER_EDGES: readonly SaucerEdge[] = ["left", "right"];
+
+/** The four edges a recycled rock re-enters at. */
+const FIELD_EDGES: readonly FieldEdge[] = ["top", "bottom", "left", "right"];
 
 /** One round in flight, as the snapshot reports it. */
 function readBullet(bullet: BulletState): SnapshotBullet {
@@ -191,8 +208,8 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
   return {
     version: SHATTER_DEBUG_VERSION,
 
-    reset(options) {
-      resetState(read(), options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(read());
     },
 
     // Where the build laid the entry out, which `specs/ui.md` leaves to the
@@ -218,6 +235,11 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
         saucerSpawning: state.saucerSpawning,
         saucerClock: state.saucerClock,
         saucerDue: state.saucerDue,
+        nextSaucerEdge: state.nextSaucerEdge,
+        nextSaucerRow: state.nextSaucerRow,
+        nextSaucerAim: state.nextSaucerAim,
+        nextRockSpeed: state.nextRockSpeed,
+        nextRecycleEdge: state.nextRecycleEdge,
         ship: {
           x: ship.x,
           y: ship.y,
@@ -254,6 +276,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
                 mind: saucer.mind,
                 gun: saucer.gun,
                 travel: saucer.travel,
+                weave: saucer.weave,
                 fireClock: saucer.fireClock,
                 weaveClock: saucer.weaveClock,
                 age: saucer.age,
@@ -416,6 +439,44 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     setSaucerGun(enabled) {
       const saucer = read().saucer;
       if (saucer !== null) saucer.gun = enabled;
+    },
+
+    /** The direction its next reroll takes from rest. */
+    setSaucerWeave(direction) {
+      const saucer = read().saucer;
+      if (saucer !== null) saucer.weave = direction < 0 ? -1 : 1;
+    },
+
+    /** The figure the gap draw decides; the clock itself stands where it is. */
+    setSaucerDue(seconds) {
+      if (Number.isFinite(seconds)) read().saucerDue = Math.max(0, seconds);
+    },
+
+    // ---- The posed draws -------------------------------------------------
+    //
+    // Each sets the outcome the game's next draw of one kind would decide, and
+    // the draw that takes it returns the field to `null`
+    // (`specs/instrumentation.md`). A value outside what the draw could decide
+    // is ignored, so a field only ever holds an outcome the rule accepts.
+
+    setNextSaucerEdge(edge) {
+      if (SAUCER_EDGES.includes(edge)) read().nextSaucerEdge = edge;
+    },
+
+    setNextSaucerRow(y) {
+      if (Number.isFinite(y)) read().nextSaucerRow = y;
+    },
+
+    setNextSaucerAim(radians) {
+      if (Number.isFinite(radians)) read().nextSaucerAim = radians;
+    },
+
+    setNextRockSpeed(speed) {
+      if (Number.isFinite(speed) && speed >= 0) read().nextRockSpeed = speed;
+    },
+
+    setNextRecycleEdge(edge) {
+      if (FIELD_EDGES.includes(edge)) read().nextRecycleEdge = edge;
     },
 
     setSaucerTravel(enabled) {

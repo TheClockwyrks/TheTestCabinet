@@ -120,9 +120,9 @@ describe("the saucer's cadence", () => {
     "enters at an edge, on a row drawn across the field",
     async () => {
       const rows: number[] = [];
-      for (const seed of [1, 2, 3, 4]) {
+      for (let game = 0; game < 4; game += 1) {
         const h = await createHarness();
-        h.debug.reset({ seed });
+        h.debug.reset();
         startPlaying(h.debug);
         h.debug.setSaucerSpawning(true);
         for (let visit = 0; visit < 2; visit += 1) {
