@@ -1076,27 +1076,36 @@ pub async fn update_status(
 
     match update.state {
         DriverState::Starting => {
-            state
+            // Announce from the row the transition *wrote*, not the one read before it.
+            // This is the transition that stamps `started_at`, so a summary lifted from
+            // the pre-update model would carry none and a console living on the stream
+            // would show a started run with no start time until its next
+            // `GET /jobs/active`. The pre-update row stands in only if the write found
+            // nothing to update — a cancel that landed in the gap — where announcing
+            // the identity we already hold beats announcing nothing.
+            let started = state
                 .db
                 .set_job_state(&id, "starting", &now, None, None)
                 .await
                 .map_err(ApiError::from)?;
             state.relay.notifier().publish_run(RunEvent::state_changed(
                 &id,
-                job_summary(&job),
+                job_summary(started.as_ref().unwrap_or(&job)),
                 JobState::Starting,
             ));
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Running => {
-            state
+            // The same freshness requirement: for a driver that never reported
+            // `starting`, this is the transition that stamps the anchor.
+            let running = state
                 .db
                 .set_job_state(&id, "running", &now, None, None)
                 .await
                 .map_err(ApiError::from)?;
             state.relay.notifier().publish_run(RunEvent::state_changed(
                 &id,
-                job_summary(&job),
+                job_summary(running.as_ref().unwrap_or(&job)),
                 JobState::Running,
             ));
             Ok(StatusCode::NO_CONTENT)
@@ -1667,6 +1676,9 @@ fn new_job_summary(new: &crate::db::NewJob) -> JobSummary {
         harness_slug: new.harness_slug.clone(),
         model_id: new.model_id.clone(),
         engine: new.engine_slug.clone(),
+        // An enqueue is not a start: the job is announced as queued, and the anchor is
+        // stamped later by the transition into `starting`.
+        started_at: None,
         // The name comes off the lifted column the job is about to be written with,
         // not from re-parsing the capability set beside it: the announcement a console
         // renders and the row it will later re-read are then the same value by
@@ -1692,6 +1704,7 @@ fn job_summary(job: &job::Model) -> JobSummary {
         // Straight off the lifted column, so an in-flight run is attributed to the same
         // engine segment its completed run will be counted under.
         engine: job.engine_slug.clone(),
+        started_at: job.started_at.clone(),
         gg_preset: job
             .gg_config_json
             .as_deref()

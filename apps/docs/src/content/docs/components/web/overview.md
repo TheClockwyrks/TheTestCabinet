@@ -88,7 +88,8 @@ carrying the version facet and the toggle.
 Those listings draw from the [`state=any`](/components/backend/api/#get-runs)
 slice, so a produced run, unpublished and therefore unreviewed, sorts and pages
 among the published ones rather than being pinned ahead of them. Only
-in-progress runs, which have no record to list yet, still lead the first page.
+[in-progress runs](/components/ui/overview/#the-run-log), which have no record to
+list yet, still lead the first page.
 
 A listing re-queries whenever a run finishes, is published, is killed, or is
 deleted, so a run that completes moves from the in-progress rows into the listing

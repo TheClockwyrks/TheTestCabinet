@@ -24,6 +24,7 @@ import {
   type RunScope,
 } from "./runColumns";
 import { useColumnVisibility } from "./useColumnVisibility";
+import { useNow } from "./useNow";
 import { useResizableColumns } from "./useResizableColumns";
 import { useTableSort, type SortState } from "./useTableSort";
 import { runLivePath } from "../data/runLinks";
@@ -287,8 +288,26 @@ export function RunLog({
     columns: visible,
   });
 
+  // The one clock every live cell reads. It lives here rather than in the cells so
+  // the whole log agrees on the second it is showing, and here rather than in the
+  // page so a tick re-renders the log alone. `ctx` is rebuilt on every render already
+  // and is nothing's memo dependency, so carrying `now` on it defeats no memoisation
+  // downstream.
+  //
+  // The gate is the one cell whose output actually moves between ticks: DURATION,
+  // shown (it is hidden by default) and counting for a run that has reached its
+  // start. A tick re-renders every row in the log, so anything looser buys a second's
+  // worth of work for identical DOM — a queued run under a parallelism cap would tick
+  // the whole log for as long as it waited. The hook re-reads the clock the moment it
+  // goes live again, so un-hiding the column or a run reaching `starting` shows the
+  // right second immediately.
+  const now = useNow(
+    visibleIds.has("duration") && active.some((run) => run.startedAt != null),
+  );
+
   const ctx: RunRenderContext = {
     visible: visibleIds,
+    now,
     testCaseName,
     testCaseType,
     modelName: (modelId, harnessSlug) =>

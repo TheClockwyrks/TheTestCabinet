@@ -162,6 +162,7 @@ fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
         origin: None,
         created_at: "2026-06-17T20:40:00Z".to_string(),
         updated_at: "2026-06-17T20:40:00Z".to_string(),
+        started_at: None,
     }
 }
 
@@ -201,6 +202,25 @@ fn job_summary_carries_the_jobs_engine() {
     let mut on_engine = queued_job("claude", None);
     on_engine.engine_slug = Some("simple-2d".to_string());
     assert_eq!(job_summary(&on_engine).engine.as_deref(), Some("simple-2d"));
+}
+
+/// The moment a run began rides in its display identity, so the in-progress row can
+/// show a start time and tick a duration off it. Everything else on the row that the
+/// launch already knew is displayed; a start time is the one field the run itself has
+/// to reach for the console to have.
+#[test]
+fn job_summary_carries_when_the_run_started() {
+    // A job that has not started carries none — queued, pending, and dispatched are all
+    // waiting, and the wire spells the absence by omitting the field.
+    assert_eq!(job_summary(&queued_job("claude", None)).started_at, None);
+
+    let mut started = queued_job("claude", None);
+    started.state = "running".to_string();
+    started.started_at = Some("2026-06-17T20:41:00Z".to_string());
+    assert_eq!(
+        job_summary(&started).started_at.as_deref(),
+        Some("2026-06-17T20:41:00Z")
+    );
 }
 
 // --- Attribution ------------------------------------------------------------

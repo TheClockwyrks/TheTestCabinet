@@ -149,6 +149,23 @@ pub struct Model {
     pub created_at: String,
     /// RFC 3339 of the last state transition.
     pub updated_at: String,
+    /// RFC 3339 of when the run itself began — the moment the driver reported
+    /// `starting`, which is immediately before it takes the `started_at` the produced
+    /// record's `startedAt` and `metrics.runTimeSeconds` are measured from. Anchoring
+    /// here is what lets a console tick a live duration that agrees with the figure the
+    /// finished row will show, rather than one that jumps when the run completes.
+    ///
+    /// Neither existing timestamp can serve. [`created_at`](Self::created_at) is when
+    /// the run joined the queue, so a run held an hour behind a parallelism cap would
+    /// read as an hour old the instant it started; [`updated_at`](Self::updated_at) is
+    /// rewritten by every later transition, so a duration measured from it would reset
+    /// each time the driver reported in.
+    ///
+    /// Written once and never overwritten. `NULL` while the job is `queued`, `pending`,
+    /// or `dispatched` — none of those is running, and the console shows a dash — and
+    /// on every row that was already in flight when the column was added.
+    #[sea_orm(nullable)]
+    pub started_at: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

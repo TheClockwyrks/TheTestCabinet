@@ -5543,6 +5543,9 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         origin: Set(new.origin.as_ref().map(JobOrigin::as_token)),
         created_at: Set(new.created_at.clone()),
         updated_at: Set(new.created_at),
+        // A queued job has not started; the anchor is stamped by the transition into
+        // `starting`, not by joining the queue.
+        started_at: Set(None),
     }
 }
 
@@ -5916,6 +5919,22 @@ impl Db {
     /// `None`): once an operator has canceled a run, a late `running`/`succeeded`/
     /// `failed` report from the still-winding-down driver must not resurrect or
     /// overwrite it.
+    ///
+    /// This is also where `started_at` is stamped, because it is the one choke point
+    /// every job transition passes through. The anchor is the move into `starting`:
+    /// the driver posts that as its very first act and *then* takes the `started_at`
+    /// its produced record's `startedAt` is measured from, so the stamp and the record
+    /// name the same moment. What a duration ticked from it does and does not carry is
+    /// on [`test_cabinet_core::job_api::JobSummary::started_at`], which reports it to
+    /// the console. `dispatched` would wrongly bill the run for pod scheduling and the
+    /// image pull; `running` would wrongly omit setup, which is inside
+    /// `run_time_seconds`. `running` is nonetheless a fallback anchor for a driver that
+    /// never reported `starting`, since a running row with no start time is worse than
+    /// a slightly late one.
+    ///
+    /// Stamped once and never rewritten — the later `running` report must not restart
+    /// the clock — and never stamped for `queued`, `pending`, or `dispatched`, none of
+    /// which is time the run spent working.
     pub async fn set_job_state(
         &self,
         id: &str,
@@ -5931,9 +5950,13 @@ impl Db {
         else {
             return Ok(None);
         };
+        let unstarted = model.started_at.is_none();
         let mut active = model.into_active_model();
         active.state = Set(state.to_string());
         active.updated_at = Set(now.to_string());
+        if unstarted && matches!(state, "starting" | "running") {
+            active.started_at = Set(Some(now.to_string()));
+        }
         if let Some(detail) = detail {
             active.detail = Set(Some(detail.to_string()));
         }

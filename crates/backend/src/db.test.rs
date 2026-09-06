@@ -885,7 +885,7 @@ async fn list_tournaments_orders_newest_first_and_paginates() {
 
 /// A queued run with the given id and enqueue time. The lifted identity columns
 /// are fixed; tests that care about ordering vary `created_at`.
-fn new_job(id: &str, created_at: &str) -> NewJob {
+pub(crate) fn new_job(id: &str, created_at: &str) -> NewJob {
     NewJob {
         id: id.to_string(),
         request_json: format!("{{\"jobId\":\"{id}\"}}"),
@@ -1430,6 +1430,74 @@ async fn set_job_state_records_terminal_detail_and_record_id() {
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn set_job_state_stamps_the_run_start_once_it_actually_starts() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    // Queued and dispatched are both still waiting on something: the run has not begun,
+    // so there is no start time and the console shows a dash. Dispatch in particular is
+    // pod scheduling and the image pull, which the run is not billed for.
+    let queued = db.get_job("j1").await.unwrap().expect("the job exists");
+    assert!(queued.started_at.is_none());
+    let dispatched = db
+        .set_job_state("j1", "dispatched", "2026-06-23T00:01:00Z", None, None)
+        .await
+        .unwrap()
+        .expect("the job exists");
+    assert!(dispatched.started_at.is_none());
+
+    // `starting` is the anchor: the driver posts it immediately before taking the
+    // `started_at` its produced record is measured from.
+    let starting = db
+        .set_job_state("j1", "starting", "2026-06-23T00:02:00Z", None, None)
+        .await
+        .unwrap()
+        .expect("the job exists");
+    assert_eq!(starting.started_at.as_deref(), Some("2026-06-23T00:02:00Z"));
+
+    // The `running` report that follows setup must not restart the clock — that setup
+    // is inside the run time the finished record reports, so a duration re-anchored
+    // here would disagree with the figure the finished row shows.
+    let running = db
+        .set_job_state("j1", "running", "2026-06-23T00:05:00Z", None, None)
+        .await
+        .unwrap()
+        .expect("the job exists");
+    assert_eq!(running.started_at.as_deref(), Some("2026-06-23T00:02:00Z"));
+
+    // Nor does reaching a terminal state rewrite it.
+    let succeeded = db
+        .set_job_state("j1", "succeeded", "2026-06-23T00:50:00Z", None, Some("r1"))
+        .await
+        .unwrap()
+        .expect("the job exists");
+    assert_eq!(
+        succeeded.started_at.as_deref(),
+        Some("2026-06-23T00:02:00Z")
+    );
+}
+
+#[tokio::test]
+async fn a_driver_that_skipped_starting_still_anchors_its_run_on_running() {
+    // The defensive half of the rule. A row the console is showing as running with no
+    // start time at all is worse than one anchored a few seconds late, so `running`
+    // stamps the anchor when nothing before it did.
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let running = db
+        .set_job_state("j1", "running", "2026-06-23T00:01:00Z", None, None)
+        .await
+        .unwrap()
+        .expect("the job exists");
+    assert_eq!(running.started_at.as_deref(), Some("2026-06-23T00:01:00Z"));
 }
 
 #[tokio::test]

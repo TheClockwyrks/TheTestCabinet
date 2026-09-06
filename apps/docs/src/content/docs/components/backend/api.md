@@ -1300,6 +1300,7 @@ run's identity and its state *after* the transition:
   "harnessSlug": "claude",
   "modelId": "…",
   "engine": "simple-2d",
+  "startedAt": "2026-09-06T00:02:00Z",
   "state": "running"
 }
 ```
@@ -1310,6 +1311,20 @@ segment of the run's [cell](/components/backend/coverage/#pinned-cases): a clien
 listing one cell's runs keeps another engine's live rows out with it, and an
 in-flight run has no record to read the engine from. `GET /jobs/active` reports the
 same identity.
+
+`startedAt` is when the run itself began, present from the moment the job reaches
+`starting`. That transition is the anchor because the driver posts it immediately
+before taking the `startedAt` the produced record is measured from, so the reported
+start and the recorded one name the same moment. The enqueue time cannot serve in
+its place, since a run held behind a parallelism cap waited rather than ran. A
+queued, pending, or dispatched run omits the field, and a client showing that run
+shows neither a start nor a duration.
+
+A duration ticked from `startedAt` is elapsed wall clock, so it reads higher than the
+[run time](/components/core/metrics/#durations) the finished run records. That figure
+is frozen at teardown and has the wait for cluster capacity taken out of it, while
+the job holds at `running` through the post-run stages and the validation pass that
+follow, so a live duration steps down by their total once the run lands.
 
 `kind` is `enqueued` (joined the queue), `state-changed` (moved between two
 non-terminal states), or `finished` (reached `succeeded`, `failed`, or `canceled`,

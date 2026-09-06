@@ -117,6 +117,29 @@ labelled Play when the anchored variant has a
 [showcase](/components/core/showcase/#the-case-showcase) or a recorded
 reference build, and Overview otherwise.
 
+## The run log
+
+Every listing of runs renders one shared log: the runs section and its worklists,
+a case's or a model's own runs, a gg session list, and a ladder rung's runs. The
+runs index and a ladder rung additionally show the runs still in flight, pinned
+above the finished rows because a run with no record yet has nothing to sort or
+page by.
+
+A pinned row carries every field the run already knows. Those fixed when it was
+launched are its case, version, variant, engine, harness, and model or gg
+configuration; those it gains when it starts are the moment it started and how
+long it has been running; and its live phase stands where a finished row shows
+its rating. A dash stands for the rest, which is exactly the figures only the
+finished run produces: its tokens, cost, code size, points, and rating.
+
+The duration counts from the run's
+[`startedAt`](/components/backend/api/#topics) and from nothing else, which is
+what keeps queued time out of it. A run that has not started shows a dash for
+both its start and its duration, and the count begins when the run reaches
+`starting`. It advances once a second off one clock the whole log shares, so two
+runs started in the same second read the same elapsed time, and the log holds
+that clock only while it is showing a duration that moves.
+
 ## Asset viewers
 
 The run-detail and live-monitor screens render a produced asset interactively

@@ -8,6 +8,7 @@ fn summary() -> JobSummary {
         harness_slug: "claude-code".to_string(),
         model_id: "claude-opus-4".to_string(),
         engine: None,
+        started_at: None,
         gg_preset: None,
     }
 }
@@ -39,6 +40,22 @@ fn a_run_events_identity_carries_the_engine_only_when_one_is_named() {
     };
     let value = serde_json::to_value(RunEvent::enqueued("j1", on_engine)).unwrap();
     assert_eq!(value["engine"], "simple-2d");
+}
+
+/// The start time rides in the flattened identity too, and only once the run has one:
+/// a queued run's absent field is what the console renders as a dash, and is what stops
+/// it from ticking a duration for a run that has not begun.
+#[test]
+fn a_run_events_identity_carries_the_start_only_once_the_run_has_started() {
+    let value = serde_json::to_value(RunEvent::enqueued("j1", summary())).unwrap();
+    assert!(value.get("startedAt").is_none());
+
+    let started = JobSummary {
+        started_at: Some("2026-09-06T00:02:00Z".to_string()),
+        ..summary()
+    };
+    let value = serde_json::to_value(RunEvent::enqueued("j1", started)).unwrap();
+    assert_eq!(value["startedAt"], "2026-09-06T00:02:00Z");
 }
 
 /// A completed run points the console at the record it produced; the kind is the
