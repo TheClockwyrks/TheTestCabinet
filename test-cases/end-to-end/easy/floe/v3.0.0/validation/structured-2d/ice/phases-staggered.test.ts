@@ -1,10 +1,9 @@
 // ice/phases-staggered — the eight ice lanes never line up into a wall.
 //
 // specs/ice.md draws WHERE each lane's pattern sits along its row when a level
-// is laid out, and then constrains the draw: "A draw that leaves some column of
-// the strait covered by a vehicle in all eight ice rows is drawn again, so the
-// band is always staggered: no column of the strait is covered by a vehicle in
-// all eight ice rows at once." It is the one property of the phases the
+// is laid out, and then conditions the draw: the phases are drawn "conditioned
+// on the band being staggered: no column of the strait is covered by a vehicle
+// in all eight ice rows at once." It is the one property of the phases the
 // specification fixes beyond their distribution, and it is the reason the band
 // can be crossed at all — a column covered in all eight rows is eight closed
 // tiles stacked on top of one another, and specs/hopping.md refuses a hop onto

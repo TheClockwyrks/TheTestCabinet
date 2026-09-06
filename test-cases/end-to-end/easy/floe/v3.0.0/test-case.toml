@@ -577,7 +577,8 @@ format = 2
 # `setAutoStep` and `advance` pose no game state — they move time — so there is no
 # field for the snapshot to report and `autoStep` is not a snapshot field. They are
 # decided by their effect instead: `advances-in-real-time` decides `setAutoStep`,
-# and `tick-length` decides `advance`.
+# `tick-length` decides `advance`, and `render-free-core` decides that the ticks
+# it runs are the same however an interval is divided.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -688,6 +689,15 @@ domains = ["hunter", "crossing", "run", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
   { id = "title", name = "The title values reset restored", kind = "image" },
+] }
+[[review.categories.items]]
+id = "render-free-core"
+title = "The simulation advances on stepped time alone"
+description = "One second of game time handed to the simulation in the division no other item drives — a hundred and twenty separate one-tick calls with real time passing between them under none, one frame carrying the whole second under an engine — raises simTime by 1.0 and carries a lane posed at 2.0 tiles/s 64 units within a tenth of a unit, so the number of ticks run over an interval is the same however it was divided into frames."
+domains = ["hunter", "crossing", "run", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/render-free-core.test.ts", outputs = [
+  { id = "after", name = "The strait after one second of stepped time", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "tick-length"

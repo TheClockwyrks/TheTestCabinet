@@ -6,10 +6,10 @@
 // the way a player opens one — `reset()`, then `confirm` on the title's CROSS —
 // and from there plays the critter with real held-key input on the four
 // movement actions. The lanes are laid out on the game's own draw, so every
-// take is recorded as it plays and the winner of the audition is the one kept. Nothing is posed mid-play: the
-// four world gates stay on, so bears emerge on the run's own conditions, the
-// catch costs a life, the crossing timer drains and the bonus catch comes and
-// goes exactly as they do for a player.
+// take is recorded as it plays and the winner of the audition is the one kept.
+// Nothing is posed mid-play: the four world gates stay on, so bears emerge on
+// the run's own conditions, the catch costs a life, the crossing timer drains
+// and the bonus catch comes and goes exactly as they do for a player.
 //
 // The player has two layers, as Carom v3.0.0's drivers do.
 //

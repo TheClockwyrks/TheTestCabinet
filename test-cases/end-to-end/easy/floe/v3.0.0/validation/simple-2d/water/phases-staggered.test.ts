@@ -2,10 +2,9 @@
 // bridge.
 //
 // specs/water.md draws WHERE each lane's pattern sits along its row when a
-// level is laid out, and then constrains the draw: "A draw that leaves some
-// column of the strait carrying a floe in all eight water rows is drawn again,
-// so the band is always staggered: no column of the strait carries a floe in
-// all eight water rows at once." It is the one property of the phases the
+// level is laid out, and then conditions the draw: the phases are drawn
+// "conditioned on the band being staggered: no column of the strait carries a
+// floe in all eight water rows at once." It is the one property of the phases the
 // specification fixes beyond their distribution: a column carrying a floe in
 // every water row is a solid bridge the critter walks straight up, and the
 // crossing is meant to be timed floe to floe.

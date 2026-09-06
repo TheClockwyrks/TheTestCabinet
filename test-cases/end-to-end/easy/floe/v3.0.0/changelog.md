@@ -54,7 +54,7 @@ build knows what it is held to.
 
 ## Every review point is decided by a validator
 
-The checklist grew from `83` points to `216`, and every one of them now names a
+The checklist grew from `83` points to `256`, and every one of them now names a
 Vitest suite under `validation/<engine>/`, the domains its failure lowers, and
 how far it lowers them. In `v2.0.0` twelve of the eighty-three points carried no
 script at all: the feel of a hop, the look of the strait and every audio cue were
