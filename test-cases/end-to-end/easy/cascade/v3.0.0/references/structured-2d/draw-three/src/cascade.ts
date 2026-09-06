@@ -106,6 +106,14 @@ export function nextFoundation(state: CascadeState): number {
 }
 
 /**
+ * One launch's `vx`: a magnitude drawn uniformly from its range and a sign
+ * chosen with equal probability, each afresh at the call (specs/victory.md).
+ */
+export function drawLaunchVx(): number {
+  return nextRange(LAUNCH_VX_MIN, LAUNCH_VX_MAX) * nextSign();
+}
+
+/**
  * Launch the next card: it leaves the top of the foundation whose turn it is and
  * becomes a card in flight at that foundation's anchor, popping upward at
  * `LAUNCH_VY` with a horizontal speed drawn afresh at the launch: a magnitude
@@ -122,8 +130,6 @@ export function launchOne(
   const card = state.foundations[index].pop();
   if (card === undefined) return null;
 
-  const magnitude = nextRange(LAUNCH_VX_MIN, LAUNCH_VX_MAX);
-  const sign = nextSign();
   // A launched card keeps the id it carried on the table
   // (`specs/instrumentation.md`, Identity), so it is followed from the
   // foundation into the flight.
@@ -134,7 +140,7 @@ export function launchOne(
     card.rank,
     FOUNDATION_X[index],
     TOP_ROW_Y,
-    magnitude * sign,
+    drawLaunchVx(),
     LAUNCH_VY,
   );
 

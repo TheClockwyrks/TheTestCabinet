@@ -23,6 +23,7 @@
 // verifiable by setting a value and reading it back.
 
 import { cardColor, isRank, isSuit, type Card, type CardColor } from "./cards";
+import { drawLaunchVx } from "./cascade";
 import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
@@ -219,6 +220,8 @@ export interface CascadeDebugApi {
   clearFlyers(): void;
   setLaunchClock(seconds: number): void;
   clearTrail(): void;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(): number;
 }
 
 /** One card, as the snapshot reports it. */
@@ -593,6 +596,11 @@ export function createDebugApi(
     /** Clear the painted layer, leaving the flyers standing. */
     clearTrail() {
       wipeTrail(state);
+    },
+
+    /** The launch's own draw, taken without a launch. It touches no field. */
+    drawLaunchVx() {
+      return drawLaunchVx();
     },
   };
 }

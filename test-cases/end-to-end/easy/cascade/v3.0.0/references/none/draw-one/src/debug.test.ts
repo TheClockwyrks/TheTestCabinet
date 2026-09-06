@@ -7,6 +7,8 @@ import {
   DEAL_MODE_LABEL,
   FOUNDATION_X,
   LAUNCH_INTERVAL,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   TOP_ROW_Y,
   TURN_COUNT,
 } from "./constants";
@@ -85,6 +87,7 @@ describe("the surface", () => {
       "clearFlyers",
       "setLaunchClock",
       "clearTrail",
+      "drawLaunchVx",
     ]) {
       expect(typeof (api as unknown as Record<string, unknown>)[name]).toBe(
         "function",
@@ -186,6 +189,19 @@ describe("the surface", () => {
     expect(api.snapshot().launchClock).toBe(0.09);
     api.removeFlyer(flyerId);
     expect(api.snapshot().flyers).toHaveLength(0);
+  });
+
+  it("draws a launch vx in range and changes nothing", () => {
+    const { api } = surface();
+    api.setScreen("won");
+    api.addCard("foundation", 0, "spades", 13, true);
+    const before = api.snapshot();
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = api.drawLaunchVx();
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
+    expect(api.snapshot()).toEqual(before);
   });
 
   it("appends a card and touches nothing else", () => {

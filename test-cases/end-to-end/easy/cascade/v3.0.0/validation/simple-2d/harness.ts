@@ -193,12 +193,13 @@ const game = build as unknown as Game<CascadeState, CascadeSurface>;
 /**
  * A member of a pure surface, as a check calls it.
  *
- * A reading `(state) => CascadeSnapshot` becomes `() => CascadeSnapshot` and a
+ * A reading `(state) => CascadeSnapshot` becomes `() => CascadeSnapshot`, a
  * reading `(state, index) => MenuRect | null` becomes `(index) => MenuRect |
- * null`: the driver hands each `engine.state` and passes the rest of the call
- * through. A verdict-returning operation
- * `(state, ...args) => [S, V]` becomes `(...args) => V`: the driver splits the pair
- * inside the transition, stores the state half and hands back the verdict. A pose
+ * null`, and a reading `(state) => number` becomes `() => number`: the driver
+ * hands each `engine.state` and passes the rest of the call through. A
+ * verdict-returning operation `(state, ...args) => [S, V]` becomes
+ * `(...args) => V`: the driver splits the pair inside the transition, stores the
+ * state half and hands back the verdict. A pose
  * `(state, ...args) => S` becomes `(...args) => void`: the driver runs it through
  * `engine.apply`, so the state it returns is the state the next frame receives.
  * Anything else (`version`) is carried as it is.
@@ -210,13 +211,15 @@ const game = build as unknown as Game<CascadeState, CascadeSurface>;
  */
 type Driven<S, M> = M extends (state: DeepReadonly<S>) => CascadeSnapshot
   ? () => CascadeSnapshot
-  : M extends (state: DeepReadonly<S>, ...args: infer A) => MenuRect | null
-    ? (...args: A) => MenuRect | null
-    : M extends (state: DeepReadonly<S>, ...args: infer A) => [S, infer V]
-      ? (...args: A) => V
-      : M extends (state: DeepReadonly<S>, ...args: infer A) => S
-        ? (...args: A) => void
-        : M;
+  : M extends (state: DeepReadonly<S>) => number
+    ? () => number
+    : M extends (state: DeepReadonly<S>, ...args: infer A) => MenuRect | null
+      ? (...args: A) => MenuRect | null
+      : M extends (state: DeepReadonly<S>, ...args: infer A) => [S, infer V]
+        ? (...args: A) => V
+        : M extends (state: DeepReadonly<S>, ...args: infer A) => S
+          ? (...args: A) => void
+          : M;
 
 /**
  * The imperative reading of a pure surface: every member of `D`, minus its state

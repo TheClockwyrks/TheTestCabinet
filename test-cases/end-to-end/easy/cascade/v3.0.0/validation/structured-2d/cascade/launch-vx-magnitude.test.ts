@@ -1,42 +1,32 @@
-// cascade/launch-vx-magnitude — every launched card's horizontal speed is in range.
+// cascade/launch-vx-magnitude — a launch's horizontal speed is in range.
 //
-// specs/victory.md's launch table draws each card's `vx` as "a magnitude drawn
-// uniformly from [LAUNCH_VX_MIN, LAUNCH_VX_MAX], with a sign chosen with equal
-// probability". The sign is `launch-vx-both-signs`; the magnitude is this, and it
-// is read over a whole cascade rather than over one launch, because a single draw
-// says nothing about a range.
+// specs/victory.md fixes each launch's `vx` as "a magnitude drawn uniformly from
+// `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` (`[180, 420]`), with a sign chosen with equal
+// probability". The magnitude is the whole of what this point reads; which SIDE
+// a card goes is `launch-vx-both-signs`.
 //
-// WHAT IS ASSERTED IS THE RANGE, OVER EVERY LAUNCH THIS RUN CARRIED. That the run
-// carries all fifty-two is `cascade-completes`, and a build that stops launching
-// early is not docked twice here; what this refuses is a build that draws a
-// magnitude outside the stated range, and a run that launched nothing at all,
-// which leaves the point nothing to decide and is therefore a failure rather than
-// a vacuous pass.
+// THE DRAW IS TAKEN ALONE. specs/instrumentation.md has `drawLaunchVx` perform
+// exactly the draw a launch performs and nothing else, so the magnitude is read
+// off that operation rather than off a whole cascade: sixty-four draws cost
+// sixty-four calls, where fifty-two launches took nine seconds of game time frame
+// by frame.
 //
-// The magnitude is read on each card's launching frame. `vx` is never touched by
-// gravity or by a bounce (specs/victory.md), so a later reading would agree in a
-// conformant build; reading it at the launch keeps the point from failing over a
-// build that alters `vx` in flight, which is `floor-bounce-keeps-vx`.
+// SIXTY-FOUR DRAWS ARE READ, because the figure is a range over a random draw and
+// one sample says almost nothing about it: a build drawing from `[0, 420]`, or
+// from `[180, 1200]`, or handing every card the same speed, is only visible
+// across many draws. Nothing here asserts that the draw is uniform or that the
+// range is covered — specs/victory.md fixes a distribution, and sixty-four
+// samples cannot decide one without failing conformant builds by chance. What it
+// fixes and what is read is that no draw leaves the range.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertGreaterThanOrEqual } from "../assert";
-import {
-  DECK_SIZE,
-  LAUNCH_INTERVAL,
-  LAUNCH_VX_MAX,
-  LAUNCH_VX_MIN,
-} from "../constants";
-import { captureStill, startCascade, type Harness } from "../harness";
-import { createFlightHarness, flightFrames, watchLaunches } from "./flight";
+import { assertBetween } from "../assert";
+import { LAUNCH_VX_MAX, LAUNCH_VX_MIN } from "../constants";
+import { captureStill, type Harness } from "../harness";
+import { createFlightHarness, drawLaunches, poseDrawnFlight } from "./flight";
 
-/**
- * The frames a whole deck of launches takes, with three intervals to spare.
- *
- * The fifty-second launch falls fifty-one intervals after the first
- * (specs/victory.md), so a deck's worth of intervals covers the run and leaves
- * room for a clock running slightly slow.
- */
-const MAX_FRAMES = flightFrames(LAUNCH_INTERVAL * (DECK_SIZE + 3));
+/** How many draws are read. Every one of them is held to the range. */
+const DRAW_COUNT = 64;
 
 let harness: Harness;
 
@@ -49,27 +39,18 @@ afterEach(() => {
 });
 
 it("draws every launch's horizontal speed from the stated range", async () => {
-  startCascade(harness);
-  harness.debug.setTrailPainting(false);
+  harness.debug.reset();
+  const speeds = drawLaunches(harness, DRAW_COUNT);
 
-  const launches = await watchLaunches(
-    harness,
-    MAX_FRAMES,
-    (seen) => seen.length >= DECK_SIZE,
-  );
+  await poseDrawnFlight(harness, speeds);
   captureStill(harness, "launches");
 
-  assertGreaterThanOrEqual(
-    launches.length,
-    1,
-    "cards launched by a running cascade, which this point needs at least one of",
-  );
-  for (const [at, launch] of launches.entries()) {
+  for (const [index, vx] of speeds.entries()) {
     assertBetween(
-      Math.abs(launch.flyer.vx),
+      Math.abs(vx),
       LAUNCH_VX_MIN,
       LAUNCH_VX_MAX,
-      `launch ${at + 1} of ${launches.length}: the horizontal speed it left with`,
+      `draw ${index + 1} of ${DRAW_COUNT} of drawLaunchVx(): the |vx| it drew`,
     );
   }
 });

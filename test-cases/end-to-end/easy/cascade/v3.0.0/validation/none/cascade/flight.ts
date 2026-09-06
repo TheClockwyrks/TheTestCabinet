@@ -1,6 +1,6 @@
 // Cascade — what the twenty-five `cascade` checks share. CASE-PROVIDED.
 //
-// Two worlds and two readings, and nothing else. Everything here ARRANGES or
+// Two worlds and three readings, and nothing else. Everything here ARRANGES or
 // SAMPLES; not one function in this file decides anything, and not one of them
 // holds a tolerance. Every threshold a check applies is a module constant in the
 // check that applies it, derived there from the figure `specs/victory.md` fixes.
@@ -32,11 +32,15 @@ import {
   CARD_W,
   DECK_SIZE,
   FOUNDATION_COUNT,
+  FOUNDATION_X,
   HUD_Y,
   LAUNCH_INTERVAL,
   LAUNCH_VX_MIN,
+  LAUNCH_VY,
+  RANK_MAX,
   STAGE_W,
   TABLEAU_Y,
+  TOP_ROW_Y,
 } from "../constants";
 import {
   type CardView,
@@ -296,6 +300,77 @@ function readLaunch(
  */
 export const CASCADE_RUNOUT_SECONDS =
   DECK_SIZE * LAUNCH_INTERVAL + (STAGE_W + CARD_W) / LAUNCH_VX_MIN;
+
+/* -------------------------------------------------------------------------- */
+/* Reading the launch draw                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Perform `count` launch draws through `drawLaunchVx` and hand back what each
+ * returned, in order.
+ *
+ * `specs/instrumentation.md` has `drawLaunchVx` perform exactly the draw a
+ * launch performs and nothing else, so this is the launch's `vx` read without
+ * the launch: no cascade is run, no card is launched, and nothing is in flight.
+ * The draws go over in ONE crossing, so a reading of sixty-four costs what one
+ * operation costs. A value that is not a finite number is failed here, because
+ * a check comparing it against a range would otherwise report the range.
+ */
+export async function drawLaunches(
+  h: Harness,
+  count: number,
+): Promise<number[]> {
+  const drawn = await h.pose(
+    Array.from({ length: count }, () => ({ op: "drawLaunchVx", args: [] })),
+  );
+  return drawn.map((value, index) => {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      fail(
+        "drawLaunchVx() to return a finite number, the signed vx it drew " +
+          "(specs/instrumentation.md)",
+        `draw ${index + 1} returned ${JSON.stringify(value)}`,
+      );
+    }
+    return value;
+  });
+}
+
+/**
+ * How long the drawn speeds are flown for before the still is taken, in
+ * seconds. A picture's duration and nothing a check asserts: long enough for
+ * the fan of cards to show which way each drawn speed carries its card.
+ */
+const DRAWN_FLIGHT_SECONDS = 0.6;
+
+/**
+ * Put the drawn speeds on the table for the still: one card in flight per
+ * value, launched from the foundation anchors in turn at `LAUNCH_VY`, and flown
+ * for {@link DRAWN_FLIGHT_SECONDS} off camera so the fan is visible.
+ *
+ * Arrangement for the picture alone. Nothing a `launch-vx` check asserts is read
+ * from the flyers this poses; the draws were read before it ran.
+ */
+export async function poseDrawnFlight(
+  h: Harness,
+  speeds: readonly number[],
+): Promise<void> {
+  await openFlight(h);
+  await h.pose(
+    speeds.map((vx, index) => ({
+      op: "addFlyer",
+      args: [
+        "spades",
+        RANK_MAX,
+        FOUNDATION_X[index % FOUNDATION_COUNT],
+        TOP_ROW_Y,
+        vx,
+        LAUNCH_VY,
+      ],
+    })),
+  );
+  await h.skip(DRAWN_FLIGHT_SECONDS);
+  await h.advance(1);
+}
 
 /* -------------------------------------------------------------------------- */
 /* Reading the table                                                          */

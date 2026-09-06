@@ -38,6 +38,8 @@ import {
   DECK_SIZE,
   FOUNDATION_X,
   HUD_ITEMS,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   STAGE_H,
   STAGE_W,
   STOCK_X,
@@ -47,8 +49,8 @@ import {
   TITLE_TEXT,
   TOP_ROW_Y,
   TURN_COUNT,
-  WASTE_X,
   WASTE_FAN,
+  WASTE_X,
   WIN_TEXT,
 } from "./constants";
 import {
@@ -357,6 +359,7 @@ describe("the debug surface", () => {
       "clearFlyers",
       "setLaunchClock",
       "clearTrail",
+      "drawLaunchVx",
     ];
     for (const name of names) {
       expect(typeof (h.debug as unknown as Record<string, unknown>)[name]).toBe(
@@ -391,6 +394,11 @@ describe("the debug surface", () => {
     h.pose((s, d) => d.setFlyerPosition(s, flyerId, 400, 500));
     h.pose((s, d) => d.setFlyerVelocity(s, flyerId, 11, 12));
     h.pose((s, d) => d.setLaunchClock(s, 0.09));
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = h.debug.drawLaunchVx(h.state);
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
 
     const snap = h.snapshot();
     expect(snap.screen).toBe("playing");

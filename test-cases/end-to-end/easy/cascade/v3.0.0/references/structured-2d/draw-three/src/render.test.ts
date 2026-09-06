@@ -288,16 +288,18 @@ describe("the painted table", () => {
     expect(colorDistance(h.pixel(390, 420), painted)).toBeLessThan(20);
   });
 
-  it("paints a growing share of the table as the cascade runs", async () => {
-    const painted = (): number => {
-      let count = 0;
-      for (let x = 10; x < 1270; x += 20) {
-        for (let y = 200; y < 700; y += 20) {
-          if (colorDistance(h.pixel(x, y), felt()) > 60) count += 1;
-        }
+  /** How many points of a coarse grid over the table stand apart from the felt. */
+  const painted = (): number => {
+    let count = 0;
+    for (let x = 10; x < 1270; x += 20) {
+      for (let y = 200; y < 700; y += 20) {
+        if (colorDistance(h.pixel(x, y), felt()) > 60) count += 1;
       }
-      return count;
-    };
+    }
+    return count;
+  };
+
+  it("paints a growing share of the table as the cascade runs", async () => {
     startCascade(h);
     await h.advance(60);
     const early = painted();
@@ -325,11 +327,17 @@ describe("the painted table", () => {
   });
 
   it("stays painted once the cascade is over", async () => {
+    // The launches are drawn at random, so no one point of the table is sure
+    // to be stamped; what a whole cascade is sure to do is bury a good share of
+    // a grid over the table, and that share is still there once it is done.
+    h.debug.setScreen("won");
+    await h.advance(1);
+    const quiet = painted();
     startCascade(h);
     for (let i = 0; i < 60 && !h.debug.snapshot().cascadeDone; i += 1) {
       await h.advance(30);
     }
     expect(h.debug.snapshot().cascadeDone).toBe(true);
-    expect(colorDistance(h.pixel(640, 640), felt())).toBeGreaterThan(60);
+    expect(painted()).toBeGreaterThan(quiet + 200);
   });
 });

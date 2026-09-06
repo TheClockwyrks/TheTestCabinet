@@ -15,6 +15,8 @@ import {
   DECK_SIZE,
   FOUNDATION_X,
   LAUNCH_INTERVAL,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   STAGE_H,
   STAGE_W,
   TOP_ROW_Y,
@@ -506,6 +508,18 @@ describe("the cascade operations", () => {
   it("sets the launch clock and reads it back", () => {
     debug.setLaunchClock(0.12);
     expect(debug.snapshot().launchClock).toBeCloseTo(0.12, 9);
+  });
+
+  it("draws a launch vx in range and changes nothing", () => {
+    debug.setScreen("won");
+    debug.addCard("foundation", 0, "spades", 13, true);
+    const before = debug.snapshot();
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = debug.drawLaunchVx();
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
+    expect(debug.snapshot()).toEqual(before);
   });
 
   it("clears the painted layer and its count, leaving the flyers standing", () => {

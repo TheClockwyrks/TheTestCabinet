@@ -26,6 +26,7 @@ import {
   DEAL_MODE_LABEL,
   TURN_COUNT,
 } from "./constants";
+import { drawLaunchVx } from "./cascade";
 import { colorOf, type CardColor } from "./deck";
 import { openingState } from "./flow";
 import {
@@ -247,6 +248,8 @@ export interface CascadeDebugApi {
     seconds: number,
   ): CascadeState;
   clearTrail(state: DeepReadonly<CascadeState>): CascadeState;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(state: DeepReadonly<CascadeState>): number;
 }
 
 // ---- Reading the state ---------------------------------------------------
@@ -526,6 +529,11 @@ export function createDebugApi(): CascadeDebugApi {
     clearTrail(state) {
       state.trail?.clear();
       return { ...state, trailStamps: 0 };
+    },
+
+    /** The launch's own draw, taken without a launch. It reads no field. */
+    drawLaunchVx() {
+      return drawLaunchVx();
     },
   };
 }

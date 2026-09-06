@@ -133,6 +133,8 @@ code:
   `setFlyerVelocity`, `removeFlyer`, `clearFlyers`, `setLaunchClock` and
   `clearTrail` — **poses**, each setting one field of the state and nothing else,
   so a table is built one card at a time.
+- `drawLaunchVx` — the launch's own `vx` draw performed alone, returning the
+  signed value it drew and touching no field.
 - `setAutoFlip`, `setWinDetect`, `setLaunching` and `setTrailPainting` — the four
   **faculty gates**, each gating one faculty, each on by default and restored by
   `reset`, each reported by the snapshot.

@@ -8,6 +8,8 @@ import {
   DEAL_MODE,
   DEAL_MODE_LABEL,
   LAUNCH_INTERVAL,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   TURN_COUNT,
 } from "./constants";
 import {
@@ -59,6 +61,7 @@ const OPERATIONS = [
   "clearFlyers",
   "setLaunchClock",
   "clearTrail",
+  "drawLaunchVx",
 ] as const;
 
 describe("the surface", () => {
@@ -141,6 +144,20 @@ describe("poses read back", () => {
 
     debug.setLaunchClock(0.05);
     expect(debug.snapshot().launchClock).toBeCloseTo(0.05, 10);
+  });
+
+  it("draws a launch vx in range and changes nothing", () => {
+    const { debug } = h;
+    openTable(debug);
+    debug.setScreen("won");
+    debug.addCard("foundation", 0, "spades", 13, true);
+    const before = debug.snapshot();
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = debug.drawLaunchVx();
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
+    expect(debug.snapshot()).toEqual(before);
   });
 
   it("reports the pointer and the last press", () => {

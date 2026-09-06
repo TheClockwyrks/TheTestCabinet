@@ -200,6 +200,7 @@ export const REQUIRED_OPS = [
   "clearFlyers",
   "setLaunchClock",
   "clearTrail",
+  "drawLaunchVx",
 ] as const;
 
 /** The four screens the game moves between (`specs/screens.md`). */
@@ -402,6 +403,8 @@ export interface CascadeDebugApi {
   clearFlyers(): Promise<void>;
   setLaunchClock(seconds: number): Promise<void>;
   clearTrail(): Promise<void>;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(): Promise<number>;
 }
 
 /* -------------------------------------------------------------------------- */

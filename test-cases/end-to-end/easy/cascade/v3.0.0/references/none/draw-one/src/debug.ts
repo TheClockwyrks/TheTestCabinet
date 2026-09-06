@@ -26,7 +26,7 @@
 // because the specification declares no operation for it — the field follows
 // the title entry a player activates.
 
-import { addFlyer as addFlyerTo } from "./cascade";
+import { addFlyer as addFlyerTo, drawLaunchVx } from "./cascade";
 import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
@@ -220,6 +220,8 @@ export interface CascadeDebugApi {
   clearFlyers(): void;
   setLaunchClock(seconds: number): void;
   clearTrail(): void;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(): number;
 }
 
 /** A card, as the snapshot reports it. */
@@ -596,6 +598,11 @@ export function createDebugApi(
     /** Clear the painted layer and its stamp count, leaving the flyers standing. */
     clearTrail() {
       clearPaintedLayer(state);
+    },
+
+    /** The launch's own draw, taken without a launch. It touches no field. */
+    drawLaunchVx() {
+      return drawLaunchVx();
     },
   };
 }

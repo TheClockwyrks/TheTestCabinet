@@ -11,10 +11,10 @@ initialized. Every scenario driven from code reaches the game through it, so it
 is present and exactly as specified here.
 
 Each operation is a read of the game's state, a pose of one field of it, a move
-of the clock, or one of the game's own events. A pose arranges the table, and the
-game's own move rules, turning, win test, and cascade run from there exactly as
-they do in play, so a scenario driven from code behaves exactly like one played
-by hand.
+of the clock, one of the game's own events, or one of the game's own draws. A
+pose arranges the table, and the game's own move rules, turning, win test, and
+cascade run from there exactly as they do in play, so a scenario driven from
+code behaves exactly like one played by hand.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{else if (eq engine.slug "simple-2d")}}
@@ -72,7 +72,7 @@ renderer. Every rate is per second and integrated against the delta the frame
 supplies, so an interval of game time covered as one frame and as sixty frames
 advances `simTime` by the same amount and carries a flyer the same distance
 along `x` at a constant `vx`. A step means the same thing whatever the frame
-rate, which is what makes the game driveable from code.
+rate.
 
 ## What the runtime provides instead
 
@@ -339,10 +339,18 @@ default and restored to on by `reset`, and each is reported by `snapshot`.
 | `clearFlyers()` | Removes every flyer in flight. |
 | `setLaunchClock(seconds)` | Sets the seconds accumulated toward the next launch. |
 | `clearTrail()` | Clears the painted layer and sets `trailStamps` to `0`, leaving the flyers standing. |
+| `drawLaunchVx()` | Performs one launch's `vx` draw and returns the signed value drawn. |
 
 A flyer added by `addFlyer` is appended to the flight and takes a fresh id, and
 it then flies, bounces, paints, and retires through the game's own cascade rules,
 as `specs/victory.md` states.
+
+`drawLaunchVx` performs exactly the draw a launch performs, as the launch table
+in `specs/victory.md` states it: a magnitude drawn uniformly from
+`[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` with a sign chosen with equal probability. It
+returns that signed speed, in logical units per second, and does nothing else:
+no card launches, no flyer is added, and no declared field changes. Each call is
+a fresh draw, independent of every other call and of every launch.
 
 ## Snapshot shape
 

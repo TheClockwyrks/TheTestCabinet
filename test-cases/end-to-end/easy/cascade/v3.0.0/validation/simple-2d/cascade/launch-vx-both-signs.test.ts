@@ -1,32 +1,38 @@
 // cascade/launch-vx-both-signs — cards launch to both sides.
 //
-// specs/victory.md gives each launch's `vx` "a sign chosen with equal probability",
-// so a cascade throws cards to the left and to the right. The magnitude is
-// `launch-vx-magnitude`; what this refuses is a build that fixed the sign, or that
-// took the sign from something other than a draw, and so sends every card the same
-// way.
+// specs/victory.md gives each launch's `vx` "a sign chosen with equal
+// probability", so a cascade throws cards to the left and to the right. The
+// magnitude is `launch-vx-magnitude`; what this refuses is a build that fixed the
+// sign, or that took the sign from something other than a draw, and so sends
+// every card the same way.
 //
-// IT IS READ OVER A WHOLE CASCADE. Fifty-two draws of a fair sign land all one way
-// with probability one in `2^51`, so a conformant build that failed this would be a
-// far rarer event than a machine fault; a shorter run would not carry that.
+// THE DRAW IS TAKEN ALONE. specs/instrumentation.md has `drawLaunchVx` perform
+// exactly the draw a launch performs and nothing else, so the sign is read off
+// that operation rather than off a whole cascade: sixty-four draws cost sixty-four
+// calls, where fifty-two launches took nine seconds of game time frame by frame.
 //
-// The two directions are asserted separately so a failure names the side the build
-// never threw to.
+// WHY BOTH SIGNS AND NOT A BALANCE. "Equal probability" is a statement about a
+// distribution, and sixty-four draws cannot decide one: any ratio a check
+// demanded would fail some conformant builds by chance. What sixty-four draws CAN
+// say, at a chance of one in 2^63 of being wrong, is that a build which always
+// returns the same sign is not drawing a sign at all.
+//
+// The two directions are asserted separately so a failure names the side the
+// build never throws to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
-import { DECK_SIZE, LAUNCH_INTERVAL } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  framesFor,
-  startCascade,
-  type Harness,
-} from "../harness";
-import { watchLaunches } from "./flight";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drawLaunches, poseDrawnFlight } from "./flight";
 
-/** A whole deck of launches, with three intervals to spare. */
-const MAX_FRAMES = framesFor(LAUNCH_INTERVAL * (DECK_SIZE + 3));
+/**
+ * How many draws are read.
+ *
+ * A fair sign lands all one way over this many with probability `2 / 2^64`,
+ * which is `2^-63`: far beyond six standard deviations of a fair coin, so a
+ * conformant build never fails here by chance.
+ */
+const DRAW_COUNT = 64;
 
 let harness: Harness;
 
@@ -38,28 +44,24 @@ afterEach(() => {
   harness?.dispose();
 });
 
-it("throws launched cards to both sides", async () => {
-  startCascade(harness);
-  harness.debug.setTrailPainting(false);
+it("draws a launch vx of both signs over sixty-four draws", async () => {
+  harness.debug.reset();
+  const speeds = drawLaunches(harness, DRAW_COUNT);
 
-  const launches = await watchLaunches(
-    harness,
-    MAX_FRAMES,
-    (seen) => seen.length >= DECK_SIZE,
-  );
+  await poseDrawnFlight(harness, speeds);
   captureStill(harness, "launches");
 
-  const rightward = launches.filter((launch) => launch.flyer.vx > 0).length;
-  const leftward = launches.filter((launch) => launch.flyer.vx < 0).length;
+  const rightward = speeds.filter((vx) => vx > 0).length;
+  const leftward = speeds.filter((vx) => vx < 0).length;
 
   assertGreaterThanOrEqual(
     rightward,
     1,
-    `cards launched to the right, out of ${launches.length} launches`,
+    `positive values, sending a card right, out of ${DRAW_COUNT} draws of drawLaunchVx()`,
   );
   assertGreaterThanOrEqual(
     leftward,
     1,
-    `cards launched to the left, out of ${launches.length} launches`,
+    `negative values, sending a card left, out of ${DRAW_COUNT} draws of drawLaunchVx()`,
   );
 });

@@ -34,7 +34,7 @@
 
 import type { World } from "@clockwyrks/structured-2d";
 import { applyEvents, noEvents, type FrameEvents } from "./audio";
-import { addFlyerTo, flyerById } from "./cascade";
+import { addFlyerTo, drawLaunchVx, flyerById } from "./cascade";
 import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
@@ -222,6 +222,8 @@ export interface CascadeDebugApi {
   clearFlyers(): void;
   setLaunchClock(seconds: number): void;
   clearTrail(): void;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(): number;
 }
 
 /** A card as the snapshot reports it, its colour read from its suit. */
@@ -538,6 +540,11 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     /** The painted layer emptied, every card in flight left standing. */
     clearTrail() {
       clearPaintedLayer(read());
+    },
+
+    /** The launch's own draw, taken without a launch. It touches no field. */
+    drawLaunchVx() {
+      return drawLaunchVx();
     },
   };
 }

@@ -90,6 +90,17 @@ export function nextFoundation(state: CascadeState): number | null {
   return null;
 }
 
+/**
+ * One launch's `vx`: a magnitude drawn uniformly from its range and a sign
+ * chosen with equal probability, each afresh at the call (specs/victory.md).
+ */
+export function drawLaunchVx(): number {
+  const magnitude =
+    LAUNCH_VX_MIN + nextRandom() * (LAUNCH_VX_MAX - LAUNCH_VX_MIN);
+  const sign = nextRandom() < 0.5 ? -1 : 1;
+  return sign * magnitude;
+}
+
 /** Launch the next card: it leaves its foundation and becomes a card in flight. */
 function launchNext(state: CascadeState, cues: FrameCues): boolean {
   const index = nextFoundation(state);
@@ -98,12 +109,6 @@ function launchNext(state: CascadeState, cues: FrameCues): boolean {
   const card = foundation[foundation.length - 1];
   foundation.pop();
 
-  // The magnitude is drawn uniformly from its range and the sign with equal
-  // probability, each afresh at the launch (specs/victory.md).
-  const magnitude =
-    LAUNCH_VX_MIN + nextRandom() * (LAUNCH_VX_MAX - LAUNCH_VX_MIN);
-  const sign = nextRandom() < 0.5 ? -1 : 1;
-
   // A launched card keeps the id it carried on the table (specs/instrumentation.md).
   addFlyerTo(
     state,
@@ -111,7 +116,7 @@ function launchNext(state: CascadeState, cues: FrameCues): boolean {
     card.rank,
     FOUNDATION_X[index],
     TOP_ROW_Y,
-    sign * magnitude,
+    drawLaunchVx(),
     LAUNCH_VY,
     card.id,
   );

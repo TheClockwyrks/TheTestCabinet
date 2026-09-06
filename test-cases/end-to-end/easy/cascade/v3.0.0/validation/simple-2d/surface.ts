@@ -324,6 +324,12 @@ export interface CascadeDebugApi<S = unknown> {
   setLaunchClock(state: DeepReadonly<S>, seconds: number): S;
   /** Clears the painted layer and `trailStamps`, leaving the flyers standing. */
   clearTrail(state: DeepReadonly<S>): S;
+  /**
+   * Performs one launch's `vx` draw alone and returns the signed value drawn.
+   *
+   * A reading like `snapshot`: it takes the state and changes nothing of it.
+   */
+  drawLaunchVx(state: DeepReadonly<S>): number;
 }
 
 /**
@@ -333,7 +339,7 @@ export interface CascadeDebugApi<S = unknown> {
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot", "menuItemRect"] as const;
+export const READINGS = ["snapshot", "menuItemRect", "drawLaunchVx"] as const;
 
 /**
  * The operations that both pose and report, returning `[nextState, verdict]`.
@@ -391,4 +397,5 @@ export const REQUIRED_OPS = [
   "clearFlyers",
   "setLaunchClock",
   "clearTrail",
+  "drawLaunchVx",
 ] as const;

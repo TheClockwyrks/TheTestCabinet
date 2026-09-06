@@ -1,26 +1,37 @@
 // cascade/launch-vx-both-signs — cards launch to both sides.
 //
 // specs/victory.md's launch table gives a launch's `vx` "a sign chosen with equal
-// probability". Over the fifty-two launches of a whole cascade both signs
-// therefore occur, and cards leave the table past both edges rather than all
-// drifting one way. That is what this point reads, and the SIZE of the speed is
-// `launch-vx-magnitude`'s.
+// probability". Over enough draws both signs therefore occur, and cards leave the
+// table past both edges rather than all drifting one way. That is what this
+// point reads, and the SIZE of the speed is `launch-vx-magnitude`'s.
+//
+// THE DRAW IS TAKEN ALONE. `specs/instrumentation.md` has `drawLaunchVx` perform
+// exactly the draw a launch performs and nothing else, so the sign is read off
+// that operation rather than off a whole cascade: sixty-four draws go over in one
+// crossing, where fifty-two launches took nine seconds of game time driven frame
+// by frame.
 //
 // WHY BOTH SIGNS AND NOT A BALANCE. "Equal probability" is a statement about a
-// distribution, and fifty-two draws cannot decide one: any ratio a check demanded
-// would fail some conformant builds by chance. What fifty-two draws CAN say, at a
-// chance of one in 2^51 of being wrong, is that a build which always sends cards
-// the same way is not drawing a sign at all — a build that dropped the sign, or
-// took `Math.abs`, or used a constant, reads one sign fifty-two times.
-//
-// A flyer's `vx` never changes after the launch, so each reading is the value the
-// launch drew.
+// distribution, and sixty-four draws cannot decide one: any ratio a check
+// demanded would fail some conformant builds by chance. What sixty-four draws
+// CAN say, at a chance of one in 2^63 of being wrong, is that a build which
+// always returns the same sign is not drawing a sign at all — a build that
+// dropped the sign, or took `Math.abs`, or used a constant, reads one sign
+// sixty-four times.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
-import { DECK_SIZE } from "../constants";
 import { type Harness, captureStill, createHarness } from "../harness";
-import { openCascade, readLaunches } from "./flight";
+import { drawLaunches, poseDrawnFlight } from "./flight";
+
+/**
+ * How many draws are read.
+ *
+ * A fair sign lands all one way over this many with probability `2 / 2^64`,
+ * which is `2^-63`: far beyond six standard deviations of a fair coin, so a
+ * conformant build never fails here by chance.
+ */
+const DRAW_COUNT = 64;
 
 let harness: Harness;
 
@@ -32,22 +43,24 @@ afterEach(async () => {
   await harness.dispose();
 });
 
-it("launches cards to the left and to the right over one cascade", async () => {
-  await openCascade(harness);
+it("draws a launch vx of both signs over sixty-four draws", async () => {
+  await harness.debug.reset();
+  const speeds = await drawLaunches(harness, DRAW_COUNT);
 
-  const launches = await readLaunches(harness, DECK_SIZE);
+  await poseDrawnFlight(harness, speeds);
   await captureStill(harness, "launches");
 
-  const signs = launches.map((launch) => Math.sign(launch.flyer.vx));
-  const left = signs.filter((sign) => sign < 0).length;
-  const right = signs.filter((sign) => sign > 0).length;
+  const left = speeds.filter((vx) => vx < 0).length;
+  const right = speeds.filter((vx) => vx > 0).length;
 
   assertTrue(
     left > 0,
-    `at least one of the ${DECK_SIZE} launches to send its card left, and ${left} did`,
+    `at least one of ${DRAW_COUNT} draws of drawLaunchVx() to be negative, ` +
+      `sending its card left, and ${left} were`,
   );
   assertTrue(
     right > 0,
-    `at least one of the ${DECK_SIZE} launches to send its card right, and ${right} did`,
+    `at least one of ${DRAW_COUNT} draws of drawLaunchVx() to be positive, ` +
+      `sending its card right, and ${right} were`,
   );
 });

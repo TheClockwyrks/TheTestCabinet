@@ -37,7 +37,7 @@
 
 import type { World } from "@clockwyrks/structured-2d";
 import { applyAudio, noCues, type FrameCues } from "./audio";
-import { addFlyerTo } from "./cascade";
+import { addFlyerTo, drawLaunchVx } from "./cascade";
 import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
@@ -216,6 +216,8 @@ export interface CascadeDebugApi {
   clearFlyers(): void;
   setLaunchClock(seconds: number): void;
   clearTrail(): void;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(): number;
 }
 
 function snapshotCard(card: CardState): SnapshotCard {
@@ -523,6 +525,11 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
       const state = read();
       state.trail.clear();
       state.trailStamps = 0;
+    },
+
+    /** The launch's own draw, taken without a launch. It touches no field. */
+    drawLaunchVx() {
+      return drawLaunchVx();
     },
   };
 }

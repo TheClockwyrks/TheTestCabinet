@@ -76,6 +76,14 @@ export function advanceFlyers(state: CascadeState, dt: number): void {
 }
 
 /**
+ * One launch's `vx`: a magnitude drawn uniformly from its range and a sign
+ * chosen with equal probability, each afresh at the call.
+ */
+export function drawLaunchVx(): number {
+  return nextBetween(LAUNCH_VX_MIN, LAUNCH_VX_MAX) * nextSign();
+}
+
+/**
  * Launch the next card, and report whether one went.
  *
  * The order cycles the four foundations and skips one that has been emptied, so
@@ -90,15 +98,13 @@ export function launchNext(state: CascadeState): boolean {
     const card = pile[pile.length - 1];
     pile.pop();
     const anchor = anchorOf("foundation", slot);
-    const speed = nextBetween(LAUNCH_VX_MIN, LAUNCH_VX_MAX);
-    const sign = nextSign();
     state.flyers.push({
       id: card.id,
       suit: card.suit,
       rank: card.rank,
       x: anchor.x,
       y: anchor.y,
-      vx: speed * sign,
+      vx: drawLaunchVx(),
       vy: LAUNCH_VY,
     });
     state.launched += 1;

@@ -534,8 +534,9 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These points check that it is really there,
-# really wired to the running game, and that each pose reads back. A surface that reports a plausible-looking object unconnected to what is on
-# screen is the failure mode worth naming.
+# really wired to the running game, and that each pose reads back. A surface
+# that reports a plausible-looking object unconnected to what is on screen is
+# the failure mode worth naming.
 #
 # TWELVE OF THEM ARE THE FACULTY GATES. Cascade needs no world gates: nothing in
 # Klondike arrives uninvited, the game moves only when the player moves it, and an
@@ -674,6 +675,15 @@ domains = ["rules", "handling", "cascade", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/launch-clock-reads-back.test.ts", outputs = [
   { id = "posed", name = "The table the posed launch clock was read off", kind = "image" },
+] }
+[[review.categories.items]]
+id = "draw-launch-vx-stands-alone"
+title = "The launch draw launches nothing"
+description = "drawLaunchVx() returns a number and leaves every field of snapshot() as it stood, with no card launched and no flyer added."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/draw-launch-vx-stands-alone.test.ts", outputs = [
+  { id = "drawn", name = "The table the draw was taken over, unchanged", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "reset-restores-title"
@@ -3143,23 +3153,30 @@ failure_cap = "passable"
 validation = { script = "cascade/launch-vy.test.ts", outputs = [
   { id = "launch", name = "The launched card on its way up", kind = "image" },
 ] }
+# The two `vx` items are decided through `drawLaunchVx`, the operation that
+# performs one launch's draw and nothing else, rather than by reading a whole
+# cascade: sixty-four draws cost sixty-four calls, and a fair sign lands all one
+# way over them with a chance of one in 2^63, which is far beyond six standard
+# deviations. Neither item asserts a ratio or a spread, because sixty-four draws
+# cannot decide a distribution without failing conformant builds by chance; what
+# they decide is that no draw leaves the range and that both signs occur.
 [[review.categories.items]]
 id = "launch-vx-magnitude"
 title = "A launched card's horizontal speed is in range"
-description = "Every launch's |vx| lies in [180, 420]."
+description = "Every one of sixty-four values drawLaunchVx() returns has |vx| in [180, 420]."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/launch-vx-magnitude.test.ts", outputs = [
-  { id = "launches", name = "The spread of launch speeds", kind = "image" },
+  { id = "launches", name = "The drawn speeds, posed as cards in flight", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "launch-vx-both-signs"
 title = "Cards launch to both sides"
-description = "Across fifty-two launches both signs of vx occur."
+description = "Across sixty-four values drawLaunchVx() returns both signs occur."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/launch-vx-both-signs.test.ts", outputs = [
-  { id = "launches", name = "Cards launching to both sides", kind = "image" },
+  { id = "launches", name = "The drawn speeds carrying cards to both sides", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "gravity"
