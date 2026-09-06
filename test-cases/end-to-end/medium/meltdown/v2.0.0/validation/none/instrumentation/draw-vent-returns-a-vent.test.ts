@@ -8,7 +8,7 @@
 // THE SHAPE OF THE ANSWER IS WHAT THIS ITEM DECIDES. A run of draws is made and
 // every one must be a vent name: a build returning `undefined`, a boolean, an
 // index, or the whole state fails on the first answer that is not one of the
-// two. Whether the draw is fair is `surge/vents-equally-likely`'s item, and
+// two. Whether the draw varies is `surge/vent-drawn-at-random`'s item, and
 // whether it leaves the game alone is `draw-vent-changes-nothing`'s.
 
 import { afterEach, beforeEach, it } from "vitest";

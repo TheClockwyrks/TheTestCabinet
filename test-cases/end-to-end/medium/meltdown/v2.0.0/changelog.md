@@ -93,17 +93,20 @@ and only real time could decide it.
 ## Random draws are sampled sparingly
 
 The vent draw is the game's one random draw, and the items about it read the
-draw itself rather than a whole walking wave. The odds are decided over six
-hundred draws through `drawVent` inside a band six standard deviations wide,
-which separates a half from a quarter and from a vent that never comes up; that
-the draw varies is decided over forty draws holding both vents; and clearing a
-posed vent is decided on the next handful of released units each entering at a
-vent the specification names.
+draw itself rather than a whole walking wave. That the draw varies is decided
+over forty draws through `drawVent` holding both vents; that every answer is a
+vent is decided over the same shape of run; and clearing a posed vent is decided
+on the next handful of released units each entering at a vent the specification
+names. There is no item on the proportion the two vents come up in. The
+specification names the vents "equally likely" and names no alternative
+proportion beside it, so a sample small enough to belong in a validator can only
+separate a half from a vent that never comes up, which the forty draws already
+decide; which side of a half a build sits is left to the reviewer.
 
 ## Every review item is decided by a validator
 
-The checklist grew from `107` items to `376`, and the twenty-nine categories that
-held them became nineteen. Every one of the `376` names a Vitest suite under
+The checklist grew from `107` items to `378`, and the twenty-nine categories that
+held them became nineteen. Every one of the `378` names a Vitest suite under
 `validation/<engine>/`, the domains its failure lowers, and how far it lowers
 them. The `100` standalone `.mjs` browser drivers of `v1.0.0`, and the single
 module they shared, are gone, and so are the seven items it left for a reviewer

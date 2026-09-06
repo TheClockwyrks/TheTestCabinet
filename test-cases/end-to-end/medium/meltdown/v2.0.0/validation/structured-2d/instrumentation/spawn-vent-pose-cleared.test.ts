@@ -10,9 +10,8 @@
 // cleared MID-RELEASE, `spawnVent` is read back as `null`, and a handful more
 // units are released: each of them enters at a vent the specification names, so
 // a build that treats `null` as a vent, or that stops releasing once the pose is
-// gone, is named. Which vent each draw lands on is the draw's own; whether the
-// draw varies and at what odds are `surge/vent-drawn-at-random` and
-// `surge/vents-equally-likely`, decided on the draw alone.
+// gone, is named. Which vent each draw lands on is the draw's own; that the draw
+// varies at all is `surge/vent-drawn-at-random`, decided on the draw alone.
 //
 // EVERY UNIT IS HELD WHERE IT ARRIVED, so a unit is counted where it entered and
 // none walks far enough to leak. The spawner is handed exactly the units the two

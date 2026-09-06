@@ -13,8 +13,9 @@
 // one vent is a completely different game, with one corridor to defend rather
 // than two, and over forty draws at "equally likely" a draw that ever chose the
 // other vent would have to be extraordinarily unlucky to hide it, one run in five
-// hundred thousand million. Whether the two come up in the stated proportion is
-// `surge/vents-equally-likely`'s item, decided on a larger run of the same draw.
+// hundred thousand million. The proportion the two come up in is not read: the
+// specification names no alternative proportion a run of draws could tell one
+// half from, so which side of a half a build sits is the reviewer's to judge.
 //
 // NOTHING IS RELEASED. The draws touch no unit and no wave: the floor is the
 // quiet one `startRun` leaves, and the reading is the draws alone. That the

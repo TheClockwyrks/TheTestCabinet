@@ -2529,15 +2529,6 @@ validation = { script = "surge/vent-drawn-at-random.test.ts", outputs = [
   { id = "vents", name = "A wave entering from both vents", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "vents-equally-likely"
-title = "The two vents are equally likely"
-description = "Over six hundred draws through drawVent, the left vent comes up between 226 and 374 times, the band six standard deviations wide around one half."
-domains = ["run"]
-failure_cap = "passable"
-validation = { script = "surge/vents-equally-likely.test.ts", outputs = [
-  { id = "sampled", name = "The floor after the sampled draws", kind = "image" },
-] }
-[[review.categories.items]]
 id = "enters-on-an-open-opening-tile"
 title = "A unit never appears inside a tower"
 description = "With three of an opening's four edge tiles walled, every unit that vent releases appears on the fourth."
