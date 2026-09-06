@@ -311,7 +311,7 @@ source = "specs/modes/versus.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every variant must expose: a deterministic,
+# The debugging and automation surface every variant must expose: a render-free,
 # steppable core; an API to drive and inspect the game from code; and a read-only
 # debug overlay. Seeded for every variant and framed as an ordinary developer
 # affordance of the game. It branches on the engine for how the surface is reached
@@ -643,10 +643,10 @@ domains = ["single-player", "versus"]
 failure_cap = "scuffed"
 # Automated validation: drive that one scenario three times under three clocks — a
 # `ConstantClock` at a steady 120 Hz, a `SequenceClock` repeating an uneven pattern of
-# deltas, and a seeded `JitterClock` — and compare the outcomes. Only facts that survive
+# deltas, and a jittered `JitterClock` — and compare the outcomes. Only facts that survive
 # a legitimate change in step size are compared, never a position: the sharpest of
 # them is the game time each drive took, read from the engine's own frame clock,
-# because a build that advances per frame rather than per second traces the identical
+# because a build that advances per frame rather than per second traces the same
 # path and can only give itself away on the clock. See
 # validation/<engine>/gameplay/delta-time-independent.test.ts.
 validation = { script = "gameplay/delta-time-independent.test.ts", outputs = [

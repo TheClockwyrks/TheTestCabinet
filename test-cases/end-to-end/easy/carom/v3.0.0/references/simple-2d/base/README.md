@@ -119,8 +119,8 @@ surface's poses are the ones it is composed from. The slice-level arithmetic
 follows the same shape — `integratePaddle(paddle, vy, dt)` returns the next
 paddle, `aiPaddle(...)` the next AI paddle,
 `step(ball, left, right, obstacles, dt)` the ball after its flight beside the
-events it saw, and `nextSign(rngState)` the sign drawn beside the generator's
-next state. There is no module-level game state and no closure over mutable
+events it saw, and `drawServeSign()` the sign a parked ball's serve will take.
+There is no module-level game state and no closure over mutable
 data; `render` and every diagnostic source are reads of the state they are
 given, and the compiler — not a convention — is what says they cannot change it.
 
@@ -157,7 +157,7 @@ once. `reset` is the one exception, and it is a lifecycle verb rather than a
 pose. The operations are:
 
 - The world — `clearWorld(state)`, `spawnBall(state)`,
-  `spawnObstacle(state, index)`, `reset(state)`, and `setSeed(state, seed)`. An
+  `spawnObstacle(state, index)`, and `reset(state)`. An
   absent ball takes no part in a frame and an absent obstacle has no collision,
   so a scenario can empty the field and put back only what it is about.
 - Screens and menus — `setScreen`, `setMode`, `setMenuIndex`, `setTitleIndex`,
@@ -272,7 +272,7 @@ src/
                       functions the engine drives
   match.ts            Building the state and the transitions between screens,
                       shared by the menus and the debug surface
-  rng.ts              The seeded generator: a draw beside the next state
+  random.ts           The serve sign draw a parked ball takes
   entities.ts         Paddle, ball and obstacle arithmetic and geometry
   menus.ts            Where each menu item is: the layout render.ts draws from
                       and debug.ts reports through menuItemRect

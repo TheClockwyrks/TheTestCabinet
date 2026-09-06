@@ -205,5 +205,3 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 /** The version the debug surface reports as `version`. */
 export const CAROM_DEBUG_VERSION = 1;
 
-/** The seed the game's generator starts a fresh title screen from. */
-export const DEFAULT_SEED = 1;

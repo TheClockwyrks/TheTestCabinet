@@ -149,8 +149,15 @@ describe("the ball", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
+  });
+
+  it("draws a serve sign of +1 or -1 for every parked ball", () => {
+    for (let i = 0; i < 50; i++) {
+      expect(Math.abs(homeBall().serveSign)).toBe(1);
+    }
   });
 });
 

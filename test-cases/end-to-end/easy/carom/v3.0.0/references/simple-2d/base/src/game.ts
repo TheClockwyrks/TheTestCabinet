@@ -165,6 +165,11 @@ export interface BallState {
   readonly held: boolean;
   /** Seconds remaining of that wait. */
   readonly holdTimer: number;
+  /**
+   * The vertical sign the serve takes, drawn afresh whenever the ball is parked
+   * and posed by the debug surface (specs/balls.md).
+   */
+  readonly serveSign: 1 | -1;
   /** The ball's trail samples, oldest first. */
   readonly trail: readonly TrailSample[];
 }
@@ -243,10 +248,6 @@ export interface CaromState {
    * with it, so what `snapshot()` reports is what the player hears.
    */
   readonly muted: boolean;
-  /** The seed the game's random generator was last seeded from. */
-  readonly seed: number;
-  /** The whole state of that generator, as a single number. */
-  readonly rngState: number;
 
   /** The presses in flight. Derived bookkeeping; see {@link PressAnchor}. */
   readonly presses: readonly PressAnchor[];

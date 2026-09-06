@@ -8,10 +8,9 @@
 // different title screens. Each is a transition: the current state in, the next
 // state out.
 
-import { DEFAULT_SEED, SERVE_ANGLE, SERVE_SPEED } from "./constants";
+import { SERVE_ANGLE, SERVE_SPEED } from "./constants";
 import { allObstacles, centeredPaddle, homeBall, newPaddle } from "./entities";
 import type { CaromState, Mode, Side } from "./game";
-import { nextSign, seedState } from "./rng";
 
 /**
  * The complete initial state: the title screen, with every field present.
@@ -35,8 +34,6 @@ export function createInitialState(): CaromState {
     obstacles: allObstacles(),
     simTime: 0,
     muted: false,
-    seed: DEFAULT_SEED,
-    rngState: seedState(DEFAULT_SEED),
     presses: [],
   };
 }
@@ -45,9 +42,9 @@ export function createInitialState(): CaromState {
  * Return to the title screen.
  *
  * Every declared field goes back to its title value except `titleIndex`,
- * `simTime`, `muted`, `seed` and `rngState`, which keep theirs, and `menuIndex`,
- * which becomes `titleIndex`: the entry that led away from the title is the one
- * selected on the way back (specs/ui.md).
+ * `simTime` and `muted`, which keep theirs, and `menuIndex`, which becomes
+ * `titleIndex`: the entry that led away from the title is the one selected on
+ * the way back (specs/ui.md).
  */
 export function toTitle(state: CaromState): CaromState {
   return {
@@ -56,8 +53,6 @@ export function toTitle(state: CaromState): CaromState {
     menuIndex: state.titleIndex,
     simTime: state.simTime,
     muted: state.muted,
-    seed: state.seed,
-    rngState: state.rngState,
   };
 }
 
@@ -93,27 +88,25 @@ export function respawn(state: CaromState, receiver: Side): CaromState {
  * Launch the ball toward the receiver at SERVE_SPEED.
  *
  * The serve leaves at exactly SERVE_ANGLE from horizontal (specs/balls.md); the
- * SIGN of its vertical component is the one draw this game makes from its seeded
- * generator, and the generator's next state is stored beside the ball it aimed.
- * The ball is not moved: it is served from wherever it was waiting.
+ * SIGN of its vertical component is the ball's own `serveSign`, drawn when the
+ * ball was parked and left as it is by the serve. The ball is not moved: it is
+ * served from wherever it was waiting.
  */
 export function serveBall(state: CaromState): CaromState {
   const ball = state.ball;
   if (ball === null) return state;
 
   const dir = state.receiver === "left" ? -1 : 1;
-  const [sign, rngState] = nextSign(state.rngState);
   return {
     ...state,
     ball: {
       ...ball,
       vx: dir * SERVE_SPEED * Math.cos(SERVE_ANGLE),
-      vy: sign * SERVE_SPEED * Math.sin(SERVE_ANGLE),
+      vy: ball.serveSign * SERVE_SPEED * Math.sin(SERVE_ANGLE),
       held: false,
       holdTimer: 0,
       trail: [],
     },
-    rngState,
     screen: "playing",
   };
 }

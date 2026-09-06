@@ -4,7 +4,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   HOLD_TIME,
@@ -20,7 +19,11 @@ import {
   startMatch,
   toTitle,
 } from "./match";
-import { seedState } from "./rng";
+
+/** A parked ball, whichever sign its serve was drawn. */
+function parkedBall(): unknown {
+  return { ...homeBall(), serveSign: expect.any(Number) };
+}
 
 describe("createInitialState", () => {
   it("is the title screen specs/state.md tabulates", () => {
@@ -41,11 +44,9 @@ describe("createInitialState", () => {
     });
     expect(state.paddles.right).toEqual(state.paddles.left);
     expect(state.ai).toEqual({ tracking: true, movement: true });
-    expect(state.ball).toEqual(homeBall());
+    expect(state.ball).toEqual(parkedBall());
     expect(state.obstacles).toEqual(allObstacles());
     expect(state.simTime).toBe(0);
-    expect(state.seed).toBe(DEFAULT_SEED);
-    expect(state.rngState).toBe(seedState(DEFAULT_SEED));
   });
 });
 
@@ -74,7 +75,7 @@ describe("startMatch", () => {
     expect(state.score).toEqual({ p1: 0, p2: 0 });
     expect(state.winner).toBeNull();
     expect(state.receiver).toBe("left");
-    expect(state.ball).toEqual(homeBall());
+    expect(state.ball).toEqual(parkedBall());
     expect(state.ball?.holdTimer).toBe(HOLD_TIME);
     expect(state.paddles.left.cy).toBe(FIELD_CY);
     expect(state.paddles.left.vy).toBe(0);
@@ -92,15 +93,13 @@ describe("startMatch", () => {
 });
 
 describe("toTitle", () => {
-  it("restores every declared field but the five that keep their values", () => {
+  it("restores every declared field but the three that keep their values", () => {
     const state: CaromState = {
       ...startMatch(createInitialState(), "versus"),
       titleIndex: 1,
       menuIndex: 0,
       simTime: 12,
       muted: true,
-      seed: 77,
-      rngState: 99,
       ai: { tracking: false, movement: false },
       obstacles: [],
       ball: null,
@@ -118,8 +117,7 @@ describe("toTitle", () => {
       menuIndex: 1,
       simTime: 12,
       muted: true,
-      seed: 77,
-      rngState: 99,
+      ball: expect.objectContaining({ held: true, holdTimer: HOLD_TIME }),
     });
   });
 });
@@ -137,6 +135,7 @@ describe("respawn", () => {
         spin: 40,
         held: false,
         holdTimer: 0,
+        serveSign: 1,
         trail: [{ x: 5, y: 5, t: 1 }],
       },
     };
@@ -145,7 +144,7 @@ describe("respawn", () => {
 
     expect(state.receiver).toBe("right");
     expect(state.screen).toBe("countdown");
-    expect(state.ball).toEqual(homeBall());
+    expect(state.ball).toEqual(parkedBall());
   });
 });
 
@@ -165,8 +164,9 @@ describe("serveBall", () => {
     expect(
       Math.abs(Math.atan2(ball?.vy ?? 0, Math.abs(ball?.vx ?? 0))),
     ).toBeCloseTo(SERVE_ANGLE, 9);
-    // The one draw the game makes: the generator moved on.
-    expect(served.rngState).not.toBe(held.rngState);
+    // The serve takes the sign the ball holds and leaves it as it is.
+    expect(Math.sign(ball?.vy ?? 0)).toBe(held.ball?.serveSign);
+    expect(ball?.serveSign).toBe(held.ball?.serveSign);
   });
 
   it("aims the other way for the other receiver", () => {
