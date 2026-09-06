@@ -144,6 +144,7 @@ it("reports the whole documented shape, with the posed values", async () => {
     run.nextSwarmAngle,
     "snapshot().run.nextSwarmAngle, nothing posed",
   );
+  assertNull(run.nextSpawnType, "snapshot().run.nextSpawnType, nothing posed");
   assertNull(
     run.nextPuddleOffset,
     "snapshot().run.nextPuddleOffset, nothing posed",

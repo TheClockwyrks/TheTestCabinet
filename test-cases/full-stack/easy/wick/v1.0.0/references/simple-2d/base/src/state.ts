@@ -78,6 +78,7 @@ export function idleRun(): DraftRun {
     nextId: 0,
     nextSpawnAngle: null,
     nextSwarmAngle: null,
+    nextSpawnType: null,
     nextPuddleOffset: null,
     nextStrikeTarget: null,
     nextChestItem: null,
@@ -177,6 +178,7 @@ function cloneRun(run: DeepReadonly<RunState>): DraftRun {
     nextId: run.nextId,
     nextSpawnAngle: run.nextSpawnAngle,
     nextSwarmAngle: run.nextSwarmAngle,
+    nextSpawnType: run.nextSpawnType,
     nextPuddleOffset:
       run.nextPuddleOffset === null ? null : { ...run.nextPuddleOffset },
     nextStrikeTarget: run.nextStrikeTarget,

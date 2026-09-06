@@ -15,14 +15,16 @@
 //     window's first tick with the timer at 0 across two whole intervals, so
 //     the ticks its three spawns land on are known exactly and compared as a
 //     whole list.
-//   - The types. Every spawn is one of `shade, crow, hound`, and across sixty
-//     draws each of the three appears: "spawn one enemy of a type chosen
-//     uniformly from the window's types". A uniform draw over three types
-//     leaves one unused across sixty draws about once in ten thousand million,
-//     past six standard deviations, while a build that offers the wrong roster
-//     or draws from one type alone fails every time. Each draw is posed on its
-//     own tick: the timer set to `0`, so the next tick spawns, and the arrival
-//     cleared away.
+//   - The types. Each of `shade, crow, hound` is posed in turn through
+//     `setNextSpawnType`, which makes "The next window spawn ... of that type
+//     in place of the type drawn from the window's types"
+//     (`specs/instrumentation.md`, "Drawn outcomes"), and the next due tick
+//     must spawn it: a build whose window cannot spawn one of the row's types
+//     fails on that type. Six draws with nothing posed must each be one of the
+//     row's types: a build that offers the wrong roster fails on the first
+//     spawn outside it.
+//     Each draw is posed on its own tick: the timer set to `0`, so the next
+//     tick spawns, and the arrival cleared away.
 //   - The cap. "if `spawnTimer` is due and `aliveCommons` < cap", with
 //     `aliveCommons` "the number of live enemies of rank `common` other than
 //     gnats" (`specs/enemies.md`, "The cap"). With exactly 120 counted commons
@@ -31,8 +33,8 @@
 // WHERE THE CLOCK IS POSED. On tick 18000, the window's first tick, so the tick
 // driven next and the one before it are both inside the window and the timer's
 // window-change reset is not what makes the first spawn land — the posed 0 is.
-// The third spawn falls on tick 18031, and the sixty draws that follow end on
-// tick 18092, inside the window, whose last tick is 19799.
+// The third spawn falls on tick 18031, and the 9 draws that follow end on
+// tick 18040, inside the window, whose last tick is 19799.
 //
 // WHY EACH ARRIVAL IS CLEARED AWAY. `removeEnemy` "Removes enemy `id`. Nothing
 // drops, nothing counts as a kill, and no cue plays"
@@ -47,7 +49,12 @@
 // THE TOLERANCE. None: whole ticks, type names, and a count of arrivals.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertContains, assertDeepEqual, assertEqual } from "../assert";
+import {
+  assertContains,
+  assertDeepEqual,
+  assertEqual,
+  assertLength,
+} from "../assert";
 import { SPAWN_WINDOW, SPAWN_WINDOWS, TICK_HZ, ticksOf } from "../constants";
 import {
   captureReplay,
@@ -58,7 +65,8 @@ import {
 } from "../harness";
 import {
   CADENCE_SPAWNS,
-  TYPE_DRAWS,
+  UNPOSED_DRAWS,
+  drawPosedTypes,
   drawTypes,
   driveArrivals,
   fillCommons,
@@ -98,6 +106,7 @@ it("spawns row 10's types every 15 ticks and stops at its cap of 120", async () 
   const drive = await captureReplay(h, "window", () =>
     driveArrivals(h, CADENCE_TICKS, { removeOnArrival: true }),
   );
+  const posed = await drawPosedTypes(h, INDEX);
   const drawn = await drawTypes(h);
 
   isolate(h);
@@ -118,18 +127,24 @@ it("spawns row 10's types every 15 ticks and stops at its cap of 120", async () 
       `the type of the spawn on tick ${arrival.tick}, from row ${INDEX} of SPAWN_WINDOWS`,
     );
   }
+  assertDeepEqual(
+    posed.map((entry) => entry.posed),
+    [...ROW.types],
+    `the types posed for window ${INDEX}, one per type row ${INDEX} lists`,
+  );
+  for (const entry of posed) {
+    assertEqual(
+      entry.spawned,
+      entry.posed,
+      `the type window ${INDEX} spawned with ${entry.posed} posed (specs/instrumentation.md, Drawn outcomes)`,
+    );
+  }
+  assertLength(drawn, UNPOSED_DRAWS, "spawns drawn with nothing posed");
   for (const [at, type] of drawn.entries()) {
     assertContains(
       ROW.types,
       type,
-      `the type of draw ${at + 1} of ${TYPE_DRAWS}, from row ${INDEX} of SPAWN_WINDOWS`,
-    );
-  }
-  for (const type of ROW.types) {
-    assertContains(
-      drawn,
-      type,
-      `the types drawn across ${TYPE_DRAWS} spawns of window ${INDEX}`,
+      `the type of unposed draw ${at + 1} of ${UNPOSED_DRAWS}, from row ${INDEX} of SPAWN_WINDOWS`,
     );
   }
   assertEqual(

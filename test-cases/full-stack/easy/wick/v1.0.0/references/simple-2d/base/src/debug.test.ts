@@ -121,6 +121,7 @@ describe("the snapshot", () => {
       nextId: 0,
       nextSpawnAngle: null,
       nextSwarmAngle: null,
+      nextSpawnType: null,
       nextPuddleOffset: null,
       nextStrikeTarget: null,
       nextChestItem: null,
@@ -748,6 +749,7 @@ describe("the drawn outcome poses", () => {
     const [moth] = d.snap().run.enemies;
     d.pose((s) => d.api.setNextSpawnAngle(s, 0));
     d.pose((s) => d.api.setNextSwarmAngle(s, 359.5));
+    d.pose((s) => d.api.setNextSpawnType(s, "bat"));
     d.pose((s) => d.api.setNextPuddleOffset(s, -240, 320));
     d.pose((s) => d.api.setNextStrikeTarget(s, moth.id));
     d.pose((s) => d.api.setNextChestItem(s, "brass"));
@@ -755,6 +757,7 @@ describe("the drawn outcome poses", () => {
     expect(d.snap().run).toMatchObject({
       nextSpawnAngle: 0,
       nextSwarmAngle: 359.5,
+      nextSpawnType: "bat",
       nextPuddleOffset: { x: -240, y: 320 },
       nextStrikeTarget: moth.id,
       nextChestItem: "brass",
@@ -784,10 +787,13 @@ describe("the drawn outcome poses", () => {
     expect(() =>
       d.api.setNextChestItem(d.state, "lamp-oil" as never),
     ).toThrow();
+    expect(() => d.api.setNextSpawnType(d.state, "taper" as never)).toThrow();
+    expect(() => d.api.setNextSpawnType(d.state, 3 as never)).toThrow();
     expect(() => d.api.setNextDrop(d.state, "chest" as never)).toThrow();
     expect(d.snap().run).toMatchObject({
       nextSpawnAngle: null,
       nextSwarmAngle: null,
+      nextSpawnType: null,
       nextPuddleOffset: { x: 400, y: 0 },
       nextStrikeTarget: null,
       nextChestItem: null,

@@ -8,25 +8,22 @@
 // `engine.advance`"; "A render-free core. Game state advances from ticks and
 // input alone, independent ... of wall-clock time". A reset "leaves the game
 // indistinguishable from a freshly started session", so nothing a reset does
-// may put the game back on the wall clock.
+// may put the game back on the wall clock; `reset()` restores "the `title`
+// screen", where nothing ticks.
 //
-// THE READ. A run is posed and driven, reset, and a run posed again; real
-// time is then allowed to pass with no frame advanced. A build that started a
-// clock of its own inside `reset` (an interval, a frame callback, a
-// `Date.now()` read in `update`) accumulates ticks in that wait; a conformant
-// one holds `run.tick` at 0 until the scenario's own frames move it.
+// THE READ. A run is posed and driven, then reset. `run.tick` reads 0 at the
+// call, still 0 after frames the scenario runs on the title, and rises by
+// exactly the frames the scenario advances once a run is posed: nothing
+// advances it but the scenario. Nothing here waits on real time.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
 
-/**
- * Real time allowed to pass with no frame advanced: long enough that a build
- * on its own clock would have run tens of ticks, short enough to cost nothing.
- */
-const HELD_MS = 300;
+/** Frames the scenario runs on the title after the reset. */
+const TITLE_FRAMES = 5;
 
-/** Frames the scenario advances afterward, each one tick on playing. */
+/** Frames the scenario advances on the run posed afterward. */
 const DRIVEN = 7;
 
 let h: Harness;
@@ -39,21 +36,24 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("holds the run at tick 0 after a reset until the scenario advances it", async () => {
-  h.reset();
-  h.debug.setScreen("playing");
+it("keeps run.tick at 0 after reset until the scenario advances a run", async () => {
+  isolate(h);
   await h.tick(10);
 
   h.reset();
-  h.debug.setScreen("playing");
-  const posed = h.snapshot();
-  await new Promise((done) => setTimeout(done, HELD_MS));
+  assertEqual(h.snapshot().run.tick, 0, "run.tick at the reset call");
+  const frameBefore = h.frame();
+  await h.advance(TITLE_FRAMES);
   const held = h.snapshot();
+  assertEqual(
+    h.frame() - frameBefore,
+    TITLE_FRAMES,
+    "frames the scenario drove on the title after reset",
+  );
+  assertEqual(held.run.tick, 0, "run.tick after frames on the title");
+
+  h.debug.setScreen("playing");
   const driven = await h.tick(DRIVEN);
   captureStill(h, "held");
-
-  assertEqual(posed.run.tick, 0, "run.tick of the run posed after the reset");
-  assertEqual(held.run.tick, 0, "run.tick after real time passed unadvanced");
-  assertEqual(held.simTime, posed.simTime, "simTime after real time passed");
   assertEqual(driven.run.tick, DRIVEN, "run.tick after the scenario's frames");
 });

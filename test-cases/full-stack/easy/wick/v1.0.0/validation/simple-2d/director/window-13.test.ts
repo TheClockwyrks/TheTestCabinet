@@ -13,6 +13,9 @@
 //     the window's types, at a spawn point; `spawnTimer` = `interval`", with
 //     "`interval` and `cap` ... the current window's", and "When the cap is
 //     full the timer rests at `0`".
+//   - `specs/instrumentation.md` ("Drawn outcomes", `setNextSpawnType(id)`):
+//     "The next window spawn is of that type in place of the type drawn from
+//     the window's types, and that spawn consumes it."
 //   - `specs/world.md` ("Timers"): "An interval of `s` seconds anywhere in this
 //     specification is likewise `round(s × TICK_HZ)` ticks", so 0.20 s is 12
 //     ticks.
@@ -22,15 +25,17 @@
 // WHAT IS READ. The row, in its three parts. With the clock posed into window
 // 13 and the spawn timer resting at `0`, the cadence is read over two whole
 // intervals: three spawns land, one to a due tick, and every gap between
-// consecutive spawns must be 12 ticks. Then sixty spawns are drawn one to a
-// tick, each posed by emptying the field and setting the timer to `0`: every
-// type drawn must be one the row lists, and every type the row lists must be
-// drawn across the sixty. Then the cap is read from both sides. The clock is
-// posed back to the window's start and the field filled with 149 moths, one
-// short of the row's cap: the next due tick must spawn, taking the field to
-// 150. The clock is posed back once more and two intervals are driven at 150:
-// no further spawn may land. No window edge falls inside any of these
-// stretches.
+// consecutive spawns must be 12 ticks. Then the types are read two ways: each
+// type the row lists is posed through `setNextSpawnType` and the spawn the next
+// due tick lands must be of it, and six spawns are drawn with nothing posed,
+// each on its own tick with the field emptied first, and every one must be a
+// type the row lists. The row lists three types, so each of beetle, crow, hound
+// is posed in turn, and every unposed draw must be one of them. Then the cap is
+// read from both sides. The clock is posed back to the window's start and the
+// field filled with 149 moths, one short of the row's cap: the next due tick
+// must spawn, taking the field to 150. The clock is posed back once more and
+// two intervals are driven at 150: no further spawn may land. No window edge
+// falls inside any of these stretches.
 //
 // WHY THE NIGHT IS POSED AS IT IS. `spawning` alone is on, so the timer is the
 // only thing that can put an enemy on the field: no scripted event fires, no
@@ -46,14 +51,15 @@
 // drift cannot fail the item.
 //
 // TOLERANCE. None: the interval is a whole count of ticks the timer rule fixes,
-// and the types and the cap are counted exactly. Sixty draws is what makes the
-// type reading honest against chance: a uniform draw over three types misses
-// one of them across sixty draws about once in ten thousand million runs, past
-// six standard deviations, while a build that draws from one type alone, or
-// from a roster short of the row's, fails it every time.
+// and the types and the cap are counted exactly.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertContains, assertEqual, assertLength } from "../assert";
+import {
+  assertContains,
+  assertDeepEqual,
+  assertEqual,
+  assertLength,
+} from "../assert";
 import { SPAWN_WINDOWS } from "../constants";
 import {
   captureReplay,
@@ -64,9 +70,10 @@ import {
 } from "../harness";
 import {
   CADENCE_SPAWNS,
-  TYPE_DRAWS,
+  UNPOSED_DRAWS,
   closeIn,
   collectSpawns,
+  drawPosedTypes,
   drawTypes,
   poseRing,
   poseWindow,
@@ -125,12 +132,23 @@ it("spawns window 13's types at its interval up to its cap", async () => {
     assertContains(ROW.types, spawn.type, "the type of a spawn");
   }
 
-  const drawn = await drawTypes(h);
-  for (const type of drawn) {
-    assertContains(ROW.types, type, "the type of a drawn spawn");
+  const posed = await drawPosedTypes(h, WINDOW);
+  assertDeepEqual(
+    posed.map((entry) => entry.posed),
+    [...ROW.types],
+    "the types posed, one per type the row lists",
+  );
+  for (const entry of posed) {
+    assertEqual(
+      entry.spawned,
+      entry.posed,
+      `the type spawned with ${entry.posed} posed`,
+    );
   }
-  for (const type of ROW.types) {
-    assertContains(drawn, type, `the types drawn across ${TYPE_DRAWS} spawns`);
+  const drawn = await drawTypes(h);
+  assertLength(drawn, UNPOSED_DRAWS, "spawns drawn with nothing posed");
+  for (const type of drawn) {
+    assertContains(ROW.types, type, "the type of an unposed spawn");
   }
 
   h.debug.clearEnemies();

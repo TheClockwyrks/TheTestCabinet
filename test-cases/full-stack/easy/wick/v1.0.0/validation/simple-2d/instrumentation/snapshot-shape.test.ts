@@ -161,6 +161,7 @@ it("reports the whole documented shape off a posed run", async () => {
   for (const field of [
     "nextSpawnAngle",
     "nextSwarmAngle",
+    "nextSpawnType",
     "nextPuddleOffset",
     "nextStrikeTarget",
     "nextChestItem",
@@ -171,6 +172,7 @@ it("reports the whole documented shape off a posed run", async () => {
   for (const field of [
     "nextSpawnAngle",
     "nextSwarmAngle",
+    "nextSpawnType",
     "nextPuddleOffset",
     "nextStrikeTarget",
     "nextChestItem",

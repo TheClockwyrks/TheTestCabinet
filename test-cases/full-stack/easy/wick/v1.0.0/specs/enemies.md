@@ -161,7 +161,8 @@ spawn timer counts and spawns while `spawning` is on. Every switch is on when
 the game is played. Everything the director spawns takes the spawn rules
 above, health scaling included. The spawn angle and the type choice are drawn
 at random as the rules below state, and `specs/instrumentation.md` states how
-a scenario poses a spawn's angle and a swarm's direction.
+a scenario poses a spawn's angle, a window spawn's type, and a swarm's
+direction.
 
 ### The spawn ring
 

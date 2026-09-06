@@ -106,6 +106,7 @@ const RUN_FIELDS = [
   "nextId",
   "nextSpawnAngle",
   "nextSwarmAngle",
+  "nextSpawnType",
   "nextPuddleOffset",
   "nextStrikeTarget",
   "nextChestItem",
@@ -334,6 +335,7 @@ it("reports the whole documented shape from a posed run", async () => {
   for (const field of [
     "nextSpawnAngle",
     "nextSwarmAngle",
+    "nextSpawnType",
     "nextPuddleOffset",
     "nextStrikeTarget",
     "nextChestItem",

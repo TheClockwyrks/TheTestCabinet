@@ -151,9 +151,20 @@ export function runSpawnTimer(ctx: TickContext): void {
   run.spawnTimer = countDown(run.spawnTimer);
   const row = SPAWN_WINDOWS[window];
   if (!isDue(run.spawnTimer) || aliveCommons(run) >= row.cap) return;
-  const type = ctx.rng.pick(row.types);
-  spawnOnRing(ctx, type);
+  spawnOnRing(ctx, windowSpawnType(ctx, row.types));
   run.spawnTimer = row.interval;
+}
+
+/**
+ * The type of the next window spawn: the posed `nextSpawnType` when one stands
+ * and the window's row lists it, consumed here either way, and a type chosen
+ * uniformly from the row otherwise.
+ */
+function windowSpawnType(ctx: TickContext, types: readonly EnemyId[]): EnemyId {
+  const posed = ctx.run.nextSpawnType;
+  if (posed === null) return ctx.rng.pick(types);
+  ctx.run.nextSpawnType = null;
+  return types.includes(posed) ? posed : ctx.rng.pick(types);
 }
 
 /** Phase 10: the spawn director, its three parts each behind a switch. */

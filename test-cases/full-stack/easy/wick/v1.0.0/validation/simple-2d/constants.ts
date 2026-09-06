@@ -1232,6 +1232,7 @@ export const IDLE_RUN = {
   nextId: 0,
   nextSpawnAngle: null,
   nextSwarmAngle: null,
+  nextSpawnType: null,
   nextPuddleOffset: null,
   nextStrikeTarget: null,
   nextChestItem: null,
@@ -1518,21 +1519,6 @@ export const DIRECTION_TOLERANCE = 1e-9;
  * unit is below every figure the specification states in units.
  */
 export const INTEGRATION_TOLERANCE = 0.1;
-
-/**
- * The drop roll's sample and bounds, from specs/world.md's BREAD_CHANCE (0.02)
- * and DRAFT_CHANCE (0.005) over DROP_ROLLS rolls made alone through
- * `rollDrop`. The bread count is Binomial(40000, 0.02), mean 800 and deviation
- * 28; a draft drops only when no bread did, so the draft count is
- * Binomial(40000, 0.98 × 0.005), mean 196 and deviation 14. Each bound sits
- * six deviations from the mean, so a conformant build lands outside a band
- * about once in a thousand million runs, while a build rolling at half the
- * chance (400 breads, 98 drafts) or twice it (1600, 392) lands outside every
- * time.
- */
-export const DROP_ROLLS = 40000;
-export const BREAD_COUNT_RANGE: readonly [number, number] = [632, 968];
-export const DRAFT_COUNT_RANGE: readonly [number, number] = [112, 280];
 
 /**
  * How far into a bar's fill a "scales with" reading is trusted: a bar whose

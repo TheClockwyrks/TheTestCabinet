@@ -190,6 +190,7 @@ export interface RunState {
   /** The posed outcomes of specs/instrumentation.md, `null` while none is posed. */
   nextSpawnAngle: number | null;
   nextSwarmAngle: number | null;
+  nextSpawnType: EnemyId | null;
   nextPuddleOffset: { x: number; y: number } | null;
   nextStrikeTarget: number | null;
   nextChestItem: WeaponId | PassiveId | null;
@@ -266,6 +267,7 @@ export function idleRun(): RunState {
     nextId: 0,
     nextSpawnAngle: null,
     nextSwarmAngle: null,
+    nextSpawnType: null,
     nextPuddleOffset: null,
     nextStrikeTarget: null,
     nextChestItem: null,

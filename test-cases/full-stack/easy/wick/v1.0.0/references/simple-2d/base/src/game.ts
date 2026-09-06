@@ -200,6 +200,7 @@ export interface RunState {
   /** The posed outcomes of specs/instrumentation.md, `null` while none is posed. */
   readonly nextSpawnAngle: number | null;
   readonly nextSwarmAngle: number | null;
+  readonly nextSpawnType: EnemyId | null;
   readonly nextPuddleOffset: { readonly x: number; readonly y: number } | null;
   readonly nextStrikeTarget: number | null;
   readonly nextChestItem: WeaponId | PassiveId | null;
@@ -328,6 +329,7 @@ export interface WickSnapshot {
     nextId: number;
     nextSpawnAngle: number | null;
     nextSwarmAngle: number | null;
+    nextSpawnType: string | null;
     nextPuddleOffset: { x: number; y: number } | null;
     nextStrikeTarget: number | null;
     nextChestItem: string | null;
@@ -370,6 +372,7 @@ export interface WickDebugApi {
   setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
   setNextSpawnAngle(state: DeepReadonly<WickState>, degrees: number): WickState;
   setNextSwarmAngle(state: DeepReadonly<WickState>, degrees: number): WickState;
+  setNextSpawnType(state: DeepReadonly<WickState>, id: EnemyId): WickState;
   setNextPuddleOffset(
     state: DeepReadonly<WickState>,
     dx: number,

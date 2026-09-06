@@ -18,6 +18,7 @@ import {
   PICKUP_KINDS,
   WEAPON_SLOTS,
   WICK_DEBUG_VERSION,
+  type EnemyId,
   type Facing,
   type GemTier,
   type OfferId,
@@ -159,6 +160,7 @@ export interface WickSnapshot {
     nextId: number;
     nextSpawnAngle: number | null;
     nextSwarmAngle: number | null;
+    nextSpawnType: string | null;
     nextPuddleOffset: { x: number; y: number } | null;
     nextStrikeTarget: number | null;
     nextChestItem: string | null;
@@ -193,6 +195,7 @@ export interface WickDebugApi {
   setSpawnTimer(seconds: number): void;
   setNextSpawnAngle(degrees: number): void;
   setNextSwarmAngle(degrees: number): void;
+  setNextSpawnType(id: EnemyId): void;
   setNextPuddleOffset(dx: number, dy: number): void;
   setNextStrikeTarget(id: number): void;
   setNextChestItem(id: string): void;
@@ -437,6 +440,7 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
         nextId: r.nextId,
         nextSpawnAngle: r.nextSpawnAngle,
         nextSwarmAngle: r.nextSwarmAngle,
+        nextSpawnType: r.nextSpawnType,
         nextPuddleOffset:
           r.nextPuddleOffset === null ? null : { ...r.nextPuddleOffset },
         nextStrikeTarget: r.nextStrikeTarget,
@@ -530,6 +534,14 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       const value = angle(degrees);
       pose(() => {
         run().nextSwarmAngle = value;
+      });
+    },
+    setNextSpawnType(id) {
+      if (typeof id !== "string" || !isEnemyId(id))
+        invalid(`${String(id)} is no enemy`);
+      const type = id;
+      pose(() => {
+        run().nextSpawnType = type;
       });
     },
     setNextPuddleOffset(dx, dy) {

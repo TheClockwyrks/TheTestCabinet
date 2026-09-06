@@ -231,6 +231,7 @@ export interface RunState {
   readonly nextId: number;
   readonly nextSpawnAngle: number | null;
   readonly nextSwarmAngle: number | null;
+  readonly nextSpawnType: EnemyId | null;
   readonly nextPuddleOffset: { readonly x: number; readonly y: number } | null;
   readonly nextStrikeTarget: number | null;
   readonly nextChestItem: WeaponId | PassiveId | null;
@@ -412,6 +413,7 @@ export interface RunState {
   nextId: number;
   nextSpawnAngle: number | null;
   nextSwarmAngle: number | null;
+  nextSpawnType: EnemyId | null;
   nextPuddleOffset: { x: number; y: number } | null;
   nextStrikeTarget: number | null;
   nextChestItem: WeaponId | PassiveId | null;
@@ -646,10 +648,11 @@ The run in progress or just ended.
 - `nextId`: the next id to assign, one counter shared by enemies,
   projectiles, zones, gems, and pickups. It is `0` when a run starts and is
   never reused within a run.
-- `nextSpawnAngle`, `nextSwarmAngle`, `nextPuddleOffset`, `nextStrikeTarget`,
-  `nextChestItem`, `nextDrop`: the posed outcomes `specs/instrumentation.md`
-  states under Drawn outcomes, each set by its operation, `null` while none is
-  posed, and `null` again once the draw it decides has consumed it.
+- `nextSpawnAngle`, `nextSwarmAngle`, `nextSpawnType`, `nextPuddleOffset`,
+  `nextStrikeTarget`, `nextChestItem`, `nextDrop`: the posed outcomes
+  `specs/instrumentation.md` states under Drawn outcomes, each set by its
+  operation, `null` while none is posed, and `null` again once the draw it
+  decides has consumed it.
 
 Where a field above, or the idle run below, is described by the screen it is
 read on, that is how play and the ticks maintain it. The debug surface's
@@ -678,7 +681,7 @@ since they report its time, level, and kills.
 | `spawnTimer` | `0` |
 | `firedEvents` | empty |
 | `nextId` | `0` |
-| `nextSpawnAngle`, `nextSwarmAngle`, `nextPuddleOffset` | `null` |
+| `nextSpawnAngle`, `nextSwarmAngle`, `nextSpawnType`, `nextPuddleOffset` | `null` |
 | `nextStrikeTarget`, `nextChestItem`, `nextDrop` | `null` |
 
 A fresh run is the idle run with Taper at level `1` and cooldown `0` in the

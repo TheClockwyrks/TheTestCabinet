@@ -92,6 +92,7 @@ const RUN_FIELDS = [
   "nextId",
   "nextSpawnAngle",
   "nextSwarmAngle",
+  "nextSpawnType",
   "nextPuddleOffset",
   "nextStrikeTarget",
   "nextChestItem",

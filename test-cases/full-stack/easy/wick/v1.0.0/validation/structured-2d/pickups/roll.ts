@@ -1,6 +1,5 @@
-// pickups/roll — a large sample of drop rolls, shared by the drop-roll rate
-// checks in this directory, and the one posed kill the drop checks read.
-// CASE-PROVIDED.
+// pickups/roll — a handful of drop rolls, shared by the `rollDrop` checks,
+// and the one posed kill the drop checks read. CASE-PROVIDED.
 //
 // WHAT EVERY DROP-ROLL CHECK SHARES. `specs/world.md` ("The drop roll"): "each
 // common enemy killed by a weapon rolls for a pickup on the tick it dies ...
@@ -11,15 +10,19 @@
 // own: `rollDrop()` "Makes one drop roll exactly as `specs/world.md` states
 // under The drop roll and returns what it decided: `bread`, `draft`, or
 // `none`. It is a reading of the roll alone" (`specs/instrumentation.md`,
-// Drawn outcomes). So the rate checks read a sample of `DROP_ROLLS` (`40000`)
-// such rolls and say something about the whole of it; what one kill drops is
-// posed through `setNextDrop` (`specs/instrumentation.md`, Drawn outcomes) and
-// read off that kill. This module makes both and decides nothing about them.
+// Drawn outcomes). So the `instrumentation/roll-drop*` checks read a handful of
+// such rolls and say what each returned and what the state did across them;
+// what one kill drops is posed through `setNextDrop`
+// (`specs/instrumentation.md`, Drawn outcomes) and read off that kill. This
+// module makes both and decides nothing about them. The probabilities
+// themselves are the reviewer's to judge, since a sample a check could afford
+// cannot tell `0.02` from its neighbours.
 //
-// THE SAMPLE. `rollDrops` calls `rollDrop` `DROP_ROLLS` times over whatever
-// world the caller posed and counts what came back. Nothing is posed for the
-// rolls, so each is the build's own; that the calls leave the world as it was
-// is the surface's own rule, decided by `instrumentation/roll-drop-changes-nothing`.
+// THE SAMPLE. `rollDrops` calls `rollDrop` as many times as the caller names
+// over whatever world the caller posed and counts what came back. Nothing is
+// posed for the rolls, so each is the build's own; that the calls leave the
+// world as it was is the surface's own rule, decided by
+// `instrumentation/roll-drop-changes-nothing`.
 //
 // HOW A KILL IS MADE. The shortest honest path from a posed world to a death
 // (the one `enemies/drops` takes for a single kill): a level-1 Oil Splash puddle
@@ -33,7 +36,6 @@
 
 import { fail } from "../assert";
 import {
-  DROP_ROLLS,
   ENEMIES,
   NEXT_DROPS,
   OIL_SPLASH_LEVELS,
@@ -68,7 +70,7 @@ export interface RollSample {
  * Make `rolls` drop rolls through `rollDrop` and hand back what they decided.
  * Nothing is posed for the rolls, so each is the build's own.
  */
-export function rollDrops(h: Harness, rolls: number = DROP_ROLLS): RollSample {
+export function rollDrops(h: Harness, rolls: number): RollSample {
   const counts: Record<NextDrop, number> = { bread: 0, draft: 0, none: 0 };
   const others: unknown[] = [];
   const kinds: readonly string[] = NEXT_DROPS;

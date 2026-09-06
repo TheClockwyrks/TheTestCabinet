@@ -10,12 +10,14 @@
 // advances from ticks and input alone, independent of the canvas, of the frame
 // loop that measured the delta time, and of wall-clock time"; and "a keyboard
 // event dispatched at the engine's event target ... works the menus exactly as
-// a player's key does".
+// a player's key does". Under this engine the hold is the harness's scripted
+// clock, so "giving the clock back" has no counterpart here.
 //
-// THE READ. Real time passes with no frame advanced and the run does not move;
-// a frame then draws (the render issues operations) and moves the run by
-// exactly the frames advanced; and on the title a real ArrowDown edge moves
-// the highlight, the menu answering with the clock held.
+// THE READ. On the title, one frame with ArrowDown held: the frame drew (the
+// render issued operations), the highlight moved, and `run.tick` is 0. Then a
+// posed run and exactly `DRIVEN` frames: `run.tick` rose by exactly `DRIVEN`,
+// nothing more and nothing less, whatever wall time passed. Nothing here
+// waits on real time: every reading is of a scripted frame.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -28,9 +30,7 @@ import {
   type Harness,
 } from "../harness";
 
-/** Real time allowed to pass with no frame advanced. */
-const HELD_MS = 300;
-/** Frames the scenario advances, each one tick on playing. */
+/** Frames the scenario advances on a posed run, each one tick on playing. */
 const DRIVEN = 12;
 
 let h: Harness;
@@ -43,26 +43,24 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("advances the run only by the scenario's frames", async () => {
+it("advances the run only by the scenario's frames while menus answer", async () => {
+  h.reset();
+  const menu = await tap(h, "ArrowDown");
+  assertGreaterThan(
+    drawOps(h.lastCalls()),
+    0,
+    "drawing operations the title frame issued",
+  );
+  assertEqual(menu.menuIndex, 1, "menuIndex after ArrowDown on the title");
+  assertEqual(menu.run.tick, 0, "run.tick on the title after the press");
+
   isolate(h);
   const posed = h.snapshot();
-  await new Promise((done) => setTimeout(done, HELD_MS));
-  const held = h.snapshot();
-  assertEqual(held.run.tick, posed.run.tick, "run.tick after real time passed");
-  assertEqual(held.simTime, posed.simTime, "simTime after real time passed");
-
-  const { calls } = await h.frameDraw();
-  assertGreaterThan(drawOps(calls), 0, "drawing operations the frame issued");
-  const driven = await h.tick(DRIVEN - 1);
+  const driven = await h.tick(DRIVEN);
   captureStill(h, "held");
   assertEqual(
     driven.run.tick - posed.run.tick,
     DRIVEN,
-    "run.tick after the frames",
+    `run.tick gained over ${DRIVEN} scripted frames`,
   );
-
-  h.reset();
-  const menu = await tap(h, "ArrowDown");
-  assertEqual(menu.menuIndex, 1, "menuIndex after ArrowDown on the title");
-  assertEqual(menu.run.tick, 0, "run.tick on the title after the press");
 });

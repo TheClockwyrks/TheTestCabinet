@@ -136,6 +136,7 @@ export const REQUIRED_OPS = [
   "setSpawnTimer",
   "setNextSpawnAngle",
   "setNextSwarmAngle",
+  "setNextSpawnType",
   "setNextPuddleOffset",
   "setNextStrikeTarget",
   "setNextChestItem",
@@ -326,6 +327,7 @@ export interface SnapshotRun {
   /** The posed outcomes, each `null` while none is posed. */
   nextSpawnAngle: number | null;
   nextSwarmAngle: number | null;
+  nextSpawnType: string | null;
   nextPuddleOffset: { x: number; y: number } | null;
   nextStrikeTarget: number | null;
   nextChestItem: string | null;
@@ -438,6 +440,8 @@ export interface WickDebugApi {
   setNextSpawnAngle(degrees: number): void;
   /** Poses the direction of the next gnat swarm, `0` up to `360`. A run screen. */
   setNextSwarmAngle(degrees: number): void;
+  /** Poses the type of the next window spawn, an enemy id. A run screen. */
+  setNextSpawnType(id: EnemyId): void;
   /** Poses where one puddle of the next firing lands, about the lamplighter. A run screen. */
   setNextPuddleOffset(dx: number, dy: number): void;
   /** Poses the enemy the next Spark firing's first strike lands on. A run screen. */

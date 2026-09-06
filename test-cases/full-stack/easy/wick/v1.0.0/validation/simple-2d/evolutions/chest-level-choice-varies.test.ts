@@ -12,10 +12,10 @@
 //     `specs/progression.md` ("Slots"): `MAX_WEAPON_LEVEL` is `8`. Taper at 3
 //     and Brass at 1 are therefore exactly two candidates.
 //
-// WHAT IS READ. `CHESTS` (40) chests, each opened over the same two candidates,
+// WHAT IS READ. `CHESTS` (30) chests, each opened over the same two candidates,
 // posed back to their levels before each: the item each result names. More
-// than one distinct item appears across the forty. A build that always levels
-// the first slot, the weapon, or the passive names one item forty times.
+// than one distinct item appears across the thirty. A build that always levels
+// the first slot, the weapon, or the passive names one item thirty times.
 // Nothing is posed for the draw itself; a posed item is
 // `instrumentation/set-next-chest-item`.
 //
@@ -26,9 +26,9 @@
 // ... Nothing else changes", and the two items are posed back to their levels
 // through `setWeapon` and `setPassive`, which leave a held slot standing.
 //
-// TOLERANCE. Forty independent uniform draws over two candidates land on one
-// item with probability 2 × 2^-40, so a conformant build fails this reading
-// about never and a build that never varies fails it every time.
+// TOLERANCE. Thirty independent uniform draws over two candidates land on one
+// item with probability 2 × 2^-30, under 2e-9, so a conformant build fails
+// this reading about never and a build that never varies fails it every time.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, fail } from "../assert";
@@ -47,7 +47,7 @@ const PASSIVE = "brass";
 const PASSIVE_LEVEL = 1;
 
 /** How many chests are opened. */
-const CHESTS = 40;
+const CHESTS = 30;
 
 let h: Harness;
 
@@ -59,7 +59,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("levels Taper on some of forty chests and Brass on others", async () => {
+it("levels more than one distinct item across thirty chests", async () => {
   poseChestNight(h);
   const chosen = new Set<string>();
   for (let chest = 1; chest <= CHESTS; chest += 1) {

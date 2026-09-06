@@ -124,8 +124,8 @@ export async function collectSpawns(
  */
 export const CADENCE_SPAWNS = 3;
 
-/** How many spawns a window's type reading is drawn over. */
-export const TYPE_DRAWS = 60;
+/** How many window spawns a type reading draws with nothing posed. */
+export const UNPOSED_DRAWS = 6;
 
 /**
  * Draw `count` window spawns one to a tick, each posed by emptying the field
@@ -165,20 +165,43 @@ export async function drawSpawns(h: Harness, count: number): Promise<Spawn[]> {
 }
 
 /**
- * The type of each of `count` window spawns drawn by {@link drawSpawns}, in
- * order.
- *
- * Sixty is what makes a reading that every type of a row was drawn honest
- * against chance: a uniform draw over three types leaves one of them undrawn
- * across sixty draws about once in ten thousand million runs, past six
- * standard deviations, while a build that draws from one type alone, or from
- * a roster short of the row's, fails it every time.
+ * The type of each of `count` window spawns drawn by {@link drawSpawns} with
+ * nothing posed, in order. Each must be one the row lists, which is what a
+ * handful of draws decides: a build that reaches into another window's roster
+ * fails on the first spawn outside the row.
  */
 export async function drawTypes(
   h: Harness,
-  count = TYPE_DRAWS,
+  count = UNPOSED_DRAWS,
 ): Promise<EnemyId[]> {
   return (await drawSpawns(h, count)).map((spawn) => spawn.type);
+}
+
+/** One posed type and the type of the spawn the next due tick landed. */
+export interface PosedSpawn {
+  posed: EnemyId;
+  spawned: EnemyId;
+}
+
+/**
+ * Pose each type of window `index`'s row in turn through `setNextSpawnType`,
+ * which "The next window spawn is of that type in place of the type drawn
+ * from the window's types" (specs/instrumentation.md, "Drawn outcomes"), and
+ * answer what the next due tick spawned under each, read the way
+ * {@link drawSpawns} reads a draw. A build whose window cannot spawn one of
+ * the row's types fails on that type.
+ */
+export async function drawPosedTypes(
+  h: Harness,
+  index: number,
+): Promise<PosedSpawn[]> {
+  const posedTypes: PosedSpawn[] = [];
+  for (const posed of SPAWN_WINDOWS[index].types) {
+    h.debug.setNextSpawnType(posed);
+    const [spawn] = await drawSpawns(h, 1);
+    posedTypes.push({ posed, spawned: spawn.type });
+  }
+  return posedTypes;
 }
 
 /** The ticks between consecutive spawns, in order. */

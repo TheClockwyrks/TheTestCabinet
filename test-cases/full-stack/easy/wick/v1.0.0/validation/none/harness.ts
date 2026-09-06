@@ -280,6 +280,7 @@ export interface RunView {
   /** The posed outcomes, each `null` while none is posed. */
   nextSpawnAngle: number | null;
   nextSwarmAngle: number | null;
+  nextSpawnType: string | null;
   nextPuddleOffset: { x: number; y: number } | null;
   nextStrikeTarget: number | null;
   nextChestItem: string | null;
@@ -389,6 +390,8 @@ export interface WickDebugApi {
   setNextSpawnAngle(degrees: number): Promise<void>;
   /** Pose the direction of the next gnat swarm, `0` up to `360`. */
   setNextSwarmAngle(degrees: number): Promise<void>;
+  /** Pose the type of the next window spawn, an enemy id. */
+  setNextSpawnType(id: EnemyId): Promise<void>;
   /** Pose where one puddle of the next firing lands, about the lamplighter. */
   setNextPuddleOffset(dx: number, dy: number): Promise<void>;
   /** Pose the enemy the next Spark firing's first strike lands on. */
@@ -2315,6 +2318,7 @@ export function idleRun(weapons: readonly WeaponSlotView[] = []): RunView {
     nextId: 0,
     nextSpawnAngle: null,
     nextSwarmAngle: null,
+    nextSpawnType: null,
     nextPuddleOffset: null,
     nextStrikeTarget: null,
     nextChestItem: null,

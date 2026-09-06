@@ -1,24 +1,23 @@
-// pickups/stage — the drop rolls the rate checks in this directory read, and
-// the one posed kill the drop checks read.
+// pickups/stage — the drop rolls the `rollDrop` checks read, and the one posed
+// kill the drop checks read.
 //
-// WHAT THE RATE CHECKS SHARE. specs/world.md ("The drop roll") states the rule
+// WHAT THE ROLL CHECKS SHARE. specs/world.md ("The drop roll") states the rule
 // as a probability: "each common enemy killed by a weapon rolls for a pickup on
 // the tick it dies ... The roll drops bread with probability `BREAD_CHANCE`,
 // and only when it dropped no bread it drops a draft with probability
-// `DRAFT_CHANCE`." A probability is only readable over a sample, and the
-// surface carries the roll on its own: `rollDrop()` "Makes one drop roll
-// exactly as `specs/world.md` states under The drop roll and returns what it
-// decided: `bread`, `draft`, or `none`. It is a reading of the roll alone"
-// (specs/instrumentation.md, "Drawn outcomes"). So `bread-rate` and
-// `draft-rate` each read the same sample, `DROP_ROLLS` (`40000`) rolls made
-// through {@link rollDrops}, and count a different kind off it. Every sample
-// size and every bound the counts are held to is `constants.ts`'s, computed
-// from the two probabilities.
+// `DRAFT_CHANCE`." The surface carries the roll on its own: `rollDrop()`
+// "Makes one drop roll exactly as `specs/world.md` states under The drop roll
+// and returns what it decided: `bread`, `draft`, or `none`. It is a reading of
+// the roll alone" (specs/instrumentation.md, "Drawn outcomes"). The two
+// `instrumentation/roll-drop*` checks read a handful of such rolls through
+// {@link rollDrops}: what each returns, and that the state stands across them.
+// The probabilities themselves are the reviewer's to judge, since a sample a
+// check could afford cannot tell `0.02` from its neighbours.
 //
 // The rolls of a sample go into the page in one evaluation rather than one
 // crossing each. They are the build's own `window.__wick.rollDrop`, called the
 // way any caller would call it, exactly as `bracket` in `../harness` calls one
-// operation; what a single evaluation saves is forty thousand round trips.
+// operation; what a single evaluation saves is the round trips.
 //
 // WHAT THE POSED CHECKS SHARE. The same file has `setNextDrop(kind)` decide
 // what "the next common enemy killed by a weapon while `drops` is on drops ...
@@ -37,7 +36,7 @@
 // pickup's center names the kill that dropped it.
 
 import { assertEqual } from "../assert";
-import { DROP_ROLLS, HANDLE, NEXT_DROPS, type NextDrop } from "../constants";
+import { HANDLE, NEXT_DROPS, type NextDrop } from "../constants";
 import type { Harness, PickupView, WickSnapshot, XY } from "../harness";
 import { newGems, newPickups, placeEnemy, placeProjectile } from "../harness";
 
@@ -84,7 +83,7 @@ export interface RollSample {
  */
 export async function rollDrops(
   h: Harness,
-  rolls: number = DROP_ROLLS,
+  rolls: number,
 ): Promise<RollSample> {
   return h.page.evaluate(
     ([handle, count, kinds]) => {

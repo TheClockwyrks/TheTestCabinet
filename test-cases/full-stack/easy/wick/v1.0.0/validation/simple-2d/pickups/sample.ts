@@ -1,4 +1,4 @@
-// pickups/sample — the sample of drop rolls the two drop-rate points read,
+// pickups/sample — the handful of drop rolls the two `rollDrop` points read,
 // and the one posed kill the drop points read. CASE-PROVIDED.
 //
 // No review item names this file. The pose is a compound sequence of the
@@ -26,15 +26,16 @@
 //     what a kill dropped is read off the field at the point that kill
 //     happened.
 //
-// WHY THE SAMPLE IS A RUN OF ROLLS. A rate is a probability, and the surface
-// carries the roll on its own, so the sample is `DROP_ROLLS` (40000) calls of
-// `rollDrop` against the engine's current state, each the build's own roll
-// with nothing posed for it. The state the calls are made over is never
-// changed by them, which `instrumentation/roll-drop-changes-nothing` decides;
-// here each result is only counted.
+// WHY THE SAMPLE IS A RUN OF ROLLS. The surface carries the roll on its own,
+// so a sample is a caller's count of `rollDrop` calls against the engine's
+// current state, each the build's own roll with nothing posed for it. The
+// state the calls are made over is never changed by them, which
+// `instrumentation/roll-drop-changes-nothing` decides; here each result is
+// only counted. The probabilities themselves are the reviewer's to judge,
+// since a sample a point could afford cannot tell `0.02` from its neighbours.
 
 import { assertEqual } from "../assert";
-import { DROP_ROLLS, NEXT_DROPS, type NextDrop } from "../constants";
+import { NEXT_DROPS, type NextDrop } from "../constants";
 import type {
   GemSnapshot,
   Harness,
@@ -58,7 +59,7 @@ export interface RollSample {
  * Make `rolls` drop rolls through `rollDrop` and hand back what they decided.
  * Nothing is posed for the rolls, so each is the build's own.
  */
-export function rollDrops(h: Harness, rolls: number = DROP_ROLLS): RollSample {
+export function rollDrops(h: Harness, rolls: number): RollSample {
   const counts: Record<NextDrop, number> = { bread: 0, draft: 0, none: 0 };
   const others: unknown[] = [];
   const kinds: readonly string[] = NEXT_DROPS;

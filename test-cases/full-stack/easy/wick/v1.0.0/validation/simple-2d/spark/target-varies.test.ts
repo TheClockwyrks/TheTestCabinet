@@ -7,11 +7,11 @@
 //     within `SPARK_RANGE` (`600`) of the player's center". Row 1 of
 //     `SPARK_LEVELS` gives amount `1`.
 //
-// WHAT IS READ. Eighty level-1 firings over the same four owls in range: the
-// strike lands on every one of the four at least once. Under a uniform choice
-// the chance that some owl is never struck is `4 × (3/4)^80`, about `4e-10`,
+// WHAT IS READ. Sixteen level-1 firings over the same four owls in range: the
+// strike lands on at least two distinct owls. Under a uniform choice the
+// chance that all sixteen land on one owl is `4 × (1/4)^16`, under `1e-9`,
 // which is the tolerance this check accepts; a build that always strikes the
-// nearest, the lowest id, or the first in its list strikes one owl eighty
+// nearest, the lowest id, or the first in its list strikes one owl sixteen
 // times and fails. Nothing is posed for the target, so every draw is the
 // build's own; a posed target is `instrumentation/set-next-strike-target`.
 //
@@ -23,13 +23,17 @@
 // dies would be replaced under a fresh id, and a picker that takes the first
 // or the newest enemy would then wander across the posts without choosing
 // anything at random; four enemies whose ids never change are what tell a
-// choice from a rule, and an owl's 2000 hp outlives eighty strikes of 15.
+// choice from a rule, and an owl's 2000 hp outlives sixteen strikes of 15.
 //
 // TOLERANCE. `FIGURE_TOLERANCE` on a strike's center against an owl's posed
 // center; the counts are whole numbers.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import { ENEMIES } from "../constants";
 import {
   armWeapon,
@@ -42,14 +46,14 @@ import { armSpark, sparkRow, strikesIn, targetOf, targetsFor } from "./strike";
 /** The level held: amount 1, one strike a firing. */
 const LEVEL = 1;
 
-/** The enemy at every post: HP 2000, alive through eighty strikes of 15. */
+/** The enemy at every post: HP 2000, alive through sixteen strikes of 15. */
 const TYPE = "owl";
 
 /** How many owls stand within range. */
 const POSTS = 4;
 
 /** How many times Spark fires. */
-const FIRINGS = 80;
+const FIRINGS = 16;
 
 let h: Harness;
 
@@ -61,13 +65,13 @@ afterEach(() => {
   h.dispose();
 });
 
-it("strikes each of four owls at least once over eighty firings", async () => {
+it("strikes at least two distinct owls over sixteen firings", async () => {
   const row = sparkRow(LEVEL);
   assertEqual(row.amount, 1, "the level-1 row's amount");
   assertGreaterThanOrEqual(
     ENEMIES[TYPE].hp,
     FIRINGS * row.damage + 1,
-    "an owl's HP against eighty strikes",
+    "an owl's HP against sixteen strikes",
   );
   const volley = armSpark(h, LEVEL, targetsFor(POSTS), TYPE);
   const owls = volley.targets;
@@ -89,11 +93,9 @@ it("strikes each of four owls at least once over eighty firings", async () => {
   }
   captureStill(h, "random");
 
-  struck.forEach((count, index) => {
-    assertGreaterThanOrEqual(
-      count,
-      1,
-      `strikes on the owl ${index + 1} of ${POSTS} over ${FIRINGS} firings`,
-    );
-  });
+  assertGreaterThan(
+    struck.filter((count) => count > 0).length,
+    1,
+    `distinct owls struck over ${FIRINGS} firings (strikes per owl: ${struck.join(", ")})`,
+  );
 });

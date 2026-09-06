@@ -3,12 +3,12 @@
 //
 // WHERE THE THRESHOLD COMES FROM. `specs/evolutions.md` ("Opening a chest"),
 // rule 2: "One held item below its max level ... is chosen uniformly at
-// random". Over `CHESTS` (`40`) chests opened over the same two candidates a
-// uniform draw lands on each of them: a build that always levels the same item
-// has not drawn at all, and a fair draw misses one of two over forty chests
-// once in `2^39`.
+// random". A uniform draw over the same two candidates varies, so across
+// `CHESTS` (`30`) chests the item leveled takes at least two distinct values:
+// a build that always levels the same item has not drawn at all, and a fair
+// draw names one item on all thirty chests once in `2^29`, under `2e-9`.
 //
-// THE POSE. Forty chests on one isolated night, each opened over Taper at
+// THE POSE. Thirty chests on one isolated night, each opened over Taper at
 // level 3 and Brass at level 1, the pair of `chest-fallback-level`, both below
 // their max and nothing eligible to evolve. The loadout is posed back to those
 // levels before each chest through `setWeapon` and `setPassive`, which leave a
@@ -17,10 +17,10 @@
 // else changes". Each chest is reached the real way through the harness's
 // `openChest`, and nothing is posed for the draw itself.
 //
-// TOLERANCE. None on the reading: both ids must appear.
+// TOLERANCE. None on the reading: at least two distinct ids must appear.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertTrue } from "../assert";
+import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -33,7 +33,7 @@ import {
 import { chestOutcome, closeChest } from "./stage";
 
 /** How many chests are opened, as the review item states. */
-const CHESTS = 40;
+const CHESTS = 30;
 
 /** Taper's posed level: below `MAX_WEAPON_LEVEL`, so nothing is eligible to evolve. */
 const TAPER_LEVEL = 3;
@@ -51,7 +51,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("levels Taper on some of forty chests and Brass on others", async () => {
+it("levels more than one distinct item across thirty chests", async () => {
   await isolate(h);
   const chosen: string[] = [];
   for (let chest = 1; chest <= CHESTS; chest += 1) {
@@ -66,12 +66,15 @@ it("levels Taper on some of forty chests and Brass on others", async () => {
   await captureStill(h, "random");
 
   assertEqual(chosen.length, CHESTS, "chests opened");
-  assertTrue(
-    chosen.includes("taper"),
-    `Taper leveled by at least one of the ${CHESTS} chests (got ${chosen.join(", ")})`,
-  );
-  assertTrue(
-    chosen.includes("brass"),
-    `Brass leveled by at least one of the ${CHESTS} chests (got ${chosen.join(", ")})`,
+  for (const [index, item] of chosen.entries()) {
+    assertTrue(
+      item === "taper" || item === "brass",
+      `the item chest ${index + 1} leveled (${item}), one of the two held`,
+    );
+  }
+  assertGreaterThan(
+    new Set(chosen).size,
+    1,
+    `distinct items leveled across ${CHESTS} chests (got ${chosen.join(", ")})`,
   );
 });

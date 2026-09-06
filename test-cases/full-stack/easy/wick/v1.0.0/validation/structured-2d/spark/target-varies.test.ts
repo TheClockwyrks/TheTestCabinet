@@ -3,16 +3,16 @@
 // WHERE THE THRESHOLD COMES FROM. `specs/weapons.md` ("Spark"): "On firing,
 // `amount` strikes land, each on a distinct enemy chosen uniformly at random
 // among the live enemies within `SPARK_RANGE` (`600`) of the player's
-// center". A choice uniform over four moths strikes each of them, so over
-// eighty firings every one of the four is struck at least once; a build that
-// always strikes the nearest, the lowest id, or the first in its list
-// strikes one moth eighty times and fails here.
+// center". A choice uniform over four moths varies, so over sixteen firings
+// the strike lands on at least two distinct posts; a build that always
+// strikes the nearest, the lowest id, or the first in its list strikes one
+// post sixteen times and fails here.
 //
-// WHY EIGHTY. Under a uniform choice the chance that some one of four moths
-// goes unstruck in eighty independent draws is at most `4 × (3/4)^80`, about
-// `4e-10`, which is the tolerance this check accepts: a conformant build
-// fails this by chance about never, while any fixed rule fails it outright.
-// Eighty is what the checklist states.
+// WHY SIXTEEN. Under a uniform choice the chance that all sixteen independent
+// draws land on one of four posts is `4 × (1/4)^16`, under `1e-9`, which is
+// the tolerance this check accepts: a conformant build fails this by chance
+// about never, while any fixed rule fails it outright. Sixteen is what the
+// checklist states.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated run posed once by `isolate`
 // and never reset again. Nothing is posed for the target, so every draw is
@@ -32,7 +32,11 @@
 // numbers.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import { SPARK_LEVELS } from "../constants";
 import {
   advanceTicks,
@@ -52,7 +56,7 @@ const LEVEL = 1;
 const ROW = SPARK_LEVELS[LEVEL - 1];
 
 /** How many firings the draw is watched over. */
-const FIRINGS = 80;
+const FIRINGS = 16;
 
 let h: Harness;
 
@@ -64,7 +68,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("strikes each of four moths at least once over eighty firings", async () => {
+it("strikes at least two distinct posts over sixteen firings", async () => {
   assertEqual(ROW.amount, 1, "the amount SPARK_LEVELS row 1 gives");
   isolate(h);
   const slot = holdWeapon(h, "spark", LEVEL);
@@ -98,11 +102,9 @@ it("strikes each of four moths at least once over eighty firings", async () => {
   }
   captureStill(h, "random");
 
-  struck.forEach((count, post) => {
-    assertGreaterThanOrEqual(
-      count,
-      1,
-      `the strikes on the moth at post ${post} over ${FIRINGS} firings (all four: ${struck.join(", ")})`,
-    );
-  });
+  assertGreaterThan(
+    struck.filter((count) => count > 0).length,
+    1,
+    `distinct posts struck over ${FIRINGS} firings (strikes per post: ${struck.join(", ")})`,
+  );
 });

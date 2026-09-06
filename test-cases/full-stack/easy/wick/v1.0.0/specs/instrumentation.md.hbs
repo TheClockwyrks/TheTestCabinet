@@ -447,6 +447,18 @@ Sets `nextSwarmAngle` to `degrees`, in the same domain. The next gnat swarm's
 direction `d` is the unit vector at that angle, and that swarm consumes it.
 
 {{#if (eq engine.slug "simple-2d")}}
+#### `setNextSpawnType(state, id)`
+{{else}}
+#### `setNextSpawnType(id)`
+{{/if}}
+
+Sets `nextSpawnType` to `id`, an enemy id of `specs/enemies.md`; any other
+value is invalid. The next window spawn is of that type in place of the type
+drawn from the window's types, and that spawn consumes it. A window spawn
+whose row does not list the type discards it and draws at random. A scripted
+event spawns what its row states and leaves it standing.
+
+{{#if (eq engine.slug "simple-2d")}}
 #### `setNextPuddleOffset(state, dx, dy)`
 {{else}}
 #### `setNextPuddleOffset(dx, dy)`
@@ -879,6 +891,7 @@ export interface WickDebugApi {
   setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
   setNextSpawnAngle(state: DeepReadonly<WickState>, degrees: number): WickState;
   setNextSwarmAngle(state: DeepReadonly<WickState>, degrees: number): WickState;
+  setNextSpawnType(state: DeepReadonly<WickState>, id: EnemyId): WickState;
   setNextPuddleOffset(
     state: DeepReadonly<WickState>,
     dx: number,
@@ -1034,6 +1047,7 @@ export interface WickDebugApi {
   setSpawnTimer(seconds: number): void;
   setNextSpawnAngle(degrees: number): void;
   setNextSwarmAngle(degrees: number): void;
+  setNextSpawnType(id: EnemyId): void;
   setNextPuddleOffset(dx: number, dy: number): void;
   setNextStrikeTarget(id: number): void;
   setNextChestItem(id: WeaponId | PassiveId): void;
@@ -1151,6 +1165,7 @@ export interface WickDebugApi {
     nextId: <number>,
     nextSpawnAngle: <number> | null,        // the posed outcomes, each null
     nextSwarmAngle: <number> | null,        // while none is posed
+    nextSpawnType: <string> | null,
     nextPuddleOffset: { x, y } | null,
     nextStrikeTarget: <number> | null,
     nextChestItem: <string> | null,

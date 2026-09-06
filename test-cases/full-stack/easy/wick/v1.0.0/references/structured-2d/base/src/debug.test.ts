@@ -92,6 +92,7 @@ describe("the snapshot", () => {
       nextId: 0,
       nextSpawnAngle: null,
       nextSwarmAngle: null,
+      nextSpawnType: null,
       nextPuddleOffset: null,
       nextStrikeTarget: null,
       nextChestItem: null,
@@ -873,6 +874,7 @@ describe("the drawn outcome poses", () => {
     const [moth] = debug.snapshot().run.enemies;
     debug.setNextSpawnAngle(0);
     debug.setNextSwarmAngle(359.5);
+    debug.setNextSpawnType("bat");
     debug.setNextPuddleOffset(-240, 320);
     debug.setNextStrikeTarget(moth.id);
     debug.setNextChestItem("brass");
@@ -880,6 +882,7 @@ describe("the drawn outcome poses", () => {
     expect(debug.snapshot().run).toMatchObject({
       nextSpawnAngle: 0,
       nextSwarmAngle: 359.5,
+      nextSpawnType: "bat",
       nextPuddleOffset: { x: -240, y: 320 },
       nextStrikeTarget: moth.id,
       nextChestItem: "brass",
@@ -908,10 +911,13 @@ describe("the drawn outcome poses", () => {
     expect(() => debug.setNextStrikeTarget(-1)).toThrow();
     expect(() => debug.setNextChestItem("pyre" as never)).toThrow();
     expect(() => debug.setNextChestItem("lamp-oil" as never)).toThrow();
+    expect(() => debug.setNextSpawnType("taper" as never)).toThrow();
+    expect(() => debug.setNextSpawnType(3 as never)).toThrow();
     expect(() => debug.setNextDrop("chest" as never)).toThrow();
     expect(debug.snapshot().run).toMatchObject({
       nextSpawnAngle: null,
       nextSwarmAngle: null,
+      nextSpawnType: null,
       nextPuddleOffset: { x: 400, y: 0 },
       nextStrikeTarget: null,
       nextChestItem: null,

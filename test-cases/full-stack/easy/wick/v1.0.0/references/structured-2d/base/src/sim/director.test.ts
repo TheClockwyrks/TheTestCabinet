@@ -383,6 +383,38 @@ describe("dawn", () => {
   });
 });
 
+describe("the posed spawn type", () => {
+  it("spawn the next window spawn as nextSpawnType and consume it", () => {
+    const world = playing();
+    const { run } = world.state;
+    run.tick = 2 * SPAWN_WINDOW * TICK_HZ;
+    run.nextSpawnType = "rat";
+    step(world);
+    expect(run.enemies.map((enemy) => enemy.type)).toEqual(["rat"]);
+    expect(run.nextSpawnType).toBeNull();
+  });
+
+  it("discard a posed type the window's row does not list", () => {
+    const world = playing();
+    const { run } = world.state;
+    run.nextSpawnType = "hound";
+    step(world);
+    expect(run.enemies.map((enemy) => enemy.type)).toEqual(["moth"]);
+    expect(run.nextSpawnType).toBeNull();
+  });
+
+  it("leave a posed type standing across a scripted event", () => {
+    const world = playing();
+    world.state.spawning = false;
+    const { run } = world.state;
+    run.nextSpawnType = "bat";
+    before(world, 120);
+    step(world);
+    expect(run.enemies.map((enemy) => enemy.type)).toEqual(["mothwing"]);
+    expect(run.nextSpawnType).toBe("bat");
+  });
+});
+
 describe("the posed angles", () => {
   it("place the next window spawn at nextSpawnAngle and consume it", () => {
     const world = playing();

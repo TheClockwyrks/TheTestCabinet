@@ -269,6 +269,7 @@ export function snapshot(state: View): WickSnapshot {
       nextId: r.nextId,
       nextSpawnAngle: r.nextSpawnAngle,
       nextSwarmAngle: r.nextSwarmAngle,
+      nextSpawnType: r.nextSpawnType,
       nextPuddleOffset:
         r.nextPuddleOffset === null ? null : { ...r.nextPuddleOffset },
       nextStrikeTarget: r.nextStrikeTarget,
@@ -376,6 +377,14 @@ export function createDebugApi(): WickDebugApi {
       const value = angle(degrees);
       return pose(state, (draft) => {
         draft.run.nextSwarmAngle = value;
+      });
+    },
+    setNextSpawnType(state, id) {
+      if (typeof id !== "string" || !isEnemyId(id))
+        invalid(`${String(id)} is no enemy`);
+      const type = id;
+      return pose(state, (draft) => {
+        draft.run.nextSpawnType = type;
       });
     },
     setNextPuddleOffset(state, dx, dy) {

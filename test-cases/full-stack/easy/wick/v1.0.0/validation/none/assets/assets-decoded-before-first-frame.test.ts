@@ -13,8 +13,10 @@
 // it wraps the image `src` setter and `createImageBitmap`, so every image is
 // counted from the moment a URL lands on it until its load settles; and it reads
 // the cues bound by then, through the Web Audio decodes this case's audio probe
-// already logs and through any media element pointed at a produced file. The page
-// is then left to settle and the record is read.
+// already logs and through any media element pointed at a produced file. The
+// record is read once the probe has seen a frame drawn and every image the build
+// started has settled, a condition waited for under a bound that serves only as
+// a failure cap.
 //
 // WHAT IS ASSERTED. That a frame was drawn at all; that every image the build
 // asked for had settled when it was, with none in flight and none arriving after;
@@ -28,8 +30,9 @@
 // presentation category's.
 //
 // THE TOLERANCE. None on the order: an image had settled before the first drawing
-// call or it had not. The settling wait is the harness's own allowance, so a
-// build still fetching when the record is read is read as still fetching.
+// call or it had not. The wait is on a stated condition rather than a span of
+// real time, so a build that never draws, or never finishes a load it started,
+// is read at the cap as it stands and fails on what the record shows.
 
 import { it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
@@ -52,8 +55,11 @@ interface FirstFrame {
 /** How long the surface is waited for before the load is called a failure. */
 const SURFACE_TIMEOUT_MS = 15_000;
 
-/** How long the page is left to finish whatever it started. */
-const SETTLE_MS = 3_000;
+/**
+ * How long a drawn frame with every started image settled is waited for. A
+ * failure cap alone: the record is read as it stands when the wait ends.
+ */
+const SETTLED_TIMEOUT_MS = 15_000;
 
 it("draws its first frame with every image decoded and every cue bound", async () => {
   const site = await openSite({
@@ -72,7 +78,22 @@ it("draws its first frame with every image decoded and every cue bound", async (
         { timeout: SURFACE_TIMEOUT_MS },
       )
       .catch(() => undefined);
-    await site.page.waitForTimeout(SETTLE_MS);
+    await site.page
+      .waitForFunction(
+        () => {
+          const probe = (
+            window as unknown as {
+              __wickFirstFrame?: { read(): FirstFrame };
+            }
+          ).__wickFirstFrame;
+          if (probe === undefined) return false;
+          const state = probe.read();
+          return state.drawn && state.imagesSettled === state.imagesStarted;
+        },
+        undefined,
+        { timeout: SETTLED_TIMEOUT_MS, polling: 25 },
+      )
+      .catch(() => undefined);
 
     const record = (await site.page.evaluate(
       () =>
@@ -89,7 +110,7 @@ it("draws its first frame with every image decoded and every cue bound", async (
     }
     if (!record.drawn) {
       fail(
-        `a first frame drawn within ${SETTLE_MS / 1000}s of the page loading`,
+        `a first frame drawn within ${SETTLED_TIMEOUT_MS / 1000}s of the page loading`,
         "nothing was ever drawn on a 2D context",
       );
     }

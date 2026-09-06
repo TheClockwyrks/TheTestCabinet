@@ -2038,6 +2038,7 @@ export const IDLE_RUN: SnapshotRun = {
   nextId: 0,
   nextSpawnAngle: null,
   nextSwarmAngle: null,
+  nextSpawnType: null,
   nextPuddleOffset: null,
   nextStrikeTarget: null,
   nextChestItem: null,

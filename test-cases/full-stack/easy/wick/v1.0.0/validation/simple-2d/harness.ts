@@ -2234,6 +2234,7 @@ export interface RunFields {
   nextId: number;
   nextSpawnAngle: number | null;
   nextSwarmAngle: number | null;
+  nextSpawnType: string | null;
   nextPuddleOffset: { x: number; y: number } | null;
   nextStrikeTarget: number | null;
   nextChestItem: string | null;
@@ -2274,6 +2275,7 @@ export function runFields(run: RunSnapshot): RunFields {
     nextId: run.nextId,
     nextSpawnAngle: run.nextSpawnAngle,
     nextSwarmAngle: run.nextSwarmAngle,
+    nextSpawnType: run.nextSpawnType,
     nextPuddleOffset: run.nextPuddleOffset,
     nextStrikeTarget: run.nextStrikeTarget,
     nextChestItem: run.nextChestItem,
