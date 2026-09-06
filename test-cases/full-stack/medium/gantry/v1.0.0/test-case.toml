@@ -12356,19 +12356,20 @@ validation = { script = "assets/assets-load-clean.test.ts", outputs = [
   { id = "run", name = "The play-through with every asset loaded", kind = "image" },
 ] }
 
-# Read the install lifecycle scripts package.json declares, then run npm run
-# build in a copy of the build workspace with PATH stripped of the directories
-# carrying voxel, sfx-synth, sfx-sample and music, and with a shim on PATH that
-# exits non-zero under each of those four names. — No lifecycle script names a
-# tool, the build exits zero, no shim was invoked, and dist/index.html and
-# every produced file the site loads are present.
+# Read the install lifecycle scripts package.json declares, following each one
+# through the scripts it hands off to with npm run, then run npm run build in a
+# copy of the build workspace with PATH stripped of the directories carrying
+# voxel, sfx-synth, sfx-sample and music, and with a shim on PATH that exits
+# non-zero under each of those four names. — No install script reaches a tool,
+# the build exits zero, no shim was invoked, and dist/index.html and every
+# produced file the site loads are present.
 # From specs/assets.md intro — '`npm ci` and `npm run build` invoke no tool';
 # specs/overview.md § The build interface — 'neither `npm ci` nor `npm run
 # build` invokes a tool'.
 [[review.categories.items]]
 id = "build-invokes-no-asset-tool"
 title = "npm ci and npm run build invoke no asset tool"
-description = "No install lifecycle script names voxel, sfx-synth, sfx-sample or music, and the build completes with all four absent from PATH and produces the same dist: the committed files are the assets and the build only bundles them."
+description = "No install lifecycle script, nor a script one hands off to, names voxel, sfx-synth, sfx-sample or music, and the build completes with all four absent from PATH and produces the same dist: the committed files are the assets and the build only bundles them."
 domains = ["presentation"]
 failure_cap = "broken"
 validation = { script = "assets/build-invokes-no-asset-tool.test.ts", outputs = [
