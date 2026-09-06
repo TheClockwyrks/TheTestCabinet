@@ -1,6 +1,6 @@
 // channel/self-advancing — the hall runs on the build's own clock.
 //
-// THE SPEC LINE. `specs/instrumentation.md`, "A deterministic core": "The hall
+// THE SPEC LINE. `specs/instrumentation.md`, "A render-free core": "The hall
 // advances on a fixed tick of `TICK_HZ` (`60`) ticks per second ... every
 // frame's delta time accumulates, whole ticks are consumed, and the remainder
 // waits for the next frame", and `setAutoStep`: "`setAutoStep(true)` returns it

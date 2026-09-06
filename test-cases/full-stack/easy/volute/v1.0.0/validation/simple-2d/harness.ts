@@ -129,7 +129,6 @@ import {
   CELLS,
   CHANNEL,
   CHANNEL_ARC,
-  DEFAULT_SEED,
   FIELD_H,
   FIELD_W,
   HANDLE,
@@ -253,7 +252,8 @@ export interface VoluteSnapshot {
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
-  rngState: number;
+  /** The charge posed for the next emission, `null` while none stands. */
+  nextEmitted: ChargeId | null;
 }
 
 /**
@@ -287,8 +287,8 @@ export type PosedCore = [
 export interface VoluteSurface<S = unknown> {
   /** `VOLUTE_DEBUG_VERSION`, a plain number. */
   version: number;
-  /** Restore every declared field to its title value and reseed the generator. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  /** Restore every declared field to its title value. */
+  reset(state: DeepReadonly<S>): S;
   /** A pure reading of the running game. */
   snapshot(state: DeepReadonly<S>): VoluteSnapshot;
   /** Set the screen, and nothing else. */
@@ -307,10 +307,12 @@ export interface VoluteSurface<S = unknown> {
   poseTrain(state: DeepReadonly<S>, cores: readonly PosedCore[]): S;
   /** Remove every core from the channel and every projectile. */
   clearTrain(state: DeepReadonly<S>): S;
-  /** Set the charge the injector holds loaded. The generator is untouched. */
+  /** Set the charge the injector holds loaded, and nothing else. */
   setLoaded(state: DeepReadonly<S>, charge: ChargeId): S;
-  /** Set the charge the injector holds queued. The generator is untouched. */
+  /** Set the charge the injector holds queued, and nothing else. */
   setQueued(state: DeepReadonly<S>, charge: ChargeId): S;
+  /** Pose the charge of the next core the inlet emits, or clear it with `null`. */
+  setNextEmitted(state: DeepReadonly<S>, charge: ChargeId | null): S;
   /** Set the aim, normalized into [0, 360), and nothing else. */
   setAim(state: DeepReadonly<S>, angleDegrees: number): S;
   /** Release the loaded core along the current aim. Always launches. */
@@ -362,8 +364,8 @@ export type VoluteSyncDriver = PureDriver<
  * counterpart in the engineless project.
  */
 export interface VoluteDebugApi {
-  /** Restore every declared field to its title value and reseed the generator. */
-  reset(options?: { seed?: number }): Promise<void>;
+  /** Restore every declared field to its title value. */
+  reset(): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<VoluteSnapshot>;
   /** Set the screen, and nothing else. */
@@ -382,10 +384,12 @@ export interface VoluteDebugApi {
   poseTrain(cores: readonly PosedCore[]): Promise<void>;
   /** Remove every core from the channel and every projectile. */
   clearTrain(): Promise<void>;
-  /** Set the charge the injector holds loaded. The generator is untouched. */
+  /** Set the charge the injector holds loaded, and nothing else. */
   setLoaded(charge: ChargeId): Promise<void>;
-  /** Set the charge the injector holds queued. The generator is untouched. */
+  /** Set the charge the injector holds queued, and nothing else. */
   setQueued(charge: ChargeId): Promise<void>;
+  /** Pose the charge of the next core the inlet emits, or clear it with `null`. */
+  setNextEmitted(charge: ChargeId | null): Promise<void>;
   /** Set the aim, normalized into [0, 360), and nothing else. */
   setAim(angleDegrees: number): Promise<void>;
   /** Release the loaded core along the current aim. Always launches. */
@@ -1000,8 +1004,6 @@ function unusableSurface<D extends object>(reason: string): D {
 export type Viewport = EngineViewport;
 
 export interface HarnessOptions extends EngineHarnessOptions {
-  /** The seed the opening `reset` is given. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /** The clock each frame takes its delta from. Defaults to one tick a frame. */
   clock?: Clock;
 }
@@ -1245,8 +1247,7 @@ const kit = createEngineCaseHarness<
 
 /**
  * Stand the engine up over a canvas of the harness's own, initialize the build's
- * game, reset it to the title on a known seed, and hand back everything a check
- * reads.
+ * game, reset it to the title, and hand back everything a check reads.
  *
  * The default shape is the field's own size at one device pixel per CSS pixel, so
  * a logical coordinate, a CSS pixel and a canvas pixel are all the same thing and
@@ -1267,7 +1268,6 @@ export async function createHarness(
   const base = await kit.createHarness(options);
   const engine = base.engine;
   const calls = base.calls;
-  const seed = options.seed ?? DEFAULT_SEED;
 
   const surfaceFault = surfaceFaultOf(engine);
   const debug: VoluteDebugApi =
@@ -1280,10 +1280,9 @@ export async function createHarness(
   const openingScreen =
     surfaceFault === null ? (await debug.snapshot()).screen : null;
 
-  // Back to the title on a known seed before a check touches anything: `reset` is
-  // what seeds the generator, so a scenario driven from a known seed is
-  // reproducible from this line on.
-  if (surfaceFault === null) await debug.reset({ seed });
+  // Back to the title before a check touches anything, so every scenario is
+  // posed from the same title values.
+  if (surfaceFault === null) await debug.reset();
 
   // Every driven tick opens a fresh operation log, so `lastCalls` is the last
   // tick's render and nothing before it, and a drive of ten thousand ticks costs

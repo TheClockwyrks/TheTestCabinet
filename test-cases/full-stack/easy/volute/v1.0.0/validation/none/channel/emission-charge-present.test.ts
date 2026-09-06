@@ -2,9 +2,9 @@
 // already standing on the channel.
 //
 // THE SPEC LINE. `specs/channel.md`, "Emission": "An emitted core's charge is
-// drawn from the game's seeded generator, uniformly over the set of distinct
-// charges on the channel at the moment of emission, and uniformly over the
-// level's charge set when the channel carries no core." Both halves are read
+// drawn at random, uniformly over the set of distinct charges on the channel at
+// the moment of emission, and uniformly over the level's charge set when the
+// channel carries no core." Both halves are read
 // here, because the specification states both: an emission onto an occupied
 // channel is confined to what stands on it, and an emission onto an empty one
 // falls back to the level's set (`specs/progression.md`'s table).

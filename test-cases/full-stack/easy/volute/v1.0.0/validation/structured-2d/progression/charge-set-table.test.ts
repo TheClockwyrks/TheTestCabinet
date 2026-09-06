@@ -11,10 +11,10 @@
 //
 // "The charges in play are the level's charge set, the set every charge draw
 // falls back to." Two draws put a core on the channel, and `specs/channel.md`
-// states both: the seeded cores, whose "charge is drawn from the seeded generator
-// uniformly over the level's charge set", and an emission, "uniformly over the
-// set of distinct charges on the channel at the moment of emission, and uniformly
-// over the level's charge set when the channel carries no core".
+// states both: the seeded cores, whose "charge is drawn at random, uniformly
+// over the level's charge set", and an emission, "uniformly over the set of
+// distinct charges on the channel at the moment of emission, and uniformly over
+// the level's charge set when the channel carries no core".
 //
 // THE DRIVE, IN TWO HALVES, BECAUSE THE SET IS REACHED TWO WAYS.
 //

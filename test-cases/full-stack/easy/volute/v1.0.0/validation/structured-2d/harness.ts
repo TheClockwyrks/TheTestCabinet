@@ -122,7 +122,6 @@ import {
   CELLS,
   CHANNEL,
   CHANNEL_ARC,
-  DEFAULT_SEED,
   FIELD_H,
   FIELD_W,
   INJECTOR,
@@ -243,7 +242,8 @@ export interface VoluteSnapshot {
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
-  rngState: number;
+  /** The charge posed for the next emission, `null` while none stands. */
+  nextEmitted: ChargeId | null;
 }
 
 /**
@@ -277,8 +277,8 @@ export type PosedCore = [
 export interface VoluteDebugApi {
   /** `VOLUTE_DEBUG_VERSION`, a plain number. */
   version: number;
-  /** Restore every declared field to its title value and reseed the generator. */
-  reset(options?: { seed?: number }): void;
+  /** Restore every declared field to its title value. */
+  reset(): void;
   /** A pure reading of the running game. */
   snapshot(): VoluteSnapshot;
   /** Set the screen, and do nothing else. */
@@ -297,10 +297,12 @@ export interface VoluteDebugApi {
   poseTrain(cores: readonly PosedCore[]): void;
   /** Remove every core from the channel and every projectile. */
   clearTrain(): void;
-  /** Set the charge the injector holds loaded. The generator is untouched. */
+  /** Set the charge the injector holds loaded, and nothing else. */
   setLoaded(charge: ChargeId): void;
-  /** Set the charge the injector holds queued. The generator is untouched. */
+  /** Set the charge the injector holds queued, and nothing else. */
   setQueued(charge: ChargeId): void;
+  /** Pose the charge of the next core the inlet emits, or clear it with `null`. */
+  setNextEmitted(charge: ChargeId | null): void;
   /** Set the aim, normalized into [0, 360), and do nothing else. */
   setAim(angleDegrees: number): void;
   /** Release the loaded core along the current aim. Always launches. */
@@ -934,8 +936,6 @@ function unexposedSurface(reason: string): VoluteDebugApi {
 export type Viewport = EngineViewport;
 
 export interface HarnessOptions extends EngineHarnessOptions {
-  /** The seed the opening `reset` is given. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /** The clock each frame takes its delta from. Defaults to 60 Hz. */
   clock?: Clock;
 }
@@ -1170,7 +1170,7 @@ const kit = createEngineCaseHarness<
 
 /**
  * Stand the build's game up on the engine over a canvas of the harness's own,
- * reset it to the title on a known seed, and hand back everything a check reads.
+ * reset it to the title, and hand back everything a check reads.
  *
  * The default shape is the field's own size at one device pixel per CSS pixel, so
  * a logical coordinate and a canvas pixel are the same thing and no check has to
@@ -1191,7 +1191,6 @@ export async function createHarness(
   const base = await kit.createHarness(options);
   const engine = base.engine;
   const calls = base.calls;
-  const seed = options.seed ?? DEFAULT_SEED;
 
   const surfaceFault = surfaceFaultOf(engine);
   const debug =
@@ -1204,7 +1203,7 @@ export async function createHarness(
   let openingScreen: VoluteSnapshot["screen"] | null = null;
   if (surfaceFault === null) {
     openingScreen = debug.snapshot().screen;
-    debug.reset({ seed });
+    debug.reset();
     await base.advance(1);
   }
 

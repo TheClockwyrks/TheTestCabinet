@@ -307,12 +307,12 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
       });
     },
 
-    /** Set the charge the injector holds loaded. The generator is untouched. */
+    /** Set the charge the injector holds loaded, and nothing else. */
     setLoaded(charge) {
       game.pose((mode) => mode.injector().setLoaded(asCharge(charge)));
     },
 
-    /** Set the charge the injector holds queued. The generator is untouched. */
+    /** Set the charge the injector holds queued, and nothing else. */
     setQueued(charge) {
       game.pose((mode) => {
         mode.injector().queued = asCharge(charge);

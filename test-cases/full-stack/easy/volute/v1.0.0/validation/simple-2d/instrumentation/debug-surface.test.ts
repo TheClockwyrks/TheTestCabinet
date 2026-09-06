@@ -69,7 +69,6 @@ import {
   ANGLE_TOL,
   CELLS,
   CHARGE_IDS,
-  DEFAULT_SEED,
   HANDLE,
   INJECTOR_FIELDS,
   MACHINERY_KINDS,
@@ -232,7 +231,8 @@ it("restores every declared field to its title value on reset", async () => {
   await fireAt(h, 90);
   await h.step(DRIVE_TICKS);
 
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.setNextEmitted("sulfur");
+  await h.debug.reset();
   const title = await h.snapshot();
 
   // Read without stepping: `reset` "Restores every declared field of the game's
@@ -249,6 +249,7 @@ it("restores every declared field to its title value on reset", async () => {
   assertEqual(title.interlude, 0, "the interlude a reset leaves");
   assertNull(title.injector.loaded, "the loaded core a reset leaves");
   assertNull(title.injector.queued, "the queued core a reset leaves");
+  assertNull(title.nextEmitted, "the posed emission charge a reset leaves");
   assertEqual(title.injector.cooldown, 0, "the cooldown a reset leaves");
   assertAngleNear(
     title.injector.aim,
@@ -270,7 +271,7 @@ it("restores every declared field to its title value on reset", async () => {
 });
 
 it("poses the screen, the level, the score, the cells and the chain one at a time", async () => {
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
 
   // Each of these "changes nothing else", so each is read back on its own and
   // the fields the others own are read back unchanged beside it.
@@ -309,7 +310,7 @@ it("poses the screen, the level, the score, the cells and the chain one at a tim
 
 it("holds the inlet and the train with the driver's two gates", async () => {
   // Both gates are read back the way every other field is: set a value, read it.
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
   await h.debug.setEmission(false);
   await h.debug.setFeed(false);
   const held = await h.snapshot();
@@ -351,7 +352,7 @@ it("holds the inlet and the train with the driver's two gates", async () => {
 });
 
 it("opens a named level with startLevel", async () => {
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
 
   // "Opens `level`, a whole number clamped to `1` through `LEVEL_COUNT` (`5`)".
   // Level 3 rather than 1, so a build that ignores the argument fails.
@@ -421,6 +422,21 @@ it("holds the charges it is given and releases the loaded one on fire", async ()
   const held = await h.snapshot();
   assertEqual(held.injector.loaded, "cobalt", "the charge setLoaded set");
   assertEqual(held.injector.queued, "garnet", "the charge setQueued set");
+
+  // "The snapshot reports the pose as `nextEmitted`, and `null` while none
+  // stands": the read-back of the pose alone. What the inlet then emits under it
+  // is `instrumentation/set-next-emitted-poses-the-charge`.
+  await h.debug.setNextEmitted("sulfur");
+  assertEqual(
+    (await h.snapshot()).nextEmitted,
+    "sulfur",
+    "the charge setNextEmitted posed",
+  );
+  await h.debug.setNextEmitted(null);
+  assertNull(
+    (await h.snapshot()).nextEmitted,
+    "the pose setNextEmitted(null) cleared",
+  );
 
   // "Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and does nothing
   // else": -90 is 270 once normalized, which is what makes this a reading of the
@@ -576,7 +592,6 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
     "chainTimer",
     "interlude",
     "simTime",
-    "rngState",
   ] as const) {
     assertEqual(typeof s[field], "number", `snapshot().${field}`);
   }
@@ -584,6 +599,12 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
   assertEqual(typeof s.emission, "boolean", "snapshot().emission");
   assertEqual(typeof s.feed, "boolean", "snapshot().feed");
   assertEqual(typeof s.muted, "boolean", "snapshot().muted");
+  // A charge id while a pose stands, and `null` otherwise.
+  assertContains(
+    [...CHARGE_IDS, null],
+    s.nextEmitted,
+    "snapshot().nextEmitted",
+  );
 
   // The train, head first, with every documented field on every entry.
   assertGreaterThan(s.train.length, 0, "the cores snapshot() reports");
