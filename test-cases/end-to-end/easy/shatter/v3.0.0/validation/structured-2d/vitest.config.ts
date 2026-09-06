@@ -55,9 +55,9 @@ export default defineEngineValidationConfig({
   // allowance is a check that failed a correct build for a fact about the
   // machine. The figure is therefore many times the longest scenario rather than
   // a snug fit around it: the longest here — `saucer/at-most-one-at-a-time`
-  // marching two minutes of game time at `MARCH_TICKS` ticks a frame, the
-  // avoidance sweep's 36 crossings — run in a couple of seconds of processor
-  // time, and five minutes is room for a host twenty times oversubscribed.
+  // marching fifty seconds of game time at `MARCH_TICKS` ticks a frame, the
+  // avoidance sweep's 20 crossings — run in about a second of processor time,
+  // and five minutes is room for a host twenty times oversubscribed.
   testTimeout: 300_000,
   // The same allowance for a hook, which here builds an engine and awaits the
   // build's own `initialize`: a `beforeEach` that crosses a ceiling is a lost

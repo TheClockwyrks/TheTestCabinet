@@ -392,9 +392,9 @@ export interface Harness {
    *
    * The route for a check that samples the state on EVERY frame — the aim
    * group's shot-by-shot sweep, `saucer/at-most-one-at-a-time`'s trace of the
-   * reported ids across two minutes. Those loops call `advance(1)` a frame at a
-   * time on purpose, so that no frame is ever stepped over, and each of those
-   * calls would otherwise draw its one picture: fourteen thousand of them to
+   * reported ids across fifty seconds. Those loops call `advance(1)` a frame at
+   * a time on purpose, so that no frame is ever stepped over, and each of those
+   * calls would otherwise draw its one picture: six thousand of them to
    * read one number off each. Inside a quiet scope the same frames run, the same
    * snapshots are read, and one picture is drawn rather than all of them.
    *
@@ -536,7 +536,11 @@ export type PointerDevice = "mouse" | "pen" | "touch";
 
 /** The buttons a pointer may hold, as the engine names them. */
 export type PointerButton =
-  "primary" | "secondary" | "auxiliary" | "back" | "forward";
+  | "primary"
+  | "secondary"
+  | "auxiliary"
+  | "back"
+  | "forward";
 
 /** How one dispatched pointer event is shaped. */
 export interface PointerOptions {

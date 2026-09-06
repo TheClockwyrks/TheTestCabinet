@@ -116,8 +116,7 @@ it("spawns every Large of a wave inside its range scaled by that wave's multipli
 
   const wave = Math.max(1, arrival.snapshot.wave);
   // specs/progression.md: 1 + min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (N - 1)).
-  const multiplier =
-    1 + Math.min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (wave - 1));
+  const multiplier = 1 + Math.min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (wave - 1));
   const spawned = rocksOf(arrival.snapshot, "large");
 
   assertGreaterThan(

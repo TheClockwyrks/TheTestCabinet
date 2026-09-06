@@ -73,7 +73,7 @@ import {
 } from "../harness";
 import { poseVisit } from "./visit";
 
-/** The nine entry rows: eighty units either side of the star's, in twenties. */
+/** The five entry rows: eighty units either side of the star's, in forties. */
 const ROW_OFFSETS = [-80, -40, 0, 40, 80] as const;
 
 /** The two edges a saucer enters at, each heading into the field. */

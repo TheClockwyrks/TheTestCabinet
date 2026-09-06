@@ -19,7 +19,7 @@
 //                  HORIZONTAL shot so the two kick conventions differ by
 //                  construction
 
-import { FIELD_H, FIELD_W, SAUCER_SPEED } from "./constants";
+import { FIELD_H, FIELD_W } from "./constants";
 import { driftOver, pullAt, type Vec } from "./geometry";
 
 /* -------------------------------------------------------------------------- */
@@ -105,21 +105,6 @@ export const FRAGMENT_FAN_DRIFT_PER_SECOND: number = driftOver(
   FRAGMENT_FAN.parent,
   1,
 );
-
-/* -------------------------------------------------------------------------- */
-/* The saucer's approach to the core                                          */
-/* -------------------------------------------------------------------------- */
-
-/**
- * How many whole crossings of the field a saucer at cruise makes in a second,
- * inverted: the seconds one crossing takes, edge to edge.
- *
- * A sweep needs to know how long to fly each crossing for, and the answer is a
- * consequence of the field's width and the saucer's cruise rather than a figure
- * of its own. A crossing that is allowed to run longer than this only tells the
- * check about a saucer that has already passed the star.
- */
-export const CROSSING_SECONDS: number = FIELD_W / SAUCER_SPEED;
 
 /* -------------------------------------------------------------------------- */
 /* The seams                                                                  */

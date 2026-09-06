@@ -1,5 +1,5 @@
 // field/star-fixed-at-centre — the star is drawn at (640, 360) on the first tick of
-// play, and is still drawn there after a minute of it.
+// play, and is still drawn there ten seconds of play later.
 //
 // THE RULE. `specs/field.md`: "a single star stands at `(STAR_X, STAR_Y)` =
 // `(640, 360)`, the centre of the field, for the whole game. It never moves, and
@@ -10,7 +10,7 @@
 // in the state.
 //
 // WHAT THIS ITEM ADDS, AND WHAT IT SHARES. Both readings are taken twice, once on
-// the first tick and once a minute of real play later, and the SECOND pair is what
+// the first tick and once a stretch of real play later, and the SECOND pair is what
 // this item decides that no other does: `presentation/star-core-is-drawn` reads the
 // same disc and `presentation/star-halo-fades-outward` the same absence, but both
 // on an opening frame alone. A build whose star drifts with its own accumulated
@@ -57,8 +57,20 @@
 // the outer rings this reads. Posing it at `(200, 620)` puts it clear of all of
 // them. Nothing else is on the field.
 //
-// THE MINUTE IS REAL PLAY, not a skipped clock: the game is advanced a minute of
-// whole ticks and draws every one of them.
+// HOW LONG THE STRETCH BETWEEN THE TWO READINGS IS, AND WHERE THE FIGURE COMES
+// FROM. Ten seconds, taken from the slowest speed the specifications give
+// anything that moves on this field: `ROCK_SPEED_MIN.large`, `60` units a second
+// (`specs/rocks.md`). A star carried along at even that rate covers `600` units
+// over the stretch — most of the way across the field, and sixty times the `10`
+// units that would put its own drawn edge onto the first ring beyond
+// `STAR_DRAW_R` this reads — so a star that moves at any rate this game moves
+// anything has left the centre by the second reading. Lengthening the stretch
+// buys a slower drift than the game itself has anywhere in it, at a cost paid on
+// every run of every build.
+//
+// THE STRETCH IS REAL PLAY, not a skipped clock: the game runs every one of its
+// whole ticks, and the raster alone is held off until the frame the second
+// reading is taken from.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { CORE_R, STAR_DRAW_R, STAR_X, STAR_Y } from "../constants";
@@ -120,8 +132,11 @@ const BEYOND_SPOKES = 24;
  */
 const BEYOND_LIMIT = 15;
 
-/** The minute of play the second reading is taken after. */
-const MINUTE_TICKS = ticksFor(60);
+/** The stretch of play the second reading is taken after, in seconds. */
+const PLAY_SECONDS = 10;
+
+/** That stretch in whole ticks. */
+const PLAY_TICKS = ticksFor(PLAY_SECONDS);
 
 /** A full turn, in radians. */
 const TAU = Math.PI * 2;
@@ -229,16 +244,16 @@ function assertStarAtCentre(frame: Frame, when: string): void {
   }
 }
 
-it("draws the star at the field's centre, and still does a minute on", async () => {
+it("draws the star at the field's centre, and still does ten seconds of play on", async () => {
   startPlaying(h);
   h.debug.setShipPosition(SHIP_AWAY.x, SHIP_AWAY.y);
   await h.advance(1);
 
   assertStarAtCentre(readFrame(h), "on the first tick of play");
 
-  await h.advance(MINUTE_TICKS);
+  await h.advance(PLAY_TICKS);
   const after = readFrame(h);
   captureStill(h, "star");
 
-  assertStarAtCentre(after, "after a minute of play");
+  assertStarAtCentre(after, "after ten seconds of play");
 });

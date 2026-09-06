@@ -16,7 +16,7 @@
 // conformant builds for the way they steer rather than for coming too close. What
 // replaces it poses nothing but courses the specification's OWN entry rule
 // produces — a saucer entering at a side, on a row, at cruise — and lets each one
-// fly the whole width of the field with the build steering it. Thirty-six of them,
+// fly the whole width of the field with the build steering it. Twenty of them,
 // because avoidance is frequently one-sided (which the rows either side of the
 // star's are for) and a build that rerolls its weave on a timer can have the
 // reroll discard the clearance it had accumulated, which is intermittent by

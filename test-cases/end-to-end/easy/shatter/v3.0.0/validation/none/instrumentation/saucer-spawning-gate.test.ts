@@ -15,12 +15,14 @@
 // an enemy into every long scenario in the case — which is why the item exists to
 // name it.
 //
-// AND THE OPEN LEG IS GENEROUS ON PURPOSE. Nothing in `specs/instrumentation.md`
-// says what a shut gate does to the arrival CLOCK: a build may hold it while the
-// gate is shut, or let it run and arrive the moment the gate opens. Both are
-// conformant, so the open leg allows the longest wait either model can produce —
-// the first delay plus the longest gap — rather than demanding a schedule the
-// specification never fixed.
+// AND THE OPEN LEG IS GENEROUS ON PURPOSE. It asks only that the gate let an
+// arrival happen AT ALL. WHEN it happens is `saucer/first-arrives-at-18s`'s to
+// decide, and a window closing on the first delay would make one late arrival cost
+// a build two points. Nothing in `specs/instrumentation.md` says what a shut gate
+// does to the arrival CLOCK either — a build may hold it while the gate is shut, or
+// let it run and arrive the moment the gate opens, and both are conformant — so the
+// open leg allows the longest wait either model can produce, the first delay plus
+// the longest gap, rather than demanding a schedule the specification never fixed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNull, assertTrue } from "../assert";

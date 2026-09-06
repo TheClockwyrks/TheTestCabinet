@@ -207,7 +207,7 @@ export interface WatchOptions {
  * THE WATCH RUNS UNDRAWN. Every frame is a whole frame — the world ticks and the
  * pipeline walks the scene — but none of them puts ink on the canvas, because
  * what a watch reads is one id per frame and `at-most-one-at-a-time` alone spends
- * two minutes of game time here. A handler that wants a picture of the moment
+ * fifty seconds of game time here. A handler that wants a picture of the moment
  * asks for one with {@link Harness.paint}.
  */
 export async function watchVisits(

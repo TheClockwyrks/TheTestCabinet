@@ -603,7 +603,7 @@ validation = { script = "instrumentation/wave-spawning-gate.test.ts", outputs = 
 [[review.categories.items]]
 id = "saucer-spawning-gate"
 title = "Saucer spawning off keeps the saucer away"
-description = "With setSaucerSpawning(false) no saucer joins over twenty seconds of game time, past the SAUCER_FIRST_DELAY (18 s) the first arrival is due at; with it on, one does."
+description = "With setSaucerSpawning(false) no saucer joins over twenty seconds of game time, past the SAUCER_FIRST_DELAY (18 s) the first arrival is due at; with it on, one joins without the window grading when it arrives."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/saucer-spawning-gate.test.ts", outputs = [
@@ -766,11 +766,11 @@ validation = { script = "field/field-fit.test.ts", outputs = [
 [[review.categories.items]]
 id = "star-fixed-at-centre"
 title = "The star sits at the field's centre and never moves"
-description = "The disc within CORE_R of (640, 360) carries pixels differing from the background the build drew, and nothing of the star is drawn beyond 1.5 x HALO_R — on the first tick of play, and still after a minute of it."
+description = "The disc within CORE_R of (640, 360) carries pixels differing from the background the build drew, and nothing of the star is drawn beyond 1.5 x HALO_R — on the first tick of play, and still ten seconds of play later."
 domains = ["gravity", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "field/star-fixed-at-centre.test.ts", outputs = [
-  { id = "star", name = "The star still centred a minute into play", kind = "image" },
+  { id = "star", name = "The star still centred ten seconds into play", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "wrap-ship-right"

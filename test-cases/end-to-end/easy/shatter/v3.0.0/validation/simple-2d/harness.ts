@@ -355,9 +355,9 @@ export interface Harness {
    *
    * The route for a check that samples the state on EVERY tick — the aim
    * group's shot-by-shot sweep, `saucer/at-most-one-at-a-time`'s trace of the
-   * reported ids across two minutes. Those loops call `advance(1)` a tick at a
+   * reported ids across fifty seconds. Those loops call `advance(1)` a tick at a
    * time on purpose, so that no tick is ever stepped over, and each of those
-   * calls would otherwise draw its one frame: fourteen thousand pictures to
+   * calls would otherwise draw its one frame: six thousand pictures to
    * read one number off each. Inside a quiet scope the same ticks run, the
    * same snapshots are read, and one frame is drawn rather than all of them.
    *
@@ -466,7 +466,11 @@ export type PointerDevice = "mouse" | "pen" | "touch";
 
 /** The buttons a pointer may hold, as the engine names them. */
 export type PointerButton =
-  "primary" | "secondary" | "auxiliary" | "back" | "forward";
+  | "primary"
+  | "secondary"
+  | "auxiliary"
+  | "back"
+  | "forward";
 
 /** How one dispatched pointer event is shaped. */
 export interface PointerOptions {
@@ -736,7 +740,7 @@ export async function createHarness(
    * A scope outranks the flag: inside one, even the frame {@link Harness.advance}
    * would have drawn is skipped, which is what lets a check keep its own
    * tick-at-a-time loop — the shape the sweep's own comment describes — and still
-   * pay for one picture rather than fourteen thousand.
+   * pay for one picture rather than six thousand.
    */
   let quietDepth = 0;
   /** Whether the canvas holds the picture of the tick the game is on. */
