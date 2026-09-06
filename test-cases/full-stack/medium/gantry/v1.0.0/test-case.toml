@@ -12368,7 +12368,7 @@ validation = { script = "assets/assets-load-clean.test.ts", outputs = [
 [[review.categories.items]]
 id = "build-invokes-no-asset-tool"
 title = "npm ci and npm run build invoke no asset tool"
-description = "The install and the build complete with voxel, sfx-synth, sfx-sample and music absent from PATH, and produce the same dist: the committed files are the assets and the build only bundles them."
+description = "No install lifecycle script names voxel, sfx-synth, sfx-sample or music, and the build completes with all four absent from PATH and produces the same dist: the committed files are the assets and the build only bundles them."
 domains = ["presentation"]
 failure_cap = "broken"
 validation = { script = "assets/build-invokes-no-asset-tool.test.ts", outputs = [
