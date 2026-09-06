@@ -35,7 +35,7 @@ import {
   structureAt,
   type Harness,
 } from "../harness";
-import { RUN_UP, settle, sounds } from "./cues";
+import { RUN_UP, firstSound, sounds } from "./cues";
 
 /** The recipe `specs/combinations.md` gives the Static Web, all at Scrap. */
 const RECIPE = comboDef("staticweb");
@@ -77,7 +77,7 @@ async function fold(
 
 it("sounds when a quality fold and a recipe fold resolve, and not before", async () => {
   await openYard(h, { wave: 1 });
-  await settle(h);
+  await firstSound(h);
 
   // A quality-combine: two Scrap Capacitors fold into one Tuned Capacitor.
   const pair = await standComponent(

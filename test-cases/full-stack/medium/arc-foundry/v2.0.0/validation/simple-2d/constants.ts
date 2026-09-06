@@ -309,6 +309,14 @@ export type ComponentType = (typeof COMPONENT_TYPES)[number];
  */
 export const TYPE_ROLL_ODDS = 1 / COMPONENT_TYPES.length;
 
+/**
+ * How many standard deviations either side of its expected count a sampled rate
+ * is held to, for a requirement that is itself a probability. Six, so a build
+ * honouring the stated rate never fails on chance (the authoring rule for a
+ * bounded sample of one draw).
+ */
+export const SAMPLE_BAND_SIGMAS = 6;
+
 /** "Seven of the eight fire. The Regulator never fires". */
 export const FIRING_COMPONENT_TYPES = [
   "capacitor",

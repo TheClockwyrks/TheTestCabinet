@@ -585,12 +585,12 @@ title = "waveCount counts the units the wave actually releases"
 description = "The units a live wave releases are exactly the ones waveCount counts, in both directions, and the count reads the same figure from the frame the wave launched to the frame it cleared."
 domains = ["simulation"]
 failure_cap = "broken"
-# Automated validation: launch one milestone wave, read the count of every type,
+# Automated validation: launch the opening wave, read the count of every type,
 # then drive that wave to its clear and hold what arrived against what was
 # counted. See validation/<engine>/instrumentation/wave-count-matches-the-
 # spawner.test.ts.
 validation = { script = "instrumentation/wave-count-matches-the-spawner.test.ts", outputs = [
-  { id = "arrives", name = "A milestone wave arriving as counted", kind = "replay" },
+  { id = "arrives", name = "The opening wave arriving as counted", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "overload-driver-wave-clears"
@@ -1126,11 +1126,12 @@ validation = { script = "press/reroll-blocker.test.ts", outputs = [
 [[review.categories.items]]
 id = "type-uniform"
 title = "The type roll is uniform over the eight base types"
-description = "Over a bounded sample of press rolls drawn through rollPress at R8 every one of the eight base types appears, and no type takes more than a quarter of the draws, so the type axis is uniform at 0.125 each and refinement does not bias it."
+description = "Over a bounded sample of press rolls drawn through rollPress at R8, each of the eight base types is drawn a count inside six standard deviations of its uniform share of 0.125, so the type axis is uniform and refinement does not bias it."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: draw several hundred rolls through rollPress and count
-# the types. See validation/<engine>/press/type-uniform.test.ts.
+# Automated validation: draw several hundred rolls through rollPress and hold
+# each type's count to a six-sigma band around its share. See
+# validation/<engine>/press/type-uniform.test.ts.
 validation = { script = "press/type-uniform.test.ts", outputs = [
   { id = "spread", name = "The yard of rolled types", kind = "image" },
 ] }
@@ -1440,12 +1441,12 @@ validation = { script = "refinement/odds-table.test.ts", outputs = [
 [[review.categories.items]]
 id = "odds-bias-rolls"
 title = "The odds actually bias the roll"
-description = "At R8, over a bounded sample of rolls drawn through rollPress, no roll is Scrap and every one of the other four tiers appears, so the table is what the press draws from rather than a display."
+description = "At R8, over a small sample of rolls drawn through rollPress, every roll is a tier the row weights above zero, so none is Scrap, and the sample holds more than one tier, so the table is what the press draws from rather than a display."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: set R8, draw several hundred rolls through rollPress,
-# and count the qualities. See validation/<engine>/refinement/odds-bias-
-# rolls.test.ts.
+# Automated validation: set R8, draw a small sample through rollPress, and hold
+# every quality to the row's reachable tiers. See
+# validation/<engine>/refinement/odds-bias-rolls.test.ts.
 validation = { script = "refinement/odds-bias-rolls.test.ts", outputs = [
   { id = "rolls", name = "A yard of refined rolls", kind = "image" },
 ] }

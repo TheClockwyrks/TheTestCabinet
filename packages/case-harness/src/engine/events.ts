@@ -128,28 +128,34 @@ export function surfaceMetrics(
 }
 
 /**
- * How long a synchronous sweep may hold the event loop before it lets it turn.
+ * How many frames a synchronous sweep may drive before it lets the loop turn.
  *
  * A sweep of several hundred frames runs entirely inside one `await`, and node's
  * timers, socket reads and the vitest reporter all live on the loop it is
  * holding. Three engine harnesses reinvented this yield independently, at three
  * different intervals; this is the one copy.
+ *
+ * COUNTED IN FRAMES RATHER THAN MEASURED IN ELAPSED TIME, so the same sweep
+ * yields at the same frames on every host and nothing in a harness reads a clock
+ * but the one the check supplied. The yield changes no reading either way; what
+ * the count buys is that WHEN it happens is a fact about the sweep rather than
+ * about the machine.
  */
-export const YIELD_AFTER_MS = 50;
+export const YIELD_AFTER_FRAMES = 60;
 
 /**
- * Let the event loop turn if this sweep has held it longer than
- * {@link YIELD_AFTER_MS}, and answer the moment to measure the next stretch from.
+ * Let the event loop turn if this sweep has driven at least
+ * {@link YIELD_AFTER_FRAMES} frames since it last did, and answer the count to
+ * carry into the next stretch.
  *
- * Answers the deadline rather than taking one, so a caller threads one number
- * through its loop and pays for a `setImmediate` only when it has actually run
- * long enough to owe one.
+ * Answers the count rather than keeping one, so a caller threads one number
+ * through its loop and pays for a `setImmediate` only when it has actually
+ * driven enough frames to owe one.
  */
-export async function breathe(since: number): Promise<number> {
-  const now = Date.now();
-  if (now - since < YIELD_AFTER_MS) return since;
+export async function breathe(framesSinceYield: number): Promise<number> {
+  if (framesSinceYield < YIELD_AFTER_FRAMES) return framesSinceYield;
   await new Promise<void>((resolve) => {
     setImmediate(resolve);
   });
-  return Date.now();
+  return 0;
 }

@@ -834,6 +834,14 @@ export const STAMPS_PER_LEVEL = 5;
 export const TYPE_ROLL_ODDS = 0.125;
 
 /**
+ * How many standard deviations either side of its expected count a sampled rate
+ * is held to, for a requirement that is itself a probability. Six, so a build
+ * honouring the stated rate never fails on chance (the authoring rule for a
+ * bounded sample of one draw).
+ */
+export const SAMPLE_BAND_SIGMAS = 6;
+
+/**
  * "A run carries a refinement level `R` on the nine-rung track `R0` through `R8`,
  * at `REFINEMENT_MAX` (`8`), and starts at `R0`."
  */

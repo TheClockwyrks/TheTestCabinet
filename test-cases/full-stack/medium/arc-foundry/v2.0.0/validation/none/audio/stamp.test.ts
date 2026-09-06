@@ -28,7 +28,7 @@ import {
   openYard,
   type Harness,
 } from "../harness";
-import { RUN_UP, settle, sounds } from "./cues";
+import { RUN_UP, firstSound, sounds } from "./cues";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 24, row: 18 };
@@ -45,7 +45,7 @@ afterEach(async () => {
 
 it("sounds when the rock lands, and not over the frames before it", async () => {
   await openYard(h, { wave: 1 });
-  await settle(h);
+  await firstSound(h);
 
   const opening = await sounds(h);
   await h.advance(RUN_UP);

@@ -41,7 +41,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { ANCHOR, TARGET, onFrame, settle } from "./cues";
+import { ANCHOR, TARGET, onFrame, firstSound } from "./cues";
 
 /** Either side of the primary, inside the Scrap Arc-Node's splash radius of `42`. */
 const SPREAD = 25;
@@ -94,7 +94,7 @@ async function discharge(
 
 it("plays the same on a frame three units die on as on one", async () => {
   await openYard(h, { wave: 1 });
-  await settle(h);
+  await firstSound(h);
 
   const one = await discharge(1);
   const three = await captureReplay(h, "once", () => discharge(3));

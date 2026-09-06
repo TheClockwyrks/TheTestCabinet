@@ -286,7 +286,12 @@ export function scaledHp(
 /* -------------------------------------------------------------------------- */
 
 export type LoadType =
-  "mote" | "spark" | "slug" | "cluster" | "filament" | "dynamo";
+  | "mote"
+  | "spark"
+  | "slug"
+  | "cluster"
+  | "filament"
+  | "dynamo";
 
 /** Every type `spawnUnit` takes: the roster, plus the finale's Overload Dynamo. */
 export type SpawnType = LoadType | "overload";
@@ -372,6 +377,14 @@ export const FIRING_TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
 
 /** A press rolls a type uniformly over the eight (specs/scrap-press.md). */
 export const TYPE_ROLL_ODDS = 1 / COMPONENT_TYPES.length; // 0.125
+
+/**
+ * How many standard deviations either side of its expected count a sampled rate
+ * is held to, for a requirement that is itself a probability. Six, so a build
+ * honouring the stated rate never fails on chance (the authoring rule for a
+ * bounded sample of one draw).
+ */
+export const SAMPLE_BAND_SIGMAS = 6;
 
 export type Tier = 1 | 2 | 3 | 4 | 5;
 

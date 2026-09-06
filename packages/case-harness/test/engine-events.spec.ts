@@ -12,7 +12,7 @@ import {
   DevicePointerEvent,
   KeyEvent,
   PointerPositionEvent,
-  YIELD_AFTER_MS,
+  YIELD_AFTER_FRAMES,
   breathe,
   surfaceMetrics,
 } from "../src/engine/events";
@@ -85,21 +85,19 @@ it("the surface metrics report one fixed shape and one target", () => {
   expect(metrics.releasePointerCapture).toBeUndefined();
 });
 
-it("a sweep that has not held the loop long enough does not yield", async () => {
-  const since = Date.now();
-  expect(await breathe(since)).toBe(since);
+it("a sweep that has not driven enough frames does not yield", async () => {
+  const driven = YIELD_AFTER_FRAMES - 1;
+  expect(await breathe(driven)).toBe(driven);
 });
 
-it("a sweep past the interval yields and starts a new stretch", async () => {
-  const since = Date.now() - (YIELD_AFTER_MS + 5);
-  const next = await breathe(since);
-  expect(next).toBeGreaterThan(since);
+it("a sweep past the count yields and starts a new stretch", async () => {
+  expect(await breathe(YIELD_AFTER_FRAMES)).toBe(0);
 });
 
 it("the yield really lets the loop turn", async () => {
   const order: string[] = [];
   setImmediate(() => order.push("loop"));
-  await breathe(Date.now() - (YIELD_AFTER_MS + 5));
+  await breathe(YIELD_AFTER_FRAMES);
   order.push("sweep");
   expect(order).toEqual(["loop", "sweep"]);
 });

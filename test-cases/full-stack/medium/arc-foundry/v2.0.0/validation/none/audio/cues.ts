@@ -64,32 +64,34 @@ export const RUN_UP = ticks(0.1);
  * the build. A run-up held silent has to start after that, or the bed's own start
  * lands inside it and is read as the build blipping.
  *
- * So this drives the run, in short steps with real time between them, until the
- * build has emitted its first sound — and gives up after a bounded number of
- * tries, because a build that plays nothing at all has nothing to wait for and
- * fails the points that listen for a cue rather than this helper.
+ * So this drives the run one frame at a time until the build has emitted its
+ * first sound. Each frame is its own crossing into the page, which is what gives
+ * the page's own promises — the context opening, the produced files decoding — a
+ * turn between frames; nothing here waits on real time, and the frames spent are
+ * whatever the build needed, which no point reads. The wait is bounded by a
+ * FRAME count rather than by a clock, because a build that plays nothing at all
+ * has nothing to wait for and fails the points that listen for a cue rather than
+ * this helper.
  */
-export async function settle(h: Harness): Promise<void> {
-  for (let attempt = 0; attempt < SETTLE_TRIES; attempt += 1) {
-    await h.page.waitForTimeout(SETTLE_WAIT_MS);
-    await h.advance(ticks(0.02));
+export async function firstSound(h: Harness): Promise<void> {
+  for (let frame = 0; frame < FIRST_SOUND_FRAMES; frame += 1) {
     if ((await sounds(h)) > 0) return;
+    await h.advance(1);
   }
 }
 
 /**
- * How many chances the build is given to open its audio, and how much real time
- * each waits.
+ * How many frames the build is given to open its audio, one crossing each.
  *
  * Generous, because opening a browser's audio means fetching and decoding every
  * produced cue file — a couple of megabytes for a build that also produced a music
- * bed — and this project drives four pages at once, so how long that takes is a
- * fact about the machine rather than about the build. The loop returns the instant
- * the build has emitted anything, so the budget is paid only by a build that has
- * not opened its audio at all, whose cue points then fail on their own terms.
+ * bed — and this project drives several pages at once, so how many crossings that
+ * takes is a fact about the machine rather than about the build. The loop returns
+ * the frame the build has emitted anything, so the budget is paid only by a build
+ * that has not opened its audio at all, whose cue points then fail on their own
+ * terms.
  */
-const SETTLE_TRIES = 60;
-const SETTLE_WAIT_MS = 50;
+const FIRST_SOUND_FRAMES = 900;
 
 /**
  * How many sounds the build has emitted since the page loaded.

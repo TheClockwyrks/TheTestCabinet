@@ -31,7 +31,7 @@ import {
   openYard,
   type Harness,
 } from "../harness";
-import { beforeFrame, fireOnce, onFrame, settle } from "./cues";
+import { beforeFrame, fireOnce, onFrame, firstSound } from "./cues";
 
 /** Every type `specs/ui.md` binds to the bolt cue: the Capacitor, the Choke and the Rectifier. */
 const TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
@@ -50,7 +50,7 @@ afterEach(async () => {
 
 it("sounds on the frame each of the three fires, and not before", async () => {
   await openYard(h, { wave: 1 });
-  await settle(h);
+  await firstSound(h);
 
   for (const type of TYPES) {
     const shot = await captureReplay(h, "bolt", () => fireOnce(h, type, 1));

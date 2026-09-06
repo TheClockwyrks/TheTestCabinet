@@ -17,18 +17,23 @@
 // composition rule. A build whose spawner releases something other than what it
 // counts fails this point and nothing else, which is where that defect belongs.
 //
-// ONE WAVE EXERCISES EVERY COUNTABLE TYPE. Wave `20` of the `40`-wave Easy run is
-// simultaneously a milestone (specs/enemies.md: one Dynamo), a multiple of four
-// (Filaments), and well past the wave-`5` Cluster and Slug unlock, so a single
-// wave can carry all six roster types.
+// THE OPENING WAVE IS THE ONE DRIVEN. What this point decides is that the count
+// and the releases are one schedule, and any composed wave decides it: a type the
+// schedule holds has to arrive as many times as it is counted, and a type it does
+// not hold — which for wave `1` is everything but Motes and Sparks, by the opening
+// rule of specs/enemies.md — has to be counted `0` and never arrive. Wave `1` is
+// the cheapest wave a build composes, so driving it to its clear costs a few
+// seconds of simulation rather than the tens a late wave's schedule runs to, and
+// the check's cost stays that of a short opening wave rather than growing with
+// how heavily a build composes its later ones.
 //
 // WHAT IS ASSERTED, in both directions. Every type counted at launch arrives that
 // many times, and every unit that arrives was counted — so neither a build that
-// counts a Dynamo it never releases nor one that releases a Dynamo it never
-// counted passes. The count is also read again at every sample while the wave
-// runs and held to the launch reading, which is the "from the frame it launched to
-// the frame it cleared" half of the sentence: a build that counts down as it
-// spawns, or that recomposes mid-wave, fails there.
+// counts a Spark it never releases nor one that releases a Spark it never counted
+// passes. The count is also read again at every sample while the wave runs and
+// held to the launch reading, which is the "from the frame it launched to the
+// frame it cleared" half of the sentence: a build that counts down as it spawns,
+// or that recomposes mid-wave, fails there.
 //
 // HOW THE WAVE IS READ is `load/waves.ts`'s own drive: poll, record every unit by
 // id, sweep the yard with `clearUnits` — which kills nothing and leaks nothing —
@@ -52,10 +57,9 @@ import {
 const DIFFICULTY = "easy";
 
 /**
- * The one wave driven: a milestone, a multiple of four, and past the Cluster and
- * Slug unlock, so its schedule can hold every one of the six roster types.
+ * The one wave driven: the opening wave, the shortest schedule a build composes.
  */
-const WAVE = 20;
+const WAVE = 1;
 
 let h: Harness;
 

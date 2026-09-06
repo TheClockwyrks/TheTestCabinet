@@ -34,22 +34,20 @@ import {
   captureReplay,
   createHarness,
   openRun,
-  ticks,
   type Harness,
 } from "../harness";
 
 /**
- * How many chances the first build phase is given to start the bed, and how much
- * real time each waits.
+ * How many frames the first build phase is given to start the bed, one crossing
+ * each.
  *
  * Generous, because opening a browser's audio means fetching and decoding every
- * produced cue file, and this project drives eight pages at once — how long that
- * takes is a fact about the machine rather than about the build. The loop returns
- * the instant the build has started anything, so the budget is paid only by a
- * build that starts nothing, which is the miss this point is about.
+ * produced cue file, and this project drives several pages at once — how many
+ * crossings that takes is a fact about the machine rather than about the build.
+ * The loop returns the frame the build has started anything, so the budget is
+ * paid only by a build that starts nothing, which is the miss this point is about.
  */
-const ATTEMPTS = 60;
-const WAIT_MS = 50;
+const FRAMES = 900;
 
 let h: Harness;
 
@@ -67,14 +65,14 @@ it("starts a looping sound when the run opens on its first build phase", async (
   const opened = await captureReplay(h, "music", async () => {
     await openRun(h);
     // A browser opens an audio context asynchronously, so the bed cannot start on
-    // the first frame of the build phase however conformant the build is: the
-    // wait below is real time for that to land, and the frames are the build
-    // phase running. Both are bounded, and the loop stops the moment the build
-    // has started anything.
-    for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
-      await h.page.waitForTimeout(WAIT_MS);
-      await h.advance(ticks(0.02));
+    // the first frame of the build phase however conformant the build is. The
+    // frames below are the build phase running, one crossing into the page each,
+    // which is what gives the context's opening and the files' decoding a turn
+    // between them; nothing waits on real time. The count is bounded, and the
+    // loop stops the frame the build has started anything.
+    for (let frame = 0; frame < FRAMES; frame += 1) {
       if ((await h.sounds()) > before.sounds) break;
+      await h.advance(1);
     }
     return { sounds: await h.sounds(), loops: await h.loopStarts() };
   });

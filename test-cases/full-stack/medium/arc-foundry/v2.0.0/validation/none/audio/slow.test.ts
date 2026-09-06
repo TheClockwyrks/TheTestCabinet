@@ -34,7 +34,7 @@ import {
   watchCues,
   type Harness,
 } from "../harness";
-import { ANCHOR, TARGET, beforeFrame, onFrame, settle } from "./cues";
+import { ANCHOR, TARGET, beforeFrame, onFrame, firstSound } from "./cues";
 
 let h: Harness;
 
@@ -48,7 +48,7 @@ afterEach(async () => {
 
 it("sounds on the frame the slow lands, and not between the shot and the hit", async () => {
   await openYard(h, { wave: 1 });
-  await settle(h);
+  await firstSound(h);
   await standComponent(h, "choke", 1, ANCHOR.col, ANCHOR.row);
   const target = await parkUnit(h, "slug", TARGET);
 

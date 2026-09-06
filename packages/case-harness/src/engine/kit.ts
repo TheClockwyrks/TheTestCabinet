@@ -488,11 +488,12 @@ export function createEngineCaseHarness<S, D extends object, E, X = unknown>(
         }
 
         let frames = 0;
-        let since = Date.now();
+        let sinceYield = 0;
         while (frames < maxFrames) {
           const step = Math.min(poll, maxFrames - frames);
           await driven.advance(step);
           frames += step;
+          sinceYield += step;
           snapshot = config.snapshot(debug, engine);
           if (predicate(snapshot)) {
             return { hit: true, frames, ticks: frames, snapshot };
@@ -500,7 +501,7 @@ export function createEngineCaseHarness<S, D extends object, E, X = unknown>(
           // A sweep of several hundred frames runs inside one `await`, and the
           // reporter, the timers and every socket read live on the loop it is
           // holding. Nothing observable changes; the host stops looking hung.
-          since = await breathe(since);
+          sinceYield = await breathe(sinceYield);
         }
         return { hit: false, frames, ticks: frames, snapshot };
       },

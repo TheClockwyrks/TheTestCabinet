@@ -65,7 +65,7 @@ import {
   type Harness,
   type TimedCue,
 } from "../harness";
-import { ANCHOR, TARGET, settle } from "./cues";
+import { ANCHOR, TARGET, firstSound } from "./cues";
 
 /** The structure the volley is taken with, at Scrap. */
 const TYPE = "emitter";
@@ -131,7 +131,7 @@ async function volley(h: Harness, speed: number): Promise<Volley> {
 
 it("sounds on every update an Emitter fires on", async () => {
   await openYard(h, { wave: 1 });
-  await settle(h);
+  await firstSound(h);
 
   const volleys = await captureReplay(h, "cues", async () => {
     const driven: Volley[] = [];
