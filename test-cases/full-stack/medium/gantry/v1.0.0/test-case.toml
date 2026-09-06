@@ -12327,11 +12327,12 @@ validation = { script = "assets/assets-load-clean.test.ts", outputs = [
   { id = "run", name = "The play-through with every asset loaded", kind = "image" },
 ] }
 
-# Run npm ci and npm run build in the build workspace with PATH stripped of
-# the directories carrying voxel, sfx-synth, sfx-sample and music, and with a
-# shim on PATH that exits non-zero under each of those four names. — Both
-# commands exit zero, no shim was invoked, and dist/index.html and every
-# produced file the site loads are present.
+# Read the install lifecycle scripts package.json declares, then run npm run
+# build in a copy of the build workspace with PATH stripped of the directories
+# carrying voxel, sfx-synth, sfx-sample and music, and with a shim on PATH that
+# exits non-zero under each of those four names. — No lifecycle script names a
+# tool, the build exits zero, no shim was invoked, and dist/index.html and
+# every produced file the site loads are present.
 # From specs/assets.md intro — '`npm ci` and `npm run build` invoke no tool';
 # specs/overview.md § The build interface — 'neither `npm ci` nor `npm run
 # build` invokes a tool'.
