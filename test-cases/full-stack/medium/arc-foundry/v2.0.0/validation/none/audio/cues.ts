@@ -54,7 +54,7 @@ export const TARGET = { x: HEAD.x + 80, y: HEAD.y };
 export const RUN_UP = ticks(0.1);
 
 /**
- * Drive the opening build phase until the build's audio has actually opened.
+ * Let the build's audio open, and hand back what it has emitted by then.
  *
  * `specs/ui.md` leaves the first-interaction unlock to the runtime layer an
  * engineless build writes, and a browser opens an audio context asynchronously
@@ -64,34 +64,47 @@ export const RUN_UP = ticks(0.1);
  * the build. A run-up held silent has to start after that, or the bed's own start
  * lands inside it and is read as the build blipping.
  *
- * So this drives the run one frame at a time until the build has emitted its
- * first sound. Each frame is its own crossing into the page, which is what gives
- * the page's own promises — the context opening, the produced files decoding — a
- * turn between frames; nothing here waits on real time, and the frames spent are
- * whatever the build needed, which no point reads. The wait is bounded by a
- * FRAME count rather than by a clock, because a build that plays nothing at all
- * has nothing to wait for and fails the points that listen for a cue rather than
- * this helper.
+ * THE FRAMES ARE FIXED AND THE WAITING IS NOT. Two rounds, each of exactly
+ * {@link ROUND_FRAMES} frames of the build phase followed by a wait on the state
+ * the build reaches — a bounded number of asks for the count the harness's probe
+ * keeps, each its own crossing into the page and none of them moving the
+ * simulation on. So the build gets an update to ask for its bed, then the page
+ * gets its turns to open the context and decode the files, then the build gets
+ * further updates in case it only asks once the context is open. The same
+ * `ROUNDS * ROUND_FRAMES` frames land whatever the machine did, and only the
+ * number of asks — which nothing reads and which cost no simulation — differs.
+ *
+ * Nothing here reads a clock or pauses for a real duration. The asks are capped
+ * so a build that opens no audio at all fails the points that listen for a cue
+ * rather than hanging here, and the frames are spent in the opening build phase,
+ * which `specs/campaign.md` leaves untimed.
  */
-export async function firstSound(h: Harness): Promise<void> {
-  for (let frame = 0; frame < FIRST_SOUND_FRAMES; frame += 1) {
-    if ((await sounds(h)) > 0) return;
-    await h.advance(1);
+export async function firstSound(h: Harness, from = 0): Promise<number> {
+  let heard = await sounds(h);
+  for (let round = 0; round < ROUNDS; round += 1) {
+    await h.advance(ROUND_FRAMES);
+    for (let ask = 0; ask < ASKS && heard <= from; ask += 1) {
+      heard = await sounds(h);
+    }
   }
+  return heard;
 }
 
+/** Rounds of frames-then-wait, and the frames each of them drives. */
+const ROUNDS = 2;
+const ROUND_FRAMES = ticks(0.25);
+
 /**
- * How many frames the build is given to open its audio, one crossing each.
+ * How many times a round asks the page whether the build has emitted anything.
  *
  * Generous, because opening a browser's audio means fetching and decoding every
  * produced cue file — a couple of megabytes for a build that also produced a music
  * bed — and this project drives several pages at once, so how many crossings that
- * takes is a fact about the machine rather than about the build. The loop returns
- * the frame the build has emitted anything, so the budget is paid only by a build
- * that has not opened its audio at all, whose cue points then fail on their own
- * terms.
+ * takes is a fact about the machine rather than about the build. An ask is a
+ * failure cap and never a measurement: nothing reads how many were spent, and the
+ * whole budget is paid only by a build that has not opened its audio at all.
  */
-const FIRST_SOUND_FRAMES = 900;
+const ASKS = 1000;
 
 /**
  * How many sounds the build has emitted since the page loaded.

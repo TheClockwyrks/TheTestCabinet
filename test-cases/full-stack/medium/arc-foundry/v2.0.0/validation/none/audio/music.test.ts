@@ -36,18 +36,7 @@ import {
   openRun,
   type Harness,
 } from "../harness";
-
-/**
- * How many frames the first build phase is given to start the bed, one crossing
- * each.
- *
- * Generous, because opening a browser's audio means fetching and decoding every
- * produced cue file, and this project drives several pages at once — how many
- * crossings that takes is a fact about the machine rather than about the build.
- * The loop returns the frame the build has started anything, so the budget is
- * paid only by a build that starts nothing, which is the miss this point is about.
- */
-const FRAMES = 900;
+import { firstSound } from "./cues";
 
 let h: Harness;
 
@@ -65,15 +54,11 @@ it("starts a looping sound when the run opens on its first build phase", async (
   const opened = await captureReplay(h, "music", async () => {
     await openRun(h);
     // A browser opens an audio context asynchronously, so the bed cannot start on
-    // the first frame of the build phase however conformant the build is. The
-    // frames below are the build phase running, one crossing into the page each,
-    // which is what gives the context's opening and the files' decoding a turn
-    // between them; nothing waits on real time. The count is bounded, and the
-    // loop stops the frame the build has started anything.
-    for (let frame = 0; frame < FRAMES; frame += 1) {
-      if ((await h.sounds()) > before.sounds) break;
-      await h.advance(1);
-    }
+    // the first frame of the build phase however conformant the build is.
+    // `firstSound` drives a fixed stretch of the build phase and waits on the
+    // state the build reaches between the rounds of it, so the same frames land
+    // on any machine and nothing here waits on real time.
+    await firstSound(h, before.sounds);
     return { sounds: await h.sounds(), loops: await h.loopStarts() };
   });
 
