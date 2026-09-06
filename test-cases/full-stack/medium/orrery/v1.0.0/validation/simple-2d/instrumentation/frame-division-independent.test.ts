@@ -53,10 +53,14 @@ import {
   assertNull,
 } from "../assert";
 import {
+  ARM_MIN_LEN,
+  CARRY_SECOND_AREA,
+  CW_ROTATION_STEP,
   DEFAULT_SPEED_INDEX,
   FRACTION_TOLERANCE,
   HEX_PITCH,
   SPEEDS,
+  TALLY_AT_START,
 } from "../constants";
 import { at, hexCenter } from "../field";
 import { BARE, CARRY_MACHINE } from "../fixtures";
@@ -84,7 +88,7 @@ import {
  */
 const POSITION_TOLERANCE = 2 * Math.PI * HEX_PITCH * FRACTION_TOLERANCE;
 
-/** The hex the carried mote starts on: the gripper of an arm at ORIGIN, rotation 0. */
+/** The hex the carried mote starts on: the gripper of an arm at ORIGIN, rotation 0, length ARM_MIN_LEN. */
 const GRIPPED = at(1, 0);
 
 /** Where `rotate-cw` about ORIGIN lands it. */
@@ -105,10 +109,10 @@ const EXPECTED = {
   completed: false,
   motes: [{ q: CARRIED_TO.q, r: CARRIED_TO.r, type: "sol" }],
   filaments: 0,
-  poses: [{ part: 0, rotation: 1, length: 1 }],
+  poses: [{ part: 0, rotation: CW_ROTATION_STEP, length: ARM_MIN_LEN }],
   grips: [],
-  tallies: [0],
-  area: 3,
+  tallies: [TALLY_AT_START],
+  area: CARRY_SECOND_AREA,
   fault: null,
 };
 

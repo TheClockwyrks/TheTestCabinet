@@ -91,8 +91,8 @@ specification fixes the geometry, the rules, the ten Extras challenges, and the
 campaign's obligations exactly; the palette, the type, and the look of the sky
 are the build's.
 
-Every point on the checklist is decided by a validator: `1065` review items
-across `16` categories worth `1067` points, each one observable behavior posed
+Every point on the checklist is decided by a validator: `1054` review items
+across `16` categories worth `1056` points, each one observable behavior posed
 through the game's own instrumentation surface and read back, and each with a
 suite in the validator project of every engine the item covers. The reviewer's
 judgement goes into the per-domain ratings of visuals, polish and feel.

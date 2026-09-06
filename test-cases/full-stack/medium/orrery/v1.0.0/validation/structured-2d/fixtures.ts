@@ -19,7 +19,7 @@
 // legal machine. The permitted lists below are therefore written for the TRAY
 // checks that read them, and every other check may ignore them.
 
-import { CONSTELLATION_TARGET } from "./constants";
+import { ARM_MIN_LEN, CONSTELLATION_TARGET, TARGET_MIN } from "./constants";
 import { at, type Hex } from "./field";
 import {
   armPart,
@@ -199,7 +199,7 @@ export const ONE_DELIVERY: Challenge = challenge({
   reagents: [ONE_SOL],
   products: [ONE_SOL],
   permitted: ["arm"],
-  target: 1,
+  target: TARGET_MIN,
 });
 
 /** Every fixture challenge, for a check that sweeps them. */
@@ -238,7 +238,7 @@ export const IDLE_MACHINE: Solution = solution([
  * cycle, period `4`.
  */
 export const CARRY_MACHINE: Solution = solution([
-  armPart("arm", ORIGIN.q, ORIGIN.r, 0, 1, [
+  armPart("arm", ORIGIN.q, ORIGIN.r, 0, ARM_MIN_LEN, [
     "grab",
     "rotate-cw",
     "drop",

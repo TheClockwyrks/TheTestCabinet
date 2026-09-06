@@ -108,7 +108,7 @@ export async function readSystem(file: string): Promise<SystemRead> {
 
   let simulator: ParticleSimulator;
   try {
-    simulator = new Simulator(parsed as ParticleSystem, { seed: 1 });
+    simulator = new Simulator(parsed as ParticleSystem);
   } catch (error) {
     return {
       ...empty,

@@ -11,7 +11,7 @@
 // metric for metric.
 //
 // THE CONFIGURATION is one delivery, made by a machine that actually carries it.
-// The challenge is a `target` of `1`, whose reagent and product are both one
+// The challenge is a `target` of `TARGET_MIN` (`1`), whose reagent and product are both one
 // unbonded `sol` (`specs/formats.md` requires only that `target` is "at least
 // `1`"). The machine is a `set` for that product on the hex the delivery lands
 // on, and one `arm` beside it whose tape is `grab`, `rotate-cw`, `drop` — so the
@@ -55,7 +55,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
-import { PART_COSTS } from "../constants";
+import {
+  ARM_MIN_LEN,
+  ONE_DELIVERY_AREA,
+  ONE_DELIVERY_CYCLES,
+  PART_COSTS,
+  TARGET_MIN,
+} from "../constants";
 import { at, rotateAbout } from "../field";
 import { armPart, setPart, solution } from "../formats";
 import { ONE_DELIVERY } from "../fixtures";
@@ -76,8 +82,8 @@ import {
 /** The arm's anchor, one step north of the delivery hex. */
 const ARM = at(0, -1);
 
-/** Its gripper hex at rest: length `1` along spoke `0` (`specs/parts.md`). */
-const GRABBED_AT = gripperHex(ARM, 0, 1);
+/** Its gripper hex at rest: length `ARM_MIN_LEN` along spoke `0` (`specs/parts.md`). */
+const GRABBED_AT = gripperHex(ARM, 0, ARM_MIN_LEN);
 
 /** Where one clockwise turn about the anchor puts that gripper. */
 const DELIVERED_TO = rotateAbout(GRABBED_AT, ARM, 1);
@@ -85,11 +91,11 @@ const DELIVERED_TO = rotateAbout(GRABBED_AT, ARM, 1);
 /** The whole machine: the set the delivery lands on, and the arm that makes it. */
 const MACHINE = solution([
   setPart(0, DELIVERED_TO.q, DELIVERED_TO.r),
-  armPart("arm", ARM.q, ARM.r, 0, 1, ["grab", "rotate-cw", "drop"]),
+  armPart("arm", ARM.q, ARM.r, 0, ARM_MIN_LEN, ["grab", "rotate-cw", "drop"]),
 ]);
 
 /** Cycles from the run's start to the boundary that completes it. */
-const CYCLES = 3;
+const CYCLES = ONE_DELIVERY_CYCLES;
 
 /** What the rules fix for that run, all of it whole numbers. */
 const EXPECTED = {
@@ -98,9 +104,9 @@ const EXPECTED = {
   metrics: {
     cost: PART_COSTS.arm + PART_COSTS.set,
     cycles: CYCLES,
-    area: 3,
+    area: ONE_DELIVERY_AREA,
   },
-  tallies: [1],
+  tallies: [TARGET_MIN],
 };
 
 /** The same reading off a snapshot, in the terms `EXPECTED` is written in. */
