@@ -5,8 +5,8 @@
 //   1. ASKING FOR NO FRAMES RUNS NOTHING. `engine.advance(0)` runs no frame, so the
 //      build's `update` is never reached and the field must read back exactly as it
 //      stood. What this catches is a build that moved the game from somewhere other
-//      than its own `update` — a timer of its own, a `requestAnimationFrame` it
-//      started, a body stepped inside a debug operation. `specs/instrumentation.md`
+//      than its own `update` — a timer of its own, a frame callback it started, a
+//      body stepped inside a debug operation. `specs/instrumentation.md`
 //      puts the clock with the engine under this engine, and `specs/simulation.md`
 //      makes the game advance "from the elapsed time the game is handed" and from
 //      nothing else, so a build with a second source of motion is wrong, and every

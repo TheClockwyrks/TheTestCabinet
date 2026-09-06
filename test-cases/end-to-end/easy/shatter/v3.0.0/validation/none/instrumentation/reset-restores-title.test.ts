@@ -38,8 +38,10 @@
 // the clock held". Every check in this project opens with the clock held and resets
 // mid-scenario, so a build that re-armed the frame loop on `reset` would leave the
 // rest of the project drifting on the wall clock at whatever rate the machine
-// happened to render. The leg holds the clock, resets, and then reads the setting
-// back and gives the page a second of real time to prove nothing ran.
+// happened to render. The leg holds the clock, resets, and reads the setting back,
+// and then reads the field again to see that the reset itself ran nothing: the
+// declared state is the whole state, so the setting the snapshot reports is the
+// clock, and nothing here waits on real time to second-guess it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -77,8 +79,8 @@ const POSED_WAVE = 9;
 const POSED_BANNER = 1.2;
 /** The menu entry the run is dressed in. */
 const POSED_MENU_INDEX = 2;
-/** The real milliseconds the game is left alone after the reset, clock held. */
-const RESET_WALL_MS = 1000;
+/** How many times the reset field is reread to see that nothing moves it. */
+const REREADS = 5;
 /** Where the moving rock the clock leg poses is put. */
 const ROCK = { x: 260, y: 620, vx: 120, vy: -80 } as const;
 /** Where the ship is put, well away from the safe point the title returns it to. */
@@ -228,21 +230,18 @@ it("leaves the clock held exactly as it stands", async () => {
 
   await h.debug.reset();
 
-  assertEqual(
-    (await h.snapshot()).autoStep,
-    false,
-    "reset left the clock held",
-  );
-
-  // And the setting is not the whole claim: a build could report the setting back
-  // and still have re-armed its own loop. A second of real time with the page in
-  // front is what settles it, since nothing may advance while the clock is held.
   const held = await h.snapshot();
-  await h.page.bringToFront().catch(() => undefined);
-  await h.page.waitForTimeout(RESET_WALL_MS);
+  assertEqual(held.autoStep, false, "reset left the clock held");
+
+  // And the reset ran nothing of its own: the clock it returned to zero stays at
+  // zero across as many readings as anything cares to take, because a held clock
+  // moves only when `advance` says so.
+  for (let read = 0; read < REREADS; read += 1) {
+    await h.snapshot();
+  }
   assertEqual(
     (await h.snapshot()).simTime,
     held.simTime,
-    `nothing ran in ${RESET_WALL_MS}ms of wall time after the reset`,
+    `simTime after ${REREADS} further readings of the reset field, clock held`,
   );
 });

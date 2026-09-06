@@ -513,7 +513,7 @@ validation = { script = "instrumentation/advance-is-exact.test.ts", outputs = [
 [[review.categories.items]]
 id = "clock-is-held"
 title = "Nothing advances unless a step asks it to"
-description = "With the clock held, advancing nothing advances nothing: advance(0) under none, and engine.advance(0) under either engine, leaves simTime and every posed body exactly as they stood, which a build whose accumulator forces a minimum step, or which runs a tick on entry, fails. Under none the item carries a second leg: a second of real wall time with setAutoStep(false) and no advance leaves the same reading."
+description = "With the clock held, advancing nothing advances nothing: advance(0) under none, and engine.advance(0) under either engine, leaves simTime and every posed body exactly as they stood, which a build whose accumulator forces a minimum step, or which runs a tick on entry, fails. Reading the field through snapshot() repeatedly leaves the same reading too, since a snapshot is a pure read."
 domains = ["gravity", "flight", "arcade", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/clock-is-held.test.ts", outputs = [

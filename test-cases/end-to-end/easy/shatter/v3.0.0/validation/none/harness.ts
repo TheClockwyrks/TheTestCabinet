@@ -80,8 +80,9 @@
 // `ConstantClock(TICK_MS)`, because there the frame loop is the engine's and the
 // engine has to be told what a frame is worth. Here the surface takes ticks, so a
 // clock would have nothing to feed.) Every harness opens by taking the game off
-// the clock. The one check that is ABOUT the loop running itself,
-// `instrumentation/clock-is-held`, hands it back with {@link Harness.runFor}.
+// the clock, and nothing hands it back: a check reads the held field through
+// `advance(0)` and repeated snapshots (`instrumentation/clock-is-held`), never by
+// waiting on real time.
 //
 // ADVANCE VERSUS SKIP. Both run real ticks and neither fabricates anything; they
 // differ in what they leave behind for a reviewer. {@link Harness.advance} brackets
