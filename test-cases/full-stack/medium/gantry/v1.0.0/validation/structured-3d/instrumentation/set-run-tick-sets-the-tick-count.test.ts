@@ -17,11 +17,13 @@
 //
 // THE STILL IS OF THE POSED STATE ITSELF. A still is whatever the last frame
 // that ran drew, and a pose draws nothing, so a capture taken straight off the
-// pose would keep the yard as it stood before it. `h.paint()` draws one frame
-// that covers no time — no tick is consumed and nothing in the yard moves — so
-// the run screen behind the still reads the clock this check posed rather than
-// the clock a tick after it would read. That is what separates this point's
-// evidence from the one beside it, which shows the tick AFTER the pose.
+// pose would keep the yard as it stood before it. `h.paint()` is the harness
+// operation for exactly this: one frame that draws the state as it stands and
+// advances none of it, so the run screen behind the still reads the clock this
+// check posed rather than the clock a tick after it would read. That is what
+// separates this point's evidence from the one beside it, which shows the tick
+// AFTER the pose. It runs after both readings either way, so what it draws
+// decides nothing here.
 //
 // The crane, the tape and the empty yard are here only because a run has to be
 // in progress for a run pose to apply: the tape's one step commands the `hoist`

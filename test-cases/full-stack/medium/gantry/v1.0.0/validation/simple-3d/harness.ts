@@ -1015,6 +1015,18 @@ function baseOf(
 }
 
 /**
+ * A clock whose every frame is worth no time at all.
+ *
+ * `ConstantClock` refuses a step of zero, and rightly: a game driven by one would
+ * never move. This is not a clock a game is driven by — it is swapped in for the
+ * one frame {@link Harness.paint} draws and swapped straight back out, so a check
+ * can put the state it posed on screen. `null` would be the clock saying "this
+ * tick is not a frame", which is the opposite of what is wanted; `0` is a frame
+ * that covers no time.
+ */
+const ZERO_CLOCK: Clock = { delta: () => 0 };
+
+/**
  * Build an engine over canvases of the harness's own, initialize the build's
  * game, and hand back everything a check reads.
  *
@@ -1048,18 +1060,6 @@ function baseOf(
  * to a check, so no check has to remember it and none reports silence from a build
  * that was sounding perfectly.
  */
-/**
- * A clock whose every frame is worth no time at all.
- *
- * `ConstantClock` refuses a step of zero, and rightly: a game driven by one would
- * never move. This is not a clock a game is driven by — it is swapped in for the
- * one frame {@link Harness.paint} draws and swapped straight back out, so a check
- * can put the state it posed on screen. `null` would be the clock saying "this
- * tick is not a frame", which is the opposite of what is wanted; `0` is a frame
- * that covers no time.
- */
-const ZERO_CLOCK: Clock = { delta: () => 0 };
-
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
@@ -1504,7 +1504,9 @@ function dispatchPointer(
  * What is written is whatever the last frame that RAN left behind, so call it
  * after the frame that poses the thing under test — an `advance(1)` following the
  * arrangement — and before the assertions, so a check that fails still leaves the
- * picture that shows why.
+ * picture that shows why. A check that owes no such frame, because what it
+ * decides is the arrangement itself, calls {@link Harness.paint} first: one frame
+ * that covers no time, which draws the state as it stands.
  *
  * A capture that cannot be written is reported as an output that never turned up,
  * which is a fact about the host rather than about the build, so it warns rather

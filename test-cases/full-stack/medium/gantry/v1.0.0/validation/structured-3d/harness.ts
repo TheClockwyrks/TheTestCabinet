@@ -1406,9 +1406,11 @@ class PointerEvt extends Event {
  * What is written is whatever the last frame that RAN left behind, so call it
  * after the frame that poses the thing under test — an `advance(1)` following the
  * arrangement — and before the assertions, so a check that fails still leaves the
- * picture that shows why. A capture that cannot be written is reported as an
- * output that never turned up, which is a fact about the host rather than about
- * the build, so it warns rather than raising.
+ * picture that shows why. A check that owes no such frame, because what it decides
+ * is the arrangement itself, calls {@link Harness.paint} first: one frame that
+ * covers no time, which draws the state as it stands. A capture that cannot be
+ * written is reported as an output that never turned up, which is a fact about the
+ * host rather than about the build, so it warns rather than raising.
  */
 export function captureStill(h: Harness, outputId: string): void {
   kit.captureStill(baseOf(h), outputId);
