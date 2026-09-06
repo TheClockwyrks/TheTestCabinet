@@ -233,11 +233,11 @@ export default defineEngineValidationConfig({
 
 ### The three barrels, and what a case may not drag in
 
-| Specifier                     | What is in it                                                                                                                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `./case-harness/engine/index` | Everything true of all four engines: the contract, the key and pointer events, the surface read and its stand-in, the three drivers, the canvas and its recorder, the evidence writer, and the kit. |
-| `./case-harness/engine/2d`    | The 2D-only readings: pixels, colours and placed text over the canvas, and the replay stack that thins and re-tables a 2D engine's draw-op recording.                                               |
-| `./case-harness/engine/3d`    | The 3D-only pieces: the WebGL2 stub a `THREE.WebGLRenderer` stands up over, and the `self` its disposal path reaches for.                                                                           |
+| Specifier                     | What is in it                                                                                                                                                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `./case-harness/engine/index` | Everything true of all four engines: the contract, the key and pointer events, the surface read and its stand-in, the three drivers, the canvas and its recorder, the asset host, the audio host, the evidence writer, and the kit. |
+| `./case-harness/engine/2d`    | The 2D-only readings: pixels, colours and placed text over the canvas, and the replay stack that thins and re-tables a 2D engine's draw-op recording.                                                                               |
+| `./case-harness/engine/3d`    | The 3D-only pieces: the WebGL2 stub a `THREE.WebGLRenderer` stands up over, and the `self` its disposal path reaches for.                                                                                                           |
 
 **A 3D case must not drag in the 2D replay stack, and a 2D case must not drag in
 the WebGL stub.** That is not tidiness. A 3D engine's `stopRecording` answers a
@@ -266,6 +266,107 @@ the test runtime exists, and it is the file whose failure mode is "the project
 would not load at all". Reaching it through `engine/index` would drag the kit,
 `@napi-rs/canvas` and the whole vite graph into every worker that imports
 anything, for one function no suite ever calls.
+
+### Serving a build's produced files
+
+A build under an engine loads its produced sprites, models and cues through the
+ENGINE's loader, which resolves each path into a URL relative to the page and
+hands it to `globalThis.fetch`. Under an engine there is no page, and Node's
+`fetch` refuses a relative URL outright — so without a shim every produced file
+would fail to load, and a build whose `initialize` awaits its loads (which is what
+every `specs/assets.md` tells a build to write) would never initialize at all,
+costing the run EVERY item for a fact about Node.
+
+Two modules close that, both in `engine/index` because both halves need them and
+neither needs a different one:
+
+```ts
+// harness.ts
+import {
+  installAssetHost,
+  installAudioContext,
+  wavAudioBuffer,
+} from "./case-harness/engine/index";
+
+const host = installAssetHost({
+  workspaceRoot: WORKSPACE, // never derived here — see below
+  roots: [".", "public", "dist"],
+  images: true,
+  label: "orrery",
+});
+installAudioContext({ decode: wavAudioBuffer });
+```
+
+| What it supplies                    | Where it is                                 |
+| ----------------------------------- | ------------------------------------------- |
+| `fetch`, over the workspace on disk | `engine/assets` — `installAssetHost`        |
+| `createImageBitmap` + `ImageBitmap` | the same call, `images` / `nameImageBitmap` |
+| `document.createElement("canvas")`  | the same call, `documentElement`            |
+| `AudioContext`, decoding only       | `engine/audio` — `installAudioContext`      |
+| The RIFF/WAVE parser                | `engine/audio` — the two `decodeWav*` below |
+
+**`workspaceRoot` must come from the case**, for the same reason
+`EngineCaseConfig.projectRoot` must: this package is staged one directory DEEPER
+than the case's files, so a root derived from its own `import.meta.url` would
+address a tree one level too far down and every produced file would quietly 404 —
+and a 404 is a verdict about the build.
+
+**The root ORDER is a config value with an explicit default, because it decides
+which file answers.** A build is free to arrange its produced tree, so the first
+root that carries a path wins: the four harnesses this came from bound
+`[".", "public", "dist"]`, `["public", "dist", "."]`, `["", "public", "dist"]`
+(where `""` is `"."`) and — in facet's shared `dom-shim.ts` —
+`["dist", "build", "out", "public"]`, which is the built output FIRST. Folding
+those would have a case reading its staged copy for its committed one with nothing
+to say so. `DEFAULT_ASSET_ROOTS` is `[".", "public", "dist"]` and every other order
+is one field.
+
+**Two more things the cases disagreed about are config, not defaults.**
+`onMissing` is `"404"` — the honest answer a served page gives, and what makes an
+engine announce `asset:failed` with a status — or `"upstream"`, which hands the
+URL to the platform's own `fetch` as orrery, volute, kessler's `simple-2d` and
+wick's `simple-2d` do. `onlyUnder` narrows the shim to one prefix, which is
+arc-foundry's `assets/` and nothing else, so a project whose own modules are
+loaded by vite is not answered for by this.
+
+**Request logging is available, never mandatory.** The handle carries the whole
+log — `requests()`, `urls()`, `mark()`, `requestsSince(mark)`, `clear()` — because
+under an engine this shim IS the whole of the build's transport, where under `none`
+the same reading comes off the page's resource timings. A case that never asks
+pays one small object per fetch.
+
+#### The teardown contract, and two harnesses in one worker
+
+The shims go onto `globalThis`, which is the whole of the process a worker's
+suites run in. So:
+
+- **One installation per worker, shared and REFERENCE COUNTED.** A second
+  `installAssetHost` joins the standing one and answers a fresh handle over the
+  same log; every handle's `uninstall` gives up one hold, and the globals go back
+  only when the last one does. That is what a project installing from
+  `createHarness` and uninstalling from `dispose` needs — deepcore's pair already
+  counts references for exactly this reason — because two overlapping harnesses
+  would otherwise have the first `dispose` pull the shim out from under the
+  second.
+- **A second install that DISAGREES throws**, naming the field and both values,
+  rather than quietly serving the first caller's tree. Two harnesses of one
+  project always agree, because their options come from one config object.
+- **`uninstall` is idempotent per handle**, and restores each global to the
+  descriptor it found — which on a bare Node process means DELETING all of them,
+  since none existed. Nothing calls it automatically: a worker that simply exits
+  leaves the shims standing, which is what most of the harnesses this came from
+  do.
+- `installAudioContext` counts references the same way, answers one teardown
+  function, and throws on a second install that names a different `decode` — the
+  worse half of the same mistake, because a harness that asked for
+  `wavAudioBuffer` and joined a context decoding through `silentAudioBuffer` would
+  read SILENCE off every channel with nothing to tell it so. It installs only
+  where the host has none unless `replace` says otherwise, so a host that really
+  carries Web Audio keeps the decoder that really works.
+- `standingAssetHost()` answers a READ-ONLY view for a suite that wants the log
+  without holding the handle: it takes no reference, and both `uninstall` and
+  `clear` do nothing through it, so reading can neither pull the shims down under
+  the owning harness nor empty the record that harness is about to read.
 
 ### The three driver strategies
 
@@ -449,6 +550,12 @@ was.
 | `captureOutput` (async)              | The same writer for an encoder that cannot answer now — a 3D still that has to come out of a renderer                                                                          | volute's `simple-2d`, orrery, gantry's `simple-3d`                                                                                                                                                                                                         |
 | `UntilResult.frames` / `.ticks`      | ONE counter under two names, both filled                                                                                                                                       | fourteen cases count `.frames`; coil, kessler, wick and volute count `.ticks`. Same for `UntilOptions.maxFrames`/`maxTicks`                                                                                                                                |
 | `TimedCue.frame` / `.tick`           | ONE counter under two names, both filled, on a cue stamped with the frame that was running when it sounded                                                                     | most cases spell it `frame`; volute spells it `tick`                                                                                                                                                                                                       |
+| `decodeWavChannels(bytes)`           | A `.wav` decoded to its SAMPLES, de-interleaved, one `Float32Array` per channel, each holding what the file holds                                                              | orrery, under this name; volute, kessler's `simple-2d` and wick's `simple-2d`, each as its own `decodeWav`                                                                                                                                                 |
+| `decodeWavHeader(bytes)`             | The same file read for its FIGURES ALONE — rate, channels, depth, frame count, duration — with nothing decoded, because nothing in that project listens                        | gantry's `structured-3d` as `decodeWav`, its `simple-3d` as `decodeWave`, wick's `structured-2d` as `wavHeader`. A threshold stated over one is meaningless over the other: read a channel of the second and every sample is zero, with nothing to say so  |
+| `wavAudioBuffer(bytes)`              | The first, as the `AudioBuffer` an engine's loader is handed                                                                                                                   | whichever cases bind `decodeWavChannels`. `AudioHostOptions.decode` is REQUIRED for this reason: the eight cases split evenly, and there is no majority to default to                                                                                      |
+| `silentAudioBuffer(bytes)`           | The second, as that buffer, `getChannelData` answering one shared silence of the right length                                                                                  | whichever cases bind `decodeWavHeader`                                                                                                                                                                                                                     |
+| `AssetRequest`                       | `{ url, offOrigin, status, file }` — a SUPERSET of gantry's `structured-3d` record, member for member, plus the file that answered                                             | gantry's `structured-3d` exposes it as `assetRequests()`; orrery logs `string[]` and facet a `Transport.requests: string[]`, both of which `AssetHost.urls()` answers                                                                                      |
+| `inertAudioNode()`                   | A node that answers every member, memoized, both callable AND parameter-shaped                                                                                                 | gantry's `structured-3d`, as its own `audioNode`. Gantry's `simple-3d` `audioNode` minted a FRESH, NON-callable parameter per read, under which a value written to `node.gain` was invisible to the next read; this is a superset of both                  |
 
 Two more disagreements are recorded here as ones the package deliberately does
 **not** resolve, because resolving them would be picking a winner:
@@ -468,13 +575,25 @@ Two more disagreements are recorded here as ones the package deliberately does
 
 Stated so the next pass knows where the line is rather than rediscovering it.
 
-- **The asset host.** Six cases shim `fetch`, `createImageBitmap`,
-  `AudioContext` and `document.createElement` so an engine's loader can resolve a
-  build's produced files off disk, and they do it two different ways — some onto
-  `globalThis`, some into a `host` object handed to the engine. `decodeWav`, the
-  RIFF parser beside it, is the same function four times over. None of it is
-  reachable by a case that loads no assets, so extracting it correctly needs a
-  case that does; refract loads none, so nothing here would have proved it.
+- **The `OffscreenCanvas` stub.** Facet's `dom-shim.ts` stands one up beside its
+  `document.createElement` shim, and it is the only case in the tree that does.
+  `installAssetHost` supplies the document shim and not this one; a second case
+  wanting it is the moment to add it, and until then adding it would be adding a
+  member with one user and no second reading to check it against.
+
+- **The `Transport`/`assetRequests` shapes a case builds ON the log.** The host
+  answers `AssetRequest[]` and the URLs off it; what a case then exposes to its own
+  suites — orrery's `Harness.assetRequests(): Promise<string[]>`, facet's
+  per-harness `Transport { requests, basePath }`, wick's `assetsLoaded`/
+  `assetFailures` off the engine's own events — stays with the case, because each
+  is a different reading of a different question and only the LOG is shared.
+
+- **Wick's `structured-2d` `FakeBuffer`**, which answers a decoded cue as
+  `{ file, duration, sampleRate, numberOfChannels, length }` and carries **no
+  `getChannelData` at all**. `silentAudioBuffer` is a superset of it except for
+  the `file`, which is a fact about the case's own bookkeeping rather than about a
+  decoded buffer.
+
 - **The recorder's image interning** is extracted (`RecorderOptions.internImages`)
   but only volute and orrery use it, and neither is migrated yet — the first case
   onto it should check its `ImageRef` field-for-field against `src/draw-calls.ts`.

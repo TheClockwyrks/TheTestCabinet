@@ -19,8 +19,9 @@
 //
 //   ./index  (this file) — everything that is true of all four engines: the
 //            contract, the events, the surface, the drivers, the canvas the
-//            engine draws through, the sweep, the cue stamping, the evidence
-//            writer, and the kit that binds them.
+//            engine draws through, the asset host and the audio host that let a
+//            build's produced files load at all, the sweep, the cue stamping,
+//            the evidence writer, and the kit that binds them.
 //   ./2d     — the 2D-only readings: the pixel, colour and placed-text readings
 //            over the canvas, and the replay stack that thins and re-tables a 2D
 //            engine's draw-op recording.
@@ -33,6 +34,15 @@
 // operate on there; and a 3D project's renderer stands up over a WebGL2 stub that
 // a 2D project has no use for. Neither half is reachable from this file, so
 // importing the neutral barrel costs a case neither.
+//
+// THE ASSET HOST AND THE AUDIO HOST ARE HERE for the plainest reason of the lot:
+// both halves need them and neither needs a different one. A 2D case loads
+// produced sprites and cues through the same shimmed `fetch` a 3D case loads
+// produced glTF and cues through, and a `.wav` is the same file format under
+// either. They are two modules rather than one because a case may want one
+// without the other — kessler's `structured-2d` serves assets and deliberately
+// installs NO `AudioContext`, and arc-foundry and deepcore install none either —
+// and because `./audio` is pure where `./assets` reads the disk.
 //
 // WHERE THE LINE FALLS, EXACTLY. The canvas and its recorder are HERE rather than
 // in `./2d`, because all four engines draw through a 2D context — the two 3D ones
@@ -67,6 +77,12 @@ export * from "./driver";
 
 /* The canvas the engine draws through, and the recorder over it. */
 export * from "./canvas";
+
+/* Serving the build's own produced files to the engine's loader. */
+export * from "./assets";
+
+/* Decoding a produced `.wav`, over a graph that never sounds. */
+export * from "./audio";
 
 /* Writing a review item's evidence out. */
 export * from "./capture";
