@@ -312,7 +312,7 @@ export const CASCADE_RUNOUT_SECONDS =
  * `specs/instrumentation.md` has `drawLaunchVx` perform exactly the draw a
  * launch performs and nothing else, so this is the launch's `vx` read without
  * the launch: no cascade is run, no card is launched, and nothing is in flight.
- * The draws go over in ONE crossing, so a reading of sixty-four costs what one
+ * The draws go over in ONE crossing, so a reading of a few dozen costs what one
  * operation costs. A value that is not a finite number is failed here, because
  * a check comparing it against a range would otherwise report the range.
  */
