@@ -123,11 +123,13 @@ function filesUnder(at: string, base = at, found: string[] = []): string[] {
  * it hands off to followed through.
  *
  * A script is split on the shell's separators and only a command's OWN name
- * counts, so a script whose argument merely mentions `music.wav` is not a hit. A
- * command that runs another of the package's scripts — `npm run produce`, and
- * the `pnpm`/`yarn` spellings of it — is read on: what an install runs is the
- * whole chain rather than the one line that starts it. `seen` closes the loop a
- * pair of scripts naming each other would otherwise make.
+ * counts, so a script whose argument merely mentions `music.wav` is not a hit.
+ * A command that runs a tool through a package runner — `npx voxel`, `pnpm exec
+ * voxel` — names it just as plainly, and one that runs another of the package's
+ * scripts — `npm run produce`, and the `pnpm`/`yarn`/`bun` spellings of it — is
+ * read on: what an install runs is the whole chain rather than the one line that
+ * starts it. `seen` closes the loop a pair of scripts naming each other would
+ * otherwise make.
  */
 function toolCommands(
   scripts: Record<string, string>,
@@ -136,16 +138,25 @@ function toolCommands(
   seen: Set<string>,
 ): string[] {
   const hits: string[] = [];
+  const named = (word: string | undefined): boolean =>
+    (TOOLS as readonly string[]).includes((word ?? "").split("/").pop() ?? "");
   for (const command of script.split(/&&|\|\||[;|\n]/)) {
     const words = command.trim().split(/\s+/);
     const name = (words[0] ?? "").split("/").pop() ?? "";
-    if ((TOOLS as readonly string[]).includes(name)) {
+    const rest = words.slice(1).filter((word) => !word.startsWith("-"));
+    if (named(name)) {
       hits.push(`${trail}: ${command.trim()}`);
       continue;
     }
-    const runner = ["npm", "pnpm", "yarn", "bun"].includes(name);
-    if (!runner) continue;
-    const rest = words.slice(1).filter((word) => !word.startsWith("-"));
+    if (name === "npx" || name === "bunx") {
+      if (named(rest[0])) hits.push(`${trail}: ${command.trim()}`);
+      continue;
+    }
+    if (!["npm", "pnpm", "yarn", "bun"].includes(name)) continue;
+    if (rest[0] === "exec" || rest[0] === "dlx") {
+      if (named(rest[1])) hits.push(`${trail}: ${command.trim()}`);
+      continue;
+    }
     const next =
       rest[0] === "run" || rest[0] === "run-script" ? rest[1] : rest[0];
     if (next === undefined || seen.has(next)) continue;
