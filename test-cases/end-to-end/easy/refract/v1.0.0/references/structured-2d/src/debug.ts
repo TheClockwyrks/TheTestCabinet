@@ -24,7 +24,8 @@
 import type { World } from "@clockwyrks/structured-2d";
 import { playEvents } from "./audio";
 import { cellCenter, emptyBeams, parseBoard } from "./board";
-import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
+import { generateBoard } from "./cascade";
+import { REFRACT_DEBUG_VERSION } from "./constants";
 import { resetState } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
 import { targetsFor } from "./layout";
@@ -32,6 +33,7 @@ import { pointerDown, pointerMove, pointerUp } from "./pointer";
 import { clearBeams, noEvents, type TraceEvents } from "./tracing";
 import {
   refractState,
+  type BoardState,
   type Channel,
   type Mode,
   type NodeKind,
@@ -104,8 +106,6 @@ export interface RefractSnapshot {
   targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
-  /** The seeded generator's current state. */
-  rngState: number;
 }
 
 // ---- The surface ---------------------------------------------------------
@@ -116,11 +116,14 @@ export interface RefractSnapshot {
  */
 export interface RefractDebugApi {
   version: number;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): RefractSnapshot;
   setMode(mode: Mode): void;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
+  setSolvedCount(count: number): void;
+  setTier(tier: number): void;
+  generateBoard(tier: number): void;
   loadBoard(board: readonly string[]): void;
   pointerDown(x: number, y: number, device?: PointerDevice): void;
   pointerMove(x: number, y: number, device?: PointerDevice): void;
@@ -134,6 +137,18 @@ export interface RefractDebugApi {
  * the moment it is called, so the surface follows the live game for the life
  * of the engine.
  */
+/**
+ * A board put in play on `playing` with every beam empty and no trace live —
+ * what `loadBoard` and `generateBoard` both do with the board they hold.
+ */
+function poseBoard(live: RefractState, board: BoardState): void {
+  live.board = board;
+  live.beams = emptyBeams(board);
+  live.tracing = null;
+  live.screen = "playing";
+  live.menuIndex = 0;
+}
+
 export function createDebugApi(world: () => World): RefractDebugApi {
   const state = (): RefractState => refractState(world());
 
@@ -146,13 +161,12 @@ export function createDebugApi(world: () => World): RefractDebugApi {
     version: REFRACT_DEBUG_VERSION,
 
     /**
-     * Every declared field back at its title-screen value, with `rngState`
-     * seeded. `muted` is deliberately untouched: muting is a player
-     * preference the runtime owns, and a reset is not a reason to start
-     * making noise again.
+     * Every declared field back at its title-screen value. `muted` is
+     * deliberately untouched: muting is a player preference the runtime owns,
+     * and a reset is not a reason to start making noise again.
      */
-    reset(options) {
-      resetState(state(), options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(state());
     },
 
     /** A pure read. It never changes anything. */
@@ -221,7 +235,6 @@ export function createDebugApi(world: () => World): RefractDebugApi {
         targets: targetsFor(live).map((target) => ({ ...target })),
         muted: live.muted,
         simTime: live.simTime,
-        rngState: live.rngState,
       };
     },
 
@@ -245,6 +258,25 @@ export function createDebugApi(world: () => World): RefractDebugApi {
       state().menuIndex = index;
     },
 
+    /** The run's boards-solved count alone; the tier waits for the next solve. */
+    setSolvedCount(count) {
+      state().solvedCount = count;
+    },
+
+    /** The tier the next cascade board is generated at, and nothing else. */
+    setTier(tier) {
+      state().tier = tier;
+    },
+
+    /**
+     * A board the generator emits at `tier`, posed exactly as `loadBoard`
+     * poses one. The run's progression is untouched: the tier named here is
+     * the operation's argument, never written into `state.tier`.
+     */
+    generateBoard(tier) {
+      poseBoard(state(), generateBoard(tier));
+    },
+
     /**
      * An arbitrary board posed onto the `playing` screen with every beam
      * empty and no trace live — the surface's main lever. The notation is
@@ -252,13 +284,7 @@ export function createDebugApi(world: () => World): RefractDebugApi {
      * any other: the rules apply to it unchanged.
      */
     loadBoard(board) {
-      const parsed = parseBoard(board);
-      const live = state();
-      live.board = parsed;
-      live.beams = emptyBeams(parsed);
-      live.tracing = null;
-      live.screen = "playing";
-      live.menuIndex = 0;
+      poseBoard(state(), parseBoard(board));
     },
 
     /** A press, resolved immediately through the real input path. */

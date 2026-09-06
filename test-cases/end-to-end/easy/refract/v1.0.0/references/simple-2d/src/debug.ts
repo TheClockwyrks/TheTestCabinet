@@ -18,13 +18,15 @@
 // effect immediately in the state it returns rather than waiting on a frame.
 
 import { cellCenter, emptyBeams, parseBoard } from "./board";
-import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
+import { generateBoard } from "./cascade";
+import { REFRACT_DEBUG_VERSION } from "./constants";
 import { createInitialState } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
 import { pointerDown, pointerMove, pointerUp } from "./pointer";
 import { clearBeams } from "./tracing";
 import { targetsFor } from "./layout";
 import type {
+  BoardState,
   Channel,
   Mode,
   NodeKind,
@@ -87,8 +89,6 @@ export interface RefractSnapshot {
   targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
-  /** The seeded generator's current state. */
-  rngState: number;
 }
 
 /** One pointer target, as the snapshot reports it. */
@@ -108,14 +108,17 @@ export interface SnapshotTarget {
  */
 export interface RefractDebugApi {
   version: number;
-  reset(
-    state: DeepReadonly<RefractState>,
-    options?: { seed?: number },
-  ): RefractState;
+  reset(state: DeepReadonly<RefractState>): RefractState;
   snapshot(state: DeepReadonly<RefractState>): RefractSnapshot;
   setMode(state: DeepReadonly<RefractState>, mode: Mode): RefractState;
   setScreen(state: DeepReadonly<RefractState>, screen: Screen): RefractState;
   setMenuIndex(state: DeepReadonly<RefractState>, index: number): RefractState;
+  setSolvedCount(
+    state: DeepReadonly<RefractState>,
+    count: number,
+  ): RefractState;
+  setTier(state: DeepReadonly<RefractState>, tier: number): RefractState;
+  generateBoard(state: DeepReadonly<RefractState>, tier: number): RefractState;
   loadBoard(
     state: DeepReadonly<RefractState>,
     board: readonly string[],
@@ -139,23 +142,36 @@ export interface RefractDebugApi {
   clear(state: DeepReadonly<RefractState>): RefractState;
 }
 
+/**
+ * A board put in play on `playing` with every beam empty and no trace live —
+ * what `loadBoard` and `generateBoard` both do with the board they hold.
+ */
+function poseBoard(
+  state: DeepReadonly<RefractState>,
+  board: BoardState,
+): RefractState {
+  return {
+    ...state,
+    board,
+    beams: emptyBeams(board),
+    tracing: null,
+    screen: "playing",
+    menuIndex: 0,
+  };
+}
+
 /** Build the surface. It holds nothing: every operation is handed its state. */
 export function createDebugApi(): RefractDebugApi {
   return {
     version: REFRACT_DEBUG_VERSION,
 
     /**
-     * Every declared field back at its title-screen value, with `rngState`
-     * seeded. `muted` is deliberately untouched: muting is a player
-     * preference the runtime owns, and a reset is not a reason to start
-     * making noise again.
+     * Every declared field back at its title-screen value. `muted` is
+     * deliberately untouched: muting is a player preference the runtime owns,
+     * and a reset is not a reason to start making noise again.
      */
-    reset(state, options) {
-      return {
-        ...createInitialState(),
-        muted: state.muted,
-        rngState: options?.seed ?? DEFAULT_SEED,
-      };
+    reset(state) {
+      return { ...createInitialState(), muted: state.muted };
     },
 
     /** A pure read. It never changes anything. */
@@ -224,7 +240,6 @@ export function createDebugApi(): RefractDebugApi {
         targets: targetsFor(state).map((target) => ({ ...target })),
         muted: state.muted,
         simTime: state.simTime,
-        rngState: state.rngState,
       };
     },
 
@@ -246,6 +261,25 @@ export function createDebugApi(): RefractDebugApi {
       return { ...state, menuIndex: index };
     },
 
+    /** The run's boards-solved count alone; the tier waits for the next solve. */
+    setSolvedCount(state, count) {
+      return { ...state, solvedCount: count };
+    },
+
+    /** The tier the next cascade board is generated at, and nothing else. */
+    setTier(state, tier) {
+      return { ...state, tier };
+    },
+
+    /**
+     * A board the generator emits at `tier`, posed exactly as `loadBoard`
+     * poses one. The run's progression is untouched: the tier named here is
+     * the operation's argument, never written into `state.tier`.
+     */
+    generateBoard(state, tier) {
+      return poseBoard(state, generateBoard(tier));
+    },
+
     /**
      * An arbitrary board posed onto the `playing` screen with every beam
      * empty and no trace live — the surface's main lever. The notation is
@@ -253,15 +287,7 @@ export function createDebugApi(): RefractDebugApi {
      * any other: the rules apply to it unchanged.
      */
     loadBoard(state, board) {
-      const parsed = parseBoard(board);
-      return {
-        ...state,
-        board: parsed,
-        beams: emptyBeams(parsed),
-        tracing: null,
-        screen: "playing",
-        menuIndex: 0,
-      };
+      return poseBoard(state, parseBoard(board));
     },
 
     /**

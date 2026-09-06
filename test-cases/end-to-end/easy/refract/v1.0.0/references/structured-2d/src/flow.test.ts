@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { campaignBoard } from "./campaign";
-import { CAMPAIGN_LENGTH, DEFAULT_SEED } from "./constants";
+import { CAMPAIGN_LENGTH } from "./constants";
 import {
   campaignSolvedItems,
   enterCampaignBoard,
@@ -39,7 +39,6 @@ function declared(state: RefractState): Record<string, unknown> {
     armedTarget: state.armedTarget,
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
   };
 }
 
@@ -63,7 +62,6 @@ describe("the state's initializers", () => {
       armedTarget: null,
       simTime: 0,
       muted: false,
-      rngState: DEFAULT_SEED,
     });
     // The framework's inherited fields rest where the engine leaves them: the
     // mode never calls setPhase, so phase stays "waiting" and elapsed 0.
@@ -74,18 +72,17 @@ describe("the state's initializers", () => {
 });
 
 describe("resetState", () => {
-  it("restores every declared field, seeds the generator, and keeps mute", () => {
+  it("restores every declared field and keeps mute", () => {
     const state = new RefractState();
     startMode(state, "cascade");
     onSolved(state);
     state.muted = true;
     state.simTime = 12.5;
 
-    resetState(state, 99);
+    resetState(state);
     expect(declared(state)).toEqual({
       ...declared(new RefractState()),
       muted: true,
-      rngState: 99,
     });
   });
 });
@@ -118,8 +115,6 @@ describe("entering the modes", () => {
     expect(state.tier).toBe(1);
     expect(state.board.nodes.length).toBeGreaterThan(0);
     expect(state.beams.every((beam) => beam.cells.length === 0)).toBe(true);
-    // Generating consumed the seeded generator.
-    expect(state.rngState).not.toBe(DEFAULT_SEED);
   });
 });
 
@@ -198,17 +193,17 @@ describe("the cascade solve transition", () => {
     expect(state.tier).toBe(2);
   });
 
-  it("restarts at tier 1 without reseeding", () => {
+  it("restarts at tier 1 on a fresh board", () => {
     const state = new RefractState();
     startMode(state, "cascade");
     onSolved(state);
     nextCascadeBoard(state);
-    const before = state.rngState;
     restartCascade(state);
     expect(state.solvedCount).toBe(0);
     expect(state.tier).toBe(1);
     expect(state.screen).toBe("playing");
-    expect(state.rngState).not.toBe(before);
+    expect(state.board.nodes.length).toBeGreaterThan(0);
+    expect(state.beams.every((beam) => beam.cells.length === 0)).toBe(true);
   });
 });
 

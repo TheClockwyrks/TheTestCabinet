@@ -142,7 +142,6 @@ export interface RefractState {
   readonly armedTarget: string | null;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 }
 
 // ---- Menus (one edge read per action per frame) --------------------------

@@ -1,4 +1,4 @@
-// Cascade's generator: the tier ladder, determinism, the structural
+// Cascade's generator: the tier ladder, the structural
 // requirements every emitted board satisfies, and — the central requirements —
 // solvability, proven by replaying each board's carved solution through a
 // real engine's debug surface, which feeds the same per-sample pointer path a
@@ -41,23 +41,6 @@ describe("the tier ladder", () => {
     }
     expect(tierFor(20)).toBe(MAX_TIER);
     expect(tierFor(24)).toBe(MAX_TIER);
-  });
-});
-
-describe("determinism", () => {
-  it("emits the same board and advanced state for the same seed", () => {
-    const first = generateBoardWithSolution(1234, 3);
-    const second = generateBoardWithSolution(1234, 3);
-    expect(second.board).toEqual(first.board);
-    expect(second.solution).toEqual(first.solution);
-    expect(second.rngState).toBe(first.rngState);
-  });
-
-  it("advances the state, so the next board follows from the previous one", () => {
-    const first = generateBoard(42, 2);
-    expect(first.rngState).not.toBe(42);
-    const second = generateBoard(first.rngState, 2);
-    expect(second.board).not.toEqual(first.board);
   });
 });
 
@@ -112,13 +95,11 @@ describe("emitted boards", () => {
     h.dispose();
   });
 
-  it("satisfies the tier's structure and solves, across seeds and tiers", () => {
+  it("satisfies the tier's structure and solves, across draws and tiers", () => {
     for (let tier = 1; tier <= MAX_TIER; tier++) {
-      let rngState = 1000 + tier;
       for (let round = 0; round < 8; round++) {
         const label = `tier ${tier} round ${round}`;
-        const generated = generateBoardWithSolution(rngState, tier);
-        rngState = generated.rngState;
+        const generated = generateBoardWithSolution(tier);
         expectWellFormed(generated.board, tier, label);
         expect(solutionSolves(generated.board, generated.solution), label).toBe(
           true,
@@ -138,11 +119,9 @@ describe("emitted boards", () => {
   it("draws each board's grid size from its tier's stated range", () => {
     for (let tier = 1; tier <= MAX_TIER; tier++) {
       const spec = TIERS[tier - 1];
-      let rngState = 7 + tier;
       for (let round = 0; round < 6; round++) {
         const label = `tier ${tier} round ${round}`;
-        const { board, rngState: next } = generateBoard(rngState, tier);
-        rngState = next;
+        const board = generateBoard(tier);
         expect(board.cols, label).toBeGreaterThanOrEqual(spec.minCols);
         expect(board.cols, label).toBeLessThanOrEqual(spec.maxCols);
         expect(board.rows, label).toBeGreaterThanOrEqual(spec.minRows);
@@ -153,19 +132,17 @@ describe("emitted boards", () => {
 
   it("meets the tier's difficulty floor, along a played sequence", () => {
     // The first twelve boards of a run, exactly as a player would meet them:
-    // one seed threaded board to board, the tier climbing every TIER_ADVANCE
-    // solves. Each board is re-measured from scratch with the module the
-    // generator itself trusts, and held to its tier's floor — solutions,
-    // determined share, branching, shared crystals, and routes per channel,
-    // all within the TIERS entry's bounds. Twelve boards keep the runtime
-    // modest while crossing three rungs of the ladder.
-    let rngState = 20260827;
+    // one draw per board, the tier climbing every TIER_ADVANCE solves. Each
+    // board is re-measured from scratch with the module the generator itself
+    // trusts, and held to its tier's floor — solutions, determined share,
+    // branching, shared crystals, and routes per channel, all within the
+    // TIERS entry's bounds. Twelve boards keep the runtime modest while
+    // crossing three rungs of the ladder.
     for (let solved = 0; solved < 12; solved++) {
       const tier = tierFor(solved);
       const spec = TIERS[tier - 1];
       const label = `board ${solved + 1}, tier ${tier}`;
-      const generated = generateBoardWithSolution(rngState, tier);
-      rngState = generated.rngState;
+      const generated = generateBoardWithSolution(tier);
       const measured = measureDifficulty(
         generated.board,
         spec.maxSolutions + 1,

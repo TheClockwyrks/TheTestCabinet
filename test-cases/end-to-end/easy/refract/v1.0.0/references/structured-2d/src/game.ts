@@ -29,7 +29,6 @@ import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { defineCues } from "./audio";
 import { Bench } from "./bench";
-import { DEFAULT_SEED } from "./constants";
 import { RefractController } from "./controller";
 import { createDebugApi, type RefractDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -115,7 +114,6 @@ export class RefractState extends GameState {
   armedTarget: string | null = null;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 }
 
 /**

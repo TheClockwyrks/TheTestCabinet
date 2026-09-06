@@ -122,13 +122,15 @@ code:
   is unaffected either way, so the canvas always shows the state the last
   frame left. Because every rate is integrated against the frame's delta,
   `advance(1, 1)` and `advance(1, 60)` reach the same outcome.
-- `reset(options?)` and `snapshot()` — return every declared field to its
-  title-screen value (seedable; `muted` deliberately kept) and read a
+- `reset()` and `snapshot()` — return every declared field to its
+  title-screen value (`muted` deliberately kept) and read a
   JSON-serializable view of the full state, with node centers, crystal spends,
   beam completeness, and the solved verdict derived by the game's own rules.
-- `setMode(mode)`, `setScreen(screen)`, `setMenuIndex(index)` and
-  `loadBoard(board)` — set one field each, and pose an arbitrary board (in the
-  case's notation) onto the playing screen with every beam empty.
+- `setMode(mode)`, `setScreen(screen)`, `setMenuIndex(index)`,
+  `setSolvedCount(count)` and `setTier(tier)` — set one field each.
+- `loadBoard(board)` and `generateBoard(tier)` — pose an arbitrary board (in
+  the case's notation), or a board the generator emits at `tier`, onto the
+  playing screen with every beam empty.
 - `pointerDown(x, y)`, `pointerMove(x, y)` and `pointerUp()` — feed the same
   input path the runtime's pointer feeds, each taking effect the moment it is
   called, so a whole route draws from code with no frame between calls. The hit
@@ -142,9 +144,10 @@ completion test run from there. There is deliberately no operation for the
 registered actions (the runtime's keyboard is driven by dispatching real key
 events at the page) and no overlay toggle (the runtime owns the backtick key).
 
-The surface is inert during normal play. All randomness runs off the seeded
-generator state the snapshot reports as `rngState`, so a given seed replays
-the same cascade sequence exactly.
+The surface is inert during normal play. The generator draws from a private
+random source in `src/rng.ts`; nothing about it is declared in the state or
+reported by the snapshot, and a scenario that needs a particular board poses
+it through `loadBoard`.
 
 ## Requirements
 
@@ -221,7 +224,7 @@ src/
   debug.ts            The pose surface and the installed window.__refract
   game.ts             The state contract, the menus, and the three functions
                       the runtime drives
-  rng.ts              The seeded generator, over RefractState.rngState
+  rng.ts              The build's private random source
   board.ts            Cell geometry, board notation, pointer targeting
   rules.ts            The limits R1–R5 and the completion conditions R6–R9
   tracing.ts          The grab table, extending, retracting, releasing, clear

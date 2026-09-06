@@ -26,13 +26,15 @@
 // calls it.
 
 import { cellCenter, emptyBeams, parseBoard } from "./board";
-import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
+import { generateBoard } from "./cascade";
+import { REFRACT_DEBUG_VERSION } from "./constants";
 import { createInitialState } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
 import { pointerDown, pointerMove, pointerUp } from "./game-pointer";
 import { targetsFor } from "./layout";
 import { clearBeams } from "./tracing";
 import type {
+  BoardState,
   Channel,
   Mode,
   NodeKind,
@@ -108,8 +110,6 @@ export interface RefractSnapshot {
   targets: SnapshotTarget[];
   muted: boolean;
   simTime: number;
-  /** The seeded generator's current state. */
-  rngState: number;
 }
 
 // ---- The pose surface ----------------------------------------------------
@@ -121,11 +121,14 @@ export interface RefractSnapshot {
  */
 export interface RefractDebugApi {
   version: number;
-  reset(state: RefractState, options?: { seed?: number }): RefractState;
+  reset(state: RefractState): RefractState;
   snapshot(state: RefractState): RefractSnapshot;
   setMode(state: RefractState, mode: Mode): RefractState;
   setScreen(state: RefractState, screen: Screen): RefractState;
   setMenuIndex(state: RefractState, index: number): RefractState;
+  setSolvedCount(state: RefractState, count: number): RefractState;
+  setTier(state: RefractState, tier: number): RefractState;
+  generateBoard(state: RefractState, tier: number): RefractState;
   loadBoard(state: RefractState, board: readonly string[]): RefractState;
   pointerDown(
     state: RefractState,
@@ -143,23 +146,33 @@ export interface RefractDebugApi {
   clear(state: RefractState): RefractState;
 }
 
+/**
+ * A board put in play on `playing` with every beam empty and no trace live —
+ * what `loadBoard` and `generateBoard` both do with the board they hold.
+ */
+function poseBoard(state: RefractState, board: BoardState): RefractState {
+  return {
+    ...state,
+    board,
+    beams: emptyBeams(board),
+    tracing: null,
+    screen: "playing",
+    menuIndex: 0,
+  };
+}
+
 /** Build the surface. It holds nothing: every operation is handed its state. */
 export function createDebugApi(): RefractDebugApi {
   return {
     version: REFRACT_DEBUG_VERSION,
 
     /**
-     * Every declared field back at its title-screen value, with `rngState`
-     * seeded. `muted` is deliberately untouched: muting is a player
-     * preference the runtime owns, and a reset is not a reason to start
-     * making noise again.
+     * Every declared field back at its title-screen value. `muted` is
+     * deliberately untouched: muting is a player preference the runtime owns,
+     * and a reset is not a reason to start making noise again.
      */
-    reset(state, options) {
-      return {
-        ...createInitialState(),
-        muted: state.muted,
-        rngState: options?.seed ?? DEFAULT_SEED,
-      };
+    reset(state) {
+      return { ...createInitialState(), muted: state.muted };
     },
 
     /** A pure read. It never changes anything. */
@@ -228,7 +241,6 @@ export function createDebugApi(): RefractDebugApi {
         targets: targetsFor(state).map((target) => ({ ...target })),
         muted: state.muted,
         simTime: state.simTime,
-        rngState: state.rngState,
       };
     },
 
@@ -250,6 +262,25 @@ export function createDebugApi(): RefractDebugApi {
       return { ...state, menuIndex: index };
     },
 
+    /** The run's boards-solved count alone; the tier waits for the next solve. */
+    setSolvedCount(state, count) {
+      return { ...state, solvedCount: count };
+    },
+
+    /** The tier the next cascade board is generated at, and nothing else. */
+    setTier(state, tier) {
+      return { ...state, tier };
+    },
+
+    /**
+     * A board the generator emits at `tier`, posed exactly as `loadBoard`
+     * poses one. The run's progression is untouched: the tier named here is
+     * the operation's argument, never written into `state.tier`.
+     */
+    generateBoard(state, tier) {
+      return poseBoard(state, generateBoard(tier));
+    },
+
     /**
      * An arbitrary board posed onto the `playing` screen with every beam
      * empty and no trace live — the surface's main lever. The notation is
@@ -257,15 +288,7 @@ export function createDebugApi(): RefractDebugApi {
      * any other: the rules apply to it unchanged.
      */
     loadBoard(state, board) {
-      const parsed = parseBoard(board);
-      return {
-        ...state,
-        board: parsed,
-        beams: emptyBeams(parsed),
-        tracing: null,
-        screen: "playing",
-        menuIndex: 0,
-      };
+      return poseBoard(state, parseBoard(board));
     },
 
     /** A press, resolved immediately through the real input path. */
@@ -316,11 +339,14 @@ export interface RefractWindowApi {
   version: number;
   setAutoStep(enabled: boolean): void;
   advance(seconds: number, frames?: number): void;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): RefractSnapshot;
   setMode(mode: Mode): void;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
+  setSolvedCount(count: number): void;
+  setTier(tier: number): void;
+  generateBoard(tier: number): void;
   loadBoard(board: readonly string[]): void;
   pointerDown(x: number, y: number, device?: PointerDevice): void;
   pointerMove(x: number, y: number, device?: PointerDevice): void;
@@ -354,15 +380,15 @@ export function createWindowApi(
      * the same update the loop runs, then a render — so the game's own
      * completion test and animation produce the result and the canvas
      * reflects it. Advancing while the game is still stepping automatically
-     * ADDS to what the wall clock is already doing, so a scenario that must
-     * be reproducible calls `setAutoStep(false)` first.
+     * ADDS to what the wall clock is already doing, so a scenario that wants
+     * exactly the frames it asked for calls `setAutoStep(false)` first.
      */
     advance(seconds, frames = 1) {
       host.advance(seconds, frames);
     },
 
-    reset(options) {
-      host.apply((state) => api.reset(state, options));
+    reset() {
+      host.apply((state) => api.reset(state));
     },
 
     snapshot() {
@@ -379,6 +405,18 @@ export function createWindowApi(
 
     setMenuIndex(index) {
       host.apply((state) => api.setMenuIndex(state, index));
+    },
+
+    setSolvedCount(count) {
+      host.apply((state) => api.setSolvedCount(state, count));
+    },
+
+    setTier(tier) {
+      host.apply((state) => api.setTier(state, tier));
+    },
+
+    generateBoard(tier) {
+      host.apply((state) => api.generateBoard(state, tier));
     },
 
     loadBoard(board) {

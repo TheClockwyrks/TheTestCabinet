@@ -24,12 +24,12 @@ import { RefractState, type BoardState, type Mode } from "./game";
 /**
  * Every declared field back at its title-screen value (specs/state.md), copied
  * off a freshly constructed state so the class's field initializers stay the
- * single statement of those values, with `rngState` seeded by the caller.
- * `muted` is deliberately left as it stands: muting is a player preference the
- * runtime owns, and the inherited `phase`, `elapsed`, and `players` are the
- * framework's rather than declared fields, so a reset never touches them.
+ * single statement of those values. `muted` is deliberately left as it stands:
+ * muting is a player preference the runtime owns, and the inherited `phase`,
+ * `elapsed`, and `players` are the framework's rather than declared fields, so
+ * a reset never touches them.
  */
-export function resetState(state: RefractState, seed: number): void {
+export function resetState(state: RefractState): void {
   const fresh = new RefractState();
   state.screen = fresh.screen;
   state.mode = fresh.mode;
@@ -46,7 +46,6 @@ export function resetState(state: RefractState, seed: number): void {
   state.pointer = fresh.pointer;
   state.armedTarget = fresh.armedTarget;
   state.simTime = fresh.simTime;
-  state.rngState = seed;
 }
 
 /**
@@ -99,15 +98,12 @@ export function enterCampaignBoard(state: RefractState, index: number): void {
 
 /** The next cascade board, generated at the current tier. */
 export function nextCascadeBoard(state: RefractState): void {
-  const { board, rngState } = generateBoard(state.rngState, state.tier);
-  enterBoard(state, board);
-  state.rngState = rngState;
+  enterBoard(state, generateBoard(state.tier));
 }
 
 /**
- * Cascade's `RESTART`: back to tier 1 with the count at zero, WITHOUT
- * reseeding — the generator carries on from the state it holds, so a restart
- * drops the player onto boards they have not seen (specs/modes/cascade.md).
+ * Cascade's `RESTART`: back to tier 1 with the count at zero, on a freshly
+ * generated board like any other (specs/modes/cascade.md).
  */
 export function restartCascade(state: RefractState): void {
   state.solvedCount = 0;

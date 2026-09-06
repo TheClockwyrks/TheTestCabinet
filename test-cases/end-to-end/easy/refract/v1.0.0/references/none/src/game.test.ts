@@ -17,14 +17,7 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cellCenter } from "./board";
-import {
-  CUES,
-  DEFAULT_SEED,
-  REFRACT_DEBUG_VERSION,
-  STAGE_H,
-  STAGE_W,
-} from "./constants";
-import { generateBoardWithSolution } from "./cascade";
+import { CUES, REFRACT_DEBUG_VERSION, STAGE_H, STAGE_W } from "./constants";
 import {
   REFRACT_HANDLE,
   installDebugApi,
@@ -246,6 +239,13 @@ function played(): string[] {
 }
 
 // ---- Boot ----------------------------------------------------------------
+
+/** The one route that solves the posed board `TtT`, left to right. */
+const ROUTE_TTT = [
+  { col: 0, row: 0 },
+  { col: 1, row: 0 },
+  { col: 2, row: 0 },
+];
 
 describe("initialization", () => {
   it("opens on the title screen with the state at rest", () => {
@@ -501,17 +501,14 @@ describe("solving a cascade board", () => {
     h.tap("Enter");
     h.step(1);
     expect(h.state.mode).toBe("cascade");
+    expect(h.state.board.nodes.length).toBeGreaterThan(0);
 
-    // The board the sequence opened with is the one the seed dictates, so its
-    // carved solution is known.
-    const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
-    expect(h.state.board).toEqual(expected.board);
-    for (const route of expected.solution) {
-      h.drag(route);
-    }
+    // A known board posed over the generated one, so the solving route is
+    // known: a posed board is a board like any other, and the run counts it.
+    h.api.loadBoard(["TtT"]);
+    h.drag(ROUTE_TTT);
     expect(h.state.screen).toBe("solved");
     expect(h.state.solvedCount).toBe(1);
-    expect(h.state.rngState).toBe(expected.rngState);
 
     h.tap("Enter"); // NEXT BOARD
     h.step(1);
@@ -525,7 +522,7 @@ describe("solving a cascade board", () => {
 describe("window.__refract, driven end to end", () => {
   it("poses, traces, snapshots, and resets through the game's own rules", () => {
     h.api.setAutoStep(false);
-    h.api.reset({ seed: 5 });
+    h.api.reset();
     h.api.loadBoard(["T2T", "S.S"]);
     h.trace([
       { col: 0, row: 0 },
@@ -559,18 +556,6 @@ describe("window.__refract, driven end to end", () => {
     snapshot = h.api.snapshot();
     expect(snapshot.screen).toBe("title");
     expect(snapshot.simTime).toBe(0);
-    h.api.setAutoStep(true);
-  });
-
-  it("cascade reruns the identical sequence for the same seed", () => {
-    h.api.setAutoStep(false);
-    h.api.reset({ seed: 11 });
-    h.enterCascade();
-    const first = h.api.snapshot().board;
-
-    h.api.reset({ seed: 11 });
-    h.enterCascade();
-    expect(h.api.snapshot().board).toEqual(first);
     h.api.setAutoStep(true);
   });
 
@@ -722,14 +707,11 @@ describe("the solved and complete screens", () => {
     expect(h.state.selectIndex).toBe(0);
   });
 
-  it("restarts cascade from its solved menu without reseeding", () => {
+  it("restarts cascade from its solved menu on a fresh tier-1 board", () => {
     h.enterCascade();
-    const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
-    for (const route of expected.solution) {
-      h.drag(route);
-    }
+    h.api.loadBoard(["TtT"]);
+    h.drag(ROUTE_TTT);
     expect(h.state.screen).toBe("solved");
-    const before = h.state.rngState;
 
     h.tap("ArrowDown");
     h.step(1);
@@ -738,15 +720,14 @@ describe("the solved and complete screens", () => {
     expect(h.state.screen).toBe("playing");
     expect(h.state.solvedCount).toBe(0);
     expect(h.state.tier).toBe(1);
-    expect(h.state.rngState).not.toBe(before);
+    expect(h.state.board.nodes.length).toBeGreaterThan(0);
+    expect(h.state.beams.every((beam) => beam.cells.length === 0)).toBe(true);
   });
 
   it("leaves cascade's solved screen to the title with back", () => {
     h.enterCascade();
-    const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
-    for (const route of expected.solution) {
-      h.drag(route);
-    }
+    h.api.loadBoard(["TtT"]);
+    h.drag(ROUTE_TTT);
     h.tap("Escape");
     h.step(1);
     expect(h.state.screen).toBe("title");
