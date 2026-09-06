@@ -31,6 +31,7 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
+import { drawnFigures, valuesOf } from "./figures";
 
 /** Something for the run to be doing while the cost is read. */
 const TAPE: readonly TapeStepSpec[] = [
@@ -54,7 +55,8 @@ afterEach(async () => {
 });
 
 /**
- * Every run of text the frame the page last drew put on its readout layer.
+ * What the frame the page last drew put on its readout layer: the words it
+ * spells, and the figures those words show.
  *
  * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
  * a build that letter-spaces its copy draws a glyph per call, which is the only
@@ -63,38 +65,26 @@ afterEach(async () => {
  * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
  * needs to put side-by-side glyphs on one baseline back together, and every
  * raw string is a substring of its run, so coalescing can only add a match.
+ *
+ * The FIGURES come off the same operations through `./figures`, which is this
+ * directory's one reading of a number and reads the merged runs and the raw
+ * draws they were coalesced from together — so a figure a build grouped with a
+ * plain space inside one `fillText` reads as the figure, while a space the
+ * merge itself wrote between two draws still separates two of them.
  */
-async function readoutText(harness: Harness): Promise<string[]> {
-  return drawnTextLines(await harness.screenCalls());
+interface ReadoutReading {
+  /** Every logical run the frame spelled, in reading order. */
+  readonly lines: string[];
+  /** Every figure those runs show. */
+  readonly figures: number[];
 }
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function readoutText(harness: Harness): Promise<ReadoutReading> {
+  const calls = await harness.screenCalls();
+  return {
+    lines: drawnTextLines(calls),
+    figures: valuesOf(drawnFigures(calls)),
+  };
 }
 
 it("draws the crane's cost on the run screen", async () => {
@@ -117,17 +107,15 @@ it("draws the crane's cost on the run screen", async () => {
     "the cost of the crane the run is being made with (specs/structure.md)",
   );
 
-  const drawn = await readoutText(h);
-  const shown = drawn.some((text) =>
-    numbersIn(text).some((figure) => Math.abs(figure - cost) <= FIGURE_TOL),
-  );
+  const { lines, figures } = await readoutText(h);
+  const shown = figures.some((figure) => Math.abs(figure - cost) <= FIGURE_TOL);
   await h.capture("run-cost", "The cost readout on the run screen");
 
   if (!shown) {
     fail(
       `the crane's cost, ${cost.toFixed(2)}, drawn on the run screen ` +
         "(specs/ui.md)",
-      `the screen's text reads [${drawn.map((one) => one.trim()).join(" | ")}]`,
+      `the screen's text reads [${lines.map((one) => one.trim()).join(" | ")}]`,
     );
   }
 });

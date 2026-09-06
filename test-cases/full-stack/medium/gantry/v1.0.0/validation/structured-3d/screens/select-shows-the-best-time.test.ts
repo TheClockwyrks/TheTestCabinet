@@ -19,14 +19,18 @@
 // review point.
 //
 // THE FIGURE IS READ WITHOUT FIXING ITS FORMAT. `specs/ui.md` fixes that the
-// time is shown and leaves the setting to the build, so a row is read with its
-// spaces and thousands separators removed and the figure is looked for inside
-// it: `17.5s`, `17.50` and `0:17.50` all carry the time. What would fail is a
-// row that does not show it, or shows a different one.
+// time is shown and leaves the setting to the build, so the row is read for the
+// FIGURES drawn on it rather than for a string: `17.5s`, `17.50` and `0:17.50` all carry the time.
+// `./figures` is where that reading lives, and it is what settles the one form
+// that is genuinely ambiguous — an ASCII space groups a figure where the build
+// wrote it inside a single draw, and parts two figures where the merge wrote it
+// between two draws a word apart. What would fail is a row that does not show
+// the figure, or shows a different one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue, fail } from "../assert";
-import { drawnTextRuns, type TextDraw } from "../case-harness/text";
+import type { TextDraw } from "../case-harness/text";
+import { drawnFigures } from "./figures";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
 import { runStarting } from "./reading";
@@ -117,35 +121,6 @@ const SITE = 0;
 const COST = 2350;
 const TIME = 17.5;
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every figure a row's text carries.
- *
- * A grouped figure reads as the one figure it is, so `2,350` and `2350` both
- * come back as 2350 and a build is free to set the figure with a separator.
- */
-function figures(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -170,7 +145,8 @@ it("shows a cleared site's best time on its row", async () => {
     `site ${SITE + 1} standing cleared, which is what puts a score on its row`,
   );
 
-  const order = drawnTextRuns(await h.screenCalls());
+  const frame = drawnFigures(await h.screenCalls());
+  const order = frame.runs;
   await h.capture("state", "The best time beside a cleared site");
 
   assertTrue(
@@ -179,7 +155,11 @@ it("shows a cleared site's best time on its row", async () => {
   );
   const row = siteRows(order)[SITE]!;
   const written = rowText(order, row);
-  const shown = figures(written.join("\n"));
+  // The row's figures are read by its BAND rather than out of the text above:
+  // scoping the placement is what puts the raw draws under the row into the
+  // reading beside the runs over them, which is what a figure a space groups
+  // inside one call needs.
+  const shown = frame.where((placed) => inRow(row, placed));
 
   if (!shown.includes(TIME)) {
     fail(

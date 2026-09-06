@@ -35,6 +35,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 
 import { drawnTextRuns, type TextDraw } from "../case-harness/text";
+import { drawnFigures, type DrawnFigure } from "./figures";
 import { assertTrue, fail } from "../assert";
 import {
   GRIP_MAX_RATE,
@@ -105,7 +106,8 @@ afterEach(async () => {
 });
 
 /**
- * Every run of text the frame the page last drew put on its readout layer.
+ * What the frame the page last drew put on its readout layer: the runs of text
+ * it spells, and the figures those runs show.
  *
  * The runs are the LOGICAL ones the frame spells, each placed where its first
  * draw was, never the `fillText` split: a build that letter-spaces a label or
@@ -115,61 +117,65 @@ afterEach(async () => {
  * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
  * on one baseline back together, and every raw string is a substring of its
  * run, so coalescing can only add a match.
+ *
+ * The FIGURES come off the same operations through `./figures`, this
+ * directory's one reading of a number, which reads the merged runs and the raw
+ * draws they were coalesced from together — so a figure a build grouped with a
+ * plain space inside one `fillText` reads as the figure, while the space the
+ * merge itself writes between two draws still separates two of them. Every
+ * figure keeps the run it was read inside, which is what puts it on a baseline
+ * and so on one axis's readout line rather than loose on the screen.
  */
-async function readoutText(harness: Harness): Promise<TextDraw[]> {
-  return drawnTextRuns(await harness.screenCalls());
+interface ReadoutReading {
+  /** Every logical run the frame spelled, placed where it was drawn. */
+  readonly runs: TextDraw[];
+  /** Every figure those runs show, each carrying its run. */
+  readonly figures: DrawnFigure[];
 }
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+async function readoutText(harness: Harness): Promise<ReadoutReading> {
+  const calls = await harness.screenCalls();
+  return { runs: drawnTextRuns(calls), figures: drawnFigures(calls) };
+}
 
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
+/** One readout line: everything drawn on a baseline, and the figures on it. */
+interface AxisLine {
+  /** The runs on that baseline, left to right, joined with a space each.
+   *
+   * Joined only to be READ BACK in a failure message and to be searched for the
+   * axis's name — never for its figures, which come off `./figures` and so are
+   * never fused across the space this join writes.
+   */
+  readonly text: string;
+  /** Every figure drawn on that baseline. */
+  readonly figures: number[];
+}
 
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
+/** Every readout line the axis's name is drawn on. */
+function axisLines(read: ReadoutReading, axis: AxisName): AxisLine[] {
+  const named = read.runs.filter((draw) =>
+    draw.text.toLowerCase().includes(axis),
   );
-}
-
-/** Every readout line the axis's name is drawn on, each as one string. */
-function axisLines(draws: readonly TextDraw[], axis: AxisName): string[] {
-  const named = draws.filter((draw) => draw.text.toLowerCase().includes(axis));
   if (named.length === 0) {
     fail(
       `the run screen to name the ${axis} axis, so its value reads as that ` +
         "axis's (specs/ui.md)",
       `no run of drawn text carries "${axis}": ` +
-        `[${draws.map((draw) => draw.text.trim()).join(" | ")}]`,
+        `[${read.runs.map((draw) => draw.text.trim()).join(" | ")}]`,
     );
   }
-  const lines = new Map<number, string>();
+  const lines = new Map<number, AxisLine>();
   for (const anchor of named) {
-    lines.set(
-      Math.round(anchor.y),
-      draws
+    lines.set(Math.round(anchor.y), {
+      text: read.runs
         .filter((draw) => Math.abs(draw.y - anchor.y) <= LINE_SLOP)
         .sort((one, two) => one.x - two.x)
         .map((draw) => draw.text)
         .join(" "),
-    );
+      figures: read.figures
+        .filter((figure) => Math.abs(figure.run.y - anchor.y) <= LINE_SLOP)
+        .map((figure) => figure.value),
+    });
   }
   return [...lines.values()];
 }
@@ -195,14 +201,14 @@ it("draws every one of the four axes' values on the run screen", async () => {
     const value = state.run.axes[axis].value;
     const lines = axisLines(draws, axis);
     const shown = lines.some((line) =>
-      numbersIn(line).some((figure) => Math.abs(figure - value) <= FIGURE_TOL),
+      line.figures.some((figure) => Math.abs(figure - value) <= FIGURE_TOL),
     );
     if (!shown) {
       fail(
         `the ${axis} axis's value, ${value.toFixed(2)}, drawn on a readout ` +
           "line that names that axis (specs/ui.md)",
         `the ${lines.length} line(s) naming it read ` +
-          `[${lines.map((line) => line.trim()).join(" | ")}]`,
+          `[${lines.map((line) => line.text.trim()).join(" | ")}]`,
       );
     }
   }

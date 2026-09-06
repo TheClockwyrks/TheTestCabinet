@@ -25,7 +25,13 @@
 // HOW A FIGURE IS READ. The words around a number and the way it is grouped are
 // the build's ("`2 400`", "`2,400`", "`PAR 2400`"), so the screen's text is
 // read for the NUMBERS in it, with a separator between two digits taken out
-// first.
+// first. `./figures` is the one reader every point here reads a figure with,
+// and the ASCII space is the separator that needs telling apart: one the build
+// wrote inside a single draw groups the figure it sits in, and one the run
+// merge wrote between two draws groups nothing, because the figures either side
+// of it were drawn apart. Both readings are taken, so a build that groups with
+// a space and a build that letter-spaces a figure a glyph per call are read
+// alike.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
@@ -41,7 +47,7 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
-import { drawnTextLines } from "../case-harness/index";
+import { figureRuns, figuresAcross, type FigureRun } from "./figures";
 
 /** Site 1, whose par specs/sites.md gives as cost 2400 and time 18. */
 const SITE = 0;
@@ -80,40 +86,15 @@ const A_SHORT_HOIST: TapeStepSpec = {
  * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
  * needs to put side-by-side glyphs on one baseline back together, and every
  * raw string is a substring of its run, so coalescing can only add a match.
- */
-async function screenText(harness: Harness): Promise<string[]> {
-  return drawnTextLines(await harness.screenCalls());
-}
-
-/**
- * The separators a build may set between a figure's digit triples.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * Each run comes back carrying the raw draws that spelled it as well, because
+ * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
+ * draw groups the figure it sits in — this case's own reference sets a cost
+ * that way — while a space the MERGE wrote between two draws groups nothing,
+ * since the two figures either side of it were drawn apart.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number the drawn text carries, as figures rather than characters.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function drawnNumbers(runs: readonly string[]): number[] {
-  return runs.flatMap((run) =>
-    (run.match(DRAWN) ?? []).map((one) =>
-      Number(one.replace(new RegExp(GROUP, "g"), "")),
-    ),
-  );
+async function screenText(harness: Harness): Promise<FigureRun[]> {
+  return figureRuns(await harness.screenCalls());
 }
 
 let h: Harness;
@@ -152,11 +133,11 @@ it("shows the site's par time", async () => {
   );
 
   const shown = await screenText(h);
-  const figures = drawnNumbers(shown);
+  const figures = figuresAcross(shown);
   assertTrue(
     figures.some((one) => Math.abs(one - PAR.time) <= TOLERANCE),
     `the site's par time, ${PAR.time}, among the figures the results screen ` +
       `draws (specs/ui.md § Results, specs/sites.md); it drew ` +
-      `[${shown.join(" | ")}]`,
+      `[${shown.map((run) => run.text).join(" | ")}]`,
   );
 });

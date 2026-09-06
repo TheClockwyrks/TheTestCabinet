@@ -28,6 +28,7 @@ import { drawnTextRuns, type TextDraw } from "../case-harness/index";
 import { assertTrue, fail } from "../assert";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
+import { figuresIn } from "./figures";
 import { runStarting } from "./reading";
 
 /* ---- The six rows of the site list ---------------------------------------- */
@@ -102,28 +103,28 @@ function rowText(order: readonly TextDraw[], row: Row): string[] {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The separators a build may set between a figure's digit triples.
+ * The numbers a row's text carries, once the site's name has been struck out of
+ * it.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * READ WITH `figuresIn` RATHER THAN OFF THE PLACED FIGURES, and this is the one
+ * suite here for which that is the right half of `./figures`' reading. The row
+ * this asks about is not what the frame drew: the site's name is struck out of
+ * it first, so a name that carried a digit could not stand in for the number,
+ * and the runs that survive are then joined. That string is the CHECK'S, not the
+ * build's — the spaces in it are the join's and the merge's, and none of them
+ * groups a figure — so it reads under the half of the rule that forbids the
+ * ASCII space. The figure this check looks for is a site's number, one through
+ * six, which no build has anything to group.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
-
-/**
- * The numbers a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
+function rowNumbers(
+  order: readonly TextDraw[],
+  row: Row,
+  name: string,
+): number[] {
+  return figuresIn(
+    rowText(order, row)
+      .join("\n")
+      .replace(new RegExp(name.replace(/ /g, "\\s*"), "gi"), ""),
   );
 }
 
@@ -154,10 +155,7 @@ it("numbers each site row with its index plus one", async () => {
 
   for (const [index, row] of rows.entries()) {
     const name = SITE_NAMES[index]!;
-    const written = rowText(order, row)
-      .join("\n")
-      .replace(new RegExp(name.replace(/ /g, "\\s*"), "gi"), "");
-    if (!numbersIn(written).includes(index + 1)) {
+    if (!rowNumbers(order, row, name).includes(index + 1)) {
       fail(
         `site ${index + 1}'s row to show the number ${index + 1}, its index ` +
           `plus one (specs/ui.md)`,

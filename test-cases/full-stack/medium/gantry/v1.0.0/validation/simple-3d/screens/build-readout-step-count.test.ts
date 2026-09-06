@@ -19,7 +19,7 @@
 // tape editor still fails or passes this on its readout alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnTextRuns } from "../case-harness/index";
+import { figureRuns, figuresIn } from "./figures";
 import { fail } from "../assert";
 import {
   clearAll,
@@ -50,38 +50,15 @@ const STEP: TapeStepSpec = {
  * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
  * on one baseline back together, and every raw string is a substring of its
  * run, so coalescing can only add a match.
+ *
+ * Each run comes back carrying the raw draws that spelled it as well, because
+ * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
+ * draw groups the figure it sits in — this case's own reference sets a cost
+ * that way — while a space the MERGE wrote between two draws groups nothing,
+ * since the two figures either side of it were drawn apart.
  */
 async function frameDraws(harness: Harness) {
-  return drawnTextRuns(await harness.screenCalls());
-}
-
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+  return figureRuns(await harness.screenCalls());
 }
 
 let h: Harness;
@@ -111,8 +88,8 @@ it("draws the tape's step count on the build screen", async () => {
       (three) =>
         Math.abs(three.x - two.x) <= ANCHOR_TOL &&
         Math.abs(three.y - two.y) <= ANCHOR_TOL &&
-        numbersIn(two.text).includes(2) &&
-        numbersIn(three.text).includes(3),
+        figuresIn(two).includes(2) &&
+        figuresIn(three).includes(3),
     ),
   );
 

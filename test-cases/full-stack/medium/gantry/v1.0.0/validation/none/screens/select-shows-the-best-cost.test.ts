@@ -19,16 +19,17 @@
 // review point.
 //
 // THE FIGURE IS READ WITHOUT FIXING ITS FORMAT. `specs/ui.md` fixes that the
-// cost is shown and leaves the setting to the build, so a row is read with its
-// spaces and thousands separators removed and the figure is looked for inside
-// it: `2 350`, `2,350` and `2350` all read as the cost. What would fail is a
-// row that does not show it, or shows a different one.
+// cost is shown and leaves the setting to the build, so the row's figures are
+// read through `./figures` — this directory's one reading of a number — and
+// `2 350`, `2,350` and `2350` all read as the cost. What would fail is a row
+// that does not show it, or shows a different one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue, fail } from "../assert";
 import { drawnTextRuns, type TextDraw } from "../case-harness/index";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
+import { drawnFigures, type DrawnFigure } from "./figures";
 import { runStarting } from "./reading";
 
 /* -------------------------------------------------------------------------- */
@@ -108,6 +109,20 @@ function rowText(order: readonly TextDraw[], row: Row): string[] {
   return order.filter((draw) => inRow(row, draw)).map((draw) => draw.text);
 }
 
+/**
+ * Every figure the frame drew inside `row`.
+ *
+ * Read off `./figures`, this directory's one reading of a number, rather than
+ * off the row's text joined: a figure is placed at the RUN it was read inside,
+ * so it belongs to the row that run was drawn in, and no figure is ever fused
+ * out of two runs that a join happened to put a space between.
+ */
+function rowFigures(drawn: readonly DrawnFigure[], row: Row): number[] {
+  return drawn
+    .filter((figure) => inRow(row, figure.run))
+    .map((figure) => figure.value);
+}
+
 /* -------------------------------------------------------------------------- */
 
 /** The site the score is recorded on. */
@@ -116,35 +131,6 @@ const SITE = 0;
 /** The recorded score: a four-figure cost and a time with a fraction. */
 const COST = 2350;
 const TIME = 17.5;
-
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every figure a row's text carries.
- *
- * A grouped figure reads as the one figure it is, so `2,350` and `2350` both
- * come back as 2350 and a build is free to set the figure with a separator.
- */
-function figures(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
 
 let h: Harness;
 
@@ -170,7 +156,8 @@ it("shows a cleared site's best cost on its row", async () => {
     `site ${SITE + 1} standing cleared, which is what puts a score on its row`,
   );
 
-  const order = drawnTextRuns(await h.screenCalls());
+  const calls = await h.screenCalls();
+  const order = drawnTextRuns(calls);
   await h.capture("state", "The best cost beside a cleared site");
 
   assertTrue(
@@ -179,7 +166,7 @@ it("shows a cleared site's best cost on its row", async () => {
   );
   const row = siteRows(order)[SITE]!;
   const written = rowText(order, row);
-  const shown = figures(written.join("\n"));
+  const shown = rowFigures(drawnFigures(calls), row);
 
   if (!shown.includes(COST)) {
     fail(

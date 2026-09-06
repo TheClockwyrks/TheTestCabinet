@@ -26,7 +26,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue, fail } from "../assert";
-import { drawnTextRuns, type TextDraw } from "../case-harness/text";
+import { figureRuns, figuresAcross, type FigureRun } from "./figures";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
 import { runStarting } from "./reading";
@@ -43,6 +43,12 @@ import { runStarting } from "./reading";
 // the specification fixes what a row shows and not how it is set, so the row is
 // read off the logical runs it spells and never off the call split. Every raw
 // string is a substring of its run, so coalescing can only add a match.
+//
+// A FIGURE is read off both the run and the raw draws that spelled it
+// (`./figures`), because the ASCII space cuts two ways: one the BUILD wrote
+// inside a single draw groups the figure it sits in — this case's own reference
+// sets a cost that way — while one the MERGE wrote between two draws groups
+// nothing, the figures either side of it having been drawn apart.
 //
 // The runs arrive in reading order — down the stage, then across it — and a
 // row is found by the run its name starts in (`./reading`).
@@ -65,7 +71,7 @@ interface Row {
  * is found by its name and is as wide as half the gap to its neighbours, which
  * reads a list laid out down the stage or across it and holds the list's own
  * heading and footer outside every band. */
-function siteRows(order: readonly TextDraw[]): Row[] {
+function siteRows(order: readonly FigureRun[]): Row[] {
   const anchors = SITE_NAMES.map((name, index) => {
     const found = runStarting(order, name);
     if (found === null) {
@@ -104,8 +110,8 @@ function inRow(row: Row, p: { x: number; y: number }): boolean {
 }
 
 /** The runs of text the frame drew inside `row`, in reading order. */
-function rowText(order: readonly TextDraw[], row: Row): string[] {
-  return order.filter((draw) => inRow(row, draw)).map((draw) => draw.text);
+function rowText(order: readonly FigureRun[], row: Row): FigureRun[] {
+  return order.filter((draw) => inRow(row, draw));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -116,35 +122,6 @@ const SITE = 0;
 /** The recorded score: a four-figure cost and a time with a fraction. */
 const COST = 2350;
 const TIME = 17.5;
-
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every figure a row's text carries.
- *
- * A grouped figure reads as the one figure it is, so `2,350` and `2350` both
- * come back as 2350 and a build is free to set the figure with a separator.
- */
-function figures(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
 
 let h: Harness;
 
@@ -170,7 +147,7 @@ it("shows a cleared site's best cost on its row", async () => {
     `site ${SITE + 1} standing cleared, which is what puts a score on its row`,
   );
 
-  const order = drawnTextRuns(await h.screenCalls());
+  const order = figureRuns(await h.screenCalls());
   await h.capture("state", "The best cost beside a cleared site");
 
   assertTrue(
@@ -179,13 +156,16 @@ it("shows a cleared site's best cost on its row", async () => {
   );
   const row = siteRows(order)[SITE]!;
   const written = rowText(order, row);
-  const shown = figures(written.join("\n"));
+  // Run by run rather than off the row joined into one string, which is the
+  // same answer: no figure is read across two runs either way.
+  const shown = figuresAcross(written);
 
   if (!shown.includes(COST)) {
     fail(
       `site ${SITE + 1}'s row to show its best cost, ${COST} ` +
         "(specs/ui.md)",
-      `the row beside "${SITE_NAMES[SITE]}" reads ${JSON.stringify(written)}`,
+      `the row beside "${SITE_NAMES[SITE]}" reads ` +
+        `${JSON.stringify(written.map((run) => run.text))}`,
     );
   }
 });

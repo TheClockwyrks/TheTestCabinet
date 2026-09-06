@@ -19,13 +19,15 @@
 // The two figures are looked for among the frame's runs rather than inside one
 // run: "the cost against the budget" fixes that both are shown and leaves
 // "340 / 5600", "340 of 5600" and a cost over a budget on two lines all open to a
-// build.
+// build. How a figure itself is set is the build's too — "5600", "5,600" and
+// "5 600" are one budget — and `./figures` is this directory's one reading of
+// that.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnTextLines } from "../case-harness/index";
 import { assertTrue, fail } from "../assert";
 import { RING_COST, SITES, STRUT_COST_PER_UNIT } from "../constants";
 import { clearAll, createHarness, openSite, type Harness } from "../harness";
+import { drawnFigures, valuesOf } from "./figures";
 
 /** The site this check opens: `Long Reach`, budget `5600` (specs/sites.md). */
 const SITE = 3;
@@ -37,48 +39,21 @@ const COST = RING_COST + 2 * (2 * STRUT_COST_PER_UNIT);
 const ROUNDING = 1;
 
 /**
- * Every logical run of text the last closed frame drew, in reading order.
+ * Every figure the last closed frame drew on the screen layer.
  *
- * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
- * a build that letter-spaces its copy draws a glyph per call, which is the only
- * portable way to letter-space canvas text, and the specification fixes the
- * words a screen shows while leaving their spacing to the build. `screenCalls`
- * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
- * needs to put side-by-side glyphs on one baseline back together, and every
- * raw string is a substring of its run, so coalescing can only add a match.
+ * Read off the LOGICAL RUNS the frame spells and off the raw draws they were
+ * coalesced from, never off the `fillText` split alone: a build that
+ * letter-spaces its copy draws a glyph per call, which is the only portable way
+ * to letter-space canvas text, and the specification fixes what a readout shows
+ * while leaving its setting to the build. `screenCalls` carries the measured
+ * geometry the shared merge rule (`case-harness/text.ts`) needs to put
+ * side-by-side glyphs on one baseline back together, and `./figures` reads the
+ * runs that merge spells together with the draws it spelled them from — so
+ * `5 600` grouped inside one call reads as the budget, while a space the merge
+ * itself wrote between two draws still separates two figures.
  */
-async function frameText(harness: Harness): Promise<string[]> {
-  return drawnTextLines(await harness.screenCalls());
-}
-
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is — a build is free to set `5600`
- * as `5,600` or `5'600`, and what is compared is the figure rather than how it
- * was typeset.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function frameFigures(harness: Harness): Promise<number[]> {
+  return valuesOf(drawnFigures(await harness.screenCalls()));
 }
 
 let h: Harness;
@@ -100,7 +75,7 @@ it("draws the crane's cost and the site's budget on the build screen", async () 
 
   const { structure } = await h.snapshot();
   await h.advance(1);
-  const runs = await frameText(h);
+  const drawn = await frameFigures(h);
   await h.capture("build-cost", "The cost readout");
 
   assertTrue(
@@ -109,7 +84,6 @@ it("draws the crane's cost and the site's budget on the build screen", async () 
       "check reads the readout against (specs/structure.md)",
   );
 
-  const drawn = runs.flatMap(numbersIn);
   if (!drawn.some((value) => Math.abs(value - structure.cost) <= ROUNDING)) {
     fail(
       `the build screen to draw the crane's cost, ${structure.cost} ` +

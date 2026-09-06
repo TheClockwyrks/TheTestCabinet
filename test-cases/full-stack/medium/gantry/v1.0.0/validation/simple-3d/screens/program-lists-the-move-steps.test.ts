@@ -25,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { drawnTextRuns, type TextDraw } from "../case-harness/index";
+import { figureRuns, figuresAcross, type FigureRun } from "./figures";
 import { assertEqual, assertLength, fail } from "../assert";
 import {
   clearAll,
@@ -69,58 +69,44 @@ afterEach(async () => {
  * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
  * on one baseline back together, and every raw string is a substring of its
  * run, so coalescing can only add a match.
+ *
+ * Each run comes back carrying the raw draws that spelled it as well, because
+ * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
+ * draw groups the figure it sits in — this case's own reference sets a cost
+ * that way — while a space the MERGE wrote between two draws groups nothing,
+ * since the two figures either side of it were drawn apart.
  */
-async function readoutText(harness: Harness): Promise<TextDraw[]> {
-  return drawnTextRuns(await harness.screenCalls());
+async function readoutText(harness: Harness): Promise<FigureRun[]> {
+  return figureRuns(await harness.screenCalls());
 }
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
-
-/** One line of the editor: everything drawn within `LINE_SLOP` of a `y`. */
-function lineAt(draws: readonly TextDraw[], y: number): string {
+/** One line of the editor: every run drawn within `LINE_SLOP` of a `y`. */
+function lineAt(draws: readonly FigureRun[], y: number): FigureRun[] {
   return draws
     .filter((draw) => Math.abs(draw.y - y) <= LINE_SLOP)
-    .sort((one, two) => one.x - two.x)
-    .map((draw) => draw.text)
-    .join(" ");
+    .sort((one, two) => one.x - two.x);
 }
 
-/** Whether a line names the axis and carries both of the command's figures. */
+/** What a line reads as, its runs laid out in the order they were drawn. */
+function reads(line: readonly FigureRun[]): string {
+  return line.map((run) => run.text).join(" ");
+}
+
+/**
+ * Whether a line names the axis and carries both of the command's figures.
+ *
+ * The figures are read run by run rather than off the joined line, which is
+ * the same answer: no figure is read across two runs either way, because the
+ * space a join writes between them is not one the build drew.
+ */
 function readsCommand(
-  line: string,
+  line: readonly FigureRun[],
   axis: string,
   target: number,
   rate: number,
 ): boolean {
-  if (!line.toLowerCase().includes(axis)) return false;
-  const figures = numbersIn(line);
+  if (!reads(line).toLowerCase().includes(axis)) return false;
+  const figures = figuresAcross(line);
   return (
     figures.some((one) => Math.abs(one - target) <= FIGURE_TOL) &&
     figures.some((one) => Math.abs(one - rate) <= FIGURE_TOL)
@@ -161,7 +147,7 @@ it("lists each move step's command as an axis, a target and a rate, in order", a
           `axis, its target ${command.target} and its rate ${command.rate} ` +
           "together (specs/ui.md, specs/program.md)",
         `the screen's lines read [${[
-          ...new Set(draws.map((draw) => lineAt(draws, draw.y).trim())),
+          ...new Set(draws.map((draw) => reads(lineAt(draws, draw.y)).trim())),
         ].join(" | ")}]`,
       );
     }

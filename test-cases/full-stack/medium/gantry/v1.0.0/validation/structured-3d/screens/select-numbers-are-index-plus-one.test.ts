@@ -14,17 +14,21 @@
 // A ROW IS FOUND BY ITS NAME, because that is the other thing the same sentence
 // says every row shows and `specs/sites.md` fixes the six names. Where a build
 // puts the rows is the build's, so the band a row owns is derived from the gap
-// between the names rather than assumed. Within a row the name is struck out
-// before the digits are read, so a name that carried a digit could not stand in
-// for the number, and the reading accepts any presentation of the figure — `1`,
-// `01`, `SITE 1` — because `specs/ui.md` fixes the number and not how it is set.
+// between the names rather than assumed. The row is then read WHOLE, as the
+// frame drew it: none of the six names `specs/sites.md` fixes carries a digit,
+// so striking a name out before reading the digits could only splice the text on
+// either side of it together into a figure the row never showed. The reading
+// accepts any presentation of the figure — `1`, `01`, `SITE 1` — because
+// `specs/ui.md` fixes the number and not how it is set, and `./figures` is where
+// this project's one reading of a figure lives.
 //
 // NOTHING IS CLEARED AND NO BEST IS RECORDED, so the only digits on a row are the
 // ones this item is about: a recorded score would put a cost and a time on the
 // row and neither is a site number.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnTextRuns, type TextDraw } from "../case-harness/text";
+import type { TextDraw } from "../case-harness/text";
+import { drawnFigures } from "./figures";
 import { assertTrue, fail } from "../assert";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
@@ -101,32 +105,6 @@ function rowText(order: readonly TextDraw[], row: Row): string[] {
 
 /* -------------------------------------------------------------------------- */
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
-
-/**
- * The numbers a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -143,7 +121,8 @@ it("numbers each site row with its index plus one", async () => {
   await h.debug.setMenuIndex(0);
   await h.advance(1);
 
-  const order = drawnTextRuns(await h.screenCalls());
+  const frame = drawnFigures(await h.screenCalls());
+  const order = frame.runs;
   await h.capture("select-numbers", "The site numbers");
 
   assertTrue(
@@ -154,10 +133,10 @@ it("numbers each site row with its index plus one", async () => {
 
   for (const [index, row] of rows.entries()) {
     const name = SITE_NAMES[index]!;
-    const written = rowText(order, row)
-      .join("\n")
-      .replace(new RegExp(name.replace(/ /g, "\\s*"), "gi"), "");
-    if (!numbersIn(written).includes(index + 1)) {
+    // The row's figures are read by its BAND rather than out of a string
+    // assembled from the runs, which is what puts the raw draws under the row
+    // into the reading beside the runs over them (`./figures`).
+    if (!frame.where((placed) => inRow(row, placed)).includes(index + 1)) {
       fail(
         `site ${index + 1}'s row to show the number ${index + 1}, its index ` +
           `plus one (specs/ui.md)`,

@@ -27,7 +27,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { SITE_COUNT, SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
-import { drawnTextRuns, type TextDraw } from "../case-harness/index";
+import { figureRuns, figuresAcross, type FigureRun } from "./figures";
 
 /**
  * Every run of text the last frame drew on the screen layer, with where it drew
@@ -47,38 +47,15 @@ import { drawnTextRuns, type TextDraw } from "../case-harness/index";
  * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
  * on one baseline back together, and every raw string is a substring of its
  * run, so coalescing can only add a match.
- */
-async function screenDraws(harness: Harness): Promise<TextDraw[]> {
-  return drawnTextRuns(await harness.screenCalls());
-}
-
-/**
- * The separators a build may set between a figure's digit triples.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * Each run comes back carrying the raw draws that spelled it as well, because
+ * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
+ * draw groups the figure it sits in — this case's own reference sets a cost
+ * that way — while a space the MERGE wrote between two draws groups nothing,
+ * since the two figures either side of it were drawn apart.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries, as figures rather than characters.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function figuresIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function screenDraws(harness: Harness): Promise<FigureRun[]> {
+  return figureRuns(await harness.screenCalls());
 }
 
 let h: Harness;
@@ -111,7 +88,7 @@ it("lists the six sites in order, each row showing its index plus one", async ()
       `site ${index + 1}'s name, "${name}", among the text the select screen ` +
         `draws (specs/ui.md § Site select, specs/sites.md); it drew [${drawn}]`,
     );
-    return found as TextDraw;
+    return found as FigureRun;
   });
   assertEqual(rows.length, SITE_COUNT, "the sites the select screen lists");
 
@@ -130,11 +107,11 @@ it("lists the six sites in order, each row showing its index plus one", async ()
       const nearest = rows.reduce(
         (best, other) =>
           Math.abs(other.y - one.y) < Math.abs(best.y - one.y) ? other : best,
-        rows[0] as TextDraw,
+        rows[0] as FigureRun,
       );
       return nearest === row;
     });
-    const figures = own.flatMap((one) => figuresIn(one.text));
+    const figures = figuresAcross(own);
     assertTrue(
       figures.includes(index + 1),
       `site ${index + 1}'s row to show its number, its index plus one ` +

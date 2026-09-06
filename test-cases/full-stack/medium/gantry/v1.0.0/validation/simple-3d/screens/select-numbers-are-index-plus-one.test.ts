@@ -24,7 +24,12 @@
 // row and neither is a site number.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnTextRuns, type TextDraw } from "../case-harness/text";
+import {
+  figureRuns,
+  figuresIn,
+  type DrawnCopy,
+  type FigureRun,
+} from "./figures";
 import { assertTrue, fail } from "../assert";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
@@ -38,6 +43,12 @@ import { runStarting } from "./reading";
 // down the stage, then across it. A row is found by the run its name starts in
 // (`./reading`), and the rest of the row is whatever else those runs put in its
 // band.
+//
+// A row's NUMBER is read off both the runs and the raw draws that spelled them
+// (`./figures`), because the ASCII space cuts two ways: one the BUILD wrote
+// inside a single draw groups the figure it sits in — this case's own reference
+// sets a cost that way — while one the MERGE wrote between two draws groups
+// nothing, the figures either side of it having been drawn apart.
 
 /** One row of the list: the axis the rows run along, and the band it occupies. */
 interface Row {
@@ -56,7 +67,7 @@ interface Row {
  * laid out down the stage or across it and holds the list's own heading and
  * footer outside every band.
  */
-function siteRows(order: readonly TextDraw[]): Row[] {
+function siteRows(order: readonly FigureRun[]): Row[] {
   const anchors = SITE_NAMES.map((name, index) => {
     const found = runStarting(order, name);
     if (found === null) {
@@ -95,37 +106,38 @@ function inRow(row: Row, p: { x: number; y: number }): boolean {
 }
 
 /** The runs of text the frame drew inside `row`, in reading order. */
-function rowText(order: readonly TextDraw[], row: Row): string[] {
-  return order.filter((draw) => inRow(row, draw)).map((draw) => draw.text);
+function rowText(order: readonly FigureRun[], row: Row): FigureRun[] {
+  return order.filter((draw) => inRow(row, draw));
+}
+
+/**
+ * A row's copy with the site's own name struck out of it, in the two forms a
+ * figure is read off (`./figures`).
+ *
+ * The name is struck so that a site whose name carried a digit could not be
+ * read as showing the row's number, and `\s*` between the name's words strikes
+ * it however the frame broke it up — inside one run, and across the join
+ * between two.
+ *
+ * The RAW DRAWS are struck one at a time, which reaches a name the build drew
+ * in one call. A name it letter-spaced a glyph per call survives the strike
+ * there, and carries nothing into the reading when it does: every part of it is
+ * then a single letter, and a letter is not a figure.
+ */
+function withoutName(runs: readonly FigureRun[], name: string): DrawnCopy {
+  const spelled = new RegExp(name.replace(/ /g, "\\s*"), "gi");
+  return {
+    text: runs
+      .map((run) => run.text)
+      .join("\n")
+      .replace(spelled, ""),
+    parts: runs
+      .flatMap((run) => run.parts)
+      .map((part) => part.replace(spelled, "")),
+  };
 }
 
 /* -------------------------------------------------------------------------- */
-
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(`\\d{1,3}(?:${GROUP}\\d{3})+|\\d+`, "g");
-
-/**
- * The numbers a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
-}
 
 let h: Harness;
 
@@ -143,7 +155,7 @@ it("numbers each site row with its index plus one", async () => {
   await h.debug.setMenuIndex(0);
   await h.advance(1);
 
-  const order = drawnTextRuns(await h.screenCalls());
+  const order = figureRuns(await h.screenCalls());
   await h.capture("select-numbers", "The site numbers");
 
   assertTrue(
@@ -154,15 +166,13 @@ it("numbers each site row with its index plus one", async () => {
 
   for (const [index, row] of rows.entries()) {
     const name = SITE_NAMES[index]!;
-    const written = rowText(order, row)
-      .join("\n")
-      .replace(new RegExp(name.replace(/ /g, "\\s*"), "gi"), "");
-    if (!numbersIn(written).includes(index + 1)) {
+    const written = withoutName(rowText(order, row), name);
+    if (!figuresIn(written).includes(index + 1)) {
       fail(
         `site ${index + 1}'s row to show the number ${index + 1}, its index ` +
           `plus one (specs/ui.md)`,
         `the row beside "${name}" reads ` +
-          `${JSON.stringify(rowText(order, row))}`,
+          `${JSON.stringify(rowText(order, row).map((run) => run.text))}`,
       );
     }
   }

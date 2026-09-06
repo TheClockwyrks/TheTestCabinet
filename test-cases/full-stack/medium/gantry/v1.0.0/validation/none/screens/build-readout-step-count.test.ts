@@ -19,7 +19,7 @@
 // tape editor still fails or passes this on its readout alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnTextRuns } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
 import { fail } from "../assert";
 import {
   clearAll,
@@ -29,6 +29,7 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
+import { drawnFigures, type DrawnFigure } from "./figures";
 
 /** Two runs are the same readout when their anchors sit this close. */
 const ANCHOR_TOL = 2;
@@ -40,7 +41,8 @@ const STEP: TapeStepSpec = {
 };
 
 /**
- * Every run of text the last closed frame drew, with where it landed.
+ * Every figure the last closed frame drew, with the run it was drawn in and
+ * where that run landed, and the words the same frame spells.
  *
  * The runs are the LOGICAL ones the frame spells, each placed where its first
  * draw was, never the `fillText` split: a build that letter-spaces a label or
@@ -50,38 +52,23 @@ const STEP: TapeStepSpec = {
  * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
  * on one baseline back together, and every raw string is a substring of its
  * run, so coalescing can only add a match.
+ *
+ * The figures come off those same operations through `./figures`, this
+ * directory's one reading of a number, which reads the merged runs and the raw
+ * draws they were coalesced from together — so a count a build grouped with a
+ * plain space inside one `fillText` reads as the count — and places every
+ * figure at its RUN, which is the anchor this differential matches on.
  */
-async function frameDraws(harness: Harness) {
-  return drawnTextRuns(await harness.screenCalls());
+interface FrameReading {
+  /** Every logical run the frame spelled, in reading order. */
+  readonly lines: string[];
+  /** Every figure those runs show, placed at the run it was read inside. */
+  readonly figures: DrawnFigure[];
 }
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function frameDraws(harness: Harness): Promise<FrameReading> {
+  const calls = await harness.screenCalls();
+  return { lines: drawnTextLines(calls), figures: drawnFigures(calls) };
 }
 
 let h: Harness;
@@ -106,14 +93,15 @@ it("draws the tape's step count on the build screen", async () => {
   await h.advance(1);
   const atThree = await frameDraws(h);
 
-  const readout = atTwo.find((two) =>
-    atThree.some(
-      (three) =>
-        Math.abs(three.x - two.x) <= ANCHOR_TOL &&
-        Math.abs(three.y - two.y) <= ANCHOR_TOL &&
-        numbersIn(two.text).includes(2) &&
-        numbersIn(three.text).includes(3),
-    ),
+  const readout = atTwo.figures.find(
+    (two) =>
+      two.value === 2 &&
+      atThree.figures.some(
+        (three) =>
+          three.value === 3 &&
+          Math.abs(three.run.x - two.run.x) <= ANCHOR_TOL &&
+          Math.abs(three.run.y - two.run.y) <= ANCHOR_TOL,
+      ),
   );
 
   if (readout === undefined) {
@@ -121,8 +109,8 @@ it("draws the tape's step count on the build screen", async () => {
       "the build screen to draw the tape's step count, so one readout says " +
         "two while the tape holds two steps and three while it holds three " +
         "(specs/ui.md § Build)",
-      `with two steps it drew ${JSON.stringify(atTwo.map((d) => d.text))} ` +
-        `and with three ${JSON.stringify(atThree.map((d) => d.text))}`,
+      `with two steps it drew ${JSON.stringify(atTwo.lines)} ` +
+        `and with three ${JSON.stringify(atThree.lines)}`,
     );
   }
 });

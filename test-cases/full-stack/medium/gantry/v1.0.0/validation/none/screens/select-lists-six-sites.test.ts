@@ -28,6 +28,7 @@ import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { SITE_COUNT, SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
 import { drawnTextRuns, type TextDraw } from "../case-harness/index";
+import { drawnFigures, type DrawnFigure } from "./figures";
 
 /**
  * Every run of text the last frame drew on the screen layer, with where it drew
@@ -47,38 +48,24 @@ import { drawnTextRuns, type TextDraw } from "../case-harness/index";
  * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
  * on one baseline back together, and every raw string is a substring of its
  * run, so coalescing can only add a match.
+ *
+ * The FIGURES come off the same operations through `./figures`, this
+ * directory's one reading of a number, which reads the merged runs and the raw
+ * draws they were coalesced from together — so a figure a build grouped with a
+ * plain space inside one `fillText` reads as the figure, while the space the
+ * merge itself writes between two draws still separates two of them. Every
+ * figure keeps the run it was read inside, which is what attributes it to a row.
  */
-async function screenDraws(harness: Harness): Promise<TextDraw[]> {
-  return drawnTextRuns(await harness.screenCalls());
+interface ScreenReading {
+  /** Every logical run the frame spelled, placed where it was drawn. */
+  readonly runs: TextDraw[];
+  /** Every figure those runs show, each carrying its run. */
+  readonly figures: DrawnFigure[];
 }
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries, as figures rather than characters.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function figuresIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function screenDraws(harness: Harness): Promise<ScreenReading> {
+  const calls = await harness.screenCalls();
+  return { runs: drawnTextRuns(calls), figures: drawnFigures(calls) };
 }
 
 let h: Harness;
@@ -98,12 +85,12 @@ it("lists the six sites in order, each row showing its index plus one", async ()
   await h.advance(1);
   await h.capture("site-list", "the six sites the select screen lists");
 
-  const draws = await screenDraws(h);
-  const drawn = draws.map((one) => one.text).join(" | ");
+  const shown = await screenDraws(h);
+  const drawn = shown.runs.map((one) => one.text).join(" | ");
 
   // Each site's name, and the run of text that carries it.
   const rows = SITE_NAMES.map((name, index) => {
-    const found = draws.find((one) =>
+    const found = shown.runs.find((one) =>
       one.text.toUpperCase().includes(name.toUpperCase()),
     );
     assertNotNull(
@@ -125,16 +112,20 @@ it("lists the six sites in order, each row showing its index plus one", async ()
   );
 
   // Every other run of text belongs to the row it was drawn nearest.
+  const nearest = (one: TextDraw): TextDraw =>
+    rows.reduce(
+      (best, other) =>
+        Math.abs(other.y - one.y) < Math.abs(best.y - one.y) ? other : best,
+      rows[0] as TextDraw,
+    );
   for (const [index, row] of rows.entries()) {
-    const own = draws.filter((one) => {
-      const nearest = rows.reduce(
-        (best, other) =>
-          Math.abs(other.y - one.y) < Math.abs(best.y - one.y) ? other : best,
-        rows[0] as TextDraw,
-      );
-      return nearest === row;
-    });
-    const figures = own.flatMap((one) => figuresIn(one.text));
+    const own = shown.runs.filter((one) => nearest(one) === row);
+    // The row's figures are the figures of the row's runs: each one is placed
+    // at the run it was read inside, so it is attributed to exactly the row
+    // that run belongs to and to no other.
+    const figures = shown.figures
+      .filter((one) => nearest(one.run) === row)
+      .map((one) => one.value);
     assertTrue(
       figures.includes(index + 1),
       `site ${index + 1}'s row to show its number, its index plus one ` +

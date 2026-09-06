@@ -34,6 +34,7 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
+import { drawnFigures, type DrawnFigure } from "./figures";
 
 /** The two steps, each carrying one command with figures of its own. */
 const TAPE: readonly TapeStepSpec[] = [
@@ -58,7 +59,8 @@ afterEach(async () => {
 });
 
 /**
- * Every run of text the frame the page last drew put on its readout layer.
+ * What the frame the page last drew put on its readout layer: the runs of text
+ * it spells, and the figures those runs show.
  *
  * The runs are the LOGICAL ones the frame spells, each placed where its first
  * draw was, never the `fillText` split: a build that letter-spaces a label or
@@ -68,58 +70,64 @@ afterEach(async () => {
  * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
  * on one baseline back together, and every raw string is a substring of its
  * run, so coalescing can only add a match.
+ *
+ * The FIGURES come off the same operations through `./figures`, this
+ * directory's one reading of a number, which reads the merged runs and the raw
+ * draws they were coalesced from together — so a target or a rate a build
+ * grouped with a plain space inside one `fillText` reads as the figure, while
+ * the space the merge itself writes between two draws still separates two of
+ * them. Every figure keeps the run it was read inside, which is what puts it on
+ * one line of the editor rather than loose on the screen.
  */
-async function readoutText(harness: Harness): Promise<TextDraw[]> {
-  return drawnTextRuns(await harness.screenCalls());
+interface ReadoutReading {
+  /** Every logical run the frame spelled, placed where it was drawn. */
+  readonly runs: TextDraw[];
+  /** Every figure those runs show, each carrying its run. */
+  readonly figures: DrawnFigure[];
 }
 
-/**
- * The separators a build may set between a figure's digit triples.
- *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
- */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
+async function readoutText(harness: Harness): Promise<ReadoutReading> {
+  const calls = await harness.screenCalls();
+  return { runs: drawnTextRuns(calls), figures: drawnFigures(calls) };
+}
 
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+/** One line of the editor: everything drawn on it, and the figures on it. */
+interface EditorLine {
+  /**
+   * The runs on that line, left to right, joined with a space each.
+   *
+   * Joined only to be READ BACK in a failure message and to be searched for the
+   * axis's name — never for its figures, which come off `./figures` and so are
+   * never fused across the space this join writes.
+   */
+  readonly text: string;
+  /** Every figure drawn on that line. */
+  readonly figures: number[];
 }
 
 /** One line of the editor: everything drawn within `LINE_SLOP` of a `y`. */
-function lineAt(draws: readonly TextDraw[], y: number): string {
-  return draws
-    .filter((draw) => Math.abs(draw.y - y) <= LINE_SLOP)
-    .sort((one, two) => one.x - two.x)
-    .map((draw) => draw.text)
-    .join(" ");
+function lineAt(read: ReadoutReading, y: number): EditorLine {
+  return {
+    text: read.runs
+      .filter((draw) => Math.abs(draw.y - y) <= LINE_SLOP)
+      .sort((one, two) => one.x - two.x)
+      .map((draw) => draw.text)
+      .join(" "),
+    figures: read.figures
+      .filter((figure) => Math.abs(figure.run.y - y) <= LINE_SLOP)
+      .map((figure) => figure.value),
+  };
 }
 
 /** Whether a line names the axis and carries both of the command's figures. */
 function readsCommand(
-  line: string,
+  line: EditorLine,
   axis: string,
   target: number,
   rate: number,
 ): boolean {
-  if (!line.toLowerCase().includes(axis)) return false;
-  const figures = numbersIn(line);
+  if (!line.text.toLowerCase().includes(axis)) return false;
+  const { figures } = line;
   return (
     figures.some((one) => Math.abs(one - target) <= FIGURE_TOL) &&
     figures.some((one) => Math.abs(one - rate) <= FIGURE_TOL)
@@ -146,7 +154,7 @@ it("lists each move step's command as an axis, a target and a rate, in order", a
       target: number;
       rate: number;
     };
-    const at = draws.find((draw) =>
+    const at = draws.runs.find((draw) =>
       readsCommand(
         lineAt(draws, draw.y),
         command.axis,
@@ -160,7 +168,9 @@ it("lists each move step's command as an axis, a target and a rate, in order", a
           `axis, its target ${command.target} and its rate ${command.rate} ` +
           "together (specs/ui.md, specs/program.md)",
         `the screen's lines read [${[
-          ...new Set(draws.map((draw) => lineAt(draws, draw.y).trim())),
+          ...new Set(
+            draws.runs.map((draw) => lineAt(draws, draw.y).text.trim()),
+          ),
         ].join(" | ")}]`,
       );
     }

@@ -24,7 +24,7 @@
 // three axes are the run-start values above.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnTextLines } from "../case-harness/index";
+import { drawnFigures, type DrawnFigures } from "./figures";
 import { assertEqual, assertTrue, fail } from "../assert";
 import { SLEW_MAX_RATE, TICK_HZ } from "../constants";
 import {
@@ -71,47 +71,27 @@ afterEach(async () => {
 });
 
 /**
- * Every run of text the frame the page last drew put on its readout layer.
+ * The figures the last closed frame's text carries, and the runs it spelled.
  *
- * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
- * a build that letter-spaces its copy draws a glyph per call, which is the only
- * portable way to letter-space canvas text, and the specification fixes the
- * words a screen shows while leaving their spacing to the build. `screenCalls`
- * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
- * needs to put side-by-side glyphs on one baseline back together, and every
- * raw string is a substring of its run, so coalescing can only add a match.
- */
-async function readoutText(harness: Harness): Promise<string[]> {
-  return drawnTextLines(await harness.screenCalls());
-}
-
-/**
- * The separators a build may set between a figure's digit triples.
+ * specs/overview.md fixes where a readout lives — "over it the screen-space
+ * readouts are drawn on a 2D layer composited on top of the picture, laid out
+ * in logical stage units" — so what a screen shows is the text that layer's
+ * frame issued, whatever font, colour, or arrangement a build chose for it.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * The figures come from `./figures`, this project's one reading of a number on
+ * the screen, and it reads the frame's raw draws and its coalesced logical runs
+ * TOGETHER, because neither half alone answers a check like this one. A build
+ * that letter-spaces a figure draws a glyph per `fillText` — the only portable
+ * way to letter-space canvas text — so its figure exists only once the glyphs
+ * are put back together into a run. A build that groups a figure with a space
+ * inside ONE call, which is what this case's own reference does, has a figure
+ * the runs cannot be read for: the merge writes an ASCII space of its own
+ * wherever it crosses a word gap, so a run's spaces are not all the build's and
+ * a reading of the runs may not treat one as a separator. `screenCalls` carries
+ * the measured geometry that merge needs.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function readoutFigures(harness: Harness): Promise<DrawnFigures> {
+  return drawnFigures(await harness.screenCalls());
 }
 
 it("draws the run clock the ticks it has taken make", async () => {
@@ -134,11 +114,9 @@ it("draws the run clock the ticks it has taken make", async () => {
       "(specs/state.md)",
   );
 
-  const drawn = await readoutText(h);
-  const shown = drawn.some((text) =>
-    numbersIn(text).some(
-      (figure) => Math.abs(figure - CLOCK_SECONDS) <= FIGURE_TOL,
-    ),
+  const drawn = await readoutFigures(h);
+  const shown = drawn.all.some(
+    (figure) => Math.abs(figure - CLOCK_SECONDS) <= FIGURE_TOL,
   );
   await h.capture("run-clock", "The run clock");
 
@@ -146,7 +124,8 @@ it("draws the run clock the ticks it has taken make", async () => {
     fail(
       `the run clock, ${CLOCK_SECONDS} seconds, drawn on the run screen ` +
         "(specs/ui.md)",
-      `the screen's text reads [${drawn.map((one) => one.trim()).join(" | ")}]`,
+      `the screen's text reads ` +
+        `[${drawn.runs.map((run) => run.text.trim()).join(" | ")}]`,
     );
   }
 });

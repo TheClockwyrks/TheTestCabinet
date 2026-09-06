@@ -22,7 +22,7 @@
 // build.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnTextLines } from "../case-harness/index";
+import { figureRuns, figuresAcross, type FigureRun } from "./figures";
 import { assertTrue, fail } from "../assert";
 import { RING_COST, SITES, STRUT_COST_PER_UNIT } from "../constants";
 import { clearAll, createHarness, openSite, type Harness } from "../harness";
@@ -46,39 +46,15 @@ const ROUNDING = 1;
  * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
  * needs to put side-by-side glyphs on one baseline back together, and every
  * raw string is a substring of its run, so coalescing can only add a match.
- */
-async function frameText(harness: Harness): Promise<string[]> {
-  return drawnTextLines(await harness.screenCalls());
-}
-
-/**
- * The separators a build may set between a figure's digit triples.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * Each run comes back carrying the raw draws that spelled it as well, because
+ * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
+ * draw groups the figure it sits in — this case's own reference sets a cost
+ * that way — while a space the MERGE wrote between two draws groups nothing,
+ * since the two figures either side of it were drawn apart.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is — a build is free to set `5600`
- * as `5,600` or `5'600`, and what is compared is the figure rather than how it
- * was typeset.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function frameText(harness: Harness): Promise<FigureRun[]> {
+  return figureRuns(await harness.screenCalls());
 }
 
 let h: Harness;
@@ -109,7 +85,7 @@ it("draws the crane's cost and the site's budget on the build screen", async () 
       "check reads the readout against (specs/structure.md)",
   );
 
-  const drawn = runs.flatMap(numbersIn);
+  const drawn = figuresAcross(runs);
   if (!drawn.some((value) => Math.abs(value - structure.cost) <= ROUNDING)) {
     fail(
       `the build screen to draw the crane's cost, ${structure.cost} ` +

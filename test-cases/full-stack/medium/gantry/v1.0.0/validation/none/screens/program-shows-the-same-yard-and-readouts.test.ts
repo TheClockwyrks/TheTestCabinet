@@ -29,13 +29,18 @@
 //
 // SITE `4` IS OPENED, whose budget (`5 600`) and name are unlike anything else on
 // either screen, and the tape is five steps long, so the step count is a figure
-// of its own too.
+// of its own too. That budget is also why the reading of a figure matters here:
+// how a build groups a four-figure number is the build's, and `./figures` —
+// this directory's one reading of a number — is what makes `5 600`, `5,600` and
+// `5600` one budget without letting the space the harness's merge writes
+// between two draws fuse two figures into one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnTextLines } from "../case-harness/index";
+import { drawnTextRuns, type TextDraw } from "../case-harness/index";
 import { assertEqual, assertLength, fail } from "../assert";
 import { GRIP_MAX_RATE, SITE_NAMES } from "../constants";
 import { createHarness, openSite, type Harness } from "../harness";
+import { drawnFigures } from "./figures";
 
 /** The site opened: its budget and name are unlike the rest of the screen. */
 const SITE = 3;
@@ -87,43 +92,59 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Every run of text the frame the page last drew put on its readout layer. */
-async function readoutText(harness: Harness): Promise<string[]> {
-  return drawnTextLines(await harness.screenCalls());
+/** One run of text the frame drew, and the figures it shows. */
+interface Readout {
+  /** The run as the frame spells it. */
+  readonly text: string;
+  /** Every figure that run shows, under `./figures`' reading. */
+  readonly figures: number[];
 }
 
 /**
- * The separators a build may set between a figure's digit triples.
+ * Every run of text the frame the page last drew put on its readout layer, each
+ * with the figures it shows.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * The figures are attributed to the run they were read inside — the merged run
+ * and the raw draws it was coalesced from both answer about the same run — so a
+ * readout that carries a figure carries it in ITS OWN run, which is what lets
+ * this check say the same readout is drawn on both screens rather than that the
+ * figure is loose somewhere on each.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function readoutText(harness: Harness): Promise<Readout[]> {
+  const calls = await harness.screenCalls();
+  const drawn = drawnFigures(calls);
+  return drawnTextRuns(calls).map((run) => ({
+    text: run.text,
+    figures: drawn
+      .filter((figure) => sameRun(figure.run, run))
+      .map((figure) => figure.value),
+  }));
 }
 
-/** Whether a run of text carries a figure within `tolerance` of `wanted`. */
-function carries(text: string, wanted: number, tolerance: number): boolean {
-  return numbersIn(text).some((one) => Math.abs(one - wanted) <= tolerance);
+/**
+ * Whether two readings name the same run of the frame.
+ *
+ * BY WHAT THE RUN IS, NEVER BY IDENTITY. `drawnFigures` does its own
+ * `drawnTextRuns` over the same calls, and that function mints a fresh object
+ * per run every time it is asked (`case-harness/text.ts`, `runs.push({ ...draw })`),
+ * so the run a figure carries is never the same OBJECT as the one the map above
+ * walks — an `===` between them is false for every pair, and every readout would
+ * come back carrying no figures at all, failing this point against any build the
+ * reference included.
+ *
+ * The merge is deterministic over one frame, so the two readings agree run for
+ * run; what identifies one is the copy it spells and where it sits. The baseline
+ * and the left edge are both read because two readouts may spell the same word
+ * in different places — a bare `0` under two axes is the case this point is most
+ * likely to meet — and the copy alone would fold them into one.
+ */
+function sameRun(a: TextDraw, b: TextDraw): boolean {
+  return a.text === b.text && a.y === b.y && a.left === b.left;
+}
+
+/** Whether a readout carries a figure within `tolerance` of `wanted`. */
+function carries(readout: Readout, wanted: number, tolerance: number): boolean {
+  return readout.figures.some((one) => Math.abs(one - wanted) <= tolerance);
 }
 
 it("draws the build screen's readouts on the program screen too", async () => {
@@ -141,22 +162,27 @@ it("draws the build screen's readouts on the program screen too", async () => {
 
   const cost = built.structure.cost;
   const budget = built.site.budget;
-  const readouts: ReadonlyArray<readonly [string, (text: string) => boolean]> =
+  const readouts: ReadonlyArray<
+    readonly [string, (readout: Readout) => boolean]
+  > = [
     [
-      [
-        `the site's name ("${SITE_NAMES[SITE]}")`,
-        (text) => text.toLowerCase().includes(SITE_NAMES[SITE]!.toLowerCase()),
-      ],
-      [
-        `the crane's cost (${cost.toFixed(2)})`,
-        (text) => carries(text, cost, COST_TOL),
-      ],
-      [`the site's budget (${budget})`, (text) => carries(text, budget, 0.5)],
-      [
-        `the tape's step count (${TAPE_STEPS})`,
-        (text) => carries(text, TAPE_STEPS, 0.05),
-      ],
-    ];
+      `the site's name ("${SITE_NAMES[SITE]}")`,
+      (readout) =>
+        readout.text.toLowerCase().includes(SITE_NAMES[SITE]!.toLowerCase()),
+    ],
+    [
+      `the crane's cost (${cost.toFixed(2)})`,
+      (readout) => carries(readout, cost, COST_TOL),
+    ],
+    [
+      `the site's budget (${budget})`,
+      (readout) => carries(readout, budget, 0.5),
+    ],
+    [
+      `the tape's step count (${TAPE_STEPS})`,
+      (readout) => carries(readout, TAPE_STEPS, 0.05),
+    ],
+  ];
 
   const wanted: string[] = [];
   for (const [what, holds] of readouts) {
@@ -164,10 +190,10 @@ it("draws the build screen's readouts on the program screen too", async () => {
     if (drawn.length === 0) {
       fail(
         `the build screen to show ${what} among its readouts (specs/ui.md)`,
-        `it draws [${before.map((one) => one.trim()).join(" | ")}]`,
+        `it draws [${before.map((one) => one.text.trim()).join(" | ")}]`,
       );
     }
-    wanted.push(...drawn);
+    wanted.push(...drawn.map((one) => one.text));
   }
 
   await h.debug.setScreen("program");
@@ -182,12 +208,14 @@ it("draws the build screen's readouts on the program screen too", async () => {
   );
 
   for (const [what, holds] of readouts) {
-    const same = wanted.filter((text) => holds(text) && drawn.includes(text));
+    const same = drawn.filter(
+      (readout) => holds(readout) && wanted.includes(readout.text),
+    );
     if (same.length === 0) {
       fail(
         `the program screen to show ${what}, the same readout the build ` +
           "screen shows (specs/ui.md)",
-        `it draws [${drawn.map((one) => one.trim()).join(" | ")}]`,
+        `it draws [${drawn.map((one) => one.text.trim()).join(" | ")}]`,
       );
     }
   }

@@ -18,7 +18,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 
-import { drawnTextLines } from "../case-harness/index";
+import { figureRuns, figuresAcross, type FigureRun } from "./figures";
 import { assertGreaterThan, assertTrue, fail } from "../assert";
 import { SLEW_MAX_RATE } from "../constants";
 import {
@@ -64,38 +64,15 @@ afterEach(async () => {
  * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
  * needs to put side-by-side glyphs on one baseline back together, and every
  * raw string is a substring of its run, so coalescing can only add a match.
- */
-async function readoutText(harness: Harness): Promise<string[]> {
-  return drawnTextLines(await harness.screenCalls());
-}
-
-/**
- * The separators a build may set between a figure's digit triples.
  *
- * ASCII space is deliberately absent: a frame's text is assembled by joining
- * separate draw runs with one, so accepting it would read the two figures in
- * `40 130` as the single number 40130. `.` is absent for the same sort of
- * reason — it is the decimal point, and a build drawing `1.5` means one and a
- * half.
+ * Each run comes back carrying the raw draws that spelled it as well, because
+ * a figure is read off BOTH (`./figures`): a space the BUILD wrote inside one
+ * draw groups the figure it sits in — this case's own reference sets a cost
+ * that way — while a space the MERGE wrote between two draws groups nothing,
+ * since the two figures either side of it were drawn apart.
  */
-const GROUP = "[,'\\u00A0\\u202F\\u2009]";
-
-/** One drawn number: a grouped figure, or a plain one. */
-const DRAWN = new RegExp(
-  `-?\\d{1,3}(?:${GROUP}\\d{3})+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?`,
-  "g",
-);
-
-/**
- * Every number a run of text carries.
- *
- * A grouped figure reads as the one figure it is, so `1,234` and `1234` both
- * come back as 1234 and a build is free to group the figure it draws.
- */
-function numbersIn(text: string): number[] {
-  return (text.match(DRAWN) ?? []).map((one) =>
-    Number(one.replace(new RegExp(GROUP, "g"), "")),
-  );
+async function readoutText(harness: Harness): Promise<FigureRun[]> {
+  return figureRuns(await harness.screenCalls());
 }
 
 it("draws the crane's cost on the run screen", async () => {
@@ -119,8 +96,8 @@ it("draws the crane's cost on the run screen", async () => {
   );
 
   const drawn = await readoutText(h);
-  const shown = drawn.some((text) =>
-    numbersIn(text).some((figure) => Math.abs(figure - cost) <= FIGURE_TOL),
+  const shown = figuresAcross(drawn).some(
+    (figure) => Math.abs(figure - cost) <= FIGURE_TOL,
   );
   await h.capture("run-cost", "The cost readout on the run screen");
 
@@ -128,7 +105,9 @@ it("draws the crane's cost on the run screen", async () => {
     fail(
       `the crane's cost, ${cost.toFixed(2)}, drawn on the run screen ` +
         "(specs/ui.md)",
-      `the screen's text reads [${drawn.map((one) => one.trim()).join(" | ")}]`,
+      `the screen's text reads [${drawn
+        .map((one) => one.text.trim())
+        .join(" | ")}]`,
     );
   }
 });
