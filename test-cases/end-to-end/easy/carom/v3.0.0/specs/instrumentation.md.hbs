@@ -80,9 +80,14 @@ that measured it, and of wall-clock time, so a step means the same thing whateve
 the frame rate. The dependency runs one way: the simulation reads nothing from
 the renderer.
 
-Every rate is integrated against that delta time, so an interval of game time
-reaches the same state however it was divided into frames, beyond the drift a
-change in step size explains.
+Every rate is integrated against that delta time, so a scenario driven twice
+under frame lengths anywhere between `2` and `16` milliseconds plays out the
+same way. Both drives reach the same paddle contacts, the same wall bounces, and
+the same points; the ball's speed agrees within `10` units per second; its
+direction agrees axis by axis, with a vertical speed under `120` units per second
+counting as level; and the scenario takes the same game time within `8` per
+cent. Positions carry the drift a change in step size explains and are held to
+no bound.
 
 ## What the runtime provides instead
 
@@ -175,9 +180,8 @@ recent frame left.
 and `frames` defaults to `1`. Each is a real frame, the same update the loop runs
 followed by a render, so the game's own collisions and AI produce the result and
 the canvas reflects it. `advance(1, 1)` and `advance(1, 60)` cover the same second
-of game time and reach the same outcome, beyond the drift a change in step size
-explains. Advancing while the game is still stepping
-automatically adds to what the wall clock is already doing.
+of game time. Advancing while the game is still stepping automatically adds to
+what the wall clock is already doing.
 
 {{/if}}
 ### The world

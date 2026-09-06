@@ -32,7 +32,7 @@
 //   * Nothing authoritative lives anywhere else. There is no module-level game
 //     state in this build and no closure over mutable data — every module beside
 //     this one is arithmetic over the record below. `reset()` on the debug
-//     surface restores exactly these fields, so a scenario replays identically.
+//     surface restores exactly these fields, so nothing survives a reset.
 //   * Every field is `readonly` and every array is a `readonly` array, so the
 //     declared type and the `DeepReadonly` view the engine hands out are the same
 //     shape: a transition spreads a state into the next one without a cast.

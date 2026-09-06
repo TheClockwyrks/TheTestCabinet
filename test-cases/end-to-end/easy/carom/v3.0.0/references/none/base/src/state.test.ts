@@ -196,8 +196,14 @@ describe("resetState", () => {
     expect(state.menuIndex).toBe(0);
     expect(state.titleIndex).toBe(0);
     expect(state.simTime).toBe(0);
-    // Every declared field but the mute bit, which the next check is about.
-    expect(state).toEqual({ ...createInitialState(), muted: true });
+    // Every declared field but the mute bit, which the next check is about,
+    // and the serve sign, which each park draws afresh.
+    const fresh = createInitialState();
+    expect(state).toEqual({
+      ...fresh,
+      ball: { ...fresh.ball, serveSign: expect.any(Number) },
+      muted: true,
+    });
   });
 
   it("leaves the mute bit alone: it is the player's, not the screen's", () => {
