@@ -24,8 +24,10 @@
 // the name `specs/ui.md` fixes, so the engine announces the name and `watchCues`
 // reads it — which separates a build that plays the wrong cue at the end of a
 // round from one that plays the right one. What is read is the ask the cue bus
-// announces rather than a sound: this process has no Web Audio context, so no
-// produced file is decoded here.
+// announces rather than a sound: nothing in this process is audible, and the
+// produced file bound under the name — which the harness's stand-in
+// `AudioContext` really does decode, so the binding happens — is graded off disk
+// by `audio/death-file-produced`.
 //
 // THE CLIP RUNS ON PAST THE DEATH IN FRAMES RATHER THAN TICKS, because
 // `specs/movement.md` stops the tick the moment a round ends: nothing advances on

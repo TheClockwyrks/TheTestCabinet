@@ -8,12 +8,16 @@
 // file on disk and the five `*-cue-plays` points next door read the game.
 //
 // WHY THE FILE IS READ HERE RATHER THAN THROUGH THE ENGINE. The engine's loader
-// decodes a sound through a Web Audio context, and this process has none: a cue's
-// produced file cannot be loaded through the engine in a Node run whatever its
-// bytes are. That is a limit of this host and says nothing about the build — the
-// cue bus still names the cue the build asked to play, so the `*-cue-plays`
-// points still read it; what has to happen here instead is the bytes being read
-// where they actually live, which is on disk.
+// does load a cue in this process — `harness.ts` installs both the transport it
+// fetches through and the `AudioContext` it decodes through, so a build's cues
+// really bind here. But what a load hands the bus is an `AudioBuffer`, and these
+// six points are about the FILE: that it decodes as a WAV at all, what its own
+// container says its length is, and whether its samples carry signal. A buffer the
+// bus already holds can answer none of that, because a file it could not decode
+// never became one — the load rejected and the name stayed unbound. What decides
+// whether a produced cue is a WAV therefore has to read the bytes where they
+// actually live, on disk, and that is what happens below; the `*-cue-plays` points
+// next door read the cue bus instead.
 //
 // WHY A READER WRITTEN HERE IS THE HONEST ONE, WHICH IT IS NOT ALWAYS. The
 // authoring guide warns against a decoder that covers only some of the formats a

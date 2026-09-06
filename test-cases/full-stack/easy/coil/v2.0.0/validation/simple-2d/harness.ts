@@ -79,6 +79,8 @@ import {
   applyDriver,
   createEngineCaseHarness,
   installAssetHost,
+  installAudioContext,
+  tolerantAudioBuffer,
   type AssetHost,
   type EngineHarness,
   type EngineHarnessOptions,
@@ -376,13 +378,19 @@ export function serpentine(): Cell[] {
 // project runs: nothing here withholds a path, refuses a request, or offers a
 // switch that leaves the art out.
 //
-// AUDIO IS THE ONE THING THIS CANNOT SERVE, AND NO `AudioContext` IS INSTALLED.
-// `loadAudio` decodes through a Web Audio context and this host has none, so
-// every cue's produced file fails to load here. That is a fact about this process
-// rather than a requirement on the build: the cue bus still names the cue the
-// build asked to play, so `cue:played` still answers WHICH one sounded, and the
-// points that are about the FILES read their bytes off disk directly, which is
-// where they live.
+// THE AUDIO IS SERVED TOO, THROUGH AN `AudioContext` THIS FILE INSTALLS. A cue
+// travels the same road a sprite does and then one step further: `loadAudio`
+// fetches the produced file through the same transport and decodes it through a
+// Web Audio context, and a bare Node process has neither half. Without both, every
+// cue's load rejects — and `specs/ui.md` has the build define its four cues from
+// `initialize` and play them by name from a tick. The engine's bus binds a name
+// ONLY once its decode has succeeded and throws `unknown audio cue "<name>"` for
+// a name nothing bound, so a build that binds its cues from its produced files
+// alone either never finishes initializing or falls over inside its own update on
+// the first pellet it eats. Either way every point in this project would fail for
+// a fact about Node rather than about the build, which is the one thing a host is
+// here to prevent. The decode note below says which half of the decode this case
+// binds, and why that half is not the package's to choose.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
@@ -430,6 +438,39 @@ const assets: AssetHost = installAssetHost({
   images: true,
   label: "coil",
 });
+
+// THE CUES' HALF OF THE HOST. Installed beside the transport that fetches them
+// because the two halves of a load are no use apart: the fetch answers the bytes
+// and the decode is what binds the name the build then plays by. The stand-in
+// context makes no noise and answers an inert node for every graph member the
+// engine's synthesizer reaches for, so what it buys is not audio but the BINDING —
+// `audio.load` sets a name only after its file has decoded, and a name nothing
+// bound throws from `play`. A build is graded on the cue it asked for, which the
+// bus announces either way, and never on a sample read back off the buffer.
+//
+// WHICH DECODE, AND WHY THE TOLERANT ONE. The package refuses to default this,
+// because the two halves grade a build differently: `wavAudioBuffer` parses the
+// RIFF container and THROWS on a body that is not one, while
+// `tolerantAudioBuffer` answers silence of a nominal length instead and never
+// throws. Under the throwing half a build that shipped one malformed cue leaves
+// that name unbound, the engine's `play` then throws from inside the build's own
+// update, and a single bad file costs every point in this project rather than the
+// `audio/*-file-produced` point it belongs to — the same inversion this whole host
+// exists to prevent, landing on the points that exist to report the file. Coil
+// grades its produced files itself, off disk, in `audio/sounds.ts`, and nothing in
+// this project ever reads a sample back off the buffer, so nothing is lost by
+// letting a bad one bind: it is named as a bad file exactly where it should be.
+//
+// AND IT IS THE `structured-2d` PROJECT'S DECODER, WHICH IS NOT A COINCIDENCE. The
+// same build is stood up under both engines from the same specification, and a cue
+// that bound under one and not the other would move points for a reason belonging
+// to neither the build nor the spec. The two calls are meant to stay the same text.
+//
+// Installed once at module scope and never uninstalled, for the reason the asset
+// host is: a Node process has no Web Audio at all, so this is what the HOST lacks
+// rather than something a single check borrows. The package reference-counts the
+// global, so a second harness in the same worker joins this one.
+installAudioContext({ decode: tolerantAudioBuffer });
 
 /**
  * The produced file a drawn source came from, or `""` for one this harness never
@@ -1178,11 +1219,13 @@ export async function createHarness(
 // name, and the engine announces every play — so what a check reads is WHICH cue
 // sounded, not merely that something did, and it reads it without a decoder.
 //
-// The produced `.wav` behind each cue cannot be loaded in this process, because
-// the engine decodes audio through a Web Audio context and there is none here.
-// That is this host's limit and not the build's: the cue bus still announces the
-// cue the build asked for, so what these checks read is unaffected, and the
-// points that are about the FILES read their bytes off disk instead.
+// The produced `.wav` behind each cue really is loaded in this process: the host
+// installed above fetches it and the `AudioContext` beside it decodes it, so a
+// build that binds its cues from its own files gets its names bound and plays
+// them. None of that is what a check here reads. Nothing sounds, the stand-in
+// context is inert, and no sample ever leaves a buffer — what these checks read
+// is the ask, by name, and the points that are about the FILES read their bytes
+// off disk instead.
 //
 // A LOOP IS RECORDED AS WELL AS A PLAY. `specs/ui.md` makes `music` a bed that
 // LOOPS under a round, and an engine announces a bed starting as `cue:looped`

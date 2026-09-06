@@ -14,10 +14,16 @@
 // "not silent" can mean without assuming a loudness `specs/assets.md` never fixed.
 //
 // THE ENGINE'S OWN LOADER CANNOT DECIDE THIS. `engine/audio.md` binds a cue to a
-// produced file through the asset loader, and that decode needs an audio context
-// no Node process has — so the sounds are read here rather than through the build.
-// That the build asks for the right cue at the right moment is what the `audio/`
-// points decide; that there is a real sound behind each name is this one.
+// produced file through the asset loader, and `../harness` does install the
+// `AudioContext` that decode needs — a cue whose file never decoded would never
+// bind its name at all, so every point in this project depends on it. But a
+// successful decode establishes only that the container parsed, and the bus then
+// announces a cue from the play call itself without ever reading the buffer back:
+// a file of the right length holding nothing but zeroes loads, binds and plays
+// exactly as a real sound does. So the samples are read here, off disk, rather
+// than through the build. That the build asks for the right cue at the right
+// moment is what the `audio/` points decide; that there is a real sound behind
+// each name is this one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { AUDIO_FILES, BAND_HEALTH, PLAYABLE_COL_MIN } from "../constants";

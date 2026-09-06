@@ -674,7 +674,18 @@ const WORKSPACE = dirname(PROJECT_ROOT);
  *    naming the canvas library's decoded image as the host's `ImageBitmap` would
  *    change what the ENGINE's own recorder captures into a replay, which is
  *    evidence this case's outputs were never sized for.
- *  - `documentElement` is off: nothing here asks the host for a canvas element.
+ *  - `documentElement` supplies `document.createElement("canvas")`. It is ON
+ *    because specs/assets.md leaves the BAND ROUTE to the build: the tint may be
+ *    "composited over the seeded PNG at draw time" or "a per-band copy is baked
+ *    once at load time", and the second route composes on a scratch canvas the
+ *    build asks the document for. With no document that call throws inside the
+ *    build's own `initialize`, `createHarness` rejects, and EVERY check in this
+ *    project fails on a fact about Node rather than about the build. The shim
+ *    hands back a canvas of the same `@napi-rs/canvas` implementation every
+ *    reading in this project rasterizes through, so a source a build baked is
+ *    read exactly as a seeded bitmap is. Nothing else of a document is supplied,
+ *    because nothing else is something the engine's own runtime would give a
+ *    build either.
  */
 function serveSeededAssets(): AssetHost {
   return installAssetHost({
@@ -683,6 +694,7 @@ function serveSeededAssets(): AssetHost {
     onMissing: "404",
     images: true,
     nameImageBitmap: false,
+    documentElement: true,
     label: "spectra",
   });
 }

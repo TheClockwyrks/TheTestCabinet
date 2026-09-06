@@ -13,9 +13,23 @@
 // stage. specs/assets.md requires the ship to be drawn from `assets/fighter.png`,
 // and specs/overview.md fixes that "an entity's position is its center", so the
 // centre of that box is the ship's centre. The candidate is picked by the ship's
-// OWN `x`, which the snapshot does report, and never by its `y`, which is the
-// thing under test: a build that flew the ship out of its lane is still found
-// there.
+// OWN `x`, which the snapshot does report, and by the silhouette the blit
+// carries — never by its `y`, which is the thing under test: a build that flew
+// the ship out of its lane is still found there, and the row of hulls
+// specs/ui.md puts in the bottom HUD strip is not mistaken for it.
+//
+// THE SILHOUETTE, NOT THE PIXELS, IS WHAT IDENTIFIES THE DRAW. specs/assets.md
+// lets a build composite the band's tint over the seeded PNG at draw time or bake
+// a per-band copy once at load time, and lets it scale the art to `SHIP_W` by
+// `SHIP_H`, so the source a blit carries may be the seeded bitmap itself or a
+// scratch canvas of another size in another colour. The harness's own
+// `identifySprite`, which this check used to pick the candidate with, holds a
+// source's PIXELS against the seeded file and by its own documentation refuses
+// "a recoloured copy" — so under the bake route it found no ship at all and this
+// check failed on a route the specification hands the build. What survives every
+// one of those routes is the SHAPE, which is what `presentation/reading`'s
+// silhouette agreement reads, and reading it here is what makes this engine and
+// the structured-2d sibling grade the same build the same way.
 //
 // THE LANE IS READ WHILE THE SHIP IS MOVING, not only at the ends of the sweep.
 // Three readings are taken across each held second, so a build whose ship bobs,
@@ -28,19 +42,16 @@
 // seeded art at all, which is `presentation/fighter-from-sprite`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BINDINGS, SHIP_H, SHIP_W, SHIP_Y } from "../constants";
+import { BINDINGS, SHIP_H, SHIP_W, SHIP_Y, SPRITES } from "../constants";
 import { assertGreaterThan, assertLessThanOrEqual, fail } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawFrame,
-  drawnImages,
-  identifySprite,
-  seededSprites,
   startPosed,
   ticksFor,
   type Harness,
 } from "../harness";
+import { bestBlit, blitsOfFrame, describeBlits } from "../presentation/reading";
 
 /**
  * How far the drawn ship's centre may sit from `SHIP_Y`, in logical units.
@@ -52,6 +63,21 @@ import {
  * the allowance.
  */
 const LANE_TOLERANCE = 6;
+
+/**
+ * How closely a blit's source must agree with the seeded `fighter.png`
+ * silhouette, `0` to `1`, for it to be the ship rather than some other art.
+ *
+ * A bar for IDENTIFYING the draw, not for grading the art — that is
+ * `presentation/fighter-from-sprite`, which states its own and much tighter
+ * figure. 90% leaves room for a build that bakes its per-band copies at another
+ * resolution, which is resampled to the seeded `SPRITE_SIZE` square before the
+ * two are compared, while still refusing anything that is not the seeded
+ * silhouette: no two of the four seeded sprites agree anywhere near it. It is
+ * the figure the structured-2d sibling identifies the same draw with, so a
+ * build that clears it on one engine clears it on the other.
+ */
+const SHIP_ART_MIN = 0.9;
 
 /** The first key specs/controls.md binds each direction to. */
 const KEYS = { left: BINDINGS.left[0], right: BINDINGS.right[0] } as const;
@@ -75,30 +101,46 @@ const MOVED_MIN = 36;
 
 /**
  * The centre `y` of the draw that put the seeded fighter art on the stage at the
- * ship's own `x`.
+ * ship's own `x`, read off one freshly rendered frame.
  *
- * The candidate is chosen by horizontal position and by source alone: within
+ * The frame is `presentation/reading`'s {@link blitsOfFrame}, which runs one
+ * frame of its own and hands back only that frame's blits, each already carrying
+ * how closely its source agrees with each seeded sprite. Reading a frame this way
+ * is otherwise the `presentation` group's business; it is borrowed here because
+ * the shape of the source is the only thing that identifies this draw across the
+ * routes specs/assets.md allows, and duplicating the rasterization beside this
+ * check would let the two drift apart.
+ *
+ * The candidate is chosen by horizontal position and by silhouette alone: within
  * `SHIP_W` of the `x` the snapshot reports, so the row of hulls specs/ui.md puts in
  * the bottom HUD strip — which this scenario keeps hundreds of units away from the
  * ship's own `x` — is never mistaken for the ship, and the ship's `y` takes no part
- * in the choice.
+ * in the choice. `presentation/reading`'s own `blitsNear` is deliberately NOT what
+ * narrows them, because it measures a distance in BOTH axes and the `y` it would
+ * measure against is the thing under test.
+ *
+ * Of those, {@link bestBlit} takes the one whose source looks most like the seeded
+ * fighter, which is what settles a build free to lay a glow, a shadow or an engine
+ * flare of its own around the hull and blit that too. Ties fall to the blit
+ * nearest the ship's `x`, because the candidates are sorted that way and
+ * {@link bestBlit} keeps the first of an equal pair.
  */
 async function drawnLaneY(h: Harness): Promise<number> {
-  const drawn = drawnImages(h, await drawFrame(h));
   const { ship } = h.snapshot();
-  const sprites = await seededSprites();
-  const candidates = drawn
-    .filter((image) => Math.abs(image.x - ship.x) <= SHIP_W)
+  const near = (await blitsOfFrame(h))
+    .filter((blit) => Math.abs(blit.x - ship.x) <= SHIP_W)
     .sort((a, b) => Math.abs(a.x - ship.x) - Math.abs(b.x - ship.x));
-  for (const image of candidates) {
-    const match = await identifySprite(image.source, sprites);
-    if (match?.name === "fighter") return image.y;
+  const drawn = bestBlit(near, "fighter");
+  if (drawn === undefined || drawn.agreement.fighter < SHIP_ART_MIN) {
+    fail(
+      `the ship drawn within ${String(SHIP_W)} units of the x the snapshot ` +
+        `reports, from a source carrying assets/${SPRITES.fighter}'s alpha ` +
+        `silhouette at or above ${String(SHIP_ART_MIN)} of its places ` +
+        "(specs/assets.md)",
+      `at ship x ${ship.x.toFixed(1)}, ${describeBlits(near)}`,
+    );
   }
-  fail(
-    `the ship drawn from the seeded fighter art within ${String(SHIP_W)} units ` +
-      "of the x the snapshot reports (specs/assets.md)",
-    `no such drawImage at ship x ${ship.x.toFixed(1)}`,
-  );
+  return drawn.y;
 }
 
 let harness: Harness;

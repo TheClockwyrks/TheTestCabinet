@@ -563,14 +563,26 @@ export interface Harness {
   /** Every asset the build asked for and did not get, oldest first. */
   readonly assetFailures: readonly AssetFailure[];
   /**
-   * Every path this build fetched, in order, and whether the workspace carried
-   * it.
+   * Every request this build made, in order: the path exactly as it asked for
+   * it, whether the workspace carried it, and whether it left the origin.
    *
-   * The paths are exactly as the build asked for them — relative to the page, as
-   * `specs/assets.md` requires — so a check reads both which files a build
-   * consumes and how it addresses them.
+   * THE PATHS ARE UNTOUCHED AND NOTHING IS DROPPED, which is the whole of what
+   * makes this reading worth taking here. A check reads both which files a build
+   * consumes and HOW IT ADDRESSES THEM, and `specs/assets.md` and
+   * `specs/overview.md` between them require the second as squarely as the
+   * first — so a request the build wrote as an absolute URL, a CDN or a font
+   * host or a model fetched from the web at play time, arrives here with
+   * `offOrigin` set rather than not arriving at all. Dropping those on the way
+   * out would leave the two points that exist to catch them reading a record
+   * they had already been removed from.
+   *
+   * `found` is a request the workspace answered with the file. An off-origin one
+   * is never `found`: nothing in this process serves the network, so the
+   * transport hands it to the platform and records no status of its own for it.
+   * A point about the served output therefore drops the off-origin requests on
+   * its own line, and says why.
    */
-  assetRequests(): { path: string; found: boolean }[];
+  assetRequests(): { path: string; found: boolean; offOrigin: boolean }[];
   /**
    * Draw the game as it stands into the engine's scene, advancing nothing.
    *
@@ -1364,16 +1376,22 @@ export async function createHarness(
     openingSnapshot,
     playedCues: base.cues,
     assetFailures: base.assetFailures,
-    // OFF-ORIGIN REQUESTS ARE LEFT OUT, and that is what this reading has always
-    // meant: it answers the paths the build asked the SITE for, and `found` says
-    // whether the workspace carried one. The package's transport also records what
-    // it handed to the platform's own `fetch`, which is a different question and
-    // one no point here asks.
+    // OFF-ORIGIN REQUESTS COME THROUGH, and they have to. The package's transport
+    // answers a page-relative URL out of the workspace and hands anything carrying
+    // a scheme to the platform's own `fetch`, recording both — and where the build
+    // fetches FROM is the subject of `assets/no-runtime-fetch-outside-dist` and
+    // half of `assets/assets-work-from-a-sub-path`. Filtering the off-origin
+    // requests out here left both of those grading a record that could not hold
+    // the thing they look for, so a build fetching its models from a CDN passed
+    // them for having asked for nothing. The whole log since this harness was
+    // built is handed over instead, `offOrigin` and all, and the one point whose
+    // subject is the served output alone sets them aside itself.
     assetRequests: () =>
-      assets
-        .requestsSince(requestsFrom)
-        .filter((one) => !one.offOrigin)
-        .map((one) => ({ path: one.url, found: one.status === 200 })),
+      assets.requestsSince(requestsFrom).map((one) => ({
+        path: one.url,
+        found: one.status === 200,
+        offOrigin: one.offOrigin,
+      })),
     screen: base.canvas,
     async screenOps() {
       return base.calls.map(recordedOp);

@@ -71,15 +71,31 @@
 // directly adds a controller of its own: {@link DeepcoreModel.addObserver}.
 //
 // THE PRODUCED FILES REALLY LOAD. A bare Node process can neither fetch a
-// page-relative URL nor decode a PNG, so without help every produced sprite would
-// fail to load and every point about one would fail every build ever written — a
-// fact about Node rather than about the build. The package's `installAssetHost`
-// supplies what a browser gives the engine's loader: a `fetch` that reads the
-// file the build committed off the workspace, and a `createImageBitmap` that
-// decodes it. NO `AudioContext` is installed, deliberately: the engine announces
-// every cue by name whether or not a device could sound it, so Deepcore's audio
-// points are decided off those announcements and there is nothing here for a
-// decoder to do.
+// page-relative URL nor decode a PNG or a `.wav`, so without help every produced
+// sprite and every produced cue would fail to load and every point about one
+// would fail every build ever written — a fact about Node rather than about the
+// build. The package's `installAssetHost` supplies what a browser gives the
+// engine's loader: a `fetch` that reads the file the build committed off the
+// workspace, and a `createImageBitmap` that decodes it. The package's
+// `installAudioContext` supplies the other half: the `AudioContext` the loader's
+// `loadAudio` decodes a produced `.wav` through.
+//
+// AND THE AUDIO HALF IS NOT OPTIONAL, THOUGH THIS HEADER ONCE SAID IT WAS. What
+// stood here argued that no `AudioContext` was needed because the engine
+// announces every cue by name whether or not a device could sound it, so
+// Deepcore's audio points are decided off the announcements and a decoder would
+// have nothing to do. The first half of that is true — `cue:played`,
+// `cue:looped` and `cue:stopped` carry the name, the frame and the gain, and
+// nothing in this process ever sounds — and the conclusion drawn from it was
+// wrong, because it is the DECODE that makes a name exist to be announced.
+// `api.audio.load` binds a cue's name only once its file has decoded
+// (`engine/audio.md`), and `play`, `loop` and `stop` THROW `unknown audio cue
+// "<name>"` for a name nothing declared. `specs/assets.md` has a build bind all
+// thirteen cues from the `.wav` files it produced, so with no `AudioContext` in
+// the process every one of those loads rejects and a spec-conformant build either
+// awaits them and never finishes `initialize` — failing every check in the
+// project — or does not await them and throws out of its own `update` on the
+// first cue it raises. Either way the verdict is a fact about Node.
 //
 // THE CLOCK IS THE SUITE'S. `specs/instrumentation.md` deliberately fixes no
 // timestep, because every rate in this game is per second and is integrated
@@ -117,6 +133,8 @@ import {
   createEngineCaseHarness,
   identityDriver,
   installAssetHost,
+  installAudioContext,
+  wavAudioBuffer,
   type AssetHost,
   type EngineHarness,
   type EngineHarnessOptions,
@@ -507,6 +525,39 @@ const ASSET_HOST = {
   images: true,
   label: "deepcore",
 } as const;
+
+/* ---- The produced cues, decoded ------------------------------------------- */
+
+/**
+ * Give the process an `AudioContext`, so a cue the build loaded from a produced
+ * `.wav` actually binds its name.
+ *
+ * The asset loader's `loadAudio` decodes through `globalThis.AudioContext`
+ * (`engine/assets.md`) and Node has none, so this is the same kind of shim
+ * `installAssetHost` is and it is needed for the same reason: without it every
+ * `api.audio.load` this case's thirteen cues are bound by rejects, the names stay
+ * undeclared, and the build's own `play` throws out of `update` rather than any
+ * point here reaching a verdict. The stand-in never sounds — every node of the
+ * graph it hands back is inert — so what it supplies is the decode and nothing
+ * else, which is exactly the half the engine needs to bind a name.
+ *
+ * `wavAudioBuffer` rather than `silentAudioBuffer`, because the honest reading is
+ * the one that really decoded what the build committed: it refuses a body that is
+ * not a RIFF/WAVE file carrying samples, which is a build that wired a cue name
+ * to something that is not audio. Nothing in this project reads a channel off the
+ * buffer — the bus announces a cue from the play call itself, never from a buffer
+ * ending — so the samples reach no verdict here, and whether each named sound is
+ * REAL rather than a well-formed placeholder is decided by
+ * `assets/audio-files-present`, which parses the files off disk itself.
+ *
+ * INSTALLED ONCE FOR THE WORKER AND NEVER GIVEN BACK, unlike the asset host,
+ * which each harness installs and `dispose` releases. The context carries no
+ * per-harness state — it decodes bytes and answers inert nodes — so there is
+ * nothing for a teardown to clear and nothing a second harness in the same worker
+ * could observe from the first; the package reference-counts it either way, and a
+ * worker that simply exits leaves it standing.
+ */
+installAudioContext({ decode: wavAudioBuffer });
 
 /* ---- The save slot -------------------------------------------------------- */
 

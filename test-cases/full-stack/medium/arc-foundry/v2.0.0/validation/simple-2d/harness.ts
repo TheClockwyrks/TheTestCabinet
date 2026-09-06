@@ -11,9 +11,10 @@
 // draw-command recorder, the debug surface and the stand-in for a missing one, the
 // driver that threads a PURE surface through `engine.apply`, the frame sweep, the
 // cue stamping, the transport that serves the produced tree to the engine's asset
-// loader, and the evidence a review item's output is written from — every engine
-// case needs exactly that, and it lives once, in `@clockwyrks/case-harness`, staged
-// beside this file as `./case-harness/`. What stays HERE is what is genuinely Arc
+// loader, the stand-in `AudioContext` a produced cue decodes into, and the
+// evidence a review item's output is written from — every engine case needs
+// exactly that, and it lives once, in `@clockwyrks/case-harness`, staged beside
+// this file as `./case-harness/`. What stays HERE is what is genuinely Arc
 // Foundry's: its snapshot and surface types, its stage regions, its tick rate, the
 // sentence a missing surface is failed against, the readings it takes off a drawn
 // frame, and every compound sequence that poses this game.
@@ -99,7 +100,9 @@ import {
   breathe,
   createEngineCaseHarness,
   installAssetHost,
+  installAudioContext,
   rasterize,
+  tolerantAudioBuffer,
   type AssetFailure,
   type EngineHarness,
   type EngineHarnessOptions,
@@ -299,8 +302,9 @@ const WORKSPACE = resolve(PROJECT_ROOT, "..");
 /* -------------------------------------------------------------------------- */
 
 /**
- * The transport the engine's asset loader fetches through, and the decoder behind
- * it.
+ * The transport the engine's asset loader fetches through, and the image decoder
+ * behind it. The cue decoder is installed just below, because it is a separate
+ * shim with a separate choice to make.
  *
  * There is no page behind the engine's asset loader here, so without this every
  * produced file would fail to load and a build whose `initialize` awaits its loads
@@ -317,13 +321,6 @@ const WORKSPACE = resolve(PROJECT_ROOT, "..");
  * a build that did not produce a required file fails the items about that file and
  * only those.
  *
- * NO `AudioContext` IS INSTALLED, and that is deliberate. Decoding a cue needs Web
- * Audio and a node process has none, so each of the twelve `.wav` files fetches
- * cleanly and settles as a failure whose reason names the missing context. Nothing
- * about a cue is read from the decode: the engine announces every play by name, and
- * that is what the `audio/` points read — while `sprites/assets-load-clean` reads
- * the shape of that one failure and holds every OTHER failure to zero.
- *
  * INSTALLED ONCE PER WORKER, and never taken down: the shims go onto `globalThis`,
  * the package reference-counts them, and a worker that simply exits leaves them
  * standing.
@@ -335,6 +332,53 @@ installAssetHost({
   images: true,
   label: "arc-foundry",
 });
+
+/**
+ * The `AudioContext` the engine's loader decodes a produced cue into, which a
+ * node process does not otherwise have.
+ *
+ * WITHOUT IT EVERY POINT IN THIS PROJECT IS DECIDED BY NODE RATHER THAN BY THE
+ * BUILD. `specs/ui.md` has the build "define exactly the twelve cues in `CUES`
+ * from `initialize`, binding each to the file `specs/assets.md` produces for it",
+ * and the engine's bus binds a name ONLY once that file has decoded — a load that
+ * could not be decoded "leaves the name exactly as it was", which for a cue the
+ * build never separately declared is UNDECLARED — while `play`, `loop` and `stop`
+ * each throw `unknown audio cue "<name>"` for a name nothing declared. So on a
+ * host with no Web Audio a build that wrote exactly what the specification asks
+ * for either awaits twelve rejections and never initializes, or reaches its first
+ * cue and throws out of its own `update`; either way it loses the whole project
+ * for a fact about the HOST. That the committed reference survived without this
+ * says nothing: its `loadAssets` declares a synthesized shape under each of the
+ * twelve names BEFORE it loads the produced file over it and swallows the
+ * rejection, which is one defensible way to write a build and is nowhere asked
+ * for.
+ *
+ * `tolerantAudioBuffer` RATHER THAN `wavAudioBuffer`, which the package is right
+ * to call a real choice rather than a default it may make for a case. The throwing
+ * half leaves an unreadable `.wav` unbound, which under this engine costs the build
+ * the WHOLE PROJECT — the same undeclared-name throw described above — and Arc
+ * Foundry has already said where a malformed cue is judged: `audio/cue-files-present`
+ * reads all twelve off disk and decides there whether each "decodes as PCM audio"
+ * and carries a sound, and `audio/cue-files-distinct` tells the eleven effect cues
+ * apart the same way. Pricing that fact a second time, at a hundred times the cost,
+ * would be this harness overruling the case's own scoring. The tolerant half hands
+ * an unreadable file back as silence of a fallback length instead, so the cue binds,
+ * the run drives, and the file is judged where the case says it is judged. It is
+ * also what this case's `structured-2d` project binds, and the two must agree:
+ * they grade the SAME produced `.wav` files.
+ *
+ * NOTHING HERE IS HEARD, and no point reads a sample back off the buffer: the
+ * engine announces every play by name and the `audio/` event points read those
+ * announcements, while the two points about the files themselves decode the bytes
+ * off disk through `audio/wav.ts`. So the silence a readable file comes back as
+ * costs no reading either. What the decode buys is the BINDING — and, with it, the
+ * twelve cues arriving cleanly, which is what lets `sprites/assets-load-clean` hold
+ * every asset failure to zero with no exception carved out for this host.
+ *
+ * Installed once per worker and reference-counted, exactly as the asset host
+ * above is.
+ */
+installAudioContext({ decode: tolerantAudioBuffer });
 
 /**
  * A no-op `close` over the package's decoder, which is the one member of
@@ -682,10 +726,11 @@ export type Harness = EngineHarness<
  * the touch layout — so one harness serves every build of this case. Everything
  * else the build decided lives inside `src/game.ts`.
  *
- * EVERY PRODUCED FILE IS SERVED, to every check without exception: the transport
- * above stands before the first harness is built, so the engine resolves, requests,
- * decodes and announces exactly as it does in a page, and the build asks for its
- * files exactly as it always does.
+ * EVERY PRODUCED FILE IS SERVED AND DECODES, to every check without exception:
+ * the transport and the cue decoder above both stand before the first harness is
+ * built, so the engine resolves, requests, decodes and announces exactly as it
+ * does in a page — a sprite becomes an image and a `.wav` becomes the buffer its
+ * cue binds — and the build asks for its files exactly as it always does.
  */
 export const createHarness = kit.createHarness;
 

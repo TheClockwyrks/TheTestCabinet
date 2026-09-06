@@ -108,7 +108,9 @@ import {
   createEngineCaseHarness,
   identityDriver,
   installAssetHost,
+  installAudioContext,
   rasterize,
+  tolerantAudioBuffer,
   type AssetFailure,
   type EngineHarness,
   type EngineHarnessOptions,
@@ -327,13 +329,6 @@ const WORKSPACE = resolve(PROJECT_ROOT, "..");
  * a build that did not produce a required file fails the items about that file and
  * only those.
  *
- * NO `AudioContext` IS INSTALLED, and that is deliberate. Decoding a cue needs Web
- * Audio and a node process has none, so each of the twelve `.wav` files fetches
- * cleanly and settles as a failure whose reason names the missing context. Nothing
- * about a cue is read from the decode: the engine announces every play by name, and
- * that is what the `audio/` points read — while `sprites/assets-load-clean` reads
- * the shape of that one failure and holds every OTHER failure to zero.
- *
  * INSTALLED ONCE PER WORKER, and never taken down: the shims go onto `globalThis`,
  * the package reference-counts them, and a worker that simply exits leaves them
  * standing.
@@ -345,6 +340,39 @@ installAssetHost({
   images: true,
   label: "arc-foundry",
 });
+
+/**
+ * The `AudioContext` the engine's cue bus decodes a produced `.wav` through.
+ *
+ * WITHOUT ONE, EVERY POINT IN THIS PROJECT TURNS ON A FACT ABOUT NODE. `specs/ui.md`
+ * has the game "define exactly the twelve cues in `CUES` from the game instance's
+ * `initialize`, binding each to the file `specs/assets.md` produces for it", and
+ * `specs/assets.md` has it "bind each `.wav` to its cue name through the engine's
+ * audio bus, which loads and decodes it through the same asset loader". The engine's
+ * bus binds a name ONLY once the decode has succeeded, and `play` throws
+ * `unknown audio cue "<name>"` for a name nothing declared. So a build that did
+ * exactly what the specification asks either awaits twelve loads that all reject and
+ * never finishes initializing, or throws out of its own `update` on the first cue it
+ * sounds — and every check in the project fails, on every build, for the missing
+ * context rather than for anything the build got wrong.
+ *
+ * `tolerantAudioBuffer` RATHER THAN `wavAudioBuffer`, because this case grades the
+ * produced files itself. `audio/cue-files-present` reads all twelve straight off disk
+ * with `audio/wav.ts` and decides there whether each "decodes as PCM audio" and
+ * carries a sound, and `audio/cue-files-distinct` tells the eleven effect cues apart
+ * the same way. The throwing decoder would put a second, far heavier verdict on the
+ * same fact: one malformed `.wav` would reject its load, leave its name unbound, and
+ * cost a build the whole project instead of the one point the file belongs to. The
+ * tolerant half hands an unreadable file back as silence of a fallback length, so the
+ * cue still binds, the run still drives, and the file is judged where the case says
+ * it is judged. Nothing here reads a sample off the buffer — the `audio/` points read
+ * the names the bus announced and the bytes on disk — so the silence it hands back
+ * for a readable file costs no reading either.
+ *
+ * INSTALLED ONCE PER WORKER on the same terms as the asset host above, and left
+ * standing for the same reason.
+ */
+installAudioContext({ decode: tolerantAudioBuffer });
 
 /**
  * A no-op `close` over the package's decoder, which is the one member of

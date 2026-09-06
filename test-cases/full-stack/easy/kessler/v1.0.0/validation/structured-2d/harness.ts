@@ -78,6 +78,8 @@ import {
   createEngineCaseHarness,
   identityDriver,
   installAssetHost,
+  installAudioContext,
+  wavAudioBuffer,
   type AssetFailure,
   type DrivenEngine,
   type EngineHarness,
@@ -295,17 +297,23 @@ export function failSurface(fault: string): never {
 // `specs/assets.md` has the build load every produced sprite and sound through
 // the engine, which resolves each path under `assets/` relative to the page
 // the build is served from and fetches it. This project runs in a Node process
-// with no page, so the two globals the loader reaches for are stood up over
-// the workspace's own `assets/` directory, once, for the life of the process.
+// with no page, so the harness supplies the three things a browser gives the
+// loader: a `fetch` that reads the very file the build committed, a
+// `createImageBitmap` that decodes one, and an `AudioContext` that decodes a
+// produced PCM `.wav` far enough for the engine's `audio.load` to bind the cue.
 //
-// AUDIO IS THE ONE THING THIS CANNOT SERVE, and that is why no `AudioContext`
-// is installed at all. `loadAudio` decodes through a Web Audio context and this
-// host has none, so every cue's produced `.wav` fails to decode here — a fact
-// about the host rather than about the build. So the cue points read WHICH cue
-// sounded off the cue bus, and the points that are about the FILES read them off
-// disk directly, which is where they live. The package splits the asset host and
-// the audio host into two modules for exactly this: a case that wants the first
-// and not the second says so by calling one of them.
+// WHAT WOULD HAPPEN WITHOUT THE AUDIO HOST, WHICH IS WHY IT IS INSTALLED HERE.
+// The engine's bus binds a cue name ONLY once its decode has succeeded, and
+// `play`, `loop`, and `stop` THROW `unknown audio cue "<name>"` for a name
+// nothing bound. So a build that does exactly what `specs/assets.md` asks —
+// bind every name in `CUES` to its produced file through the engine's
+// `audio.load`, then run the cues and the two beds off that bus — would either
+// never finish initializing, if it awaits its loads, or throw out of its own
+// tick on the first cue it sounds; every point in this project would then fail
+// for a fact about Node rather than about the build. The package keeps the
+// asset host and the audio host in two modules so a case declares which it
+// needs by calling it, and this case, whose builds bind thirteen cues and two
+// beds, needs both.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
@@ -349,6 +357,17 @@ const assets = installAssetHost({
   images: true,
   label: "kessler",
 });
+
+/**
+ * An `AudioContext` that decodes a produced `.wav` and nothing else.
+ *
+ * `wavAudioBuffer` decodes the file to its SAMPLES — the half of the package's
+ * pair that a case listening to a channel needs, as against `silentAudioBuffer`,
+ * which reads the header alone. This project's `assets/` suites read a produced
+ * bed's own samples for their loop seam, so a decoder that answered silence
+ * would read zero off every channel with nothing to say so.
+ */
+installAudioContext({ decode: wavAudioBuffer });
 
 /**
  * The produced file a drawn source came from, or `""` for one this harness

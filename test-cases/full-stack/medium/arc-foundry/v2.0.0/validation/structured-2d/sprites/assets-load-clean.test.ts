@@ -24,11 +24,13 @@
 //
 // AND WHAT THE BUILD ASKED FOR HAS TO HAVE ARRIVED. The harness serves the
 // committed `assets/` tree to the engine's loader, so a request that failed is a
-// file the repository does not carry at the path the build asked for. The one
-// exception is the host's, not the build's: decoding audio needs a Web Audio
-// context and a node process has none, so the twelve `.wav` cues fetch cleanly and
-// fail at the decode with a reason naming the missing context. A failure of any
-// other shape is a produced file that did not arrive.
+// file the repository does not carry at the path the build asked for. THE HOST
+// IMPOSES NO FAILURE OF ITS OWN, and this point reads every failure there is: the
+// harness installs the `AudioContext` the cue bus decodes through and the tolerant
+// decoder behind it, so the twelve `.wav` cues arrive like every other produced
+// file, and a `.wav` that turns out to be unreadable comes back as silence and is
+// judged by `audio/cue-files-present` rather than counted here. Every failure this
+// reads is therefore a produced file that did not arrive.
 //
 // The drive is the three phases `specs/campaign.md` has — a build phase, a wave,
 // and the finale — with something of every kind on the yard: a component firing, a
@@ -59,9 +61,6 @@ const REPOSITORY = fileURLToPath(new URL("../../", import.meta.url));
 
 /** A path that leaves the page's own base path (specs/assets.md). */
 const ESCAPES = /^\/|^[a-z][a-z0-9+.-]*:/i;
-
-/** The one failure this host imposes on every build: no Web Audio to decode into. */
-const NO_AUDIO_CONTEXT = /this host has no AudioContext/;
 
 let h: Harness;
 
@@ -122,11 +121,8 @@ it("asks the site for nothing it does not carry, across all three phases", async
   );
 
   assertDeepEqual(
-    h.assetFailures
-      .filter((failure) => !NO_AUDIO_CONTEXT.test(failure.reason))
-      .map((failure) => `${failure.path} — ${failure.reason}`),
+    h.assetFailures.map((failure) => `${failure.path} — ${failure.reason}`),
     [],
-    "what the build asked the site for and did not get, leaving out the " +
-      "twelve cues this host cannot decode",
+    "what the build asked the site for and did not get",
   );
 });

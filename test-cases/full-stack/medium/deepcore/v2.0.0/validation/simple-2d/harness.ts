@@ -71,15 +71,35 @@
 // change it is a pose.
 //
 // THE PRODUCED FILES REALLY LOAD. A bare Node process can neither fetch a
-// page-relative URL nor decode a PNG, so without help every produced sprite would
-// fail to load and every point about one would fail every build ever written — a
-// fact about Node rather than about the build. The package's `installAssetHost`
-// supplies what a browser gives the engine's loader: a `fetch` that reads the
-// file the build committed off the workspace, and a `createImageBitmap` that
-// decodes it. NO `AudioContext` is installed, deliberately: the engine announces
-// every cue by name whether or not a device could sound it, so Deepcore's audio
-// points are decided off those announcements and there is nothing here for a
-// decoder to do.
+// page-relative URL nor decode a PNG or a `.wav`, so without help every produced
+// file would fail to load and every point about one would fail every build ever
+// written — a fact about Node rather than about the build. The package's
+// `installAssetHost` supplies what a browser gives the engine's loader: a `fetch`
+// that reads the file the build committed off the workspace, and a
+// `createImageBitmap` that decodes it; `installAudioContext` supplies the
+// `AudioContext` whose `decodeAudioData` turns a produced `.wav` into the buffer
+// a cue is bound to.
+//
+// THE AUDIO SHIM IS NOT OPTIONAL, AND THIS HEADER ONCE CLAIMED IT WAS. The claim
+// was that the engine announces every cue by name whether or not a device could
+// sound it, so Deepcore's audio points are decided off the announcements and a
+// decoder has nothing to do here. That holds for a cue DECLARED with
+// `api.audio.define` and for nothing else. A name given to `api.audio.load` is
+// bound only once its file has decoded — `engine/audio.md`, and the bus itself:
+// "The name is bound only after the decode has succeeded" — and `play`, `loop`
+// and `stop` THROW `unknown audio cue "<name>"` for a name nothing declared. So
+// with no `AudioContext` the thirteen loads `specs/assets.md` asks for all reject,
+// nothing is bound, and a build that awaited them never finishes `initialize`
+// while a build that did not throws out of its own `update` on the first cue it
+// plays: every point in the project lost, in either case, to a fact about Node.
+//
+// THE REFERENCE CANNOT SHOW YOU THAT. `references/simple-2d/src/audio.ts`
+// declares a synth stand-in for all thirteen names with `api.audio.define` and
+// only then loads the produced clip over each with `.catch(() => undefined)`, so
+// every name is already bound before a decode is attempted and the reference
+// validates green with no decoder installed at all. A build that did exactly what
+// the specification asked — produce the thirteen files, bind each cue from its
+// file, play it by name — would have scored nothing.
 //
 // THE CLOCK IS THE SUITE'S. `specs/instrumentation.md` deliberately fixes no
 // timestep, because every rate in this game is per second and is integrated
@@ -114,6 +134,8 @@ import {
   applyDriver,
   createEngineCaseHarness,
   installAssetHost,
+  installAudioContext,
+  wavAudioBuffer,
   type AssetHost,
   type EngineHarness,
   type EngineHarnessOptions,
@@ -466,6 +488,40 @@ const ASSET_HOST = {
   images: true,
   label: "deepcore",
 } as const;
+
+/**
+ * Give this worker an `AudioContext` that decodes a produced `.wav` and never
+ * sounds it, so the cues a build binds from its own files actually bind.
+ *
+ * `specs/assets.md` has the build produce all thirteen sounds with `sfx-synth`,
+ * `sfx-sample` and `music`, commit each at `assets/audio/<name>.wav`, and define
+ * the cue by the name the table fixes. The engine's bus loads such a file through
+ * the asset host and hands the bytes to `decodeAudioData`, and it binds the name
+ * only once that decode has RESOLVED; a play, a loop or a stop aimed at a name
+ * nothing bound throws. Node carries no Web Audio, so without this the decode
+ * rejects for every cue and the build falls over before a single audio point — or
+ * any other point — is reached. Nothing here sounds: the stub answers a decode
+ * and returns inert nodes for everything else, which is the whole of what the bus
+ * needs to get past the bind.
+ *
+ * `wavAudioBuffer` really reads the channels the produced file carries, rather
+ * than the silence of the right length `silentAudioBuffer` would answer. No
+ * verdict in this project is taken off a buffer — `assets/audio-files-present`
+ * decodes the thirteen files itself, off disk, precisely because it will not put
+ * the question to the build's loader — but a decoder that answered silence would
+ * be making a claim about the produced file that this harness has no business
+ * making, and would quietly become the wrong answer the moment a check did read
+ * one. Its exception is deliberate too: a `.wav` no decoder can read leaves its
+ * cue unbound, which is what a browser would do with the same file.
+ *
+ * INSTALLED AT MODULE SCOPE, once for the worker, rather than per harness the way
+ * the asset host is. The context holds nothing belonging to one run, so there is
+ * no per-harness state for a `dispose` to give back; the package reference-counts
+ * it as it does the asset host, and leaving the hold standing for the life of the
+ * worker keeps one harness's teardown from pulling the decoder out from under a
+ * build another harness is still driving.
+ */
+installAudioContext({ decode: wavAudioBuffer });
 
 /* ---- The save slot -------------------------------------------------------- */
 

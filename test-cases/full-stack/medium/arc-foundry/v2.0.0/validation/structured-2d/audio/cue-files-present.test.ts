@@ -21,9 +21,12 @@
 // THE `.mid` IS CHECKED FOR PRESENCE ALONE. The specification commits it beside the
 // bed and plays the `.wav`, so what it asks of the score is that it was kept.
 //
-// THE FILES ARE READ OFF DISK, never through the engine's loader: decoding audio
-// needs a Web Audio context and this host has none, so what a build committed is
-// read directly and the point is decided by the bytes.
+// THE FILES ARE READ OFF DISK, never through the engine's loader, even though the
+// harness now installs a context the loader can decode through. The decoder it binds
+// is the tolerant one, which hands an unreadable `.wav` back as silence so that a
+// build's cues still bind and its run still drives — which is exactly the fault this
+// point is here to name. Reading the bytes directly is what keeps that verdict here,
+// on the one point the file belongs to, instead of spreading it across the project.
 
 import { existsSync } from "node:fs";
 import { afterEach, beforeEach, it } from "vitest";

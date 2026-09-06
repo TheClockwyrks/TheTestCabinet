@@ -91,6 +91,8 @@ import {
   createEngineCaseHarness,
   identityDriver,
   installAssetHost,
+  installAudioContext,
+  tolerantAudioBuffer,
   type AssetHost,
   type EngineHarness,
   type EngineHarnessOptions,
@@ -385,11 +387,21 @@ export function serpentine(): Cell[] {
 // project runs: nothing here withholds a path, refuses a request, or offers a
 // switch that leaves the art out.
 //
-// AUDIO IS THE ONE THING THIS CANNOT SERVE, AND NO `AudioContext` IS INSTALLED.
-// `loadAudio` decodes through a Web Audio context and this host has none, so
-// every cue's produced file fails to load here. That is a fact about this process
-// rather than a requirement on the build: the cue bus still names the cue the
-// build asked to play, so `cue:played` still answers WHICH one sounded, and the
+// THE AUDIO IS SERVED TOO, AND IT HAS TO BE. `specs/ui.md` has the build define
+// its four cues from the game instance's `initialize` and `specs/assets.md` binds
+// each of them to the produced `.wav` behind it, which the engine loads through
+// its asset loader and decodes through a Web Audio context — of which a bare Node
+// process has none. The engine binds a cue's name ONLY once that decode has
+// succeeded, and then throws `unknown audio cue` out of `play` for a name nothing
+// bound. So with no context installed, a build that binds its names off its
+// produced files alone either never finishes `initialize` or falls over inside
+// its own tick the first time it plays one, and EVERY point in this project
+// fails on a fact about this process rather than about the build. The package's
+// stand-in context, installed below, is what makes the load succeed.
+//
+// WHAT THAT DOES NOT CHANGE. Nothing here is audible and no check reads a sample
+// off a decoded buffer: the cue bus still announces WHICH cue the build asked to
+// play, so `cue:played` is what the `audio/*-cue-plays` points read, and the
 // points that are about the FILES read their bytes off disk directly, which is
 // where they live.
 
@@ -439,6 +451,47 @@ const assets: AssetHost = installAssetHost({
   images: true,
   label: "coil",
 });
+
+// The `AudioContext` the engine decodes a cue's produced file through, installed
+// beside the host that fetches it because the two halves of a load are no use
+// apart: the fetch answers the bytes and the decode is what binds the name the
+// build then plays by.
+//
+// NOTHING HERE SOUNDS, AND THE DECODE STILL HAS TO SUCCEED. The stand-in context
+// makes no noise and answers an inert node for every graph member the engine's
+// synthesizer reaches for, so what the decode buys is not audio but the BINDING:
+// `audio.load` sets the name only after its file has decoded, and a name nothing
+// bound throws from `play`. Nothing in this project ever reads a sample back off
+// the buffer — every sound reading it makes is taken off disk in
+// `audio/sounds.ts`, and the bus announces `cue:played`, `cue:looped` and
+// `cue:stopped` from the play call itself rather than from a buffer running out —
+// so what the buffer holds decides nothing, and only whether the name bound
+// does.
+//
+// WHICH DECODE, AND WHY THE TOLERANT ONE. The package refuses to default this,
+// because the two halves grade a build differently: `wavAudioBuffer` parses the
+// RIFF container and THROWS on a body that is not one, while
+// `tolerantAudioBuffer` answers silence of a nominal length instead and never
+// throws. Under the throwing half a build that shipped one malformed cue leaves
+// that name unbound, the engine's `play` then throws from inside the build's own
+// tick, and a single bad file costs every point in this project rather than the
+// `audio/*-file-produced` point it belongs to — the same inversion this whole
+// host exists to prevent, landing on the points that exist to report the file.
+// Coil grades its produced files itself, off disk, in `audio/sounds.ts`, so
+// nothing is lost by letting a bad one bind: it is named as a bad file exactly
+// where it should be.
+//
+// AND IT IS THE `simple-2d` PROJECT'S DECODER, WHICH IS NOT A COINCIDENCE. The
+// same build is stood up under both engines from the same specification, and a
+// cue that bound under one and not the other would move points for a reason
+// belonging to neither the build nor the spec. The two calls are meant to stay
+// the same text.
+//
+// Installed once at module scope and never uninstalled, for the reason the asset
+// host is: a Node process has no Web Audio at all, so this is what the HOST lacks
+// rather than something a single check borrows. The package reference-counts the
+// global, so a second harness in the same worker joins this one.
+installAudioContext({ decode: tolerantAudioBuffer });
 
 /**
  * The produced file a drawn source came from, or `""` for one this harness never
@@ -1251,11 +1304,13 @@ export function addObserver(h: Harness): PlayerController {
 // name, and the engine announces every play — so what a check reads is WHICH cue
 // sounded, not merely that something did, and it reads it without a decoder.
 //
-// The produced `.wav` behind each cue cannot be loaded in this process, because
-// the engine decodes audio through a Web Audio context and there is none here.
-// That is this host's limit and not the build's: the cue bus still announces the
-// cue the build asked for, so what these checks read is unaffected, and the
-// points that are about the FILES read their bytes off disk instead.
+// The produced `.wav` behind each cue really is loaded here: the harness installs
+// a stand-in `AudioContext` beside the asset host (see its declaration), so the
+// decode the engine binds a cue name on succeeds and a build that binds its names
+// off its produced files alone has names to play. That is invisible to these
+// checks, which read the ASK either way — a play is announced by name whatever is
+// bound under it, and nothing in this process is audible. The points that are
+// about the FILES read their bytes off disk instead.
 //
 // A LOOP IS RECORDED AS WELL AS A PLAY. `specs/ui.md` makes `music` a bed that
 // LOOPS under a round, and an engine announces a bed starting as `cue:looped`

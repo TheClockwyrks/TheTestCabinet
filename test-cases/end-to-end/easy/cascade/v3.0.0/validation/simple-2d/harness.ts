@@ -1428,7 +1428,12 @@ export async function toggleOverlay(h: Harness): Promise<DrawCall[]> {
 
 /** One axis-aligned box a frame drew, placed in logical units. */
 export interface DrawnBox {
-  /** The context method that drew it. */
+  /**
+   * The context call that PAINTED it: `fillRect`, `strokeRect` or `drawImage`
+   * for a shape drawn in one call, and `fill` or `stroke` for a traced path.
+   * The calls that only build a path — `rect`, `roundRect`, `moveTo` and the
+   * rest — never name a box, because on a canvas they never paint one.
+   */
   method: string;
   /** The box's TOP-LEFT, in logical units, which is how a card is placed. */
   x: number;
@@ -1449,8 +1454,27 @@ function naturalSize(
   return { width: held.width, height: held.height };
 }
 
-/** The rectangle a call names, in the coordinates the call itself was made in. */
-function boxOf(call: DrawCall): [number, number, number, number] | null {
+/**
+ * The rectangle a SINGLE call both names and paints, in the coordinates the call
+ * itself was made in.
+ *
+ * `fillRect` and `strokeRect` put a rectangle on the canvas on their own, and so
+ * does `drawImage` in each of its three argument forms — the nine-argument form
+ * whose destination follows the source rectangle, the five-argument form that
+ * gives a destination outright, and the three-argument form that takes its size
+ * from the source's own pixels.
+ *
+ * `rect` and `roundRect` are deliberately NOT here. They add to the current path
+ * and paint nothing on their own, so a build that traces a shape and then decides
+ * not to paint it — an inset panel named only to be handed to `clip`, which is one
+ * of this case's own references — would otherwise report a shape it never drew.
+ * They are read by the path walk in {@link drawnBoxes} instead, alongside every
+ * other way an outline can be traced, and become a box only when a `fill` or a
+ * `stroke` actually paints them.
+ */
+function singleCallBox(
+  call: DrawCall,
+): [number, number, number, number] | null {
   if (call.kind !== "call") return null;
   const { method, args } = call;
   if (method === "drawImage") {
@@ -1466,12 +1490,7 @@ function boxOf(call: DrawCall): [number, number, number, number] | null {
     }
     return null;
   }
-  if (
-    method === "fillRect" ||
-    method === "strokeRect" ||
-    method === "rect" ||
-    method === "roundRect"
-  ) {
+  if (method === "fillRect" || method === "strokeRect") {
     return args.slice(0, 4) as [number, number, number, number];
   }
   return null;
@@ -1516,7 +1535,8 @@ function walkTransforms(
 }
 
 /**
- * Every rectangle `calls` drew, with its box mapped into logical units.
+ * Every shape `calls` PAINTED, each as the axis-aligned box it covers in logical
+ * units, in the order it was painted.
  *
  * A card is a `CARD_W x CARD_H` footprint placed by its corner (specs/table.md), and
  * a build is free to draw one by translating to that corner and drawing the
@@ -1525,9 +1545,32 @@ function walkTransforms(
  * call and then back through the engine's fit, and what comes out is the
  * axis-aligned box on the stage that a check can hold against a pile's anchor.
  *
- * Every way a build can put a card-sized shape on the canvas is read: `fillRect`,
- * `strokeRect`, `rect` and `roundRect` under a fill or a stroke, and `drawImage` in
- * all three of its argument forms.
+ * WHY THE PATH IS FOLLOWED, AND NOT JUST THE RECTANGLE CALLS. specs/table.md fixes
+ * a card's footprint and its anchors and says NOTHING about which context call
+ * draws it, and under this engine the build owns rendering outright
+ * (`engines/simple-2d/engine.toml`), so the call is the build's choice and never
+ * the specification's. The case's own references already differ over it: one draws
+ * each card as a `fillRect` under a `strokeRect`, another traces the whole plate as
+ * a path of lines and quadratic corners with no rectangle call anywhere. A reading
+ * that looked only for a rectangle CALL would fail the second one — every point
+ * asking where the build put a card — for a choice the specification never made. So a path is followed instead: the points named between a `beginPath` and
+ * the `fill` or `stroke` that paints them are one box, and the corner points a
+ * traced rounded rectangle names are its true corners, so its box is the footprint
+ * exactly. This is the reading `validation/none` and `validation/structured-2d`
+ * already take, and the three engines agree on it deliberately.
+ *
+ * A PATH IS ONE BOX, NOT ONE PER PAINT. A canvas keeps the current path across
+ * `fill` and `stroke`, so the ordinary plate — fill the outline, then stroke the
+ * same outline for its edge — is one shape a player sees once, and reporting it
+ * twice would let a build's edge pass for a second card in the counts that
+ * `draw-one` and `draw-three` take. The path is emitted by whichever of the two
+ * paints it first, and `beginPath` starts the next one.
+ *
+ * TWO KINDS OF SHAPE ARE OUT OF SCOPE, and neither is how this game's picture is
+ * made. A path built only from `arc` or `ellipse` names centres and radii rather
+ * than extents and is not reported at all; and a rotated or mirrored frame gives
+ * the bounding box rather than the shape. Cascade draws every pile axis-aligned and
+ * every card over a rectangular footprint (specs/table.md).
  */
 export function drawnBoxes(
   h: Harness,
@@ -1535,35 +1578,123 @@ export function drawnBoxes(
 ): DrawnBox[] {
   const view = h.viewport();
   const drawn: DrawnBox[] = [];
-  walkTransforms(calls, (call, m) => {
-    if (call.kind !== "call") return;
-    const box = boxOf(call);
-    if (box === null || !box.every((value) => typeof value === "number")) {
-      return;
-    }
 
-    const [bx, by, bw, bh] = box;
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (const [cx, cy] of [
-      [bx, by],
-      [bx + bw, by],
-      [bx, by + bh],
-      [bx + bw, by + bh],
-    ]) {
-      const at = apply(m, cx, cy);
-      xs.push((at.x - view.offsetX) / view.scale);
-      ys.push((at.y - view.offsetY) / view.scale);
-    }
+  /** Every corner the path under construction has named, in logical units. */
+  let path: Point[] = [];
+  /** Whether a `fill` or a `stroke` has already emitted that path. */
+  let painted = false;
+
+  /** A point in the coordinates a call was made in, placed in logical units. */
+  const placed = (m: Matrix, x: unknown, y: unknown): Point | null => {
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    const at = apply(m, x, y);
+    return {
+      x: (at.x - view.offsetX) / view.scale,
+      y: (at.y - view.offsetY) / view.scale,
+    };
+  };
+
+  /** The box a set of placed points covers, appended to the reading. */
+  const emit = (method: string, points: readonly Point[]): void => {
+    if (points.length === 0) return;
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
     const left = Math.min(...xs);
     const top = Math.min(...ys);
     drawn.push({
-      method: call.method,
+      method,
       x: left,
       y: top,
       w: Math.max(...xs) - left,
       h: Math.max(...ys) - top,
     });
+  };
+
+  walkTransforms(calls, (call, m) => {
+    if (call.kind !== "call") return;
+    const { method, args } = call;
+
+    /**
+     * All FOUR corners of a rectangle the call names, placed in logical units.
+     * Two opposite corners would be enough for an upright frame, and the extra
+     * pair is what keeps a rectangle drawn under a rotated or mirrored transform
+     * from reporting a box that misses two of its own sides.
+     */
+    const corners = (
+      x: unknown,
+      y: unknown,
+      w: unknown,
+      height: unknown,
+    ): Point[] => {
+      if (
+        typeof x !== "number" ||
+        typeof y !== "number" ||
+        typeof w !== "number" ||
+        typeof height !== "number"
+      ) {
+        return [];
+      }
+      return [
+        placed(m, x, y),
+        placed(m, x + w, y),
+        placed(m, x, y + height),
+        placed(m, x + w, y + height),
+      ].filter((corner): corner is Point => corner !== null);
+    };
+
+    /** One point a path call named, added to the path under construction. */
+    const trace = (i: number, j: number): void => {
+      const point = placed(m, args[i], args[j]);
+      if (point !== null) path.push(point);
+    };
+
+    if (method === "beginPath") {
+      path = [];
+      painted = false;
+      return;
+    }
+
+    // A call that paints a rectangle by itself is one box and leaves the path
+    // alone, which is what a canvas does with it.
+    const single = singleCallBox(call);
+    if (single !== null) {
+      emit(method, corners(single[0], single[1], single[2], single[3]));
+      return;
+    }
+
+    switch (method) {
+      // The two rectangle calls that only ADD to the path. Their corners join it
+      // and are painted, or not, by what follows.
+      case "rect":
+      case "roundRect":
+        path.push(...corners(args[0], args[1], args[2], args[3]));
+        return;
+      case "moveTo":
+      case "lineTo":
+        trace(0, 1);
+        return;
+      // A curve's control points bound the curve it draws, and for the corner of
+      // a traced rounded rectangle the first of them IS the footprint's corner.
+      case "arcTo":
+      case "quadraticCurveTo":
+        trace(0, 1);
+        trace(2, 3);
+        return;
+      case "bezierCurveTo":
+        trace(0, 1);
+        trace(2, 3);
+        trace(4, 5);
+        return;
+      case "fill":
+      case "stroke":
+        if (!painted && path.length > 0) {
+          emit(method, path);
+          painted = true;
+        }
+        return;
+      default:
+        return;
+    }
   });
   return drawn;
 }
