@@ -1,7 +1,7 @@
 // instrumentation/frame-keeps-remainder — on playing, the part of a frame short
 // of a whole tick waits in the accumulator.
 //
-// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "A deterministic
+// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "A render-free
 // core": "each frame's delta time joins the accumulator, every whole `TICK_DT`
 // in it is consumed as a tick, and the remainder waits for the next frame",
 // and "a clock of any other length poses a partial frame". 0.04 holds two

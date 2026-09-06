@@ -950,12 +950,8 @@ export interface Harness {
 
   /** A fresh read of the game's state through the case's `snapshot`. */
   snapshot(): WickSnapshot;
-  /**
-   * `debug.reset`, with the seed spelled as a plain argument: the boot state,
-   * on `title`, every switch on, the generator seeded with `seed`
-   * (`DEFAULT_SEED` when omitted).
-   */
-  reset(seed?: number): void;
+  /** `debug.reset`: the boot state, on `title`, every switch on. */
+  reset(): void;
   /** Run `frames` frames of the harness's clock, back to back. */
   advance(frames: number): Promise<void>;
   /** Run exactly one frame worth `ms` of delta time, and read what it left. */
@@ -1385,7 +1381,7 @@ export async function createHarness(
     timeMs: () => base.timeMs(),
 
     snapshot: () => debug.snapshot(),
-    reset: (seed) => debug.reset(seed === undefined ? undefined : { seed }),
+    reset: () => debug.reset(),
 
     advance: (frames) => drive(frames),
 
@@ -1916,8 +1912,6 @@ export function switchesOf(s: WickSnapshot): Record<SwitchName, boolean> {
 }
 
 export interface IsolateOptions {
-  /** The seed `reset` lays the generator with. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /**
    * The level the run is posed at. Left at the idle run's `1` when it is not
    * named: the `progression` switch, off with the rest, is what keeps a gain
@@ -1958,16 +1952,16 @@ export interface IsolateOptions {
  * another weapon, and `taper` puts Taper back for a check that needs a weapon
  * held.
  *
- * `reset` first, so nothing a previous section left is inherited, seeding the
- * generator with `seed` when one is named; then `setScreen("playing")`, which
- * sets the screen and nothing else over the idle run `reset` restored; then
- * the clears, which score nothing, draw nothing, and sound nothing.
+ * `reset` first, so nothing a previous section left is inherited; then
+ * `setScreen("playing")`, which sets the screen and nothing else over the idle
+ * run `reset` restored; then the clears, which score nothing, draw nothing,
+ * and sound nothing.
  */
 export function isolate(
   h: Harness,
   options: IsolateOptions = {},
 ): WickSnapshot {
-  h.reset(options.seed);
+  h.reset();
   h.debug.setScreen("playing");
   setSwitches(h, false);
   h.debug.clearEnemies();
@@ -1997,8 +1991,8 @@ export function isolate(
  * what STARTING a run does drives `LIGHT THE LAMP` or `TRY AGAIN` instead: the
  * surface begins no run, so nothing here stands in for that.
  */
-export function freshRun(h: Harness, seed?: number): WickSnapshot {
-  h.reset(seed);
+export function freshRun(h: Harness): WickSnapshot {
+  h.reset();
   h.debug.setScreen("playing");
   h.debug.setWeapon(0, "taper", 1);
   return h.snapshot();
@@ -2042,6 +2036,12 @@ export const IDLE_RUN: SnapshotRun = {
   firedEvents: [],
   aliveCommons: 0,
   nextId: 0,
+  nextSpawnAngle: null,
+  nextSwarmAngle: null,
+  nextPuddleOffset: null,
+  nextStrikeTarget: null,
+  nextChestItem: null,
+  nextDrop: null,
 };
 
 /**
@@ -2062,11 +2062,8 @@ export const FRESH_WEAPONS: readonly SnapshotWeapon[] = [
  * a broken title and a working tick must fail the navigation points and pass
  * the others. The frame the press runs consumes the run's first tick.
  */
-export async function startPlay(
-  h: Harness,
-  seed?: number,
-): Promise<WickSnapshot> {
-  h.reset(seed);
+export async function startPlay(h: Harness): Promise<WickSnapshot> {
+  h.reset();
   // Entry 0 of the title menu is LIGHT THE LAMP (specs/ui.md), highlighted on
   // entry, and Enter carries `confirm` (specs/controls.md).
   return tap(h, "Enter");

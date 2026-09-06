@@ -3,7 +3,7 @@
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`: "Nothing
 // else changes: the run, the loadout, `offers`, `nextOffers`, `chestResult`,
-// `pendingLevelUps`, `rngState`, `simTime`, and the driver switches all stand
+// `pendingLevelUps`, every posed outcome, `simTime`, and the driver switches all stand
 // exactly as they were". Accepting an offer is `choose`'s, which "the item is
 // applied, `pendingLevelUps` falls by one" covers.
 //

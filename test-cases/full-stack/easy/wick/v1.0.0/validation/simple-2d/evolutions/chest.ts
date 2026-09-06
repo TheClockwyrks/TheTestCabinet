@@ -39,8 +39,8 @@ export type ChestResultKind = ChestResult["kind"];
  * concerns through `holdWeapon` and `holdPassive`, then opens a chest with
  * `openChest`.
  */
-export function poseChestNight(h: Harness, seed?: number): WickSnapshot {
-  const posed = isolate(h, seed === undefined ? {} : { seed });
+export function poseChestNight(h: Harness): WickSnapshot {
+  const posed = isolate(h);
   assertEqual(posed.run.weapons.length, 0, "weapons held before the loadout");
   assertEqual(posed.run.passives.length, 0, "passives held before the loadout");
   return posed;

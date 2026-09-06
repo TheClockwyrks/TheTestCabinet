@@ -3,7 +3,7 @@
 // and raises `simTime` by 0.04.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, "A
-// deterministic core": "On every other screen a frame ticks nothing and the
+// render-free core": "On every other screen a frame ticks nothing and the
 // accumulator holds `0`"; "`simTime` rises by every frame's delta time on
 // every screen". `specs/ui.md`, "What advances on each screen": `paused` —
 // "Nothing. The world beneath holds exactly the tick it was at."

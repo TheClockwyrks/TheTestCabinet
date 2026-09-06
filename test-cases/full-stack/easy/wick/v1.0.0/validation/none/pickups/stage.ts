@@ -1,40 +1,32 @@
-// pickups/stage — the seeded common kills the drop-roll checks in this directory
-// read.
+// pickups/stage — the common kills the drop checks in this directory read.
 //
-// WHAT THE FOUR CHECKS SHARE. specs/world.md ("The drop roll") states the rule
-// as a probability: "Each common enemy killed by a weapon draws from the game's
-// seeded random generator on the tick it dies. A first draw, uniform on
-// `[0, 1)`, drops bread when it is below `BREAD_CHANCE`. Only when it did not, a
-// second draw drops a draft when it is below `DRAFT_CHANCE`." A probability is
-// only readable over a sample, so `bread-drops`, `drafts-drop`, `bread-rate`,
-// and `draft-rate` each pose the same sample — `DROP_ROLL_KILLS` (`4000`) common
-// kills at distinct points, from one seed — and read a different fact off it.
-// `drop-at-most-one` reads the same sample from both ends, what landed and what
-// was drawn. Every sample size and every bound the counts are held to is
-// `constants.ts`'s, computed from the two probabilities.
+// WHAT THE RATE CHECKS SHARE. specs/world.md ("The drop roll") states the rule
+// as a probability: "each common enemy killed by a weapon rolls for a pickup on
+// the tick it dies ... The roll drops bread with probability `BREAD_CHANCE`,
+// and only when it dropped no bread it drops a draft with probability
+// `DRAFT_CHANCE`." A probability is only readable over a sample, so
+// `bread-rate` and `draft-rate` each pose the same sample, `DROP_ROLL_KILLS`
+// (`4000`) common kills at distinct points, and read a different count off it.
+// Every sample size and every bound the counts are held to is `constants.ts`'s,
+// computed from the two probabilities.
 //
-// WHAT THE GENERATOR IS READ FOR. The sweep reports `rngState` as the night
-// stood before its first kill and as it stood after its last. specs/
-// instrumentation.md ("A deterministic core"): the game "holds one
-// pseudo-random generator, seeded by `reset` and keeping its whole state in
-// `rngState`, and every random draw comes from it". Nothing else in the sweep
-// draws — every switch but `drops` is off, no slot is held, and a pose "changes
-// the state alone" — so the distance between the two readings is exactly the
-// draws the sweep's kills made, and `drop-at-most-one` measures it against
-// `advanceRng`.
+// WHAT THE POSED CHECKS SHARE. The same file has `setNextDrop(kind)` decide
+// what "the next common enemy killed by a weapon while `drops` is on drops ...
+// in place of its roll" (specs/instrumentation.md, "Drawn outcomes"), so
+// `bread-drops`, `drafts-drop`, and `elites-make-no-draw` pose the outcome
+// through {@link killCommon} and read one kill rather than a sample.
 //
 // WHY THE KILLS ARE POSED IN ROUNDS. Every kill is a real one: a moth posed at
 // its own point and a level-1 Ember bolt posed on its center, so the next tick's
-// phase 6 takes the moth below `0` and the kill draws. A kill a tick would be a
+// phase 6 takes the moth below `0` and the kill rolls. A kill a tick would be a
 // tick a kill; the rule does not care how many ticks the kills are spread over,
 // so a round poses `ROUND_KILLS` (`100`) of them at once and one tick resolves
-// all hundred. The points of a round are
-// `POINT_SPACING` (`60`) units apart, wider than an Ember bolt's `8` plus a
-// moth's `10`, so each bolt reaches its own moth alone; every point is at least
-// `FIRST_COLUMN` (`500`) units from the lamplighter, far outside both
-// `PICKUP_RADIUS` (`48`) and the pickup collection distance (`28`), so nothing a
-// kill drops is attracted or collected; and `killPoint` is one-to-one, so no two
-// points of a sample of any length coincide and a pickup's center names the kill
+// all hundred. The points of a round are `POINT_SPACING` (`60`) units apart,
+// wider than an Ember bolt's `8` plus a moth's `10`, so each bolt reaches its
+// own moth alone; every point is at least `FIRST_COLUMN` (`500`) units from the
+// lamplighter, far outside both `PICKUP_RADIUS` (`48`) and the pickup
+// collection distance (`28`), so nothing a kill drops is attracted or
+// collected; and `killPoint` is one-to-one, so a pickup's center names the kill
 // that dropped it.
 //
 // The poses of a round go into the page in one evaluation rather than one
@@ -45,19 +37,24 @@
 // WHY THE FIELD IS SWEPT BETWEEN ROUNDS. `clearGems` and `clearPickups` remove
 // what a round dropped without collecting anything, so the snapshot a round is
 // read from holds that round's drops alone and the state does not grow to a
-// sample's worth of gems. Neither draws from the generator, and neither grants
-// experience, so the sample is exactly the kills' own draws.
+// sample's worth of gems.
 
 import { assertEqual } from "../assert";
 import { DROP_ROLL_KILLS, HANDLE, type PickupKind } from "../constants";
-import type { Harness, PickupView, XY } from "../harness";
-import { isolate } from "../harness";
+import type { Harness, PickupView, WickSnapshot, XY } from "../harness";
+import {
+  isolate,
+  newGems,
+  newPickups,
+  placeEnemy,
+  placeProjectile,
+} from "../harness";
 
 /** The common enemy each kill is: the lightest in specs/enemies.md, at `5` hp. */
-const KILL_ENEMY = "moth";
+export const KILL_ENEMY = "moth";
 
 /** The weapon each kill is made by: a level-1 Ember bolt carries `10` damage. */
-const KILL_WEAPON = "ember";
+export const KILL_WEAPON = "ember";
 
 /** Kills posed per tick. */
 export const ROUND_KILLS = 100;
@@ -92,13 +89,6 @@ export interface KillSweep {
   kills: number;
   /** How many pickups of each kind the sample dropped. */
   counts: Record<PickupKind, number>;
-  /**
-   * `rngState` as the isolated night stood before the first kill, which is
-   * where a replay of the sweep's draws begins.
-   */
-  startRng: number;
-  /** `rngState` after the last round's tick, the whole sweep's draws behind it. */
-  endRng: number;
 }
 
 /** Pose `points` as a moth apiece with a bolt on its center, in one evaluation. */
@@ -130,19 +120,15 @@ async function poseKills(h: Harness, points: readonly XY[]): Promise<void> {
  * The night is `isolate`'s with `drops` turned back on, which is the faculty
  * these checks read: every other driver switch is off and no slot is held, so
  * `spawning` and `events` bring nothing in, no weapon of the lamplighter's own
- * fires, and the only draws the ticks make are the kills' own. The seed is
- * `isolate`'s `DEFAULT_SEED` (`1`), so the sample is the same one every time
- * this runs.
+ * fires, and the only rolls the ticks make are the kills' own.
  */
 export async function sweepCommonKills(
   h: Harness,
   kills: number = DROP_ROLL_KILLS,
 ): Promise<KillSweep> {
-  const opened = await isolate(h, { on: ["drops"] });
+  await isolate(h, { on: ["drops"] });
   const rounds: KillRound[] = [];
   const counts: Record<PickupKind, number> = { chest: 0, bread: 0, draft: 0 };
-  const startRng = opened.rngState;
-  let endRng = startRng;
   let made = 0;
   for (let from = 0; from < kills; from += ROUND_KILLS) {
     const size = Math.min(ROUND_KILLS, kills - from);
@@ -161,12 +147,54 @@ export async function sweepCommonKills(
       `the enemies left alive after round ${rounds.length}`,
     );
     made += size;
-    endRng = after.rngState;
     const pickups = after.run.pickups;
     for (const pickup of pickups) counts[pickup.kind] += 1;
     rounds.push({ points, pickups });
     await h.debug.clearGems();
     await h.debug.clearPickups();
   }
-  return { rounds, kills: made, counts, startRng, endRng };
+  return { rounds, kills: made, counts };
+}
+
+/** What one posed kill left. */
+export interface Kill {
+  /** Where the enemy stood, which is where its drops land. */
+  at: XY;
+  /** The state before the killing tick. */
+  before: WickSnapshot;
+  /** The state the killing tick left. */
+  after: WickSnapshot;
+  /** The gems the tick dropped. */
+  gems: ReturnType<typeof newGems>;
+  /** The pickups the tick dropped. */
+  pickups: PickupView[];
+}
+
+/**
+ * Kill one enemy of `type` at `at` by a level-1 Ember bolt on its center, on a
+ * night already posed, and read what the killing tick dropped. An elite's
+ * health is posed down first, since one bolt does not end it.
+ */
+export async function killCommon(
+  h: Harness,
+  type: "moth" | "mothwing",
+  at: XY,
+): Promise<Kill> {
+  const enemy = await placeEnemy(h, type, at.x, at.y);
+  if (type === "mothwing") await h.debug.setEnemyHp(enemy.id, 1);
+  await placeProjectile(h, KILL_WEAPON, at.x, at.y, 0, 0, 0);
+  const before = await h.snapshot();
+  const after = await h.step(1);
+  assertEqual(
+    after.run.kills,
+    before.run.kills + 1,
+    `the kill the tick of the ${type} at (${at.x}, ${at.y}) made`,
+  );
+  return {
+    at,
+    before,
+    after,
+    gems: newGems(before, after),
+    pickups: newPickups(before, after),
+  };
 }

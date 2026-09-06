@@ -15,7 +15,7 @@
 // and the playing tick that opens the overlay is run; with nothing held the
 // pool is the twenty new items, so an offer stands at index 0 whatever the draw
 // gave. choose(0) accepts it, emptying the queue, and one frame is then run:
-// on levelup a frame ticks nothing (specs/instrumentation.md, A deterministic
+// on levelup a frame ticks nothing (specs/instrumentation.md, A render-free
 // core), so a clock that advanced is a simulation that resumed.
 //
 // THE TOLERANCE. None: the screen is discrete and the clock is a whole count of

@@ -1,7 +1,7 @@
 // clock/accumulator-discarded-on-overlay — the tick that opens an overlay is
 // the last its frame runs, and the remainder is discarded.
 //
-// WHERE THE THRESHOLD COMES FROM. specs/instrumentation.md ("A deterministic
+// WHERE THE THRESHOLD COMES FROM. specs/instrumentation.md ("A render-free
 // core"): "A tick that leaves `playing`, by opening an overlay or ending the
 // run, is the last tick its frame runs, and the remainder is discarded". Of
 // `advance`: "A tick that opens an overlay or ends the run is the last the

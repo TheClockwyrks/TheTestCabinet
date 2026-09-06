@@ -1,27 +1,26 @@
-// pickups/sample — the one seeded sample of common kills the four drop-roll
-// points read. CASE-PROVIDED.
+// pickups/sample — the sample of common kills the two drop-rate points read,
+// and the one posed kill the drop points read. CASE-PROVIDED.
 //
 // No review item names this file. The pose is a compound sequence of the
 // surface's atomic operations, which the authoring guide keeps beside the
 // checks rather than inside any one of them; each point asserts its own
-// reading of what the sample left.
+// reading of what the sample or the kill left.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
-//   - specs/world.md ("The drop roll"): "Each common enemy killed by a weapon
-//     draws from the game's seeded random generator on the tick it dies. A
-//     first draw, uniform on `[0, 1)`, drops bread when it is below
-//     `BREAD_CHANCE` (`0.02`). Only when it did not, a second draw drops a
-//     draft when it is below `DRAFT_CHANCE` (`0.005`). A kill therefore drops
-//     at most one of the two, and the pickup lands at the enemy's position
-//     beside its gem."
-//   - specs/overview.md, through specs/instrumentation.md: the game holds one
-//     generator "seeded by `reset`", and "Given the same seed, the same
-//     sequence of operations, and the same number of ticks, the game reaches
-//     the same `run` and `rngState` every time", so this sample is one fixed
-//     experiment rather than a fresh one on every run.
+//   - specs/world.md ("The drop roll"): "each common enemy killed by a weapon
+//     rolls for a pickup on the tick it dies ... The roll drops bread with
+//     probability `BREAD_CHANCE` (`0.02`), and only when it dropped no bread
+//     it drops a draft with probability `DRAFT_CHANCE` (`0.005`). A kill
+//     therefore drops at most one of the two, and the pickup lands at the
+//     enemy's position beside its gem."
+//   - specs/instrumentation.md ("Drawn outcomes"), `setNextDrop(kind)`: "The
+//     next common enemy killed by a weapon while `drops` is on drops that
+//     pickup beside its gem, or nothing for `none`, in place of its roll, and
+//     that kill consumes it."
 //   - specs/world.md ("One tick", phase 6): "an enemy whose `hp` is at or
 //     below `0` dies: its drop and its bread or draft land at its center", so
-//     what a kill drew is read off the field at the point that kill happened.
+//     what a kill dropped is read off the field at the point that kill
+//     happened.
 //
 // WHY THE NIGHT IS POSED AS IT IS. `DROP_SAMPLE` (4000) moths are killed by
 // posed Ember bolts, `BATCH` (100) to a tick, each on its own point of a grid
@@ -31,26 +30,16 @@
 // names the kill that dropped it. The grid starts `FIELD_DX` (4000) units from
 // the lamplighter and only moves away, so no gem is ever attracted, no pickup
 // is ever collected, and everything a kill leaves stays where it fell. Every
-// driver switch is off and no weapon is held, so nothing spawns, nothing
-// moves, nothing else fires, and the only draws the generator can be asked for
-// across the whole sample are the drop roll's. 100 units between points is more
-// than five times the 18 that an Ember bolt's radius (8) and a moth's (10) add
-// up to, so each bolt kills its own moth and no other.
-//
-// WHAT THE GENERATOR IS READ FOR. The sample reports `rngState` as the night
-// stood before its first kill and as it stood after its last. specs/
-// instrumentation.md ("A deterministic core"): the game "holds one
-// pseudo-random generator, seeded by `reset` and keeping its whole state in
-// `rngState`, and every random draw comes from it". Nothing else here draws, so
-// the distance between the two readings is exactly the draws the sample's kills
-// made, and `drop-at-most-one` measures it against `advanceRng`.
+// driver switch is off but `drops` and no weapon is held, so nothing spawns,
+// nothing moves, nothing else fires, and the only rolls the ticks make across
+// the whole sample are the kills' own. 100 units between points is more than
+// five times the 18 that an Ember bolt's radius (8) and a moth's (10) add up
+// to, so each bolt kills its own moth and no other.
 //
 // The gems and pickups a batch left are cleared at the start of the next one,
 // which "Removes every gem; no experience is gained" and "Removes every pickup;
-// nothing is collected" (specs/instrumentation.md), neither of which draws
-// anything; each batch's pickups are read off the field before that. Nothing is
-// reset between batches, so the four thousand draws are one unbroken run of the
-// generator.
+// nothing is collected" (specs/instrumentation.md); each batch's pickups are
+// read off the field before that.
 
 import { assertEqual, assertLength } from "../assert";
 import { DROP_SAMPLE, PICKUP_KINDS, type PickupKind } from "../constants";
@@ -58,7 +47,10 @@ import {
   captureStill,
   enable,
   isolate,
+  type GemSnapshot,
   type Harness,
+  type PickupSnapshot,
+  type Point,
   type WickSnapshot,
 } from "../harness";
 import { armKill } from "./night";
@@ -102,13 +94,6 @@ export interface DropSample {
   strays: number;
   /** The night after the last batch's tick. */
   after: WickSnapshot;
-  /**
-   * `rngState` as the isolated night stood before the first kill, which is
-   * where a replay of the sample's draws begins.
-   */
-  startRng: number;
-  /** `rngState` after the last batch's tick, the sample's draws behind it. */
-  endRng: number;
 }
 
 /** A kill point's key, to the unit; points are 100 units apart. */
@@ -117,19 +102,18 @@ function keyOf(x: number, y: number): string {
 }
 
 /**
- * Kill `DROP_SAMPLE` common enemies from one seed, each on its own point, and
- * hand back what their drop rolls left, keeping the final frame as the point's
- * `outputId` output.
+ * Kill `DROP_SAMPLE` common enemies, each on its own point, and hand back what
+ * their drop rolls left, keeping the final frame as the point's `outputId`
+ * output. Nothing is posed for the rolls, so each is the build's own.
  */
 export async function drawDrops(
   h: Harness,
   outputId: string,
 ): Promise<DropSample> {
-  const opened = isolate(h);
+  isolate(h);
   // The drop roll is the requirement this sample decides, so `drops` is the
   // one faculty turned back on.
   enable(h, "drops");
-  const startRng = opened.rngState;
   const points = new Set<string>();
   const pickups: SampledPickup[] = [];
   const perPoint = new Map<string, number>();
@@ -172,14 +156,49 @@ export async function drawDrops(
   }
   const strays = [...perPoint.keys()].filter((key) => !points.has(key)).length;
 
+  return { kills: DROP_SAMPLE, pickups, counts, mostPerPoint, strays, after };
+}
+
+/** What one posed kill left. */
+export interface Kill {
+  /** Where the enemy stood, which is where its drops land. */
+  at: Point;
+  /** The state before the killing tick. */
+  before: WickSnapshot;
+  /** The state the killing tick left. */
+  after: WickSnapshot;
+  /** The gems the tick dropped. */
+  gems: GemSnapshot[];
+  /** The pickups the tick dropped. */
+  pickups: PickupSnapshot[];
+}
+
+/**
+ * Kill one enemy of `type` at `(dx, dy)` from the lamplighter by a posed
+ * level-1 Ember bolt, on a night already posed, and read what the killing tick
+ * dropped. The night's `drops` must be on for anything to land.
+ */
+export async function killOne(
+  h: Harness,
+  type: "moth" | "mothwing",
+  dx: number,
+  dy: number,
+): Promise<Kill> {
+  const at = armKill(h, type, dx, dy);
+  const before = h.snapshot();
+  const after = await h.tick(1);
+  assertEqual(
+    after.run.kills,
+    before.run.kills + 1,
+    `the kill the tick of the ${type} at (${at.x}, ${at.y}) made`,
+  );
+  const gemIds = new Set(before.run.gems.map((gem) => gem.id));
+  const pickupIds = new Set(before.run.pickups.map((pickup) => pickup.id));
   return {
-    kills: DROP_SAMPLE,
-    pickups,
-    counts,
-    mostPerPoint,
-    strays,
+    at,
+    before,
     after,
-    startRng,
-    endRng: after.rngState,
+    gems: after.run.gems.filter((gem) => !gemIds.has(gem.id)),
+    pickups: after.run.pickups.filter((pickup) => !pickupIds.has(pickup.id)),
   };
 }

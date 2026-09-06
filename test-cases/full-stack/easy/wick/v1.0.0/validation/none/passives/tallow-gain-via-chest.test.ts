@@ -8,9 +8,9 @@
 // that `maxHp` does", with `TALLOW_HP_PER_LEVEL` (`15`).
 // `specs/evolutions.md` ("Opening a chest") gives the chest's second rule: "One
 // held item below its max level, a base weapon below `MAX_WEAPON_LEVEL` or a
-// passive below its own max, is chosen uniformly at random from the game's
-// seeded generator and rises by `1`, exactly as accepting a `+1 level` offer
-// does. The result is `{ kind: "level", item, level }`". So with Tallow at
+// passive below its own max, is chosen uniformly at random and rises by `1`,
+// exactly as accepting a `+1 level` offer does. The result is
+// `{ kind: "level", item, level }`". So with Tallow at
 // level 1 the only item held, a chest levels it to `2`: `maxHp` rises from
 // `115` to `130` and `hp` from the posed `115` to `130`.
 //

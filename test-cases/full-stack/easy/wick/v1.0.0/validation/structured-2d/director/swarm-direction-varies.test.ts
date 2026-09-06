@@ -2,30 +2,30 @@
 //
 // THE SPEC LINE. `specs/enemies.md`, "Scripted events": a swarm's line is
 // perpendicular to "a direction `d`, a unit vector at an angle drawn uniformly
-// from the seeded generator". "The spawn director" makes the generator the
-// game's own — "Its randomness, the spawn angle and the type choice, is drawn
-// from the game's seeded generator" — and
-// `specs/instrumentation.md` ("A deterministic core") has that generator
-// "seeded by `reset`", with `reset`'s `options.seed` naming the seed.
+// over the full circle".
 //
-// WHAT IS READ, AND WHY IT IS TWO RUNS RATHER THAN TWO SWARMS. A run holds
-// three swarms, but a build that draws once and reuses the draw all night
-// would still be drawing; what the specification fixes is that the direction
-// comes from the generator, so the reading that catches a fixed direction is
-// two runs seeded differently. Each run is carried across tick 3600 and its
-// swarm's `d` is recovered from where its gnats stand — the mean of the 24
-// centers is the line's center exactly, the offsets summing to zero — and the
-// two directions are compared as an angle.
+// WHAT IS READ, AND WHY IT IS SEVERAL NIGHTS RATHER THAN SEVERAL SWARMS. A
+// run holds three swarms, but a build that draws once and reuses the draw all
+// night would still be drawing; what the specification fixes is that the
+// direction is drawn, so the reading that catches a fixed direction is the
+// 1:00 swarm of `NIGHTS` (6) isolated nights, which must not all line up the
+// same way. Each night is carried across tick 3600 and its swarm's `d` is
+// recovered from where its gnats stand — the mean of the 24 centers is the
+// line's center exactly, the offsets summing to zero — and the directions are
+// compared as angles. Nothing is posed for the direction, so every draw is
+// the build's own; a posed direction is
+// `instrumentation/set-next-swarm-angle`'s.
 //
-// THE DRIVE. Two isolated worlds, one per seed, each with `events` alone on
-// and the one tick that crosses tick 3600.
+// THE DRIVE. Six isolated worlds, each with `events` alone on and the one
+// tick that crosses tick 3600.
 //
-// THE TOLERANCE. `ANGLE_EPS`, a millionth of a degree, as the bound the two
-// directions must differ by. A uniform draw lands two angles that close about
-// never; a build with a fixed direction lands them exactly equal.
+// THE TOLERANCE. `ANGLE_EPS`, a millionth of a degree, as the bound two
+// directions must differ by. Six uniform draws all landing that close to the
+// first happens about never; a build with a fixed direction lands them
+// exactly equal.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { ANGLE_EPS, EVENTS, SWARM_SIZE } from "../constants";
 import {
   angleOf,
@@ -42,20 +42,19 @@ import { driveArrivals, eventTick, swarmFrame } from "./spawns";
 const EVENT = EVENTS[0];
 const FIRES_ON = eventTick(EVENT.time);
 
-/** The two seeds compared; any two distinct values serve. */
-const SEED_A = 1;
-const SEED_B = 987_654;
+/** How many nights' swarms are read. */
+const NIGHTS = 6;
 
-/** The angle of the swarm's direction d, in degrees, for a run of `seed`. */
-async function swarmAngle(h: Harness, seed: number): Promise<number> {
-  isolate(h, { seed });
+/** The angle of the swarm's direction d, in degrees, on a fresh night. */
+async function swarmAngle(h: Harness, night: number): Promise<number> {
+  isolate(h);
   h.debug.setTick(FIRES_ON - 1);
   enable(h, "events");
   const drive = await driveArrivals(h, 1);
   assertEqual(
     drive.arrivals.length,
     SWARM_SIZE,
-    `the gnats the ${EVENT.time} s swarm of seed ${seed} spawned`,
+    `the gnats the ${EVENT.time} s swarm of night ${night} spawned`,
   );
   const { direction } = swarmFrame(
     drive.arrivals[0].player,
@@ -74,14 +73,19 @@ afterEach(() => {
   h.dispose();
 });
 
-it("lines up the swarms of two differently seeded runs along different directions", async () => {
-  const fromA = await swarmAngle(h, SEED_A);
-  const fromB = await swarmAngle(h, SEED_B);
+it("lines up the swarms of several nights along more than one direction", async () => {
+  const angles: number[] = [];
+  for (let night = 1; night <= NIGHTS; night += 1) {
+    angles.push(await swarmAngle(h, night));
+  }
   captureStill(h, "random");
 
-  assertGreaterThan(
-    Math.abs(angularOffset(fromA, fromB)),
-    ANGLE_EPS,
-    `the degrees between the swarm direction of seed ${SEED_A} and that of seed ${SEED_B}`,
+  const spread = angles.filter(
+    (angle) => Math.abs(angularOffset(angles[0], angle)) > ANGLE_EPS,
+  ).length;
+  assertGreaterThanOrEqual(
+    spread,
+    1,
+    `the swarms arriving from a direction other than the first's ${angles[0]}, across ${NIGHTS} nights`,
   );
 });

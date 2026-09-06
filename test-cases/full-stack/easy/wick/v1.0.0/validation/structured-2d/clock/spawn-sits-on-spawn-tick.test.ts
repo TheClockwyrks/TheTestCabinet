@@ -7,7 +7,7 @@
 //     and first moves on the next tick."
 //   - `specs/enemies.md` ("The spawn ring"): "A spawn point is
 //     `SPAWN_DISTANCE` (`760`) units from the lamplighter's center at an angle
-//     drawn uniformly from the seeded generator".
+//     drawn uniformly over the full circle".
 //   - `specs/enemies.md` ("The spawn timer"): "A spawn therefore lands on the
 //     first tick of a run"; and `specs/state.md`: `spawnTimer` "is `0` when a
 //     run starts". Window 0 offers `moth` alone, interval 1.00 s, cap 20.
@@ -47,9 +47,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed; any seed spawns on tick 1, this one fixes the angle drawn. */
-const SEED = 11;
-
 /** One step of the moth window 0 spawns. */
 const MOTH_STEP = ENEMIES.moth.speed * TICK_DT;
 
@@ -64,7 +61,7 @@ afterEach(() => {
 });
 
 it("reads a director spawn at SPAWN_DISTANCE on its spawn tick and one step in on the next", async () => {
-  const posed = isolate(h, { seed: SEED });
+  const posed = isolate(h);
   h.debug.setSpawnTimer(0);
   enable(h, "spawning", "enemyMotion");
 

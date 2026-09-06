@@ -3,8 +3,8 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // `setScreen`: "Sets `screen` to `name` ... Nothing else changes: the run, the
-// loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`,
-// `rngState`, `simTime`, and the driver switches all stand exactly as they
+// loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, every
+// posed outcome, `simTime`, and the driver switches all stand exactly as they
 // were", and "Applies on every screen". Resolving a level-up is `choose`'s:
 // `choose(index)` "applies the item, `pendingLevelUps` falls by one, and
 // either the next queued overlay opens with a fresh pool or `screen` returns
@@ -17,8 +17,8 @@
 // read on their own first so a failure names which one moved.
 //
 // THE POSE. An isolated run with the level-up overlay opened by the real tick
-// (`openLevelUp`), then the pose. `rngState` and `simTime` are read too: the
-// pose spends neither.
+// (`openLevelUp`), then the pose. `simTime` is read too: the pose spends
+// none of it.
 //
 // THE TOLERANCE. None: a screen name, list contents, and whole counts.
 
@@ -67,11 +67,6 @@ it("leaves the offers and the queue standing across the pose", async () => {
     after.run.pendingLevelUps,
     before.run.pendingLevelUps,
     "run.pendingLevelUps after setScreen('playing') on levelup",
-  );
-  assertEqual(
-    after.rngState,
-    before.rngState,
-    "rngState after setScreen('playing') on levelup",
   );
   assertEqual(
     after.simTime,

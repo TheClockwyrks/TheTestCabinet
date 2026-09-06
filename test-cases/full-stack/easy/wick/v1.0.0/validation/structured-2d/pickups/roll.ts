@@ -1,15 +1,17 @@
-// pickups/roll — a large seeded sample of common kills, shared by the four
-// drop-roll checks in this directory. CASE-PROVIDED.
+// pickups/roll — a large sample of common kills, shared by the drop-roll rate
+// checks in this directory, and the one posed kill the drop checks read.
+// CASE-PROVIDED.
 //
-// WHAT EVERY DROP-ROLL CHECK SHARES. `specs/world.md` ("The drop roll"): "Each
-// common enemy killed by a weapon draws from the game's seeded random generator
-// on the tick it dies. A first draw, uniform on `[0, 1)`, drops bread when it is
-// below `BREAD_CHANCE`. Only when it did not, a second draw drops a draft when
-// it is below `DRAFT_CHANCE`. A kill therefore drops at most one of the two, and
-// the pickup lands at the enemy's position beside its gem." Nothing about one
-// kill is readable: the roll is a probability, so every check here reads a
-// sample of `DROP_TRIALS` (`4000`) common kills and says something about the
-// whole of it. This module makes that sample and decides nothing about it.
+// WHAT EVERY DROP-ROLL CHECK SHARES. `specs/world.md` ("The drop roll"): "each
+// common enemy killed by a weapon rolls for a pickup on the tick it dies ...
+// The roll drops bread with probability `BREAD_CHANCE`, and only when it
+// dropped no bread it drops a draft with probability `DRAFT_CHANCE`. A kill
+// therefore drops at most one of the two, and the pickup lands at the enemy's
+// position beside its gem." A rate is a probability, so the rate checks read
+// a sample of `DROP_TRIALS` (`4000`) common kills and say something about the
+// whole of it; what one kill drops is posed through `setNextDrop`
+// (`specs/instrumentation.md`, Drawn outcomes) and read off that kill. This
+// module makes both and decides nothing about them.
 //
 // HOW A KILL IS MADE. The shortest honest path from a posed world to a death
 // (the one `enemies/drops` takes for a single kill): a level-1 Oil Splash puddle
@@ -18,26 +20,15 @@
 // to every enemy overlapping it" (`specs/instrumentation.md`, `spawnPuddle`;
 // `specs/weapons.md`, Oil Splash). A moth's `hp` is posed to that row's `4` with
 // `setEnemyHp`, so the next tick takes it to `0` and the death, the gem, and the
-// draw are all that tick's. A moth is the common read because it is rank
-// `common` (`specs/enemies.md`), which is what makes a kill draw at all.
+// roll are all that tick's. A moth is the common read because it is rank
+// `common` (`specs/enemies.md`), which is what makes a kill roll at all.
 //
 // WHY THE KILLS COME IN BATCHES. `BATCH` (`100`) moths are posed and killed
 // together on one tick, so the sample costs `DROP_TRIALS / BATCH` (`40`) ticks
 // of the real simulation rather than four thousand. Nothing about the roll
 // depends on how the kills are divided between ticks: each is a common killed by
-// a weapon, and the draws are the build's own, in whatever order it makes them.
+// a weapon, and the rolls are the build's own, in whatever order it makes them.
 // A caller may pose a narrower or a wider batch.
-//
-// WHAT THE GENERATOR IS READ FOR. `rngState` is reported before the first kill
-// and after the last, so a check can say how far the sample moved the build's
-// own generator. `specs/instrumentation.md` ("A deterministic core"): the game
-// "holds one pseudo-random generator, seeded by `reset` and keeping its whole
-// state in `rngState`, and every random draw comes from it", and the sample
-// makes no other draw — every switch but `drops` is off, no slot is held, and a
-// pose "changes the state alone" — so the distance between the two readings is
-// exactly the draws the sample's kills made. `drop-at-most-one` reads that
-// distance against `advanceRng`, which takes a stated count of draws off the
-// same generator.
 //
 // WHERE THE MOTHS STAND. On a lattice `SPACING` (`200`) units apart, starting
 // `FIELD` (`4000`) units from the lamplighter on both axes. That spacing is far
@@ -51,10 +42,10 @@
 // kill.
 //
 // WHY `drops` IS TURNED ON. It is the faculty every check here is about: with
-// it off a death "leaves nothing on the field and draws nothing from the
-// generator" (`specs/instrumentation.md`, the switch table), which is exactly
-// what an isolated world holds by default, so the sample turns it back on and
-// leaves the other eight switches off.
+// it off a death "leaves nothing on the field and makes no drop roll"
+// (`specs/instrumentation.md`, the switch table), which is exactly what an
+// isolated world holds by default, so the sample turns it back on and leaves
+// the other eight switches off.
 //
 // WHAT IS CARRIED AWAY, AND WHAT IS SWEPT. Each batch's pickups are copied out
 // of the snapshot and the field is then cleared of pickups, gems, and zones
@@ -68,14 +59,20 @@ import {
   DROP_TRIALS,
   ENEMIES,
   OIL_SPLASH_LEVELS,
+  type EnemyId,
   type PickupKind,
 } from "../constants";
 import {
   advanceTicks,
   enable,
   isolate,
+  placeEnemy,
+  placePuddle,
   type Harness,
   type Point,
+  type SnapshotGem,
+  type SnapshotPickup,
+  type WickSnapshot,
 } from "../harness";
 
 /** A level-1 Oil Splash puddle's damage, `4`, with no Wick held. */
@@ -117,13 +114,6 @@ export interface Sample {
   kills: number;
   /** Every pickup those kills dropped, in the order the ticks reported them. */
   drops: Drop[];
-  /**
-   * `rngState` as the isolated night stood before the first kill, which is
-   * where a replay of the sample's draws begins.
-   */
-  startRng: number;
-  /** `rngState` after the last kill's tick, the whole sample's draws behind it. */
-  endRng: number;
 }
 
 /** The lattice point kill `n` of the sample is made at. */
@@ -135,12 +125,12 @@ function post(at: Point, n: number): Point {
 }
 
 /**
- * Kill `trials` moths from a fresh isolated night seeded with `seed`, and hand
- * back every pickup those kills dropped.
+ * Kill `trials` moths from a fresh isolated night, and hand back every pickup
+ * those kills dropped.
  *
  * A build whose moths survived the pulse, or whose kill count did not rise by
  * the batch, fails here: every check that reads this sample is about what a
- * common's death draws, and there were no deaths to draw for.
+ * common's death rolls, and there were no deaths to roll for.
  *
  * `batch` is how many kills share one tick. It changes nothing about the roll
  * — each kill is still a common killed by a weapon at its own lattice point —
@@ -148,16 +138,13 @@ function post(at: Point, n: number): Point {
  */
 export async function sampleDrops(
   h: Harness,
-  seed: number,
   trials: number = DROP_TRIALS,
   batch: number = BATCH,
 ): Promise<Sample> {
-  const posed = isolate(h, { seed });
+  const posed = isolate(h);
   const at = posed.run.player;
   enable(h, "drops");
   const drops: Drop[] = [];
-  const startRng = posed.rngState;
-  let endRng = startRng;
   let killed = 0;
 
   while (killed < trials) {
@@ -194,7 +181,6 @@ export async function sampleDrops(
     for (const pickup of after.run.pickups) {
       drops.push({ kind: pickup.kind, x: pickup.x, y: pickup.y });
     }
-    endRng = after.rngState;
 
     h.debug.clearPickups();
     h.debug.clearGems();
@@ -202,10 +188,57 @@ export async function sampleDrops(
     killed += size;
   }
 
-  return { kills: killed, drops, startRng, endRng };
+  return { kills: killed, drops };
 }
 
 /** How many of `drops` are of kind `kind`. */
 export function countOf(drops: readonly Drop[], kind: PickupKind): number {
   return drops.filter((drop) => drop.kind === kind).length;
+}
+
+/** What one kill left on the field, read on the tick it died. */
+export interface Kill {
+  /** Where the enemy stood when it died. */
+  at: Point;
+  /** The gems on the field after the tick of death. */
+  gems: SnapshotGem[];
+  /** The pickups on the field after the tick of death. */
+  pickups: SnapshotPickup[];
+  /** The whole state after the tick of death. */
+  after: WickSnapshot;
+}
+
+/**
+ * Kill one enemy of `type` posed `(dx, dy)` from the lamplighter's center, the
+ * way the sample kills its moths: a level-1 Oil Splash puddle on its center
+ * and its `hp` posed to that pulse's damage, so the next tick is the tick of
+ * death. The world is the caller's: whatever it posed, `drops` included,
+ * stands. Fails when the enemy survived the pulse or the kill did not count.
+ */
+export async function killOne(
+  h: Harness,
+  type: EnemyId,
+  dx: number,
+  dy: number,
+): Promise<Kill> {
+  const center = h.snapshot().run.player;
+  const at = { x: center.x + dx, y: center.y + dy };
+  const id = placeEnemy(h, type, at.x, at.y);
+  h.debug.setEnemyHp(id, Math.min(PULSE_DAMAGE, ENEMIES[type].hp));
+  placePuddle(h, "oil-splash", at.x, at.y);
+  const before = h.snapshot();
+  const after = await advanceTicks(h, 1);
+  if (after.run.enemies.some((enemy) => enemy.id === id)) {
+    fail(
+      `${type} ${id} dead after a ${PULSE_DAMAGE}-damage pulse at ${PULSE_DAMAGE} hp (specs/weapons.md, Hits and death)`,
+      "still alive",
+    );
+  }
+  if (after.run.kills !== before.run.kills + 1) {
+    fail(
+      `${before.run.kills + 1} kills after the tick that killed ${type} ${id} (specs/enemies.md, The life of an enemy)`,
+      after.run.kills,
+    );
+  }
+  return { at, gems: after.run.gems, pickups: after.run.pickups, after };
 }

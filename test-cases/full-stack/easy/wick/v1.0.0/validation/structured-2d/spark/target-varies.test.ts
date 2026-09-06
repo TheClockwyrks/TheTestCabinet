@@ -3,10 +3,8 @@
 // WHERE THE THRESHOLD COMES FROM. `specs/weapons.md` ("Spark"): "On firing,
 // `amount` strikes land, each on a distinct enemy chosen uniformly at random
 // among the live enemies within `SPARK_RANGE` (`600`) of the player's
-// center". `specs/instrumentation.md` ("A deterministic core") names "a
-// strike's target" among the draws the seeded generator makes. A choice
-// uniform over four moths strikes each of them, so over forty firings from
-// one seed every one of the four is struck at least once; a build that
+// center". A choice uniform over four moths strikes each of them, so over
+// forty firings every one of the four is struck at least once; a build that
 // always strikes the nearest, the lowest id, or the first in its list
 // strikes one moth forty times and fails here.
 //
@@ -17,9 +15,10 @@
 // lower that chance further at the price of a longer scenario; forty is what
 // the checklist states.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated run seeded once by `isolate`
-// and never reset again, so the forty draws are one generator's sequence
-// ("from one seed"). Spark at level 1, amount 1, so each firing lands one
+// WHY THE WORLD IS POSED AS IT IS. An isolated run posed once by `isolate`
+// and never reset again. Nothing is posed for the target, so every draw is
+// the build's own; a posed target is `instrumentation/set-next-strike-target`'s.
+// Spark at level 1, amount 1, so each firing lands one
 // strike and names one target. Each firing stands four fresh moths at the
 // four `TARGET_POSTS`, 300 units out ninety degrees apart, so a zone names
 // its target by its center alone; a moth's 5 hp against a damage of 15
@@ -66,7 +65,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("strikes each of four moths at least once over forty firings from one seed", async () => {
+it("strikes each of four moths at least once over forty firings", async () => {
   assertEqual(ROW.amount, 1, "the amount SPARK_LEVELS row 1 gives");
   isolate(h);
   const slot = holdWeapon(h, "spark", LEVEL);

@@ -1,19 +1,21 @@
 // Wick — instrumentation/overlay-read-only: showing the overlay, letting it
-// report over 120 ticks of a posed run, and hiding it leaves the game exactly
-// as an identical run without it: the two runs' snapshots are identical.
+// report over 120 frames of a posed run, and hiding it leaves the game exactly
+// as it was.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "Diagnostics"):
 // "keep every source a pure read, so watching the overlay leaves the game as
-// it is"; "it reads the game without changing it". With "A deterministic
-// core": "Given the same seed, the same sequence of operations, and the same
-// number of ticks, the game reaches the same `run` and `rngState` every
-// time", so a run watched and a run unwatched must agree on both, exactly.
+// it is"; "it reads the game without changing it". specs/instrumentation.md
+// (`step`): "On every other screen the update ticks nothing: the menu edges
+// are read, the loops are reconciled, `muted` is mirrored, and `run.tick` is
+// untouched", so on `paused` the frames the overlay reports over change
+// nothing of the run, and the run read after them is the run read before.
 //
-// WHY THE WORLD IS POSED AS IT IS. Two fresh runs from one seed with every
-// faculty on, so the director spawns, the enemies chase, and Taper fires; the
-// second is watched, the toggle pressed on its first frame and again on its
-// last, so the overlay reports over the whole stretch, and both runs cover
-// exactly 120 frames.
+// WHY THE WORLD IS POSED AS IT IS. A run posed with one entity of every kind,
+// a clock, a spawn timer, and a weapon with a timer counting, then paused, so
+// every source the overlay reads has something to read and a source that
+// wrote back would be caught on that field. The toggle is pressed on the
+// first frame and again on the last, so the overlay reports over the whole
+// stretch, and the documented run is compared exactly across it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
@@ -21,14 +23,14 @@ import {
   captureReplay,
   createHarness,
   documentedRun,
+  poseScreen,
   pressOverlayToggle,
-  startRun,
   type Harness,
   type WickSnapshot,
 } from "../harness";
+import { poseLiveNight } from "../clock/stage";
 
-const SEED = 9137;
-const RUN_TICKS = 120;
+const RUN_FRAMES = 120;
 
 let h: Harness;
 
@@ -41,38 +43,31 @@ afterEach(async () => {
 });
 
 it("reads the game without changing it", async () => {
-  await startRun(h, SEED);
-  const unwatched = await h.step(RUN_TICKS);
+  await poseLiveNight(h);
+  await h.debug.setTick(600);
+  await h.debug.setSpawnTimer(0.4);
+  const paused = await poseScreen(h, "paused");
+  assertEqual(paused.screen, "paused", "the screen the overlay reports over");
   assertGreaterThan(
-    unwatched.run.enemies.length,
+    paused.run.enemies.length,
     0,
-    "enemies the unwatched run spawned",
+    "enemies the posed run holds for the overlay to report",
   );
 
-  await startRun(h, SEED);
   const watched = await captureReplay(
     h,
     "watched",
     async (): Promise<WickSnapshot> => {
       await pressOverlayToggle(h);
-      await h.step(RUN_TICKS - 2);
+      await h.step(RUN_FRAMES - 2);
       return pressOverlayToggle(h);
     },
   );
 
-  assertEqual(
-    watched.run.tick,
-    unwatched.run.tick,
-    "the ticks the two runs covered",
-  );
-  assertEqual(
-    watched.rngState,
-    unwatched.rngState,
-    "rngState after the watched run",
-  );
+  assertEqual(watched.screen, "paused", "the screen after the watched stretch");
   assertDeepEqual(
     documentedRun(watched.run),
-    documentedRun(unwatched.run),
-    "the run after the watched stretch, against the unwatched one",
+    documentedRun(paused.run),
+    "the run after the watched stretch, against the run before it",
   );
 });

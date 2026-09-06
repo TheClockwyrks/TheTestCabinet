@@ -21,7 +21,7 @@
 //
 // WHY TWO MOTHS 45 APART. "each on a distinct enemy chosen uniformly at random
 // among the live enemies within SPARK_RANGE" leaves which of the two the strike
-// lands on to the game's seeded generator, and the arrangement is symmetric:
+// lands on to the game's own draw, and the arrangement is symmetric:
 // whichever is the target, the other stands 45 units from it, so the reading is
 // the same under either draw. A moth carries 5 health and the strike deals 15,
 // so both dying is what "hits" reads as here.

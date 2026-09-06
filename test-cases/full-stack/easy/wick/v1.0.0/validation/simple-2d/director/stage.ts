@@ -221,8 +221,9 @@ export function enemiesOfType(
  * `center + perp * (i - (SWARM_SIZE - 1) / 2) * spacing` about
  * `center = player + d * SPAWN_DISTANCE`, and those offsets sum to zero over
  * the whole line, so the gnats' centroid is the center and the unit vector
- * from the lamplighter to it is `d`. The angle itself is "drawn uniformly from
- * the seeded generator", so no check may expect a particular one.
+ * from the lamplighter to it is `d`. The angle itself is "drawn uniformly over
+ * the full circle", so no check may expect a particular one unless it posed
+ * one through `setNextSwarmAngle`.
  */
 export function swarmDirection(
   gnats: readonly EnemySnapshot[],

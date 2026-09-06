@@ -3,7 +3,7 @@
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // `setScreen`: "Nothing else changes: the run, the loadout, `offers`,
-// `nextOffers`, `chestResult`, `pendingLevelUps`, `rngState`, `simTime`, and
+// `nextOffers`, `chestResult`, `pendingLevelUps`, every posed outcome, `simTime`, and
 // the driver switches all stand exactly as they were", and "The pose sets the
 // screen and nothing else, so a run is never begun, discarded, ended, or grown
 // by it." The comparison is exact equality of the run's stored fields across

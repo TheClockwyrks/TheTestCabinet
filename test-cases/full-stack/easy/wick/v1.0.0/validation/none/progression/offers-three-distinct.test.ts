@@ -10,14 +10,15 @@
 // overlay presents exactly three ids, no id twice, and every one a candidate.
 //
 // WHY THE WORLD IS POSED AS IT IS. Two arrangements, each an isolated night
-// with every faculty held and nothing alive. First a run with no slot held over
-// six different seeds, so the pool is all twenty candidates and six independent
-// draws are read rather than one: a build that repeats an id does it on some
-// draws and not others. Then a pool of exactly `OFFER_COUNT`, built by filling
-// both slot kinds and leaving exactly three items one level under their maxima,
-// which is the boundary where a draw without replacement must consume the pool
-// whole. The overlays are reached by the real path, a queued level-up and the
-// tick that opens it.
+// with every faculty held and nothing alive. First a run with no slot held,
+// over which six overlays are opened in turn, each left through
+// `setScreen("playing")` so the slots stand: the pool is all twenty candidates
+// and six independent draws are read rather than one, since a build that
+// repeats an id does it on some draws and not others. Then a pool of exactly
+// `OFFER_COUNT`, built by filling both slot kinds and leaving exactly three
+// items one level under their maxima, which is the boundary where a draw
+// without replacement must consume the pool whole. The overlays are reached by
+// the real path, a queued level-up and the tick that opens it.
 //
 // THE TOLERANCE. None: a count is exact, and an id is a candidate or it is not.
 
@@ -41,13 +42,14 @@ import {
   holdWeapon,
   isolate,
   openLevelUp,
+  poseScreen,
   type Harness,
   type WickSnapshot,
 } from "../harness";
 import { FULL_PASSIVES, FULL_WEAPONS } from "./stage";
 
-/** The seeds the wide pool is drawn over, so several independent draws are read. */
-const SEEDS = [1, 2, 3, 4, 5, 6] as const;
+/** How many draws are read over the wide pool. */
+const WIDE_DRAWS = 6;
 
 /** The two passives left one level under their maxima in the narrow pool. */
 const NARROW_PASSIVES: readonly OfferId[] = ["mirror", "bellows"];
@@ -84,13 +86,11 @@ afterEach(async () => {
 });
 
 it("draws three distinct candidates, over a wide pool and over one of exactly three", async () => {
-  for (const seed of SEEDS) {
-    await isolate(h, { seed });
+  await isolate(h);
+  for (let draw = 1; draw <= WIDE_DRAWS; draw += 1) {
     const overlay = await openLevelUp(h);
-    assertDraw(
-      overlay,
-      `the overlay opened over the whole pool at seed ${seed}`,
-    );
+    assertDraw(overlay, `the overlay opened over the whole pool, draw ${draw}`);
+    await poseScreen(h, "playing");
   }
 
   await isolate(h);

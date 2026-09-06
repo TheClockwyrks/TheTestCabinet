@@ -1,21 +1,18 @@
 // Wick — instrumentation/set-screen-levelup: `setScreen('levelup')` shows the
-// overlay screen and draws nothing — no offers, no queue consumed, and no
-// generator spent.
+// overlay screen and draws nothing — no offers and no queue consumed.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // `setScreen`: "Sets `screen` to `name` ... Nothing else changes: the run, the
-// loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`,
-// `rngState`, `simTime`, and the driver switches all stand exactly as they
+// loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, every
+// posed outcome, `simTime`, and the driver switches all stand exactly as they
 // were", and "The pose sets the screen and nothing else, so a run is never
 // begun, discarded, ended, or grown by it ... the level-up overlay is
 // `setPendingLevelUps` and one `playing` tick". FILLING the overlay is that
 // tick's, which `progression/`'s offer points decide.
 //
-// WHY THE GENERATOR IS THE READING. An offer draw is one of the sources
-// `specs/instrumentation.md` lists for the game's one generator, so a surface
-// that drew a list here and then discarded it moves `rngState` and shifts
-// every seeded scenario after it. `offers` empty, `nextOffers` still queued,
-// and `rngState` unmoved are the three ways that draw would show.
+// WHY THE QUEUE IS THE READING. A surface that drew a list here would either
+// present it or consume the queued one on the way: `offers` empty and
+// `nextOffers` still queued are the two ways that draw would show.
 //
 // WHY `pool` IS READ, AND WHY IT IS NOT A DRAW. `pool` is derived rather than
 // stored: "on `levelup`, the candidate pool of `specs/progression.md` computed
@@ -28,8 +25,7 @@
 // THE POSE. An isolated run holding nothing, one level-up queued and a list
 // handed to `setNextOffers` so a consumed queue is visible, then the pose.
 //
-// THE TOLERANCE. None: a screen name, list contents, and an integer generator
-// state.
+// THE TOLERANCE. None: a screen name, list contents, and a whole count.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
@@ -50,7 +46,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("shows the overlay screen without drawing offers or spending the generator", async () => {
+it("shows the overlay screen without drawing offers", async () => {
   isolate(h);
   h.debug.setPendingLevelUps(1);
   h.debug.setNextOffers(QUEUED);
@@ -68,11 +64,6 @@ it("shows the overlay screen without drawing offers or spending the generator", 
     after.run.nextOffers,
     QUEUED,
     "run.nextOffers after setScreen('levelup'), which consumes no queue",
-  );
-  assertEqual(
-    after.rngState,
-    before.rngState,
-    "rngState after setScreen('levelup'), which makes no offer draw",
   );
   assertEqual(
     after.run.pendingLevelUps,

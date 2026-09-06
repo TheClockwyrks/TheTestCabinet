@@ -49,13 +49,13 @@ afterEach(async () => {
 
 it("runs exactly one tick per stepped frame on playing", async () => {
   await isolate(h);
-  const seeded = await advanceBy(h, PARTIAL_SECONDS);
+  const primed = await advanceBy(h, PARTIAL_SECONDS);
   assertNotEqual(
-    seeded.accumulator,
+    primed.accumulator,
     0,
     "a remainder waiting before the frames",
   );
-  assertEqual(seeded.screen, "playing", "the screen the frames run on");
+  assertEqual(primed.screen, "playing", "the screen the frames run on");
 
   const { before, after } = await captureReplay(h, "thirty", () =>
     stepBracketed(h, FRAMES),

@@ -2,7 +2,7 @@
 // scripted frame of exactly `TICK_DT` consumes exactly one tick.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, "A
-// deterministic core": "A tick is consumed while the accumulator is at least
+// render-free core": "A tick is consumed while the accumulator is at least
 // `TICK_DT − TICK_EPSILON` ... and a remainder whose magnitude is below
 // `TICK_EPSILON` is `0`, so ... sixty frames of `1 / 60` seconds run exactly
 // `60`"; "What the runtime provides instead": "a `ConstantClock` of

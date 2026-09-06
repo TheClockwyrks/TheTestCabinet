@@ -9,7 +9,7 @@
 //   - `specs/instrumentation.md` (`setHp`): "A value at or below `0` ends the
 //     run fallen at the end of the next `playing` tick, through the ending
 //     rule of `specs/world.md`."
-//   - `specs/instrumentation.md` ("A deterministic core"): "A tick that leaves
+//   - `specs/instrumentation.md` ("A render-free core"): "A tick that leaves
 //     `playing`, by opening an overlay or ending the run, is the last tick its
 //     frame runs, and the remainder is discarded".
 //

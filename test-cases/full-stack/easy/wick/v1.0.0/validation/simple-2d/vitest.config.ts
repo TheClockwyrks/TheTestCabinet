@@ -32,7 +32,7 @@
 // projects at once, and both are strictly more generous than what stood here. An
 // allowance a correct build can cross is a defect in the check rather than in
 // the build — a scenario that runs a night to its last window, or four thousand
-// seeded kills for the drop roll, is thousands of ticks of the real simulation,
+// posed kills for the drop roll, is thousands of ticks of the real simulation,
 // and on a busy host that is exactly the shape of check that loses a point to
 // the clock — so the ceilings are the harness's and this file names none.
 //

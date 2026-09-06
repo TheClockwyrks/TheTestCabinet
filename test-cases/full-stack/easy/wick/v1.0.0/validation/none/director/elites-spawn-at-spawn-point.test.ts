@@ -6,8 +6,8 @@
 // spawn point |", "| 7:30 | 450 | Owl spawns at a spawn point |", and
 // "| 9:00 | 540 | The Dark spawns at a spawn point |" — and ("The spawn ring")
 // fixes what a spawn point is: "A spawn point is `SPAWN_DISTANCE` (`760`) units
-// from the lamplighter's center at an angle drawn uniformly from the seeded
-// generator". The angle is drawn, so the distance is the whole of what the
+// from the lamplighter's center at an angle drawn uniformly over the full
+// circle". The angle is drawn, so the distance is the whole of what the
 // specification fixes and the whole of what is read. The reading is taken on
 // the arrival's own tick, because specs/world.md ("One tick", phase 10) says an
 // enemy spawned on a tick "sits at its spawn point and first moves on the next

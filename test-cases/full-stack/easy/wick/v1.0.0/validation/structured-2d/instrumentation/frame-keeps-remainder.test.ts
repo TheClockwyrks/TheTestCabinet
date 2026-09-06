@@ -2,7 +2,7 @@
 // frame short of a whole tick waits in `accumulator`.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, "A
-// deterministic core": "each frame's delta time joins the accumulator, every
+// render-free core": "each frame's delta time joins the accumulator, every
 // whole `TICK_DT` in it is consumed as a tick, and the remainder waits for the
 // next frame"; "a clock of any other length poses a partial frame". How many
 // ticks the frame consumed is

@@ -2,7 +2,7 @@
 // `reset()` as before it, whether it was true or false.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
-// `reset(options)`: "`muted` stays as it is"; "A deterministic core":
+// `reset(options)`: "`muted` stays as it is"; "A render-free core":
 // "`muted` mirrors the runtime"; "Snapshot shape": "`muted` mirrors the
 // runtime's mute bit, refreshed in every frame, since the runtime owns muting".
 //

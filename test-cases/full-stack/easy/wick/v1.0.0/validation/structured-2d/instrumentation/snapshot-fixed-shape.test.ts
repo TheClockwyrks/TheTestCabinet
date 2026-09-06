@@ -58,7 +58,6 @@ const SNAPSHOT_FIELDS = [
   "muted",
   "accumulator",
   "simTime",
-  "rngState",
 ] as const;
 
 const RUN_FIELDS = [
@@ -91,6 +90,12 @@ const RUN_FIELDS = [
   "firedEvents",
   "aliveCommons",
   "nextId",
+  "nextSpawnAngle",
+  "nextSwarmAngle",
+  "nextPuddleOffset",
+  "nextStrikeTarget",
+  "nextChestItem",
+  "nextDrop",
 ] as const;
 
 /** The screens that show no menu (specs/ui.md). */

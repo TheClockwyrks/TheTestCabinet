@@ -1,11 +1,11 @@
-// director/swarms — the gnat swarm the four swarm checks read.
+// director/swarms — the gnat swarm the swarm checks read.
 //
 // WHERE THE GEOMETRY COMES FROM. specs/enemies.md ("Scripted events"): "A gnat
 // swarm spawns `SWARM_SIZE` (`24`) gnats on the same tick along a line
 // perpendicular to a direction `d`, a unit vector at an angle drawn uniformly
-// from the seeded generator. The line is `SWARM_LINE` (`720`) units long,
-// centered `SPAWN_DISTANCE` from the lamplighter along `d`, and the gnats are
-// evenly spaced along it with one at each end:
+// over the full circle. The line is `SWARM_LINE` (`720`) units long, centered
+// `SPAWN_DISTANCE` from the lamplighter along `d`, and the gnats are evenly
+// spaced along it with one at each end:
 //
 //   center  = player + d * SPAWN_DISTANCE
 //   perp    = (-dy, dx)
@@ -14,14 +14,16 @@
 //
 // for `i` from `0` to `SWARM_SIZE - 1`."
 //
-// HOW `d` IS RECOVERED, AND WHY IT IS NOT ASSUMED. The direction is drawn from
-// the seeded generator, so no check may name it: an angle read off the
-// reference would be a figure the specification never states. The formula gives
-// it up instead. Summing the twenty-four positions cancels the perpendicular
-// term — the offsets `(i − 11.5)` sum to zero over `i` from `0` to `23` — so
-// the mean of the gnats is the line's `center`, and `d` is the unit vector from
-// the lamplighter to it. Every figure a check asserts is then read against that
+// HOW `d` IS RECOVERED, AND WHY IT IS NOT ASSUMED. The direction is drawn, so a
+// check that poses none may name no angle: an angle read off the reference
+// would be a figure the specification never states. The formula gives it up
+// instead. Summing the twenty-four positions cancels the perpendicular term —
+// the offsets `(i − 11.5)` sum to zero over `i` from `0` to `23` — so the mean
+// of the gnats is the line's `center`, and `d` is the unit vector from the
+// lamplighter to it. Every figure a check asserts is then read against that
 // recovered `d`, and a build that drew any angle at all is measured on its own.
+// A check that poses the angle through `setNextSwarmAngle` reads the same
+// recovery against the angle it posed.
 //
 // A check that reads a swarm reads the 1:00 one, `EVENTS`' first row, because
 // it is the earliest and so the cheapest clock to pose; which tick each swarm
@@ -76,11 +78,18 @@ function meanOf(points: readonly XY[]): XY {
 }
 
 /**
- * Open an isolated night seeded with `seed`, carry it across the 1:00 swarm's
- * tick, and read the swarm it spawned.
+ * Open an isolated night, carry it across the 1:00 swarm's tick, and read the
+ * swarm it spawned. With `angle` given, the swarm's direction is posed through
+ * `setNextSwarmAngle` first; otherwise the build draws it.
  */
-export async function poseSwarm(h: Harness, seed?: number): Promise<Swarm> {
-  await (seed === undefined ? isolateForEvents(h) : isolateForEvents(h, seed));
+export async function poseSwarm(h: Harness, angle?: number): Promise<Swarm> {
+  await isolateForEvents(h);
+  if (angle !== undefined) await h.debug.setNextSwarmAngle(angle);
+  return readSwarm(h);
+}
+
+/** Carry the posed night across the 1:00 swarm's tick and read the swarm. */
+export async function readSwarm(h: Harness): Promise<Swarm> {
   const crossing = await carryAcross(h, SWARM_TICK);
   assertEqual(
     crossing.arrivals.length,

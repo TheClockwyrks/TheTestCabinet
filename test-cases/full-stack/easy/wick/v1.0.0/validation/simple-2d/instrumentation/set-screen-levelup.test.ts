@@ -7,17 +7,14 @@
 // The pose opens no overlay: "a run is never begun, discarded, ended, or grown
 // by it", and "the level-up overlay is `setPendingLevelUps` and one `playing`
 // tick", which `progression/overlay-opens-same-tick` decides.
-// "Seeded randomness" fixes that "an offer draw" is one of the draws the
-// generator makes and that `rngState` holds "its whole state", so a pose that
-// drew would move it.
+// The empty `offers` afterwards is what shows the pose drew nothing.
 //
 // THE POSE. An isolated night with nothing queued, so the `levelup` the reading
 // finds is the pose's rather than an overlay the game opened for itself, and
 // the empty `offers` afterwards is the pose declining to draw. No tick is run,
 // so nothing else could have moved the screen.
 //
-// THE TOLERANCE. None: a screen name, a menu index, a list length, and a
-// generator state.
+// THE TOLERANCE. None: a screen name, a menu index, and a list length.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
@@ -54,5 +51,4 @@ it("stands the game on the level-up screen", async () => {
     0,
     "pendingLevelUps the pose queued",
   );
-  assertEqual(levelup.rngState, posed.rngState, "rngState across the pose");
 });

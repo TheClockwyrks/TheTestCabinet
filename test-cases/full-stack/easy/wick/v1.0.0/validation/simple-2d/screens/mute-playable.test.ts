@@ -2,8 +2,8 @@
 //
 // WHAT THIS DECIDES. One thing: muting takes the sound away and nothing else. A
 // whole short night is played muted, from the title through movement, a level-up
-// and its choice, a pause and a resume, and every step reaches the state it
-// reaches unmuted.
+// and its choice, a pause and a resume, and every step reaches the screen and
+// the figures the rules give it.
 //
 // THE SPEC IT RESTS ON.
 //   specs/ui.md ("Audio"): "The game binds the `mute` action to
@@ -14,43 +14,27 @@
 //   ... else `screen = playing`"; (`paused`): "`pause` returns to `playing`".
 //   specs/controls.md ("Moving the lamplighter"): "On `playing`, the four
 //   movement actions are read as held values", and `right` is `ArrowRight`,
-//   `KeyD`.
-//   specs/instrumentation.md ("A deterministic core"): "Given the same seed,
-//   the same sequence of operations, and the same number of ticks, the game
-//   reaches the same `run` and `rngState` every time", which is what makes the
-//   muted night and the unmuted one comparable at all.
+//   `KeyD`; specs/world.md ("Movement"): "each tick the position advances by
+//   the velocity times `TICK_DT`", at `MOVE_SPEED` (180) with no Bellows held.
 //
-// THE DRIVE. The same night twice, on two harnesses laid with the same seed and
-// given the same keys, one muted at the title and one given a key bound to no
-// action in its place, so both spend the same frames on the same screens. Every
-// step is a real key: `Enter` on `LIGHT THE LAMP`, `ArrowRight` held, `Enter` on
-// the offer, `KeyP` and `KeyP` again. The one pose is `setPendingLevelUps`,
-// which queues the level-up the overlay opens from, since a scenario that had to
-// collect enough gems to earn one would be grading the drop rate.
+// THE DRIVE. Every step is a real key: `KeyM` on the title, `Enter` on
+// `LIGHT THE LAMP`, `ArrowRight` held, `Enter` on the offer, `KeyP` and `KeyP`
+// again. The one pose is `setPendingLevelUps`, which queues the level-up the
+// overlay opens from, since a scenario that had to collect enough gems to earn
+// one would be grading the drop rate. The mute bit is read from the first
+// playing stage on, because the specification requires the mirror only "every
+// frame" and fixes no order within one.
 //
-// The muted night's own steps are asserted first, so a build that cannot be
-// played muted fails on the step it failed at; then the two nights' runs are
-// compared stage by stage, which is what "exactly as unmuted" means. The mute
-// bit is read from the first playing stage on, because the specification
-// requires the mirror only "every frame" and fixes no order within one.
-//
-// THE TOLERANCE. None: screens, counts, and the run's stored fields are exact,
-// and the lamplighter's movement is read as a strict increase in `x`, since the
-// distance it covers is the lamplighter category's point rather than this one's.
+// THE TOLERANCE. `MOTION_TOLERANCE` on the lamplighter's travel, a figure
+// summed tick by tick; screens and counts are exact.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertGreaterThan,
-  assertGreaterThanOrEqual,
-} from "../assert";
-import { DEFAULT_SEED, UNBOUND_KEY } from "../constants";
+import { assertEqual, assertGreaterThanOrEqual, assertWithin } from "../assert";
+import { MOTION_TOLERANCE, MOVE_SPEED, TICK_DT } from "../constants";
 import {
   captureReplay,
   createHarness,
   hold,
-  runFields,
   tap,
   type Harness,
   type WickSnapshot,
@@ -61,21 +45,19 @@ let h: Harness;
 /** How long the lamplighter is walked, in whole ticks. */
 const WALK_TICKS = 30;
 
+/** How far that walk carries it (specs/world.md, Movement). */
+const TRAVEL = MOVE_SPEED * TICK_DT * WALK_TICKS;
+
 /** One stage of the night, named for the failure that reports it. */
 interface Stage {
   name: string;
   snapshot: WickSnapshot;
 }
 
-/**
- * Play the same short night on `harness`, muted or not, and hand back what each
- * step left. The muting press is replaced by a key bound to no action when the
- * night is played unmuted, so both nights spend the same frames on the same
- * screens.
- */
-async function playthrough(harness: Harness, mute: boolean): Promise<Stage[]> {
-  harness.reset(DEFAULT_SEED);
-  await tap(harness, mute ? "KeyM" : UNBOUND_KEY);
+/** Play the same short night on `harness`, muted, and hand back what each step left. */
+async function playthrough(harness: Harness): Promise<Stage[]> {
+  harness.reset();
+  await tap(harness, "KeyM");
   const stages: Stage[] = [];
 
   stages.push({
@@ -112,8 +94,8 @@ afterEach(() => {
   h.dispose();
 });
 
-it("plays a night muted exactly as it plays unmuted", async () => {
-  const muted = await captureReplay(h, "playable", () => playthrough(h, true));
+it("plays a night muted through every screen it names", async () => {
+  const muted = await captureReplay(h, "playable", () => playthrough(h));
 
   const [started, walked, overlay, accepted, paused, resumed] = muted;
   assertEqual(started.snapshot.screen, "playing", started.name);
@@ -122,10 +104,11 @@ it("plays a night muted exactly as it plays unmuted", async () => {
     0,
     "the lamplighter's x at the world origin",
   );
-  assertGreaterThan(
-    walked.snapshot.run.player.x,
-    started.snapshot.run.player.x,
-    "the lamplighter's x after ArrowRight was held",
+  assertWithin(
+    walked.snapshot.run.player.x - started.snapshot.run.player.x,
+    TRAVEL,
+    MOTION_TOLERANCE,
+    `the lamplighter's travel over ${WALK_TICKS} ticks of a held right`,
   );
   assertEqual(overlay.snapshot.screen, "levelup", overlay.name);
   assertGreaterThanOrEqual(
@@ -143,24 +126,5 @@ it("plays a night muted exactly as it plays unmuted", async () => {
   assertEqual(resumed.snapshot.screen, "playing", resumed.name);
   for (const stage of muted) {
     assertEqual(stage.snapshot.muted, true, `the mute bit at ${stage.name}`);
-  }
-
-  const control = await createHarness();
-  try {
-    const unmuted = await playthrough(control, false);
-    for (let stage = 0; stage < muted.length; stage += 1) {
-      assertEqual(
-        unmuted[stage].snapshot.muted,
-        false,
-        `the control night's mute bit at ${muted[stage].name}`,
-      );
-      assertDeepEqual(
-        runFields(muted[stage].snapshot.run),
-        runFields(unmuted[stage].snapshot.run),
-        `the muted night at ${muted[stage].name}, against the same night unmuted`,
-      );
-    }
-  } finally {
-    control.dispose();
   }
 });

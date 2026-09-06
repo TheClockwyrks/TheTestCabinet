@@ -45,9 +45,6 @@ import {
 /** How many frames are delivered on the pause: one second of them. */
 const FROZEN_FRAMES = 60;
 
-/** The seed the night is posed from; the director's spawn draws from it. */
-const SEED = 3;
-
 /** Where the moth starts: well clear of the lamplighter, closing at 100 u/s. */
 const MOTH_X = 300;
 
@@ -72,7 +69,7 @@ afterEach(() => {
 });
 
 it("holds the whole run still under the pause", async () => {
-  isolate(h, { seed: SEED });
+  isolate(h);
   spawnEnemyAt(h, "moth", MOTH_X, 0);
   spawnGemAt(h, "small", GEM_X, 0);
   h.debug.spawnPuddle("oil-splash", PUDDLE_X, PUDDLE_Y);

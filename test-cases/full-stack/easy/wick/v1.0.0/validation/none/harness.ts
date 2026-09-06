@@ -66,7 +66,6 @@ import {
   BINDINGS,
   BLIT_TOL,
   CUE_NAMES,
-  DEFAULT_SEED,
   HANDLE,
   OVERLAY_KEY,
   REQUIRED_OPS,
@@ -85,6 +84,7 @@ import {
   type EvolutionId,
   type Facing,
   type GemTier,
+  type NextDrop,
   type OfferId,
   type PassiveId,
   type PassiveLevels,
@@ -277,6 +277,13 @@ export interface RunView {
   firedEvents: number[];
   aliveCommons: number;
   nextId: number;
+  /** The posed outcomes, each `null` while none is posed. */
+  nextSpawnAngle: number | null;
+  nextSwarmAngle: number | null;
+  nextPuddleOffset: { x: number; y: number } | null;
+  nextStrikeTarget: number | null;
+  nextChestItem: string | null;
+  nextDrop: NextDrop | null;
 }
 
 /**
@@ -308,7 +315,6 @@ export interface WickSnapshot {
   accumulator: number;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
-  rngState: number;
 }
 
 /**
@@ -345,8 +351,8 @@ export interface WickDebugApi {
   step(ticks?: number): Promise<void>;
   /** Run one frame worth `seconds` of delta time, through the accumulator. */
   advance(seconds: number): Promise<void>;
-  /** Restore every declared field to its title-screen value and reseed. */
-  reset(options?: { seed?: number }): Promise<void>;
+  /** Restore every declared field to its title-screen value. */
+  reset(): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<WickSnapshot>;
   /** Set `screen`, with every menu index at `0`; nothing else changes. */
@@ -379,12 +385,18 @@ export interface WickDebugApi {
   /** Set `tick`, `0` to `MAX_POSED_TICK`; nothing else changes. */
   setTick(tick: number): Promise<void>;
   setSpawnTimer(seconds: number): Promise<void>;
-  /**
-   * Take `draws` draws off the seeded generator and discard them, so
-   * `rngState` lands where `draws` random choices would have left it.
-   * Nothing is chosen with what was drawn. Every screen.
-   */
-  advanceRng(draws: number): Promise<void>;
+  /** Pose the angle the next spawn point is drawn at, `0` up to `360`. */
+  setNextSpawnAngle(degrees: number): Promise<void>;
+  /** Pose the direction of the next gnat swarm, `0` up to `360`. */
+  setNextSwarmAngle(degrees: number): Promise<void>;
+  /** Pose where the next firing's first puddle lands, about the lamplighter. */
+  setNextPuddleOffset(dx: number, dy: number): Promise<void>;
+  /** Pose the enemy the next Spark firing's first strike lands on. */
+  setNextStrikeTarget(id: number): Promise<void>;
+  /** Pose the item the next chest levels, when its level rule applies. */
+  setNextChestItem(id: string): Promise<void>;
+  /** Pose what the next common kill drops in place of its roll. */
+  setNextDrop(kind: NextDrop): Promise<void>;
   setPlayerPosition(x: number, y: number): Promise<void>;
   setFacing(facing: Facing): Promise<void>;
   /** Set `hp`, at most `maxHp`; at or below `0` ends the run on the next tick. */
@@ -501,13 +513,6 @@ const kit = createCaseHarness<WickSnapshot, WickDebugApi>({
   // `pointerType: "touch"` and `navigator.maxTouchPoints` is non-zero, which is
   // the device a build that answers a finger has to believe it is on.
   hasTouch: true,
-  // The seed the opening `reset` fixes, so a scenario driven from a fresh
-  // harness is reproducible from that line on. `specs/instrumentation.md`
-  // defaults `options.seed` to `DEFAULT_SEED` itself, and the harness passes it
-  // explicitly so the call the build sees is the same one whether or not a check
-  // named a seed of its own. The check that is ABOUT the default calls
-  // `reset()` with no argument itself.
-  defaultSeed: DEFAULT_SEED,
   // Read the screen the build stood the game up on, BEFORE the opening reset.
   // `specs/ui.md` says of the title screen "The game opens here", which is a
   // fact about what a fresh game OPENS on and not about what a `reset` puts it
@@ -1426,8 +1431,6 @@ export function drawNearest(
 
 /** What {@link isolate} arranges. Every field is optional; each defaults below. */
 export interface IsolateOptions {
-  /** The seed the reset is given. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /** The level to pose. Left at the idle run's `1` by default. */
   level?: number;
   /** Put Taper at level `1` in the first slot, as a fresh run holds it. Off by default. */
@@ -1459,7 +1462,7 @@ export async function isolate(
   h: Harness,
   options: IsolateOptions = {},
 ): Promise<WickSnapshot> {
-  await h.debug.reset({ seed: options.seed ?? DEFAULT_SEED });
+  await h.debug.reset();
   await h.debug.setScreen("playing");
   await holdAll(h);
   await h.debug.clearEnemies();
@@ -1537,11 +1540,8 @@ export async function releaseAll(h: Harness): Promise<void> {
  * `setWeapon(0, \"taper\", 1)`". The surface poses one thing per call, so the
  * arrangement lives here rather than behind one operation.
  */
-export async function startRun(
-  h: Harness,
-  seed: number = DEFAULT_SEED,
-): Promise<WickSnapshot> {
-  await h.debug.reset({ seed });
+export async function startRun(h: Harness): Promise<WickSnapshot> {
+  await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.setWeapon(0, "taper", 1);
   return h.snapshot();
@@ -1555,11 +1555,8 @@ export async function startRun(
  * navigation points and passes the rest. The frame the press runs is the run's
  * first tick.
  */
-export async function startRunFromTitle(
-  h: Harness,
-  seed: number = DEFAULT_SEED,
-): Promise<WickSnapshot> {
-  await h.debug.reset({ seed });
+export async function startRunFromTitle(h: Harness): Promise<WickSnapshot> {
+  await h.debug.reset();
   return pressConfirm(h);
 }
 
@@ -2314,6 +2311,12 @@ export function idleRun(weapons: readonly WeaponSlotView[] = []): RunView {
     firedEvents: [],
     aliveCommons: 0,
     nextId: 0,
+    nextSpawnAngle: null,
+    nextSwarmAngle: null,
+    nextPuddleOffset: null,
+    nextStrikeTarget: null,
+    nextChestItem: null,
+    nextDrop: null,
   };
 }
 
@@ -2495,7 +2498,7 @@ export function folded(text: string): string {
  * of the call. `simTime` is left out because the specification puts it outside
  * the state a pose governs: "`simTime` and `muted` stand outside that: `simTime`
  * rises by every frame's delta time on every screen" (specs/instrumentation.md,
- * "A deterministic core"), and the build's own loop keeps running frames in real
+ * "A render-free core"), and the build's own loop keeps running frames in real
  * time while the clock is held. What a pose may not change is everything else.
  */
 export function posedState(snapshot: WickSnapshot): Record<string, unknown> {

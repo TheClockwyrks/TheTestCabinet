@@ -26,8 +26,8 @@
 // drops apply to every rank alike" (`specs/enemies.md`, The life of an enemy).
 //
 // WHY `drops` IS TURNED ON. It is the faculty every check that uses this
-// helper is about: with it off "A death leaves nothing on the field and draws
-// nothing from the generator" (`specs/instrumentation.md`, the switch table),
+// helper is about: with it off "A death leaves nothing on the field and makes
+// no drop roll" (`specs/instrumentation.md`, the switch table),
 // which is what an isolated world holds by default. {@link killWithPuddle}
 // turns it back on and leaves the other eight switches off, and a check that
 // poses its own world turns it on before calling {@link killOne}.

@@ -5,7 +5,7 @@
 // each of the three rows: "Mothwing spawns at a spawn point", "Owl spawns at a
 // spawn point", "The Dark spawns at a spawn point". "The spawn ring" says what
 // a spawn point is: "`SPAWN_DISTANCE` (`760`) units from the lamplighter's
-// center at an angle drawn uniformly from the seeded generator". The angle is
+// center at an angle drawn uniformly over the full circle". The angle is
 // drawn and the distance is not, so the distance is what a check holds a build
 // to.
 //

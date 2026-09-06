@@ -11,7 +11,7 @@
 // weapon anywhere in the loadout, and a level or heal result.
 //
 // WHAT IS NOT PINNED, AND WHY. Rule 2 chooses "One held item below its max
-// level ... uniformly at random from the game's seeded generator", and with
+// level ... uniformly at random", and with
 // Taper at `7` and Wick at `1` both candidates are below their max, so which
 // of the two rises is a draw rather than a figure the specification fixes. The
 // check therefore reads what the requirement is about — that the slot still

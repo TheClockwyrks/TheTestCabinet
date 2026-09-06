@@ -3,7 +3,7 @@
 //
 // WHERE THE THRESHOLD COMES FROM. specs/enemies.md ("The spawn ring"): "A spawn
 // point is `SPAWN_DISTANCE` (`760`) units from the lamplighter's center at an
-// angle drawn uniformly from the seeded generator: `x = player.x + cos(angle) *
+// angle drawn uniformly over the full circle: `x = player.x + cos(angle) *
 // SPAWN_DISTANCE`, `y = player.y + sin(angle) * SPAWN_DISTANCE`". Whatever
 // angle the draw gives, the distance is the same figure every time, which is
 // what this reads. The reading is taken on the spawn's own tick, because

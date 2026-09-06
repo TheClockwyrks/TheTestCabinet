@@ -17,7 +17,7 @@
 // — the one arrangement that satisfies the bound while drawing nothing — fails
 // the second reading.
 //
-// WHY TEN FIRINGS. Fifty landing points from one seeded generator, enough that
+// WHY TEN FIRINGS. Fifty landing points drawn by the build, enough that
 // a build drawing from a disk of the wrong size shows a point outside 400
 // (a draw lands beyond any radius `r < 400` with probability
 // `1 − (r / 400)^2` per puddle) while a conformant build cannot.
@@ -25,9 +25,8 @@
 // HOW THE FIRINGS ARE MADE. The first through the arming that makes the next
 // tick a firing, each of the nine after by posing the timer back to `0` and
 // running one more tick ("`setWeaponCooldown(slot, 0)` makes that the next
-// tick", `specs/instrumentation.md`) — so the run's generator carries on from
-// wherever the last firing left it, and every landing point is a draw of its
-// own. Each firing's puddles are told from the ones still standing by their
+// tick", `specs/instrumentation.md`) — so every landing point is a draw of
+// its own. Each firing's puddles are told from the ones still standing by their
 // ids, which every entity takes from `nextId`.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated run with no enemy and no

@@ -55,7 +55,12 @@ export type Facing = "left" | "right";
 
 /** The six kinds of zone (specs/state.md, ZoneState). */
 export type ZoneKind =
-  "puddle" | "lantern" | "aura" | "slash" | "strike" | "burst";
+  | "puddle"
+  | "lantern"
+  | "aura"
+  | "slash"
+  | "strike"
+  | "burst";
 
 /** What the open chest overlay reports (specs/state.md, ChestResult). */
 export type ChestResult =
@@ -86,7 +91,12 @@ export const REQUIRED_OPS = [
   "setProgression",
   "setTick",
   "setSpawnTimer",
-  "advanceRng",
+  "setNextSpawnAngle",
+  "setNextSwarmAngle",
+  "setNextPuddleOffset",
+  "setNextStrikeTarget",
+  "setNextChestItem",
+  "setNextDrop",
   "setPlayerPosition",
   "setFacing",
   "setHp",
@@ -173,10 +183,8 @@ export interface WickRect {
   readonly height: number;
 }
 
-/** `reset`'s options: the seed the generator is laid with. */
-export interface ResetOptions {
-  readonly seed?: number;
-}
+/** What `setNextDrop(kind)` poses for the next common kill's roll. */
+export type NextDrop = "bread" | "draft" | "none";
 
 /** The lamplighter, as the snapshot reports it. */
 export interface PlayerSnapshot {
@@ -309,6 +317,13 @@ export interface RunSnapshot {
   firedEvents: number[];
   aliveCommons: number;
   nextId: number;
+  /** The posed outcomes, each `null` while none is posed. */
+  nextSpawnAngle: number | null;
+  nextSwarmAngle: number | null;
+  nextPuddleOffset: { x: number; y: number } | null;
+  nextStrikeTarget: number | null;
+  nextChestItem: string | null;
+  nextDrop: NextDrop | null;
 }
 
 /**
@@ -343,7 +358,6 @@ export interface WickSnapshot {
   accumulator: number;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
-  rngState: number;
 }
 
 /**
@@ -361,8 +375,8 @@ export interface WickSnapshot {
 export interface WickDebugApi<S = unknown> {
   /** `WICK_DEBUG_VERSION`, 1. A plain property. */
   readonly version: number;
-  /** Restores the title-screen state; `options.seed` seeds the generator. */
-  reset(state: DeepReadonly<S>, options?: ResetOptions): S;
+  /** Restores the title-screen state. */
+  reset(state: DeepReadonly<S>): S;
   /** A pure reading of `state`. Poses nothing. */
   snapshot(state: DeepReadonly<S>): WickSnapshot;
   /**
@@ -400,13 +414,18 @@ export interface WickDebugApi<S = unknown> {
   setTick(state: DeepReadonly<S>, tick: number): S;
   /** Sets `spawnTimer`, at least 0. */
   setSpawnTimer(state: DeepReadonly<S>, seconds: number): S;
-  /**
-   * Takes `draws` draws off the seeded generator and discards them, so
-   * `rngState` lands where `draws` random choices would have left it, and
-   * `0` leaves it where it stands. `draws` is a whole number of at least
-   * `0`. Nothing is chosen with what was drawn. Every screen.
-   */
-  advanceRng(state: DeepReadonly<S>, draws: number): S;
+  /** Poses the angle the next spawn point is drawn at, `0` up to `360`. */
+  setNextSpawnAngle(state: DeepReadonly<S>, degrees: number): S;
+  /** Poses the direction of the next gnat swarm, `0` up to `360`. */
+  setNextSwarmAngle(state: DeepReadonly<S>, degrees: number): S;
+  /** Poses where the next firing's first puddle lands, about the lamplighter. */
+  setNextPuddleOffset(state: DeepReadonly<S>, dx: number, dy: number): S;
+  /** Poses the enemy the next Spark firing's first strike lands on. */
+  setNextStrikeTarget(state: DeepReadonly<S>, id: number): S;
+  /** Poses the item the next chest levels, when its level rule applies. */
+  setNextChestItem(state: DeepReadonly<S>, id: string): S;
+  /** Poses what the next common kill drops in place of its roll. */
+  setNextDrop(state: DeepReadonly<S>, kind: NextDrop): S;
 
   /** Sets the lamplighter's center; nothing else moves. */
   setPlayerPosition(state: DeepReadonly<S>, x: number, y: number): S;

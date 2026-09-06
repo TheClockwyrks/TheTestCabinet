@@ -4,8 +4,7 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/evolutions.md` ("Opening a chest"), rule 2: "One held item below
 //     its max level, a base weapon below `MAX_WEAPON_LEVEL` or a passive below
-//     its own max, is chosen uniformly at random from the game's seeded
-//     generator and rises by `1`, exactly as accepting a `+1 level` offer does.
+//     its own max, is chosen uniformly at random and rises by `1`, exactly as accepting a `+1 level` offer does.
 //     The result is `{ kind: "level", item, level }`, with `level` the level it
 //     became."
 //   - `specs/evolutions.md` ("The recipe"): an evolution needs a base at

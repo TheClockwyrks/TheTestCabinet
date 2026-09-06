@@ -1,25 +1,19 @@
-// pickups/draft-rate — a draft drops at DRAFT_CHANCE.
+// pickups/draft-rate — drafts drop at DRAFT_CHANCE after a failed bread roll.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"):
-// "Probability a common kill drops a draft | `DRAFT_CHANCE` | `0.005`", drawn as
-// "Only when it did not, a second draw drops a draft when it is below
-// `DRAFT_CHANCE`." The draft draw is made only after a failed bread draw, so
-// over `DROP_ROLL_KILLS` (`4000`) kills the count is binomial with mean
-// `4000 × (1 − BREAD_CHANCE) × DRAFT_CHANCE = 19.6`. `DRAFT_COUNT_RANGE` (`3` to
-// `45`) is the interval `constants.ts` computes from that distribution: both
-// tails outside it fall under one in a hundred thousand, so a conformant build
-// lands inside it and a build that never rolls, or rolls at the wrong rate by a
-// factor of two, lands outside it every time.
+// "Probability a common kill drops a draft | `DRAFT_CHANCE` | `0.005`", and
+// "only when it dropped no bread it drops a draft with probability
+// `DRAFT_CHANCE`." Over `DROP_ROLL_KILLS` (`4000`) kills the count is binomial
+// with mean `4000 × 0.98 × 0.005 = 19.6`. `DRAFT_COUNT_RANGE` (`3` to `45`) is
+// the interval `constants.ts` computes from that distribution: both tails
+// outside it fall under one in a hundred thousand, so a conformant build lands
+// inside it and a build that never rolls for a draft, or rolls at ten times the
+// stated chance, lands outside it every time.
 //
 // WHY THE WORLD IS POSED AS IT IS. `sweepCommonKills` in `./stage` poses the
-// sample: an isolated night, every driver switch off and no slot held, so
-// `spawning` and `events` bring nothing in, no weapon of the lamplighter's own
-// draws, and the only draws the ticks make are the kills' own;
-// `DROP_ROLL_KILLS` real kills of a moth by a level-1 Ember bolt, each at its
-// own point, every one far outside the radii that attract or collect, so nothing
-// a kill drops is taken off the field before it is counted. The seed is
-// `DEFAULT_SEED` (`1`), so the sample is the same one every time this runs and
-// the reading is deterministic rather than flaky.
+// sample, as `pickups/bread-rate` describes: an isolated night with `drops`
+// alone, `DROP_ROLL_KILLS` real kills at distinct points far outside the radii
+// that attract or collect, and nothing posed for the roll itself.
 //
 // THE TOLERANCE. The interval itself is the tolerance, and it is the
 // specification's probability carried through the binomial rather than an
@@ -41,7 +35,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("drops a draft count inside the binomial interval over 4000 seeded common kills", async () => {
+it("drops a draft count inside the binomial interval over 4000 common kills", async () => {
   const sweep = await sweepCommonKills(h);
   await captureStill(h, "rate");
 
@@ -50,6 +44,6 @@ it("drops a draft count inside the binomial interval over 4000 seeded common kil
     sweep.counts.draft,
     DRAFT_COUNT_RANGE.min,
     DRAFT_COUNT_RANGE.max,
-    `the drafts dropped over ${DROP_ROLL_KILLS} kills, expected 19.6 at DRAFT_CHANCE`,
+    `the drafts dropped over ${DROP_ROLL_KILLS} kills, expected 19.6 at DRAFT_CHANCE after a failed bread roll`,
   );
 });

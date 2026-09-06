@@ -92,11 +92,17 @@ export const HANDLE = "__wick";
 /** "The surface carries `version` (`WICK_DEBUG_VERSION`, `1`), a plain number". */
 export const WICK_DEBUG_VERSION = 1;
 
-/** "`options.seed` seeds the generator, defaulting to `DEFAULT_SEED` (`1`)". */
-export const DEFAULT_SEED = 1;
+/**
+ * A posed angle, `setNextSpawnAngle` and `setNextSwarmAngle`, is "a real number
+ * of at least `0` and below `360`, measured from `+x` toward `+y`"
+ * (specs/instrumentation.md — "Drawn outcomes").
+ */
+export const POSED_ANGLE_MIN = 0;
+export const POSED_ANGLE_LIMIT = 360;
 
-/** A seed is "a whole number from `0` to `2^32 − 1`". */
-export const MAX_SEED = 2 ** 32 - 1;
+/** What `setNextDrop(kind)` takes: "one of `bread`, `draft`, and `none`". */
+export const NEXT_DROPS = ["bread", "draft", "none"] as const;
+export type NextDrop = (typeof NEXT_DROPS)[number];
 
 /**
  * The nine screens, as `snapshot().screen` names them (specs/ui.md — "Screens").
@@ -180,8 +186,13 @@ export const REQUIRED_OPS: readonly string[] = [
   // The clock
   "setTick",
   "setSpawnTimer",
-  // The generator
-  "advanceRng",
+  // Drawn outcomes
+  "setNextSpawnAngle",
+  "setNextSwarmAngle",
+  "setNextPuddleOffset",
+  "setNextStrikeTarget",
+  "setNextChestItem",
+  "setNextDrop",
   // The lamplighter
   "setPlayerPosition",
   "setFacing",
@@ -2200,6 +2211,15 @@ export const TIMER_TOL = 1e-6;
 export const ACCUMULATOR_TOL = TICK_EPSILON;
 
 /**
+ * A position the simulation integrates over a span of ticks, read against the
+ * figure the rules give it: thirty steps of `speed × TICK_DT` summed in floats
+ * stray by far less than a tenth of a unit, and a build that integrated with
+ * the frame's delta rather than the tick's strays by whole steps. A tenth of a
+ * unit is below every figure the specification states in units.
+ */
+export const INTEGRATION_TOL = 0.1;
+
+/**
  * An angle, in degrees, recovered from a position on a circle through `atan2`:
  * a lantern after `30` ticks of `180` degrees per second. The trigonometry is
  * exact to `1e-12`; `1e-6` degrees is well inside the `7.5` degrees between
@@ -2241,16 +2261,17 @@ export const SAME_COLOR_TOL = 2;
 export const GROUND_SHIFT_MATCH_MIN = 0.9;
 
 /**
- * The seeded drop roll (specs/world.md — "The drop roll"), read over a fixed
- * number of common kills.
+ * The drop roll (specs/world.md — "The drop roll"), read over a fixed number
+ * of common kills.
  *
  * `4000` kills at `BREAD_CHANCE` (`0.02`) expect `80` breads; the binomial
- * tails below `40` and above `125` each fall under one in a hundred thousand.
- * A draft is rolled only after a failed bread draw, so `4000` kills expect
- * `4000 × 0.98 × 0.005 = 19.6` drafts, and the tails below `3` and above `45`
- * fall under the same bound. A conformant build fails these by chance less
- * than once in fifty thousand runs, and a build that never rolls, or rolls at
- * the wrong rate by a factor of two, fails them every time.
+ * tails below `40` and above `125` each fall under one in a hundred thousand,
+ * and the band is nearly ten standard deviations wide. A draft drops only when
+ * no bread did, so `4000` kills expect `4000 × 0.98 × 0.005 = 19.6` drafts,
+ * and the tails below `3` and above `45` fall under the same bound. A
+ * conformant build fails these by chance less than once in fifty thousand
+ * runs, and a build that never rolls, or rolls at the wrong rate by a factor
+ * of two, fails them every time.
  */
 export const DROP_ROLL_KILLS = 4000;
 export const BREAD_COUNT_RANGE = { min: 40, max: 125 } as const;
@@ -2277,7 +2298,6 @@ export const SNAPSHOT_FIELDS = [
   "muted",
   "accumulator",
   "simTime",
-  "rngState",
 ] as const;
 
 /** The fields of `snapshot().run`. */
@@ -2311,6 +2331,12 @@ export const RUN_FIELDS = [
   "firedEvents",
   "aliveCommons",
   "nextId",
+  "nextSpawnAngle",
+  "nextSwarmAngle",
+  "nextPuddleOffset",
+  "nextStrikeTarget",
+  "nextChestItem",
+  "nextDrop",
 ] as const;
 
 /** "`player: { x, y, facing: "left" | "right", hp }`". */

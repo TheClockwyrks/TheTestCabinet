@@ -1,33 +1,36 @@
-// Wick — pickups/drafts-drop: drafts drop over a seeded sweep of common kills.
+// Wick — pickups/drafts-drop: a common kill whose roll drops a draft leaves one
+// draft at its center, beside its gem, and nothing else.
 //
-// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll") gives both
-// branches a probability above zero, `BREAD_CHANCE` (0.02) and `DRAFT_CHANCE`
-// (0.005), and specs/world.md ("Pickups") lists bread and draft as kinds "A
-// common enemy" drops "by the roll below". Over `DROP_SAMPLE` (4000) kills the
-// expected counts are 80 bread and 19.6 drafts, so a build that has wired
-// either branch up at all leaves at least one of each: the chance a conformant
-// build drops no bread is 0.98^4000, and no draft 0.99510^4000, each below
-// 1e-9. This is the point that catches a build implementing one branch and not
-// the other, which the two count points cannot separate from a rate that is
-// merely low.
+// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"): "only when
+// it dropped no bread it drops a draft with probability `DRAFT_CHANCE`. A kill
+// therefore drops at most one of the two, and the pickup lands at the enemy's
+// position beside its gem." Which way the roll falls is posed:
+// specs/instrumentation.md ("Drawn outcomes"), `setNextDrop(kind)`: "The next
+// common enemy killed by a weapon while `drops` is on drops that pickup beside
+// its gem ... in place of its roll". So a moth killed under a posed `draft`
+// leaves exactly one gem and exactly one pickup, the pickup is a draft, and
+// both stand at the moth's center.
 //
-// THE WORLD. The seeded sample of `pickups/sample.ts`: 4000 moths killed by
-// posed Ember bolts, each on a point no other kill uses, with every driver
-// switch off and no weapon held, so the drop roll is the only thing that can
-// leave a pickup anywhere.
+// THE WORLD. As `pickups/bread-drops`: an isolated night with `drops` alone,
+// the moth `KILL_DX` (500) units out, and a real kill by a posed Ember bolt.
 //
-// WHAT IS READ. The number of bread and the number of drafts the sample left,
-// each at least one.
-//
-// TOLERANCE. None on a count. The bound is the weakest one the sample admits,
-// so no conformant build fails it for a reason of luck.
-//
-// The other kind is `pickups/bread-drops`'s.
+// TOLERANCE. None on the counts and the kind; `FIGURE_TOLERANCE` on the
+// centers, copies of the posed point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
-import { createHarness, type Harness } from "../harness";
-import { drawDrops } from "./sample";
+import { assertEqual, assertLength, assertWithin } from "../assert";
+import { FIGURE_TOLERANCE } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  enable,
+  isolate,
+  type Harness,
+} from "../harness";
+import { killOne } from "./sample";
+
+/** Where the moth stands: far outside every collection distance. */
+const KILL_DX = 500;
 
 let h: Harness;
 
@@ -39,12 +42,39 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("drops at least one draft across 4000 seeded kills", async () => {
-  const sample = await drawDrops(h, "drafts");
+it("leaves one draft beside the gem of a kill posed to drop a draft", async () => {
+  isolate(h);
+  enable(h, "drops");
+  h.debug.setNextDrop("draft");
+  const kill = await killOne(h, "moth", KILL_DX, 0);
+  captureStill(h, "drafts");
 
-  assertGreaterThanOrEqual(
-    sample.counts.draft,
-    1,
-    `drafts dropped over ${sample.kills} seeded common kills`,
+  assertLength(kill.gems, 1, "the gems the kill dropped");
+  assertLength(kill.pickups, 1, "the pickups the kill dropped");
+  const [draft] = kill.pickups;
+  assertEqual(draft.kind, "draft", "the kind of the pickup the kill dropped");
+  assertWithin(
+    draft.x,
+    kill.at.x,
+    FIGURE_TOLERANCE,
+    "the draft's x, the moth's own",
+  );
+  assertWithin(
+    draft.y,
+    kill.at.y,
+    FIGURE_TOLERANCE,
+    "the draft's y, the moth's own",
+  );
+  assertWithin(
+    kill.gems[0].x,
+    kill.at.x,
+    FIGURE_TOLERANCE,
+    "the gem's x beside it",
+  );
+  assertWithin(
+    kill.gems[0].y,
+    kill.at.y,
+    FIGURE_TOLERANCE,
+    "the gem's y beside it",
   );
 });

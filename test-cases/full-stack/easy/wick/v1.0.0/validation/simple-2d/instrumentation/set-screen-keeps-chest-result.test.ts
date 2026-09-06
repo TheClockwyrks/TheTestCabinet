@@ -3,7 +3,7 @@
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`: "Nothing
 // else changes: the run, the loadout, `offers`, `nextOffers`, `chestResult`,
-// `pendingLevelUps`, `rngState`, `simTime`, and the driver switches all stand
+// `pendingLevelUps`, every posed outcome, `simTime`, and the driver switches all stand
 // exactly as they were", and "The pose sets the screen and nothing else".
 // Closing the overlay is `confirm`'s, as specs/progression.md states,
 // "`confirm` closes it, setting `chestResult` to `null` and `screen` to

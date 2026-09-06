@@ -4,8 +4,8 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // `setScreen`: "Sets `screen` to `name` ... with `menuIndex`, `almanacTab`,
 // and `almanacScroll` all `0`. Nothing else changes: the run, the loadout,
-// `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, `rngState`,
-// `simTime`, and the driver switches all stand exactly as they were", and
+// `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, every posed
+// outcome, `simTime`, and the driver switches all stand exactly as they were", and
 // "Applies on every screen". Coming back off a pause is the case where the
 // whole run has to survive the pose intact, which is what this reads.
 //

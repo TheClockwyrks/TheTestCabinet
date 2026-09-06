@@ -72,7 +72,12 @@ export type Facing = "left" | "right";
 
 /** The six kinds of zone. */
 export type ZoneKind =
-  "puddle" | "lantern" | "aura" | "slash" | "strike" | "burst";
+  | "puddle"
+  | "lantern"
+  | "aura"
+  | "slash"
+  | "strike"
+  | "burst";
 
 /** What the open chest overlay reports. */
 export type ChestResult =
@@ -82,7 +87,12 @@ export type ChestResult =
 
 /** The weapons `spawnProjectile` takes. */
 export type ProjectileWeapon =
-  "ember" | "pin" | "shard" | "sconce" | "beacon" | "hail";
+  | "ember"
+  | "pin"
+  | "shard"
+  | "sconce"
+  | "beacon"
+  | "hail";
 
 /** The weapons `spawnPuddle` takes. */
 export type PuddleWeapon = "oil-splash" | "blaze";
@@ -124,7 +134,12 @@ export const REQUIRED_OPS = [
   "setProgression",
   "setTick",
   "setSpawnTimer",
-  "advanceRng",
+  "setNextSpawnAngle",
+  "setNextSwarmAngle",
+  "setNextPuddleOffset",
+  "setNextStrikeTarget",
+  "setNextChestItem",
+  "setNextDrop",
   "setPlayerPosition",
   "setFacing",
   "setHp",
@@ -160,10 +175,8 @@ export const REQUIRED_OPS = [
 /** The name of one operation the surface carries. */
 export type OperationName = (typeof REQUIRED_OPS)[number];
 
-/** `reset`'s options: the seed the generator is laid with. */
-export interface ResetOptions {
-  readonly seed?: number;
-}
+/** What `setNextDrop(kind)` poses for the next common kill's roll. */
+export type NextDrop = "bread" | "draft" | "none";
 
 /**
  * One rectangle of a menu or a tab bar, in STAGE coordinates: `0` to `STAGE_W`
@@ -309,6 +322,13 @@ export interface SnapshotRun {
   /** Live commons other than gnats: the count held against the cap. */
   aliveCommons: number;
   nextId: number;
+  /** The posed outcomes, each `null` while none is posed. */
+  nextSpawnAngle: number | null;
+  nextSwarmAngle: number | null;
+  nextPuddleOffset: { x: number; y: number } | null;
+  nextStrikeTarget: number | null;
+  nextChestItem: string | null;
+  nextDrop: NextDrop | null;
 }
 
 /**
@@ -341,7 +361,6 @@ export interface WickSnapshot {
   accumulator: number;
   /** Accumulated simulation time, in seconds, on every screen. */
   simTime: number;
-  rngState: number;
 }
 
 /**
@@ -362,12 +381,10 @@ export interface WickDebugApi {
   /**
    * Restores every declared field to its title-screen value: `title` with
    * `menuIndex`, `almanacTab`, and `almanacScroll` all `0`, the idle run, the
-   * accumulator and `simTime` at `0`, every
-   * driver switch on. `options.seed` seeds the generator, defaulting to
-   * `DEFAULT_SEED` (`1`). `muted` stays as it is; any loop stops on the next
-   * tick.
+   * accumulator and `simTime` at `0`, every driver switch on. `muted` stays
+   * as it is; any loop stops on the next tick.
    */
-  reset(options?: ResetOptions): void;
+  reset(): void;
   /** A pure read of the state; changes nothing. */
   snapshot(): WickSnapshot;
   /**
@@ -390,8 +407,9 @@ export interface WickDebugApi {
   /**
    * Sets `screen` to `name`, with `menuIndex`, `almanacTab`, and
    * `almanacScroll` all `0`. Nothing else changes: the run, the loadout,
-   * `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, `rngState`,
-   * `simTime`, and the switches all stand as they were, and no cue sounds. A
+   * `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, every posed
+   * outcome, `simTime`, and the switches all stand as they were, and no cue
+   * sounds. A
    * call that leaves `playing` discards the accumulator. Every screen.
    */
   setScreen(name: Screen): void;
@@ -415,13 +433,18 @@ export interface WickDebugApi {
   setTick(tick: number): void;
   /** Sets `spawnTimer`, at least `0`. A run screen. */
   setSpawnTimer(seconds: number): void;
-  /**
-   * Takes `draws` draws off the seeded generator and discards them, so
-   * `rngState` lands where `draws` random choices would have left it, and
-   * `0` leaves it where it stands. `draws` is a whole number of at least
-   * `0`. Nothing is chosen with what was drawn. Every screen.
-   */
-  advanceRng(draws: number): void;
+  /** Poses the angle the next spawn point is drawn at, `0` up to `360`. A run screen. */
+  setNextSpawnAngle(degrees: number): void;
+  /** Poses the direction of the next gnat swarm, `0` up to `360`. A run screen. */
+  setNextSwarmAngle(degrees: number): void;
+  /** Poses where the next firing's first puddle lands, about the lamplighter. A run screen. */
+  setNextPuddleOffset(dx: number, dy: number): void;
+  /** Poses the enemy the next Spark firing's first strike lands on. A run screen. */
+  setNextStrikeTarget(id: number): void;
+  /** Poses the item the next chest levels, when its level rule applies. A run screen. */
+  setNextChestItem(id: string): void;
+  /** Poses what the next common kill drops in place of its roll. A run screen. */
+  setNextDrop(kind: NextDrop): void;
 
   /** Sets the lamplighter's center; nothing else moves. A run screen. */
   setPlayerPosition(x: number, y: number): void;

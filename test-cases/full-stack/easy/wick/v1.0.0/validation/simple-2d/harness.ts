@@ -30,7 +30,7 @@
 //
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. `specs/instrumentation.md`
 // fixes its operations, so they mean the same thing in every build; posing
-// through it is how a scenario is reproducible, and it is the seam the case's
+// through it is how a scenario is stated, and it is the seam the case's
 // specification documents. `surface.ts` is that specification as types, and it
 // is the only description of the surface this harness reads: the build's own
 // module for it is never imported.
@@ -168,6 +168,7 @@ import {
   SWITCH_NAMES,
   SWITCH_OPS,
   type ChestResult,
+  type NextDrop,
   type EnemySnapshot,
   type Facing,
   type GemSnapshot,
@@ -841,8 +842,8 @@ export interface Harness {
 
   /** A fresh read of the game's state through the case's `snapshot`. */
   snapshot(): WickSnapshot;
-  /** `debug.reset`, with `seed` seeding the generator when given. */
-  reset(seed?: number): void;
+  /** `debug.reset`: the boot state, on `title`, every switch on. */
+  reset(): void;
   /** Run `frames` frames of the harness's clock, back to back. */
   advance(frames: number): Promise<void>;
   /** Run `ticks` whole frames of the harness's clock, and read what they left. */
@@ -1384,8 +1385,8 @@ export async function createHarness(
     timeMs: () => base.timeMs(),
 
     snapshot: () => debug.snapshot(),
-    reset: (seed) => {
-      debug.reset(seed === undefined ? undefined : { seed });
+    reset: () => {
+      debug.reset();
     },
 
     advance: (frames) => drive(frames),
@@ -1859,8 +1860,6 @@ export function setSwitch(h: Harness, name: SwitchName, on: boolean): void {
 }
 
 export interface IsolateOptions {
-  /** The seed `reset` lays the generator with. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /**
    * The level the run is posed at. Left as the fresh run's `1` when it is not
    * given: an isolated world holds the level the check posed, because the
@@ -1897,7 +1896,7 @@ export function isolate(
   h: Harness,
   options: IsolateOptions = {},
 ): WickSnapshot {
-  h.reset(options.seed);
+  h.reset();
   h.debug.setScreen("playing");
   h.debug.clearEnemies();
   h.debug.clearProjectiles();
@@ -1931,11 +1930,8 @@ export function disable(h: Harness, ...switches: readonly SwitchName[]): void {
  * menu points and pass the others. The confirming frame runs the run's first
  * tick, as specs/controls.md states.
  */
-export async function startPlay(
-  h: Harness,
-  seed?: number,
-): Promise<WickSnapshot> {
-  h.reset(seed);
+export async function startPlay(h: Harness): Promise<WickSnapshot> {
+  h.reset();
   return tap(h, "Enter");
 }
 
@@ -1967,8 +1963,8 @@ export function poseScene(
  * of one operation: `setScreen` sets the screen alone, so the loadout the
  * fresh run carries is put there by the pose that puts weapons in slots.
  */
-export function freshRun(h: Harness, seed?: number): WickSnapshot {
-  h.reset(seed);
+export function freshRun(h: Harness): WickSnapshot {
+  h.reset();
   h.debug.setScreen("playing");
   h.debug.setWeapon(0, "taper", 1);
   return h.snapshot();
@@ -2236,6 +2232,12 @@ export interface RunFields {
   spawnTimer: number;
   firedEvents: number[];
   nextId: number;
+  nextSpawnAngle: number | null;
+  nextSwarmAngle: number | null;
+  nextPuddleOffset: { x: number; y: number } | null;
+  nextStrikeTarget: number | null;
+  nextChestItem: string | null;
+  nextDrop: NextDrop | null;
 }
 
 /**
@@ -2270,6 +2272,12 @@ export function runFields(run: RunSnapshot): RunFields {
     spawnTimer: run.spawnTimer,
     firedEvents: run.firedEvents,
     nextId: run.nextId,
+    nextSpawnAngle: run.nextSpawnAngle,
+    nextSwarmAngle: run.nextSwarmAngle,
+    nextPuddleOffset: run.nextPuddleOffset,
+    nextStrikeTarget: run.nextStrikeTarget,
+    nextChestItem: run.nextChestItem,
+    nextDrop: run.nextDrop,
   };
 }
 

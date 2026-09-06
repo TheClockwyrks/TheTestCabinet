@@ -20,7 +20,7 @@
 //
 // HOW `d` IS RECOVERED. `director/swarms.ts` states it: the mean of the
 // twenty-four positions is the line's center, and `d` is the unit vector to it.
-// No angle is assumed, because the angle is drawn from the seeded generator.
+// No angle is assumed, because the angle is drawn at random.
 //
 // WHY THE DRIFT IS FILMED. The heading is read on the spawn tick, before
 // anything has moved. The ticks after it are run with `enemyMotion` on for the

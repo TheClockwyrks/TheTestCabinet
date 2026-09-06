@@ -1,7 +1,7 @@
 // Wick — instrumentation/frame-consumes-whole-ticks: on `playing`, one frame
 // worth `0.04` s consumes exactly two ticks.
 //
-// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "A deterministic
+// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "A render-free
 // core" and `advance(seconds)`): "each frame's delta time joins the
 // accumulator, every whole `TICK_DT` in it is consumed as a tick, and the
 // remainder waits for the next frame"; "on `playing` the delta joins the

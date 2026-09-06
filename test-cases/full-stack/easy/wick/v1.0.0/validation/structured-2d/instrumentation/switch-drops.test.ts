@@ -1,13 +1,15 @@
 // Wick — instrumentation/switch-drops: with `setDrops(false)`, a moth killed by
-// a puddle leaves neither its gem nor a pickup and draws nothing; with the
-// switch back on, the next kill leaves its gem.
+// a puddle leaves neither its gem nor a pickup and makes no drop roll; with
+// the switch back on, the next kill leaves its gem and the drop its roll
+// gives it.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, the
 // switch table, `drops`: on, "An enemy that dies leaves what `specs/world.md`
-// gives it: a common's gem and the bread or draft its roll draws, and an
-// elite's chest"; off, "A death leaves nothing on the field and draws nothing
-// from the generator. The enemy still dies, still counts as a kill, and still
-// sounds." "turning one back on resumes that faculty from the next tick".
+// gives it: a common's gem and the bread or draft its roll drops, and an
+// elite's chest"; off, "A death leaves nothing on the field and makes no drop
+// roll, so a posed `nextDrop` stands. The enemy still dies, still counts as a
+// kill, and still sounds." "turning one back on resumes that faculty from the
+// next tick".
 // `specs/world.md`, "Gems": "While `drops` is on, every common enemy drops one
 // gem of the tier `specs/enemies.md` lists for its type, at the enemy's
 // position, on the tick it dies", which for a moth is `small`
@@ -20,15 +22,14 @@
 // of those, which is what tells this point apart from a build that stopped
 // killing.
 //
-// WHY THE GENERATOR IS READ. "draws nothing from the generator" is the half of
-// the rule the field cannot show: a build that rolled for bread and discarded
-// the result leaves the same empty field and a moved `rngState`, and every
-// seeded scenario after it draws a different sequence. With every switch off
-// the only source of a draw on a `playing` tick is the drop roll — a spawn's
-// angle and type, an offer draw, a puddle's landing point, a strike's target,
-// a swarm's direction, and a chest's item all belong to faculties this world
-// holds — so `rngState` across the killing tick is exactly the draw the death
-// made.
+// WHY A DROP IS POSED. "makes no drop roll" is the half of the rule the field
+// cannot show on its own: a build that rolled for bread and discarded the
+// result leaves the same empty field. `setNextDrop("bread")` is what makes
+// the roll readable: "The next common enemy killed by a weapon while `drops`
+// is on drops that pickup ... and that kill consumes it. A death while
+// `drops` is off ... leave[s] it standing" (`specs/instrumentation.md`, Drawn
+// outcomes). So the off kill leaves `nextDrop` posed, and the on kill drops
+// the bread and consumes it.
 //
 // THE DRIVE. An isolated run with every switch off. A moth is posed at the
 // damage of a level-1 Oil Splash puddle standing on its own center, which
@@ -40,11 +41,11 @@
 // collection distance, so a drop that landed would still be lying there when
 // the snapshot is read.
 //
-// THE TOLERANCE. None: list lengths, a whole kill count, and a generator state
-// compared for equality.
+// THE TOLERANCE. None: list lengths, a whole kill count, and a posed value
+// read back.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertNotEqual } from "../assert";
+import { assertEqual, assertLength, assertNull } from "../assert";
 import { ENEMIES, OIL_SPLASH_LEVELS } from "../constants";
 import {
   advanceTicks,
@@ -85,6 +86,7 @@ async function killAt(x: number): Promise<[WickSnapshot, WickSnapshot]> {
 
 it("leaves a death empty-handed while off and drops the gem when on", async () => {
   isolate(h);
+  h.debug.setNextDrop("bread");
 
   const [before, killed] = await killAt(AWAY);
   captureStill(h, "held");
@@ -100,9 +102,9 @@ it("leaves a death empty-handed while off and drops the gem when on", async () =
     "the pickups that death left with drops off",
   );
   assertEqual(
-    killed.rngState,
-    before.rngState,
-    "rngState across the killing tick with drops off (specs/instrumentation.md: draws nothing from the generator)",
+    killed.run.nextDrop,
+    "bread",
+    "nextDrop across the killing tick with drops off (specs/instrumentation.md: makes no drop roll, so a posed nextDrop stands)",
   );
 
   enable(h, "drops");
@@ -119,9 +121,18 @@ it("leaves a death empty-handed while off and drops the gem when on", async () =
     ENEMIES.moth.gem,
     "the tier of the gem a moth's death dropped (specs/enemies.md, the moth row)",
   );
-  assertNotEqual(
-    dropped.rngState,
-    held.rngState,
-    "rngState across the killing tick with drops on (specs/world.md, The drop roll: a common's death draws)",
+  assertLength(
+    dropped.run.pickups,
+    1,
+    "the pickups that death left with drops on, the posed bread",
+  );
+  assertEqual(
+    dropped.run.pickups[0]?.kind,
+    "bread",
+    "the kind of the pickup the kill dropped, as posed",
+  );
+  assertNull(
+    dropped.run.nextDrop,
+    "nextDrop across the killing tick with drops on (specs/instrumentation.md: that kill consumes it)",
   );
 });

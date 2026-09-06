@@ -14,10 +14,10 @@
 // puddle of radius `50`. So a moth at the landing point has `hp` below what it
 // was posed with on the firing tick itself.
 //
-// THE POSE. The shared `fireOntoEnemy` (`oil-splash/stage.ts`): two isolated
-// nights from one seed with the same operations, the first learning where the
-// level-1 puddle lands with a moth far outside the disk, the second with the
-// moth posed at that point before the firing tick. Every faculty but
+// THE POSE. The shared `fireOntoEnemy` (`oil-splash/stage.ts`): an isolated
+// night with the level-1 puddle's landing point posed through
+// `setNextPuddleOffset` and the moth posed at that point before the firing
+// tick. Every faculty but
 // `weaponFire` is held, so the moth stands where it was posed and nothing else
 // touches it. A moth is the probe because its `5` hp outlives the row's
 // `4` damage, so the reading is a lowered `hp` rather than a death.

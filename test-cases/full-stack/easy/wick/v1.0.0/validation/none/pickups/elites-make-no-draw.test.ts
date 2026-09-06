@@ -1,57 +1,43 @@
-// pickups/elites-make-no-draw — an elite kill draws for no pickup.
+// pickups/elites-make-no-draw — an elite kill makes no drop roll.
 //
-// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"): "Each common
-// enemy killed by a weapon draws from the game's seeded random generator on the
-// tick it dies ... Elites and the Dark make no draw; an elite drops its chest,
-// and the Dark drops nothing." specs/enemies.md ("Drops") gives an elite one
-// chest and no gem. specs/instrumentation.md ("A deterministic core") makes the
-// absence of a draw readable: the game "holds one pseudo-random generator ...
-// keeping its whole state in `rngState`, and every random draw comes from it".
-// So the tick of an elite kill leaves `rngState` exactly as it found it, and
-// leaves exactly one chest and no gem. A build that runs the common roll for
-// every kill advances the generator on each of these ticks and, once in fifty,
-// leaves a bread or a draft beside the chest.
+// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"): "each
+// common enemy killed by a weapon rolls for a pickup on the tick it dies ...
+// Elites and the Dark make no roll; an elite drops its chest, and the Dark
+// drops nothing." specs/enemies.md ("Drops") gives an elite one chest and no
+// gem. specs/instrumentation.md ("Drawn outcomes") makes the absence of a roll
+// readable: `setNextDrop(kind)` is consumed by "the next common enemy killed
+// by a weapon while `drops` is on", and "an elite's death, and the Dark's death
+// leave it standing". So the tick of an elite kill leaves exactly one chest, no
+// gem, and the posed `nextDrop` exactly as it found it. A build that runs the
+// common roll for every kill consumes the pose on the first elite and, with
+// `bread` posed, leaves a bread beside the chest.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night with `drops` alone turned
-// back on, which is the faculty the draw belongs to: `spawning` and `events`
-// off, so no spawn angle or type is drawn; no weapon held, so nothing of the
-// lamplighter's own draws a puddle's landing point, a strike's target, or a
-// swarm's direction; every other switch off and nothing else alive, so the tick
-// that is read holds one death and nothing else. Each mothwing stands at its own
-// point, `KILL_POINTS` apart and at least `500` units from the lamplighter, far
-// outside the pickup collection distance, so its chest lies where it dropped
-// rather than opening an overlay. The kill is the real one: the elite's health
-// is posed down with `setEnemyHp`, and a level-1 Ember bolt posed on its center
-// carries `10` damage, so the next tick's phase 6 takes it below `0`. `ROUNDS`
-// (`20`) ticks are read one at a time, because one unchanged reading could be a
-// generator that happens to return to its state and twenty cannot.
+// back on, which is the faculty the roll belongs to; no weapon held, so nothing
+// of the lamplighter's own fires; every other switch off and nothing else
+// alive, so the tick that is read holds one death and nothing else. Each
+// mothwing stands at its own point, `killPoint`s apart and at least `500` units
+// from the lamplighter, far outside the pickup collection distance, so its
+// chest lies where it dropped rather than opening an overlay. The kill is the
+// real one: the elite's health is posed down with `setEnemyHp`, and a level-1
+// Ember bolt posed on its center carries `10` damage, so the next tick's phase
+// 6 takes it below `0`. `ROUNDS` (`20`) kills are read one at a time under one
+// standing pose.
 //
-// THE TOLERANCE. None on `rngState`, "a whole number", or on the counts;
-// `POSITION_TOL` (`1e-6`) on the chest's center, a copy of the posed one.
+// THE TOLERANCE. None on the counts and the pose; `POSITION_TOL` on the chest's
+// center, a copy of the posed one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertNear } from "../assert";
 import { POSITION_TOL } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  isolate,
-  newGems,
-  newPickups,
-  placeEnemy,
-  placeProjectile,
-  type Harness,
-} from "../harness";
-import { killPoint } from "./stage";
-
-/** The elite each kill is: specs/enemies.md gives it rank `elite` and a chest. */
-const ELITE = "mothwing";
-
-/** The health it is posed at: low enough for one level-1 bolt to end it. */
-const POSED_HP = 1;
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
+import { killCommon, killPoint } from "./stage";
 
 /** Elite kills read, one tick each. */
 const ROUNDS = 20;
+
+/** The drop posed for the next common kill, which no elite may consume. */
+const POSED = "bread";
 
 let h: Harness;
 
@@ -63,45 +49,34 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves rngState untouched and exactly one chest on each of twenty elite kills", async () => {
+it("leaves the posed drop standing and exactly one chest on each of twenty elite kills", async () => {
   await isolate(h, { on: ["drops"] });
+  await h.debug.setNextDrop(POSED);
 
   for (let round = 0; round < ROUNDS; round += 1) {
-    const at = killPoint(round);
-    const elite = await placeEnemy(h, ELITE, at.x, at.y);
-    await h.debug.setEnemyHp(elite.id, POSED_HP);
-    await placeProjectile(h, "ember", at.x, at.y, 0, 0, 0);
-    const before = await h.snapshot();
-
-    const after = await h.step(1);
+    const kill = await killCommon(h, "mothwing", killPoint(round));
 
     assertEqual(
-      after.run.kills,
-      before.run.kills + 1,
-      `the kills the tick of elite ${round} made`,
+      kill.after.run.nextDrop,
+      POSED,
+      `nextDrop after the tick of elite ${round}, which makes no roll`,
     );
-    assertEqual(
-      after.rngState,
-      before.rngState,
-      `the generator's state after the tick of elite ${round}`,
-    );
+    assertLength(kill.gems, 0, `the gems the tick of elite ${round} dropped`);
     assertLength(
-      newGems(before, after),
-      0,
-      `the gems the tick of elite ${round} dropped`,
+      kill.pickups,
+      1,
+      `the pickups the tick of elite ${round} dropped`,
     );
-    const dropped = newPickups(before, after);
-    assertLength(dropped, 1, `the pickups the tick of elite ${round} dropped`);
-    assertEqual(dropped[0]!.kind, "chest", `the drop of elite ${round}`);
+    assertEqual(kill.pickups[0]!.kind, "chest", `the drop of elite ${round}`);
     assertNear(
-      dropped[0]!.x,
-      at.x,
+      kill.pickups[0]!.x,
+      kill.at.x,
       POSITION_TOL,
       `the chest's x after the tick of elite ${round}`,
     );
     assertNear(
-      dropped[0]!.y,
-      at.y,
+      kill.pickups[0]!.y,
+      kill.at.y,
       POSITION_TOL,
       `the chest's y after the tick of elite ${round}`,
     );

@@ -2,7 +2,7 @@
 // discards the frame's remainder.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
-//   - `specs/instrumentation.md` ("A deterministic core"): "A tick that leaves
+//   - `specs/instrumentation.md` ("A render-free core"): "A tick that leaves
 //     `playing`, by opening an overlay or ending the run, is the last tick its
 //     frame runs, and the remainder is discarded ... On every other screen a
 //     frame ticks nothing and the accumulator holds `0`."

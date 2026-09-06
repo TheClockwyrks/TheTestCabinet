@@ -14,7 +14,7 @@
 // WHAT IS ASSERTED, AND IN WHICH DIRECTION. That the chest did NOT evolve: no
 // slot holds Pyre, Taper is still held as a base weapon, and the result is a
 // level rather than an evolve. WHICH of the two items the chest levelled is
-// drawn "uniformly at random from the game's seeded generator", so this check
+// drawn "uniformly at random", so this check
 // reads neither the item nor its new level — a chest that levels Taper from 7
 // to 8 is as conformant as one that levels Wick, and `chest-fallback-level`
 // is where the level result itself is graded.

@@ -18,7 +18,7 @@
 //
 // WHY THE CLOCK IS POSED ONE TICK SHORT. `setTick` "Sets `tick` to `tick`"
 // and the frame that draws the HUD runs a tick of its own on `playing`
-// (`specs/instrumentation.md`, "A deterministic core"), so each frame is posed at
+// (`specs/instrumentation.md`, "A render-free core"), so each frame is posed at
 // the tick before the one it is read at. The last of the four is why: at tick
 // `36000` the run ends at dawn (`specs/world.md`, "Fallen and dawn"), so `35999`
 // is the last tick a HUD is drawn on and it can only be reached by posing
