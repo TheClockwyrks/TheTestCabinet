@@ -134,7 +134,6 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   requirement concerns; an absent body is not advanced, not drawn, and collides
   with nothing. `reset()` restores every declared field at once, and is the only
   operation that does more than one thing.
-- `setSeed(seed)` — seed the generator the serve's direction is drawn from.
 - `setScreen`, `setMode`, `setMenuIndex`, `setTitleIndex`, `setResumeScreen`,
   `setScore`, `setWinner`, `setReceiver` — the screens, the menus, and the match.
 - `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)` and
@@ -144,7 +143,8 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   paddle moves at; a paddle's `vy` is the velocity the last frame actually
   integrated, and the two are separate fields.
 - `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld` and
-  `setBallHoldTimer` — the ball. Setting the hold timer to `0` ends the hold, and
+  `setBallHoldTimer`, `setBallServeSign`, `drawBallServeSign` — the ball. Setting
+  the hold timer to `0` ends the hold, and
   the build's own rule serves the ball on the next frame.
 - `setAiTracking(enabled)` and `setAiMovement(enabled)` — the AI's two faculties,
   gated on their own: sensing the ball, and travelling toward what it senses.
@@ -244,7 +244,7 @@ src/
   debug.ts            The window.__carom surface over CaromState
   game.ts             The state contract, the state machine, and the three
                       functions the runtime drives
-  rng.ts              The seeded generator, over CaromState.rngState
+  random.ts           The serve sign draw a parked ball takes
   entities.ts         Paddle and ball arithmetic and geometry
   trail.ts            The ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision, the spin mechanic

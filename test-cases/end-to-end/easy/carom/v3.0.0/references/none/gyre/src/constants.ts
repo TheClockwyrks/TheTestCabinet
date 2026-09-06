@@ -172,7 +172,6 @@ export const MATCHOVER_ITEMS = ["PLAY AGAIN", "MENU"] as const;
 /** The surface's version, reported as `version` and bumped when it changes. */
 export const CAROM_DEBUG_VERSION = 1;
 
-
 // ---- Input actions (specs/modes/*.md) ------------------------------------
 
 /**

@@ -18,7 +18,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -326,8 +325,7 @@ describe("initialization", () => {
     expect(opened.score).toEqual({ p1: 0, p2: 0 });
     expect(opened.winner).toBeNull();
     expect(opened.receiver).toBe("left");
-    expect(opened.seed).toBe(DEFAULT_SEED);
-    expect(opened.rngState).toBe(DEFAULT_SEED);
+    expect(Math.abs(opened.ball?.serveSign ?? 0)).toBe(1);
     expect(opened.simTime).toBe(0);
     for (const side of ["left", "right"] as const) {
       expect(opened.paddles[side]).toEqual({
@@ -347,6 +345,7 @@ describe("initialization", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
     expect(opened.obstacles).toEqual(
@@ -723,22 +722,24 @@ describe("serving", () => {
     ).toBeCloseTo(SERVE_ANGLE, 9);
   });
 
-  it("replays the same serve from the same seed", () => {
-    const other = createHarness();
-    try {
-      for (const h of [harness, other]) {
-        h.debug.setSeed(4242);
-        h.debug.setMode("versus");
-        h.debug.setScreen("countdown");
-        h.debug.setBallHoldTimer(0);
-        h.run(1);
-      }
-      expect(other.debug.snapshot().ball?.vy).toBe(
-        harness.debug.snapshot().ball?.vy,
-      );
-    } finally {
-      other.dispose();
+  it("serves with the sign the ball holds, and leaves it as it is", () => {
+    for (const sign of [-1, 1] as const) {
+      openCountdown(harness, "versus");
+      harness.debug.setBallServeSign(sign);
+      harness.debug.setBallHoldTimer(0);
+      harness.run(1);
+      expect(Math.sign(harness.debug.snapshot().ball?.vy ?? 0)).toBe(sign);
+      expect(harness.debug.snapshot().ball?.serveSign).toBe(sign);
     }
+  });
+
+  it("draws the serve sign afresh whenever the ball is parked", () => {
+    const signs = new Set<number>();
+    for (let i = 0; i < 200 && signs.size < 2; i++) {
+      harness.debug.spawnBall();
+      signs.add(harness.debug.snapshot().ball?.serveSign ?? 0);
+    }
+    expect(signs).toEqual(new Set([-1, 1]));
   });
 
   it("does not serve a field with no ball on it", () => {
@@ -846,6 +847,7 @@ describe("scoring", () => {
       y: FIELD_CY,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
 
@@ -1167,7 +1169,6 @@ describe("window.__carom", () => {
     debug.setScore(3, 4);
     debug.setWinner("right");
     debug.setReceiver("right");
-    debug.setSeed(99);
     debug.setPaddleCy("left", 200);
     debug.setPaddleVy("left", 150);
     debug.setPaddleDriven("left", true);
@@ -1190,8 +1191,6 @@ describe("window.__carom", () => {
       score: { p1: 3, p2: 4 },
       winner: "right",
       receiver: "right",
-      seed: 99,
-      rngState: 99,
       ai: { tracking: false, movement: false },
       autoStep: true,
     });
@@ -1316,7 +1315,6 @@ describe("window.__carom", () => {
     rally(harness, "solo", { x: 300, y: 200, vx: 400, vy: 0 });
     harness.debug.setScore(3, 5);
     harness.debug.setTitleIndex(2);
-    harness.debug.setSeed(77);
     takePaddles(harness, 300);
     harness.debug.setAiTracking(false);
     harness.debug.clearWorld();
@@ -1333,8 +1331,6 @@ describe("window.__carom", () => {
       score: { p1: 0, p2: 0 },
       winner: null,
       receiver: "left",
-      seed: DEFAULT_SEED,
-      rngState: DEFAULT_SEED,
       simTime: 0,
       ai: { tracking: true, movement: true },
     });
@@ -1437,7 +1433,6 @@ describe("the manual clock", () => {
     try {
       for (const h of [coarse, fine]) {
         h.debug.setAutoStep(false);
-        h.debug.setSeed(7);
         rally(h, "versus", pose);
       }
       coarse.debug.advance(0.5, 1);

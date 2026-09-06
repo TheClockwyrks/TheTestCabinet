@@ -17,13 +17,8 @@
 // `spawnObstacle`), so the ball is a record or `null` and the obstacles are the
 // ones present rather than a fixed pair.
 
-import {
-  DEFAULT_SEED,
-  FIELD_CX,
-  FIELD_CY,
-  HOLD_TIME,
-  OBSTACLE_CENTERS,
-} from "./constants";
+import { FIELD_CX, FIELD_CY, HOLD_TIME, OBSTACLE_CENTERS } from "./constants";
+import { drawServeSign } from "./random";
 
 /**
  * The top-level state machine (specs/ui.md). `countdown` and `playing` both
@@ -93,6 +88,11 @@ export interface BallState {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /**
+   * The vertical sign the serve takes, drawn afresh whenever the ball is parked
+   * and posed by the debug surface (specs/balls.md).
+   */
+  serveSign: 1 | -1;
   /** Recent positions, oldest first, spanning the last TRAIL_TIME seconds. */
   trail: TrailSample[];
 }
@@ -158,10 +158,6 @@ export interface CaromState {
    * muting; this is the game's readable copy of it (specs/audio.md).
    */
   muted: boolean;
-  /** The seed the game's generator was last seeded from. */
-  seed: number;
-  /** That generator's whole state, as a single number. */
-  rngState: number;
 }
 
 // ---- The world -----------------------------------------------------------
@@ -187,6 +183,7 @@ export function parkBall(ball: BallState): void {
   ball.held = true;
   ball.holdTimer = HOLD_TIME;
   ball.trail.length = 0;
+  ball.serveSign = drawServeSign();
 }
 
 /** A ball placed as `spawnBall` places it. */
@@ -199,6 +196,7 @@ export function createBall(): BallState {
     spin: 0,
     held: true,
     holdTimer: HOLD_TIME,
+    serveSign: 1,
     trail: [],
   };
   parkBall(ball);
@@ -276,8 +274,6 @@ export function createInitialState(): CaromState {
     obstacles: allObstacles(),
     simTime: 0,
     muted: false,
-    seed: DEFAULT_SEED,
-    rngState: DEFAULT_SEED,
   };
 }
 
@@ -285,8 +281,8 @@ export function createInitialState(): CaromState {
  * Every declared field the title screen fixes, back to its title-screen value.
  *
  * The three transitions that reach the title differ only in what they do with the
- * five fields specs/ui.md carries across — `titleIndex`, `simTime`, `muted`,
- * `seed`, `rngState` — and with `menuIndex`, so all of that is left to the
+ * three fields specs/ui.md carries across — `titleIndex`, `simTime`, `muted` —
+ * and with `menuIndex`, so all of that is left to the
  * callers below and none of it is touched here.
  */
 function toTitleState(state: CaromState): void {
@@ -309,7 +305,7 @@ function toTitleState(state: CaromState): void {
  * Return to the title the way the game does: quitting from the pause menu,
  * leaving the match-over screen, or backing out of how-to-play.
  *
- * `titleIndex`, `simTime`, `muted`, `seed` and `rngState` keep their values, and
+ * `titleIndex`, `simTime` and `muted` keep their values, and
  * the selection lands on the item that led away from the title (specs/ui.md).
  */
 export function returnToTitle(state: CaromState): void {
@@ -320,8 +316,8 @@ export function returnToTitle(state: CaromState): void {
 /**
  * The debug surface's `reset`: the title-screen state, whole.
  *
- * Beyond a return to the title it also starts the clock over, reseeds the
- * generator, and puts both menu selections back at the first item. The mute bit
+ * Beyond a return to the title it also starts the clock over and puts both menu
+ * selections back at the first item. The mute bit
  * is deliberately untouched — it is a player preference the runtime owns — and so
  * is the auto-step setting, which is the clock's rather than the state's.
  */
@@ -330,8 +326,6 @@ export function resetState(state: CaromState): void {
   state.menuIndex = 0;
   state.titleIndex = 0;
   state.simTime = 0;
-  state.seed = DEFAULT_SEED;
-  state.rngState = DEFAULT_SEED;
 }
 
 /**

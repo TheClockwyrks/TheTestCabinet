@@ -17,7 +17,6 @@ import {
   BALL_HOMES,
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -388,8 +387,6 @@ describe("initialization", () => {
     expect(state.score).toEqual({ p1: 0, p2: 0 });
     expect(state.winner).toBeNull();
     expect(state.ai).toEqual({ tracking: true, movement: true });
-    expect(state.seed).toBe(DEFAULT_SEED);
-    expect(state.rngState).toBe(DEFAULT_SEED);
     expect(state.simTime).toBe(0);
 
     for (const side of ["left", "right"] as const) {
@@ -414,6 +411,7 @@ describe("initialization", () => {
         spin: 0,
         held: true,
         holdTimer: HOLD_TIME,
+        launchAngle: expect.any(Number),
         trail: [],
       });
     });
@@ -594,37 +592,31 @@ describe("launching", () => {
     }
   });
 
-  it("draws a fresh angle for every launch, over the whole circle", () => {
+  it("draws a fresh angle over the whole circle whenever a ball is parked", () => {
+    openMatch(harness, "versus");
     const quadrants = new Set<number>();
-    for (let seed = 1; seed <= 40; seed++) {
-      openMatch(harness, "versus");
-      harness.debug.setSeed(seed);
-      endHolds(harness);
-      harness.run(1);
-      for (const ball of harness.debug.snapshot().balls) {
-        const angle = Math.atan2(ball.vy, ball.vx) + Math.PI;
-        quadrants.add(Math.floor(angle / (Math.PI / 2)) % 4);
-      }
+    for (let i = 0; i < 200 && quadrants.size < 4; i++) {
+      harness.debug.spawnBall(0);
+      const angle = harness.debug.snapshot().balls[0].launchAngle;
+      quadrants.add(Math.floor(angle / (Math.PI / 2)) % 4);
     }
     expect(quadrants).toEqual(new Set([0, 1, 2, 3]));
   });
 
-  it("replays the same three launches from the same seed", () => {
-    const other = createHarness();
-    try {
-      for (const h of [harness, other]) {
-        h.debug.reset();
-        h.debug.setSeed(4242);
-        openMatch(h, "versus");
-        endHolds(h);
-        h.run(1);
-      }
-      expect(other.debug.snapshot().balls).toEqual(
-        harness.debug.snapshot().balls,
-      );
-    } finally {
-      other.dispose();
-    }
+  it("launches each ball along the angle it holds, and leaves it as it is", () => {
+    openMatch(harness, "versus");
+    const angles = [0.4, 2.0, 4.5];
+    angles.forEach((angle, index) => {
+      harness.debug.setBallLaunchAngle(index, angle);
+    });
+    endHolds(harness);
+    harness.run(1);
+    const balls = harness.debug.snapshot().balls;
+    angles.forEach((angle, index) => {
+      expect(balls[index].launchAngle).toBe(angle);
+      const flown = Math.atan2(balls[index].vy, balls[index].vx);
+      expect(Math.cos(flown - angle)).toBeCloseTo(1, 3);
+    });
   });
 });
 
@@ -985,7 +977,9 @@ describe("the manual clock", () => {
       for (const h of [coarse, fine]) {
         h.debug.setAutoStep(false);
         openMatch(h, "versus");
-        h.debug.setSeed(7);
+        h.debug.setBallLaunchAngle(0, 0.7);
+        h.debug.setBallLaunchAngle(1, 2.1);
+        h.debug.setBallLaunchAngle(2, 4.4);
         endHolds(h);
         h.debug.advance(TICK);
         place(h, 0, pose);
@@ -1217,6 +1211,7 @@ describe("the world", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      launchAngle: expect.any(Number),
       trail: [],
     });
   });
@@ -1241,6 +1236,7 @@ describe("the world", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      launchAngle: expect.any(Number),
       trail: [],
     });
   });
@@ -1300,7 +1296,7 @@ describe("the snapshot", () => {
     harness.debug.setResumeScreen("countdown");
     harness.debug.setScore(4, 7);
     harness.debug.setWinner("right");
-    harness.debug.setSeed(99);
+    harness.debug.setBallLaunchAngle(1, 2.5);
     harness.debug.setPaddleCy("left", 210);
     harness.debug.setPaddleVy("left", -120);
     harness.debug.setPaddleDriven("left", true);
@@ -1321,8 +1317,7 @@ describe("the snapshot", () => {
     expect(snap.resumeScreen).toBe("countdown");
     expect(snap.score).toEqual({ p1: 4, p2: 7 });
     expect(snap.winner).toBe("right");
-    expect(snap.seed).toBe(99);
-    expect(snap.rngState).toBe(99);
+    expect(snap.balls[1].launchAngle).toBe(2.5);
     expect(snap.muted).toBe(false);
     expect(snap.paddles.left).toEqual({
       cy: 210,
@@ -1365,15 +1360,6 @@ describe("the snapshot", () => {
     snap.balls[0].trail.length = 0;
     expect(harness.state.balls[0].x).not.toBe(-1);
     expect(harness.state.balls[0].trail.length).toBeGreaterThan(0);
-  });
-
-  it("returns each seed's generator to its starting state", () => {
-    harness.debug.setSeed(1234);
-    expect(harness.debug.snapshot().rngState).toBe(1234);
-    openMatch(harness, "versus");
-    // `reset` inside `openMatch` returns both to the default.
-    expect(harness.debug.snapshot().seed).toBe(DEFAULT_SEED);
-    expect(harness.debug.snapshot().rngState).toBe(DEFAULT_SEED);
   });
 });
 

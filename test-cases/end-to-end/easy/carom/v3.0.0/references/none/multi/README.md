@@ -145,7 +145,7 @@ whoever is driving the game.
   every rate is integrated against the frame's delta, `advance(1, 1)` and
   `advance(1, 60)` reach the same outcome.
 - **The world** — `clearWorld()`, `spawnBall(index)`, `spawnObstacle(index)`,
-  `reset()`, `setSeed(seed)`. Which balls and which obstacles are present is
+  `reset()`. Which balls and which obstacles are present is
   state, so a scenario empties the field and spawns back exactly the bodies it is
   about. `reset()` restores every declared field to its title-screen value and
   leaves the mute bit and the auto-step setting alone.
@@ -158,8 +158,9 @@ whoever is driving the game.
   driven paddle travels at, which holds across frames whether or not the paddle
   is driven; a paddle's `vy` is the velocity the frame actually integrated,
   whoever moved it, and it is what the spin mechanic reads at contact.
-- **Balls** — `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`
-  and `setBallHoldTimer`, each taking the ball's play-order `index` first. An
+- **Balls** — `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,
+  `setBallHoldTimer`, `setBallLaunchAngle` and `drawBallLaunchAngle`, each taking
+  the ball's play-order `index` first. An
   operation naming a ball that is off the field has no effect, and setting a hold
   timer to `0` ends that hold — the launch itself is the game's, on the next
   frame.
@@ -256,7 +257,7 @@ src/
   debug.ts            The window.__carom surface over CaromState
   game.ts             The state contract, the state machine, and the three
                       functions the runtime drives
-  rng.ts              The seeded generator, over CaromState.rngState
+  random.ts           The launch angle draw a parked ball takes
   entities.ts         Paddle and ball arithmetic, geometry, and the home points
   trail.ts            One ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision (walls, paddles,

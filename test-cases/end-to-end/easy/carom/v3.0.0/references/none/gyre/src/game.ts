@@ -36,7 +36,6 @@
 import {
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_W,
   PADDLE_SPEED,
   SERVE_ANGLE,
@@ -71,7 +70,6 @@ import { fullField, poseObstacles } from "./obstacles";
 import { step } from "./physics";
 import type { PointerSample } from "./pointer";
 import { renderGame } from "./render";
-import { nextSign } from "./rng";
 import { recordTrail } from "./trail";
 import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
 
@@ -156,6 +154,11 @@ export interface BallState {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /**
+   * The vertical sign the serve takes, drawn afresh whenever the ball is parked
+   * and posed by the debug surface (specs/balls.md).
+   */
+  serveSign: 1 | -1;
   /** Recent ball positions, oldest first, for the motion trail. */
   trail: TrailSample[];
 }
@@ -258,13 +261,6 @@ export interface CaromState {
    * copy of it, and it is what `snapshot()` reports.
    */
   muted: boolean;
-  /** The seed the game's random generator was last seeded from. */
-  seed: number;
-  /**
-   * The whole state of that generator, as a single number. `setSeed` sets it, so
-   * reseeding and replaying the same calls reproduces the same result.
-   */
-  rngState: number;
 
   /** The mouse's and the finger's half-finished gestures. Not declared state. */
   holds: { mouse: PointerHold; touch: PointerHold };
@@ -312,8 +308,6 @@ export function createInitialState(): CaromState {
     obstacleClockRunning: true,
     simTime: 0,
     muted: false,
-    seed: DEFAULT_SEED,
-    rngState: DEFAULT_SEED,
     holds: { mouse: idleHold(), touch: idleHold() },
   };
 }
@@ -324,7 +318,7 @@ export function createInitialState(): CaromState {
  * Return to the title screen (specs/ui.md).
  *
  * Every declared field goes back to its title-screen value except `titleIndex`,
- * `simTime`, `muted`, `seed` and `rngState`, which keep theirs — and `menuIndex`,
+ * `simTime` and `muted`, which keep theirs — and `menuIndex`,
  * which becomes `titleIndex`, so the title reopens on the entry that led away
  * from it. Exported so the surface's `reset` is this same transition rather than
  * a second copy of it.
@@ -393,12 +387,12 @@ function respawn(state: CaromState, receiver: Side): void {
 /**
  * Launch the ball toward the receiver at SERVE_SPEED and SERVE_ANGLE from
  * horizontal (specs/balls.md). The angle's magnitude is fixed; its SIGN is the
- * one draw this game makes from its seeded generator.
+ * ball's own `serveSign`, drawn when it was parked and left as it is by the serve.
  */
 function serve(state: CaromState, ball: BallState): void {
   const dir = state.receiver === "left" ? -1 : 1;
   ball.vx = dir * SERVE_SPEED * Math.cos(SERVE_ANGLE);
-  ball.vy = nextSign(state) * SERVE_SPEED * Math.sin(SERVE_ANGLE);
+  ball.vy = ball.serveSign * SERVE_SPEED * Math.sin(SERVE_ANGLE);
   ball.holdTimer = 0;
   ball.held = false;
   ball.trail.length = 0;

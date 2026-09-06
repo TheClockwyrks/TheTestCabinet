@@ -41,7 +41,7 @@ import type {
 } from "./game";
 import { ballSpeed, findBall, spawnBall, spawnObstacle } from "./entities";
 import { menuItemRect, type MenuItemRect } from "./menu";
-import { seedRandom } from "./rng";
+import { drawLaunchAngle } from "./random";
 
 /** The `window` property the surface is installed on. */
 export const CAROM_HANDLE = "__carom";
@@ -78,6 +78,8 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** The angle, in radians, this ball\'s next launch leaves along. */
+  launchAngle: number;
   /** That ball's trail samples, oldest first. */
   trail: TrailSample[];
 }
@@ -110,8 +112,6 @@ export interface CaromSnapshot {
   score: { p1: number; p2: number };
   winner: Side | null;
   muted: boolean;
-  seed: number;
-  rngState: number;
   paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
   ai: { tracking: boolean; movement: boolean };
   /** Every ball present, in play order. */
@@ -137,7 +137,6 @@ export interface CaromDebugApi {
   spawnBall(index: number): void;
   spawnObstacle(index: number): void;
   reset(): void;
-  setSeed(seed: number): void;
 
   /* Screens and menus. */
   setScreen(screen: Screen): void;
@@ -161,6 +160,8 @@ export interface CaromDebugApi {
   setBallSpin(index: number, spin: number): void;
   setBallHeld(index: number, held: boolean): void;
   setBallHoldTimer(index: number, seconds: number): void;
+  setBallLaunchAngle(index: number, angle: number): void;
+  drawBallLaunchAngle(index: number): void;
 
   /* The AI opponent: one operation per faculty. */
   setAiTracking(enabled: boolean): void;
@@ -283,14 +284,6 @@ export function createDebugApi(
       resetGame(state);
     },
 
-    /**
-     * Seed the game's random generator. `seed` becomes the value given and
-     * `rngState` becomes that generator's starting state.
-     */
-    setSeed(seed) {
-      seedRandom(state, seed);
-    },
-
     // ---- Screens and menus ----------------------------------------------
 
     /**
@@ -400,6 +393,20 @@ export function createDebugApi(
       target.holdTimer = seconds;
     },
 
+    /** The angle ball `index`'s next launch leaves along, in radians. */
+    setBallLaunchAngle(index, angle) {
+      const target = ball(index);
+      if (target === null) return;
+      target.launchAngle = angle;
+    },
+
+    /** The one draw parking makes, made again on its own (specs/balls.md). */
+    drawBallLaunchAngle(index) {
+      const target = ball(index);
+      if (target === null) return;
+      target.launchAngle = drawLaunchAngle();
+    },
+
     // ---- The AI opponent ------------------------------------------------
 
     setAiTracking(enabled) {
@@ -437,8 +444,6 @@ export function createDebugApi(
         score: { p1: state.score.p1, p2: state.score.p2 },
         winner: state.winner,
         muted: state.muted,
-        seed: state.seed,
-        rngState: state.rngState,
         paddles: {
           left: paddleView(state.paddles.left),
           right: paddleView(state.paddles.right),
@@ -454,6 +459,7 @@ export function createDebugApi(
           spin: present.spin,
           held: present.held,
           holdTimer: present.holdTimer,
+          launchAngle: present.launchAngle,
           trail: present.trail.map((sample) => ({ ...sample })),
         })),
         obstacles: state.obstacles.map((obstacle) => ({

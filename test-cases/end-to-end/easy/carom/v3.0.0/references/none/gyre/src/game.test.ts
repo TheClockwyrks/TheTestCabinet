@@ -372,14 +372,13 @@ describe("initialization", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
     expect(state.obstacles.map((o) => o.index)).toEqual([0, 1]);
     expect(state.obstacleClock).toBe(0);
     expect(state.obstacleClockRunning).toBe(true);
     expect(state.simTime).toBe(0);
-    expect(state.seed).toBe(1);
-    expect(state.rngState).toBe(1);
   });
 
   it("accumulates simulation time from the deltas it is handed", () => {
@@ -829,38 +828,26 @@ describe("serving", () => {
     expect(ball.y).toBe(FIELD_CY);
   });
 
-  it("replays the same serve from the same seed", () => {
-    const other = createHarness();
-    try {
-      for (const h of [harness, other]) {
-        h.debug.reset();
-        h.debug.setSeed(4242);
-        openCountdownKeepingSeed(h);
-        h.debug.setBallHoldTimer(0);
-        h.run(1);
-      }
-      expect(ballOf(other).vy).toBe(ballOf(harness).vy);
-    } finally {
-      other.dispose();
+  it("serves with the sign the ball holds, and leaves it as it is", () => {
+    for (const sign of [-1, 1] as const) {
+      openCountdown(harness, "versus");
+      harness.debug.setBallServeSign(sign);
+      harness.debug.setBallHoldTimer(0);
+      harness.run(1);
+      expect(Math.sign(ballOf(harness).vy)).toBe(sign);
+      expect(ballOf(harness).serveSign).toBe(sign);
     }
   });
 
-  it("takes the generator's state forward on every serve it draws for", () => {
-    openCountdown(harness, "versus");
-    const before = harness.debug.snapshot().rngState;
-    harness.debug.setBallHoldTimer(0);
-    harness.run(1);
-    expect(harness.debug.snapshot().rngState).not.toBe(before);
-    // The seed itself is what was last asked for, and a draw does not move it.
-    expect(harness.debug.snapshot().seed).toBe(1);
+  it("draws the serve sign afresh whenever the ball is parked", () => {
+    const signs = new Set<number>();
+    for (let i = 0; i < 200 && signs.size < 2; i++) {
+      harness.debug.spawnBall();
+      signs.add(ballOf(harness).serveSign);
+    }
+    expect(signs).toEqual(new Set([-1, 1]));
   });
 });
-
-/** Open a countdown without the `reset` that would undo a chosen seed. */
-function openCountdownKeepingSeed(h: Harness): void {
-  h.debug.setMode("versus");
-  h.debug.setScreen("countdown");
-}
 
 // ---- Physics, through the runtime ---------------------------------------
 
@@ -1347,7 +1334,7 @@ describe("window.__carom", () => {
     harness.debug.setScore(3, 5);
     harness.debug.setWinner("right");
     harness.debug.setReceiver("right");
-    harness.debug.setSeed(99);
+    harness.debug.setBallServeSign(-1);
     harness.debug.setPaddleCy("right", 200);
     harness.debug.setPaddleVy("right", -60);
     harness.debug.setPaddleDriven("right", true);
@@ -1371,8 +1358,7 @@ describe("window.__carom", () => {
     expect(shot.score).toEqual({ p1: 3, p2: 5 });
     expect(shot.winner).toBe("right");
     expect(shot.receiver).toBe("right");
-    expect(shot.seed).toBe(99);
-    expect(shot.rngState).toBe(99);
+    expect(shot.ball?.serveSign).toBe(-1);
     expect(shot.paddles.right).toEqual({
       cy: 200,
       vy: 0,
@@ -1592,7 +1578,6 @@ describe("the manual clock", () => {
     try {
       for (const h of [coarse, fine]) {
         h.debug.setAutoStep(false);
-        h.debug.setSeed(7);
         rally(h, "versus", pose);
       }
       coarse.debug.advance(0.5, 1);

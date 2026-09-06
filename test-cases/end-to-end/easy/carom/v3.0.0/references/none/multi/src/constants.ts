@@ -147,7 +147,6 @@ export const WIN_LEAD = 2;
 /** The surface's version, reported as `version` and bumped when it changes. */
 export const CAROM_DEBUG_VERSION = 1;
 
-
 // ---- Screen copy (specs/ui.md) -------------------------------------------
 
 export const TITLE_TEXT = "CAROM";

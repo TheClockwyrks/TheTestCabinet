@@ -32,6 +32,7 @@ function ball(patch: Partial<BallState> = {}): BallState {
     spin: 0,
     held: false,
     holdTimer: 0,
+    launchAngle: 0,
     trail: [],
     ...patch,
   };

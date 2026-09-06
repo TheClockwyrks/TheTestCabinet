@@ -6,13 +6,7 @@
 // with no runtime and no clock around them.
 
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_SEED,
-  FIELD_CX,
-  FIELD_CY,
-  HOLD_TIME,
-  OBSTACLE_CENTERS,
-} from "./constants";
+import { FIELD_CX, FIELD_CY, HOLD_TIME, OBSTACLE_CENTERS } from "./constants";
 import {
   allObstacles,
   clearWorld,
@@ -46,8 +40,6 @@ function played(): ReturnType<typeof createInitialState> {
   state.ai.movement = false;
   state.simTime = 12.5;
   state.muted = true;
-  state.seed = 99;
-  state.rngState = 12345;
   clearWorld(state);
   return state;
 }
@@ -66,11 +58,12 @@ describe("createInitialState", () => {
     expect(state.ai).toEqual({ tracking: true, movement: true });
     expect(state.simTime).toBe(0);
     expect(state.muted).toBe(false);
-    expect(state.seed).toBe(DEFAULT_SEED);
-    expect(state.rngState).toBe(DEFAULT_SEED);
     expect(state.paddles.left).toEqual(createPaddle());
     expect(state.paddles.right).toEqual(createPaddle());
-    expect(state.ball).toEqual(createBall());
+    expect(state.ball).toEqual({
+      ...createBall(),
+      serveSign: expect.any(Number),
+    });
     expect(state.obstacles).toEqual(allObstacles());
   });
 });
@@ -85,6 +78,7 @@ describe("createBall", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
   });
@@ -138,7 +132,10 @@ describe("startMatch", () => {
     expect(state.score).toEqual({ p1: 0, p2: 0 });
     expect(state.winner).toBeNull();
     expect(state.receiver).toBe("left");
-    expect(state.ball).toEqual(createBall());
+    expect(state.ball).toEqual({
+      ...createBall(),
+      serveSign: expect.any(Number),
+    });
     expect(state.paddles.left.cy).toBe(FIELD_CY);
     expect(state.paddles.right.vy).toBe(0);
   });
@@ -157,7 +154,10 @@ describe("startMatch", () => {
     const ball = state.ball;
     startMatch(state, "solo");
     expect(state.ball).toBe(ball);
-    expect(state.ball).toEqual(createBall());
+    expect(state.ball).toEqual({
+      ...createBall(),
+      serveSign: expect.any(Number),
+    });
   });
 });
 
@@ -173,7 +173,10 @@ describe("returnToTitle", () => {
     expect(state.receiver).toBe("left");
     expect(state.paddles.left).toEqual(createPaddle());
     expect(state.ai).toEqual({ tracking: true, movement: true });
-    expect(state.ball).toEqual(createBall());
+    expect(state.ball).toEqual({
+      ...createBall(),
+      serveSign: expect.any(Number),
+    });
     expect(state.obstacles).toEqual(allObstacles());
   });
 
@@ -183,20 +186,16 @@ describe("returnToTitle", () => {
     expect(state.titleIndex).toBe(1);
     expect(state.simTime).toBe(12.5);
     expect(state.muted).toBe(true);
-    expect(state.seed).toBe(99);
-    expect(state.rngState).toBe(12345);
   });
 });
 
 describe("resetState", () => {
-  it("goes further: both selections, the clock, and the generator", () => {
+  it("goes further: both selections and the clock", () => {
     const state = played();
     resetState(state);
     expect(state.menuIndex).toBe(0);
     expect(state.titleIndex).toBe(0);
     expect(state.simTime).toBe(0);
-    expect(state.seed).toBe(DEFAULT_SEED);
-    expect(state.rngState).toBe(DEFAULT_SEED);
     // Every declared field but the mute bit, which the next check is about.
     expect(state).toEqual({ ...createInitialState(), muted: true });
   });

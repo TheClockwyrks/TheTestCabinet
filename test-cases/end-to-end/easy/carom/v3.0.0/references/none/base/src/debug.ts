@@ -42,6 +42,7 @@ import {
   type Side,
   type TrailSample,
 } from "./state";
+import { drawServeSign } from "./random";
 
 /** The `window` property the API is installed on. */
 export const CAROM_HANDLE = "__carom";
@@ -76,6 +77,8 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** The vertical sign the serve takes. */
+  serveSign: 1 | -1;
   /** The ball's trail samples, oldest first. */
   trail: TrailSample[];
 }
@@ -108,8 +111,6 @@ export interface CaromSnapshot {
   score: { p1: number; p2: number };
   winner: Side | null;
   muted: boolean;
-  seed: number;
-  rngState: number;
   paddles: Record<Side, PaddleSnapshot>;
   ai: { tracking: boolean; movement: boolean };
   receiver: Side;
@@ -135,7 +136,6 @@ export interface CaromDebugApi {
   spawnBall(): void;
   spawnObstacle(index: number): void;
   reset(): void;
-  setSeed(seed: number): void;
 
   /* Screens and menus. */
   setScreen(screen: Screen): void;
@@ -160,6 +160,8 @@ export interface CaromDebugApi {
   setBallSpin(spin: number): void;
   setBallHeld(held: boolean): void;
   setBallHoldTimer(seconds: number): void;
+  setBallServeSign(sign: 1 | -1): void;
+  drawBallServeSign(): void;
 
   /* The AI opponent: one operation per faculty. */
   setAiTracking(enabled: boolean): void;
@@ -197,6 +199,7 @@ function ballView(state: CaromState): BallSnapshot | null {
     spin: ball.spin,
     held: ball.held,
     holdTimer: ball.holdTimer,
+    serveSign: ball.serveSign,
     // Copied, so a reader holding a snapshot cannot write into the live trail.
     trail: ball.trail.map((sample) => ({ ...sample })),
   };
@@ -275,12 +278,6 @@ export function createDebugApi(
      */
     reset() {
       resetState(state);
-    },
-
-    /** Seed the game's random generator: the seed, and the state it starts in. */
-    setSeed(seed) {
-      state.seed = seed;
-      state.rngState = seed;
     },
 
     // ---- Screens and menus ----------------------------------------------
@@ -399,6 +396,18 @@ export function createDebugApi(
       state.ball.holdTimer = seconds;
     },
 
+    /** The vertical sign the ball's serve takes, `1` or `-1`. */
+    setBallServeSign(sign) {
+      if (state.ball === null) return;
+      state.ball.serveSign = sign < 0 ? -1 : 1;
+    },
+
+    /** The one draw parking makes, made again on its own (specs/balls.md). */
+    drawBallServeSign() {
+      if (state.ball === null) return;
+      state.ball.serveSign = drawServeSign();
+    },
+
     // ---- The AI opponent ------------------------------------------------
 
     /** Whether the AI senses the ball and chooses a target. */
@@ -438,8 +447,6 @@ export function createDebugApi(
         score: { p1: state.score.p1, p2: state.score.p2 },
         winner: state.winner,
         muted: state.muted,
-        seed: state.seed,
-        rngState: state.rngState,
         paddles: {
           left: paddleView(state, "left"),
           right: paddleView(state, "right"),
