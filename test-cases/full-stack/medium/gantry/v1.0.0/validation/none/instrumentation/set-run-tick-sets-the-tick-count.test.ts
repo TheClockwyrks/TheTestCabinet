@@ -15,12 +15,13 @@
 // THE READING IS TAKEN WITH NOTHING ADVANCED after the pose, so the tick count
 // read is the one the pose wrote rather than one a later tick arrived at.
 //
-// THE FRAME BEHIND THE STILL IS DRIVEN AFTER THAT READING. A still is whatever
-// the last frame that ran drew, and a pose draws nothing, so a capture taken
-// straight off the pose keeps the yard as it stood before it. The one tick that
-// follows the reading is the frame the still is of: it leaves the run screen
-// showing the clock the pose put the run at, and it decides nothing here, since
-// both figures were read before it.
+// THE STILL IS OF THE POSED STATE ITSELF. A still is whatever the last frame
+// that ran drew, and a pose draws nothing, so a capture taken straight off the
+// pose would keep the yard as it stood before it. `h.paint()` draws one frame
+// that covers no time — no tick is consumed and nothing in the yard moves — so
+// the run screen behind the still reads the clock this check posed rather than
+// the clock a tick after it would read. That is what separates this point's
+// evidence from the one beside it, which shows the tick AFTER the pose.
 //
 // The crane, the tape and the empty yard are here only because a run has to be
 // in progress for a run pose to apply: the tape's one step commands the `hoist`
@@ -74,7 +75,7 @@ it("reports the tick count it was handed, and the clock that follows it", async 
   await h.debug.setRunTick(POSED);
   const posed = await h.snapshot();
 
-  await h.advance(1);
+  await h.paint();
   await h.capture("clock", "The run screen at the run clock posed");
 
   assertEqual(

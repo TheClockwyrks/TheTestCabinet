@@ -223,8 +223,9 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   // not, and this project drives enough of them for that to decide whether its
   // suites finish inside the platform's cap. The file's own header carries the
   // full reasoning, and `capture` below pumps one of the held frames so a still
-  // shows the page as it stands, while `paintFrames` runs as many as a check
-  // about the build's own loop asks for.
+  // shows the page as it stands, `paint` pumps the one a check asks for before it
+  // captures the state it posed, and `paintFrames` runs as many as the check about
+  // the build's own loop asks for.
   extraInitScripts: ["cues-init.js", "paint-gate.js"],
   projectRoot: PROJECT_ROOT,
 });
@@ -350,6 +351,27 @@ export interface Harness {
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
 
+  /**
+   * Draw the state as it stands, advancing nothing.
+   *
+   * WHAT IT IS FOR. A still is whatever the last frame that ran drew, and a pose
+   * draws nothing: an arrangement made through the debug API leaves the picture
+   * as the frame before it left it. A check whose evidence is the arrangement
+   * ITSELF — rather than what the simulation made of it — paints one frame
+   * before it captures, and this is that frame.
+   *
+   * IT ADVANCES NOTHING. The frame is one of the build's own, released by this
+   * project's paint gate, and this harness has taken the game off the wall clock
+   * with `setAutoStep(false)` — under which `specs/instrumentation.md` has the
+   * game change "only when `advance` says so" while "drawing is unaffected
+   * either way". So the frame draws the state as it stands and moves none of it.
+   *
+   * IT IS NOT A SUBSTITUTE FOR A FRAME A CHECK OWES. A check that asks what the
+   * simulation DID advances it; this one asks only what the screen says about a
+   * state nothing has run over yet.
+   */
+  paint(): Promise<void>;
+
   /* ---- This engine's own, for the few suites that are about it ------------ */
 
   /**
@@ -364,7 +386,9 @@ export interface Harness {
    *
    * The two engine projects have no such thing: the engine owns the frame loop
    * there and holds no frame back, so the suite that pumps one carries
-   * `engines = ["none"]`.
+   * `engines = ["none"]`. What all three do carry is {@link Harness.paint},
+   * which is one frame drawn over the state as it stands rather than a stretch
+   * of the build's own loop.
    */
   paintFrames(count: number): Promise<void>;
 
@@ -511,7 +535,7 @@ export async function createHarness(
       // already there — `advance` renders — but a build is free to refresh what
       // sits AROUND the canvas on its own frame (this case's reference draws its
       // diagnostics overlay that way), and a still is the whole page.
-      await paint(base);
+      await pump(base);
       // The still is addressed by the review item's output id; the name is what
       // the reviewer is being shown, and it goes to the run log so a person
       // scanning the output can tell one still from another without opening it.
@@ -519,7 +543,11 @@ export async function createHarness(
       console.log(`gantry: captured ${id} — ${name}`);
     },
 
-    paintFrames: (count) => paint(base, count),
+    async paint() {
+      await pump(base);
+    },
+
+    paintFrames: (count) => pump(base, count),
 
     surfaceFault: base.surfaceFault,
     pageErrors: base.pageErrors,
@@ -540,7 +568,7 @@ export async function createHarness(
  * build runs — so it says so rather than carrying on against a page whose frames
  * are not where this harness believes they are.
  */
-async function paint(
+async function pump(
   base: BaseHarness<GantrySnapshot, GantryDebugApi>,
   count = 1,
 ): Promise<void> {

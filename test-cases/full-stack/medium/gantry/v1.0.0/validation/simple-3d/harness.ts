@@ -526,6 +526,34 @@ export interface Harness {
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
 
+  /**
+   * Draw the state as it stands, advancing nothing.
+   *
+   * WHAT IT IS FOR. A still is whatever the last frame that ran drew, and a pose
+   * draws nothing: an arrangement made through the debug API leaves the picture
+   * as the frame before it left it. A check whose evidence is the arrangement
+   * ITSELF — rather than what the simulation made of it — paints one frame
+   * before it captures, and this is that frame.
+   *
+   * IT COVERS NO TIME. The engine's clock is swapped for one whose frame is
+   * worth nothing, for this one frame, and put back afterwards.
+   * `specs/overview.md` has each frame's delta time accumulate, "whole ticks are
+   * consumed from the accumulation, and a remainder shorter than a tick waits
+   * for the next frame", so a frame worth nothing finds no whole tick to consume
+   * and every rate the simulation integrates is multiplied by zero. What the
+   * frame does do is render, which is what the still is of.
+   *
+   * IT IS NOT {@link Harness.draw}, which runs the build's `render` over a
+   * canvas of this harness's own so a check can read the scene the state
+   * describes. This is a real frame of the engine's, so what it draws lands on
+   * the canvas {@link Harness.capture} encodes.
+   *
+   * IT IS NOT A SUBSTITUTE FOR A FRAME A CHECK OWES. A check that asks what the
+   * simulation DID advances it; this one asks only what the screen says about a
+   * state nothing has run over yet.
+   */
+  paint(): Promise<void>;
+
   /* ---- This engine's own, for the few suites that are about it ------------ */
 
   /** The engine this harness built, for a check that reads the scene or the view. */
@@ -1020,6 +1048,18 @@ function baseOf(
  * to a check, so no check has to remember it and none reports silence from a build
  * that was sounding perfectly.
  */
+/**
+ * A clock whose every frame is worth no time at all.
+ *
+ * `ConstantClock` refuses a step of zero, and rightly: a game driven by one would
+ * never move. This is not a clock a game is driven by — it is swapped in for the
+ * one frame {@link Harness.paint} draws and swapped straight back out, so a check
+ * can put the state it posed on screen. `null` would be the clock saying "this
+ * tick is not a frame", which is the opposite of what is wanted; `0` is a frame
+ * that covers no time.
+ */
+const ZERO_CLOCK: Clock = { delta: () => 0 };
+
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
@@ -1044,7 +1084,15 @@ export async function createHarness(
   // the engine is built, which is where a build loads what it draws with.
   const requestsFrom = assets.mark();
 
-  const base = await kit.createHarness(options);
+  // The clock every frame this harness drives is taken off, held here because
+  // {@link Harness.paint} puts it back after the frame of no time it draws. A
+  // `ConstantClock` is stateless, but a check that supplied a clock of its own may
+  // have handed one that is not, and putting back the instance it gave keeps that
+  // clock's own position. It is handed to the kit rather than left to the kit's
+  // own default, so the engine is built with exactly this instance.
+  const clock: Clock = options.clock ?? new ConstantClock(1000 / TICK_HZ);
+
+  const base = await kit.createHarness({ ...options, clock });
   const engine = base.engine;
   const record = recordOf(engine);
   const fault = record.fault;
@@ -1307,6 +1355,16 @@ export async function createHarness(
       // scanning the output can tell one still from another without opening it.
       await captureStill(harness, id);
       console.log(`gantry: captured ${id} — ${name}`);
+    },
+
+    async paint() {
+      // A FRAME OF NO TIME. `ConstantClock` refuses a step of zero, and rightly:
+      // a game driven by one would never move. This is not a clock the game is
+      // driven by — it is swapped in for the single frame below and swapped
+      // straight back out. See the declaration.
+      engine.setClock(ZERO_CLOCK);
+      await engine.advance(1);
+      engine.setClock(clock);
     },
 
     async draw() {

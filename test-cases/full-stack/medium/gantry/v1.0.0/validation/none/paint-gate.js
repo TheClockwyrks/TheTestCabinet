@@ -35,6 +35,9 @@
 //   * `capture` — one before every still, so what is composited is the page as
 //     it stands. Nothing else a check reads off the canvas needs one: that is
 //     drawn by `advance`'s own render.
+//   * `paint()` — one for a check whose evidence is a state it posed rather than
+//     one the simulation ran into, so the frame the still is of is drawn over the
+//     pose rather than over the tick after it.
 //   * `paintFrames(count)` — the check about the clock, which runs the frames the
 //     BUILD asked for rather than the ones a check asked for.
 //
