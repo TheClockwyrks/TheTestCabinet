@@ -20,14 +20,19 @@
 // THE BAND IS ONE FRAME, WHICH IS THE WHOLE OF WHAT A BUILD MAY NOT CONTROL.
 // specs/instrumentation.md advances the simulation "from the elapsed time it is
 // handed and from nothing else", so a structure fires on the frame its cadence
-// comes due and no build can place a launch closer to the rate than the frame it
-// was handed. A build that carries the remainder from one shot to the next holds
-// the WHOLE span inside one frame of where the rate puts it, and a build that
-// starts the next cooldown at the launch stretches EACH gap by up to one frame,
-// so one frame of this harness's clock covers both and is honest about neither
-// more nor less. At the frame below that is a band of about a fortieth of a
-// second on a gap of `0.625`, which passes `1.6` a second and fails every other
-// rate in `BASE_STATS` as well as a build off by a twentieth either way.
+// comes due, and a launch may therefore land up to one frame after the moment the
+// rate puts it. A build that carries the remainder from one shot to the next
+// holds the WHOLE span inside that frame. A build that starts the next cooldown
+// at the launch spends the rest of the frame the cadence came due on, so each of
+// its gaps runs to the next whole frame: `0.625` of a second is `37.5` frames of
+// this harness's clock, and such a build waits `38` of them, half a frame long.
+// One frame is the band both sit inside, and against the second shape it leaves
+// half a frame of room rather than none. It is not widened past one frame,
+// because a gap running to `39` frames (`0.65`) is a launch a frame and a half
+// after the moment the rate puts it, which the frame the build was handed cannot
+// account for. One frame of this clock is a band under a fortieth of a second on
+// a gap of `0.625`, which passes `1.6` a second and fails every other rate in
+// `BASE_STATS` as well as a build off by a twentieth either way.
 //
 // The target is one Overload Dynamo, which "cannot be killed" (specs/enemies.md),
 // held where it stands. That is what makes the gaps a measurement of the cadence

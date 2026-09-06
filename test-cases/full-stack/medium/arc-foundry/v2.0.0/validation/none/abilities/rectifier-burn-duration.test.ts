@@ -9,7 +9,7 @@
 // The Rectifier is taken off the yard the moment its shot lands, so nothing can
 // refresh the burn while its span is being measured. Two readings decide it:
 // `burnUntil` sits one duration past the hit, and the unit's health does not move
-// at all over five seconds once that moment has passed.
+// at all over the seconds that follow.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
@@ -35,7 +35,7 @@ const TARGET_RANGE = 60;
 const TIER = 3;
 
 /** How long past the expiry the health is watched, in seconds. */
-const AFTER = 5;
+const AFTER = 2;
 
 /** A margin past the expiry before the watching starts. */
 const MARGIN = 0.5;
