@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 it("opens the how-to screen from a press and release on HOW TO PLAY", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
 
   const item = targetCenter(targetById(h.snapshot(), "menu-2"));
   await pressRelease(h, item);

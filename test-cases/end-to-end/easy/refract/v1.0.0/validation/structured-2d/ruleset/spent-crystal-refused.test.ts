@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 it("a crystal entered and not yet left refuses a second entry", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R5_SPENT_CRYSTAL);
 
   // The triangle beam enters the crystal and is left there: the 1 charge is

@@ -36,7 +36,7 @@ type Target = TargetSnapshot;
 
 /** Every screen this check walks, and how it gets there. */
 async function screens(): Promise<{ name: string; targets: Target[] }[]> {
-  await resetTo(h, 1);
+  await resetTo(h);
   const walked: { name: string; targets: Target[] }[] = [
     { name: "title", targets: h.snapshot().targets },
   ];
@@ -49,7 +49,7 @@ async function screens(): Promise<{ name: string; targets: Target[] }[]> {
   await h.advance(1);
   walked.push({ name: "howto", targets: h.snapshot().targets });
 
-  await startCampaign(h, 1);
+  await startCampaign(h);
   walked.push({ name: "select", targets: h.snapshot().targets });
   // The still is the grid, not whatever screen the walk ends on.
   captureStill(h, "select");

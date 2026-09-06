@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 it("changes nothing when fired on the title and on the select screen", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
 
   // On the title.
   const titleBefore = h.snapshot();

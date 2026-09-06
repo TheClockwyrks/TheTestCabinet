@@ -164,7 +164,7 @@ afterEach(() => {
 });
 
 it("registers the diagnostics the specification asks for, and reading them changes nothing", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, OVERLAY_BOARD);
   traceCells(h, toCells(TRIANGLE_ROUTE));
   traceCells(h, toCells(SQUARE_ROUTE));

@@ -7,24 +7,27 @@
 // cascade/cascade-back-to-title's point; here the subject is what the NEXT run
 // starts from.
 //
-// Progress is built first (TIER_ADVANCE real solves, so solvedCount is 5 and
-// the tier has climbed) so a fresh sequence is distinguishable from a continued
-// one, then `back` is pressed and CASCADE is chosen again through the real
-// title menu — the return already highlights the entry that led away, so a
-// plain `confirm` takes it.
+// The run being abandoned is posed at TIER_ADVANCE solves through
+// `setSolvedCount` and `setTier` (specs/instrumentation.md), so solvedCount
+// is 5 and the tier has climbed and a fresh sequence is distinguishable from
+// a continued one. The board it is left on is posed through `loadBoard`, a
+// board like any other; then `back` is pressed and CASCADE is chosen again
+// through the real title menu — the return already highlights the entry that
+// led away, so a plain `confirm` takes it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { GEO_3X3 } from "../fixtures";
 import {
   captureStill,
   createHarness,
-  solveGenerated,
+  loadBoard,
+  poseCascadeRun,
+  resetTo,
   tapAction,
   type Harness,
 } from "../harness";
-import { TIER_ADVANCE } from "../notation";
-
-const SEED = 1;
+import { TIER_ADVANCE, tierForSolvedCount } from "../notation";
 
 let h: Harness;
 
@@ -37,12 +40,20 @@ afterEach(() => {
 });
 
 it("re-entering after a back starts from solvedCount 0 and tier 1", async () => {
-  await solveGenerated(h, TIER_ADVANCE, SEED);
-  await tapAction(h, "confirm");
+  await resetTo(h);
+  poseCascadeRun(h, TIER_ADVANCE);
+  await loadBoard(h, GEO_3X3);
+  const abandoned = h.snapshot();
+  assertEqual(abandoned.screen, "playing", "a board of the run is up");
   assertEqual(
-    h.snapshot().solvedCount,
+    abandoned.solvedCount,
     TIER_ADVANCE,
     "progress stands before back",
+  );
+  assertEqual(
+    abandoned.tier,
+    tierForSolvedCount(TIER_ADVANCE),
+    "the run being abandoned has climbed past tier 1",
   );
 
   await tapAction(h, "back");

@@ -7,50 +7,42 @@
 // touch — the run's progress — so the count and the tier are read after the
 // choice as well as before it, and cascade/restart owns the opposite reading.
 //
-// THE WORLD IS POSED, not generated — and deliberately not through
-// `solveGenerated`, which presses `confirm` on the solved screen between
-// boards. Arranging with it would exercise NEXT BOARD four times to set up the
-// check on NEXT BOARD, and would drag the generator and the solver onto a
-// point about a menu choice. Five boards are posed through `loadBoard` — "a
-// board posed this way is a board like any other"
-// (specs/instrumentation.md) — which moves straight to `playing` with every
-// beam empty, so no NEXT BOARD press occurs during the arrangement. That
-// posed solves raise the count is cascade/cascade-solved-copy's point,
-// asserted here as a named precondition.
+// THE WORLD IS POSED. The run is posed at four solves through `setSolvedCount`
+// and `setTier` (specs/instrumentation.md), and the fifth board is posed
+// through `loadBoard` and solved — "a board posed this way is a board like any
+// other" — so the run reaches the solved screen the way a player's does, with
+// no NEXT BOARD press during the arrangement. That posed solves raise the
+// count is cascade/cascade-solved-copy's point, asserted here as a named
+// precondition.
 //
 // FIVE SOLVES, NOT ONE. At tier 1 the claim "generates a board at the current
 // state.tier" is unfalsifiable, because 1 is also the resting value a build
 // that ignored the tier entirely would report. TIER_ADVANCE (5) solves put the
 // run on tier 2, so the carried tier is a figure the run reached rather than
 // the one it started on; tierForSolvedCount is the spec's own formula from
-// notation.ts, and cascade/tier-ladder owns the climb itself.
-//
-// THE NEW BOARD'S GRID IS NOT READ AGAINST ITS TIER HERE. That claim belongs
-// to cascade/tier-grid-range, which reads every board of a twenty-five-board
-// sweep against its tier's row of TIERS. What this point decides is that the
-// choice hands over a board at all, empty, with the run's progress intact.
+// notation.ts, and cascade/tier-ladder owns the climb itself. The board NEXT
+// BOARD hands over is read for tier 2's channel count, which is what "at the
+// current state.tier" means for it; its grid and the rest of its row belong to
+// the tier suites.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { GEO_3X3 } from "../fixtures";
-import { TIER_ADVANCE, tierForSolvedCount } from "../notation";
+import {
+  TIER_ADVANCE,
+  TIERS,
+  channelsPresent,
+  tierForSolvedCount,
+} from "../notation";
 import {
   captureStill,
   createHarness,
-  loadBoard,
+  oracleBoard,
+  poseCascadeRun,
   resetTo,
-  startCascade,
+  solvePosedBoard,
   tapAction,
-  traceRoute,
   type Harness,
 } from "../harness";
-
-/** The forced GEO_3X3 solve: T(0,0) — t(1,1) — T(2,2) (fixtures.ts). */
-const GEO_3X3_ROUTE: readonly (readonly [number, number])[] = [
-  [0, 0],
-  [1, 1],
-  [2, 2],
-];
 
 /** The tier the run has reached after TIER_ADVANCE solves: 2, not the resting 1. */
 const REACHED_TIER = tierForSolvedCount(TIER_ADVANCE);
@@ -65,27 +57,20 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("NEXT BOARD opens an empty board and carries the count and the tier forward", async () => {
-  await resetTo(h, 1);
-  await startCascade(h);
-
-  // Five posed solves, none of them through the choice under test.
-  for (let solve = 0; solve < TIER_ADVANCE; solve += 1) {
-    await loadBoard(h, GEO_3X3);
-    traceRoute(h, GEO_3X3_ROUTE);
-  }
-
-  const arrived = h.snapshot();
+it("NEXT BOARD opens an empty board at the reached tier and carries the count and the tier forward", async () => {
+  await resetTo(h);
+  poseCascadeRun(h, TIER_ADVANCE - 1);
+  const arrived = await solvePosedBoard(h);
   assertEqual(
     arrived.screen,
     "solved",
-    "precondition: the posed solves reach the solved screen " +
+    "precondition: the posed solve reaches the solved screen " +
       "(see cascade-solved-reached)",
   );
   assertEqual(
     arrived.solvedCount,
     TIER_ADVANCE,
-    `precondition: ${TIER_ADVANCE} posed solves are counted ` +
+    `precondition: the posed solve is counted, ${TIER_ADVANCE} in all ` +
       "(see cascade-solved-copy)",
   );
   assertEqual(
@@ -99,6 +84,7 @@ it("NEXT BOARD opens an empty board and carries the count and the tier forward",
     0,
     "precondition: NEXT BOARD is highlighted on arriving at solved",
   );
+  await h.advance(1);
 
   await tapAction(h, "confirm");
   await h.advance(1);
@@ -111,6 +97,12 @@ it("NEXT BOARD opens an empty board and carries the count and the tier forward",
     next.board.nodes.length,
     0,
     "NEXT BOARD generates a board (specs/modes/cascade.md)",
+  );
+  assertEqual(
+    channelsPresent(oracleBoard(next)).length,
+    TIERS[REACHED_TIER - 1].channels,
+    `the board carries tier ${REACHED_TIER}'s channel count: generated at ` +
+      "the current state.tier",
   );
   // A board present carries at least one channel, so an entry-less `beams` is
   // itself a failure rather than a vacuous pass — the reading

@@ -1,7 +1,7 @@
 // Refract — instrumentation/rules-read-nothing-from-the-renderer: whether a
 // segment may be added is decided from the board and the beams alone.
 //
-// specs/instrumentation.md "A deterministic core": the dependency runs one way,
+// specs/instrumentation.md "A render-free core": the dependency runs one way,
 // the simulation reading nothing from the renderer — whether a segment may be
 // added is decided from the board and the beams alone.
 //

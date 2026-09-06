@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 it("a list refused part way through keeps the permitted prefix, without throwing", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R2_FOREIGN);
 
   // T(0,0) -> t(1,0) is legal; the third hop, onto the square lens s(1,1),

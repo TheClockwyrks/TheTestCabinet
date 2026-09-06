@@ -37,12 +37,14 @@ import type { DeepReadonly } from "ts-essentials";
 /** The surface's version, reported as `version` (REFRACT_DEBUG_VERSION). */
 export const REFRACT_DEBUG_VERSION = 2;
 
-/** The seed `reset()` restores when the caller names none (DEFAULT_SEED). */
-export const DEFAULT_SEED = 1;
-
 /** The screens the state machine moves between. */
 export type Screen =
-  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+  | "title"
+  | "howto"
+  | "select"
+  | "playing"
+  | "solved"
+  | "complete";
 
 /** The two ways to play, chosen from the title menu. */
 export type Mode = "campaign" | "cascade";
@@ -143,8 +145,6 @@ export interface RefractSnapshot {
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
-  /** The seeded generator's current state. */
-  rngState: number;
 }
 
 /**
@@ -162,7 +162,7 @@ export interface RefractSnapshot {
  */
 export interface RefractDebugApi<S = unknown> {
   version: number;
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   snapshot(state: DeepReadonly<S>): RefractSnapshot;
   /** The mode field alone: no screen moves and no board is generated. */
   setMode(state: DeepReadonly<S>, mode: Mode): S;
@@ -170,6 +170,12 @@ export interface RefractDebugApi<S = unknown> {
   setScreen(state: DeepReadonly<S>, screen: Screen): S;
   /** The highlighted item on whichever menu the current screen shows. */
   setMenuIndex(state: DeepReadonly<S>, index: number): S;
+  /** The cascade run's boards-solved count alone; `tier` is left as it is. */
+  setSolvedCount(state: DeepReadonly<S>, count: number): S;
+  /** The tier the next cascade board is generated at, 1 to MAX_TIER, alone. */
+  setTier(state: DeepReadonly<S>, tier: number): S;
+  /** A board the generator emits at `tier`, posed as `loadBoard` poses one. */
+  generateBoard(state: DeepReadonly<S>, tier: number): S;
   /** `board` is the board notation specs/board.md defines, one string per row. */
   loadBoard(state: DeepReadonly<S>, board: readonly string[]): S;
   pointerDown(
@@ -206,6 +212,9 @@ export const REQUIRED_OPS = [
   "setMode",
   "setScreen",
   "setMenuIndex",
+  "setSolvedCount",
+  "setTier",
+  "generateBoard",
   "loadBoard",
   "pointerDown",
   "pointerMove",

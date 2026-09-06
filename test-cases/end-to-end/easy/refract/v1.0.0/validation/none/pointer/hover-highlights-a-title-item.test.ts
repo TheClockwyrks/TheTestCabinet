@@ -27,9 +27,13 @@ afterEach(async () => {
 });
 
 it("moves the highlight to the item the pointer is over", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
-  assertEqual((await h.snapshot()).menuIndex, 0, "the title opens with menuIndex 0");
+  assertEqual(
+    (await h.snapshot()).menuIndex,
+    0,
+    "the title opens with menuIndex 0",
+  );
 
   const last = targetCenter(targetById(await h.snapshot(), "menu-2"));
   await h.debug.pointerMove(last.x, last.y);
@@ -48,5 +52,9 @@ it("moves the highlight to the item the pointer is over", async () => {
   await h.debug.pointerMove(first.x, first.y);
   await h.advance(1);
 
-  assertEqual((await h.snapshot()).menuIndex, 0, "and back again on a move to menu-0");
+  assertEqual(
+    (await h.snapshot()).menuIndex,
+    0,
+    "and back again on a move to menu-0",
+  );
 });

@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 it("adds the segment to the adjacent node and makes it the live end, within NODE_HIT_R", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
 
   await captureReplay(h, "extend", async () => {

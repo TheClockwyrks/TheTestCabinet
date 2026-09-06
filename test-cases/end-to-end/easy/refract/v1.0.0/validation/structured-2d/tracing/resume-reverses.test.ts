@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 it("a press on the far end reorients the beam so the pressed node is its last cell, and the trace extends from there", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_7X6);
 
   // Draw A -> B -> C and release.

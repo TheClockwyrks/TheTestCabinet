@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 it("opens the how-to screen from a touch press and release", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
 
   const item = targetCenter(targetById(await h.snapshot(), "menu-2"));

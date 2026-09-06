@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 it("KeyR empties every beam at once, leaves the nodes untouched, and stays on the playing screen", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R2_FOREIGN);
 
   // Beams drawn on two channels, both partial.

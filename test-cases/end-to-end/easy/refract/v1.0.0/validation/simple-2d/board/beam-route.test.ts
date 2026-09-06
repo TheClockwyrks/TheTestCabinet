@@ -85,7 +85,7 @@ function midpoint(route: readonly (readonly [number, number])[]): {
 }
 
 it("draws each segment through its midpoint", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, ROUTE_BOARD);
 
   const segments = [

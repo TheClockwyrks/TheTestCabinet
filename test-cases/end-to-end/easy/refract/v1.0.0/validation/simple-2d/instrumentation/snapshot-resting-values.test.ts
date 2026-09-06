@@ -22,28 +22,7 @@ import {
   type Harness,
   type RefractSnapshot,
 } from "../harness";
-
-/** Every field the documented snapshot shape lists (specs/instrumentation.md). */
-const SNAPSHOT_FIELDS = [
-  "version",
-  "screen",
-  "mode",
-  "menuIndex",
-  "boardIndex",
-  "solvedBoards",
-  "unlockedCount",
-  "selectIndex",
-  "solvedCount",
-  "tier",
-  "board",
-  "beams",
-  "solved",
-  "tracing",
-  "pointer",
-  "muted",
-  "simTime",
-  "rngState",
-] as const;
+import { SNAPSHOT_FIELDS } from "./fields";
 
 /** The shape is fixed: every documented field is present, whatever the mode. */
 function assertNoFieldMissing(s: RefractSnapshot): void {
@@ -63,7 +42,7 @@ afterEach(() => {
 });
 
 it("in Cascade, the campaign fields report their resting values", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCascade(h);
   captureStill(h, "resting");
 
@@ -83,7 +62,7 @@ it("in Cascade, the campaign fields report their resting values", async () => {
 });
 
 it("in Campaign, the cascade fields report their resting values", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCampaign(h);
 
   const s = h.snapshot();

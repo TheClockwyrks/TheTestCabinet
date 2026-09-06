@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 it("a press within NODE_HIT_R of a node's center begins a trace, and one farther than NODE_HIT_R from every center begins none", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_3X3);
 
   // No two targeting regions overlap: NODE_HIT_R is below half CELL_PITCH

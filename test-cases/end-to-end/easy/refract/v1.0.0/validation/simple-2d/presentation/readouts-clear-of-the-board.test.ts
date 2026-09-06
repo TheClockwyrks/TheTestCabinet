@@ -187,14 +187,14 @@ async function assertReadoutsClear(mode: string): Promise<void> {
 }
 
 it("keeps every text draw clear of a posed 7x6 board in campaign", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCampaign(h);
   await loadBoard(h, GEO_7X6);
   await assertReadoutsClear("campaign");
 });
 
 it("keeps every text draw clear of a posed 7x6 board in cascade", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCascade(h);
   await loadBoard(h, GEO_7X6);
   await assertReadoutsClear("cascade");

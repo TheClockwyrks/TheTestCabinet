@@ -84,7 +84,7 @@ afterEach(() => {
 });
 
 it("reports the full documented shape, every derivation on the spec's formula", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   const oracle = await loadBoard(h, ALL_CHANNELS_CRYSTAL);
   assertDeepEqual(
     oracle,
@@ -149,7 +149,6 @@ it("reports the full documented shape, every derivation on the spec's formula", 
   assertEqual(typeof snap.muted, "boolean", "muted is a boolean");
   assertEqual(typeof snap.simTime, "number", "simTime is a number");
   assertGreaterThanOrEqual(snap.simTime, 0, "simTime accumulates from 0");
-  assertEqual(typeof snap.rngState, "number", "rngState is a number");
 
   // The board: dimensions, and every node with its cell, its kind, its
   // channel/charges/spent nulls, and its x/y on the cell center formula.

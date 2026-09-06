@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 it("moves the highlight to the item the pointer is over", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   assertEqual(h.snapshot().menuIndex, 0, "the title opens with menuIndex 0");
 
   const last = targetCenter(targetById(h.snapshot(), "menu-2"));

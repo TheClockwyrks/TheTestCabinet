@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 it("leaves the same beam a mouse leaves, drawn from a touch", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
   const board = await loadBoard(h, R9_UNIQUE);
 
@@ -60,7 +60,7 @@ it("leaves the same beam a mouse leaves, drawn from a touch", async () => {
   await captureStill(h, "drawn");
 
   // The identical gesture from a mouse, on a board posed fresh.
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
   await loadBoard(h, R9_UNIQUE);
   await h.debug.pointerDown(start.x, start.y, "mouse");

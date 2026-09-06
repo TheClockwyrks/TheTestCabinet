@@ -1,59 +1,55 @@
 // Refract — instrumentation/reset: reset returns the game to its title-screen
 // values.
 //
-// specs/instrumentation.md, of `reset(options)`: every declared field goes
-// back to its title-screen value — the title with its first menu item
-// highlighted, mode "campaign", no board in play, every beam empty, no trace
-// live, the pointer reported as up, simTime 0, campaign progress cleared (no
-// board solved, only the opening board unlocked), cascade progression back to
-// solvedCount 0 and tier 1 — while `options.seed` seeds rngState, defaulting
-// to DEFAULT_SEED (1), and `muted` is untouched, because the runtime owns
-// muting.
+// specs/instrumentation.md, of `reset(state)`: every declared field goes back
+// to its title-screen value — the title with its first menu item highlighted,
+// mode "campaign", no board in play, every beam empty, no trace live, the
+// pointer reported as up, simTime 0, campaign progress cleared (no board
+// solved, only the opening board unlocked), cascade progression back to
+// solvedCount 0 and tier 1 — while `muted` is untouched, because the runtime
+// owns muting.
 //
-// The first check DIRTIES everything before resetting, so each restored value
-// is a real restoration: it really solves campaign board 1 (through the
-// title menu, the select screen, and the routes derived from
-// specs/campaign-boards.md), really solves one generated cascade board
-// (proved solvable by the spec-derived solver), and toggles mute — then
-// resets with seed 7 and holds the snapshot against the whole title-state
-// list, reading it before any frame runs so simTime is the pose's own 0.
+// The check DIRTIES everything before resetting, so each restored value is a
+// real restoration: it really solves campaign board 1 (through the title
+// menu, the select screen, and the routes derived from
+// specs/campaign-boards.md), poses a cascade run in progress through
+// `setMode`, `setSolvedCount` and `setTier` with a board in play and a trace
+// live on it, and toggles mute — then resets and holds the snapshot against
+// the whole title-state list, reading it before any frame runs so simTime is
+// the pose's own 0.
 //
 // The campaign precondition is read BEFORE the mode switch. Whether campaign
 // progress survives entering the other mode is
-// `campaign/campaign-progress-persists`'s requirement, and reading `solvedBoards` after the switch would make this
-// item fail on a build that misses that one. And `muted` is compared against
-// whatever the mute toggle left rather than against `true`, because the
-// binding that turns muting on is `screens/mute`'s requirement; what reset
-// owes is that it leaves the bit alone.
-//
-// The second check reads the seed BACK and then replays it.
-// specs/instrumentation.md fixes what reset does to the generator exactly —
-// "rngState becomes options.seed, or DEFAULT_SEED (1) when no seed is given" —
-// and reports rngState on the snapshot, so the pose is verified by setting a
-// value and reading it back, which a build ignoring options.seed fails. The
-// determinism reading stays beside it for what the read-back does not cover:
-// the same seed and the same calls reach the same state, so two resets with
-// seed 7 must generate the same first cascade board, and a seedless reset must
-// match a reset with DEFAULT_SEED (1). (A build that uses no randomness passes
-// that second half vacuously, exactly as the spec allows.)
+// `campaign/campaign-progress-persists`'s requirement, and reading
+// `solvedBoards` after the switch would make this item fail on a build that
+// misses that one. And `muted` is compared against whatever the mute toggle
+// left rather than against `true`, because the binding that turns muting on is
+// `screens/mute`'s requirement; what reset owes is that it leaves the bit
+// alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertNull } from "../assert";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertNotNull,
+  assertNull,
+} from "../assert";
+import { GEO_3X3 } from "../fixtures";
 import {
   captureStill,
   createHarness,
   driveCourse,
-  enterCascade,
-  oracleBoard,
+  loadBoard,
+  nodeCenter,
+  poseCascadeRun,
   resetTo,
-  solveGenerated,
   startCampaign,
-  startCascade,
   tapAction,
   type Harness,
 } from "../harness";
-import { boardToNotation } from "../notation";
-import { DEFAULT_SEED } from "../surface";
+
+/** A run in progress: past the first climb, so tier 2 stands to be cleared. */
+const RUN_COUNT = 6;
 
 let h: Harness;
 
@@ -66,11 +62,11 @@ afterEach(() => {
 });
 
 it("restores every title-screen value after progress in both modes", async () => {
-  // Dirty everything. Campaign: enter through the real title menu and solve
-  // board 1, so a board is recorded solved and a second is unlocked. Cascade:
-  // enter and solve one generated board, so solvedCount moves off 0. Then
-  // toggle mute, so "untouched" is observable.
-  await resetTo(h, 5);
+  // Dirty everything. Campaign: enter and solve board 1, so a board is
+  // recorded solved and a second is unlocked. Cascade: pose a run in progress
+  // with a board in play and a trace live on it. Then toggle mute, so
+  // "untouched" is observable.
+  await resetTo(h);
   await startCampaign(h);
   await driveCourse(h, 1);
 
@@ -86,21 +82,25 @@ it("restores every title-screen value after progress in both modes", async () =>
     "precondition: solving board 1 unlocked board 2",
   );
 
-  await enterCascade(h);
-  await solveGenerated(h, 1);
-  await tapAction(h, "mute");
-
+  poseCascadeRun(h, RUN_COUNT);
+  const board = await loadBoard(h, GEO_3X3);
+  const emitter = nodeCenter(0, 0, board.cols, board.rows);
+  h.debug.pointerDown(emitter.x, emitter.y);
   const dirty = h.snapshot();
+  assertEqual(dirty.mode, "cascade", "precondition: the cascade run is posed");
   assertEqual(
     dirty.solvedCount,
-    1,
-    "precondition: one cascade board is solved",
+    RUN_COUNT,
+    "precondition: the run holds solves to clear",
   );
-  const mutedBefore = dirty.muted;
+  assertEqual(dirty.tier, 2, "precondition: the run holds a climbed tier");
+  assertNotNull(dirty.tracing, "precondition: a trace is live");
+  await tapAction(h, "mute");
+  const mutedBefore = h.snapshot().muted;
 
   // The reset, and the snapshot the pose itself left — read before any frame
   // runs, so simTime is the restored 0 and not a frame's tick.
-  h.debug.reset({ seed: 7 });
+  h.debug.reset();
   const title = h.snapshot();
   await h.advance(1);
   captureStill(h, "title");
@@ -125,51 +125,5 @@ it("restores every title-screen value after progress in both modes", async () =>
     title.muted,
     mutedBefore,
     "muted is untouched — the runtime owns muting",
-  );
-});
-
-it("seeds rngState from options.seed, defaulting to DEFAULT_SEED (1)", async () => {
-  // The seed itself, read straight back off the snapshot.
-  h.debug.reset({ seed: 7 });
-  assertEqual(
-    h.snapshot().rngState,
-    7,
-    "reset({seed: 7}) leaves rngState at 7",
-  );
-  h.debug.reset();
-  assertEqual(
-    h.snapshot().rngState,
-    DEFAULT_SEED,
-    "an omitted seed leaves rngState at DEFAULT_SEED (1)",
-  );
-
-  // The first cascade board generated after a reset, as notation: the same
-  // seed and the same calls must reach the same state
-  // (specs/instrumentation.md "A deterministic core").
-  const firstCascadeBoard = async (seed?: number): Promise<string> => {
-    if (seed === undefined) {
-      h.debug.reset();
-    } else {
-      h.debug.reset({ seed });
-    }
-    await h.advance(1);
-    const s = await startCascade(h);
-    return boardToNotation(oracleBoard(s));
-  };
-
-  const seededOnce = await firstCascadeBoard(7);
-  const seededAgain = await firstCascadeBoard(7);
-  assertEqual(
-    seededAgain,
-    seededOnce,
-    "reset({seed: 7}) twice generates the same first cascade board",
-  );
-
-  const seedless = await firstCascadeBoard(undefined);
-  const seededDefault = await firstCascadeBoard(DEFAULT_SEED);
-  assertEqual(
-    seededDefault,
-    seedless,
-    "reset() seeds rngState with DEFAULT_SEED (1)",
   );
 });

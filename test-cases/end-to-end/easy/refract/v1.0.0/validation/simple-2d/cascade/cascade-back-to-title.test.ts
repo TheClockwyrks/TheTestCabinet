@@ -6,19 +6,22 @@
 // That the sequence is really ENDED by it — a fresh one starting from tier 1
 // afterwards — is cascade/cascade-restarts-fresh's point.
 //
-// One board is really solved first, so the run being abandoned holds progress
-// a fresh one cannot. Every step is the player's own: the solve is the
-// spec-derived solver's beams drawn through the pointer operations, NEXT BOARD
-// goes through the registered actions, and `back` is the real Escape edge.
+// The run being abandoned is one in progress: it is posed at five solves
+// through `setSolvedCount` and `setTier` (specs/instrumentation.md), so the
+// board left behind is a board of a run that has climbed. The board itself is
+// posed through `loadBoard`, a board like any other, and `back` is the real
+// Escape edge.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { GEO_3X3 } from "../fixtures";
+import { TIER_ADVANCE } from "../notation";
 import {
   captureStill,
   createHarness,
+  loadBoard,
+  poseCascadeRun,
   resetTo,
-  solveGenerated,
-  startCascade,
   tapAction,
   type Harness,
 } from "../harness";
@@ -34,20 +37,18 @@ afterEach(() => {
 });
 
 it("returns to title with CASCADE highlighted", async () => {
-  await resetTo(h, 1);
-  await startCascade(h);
-
-  await solveGenerated(h, 1);
-  await tapAction(h, "confirm"); // NEXT BOARD (specs/modes/cascade.md)
+  await resetTo(h);
+  poseCascadeRun(h, TIER_ADVANCE);
+  await loadBoard(h, GEO_3X3);
   assertEqual(
     h.snapshot().screen,
     "playing",
-    "NEXT BOARD returns to playing (precondition for the back edge)",
+    "a board of the run in progress is up (precondition for the back edge)",
   );
   assertEqual(
     h.snapshot().solvedCount,
-    1,
-    "one board is recorded solved before backing out (precondition)",
+    TIER_ADVANCE,
+    "five boards are recorded solved before backing out (precondition)",
   );
 
   // back during playing abandons the board and returns to title.

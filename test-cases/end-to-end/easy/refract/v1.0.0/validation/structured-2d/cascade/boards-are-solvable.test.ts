@@ -3,13 +3,13 @@
 // specs/modes/cascade.md "The generator": every board the generator emits is
 // solvable under the rules in specs/beams.md — a board reaches the player only
 // when a set of beams satisfying every rule is known to exist for it. The
-// check proves it the only honest way: twenty-five consecutive generated
-// boards are SOLVED for real — snapshot the arrived board, run the
-// spec-derived solver, trace the found beams through the build's own limits,
-// assert the build agrees it is solved, take NEXT BOARD. Twenty-five boards
-// crosses the whole ladder at five per tier (tier 5 from the twentieth solve,
-// specs/modes/cascade.md) and proves five more at the top, so the sweep
-// reaches MAX_TIER and continues there.
+// check proves it the only honest way: the generator is asked for five boards
+// at every tier through `generateBoard` (specs/instrumentation.md), and each
+// is SOLVED for real — snapshot the arrived board, run the spec-derived
+// solver, trace the found beams through the build's own limits, assert the
+// build agrees it is solved. Five boards at every tier crosses the whole
+// ladder, MAX_TIER included. The last board, a MAX_TIER board, is solved on
+// camera as the replay.
 //
 // RESIDUAL RISK, documented: the solver caps its node expansions as a runaway
 // stop. A conformant generator could in principle emit a board the search
@@ -18,19 +18,20 @@
 // channels resolve in milliseconds in practice.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength } from "../assert";
+import { assertEqual, fail } from "../assert";
 import {
   captureReplay,
   createHarness,
-  solveGenerated,
+  generateAtTiers,
+  resetTo,
+  traceBeams,
+  traceCells,
   type Harness,
 } from "../harness";
-import { MAX_TIER, TIER_ADVANCE } from "../notation";
+import { CHANNELS, MAX_TIER } from "../notation";
+import { solve } from "../solver";
 
-const SEED = 1;
-const BOARDS = 25;
-/** Twenty solves put the ladder at MAX_TIER (min(floor(20/5)+1, 5) = 5). */
-const FIRST_TOP_TIER_BOARD = TIER_ADVANCE * (MAX_TIER - 1);
+const PER_TIER = 5;
 
 let h: Harness;
 
@@ -42,23 +43,63 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("solves twenty-five consecutive generated boards, reaching tier 5 and continuing there", async () => {
-  // The whole sweep is the section: board after board arriving and solving.
-  const solved = await captureReplay(h, "solve", () =>
-    solveGenerated(h, BOARDS, SEED),
+it("solves five generated boards at every tier, the last on camera", async () => {
+  await resetTo(h);
+
+  const generated = await generateAtTiers(
+    h,
+    PER_TIER,
+    async ({ tier, round, board }) => {
+      const at = `tier ${tier}, board ${round}`;
+      const result = solve(board);
+      if (result.status === "unsolvable") {
+        fail(
+          `a solvable generated board (specs/modes/cascade.md: every board ` +
+            `the generator emits is solvable)`,
+          `${at} is unsolvable: ${result.reason ?? "no beam set satisfies the rules"}`,
+        );
+      }
+      if (result.status === "limit") {
+        fail(
+          `a generated board the spec-derived solver can crack within its ` +
+            `expansion cap (a documented residual risk of the cap, not proof ` +
+            `of an unsolvable board)`,
+          `${at} exhausted ${result.expansions} expansions`,
+        );
+      }
+
+      if (tier !== MAX_TIER || round !== PER_TIER) {
+        traceBeams(h, result.beams);
+        assertEqual(
+          h.snapshot().solved,
+          true,
+          `${at} solved by the solver's beams`,
+        );
+        return;
+      }
+
+      // The last board, on camera: channel by channel, a frame between, so
+      // the recording shows the solve arriving rather than one finished still.
+      await captureReplay(h, "solve", async () => {
+        for (const channel of CHANNELS) {
+          const cells = result.beams[channel];
+          if (cells === undefined || cells.length === 0) continue;
+          traceCells(h, cells);
+          await h.advance(1);
+        }
+        assertEqual(
+          h.snapshot().solved,
+          true,
+          `${at} solved by the solver's beams`,
+        );
+        await h.advance(2);
+      });
+    },
   );
 
-  assertLength(solved, BOARDS, "boards solved by the sweep");
-  for (let k = FIRST_TOP_TIER_BOARD; k < BOARDS; k += 1) {
-    assertEqual(
-      solved[k].arrival.tier,
-      MAX_TIER,
-      `board ${k + 1} is generated at MAX_TIER, so the sequence continued there`,
-    );
-  }
   assertEqual(
-    h.snapshot().solvedCount,
-    BOARDS,
-    "the sweep's twenty-five solves are counted",
+    generated.length,
+    MAX_TIER * PER_TIER,
+    "boards generated across the ladder",
   );
 });

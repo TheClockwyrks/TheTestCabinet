@@ -1,32 +1,31 @@
 // Refract — cascade/tier-channel-count: each tier emits the channel count its rung states.
 //
 // specs/modes/cascade.md "The tier ladder" gives one row per tier; this point
-// reads the channel count off it. Across the twenty-five-board
-// sweep, board k arrives after exactly k solves, so its rung is the formula's
-// tier at k — read as the SPEC'S OWN FORMULA rather than off the build's `tier`
-// field, which would let a build that mis-reports the rung be judged against
-// the rung it claims; whether that field tracks the ladder is
-// cascade/tier-ladder's point, and here the subject is the boards.
+// reads the channel count off it. The generator is asked for five boards at every
+// tier through `generateBoard` (specs/instrumentation.md), and each board is
+// held, as it arrives, against the row of the tier it was asked for at.
+// Whether the build's own `tier` field tracks the ladder is
+// cascade/tier-ladder's point; here the subject is the boards. The still is
+// the last tier-5 board, the fullest row.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  solveGenerated,
-  tapAction,
+  generateAtTiers,
+  resetTo,
   type Harness,
 } from "../harness";
 import {
   CHANNELS,
+  MAX_TIER,
   TIERS,
   channelsPresent,
-  tierForSolvedCount,
   type Board,
 } from "../notation";
 
-const SEED = 1;
-const BOARDS = 25;
+const PER_TIER = 5;
 
 let h: Harness;
 
@@ -54,14 +53,10 @@ function assertRung(board: Board, tier: number, context: string): void {
   );
 }
 
-it("gives every board its tier's channel count, the first n of CHANNELS", async () => {
-  const solved = await solveGenerated(h, BOARDS, SEED);
-  for (let k = 0; k < solved.length; k += 1) {
-    assertRung(solved[k].board, tierForSolvedCount(k), `board ${k + 1}`);
-  }
-
-  // The picture: the fresh top-tier board after the sweep.
-  await tapAction(h, "confirm");
-  assertEqual(h.snapshot().screen, "playing", "NEXT BOARD lands on playing");
-  captureStill(h, "board");
+it("gives every board the channel count of the tier it was generated at, the first n of CHANNELS", async () => {
+  await resetTo(h);
+  await generateAtTiers(h, PER_TIER, ({ tier, round, board }) => {
+    if (tier === MAX_TIER && round === PER_TIER) captureStill(h, "board");
+    assertRung(board, tier, `tier ${tier}, board ${round}`);
+  });
 });

@@ -19,28 +19,7 @@ import {
   startCascade,
   type Harness,
 } from "../harness";
-
-/** Every field `specs/instrumentation.md` lists on the snapshot. */
-const SNAPSHOT_FIELDS = [
-  "version",
-  "screen",
-  "mode",
-  "menuIndex",
-  "boardIndex",
-  "solvedBoards",
-  "unlockedCount",
-  "selectIndex",
-  "solvedCount",
-  "tier",
-  "board",
-  "beams",
-  "solved",
-  "tracing",
-  "pointer",
-  "muted",
-  "simTime",
-  "rngState",
-] as const;
+import { SNAPSHOT_FIELDS } from "./fields";
 
 let h: Harness;
 

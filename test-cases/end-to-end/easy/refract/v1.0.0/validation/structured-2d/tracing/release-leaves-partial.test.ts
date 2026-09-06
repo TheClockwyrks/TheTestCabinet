@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 it("the release ends the trace, the partial beam persists, and a press on either end resumes it", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_7X6);
 
   // Two segments of a board that needs six: a partial beam. `traceCells` ends

@@ -30,8 +30,8 @@ afterEach(() => {
 });
 
 it("enters the first board from a press and release on its grid cell", async () => {
-  await resetTo(h, 1);
-  await startCampaign(h, 1);
+  await resetTo(h);
+  await startCampaign(h);
   assertEqual(h.snapshot().screen, "select", "the campaign opens on the grid");
 
   const cell = targetCenter(targetById(h.snapshot(), "board-1"));

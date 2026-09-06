@@ -36,9 +36,10 @@ afterEach(async () => {
  * build owns its layout, so the release has to land somewhere the build itself
  * says is free.
  */
-function pointOutsideEveryTarget(
-  targets: readonly TargetSnapshot[],
-): { x: number; y: number } {
+function pointOutsideEveryTarget(targets: readonly TargetSnapshot[]): {
+  x: number;
+  y: number;
+} {
   for (let y = 4; y < STAGE_H; y += 16) {
     for (let x = 4; x < STAGE_W; x += 16) {
       const probe = { id: "probe", x, y, w: 1, h: 1 };
@@ -47,11 +48,14 @@ function pointOutsideEveryTarget(
       }
     }
   }
-  return fail("a stage point inside no target", targets.map((t) => t.id));
+  return fail(
+    "a stage point inside no target",
+    targets.map((t) => t.id),
+  );
 }
 
 it("leaves the title untouched when the release lands off the target", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
 
   const item = targetCenter(targetById(await h.snapshot(), "menu-2"));

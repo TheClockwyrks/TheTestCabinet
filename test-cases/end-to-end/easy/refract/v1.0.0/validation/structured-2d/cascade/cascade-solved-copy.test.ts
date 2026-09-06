@@ -139,7 +139,7 @@ afterEach(() => {
 });
 
 it("draws the title, the count, and the menu in order over the finished board", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCascade(h);
 
   // One quick posed solve, so the count on the screen under test is 2.

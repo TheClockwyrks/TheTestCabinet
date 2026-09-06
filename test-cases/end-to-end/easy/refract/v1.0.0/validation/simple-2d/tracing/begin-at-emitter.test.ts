@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 it("starts the channel's beam at the pressed emitter, holding that one cell", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
 
   // The precondition of the first grab row: the beam carries no segments.

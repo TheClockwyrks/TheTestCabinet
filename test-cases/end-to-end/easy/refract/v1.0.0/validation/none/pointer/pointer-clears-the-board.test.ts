@@ -31,7 +31,7 @@ afterEach(async () => {
 });
 
 it("empties the beams when the clear control is taken", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
   const board = await loadBoard(h, R9_UNIQUE);
 

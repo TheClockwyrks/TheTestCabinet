@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 it("a press on an emitter of a channel whose beam carries no segments starts that beam at that emitter", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_3X3);
 
   // The precondition of the grab row: the channel's beam carries no segments.

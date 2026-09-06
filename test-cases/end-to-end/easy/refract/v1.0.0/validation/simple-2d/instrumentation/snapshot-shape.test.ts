@@ -91,7 +91,7 @@ function poseShape(): RefractSnapshot {
 }
 
 it("reports the version and every documented field, with its documented type", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, SHAPE_BOARD);
   const s = poseShape();
   await h.advance(1);
@@ -161,11 +161,10 @@ it("reports the version and every documented field, with its documented type", a
   assertEqual(typeof s.pointer.down, "boolean", "pointer.down");
   assertEqual(typeof s.muted, "boolean", "muted");
   assertEqual(typeof s.simTime, "number", "simTime");
-  assertEqual(typeof s.rngState, "number", "rngState");
 });
 
 it("derives node centers, spent, complete, and solved as the specs state", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, SHAPE_BOARD);
   const s = poseShape();
 

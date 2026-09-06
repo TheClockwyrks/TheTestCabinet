@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 it("resumes the beam whose end the pressed node is, not the one it is a mid cell of", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, END_OVER_MID);
 
   // Triangle passes through the crystal; square ends on it.

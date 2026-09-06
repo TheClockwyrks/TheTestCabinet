@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 it("the crossing after the n-th is refused", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, CRYSTAL_TWICE);
 
   // Two complete crossings of the 2-charge crystal, then a step to t(2,1).

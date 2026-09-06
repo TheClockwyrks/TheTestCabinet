@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 it("a press on a node more than one beam passes through begins no trace and leaves the board unchanged", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, SHARED_MID);
 
   // Both channels cross the crystal completely, so it is a mid cell of both

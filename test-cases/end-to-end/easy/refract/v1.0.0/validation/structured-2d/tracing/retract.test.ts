@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 it("moving onto the node behind the live end removes the last segment, repeated to unwind the beam without releasing", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_7X6);
 
   // Draw A -> B -> C -> D and keep the press held.

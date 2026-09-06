@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 it("empties the beams when the clear control is taken", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   const board = await loadBoard(h, R9_UNIQUE);
 
   const start = cellCenterOf(board, { col: 0, row: 0 });

@@ -6,11 +6,11 @@
 // its tier's row states". This point decides ONE of the five: "The largest count, across the solutions, of crystals crossed by beams of
 // two or more channels within a single solution", at least the figure the
 // tier's row states.
-// The sweep reads each board off the snapshot as it arrives and recomputes the
-// measures with the case's own enumeration (metrics.ts, derived from
+// The generator is asked for five boards at every tier through `generateBoard`
+// (specs/instrumentation.md), and each is read off the snapshot as it arrives
+// and remeasured with the case's own enumeration (metrics.ts, derived from
 // specs/modes/cascade.md and specs/beams.md alone), held to the row of the tier
-// the run stood at when the board was generated — the spec's own formula over
-// the arrival snapshot's solvedCount, as in tier-grid-range.
+// it was asked for at.
 //
 // A BOARD THE ORACLE CANNOT MEASURE IS NOT JUDGED. The enumeration carries an
 // expansion budget (DIFFICULTY_MAX_EXPANSIONS, a generous runaway stop) so a
@@ -23,17 +23,15 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
 import { measuresUpToTier } from "../metrics";
-import { TIERS, tierForSolvedCount } from "../notation";
+import { MAX_TIER, TIERS } from "../notation";
 import {
   captureStill,
   createHarness,
-  solveGenerated,
+  generateAtTiers,
   type Harness,
-  type RefractSnapshot,
 } from "../harness";
 
-const SWEEP = 25;
-const SEED = 1;
+const PER_TIER = 5;
 
 let h: Harness;
 
@@ -46,22 +44,19 @@ afterEach(async () => {
 });
 
 it("every measured board meets its tier's shared-crystal floor", async () => {
-  const arrivals: RefractSnapshot[] = [];
-  const sweep = await solveGenerated(
+  const generated = await generateAtTiers(
     h,
-    SWEEP,
-    SEED,
-    async (snapshot, index) => {
-      arrivals.push(snapshot);
-      if (index === SWEEP - 1) await captureStill(h, "board");
+    PER_TIER,
+    async ({ tier, round }) => {
+      if (tier === MAX_TIER && round === PER_TIER)
+        await captureStill(h, "board");
     },
   );
 
   let unmeasured = 0;
-  for (const [index, board] of sweep.boards.entries()) {
-    const tier = tierForSolvedCount(arrivals[index].solvedCount);
+  for (const { tier, round, board } of generated) {
     const row = TIERS[tier - 1];
-    const at = `board ${index + 1} (tier ${tier})`;
+    const at = `tier ${tier}, board ${round}`;
 
     const { measured } = measuresUpToTier(board, tier);
     if (measured === null || measured.budget) {
@@ -81,7 +76,7 @@ it("every measured board meets its tier's shared-crystal floor", async () => {
   assertLessThan(
     unmeasured,
     6,
-    "at least twenty of the sweep's twenty-five boards measured inside the " +
+    "at least twenty of the twenty-five generated boards measured inside the " +
       "oracle's expansion budget",
   );
 });

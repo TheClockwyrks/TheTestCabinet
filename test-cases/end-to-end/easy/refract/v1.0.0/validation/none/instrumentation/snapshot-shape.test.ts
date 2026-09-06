@@ -40,6 +40,7 @@ import {
   type Harness,
   type RefractSnapshot,
 } from "../harness";
+import { SNAPSHOT_FIELDS } from "./fields";
 
 /**
  * A 3x3 board exercising every branch of the shape: all three channels (each
@@ -65,28 +66,6 @@ const PARTIAL: readonly { col: number; row: number }[] = [
 
 /** The drawn beams, as the rules oracle reads them. */
 const DRAWN: Beams = { triangle: PARTIAL.map((cell) => ({ ...cell })) };
-
-/** Every field `specs/instrumentation.md` lists on the snapshot. */
-const SNAPSHOT_FIELDS = [
-  "version",
-  "screen",
-  "mode",
-  "menuIndex",
-  "boardIndex",
-  "solvedBoards",
-  "unlockedCount",
-  "selectIndex",
-  "solvedCount",
-  "tier",
-  "board",
-  "beams",
-  "solved",
-  "tracing",
-  "pointer",
-  "muted",
-  "simTime",
-  "rngState",
-] as const;
 
 let h: Harness;
 
@@ -131,7 +110,6 @@ it("reports the version and every documented field, with its documented type", a
     "solvedCount",
     "tier",
     "simTime",
-    "rngState",
   ] as const) {
     assertEqual(typeof snapshot[field], "number", `typeof ${field}`);
   }

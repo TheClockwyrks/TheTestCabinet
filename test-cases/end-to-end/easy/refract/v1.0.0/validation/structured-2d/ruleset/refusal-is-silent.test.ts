@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 it("a sweep across three illegal targets draws nothing and stays live", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R2_FOREIGN);
 
   const drawn = [

@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 it("a press on a twice-carried cell drops only the cells after its last occurrence", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, CRYSTAL_TWICE);
 
   traceCells(h, ROUTE);

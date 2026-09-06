@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 it("the route threading every lens twice-each reports complete true", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, TWO_ROUTES);
 
   // T(0,0)-t(1,1)-t(1,0)-T(2,0): one segment meets each emitter, and each of

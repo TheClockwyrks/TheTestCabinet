@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 it("begins a trace within NODE_HIT_R of a node's center and none beyond it", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_3X3);
 
   // No two targeting regions overlap: NODE_HIT_R (44) is below half

@@ -18,7 +18,7 @@
 // drawn with (the harness's drawnTextSpans). A run's VERTICAL extent is read
 // at its anchor: the canvas does not record the glyphs' ascent, so a run
 // violates the region when its glyph span crosses the widened x range while
-// its anchor sits inside the widened y range. That is the deterministic
+// its anchor sits inside the widened y range. That is the one fixed
 // reading available, and it is conservative toward the build — a run whose
 // anchor sits just outside the band never fails, whatever its glyph height.
 //
@@ -87,7 +87,7 @@ function assertSpansClear(spans: TextSpan[], mode: string): void {
 }
 
 async function poseLargestBoard(mode: Mode): Promise<void> {
-  await resetTo(h, 1);
+  await resetTo(h);
   await poseMode(h, mode);
   await loadBoard(h, GEO_7X6);
   const snapshot = h.snapshot();

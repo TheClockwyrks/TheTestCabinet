@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 it("reorients the beam so the pressed far end is its last cell, and extends from there", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
   const at = (col: number, row: number): { x: number; y: number } =>
     nodeCenter(col, row, 4, 3);

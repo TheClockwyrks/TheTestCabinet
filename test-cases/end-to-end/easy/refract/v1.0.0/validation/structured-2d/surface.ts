@@ -31,12 +31,14 @@
 /** The surface's version, reported as `version`. */
 export const REFRACT_DEBUG_VERSION = 2;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 /** The screens the state machine moves between. */
 export type Screen =
-  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+  | "title"
+  | "howto"
+  | "select"
+  | "playing"
+  | "solved"
+  | "complete";
 
 /** The two ways Refract is played. */
 export type Mode = "campaign" | "cascade";
@@ -153,8 +155,6 @@ export interface RefractSnapshot {
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
-  /** The seeded generator's current state. */
-  rngState: number;
 }
 
 /**
@@ -170,7 +170,7 @@ export interface RefractSnapshot {
  */
 export interface RefractDebugApi {
   version: number;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): RefractSnapshot;
   /** The mode field alone: no screen moves and no board is generated. */
   setMode(mode: Mode): void;
@@ -178,6 +178,12 @@ export interface RefractDebugApi {
   setScreen(screen: Screen): void;
   /** The highlighted item on whichever menu the current screen shows. */
   setMenuIndex(index: number): void;
+  /** The cascade run's boards-solved count alone; `tier` is left as it is. */
+  setSolvedCount(count: number): void;
+  /** The tier the next cascade board is generated at, 1 to MAX_TIER, alone. */
+  setTier(tier: number): void;
+  /** A board the generator emits at `tier`, posed as `loadBoard` poses one. */
+  generateBoard(tier: number): void;
   /** Poses a board written in specs/board.md notation, one string per row. */
   loadBoard(board: readonly string[]): void;
   pointerDown(x: number, y: number, device?: PointerDevice): void;
@@ -207,6 +213,9 @@ export const REQUIRED_OPS = [
   "setMode",
   "setScreen",
   "setMenuIndex",
+  "setSolvedCount",
+  "setTier",
+  "generateBoard",
   "loadBoard",
   "pointerDown",
   "pointerMove",

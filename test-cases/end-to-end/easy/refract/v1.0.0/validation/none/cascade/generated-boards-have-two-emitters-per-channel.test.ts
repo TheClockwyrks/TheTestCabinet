@@ -3,10 +3,9 @@
 //
 // specs/modes/cascade.md "The generator": the channels present are the first n
 // of CHANNELS, and every channel present carries exactly two emitters. The
-// sweep reads each board off the snapshot as it arrives and holds it to those
-// two rows of the contract table — solving as it goes (the only way the
-// sequence advances), with a different seed from the solvability sweep so the
-// two points read different draws of the generator. How many channels a tier
+// generator is asked for five boards at every tier through `generateBoard`
+// (specs/instrumentation.md), and each is read off the snapshot as it arrives
+// and held to those two rows of the contract table. How many channels a tier
 // asks for is cascade/tier-channel-count's point; here the subject is which
 // channels they are and how many emitters each gets.
 
@@ -16,16 +15,15 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { CHANNELS, channelsPresent } from "../notation";
+import { CHANNELS, MAX_TIER, channelsPresent } from "../notation";
 import {
   captureStill,
   createHarness,
-  solveGenerated,
+  generateAtTiers,
   type Harness,
 } from "../harness";
 
-const SWEEP = 25;
-const SEED = 2;
+const PER_TIER = 5;
 
 let h: Harness;
 
@@ -37,18 +35,19 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("every board of the sweep carries the first n of CHANNELS with two emitters each", async () => {
-  const sweep = await solveGenerated(
+it("every board generated at every tier carries the first n of CHANNELS with two emitters each", async () => {
+  const generated = await generateAtTiers(
     h,
-    SWEEP,
-    SEED,
-    async (_snapshot, index) => {
-      if (index === SWEEP - 1) await captureStill(h, "emitters");
+    PER_TIER,
+    async ({ tier, round }) => {
+      if (tier === MAX_TIER && round === PER_TIER) {
+        await captureStill(h, "emitters");
+      }
     },
   );
 
-  for (const [index, board] of sweep.boards.entries()) {
-    const at = `board ${index + 1}`;
+  for (const { tier, round, board } of generated) {
+    const at = `tier ${tier}, board ${round}`;
 
     const present = channelsPresent(board);
     assertGreaterThanOrEqual(present.length, 1, `${at}: channels present`);

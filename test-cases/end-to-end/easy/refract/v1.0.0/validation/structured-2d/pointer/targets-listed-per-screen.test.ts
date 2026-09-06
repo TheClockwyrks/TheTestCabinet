@@ -46,7 +46,7 @@ function ids(targets: readonly { id: string }[]): string[] {
 }
 
 it("reports the fixed target ids on every screen that carries them", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
 
   const title = h.snapshot();
   assertEqual(title.screen, "title");
@@ -69,7 +69,7 @@ it("reports the fixed target ids on every screen that carries them", async () =>
       "(specs/controls.md, Pointer targets)",
   );
 
-  await startCampaign(h, 1);
+  await startCampaign(h);
   const select = h.snapshot();
   assertEqual(select.screen, "select");
   assertDeepEqual(

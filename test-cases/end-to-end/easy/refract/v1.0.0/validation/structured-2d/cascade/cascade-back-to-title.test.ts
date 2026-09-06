@@ -6,22 +6,25 @@
 // sequence is really ENDED by it — a fresh one starting from tier 1 afterwards
 // — is cascade/cascade-restarts-fresh's point.
 //
-// Progress is built first (TIER_ADVANCE real solves, so solvedCount has moved
-// and the tier has climbed), so the board being abandoned is a board of a run
-// in progress rather than the first board of a fresh one.
+// The run being abandoned is posed at TIER_ADVANCE solves through
+// `setSolvedCount` and `setTier` (specs/instrumentation.md), so solvedCount
+// has moved and the tier has climbed, and the board being abandoned is a board
+// of a run in progress rather than the first board of a fresh one. The board
+// itself is posed through `loadBoard`, a board like any other.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { GEO_3X3 } from "../fixtures";
 import {
   captureStill,
   createHarness,
-  solveGenerated,
+  loadBoard,
+  poseCascadeRun,
+  resetTo,
   tapAction,
   type Harness,
 } from "../harness";
 import { TIER_ADVANCE } from "../notation";
-
-const SEED = 1;
 
 let h: Harness;
 
@@ -34,9 +37,9 @@ afterEach(() => {
 });
 
 it("returns to title with CASCADE highlighted", async () => {
-  // Real solves, then NEXT BOARD: playing with progress worth discarding.
-  await solveGenerated(h, TIER_ADVANCE, SEED);
-  await tapAction(h, "confirm");
+  await resetTo(h);
+  poseCascadeRun(h, TIER_ADVANCE);
+  await loadBoard(h, GEO_3X3);
   const playing = h.snapshot();
   assertEqual(playing.screen, "playing", "a mid-sequence board is up");
   assertEqual(playing.solvedCount, TIER_ADVANCE, "progress stands before back");

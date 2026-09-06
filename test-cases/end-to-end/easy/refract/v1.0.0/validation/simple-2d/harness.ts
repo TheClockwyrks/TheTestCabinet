@@ -30,7 +30,7 @@
 // poses a board and moves to `playing`, the pointer operations feed the same
 // immediate input path a player's pointer feeds, so a whole route is drawn
 // without a frame passing, and `reset` gives everything back. Posing through it
-// is how a scenario is reproducible, and it is the seam the case's specification
+// is how a scenario is arranged, and it is the seam the case's specification
 // documents. `surface.ts` is that specification as types, and it is the only
 // description of the surface this harness reads: the build's own module for it
 // is never imported.
@@ -58,7 +58,7 @@
 // WHERE THE EXPECTED VALUES COME FROM. The spec-derived oracle beside this
 // file: `notation.ts` (the board notation and the cell center formula),
 // `rules.ts` (R1–R9 as specs/beams.md states them), `solver.ts` (a bounded
-// deterministic solver over those rules), `fixtures.ts` (posable boards), and
+// solver over those rules), `fixtures.ts` (posable boards), and
 // `routes.ts` (the twenty-four campaign boards with solver-produced routes).
 // None of it reads the reference implementation; every figure traces to a
 // statement in specs/.
@@ -109,19 +109,21 @@ import type { Point } from "./case-harness/point";
 import { BACKGROUND, game as build, type RefractState } from "../src/game";
 import { assertEqual, fail } from "./assert";
 import { BINDINGS, LAYOUT } from "./constants";
+import { MINIMAL_2X1 } from "./fixtures";
 import {
   CHANNELS,
+  MAX_TIER,
   NODE_R,
   STAGE_H,
   STAGE_W,
   cellX,
   cellY,
   parseBoard,
+  tierForSolvedCount,
   type Board,
 } from "./notation";
 import { CAMPAIGN_BOARDS } from "./routes";
 import type { Beams } from "./rules";
-import { solve } from "./solver";
 import {
   READINGS,
   type CellRef,
@@ -416,13 +418,13 @@ export const captureStill = kit.captureStill;
 // the check itself, derived from the figure or rule specs/ states for it.
 
 /**
- * `reset({seed})` through the surface, then one frame so the title is drawn.
+ * `reset()` through the surface, then one frame so the title is drawn.
  *
  * Every suite's opening move: the pose itself is immediate, and the frame is
  * what puts the title on the canvas for the checks that read pixels or draws.
  */
-export async function resetTo(h: Harness, seed?: number): Promise<void> {
-  h.debug.reset(seed === undefined ? undefined : { seed });
+export async function resetTo(h: Harness): Promise<void> {
+  h.debug.reset();
   await h.advance(1);
 }
 
@@ -536,8 +538,8 @@ export async function startCampaign(h: Harness): Promise<RefractSnapshot> {
  *
  * Cascade's entry is not a pose: specs/modes/cascade.md makes starting it set
  * the mode, zero `solvedCount`, set `tier` to 1, GENERATE the first board, and
- * move to `playing`, and the surface carries no operation that generates a
- * board. So the sequence is begun the way the game itself begins it. The route
+ * move to `playing`, and no operation on the surface does all of that. So the
+ * sequence is begun the way the game itself begins it. The route
  * is the pointer rather than the menu keys: CASCADE is `TITLE_ITEMS[1]`, so
  * specs/controls.md fixes its target as `menu-1` and taking that target as
  * "the same as `confirm` with `state.menuIndex` at `i`", which reaches the
@@ -649,58 +651,97 @@ export async function driveCourse(
 }
 
 /**
- * Really solve `k` generated cascade boards in sequence, proving each solvable
- * by solving it with the spec-derived solver.
+ * Pose a cascade run in progress: the mode, the boards-solved count, and the
+ * tier the ladder puts that count at, through the three single-field poses
+ * specs/instrumentation.md carries for them.
  *
- * Assumes a cascade in play ({@link startCascade} after a `resetTo`). Each
- * round reads the board off the snapshot, runs `solver.ts` over it, traces the
- * beams it found, and takes NEXT BOARD — the solved screen's first choice —
- * to move on. Returns the snapshot after the `k`-th solve, on `solved`.
- *
- * Documented residual risk: the solver is capped (DEFAULT_MAX_EXPANSIONS), so
- * a conformant generator could in principle emit a board the cap abandons.
- * Every board within the tier ladder's stated shapes resolves in milliseconds
- * in practice — the worst campaign board needs about a thousand expansions —
- * so the cap is a runaway stop, and a `limit` result is reported as such
- * rather than as "unsolvable".
+ * The tier is the spec's own formula over the count (`tierForSolvedCount`, from
+ * specs/modes/cascade.md), so the posed run is one a player could have reached.
+ * No board is chosen and none is generated: a caller poses one through
+ * `loadBoard`, asks the generator for one through `generateBoard`, or takes
+ * NEXT BOARD, whichever its requirement is about. The poses are immediate, and
+ * none of them changes the screen, so no frame is advanced here.
  */
-export async function solveGenerated(
+export function poseCascadeRun(h: Harness, solvedCount: number): void {
+  h.debug.setMode("cascade");
+  h.debug.setSolvedCount(solvedCount);
+  h.debug.setTier(tierForSolvedCount(solvedCount));
+}
+
+/**
+ * Pose the minimal board (`MINIMAL_2X1`, two adjacent emitters of one channel)
+ * through `loadBoard` and solve it with its one segment, handing back the state
+ * the solve left.
+ *
+ * On a cascade run this is one solve of the run: R9 holds on the move, the
+ * count rises, the tier is recomputed, and the game moves to `solved`
+ * (specs/modes/cascade.md, The sequence), exactly as it does for a generated
+ * board, because "a board posed this way is a board like any other"
+ * (specs/instrumentation.md). It is how a suite about the run's progression
+ * solves a board without dragging the generator or the solver onto its point.
+ */
+export async function solvePosedBoard(h: Harness): Promise<RefractSnapshot> {
+  await loadBoard(h, MINIMAL_2X1);
+  traceCells(h, [
+    { col: 0, row: 0 },
+    { col: 1, row: 0 },
+  ]);
+  return h.snapshot();
+}
+
+/** One board the generator was asked for, as it arrived. */
+export interface GeneratedBoard {
+  /** The tier it was generated at, the argument `generateBoard` was given. */
+  tier: number;
+  /** Which board of that tier's rounds it is, counted from 1. */
+  round: number;
+  /** The snapshot on arrival, `playing` with every beam empty. */
+  snapshot: RefractSnapshot;
+  /** The board itself, restated as the oracle's Board. */
+  board: Board;
+}
+
+/**
+ * Ask the generator for `perTier` boards at every tier of the ladder, through
+ * `generateBoard`, and hand each back as it arrived: tier 1's boards first,
+ * then tier 2's, up to `MAX_TIER`.
+ *
+ * The run is posed into cascade first, so the boards arrive as a player would
+ * meet them, and each one is rendered by the frame after its pose so a caller
+ * can read pixels or capture a still. `onBoard` runs on each board while it is
+ * in play, before the next is asked for, and may solve it: the next pose
+ * replaces whatever the previous board was left as. Nothing here asserts
+ * beyond the board's arrival; the record is handed back for the caller to hold
+ * against its own point.
+ */
+export async function generateAtTiers(
   h: Harness,
-  k: number,
-): Promise<RefractSnapshot> {
-  let snapshot = h.snapshot();
-  for (let round = 0; round < k; round += 1) {
-    if (snapshot.screen === "solved") {
-      await tapAction(h, "confirm"); // NEXT BOARD (specs/modes/cascade.md)
-      snapshot = h.snapshot();
-    }
-    assertEqual(
-      snapshot.screen,
-      "playing",
-      `solveGenerated: cascade board ${round + 1} in play ` +
-        "(specs/modes/cascade.md)",
-    );
-    const board = oracleBoard(snapshot);
-    const result = solve(board);
-    if (result.status !== "solved") {
-      fail(
-        "a solvable generated board (specs/modes/cascade.md: every board " +
-          "the generator emits is solvable; the spec-derived solver " +
-          `reported '${result.status}' after ${result.expansions} expansions)`,
-        board,
+  perTier: number,
+  onBoard?: (generated: GeneratedBoard) => void | Promise<void>,
+): Promise<GeneratedBoard[]> {
+  h.debug.setMode("cascade");
+  const generated: GeneratedBoard[] = [];
+  for (let tier = 1; tier <= MAX_TIER; tier += 1) {
+    for (let round = 1; round <= perTier; round += 1) {
+      h.debug.generateBoard(tier);
+      await h.advance(1);
+      const snapshot = h.snapshot();
+      assertEqual(
+        snapshot.screen,
+        "playing",
+        `generateBoard(${tier}) puts a board in play (specs/instrumentation.md)`,
       );
+      const entry: GeneratedBoard = {
+        tier,
+        round,
+        snapshot,
+        board: oracleBoard(snapshot),
+      };
+      generated.push(entry);
+      await onBoard?.(entry);
     }
-    traceBeams(h, result.beams);
-    snapshot = h.snapshot();
-    assertEqual(
-      snapshot.screen,
-      "solved",
-      `solveGenerated: cascade board ${round + 1} solved by the solver's ` +
-        "beams (specs/beams.md R9)",
-    );
-    await h.advance(1);
   }
-  return snapshot;
+  return generated;
 }
 
 /**

@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 it("back on the solved screen returns to title with CASCADE highlighted", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCascade(h);
 
   await loadBoard(h, GEO_3X3);

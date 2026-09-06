@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 it("redrawing a segment the same beam already holds is refused", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R3_SAME_BEAM);
 
   const loop: ReadonlyArray<readonly [number, number]> = [
