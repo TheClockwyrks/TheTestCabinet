@@ -398,3 +398,9 @@ __pycache__/
 # scripts/preview-asset-reference.mjs, for eyeballing sprites while iterating.
 # Regenerable output, not source — kept on disk to review, never committed.
 /reference-previews/
+
+# The shared harness's test fixture tree carries a `dist/` of its own that is
+# source rather than build output: the root-order tests read one file from each
+# of the three roots a case may serve a produced file from. Stated after the Node
+# template's `dist` rule above, because the later rule wins.
+!packages/case-harness/test/host/root/dist/
