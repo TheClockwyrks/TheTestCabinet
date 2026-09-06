@@ -118,7 +118,7 @@ const DRAWS = 100;
  * Three, after the posed one the cadence opens on. Each is held to the figure the
  * wave reported, which is an EXACT reading rather than a sample of a distribution,
  * so the count is not a sample size: what more of them would buy is more of the
- * same deterministic agreement, at `GAP_MAX` of game time each. Three is enough
+ * same exact agreement, at `GAP_MAX` of game time each. Three is enough
  * that a build agreeing by accident on one gap does not agree on all of them, and
  * it keeps the whole drive inside six seconds of game time.
  */
@@ -230,8 +230,8 @@ interface Beat {
  *
  * THE WHOLE DRIVE RUNS IN ONE CROSSING. It is some six hundred frames with a
  * reading after each, and taken a round trip apart that is six hundred crossings
- * into the page for a reading that is deterministic in the build's own terms — a
- * round trip's cost is a fact about how busy the host is, and a check that spends
+ * into the page for a reading that is the build's own however the host was loaded
+ * — a round trip's cost is a fact about how busy the host is, and a check that spends
  * six hundred of them has made how busy the host was part of its verdict.
  * `samples` runs the same frames, one `advance(dt, 1)` each, with the reading
  * taken inside the page, and it stops on the frame the last launch lands on.
@@ -300,8 +300,8 @@ interface Round {
  * timer at one edge of the stated window, drive the one frame that settles whether
  * the build launched on it — and `DRAWS` draws is two hundred of them. Driven a
  * round trip apart that is some eight hundred crossings into the page for a
- * reading that is deterministic in the build's own terms, and a round trip's cost
- * is a fact about how busy the host is: a check that spends eight hundred of them
+ * reading that is the build's own however the host was loaded, and a round trip's
+ * cost is a fact about how busy the host is: a check that spends eight hundred of them
  * has made how busy the host was part of its verdict. `trials` runs the same
  * beats, the same frames and the same posed fields, with the arranging and the
  * reading done inside the page.

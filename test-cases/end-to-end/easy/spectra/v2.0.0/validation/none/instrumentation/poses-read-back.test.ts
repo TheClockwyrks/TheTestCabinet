@@ -40,7 +40,7 @@
 // `controls/mute-m` drives the real binding and `audio/mute-silences` reads the
 // consequence. The two clock operations are absent for a related reason:
 // `setAutoStep` and `advance` set no field of the state, and
-// `instrumentation/deterministic-core` and `instrumentation/advances-in-real-time`
+// `instrumentation/elapsed-time-steps` and `instrumentation/advances-in-real-time`
 // read what they do.
 //
 // WHAT THIS DOES NOT DECIDE. What any posed value MEANS to the simulation. That a

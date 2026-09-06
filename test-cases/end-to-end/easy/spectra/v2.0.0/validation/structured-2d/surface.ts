@@ -32,9 +32,6 @@
 // — is not held to them. {@link REQUIRED_OPS} is what every build owes;
 // {@link OVERLOAD_OPS} is what the `overload` suites additionally reach for.
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 /** The seven screens the game moves between (specs/ui.md). */
 export type Screen =
   | "title"
@@ -237,7 +234,7 @@ export interface SpectraSnapshot {
 export interface SpectraDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): SpectraSnapshot;
   /**
    * A pure read of the hit region of item `index` on the menu the current screen

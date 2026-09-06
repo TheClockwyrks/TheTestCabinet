@@ -40,7 +40,7 @@
 // can reach the ship and end the run mid-wait.
 //
 // WHAT THIS DOES NOT DECIDE. What a frame's delta is worth, which
-// `instrumentation/deterministic-core` decides from the other side.
+// `instrumentation/elapsed-time-steps` decides from the other side.
 
 import { WallClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";

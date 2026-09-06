@@ -121,7 +121,7 @@ const DRAWS = 100;
  * Three, after the posed one the cadence opens on. Each is held to the figure the
  * wave reported, which is an EXACT reading rather than a sample of a distribution,
  * so the count is not a sample size: what more of them would buy is more of the
- * same deterministic agreement, at `GAP_MAX` of game time each. Three is enough
+ * same exact agreement, at `GAP_MAX` of game time each. Three is enough
  * that a build agreeing by accident on one gap does not agree on all of them, and
  * it keeps the whole drive inside six seconds of game time.
  */

@@ -35,7 +35,7 @@
 // can reach the ship and end the run mid-wait.
 //
 // WHAT THIS DOES NOT DECIDE. Not what a frame's delta is worth, which
-// `instrumentation.deterministic-core` decides from the other side, and not what a
+// `instrumentation.elapsed-time-steps` decides from the other side, and not what a
 // dive's path looks like, which is `swarm.dive-bends-toward-player`'s.
 
 import { afterEach, beforeEach, it } from "vitest";

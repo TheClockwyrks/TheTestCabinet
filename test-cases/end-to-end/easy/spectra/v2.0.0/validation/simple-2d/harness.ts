@@ -32,8 +32,8 @@
 // cyan drone in formation with all three of its faculties on, `setDroneBand` moves
 // the stored band and leaves the band clock exactly where it stands, a world gate
 // stays off until something turns it back on, and `reset` gives everything back.
-// Posing through it is how a scenario is reproducible, and it is the seam the
-// case's specification documents. `surface.ts` is that specification as types, and
+// Posing through it is how a scenario is arranged the same way in every build,
+// and it is the seam the case's specification documents. `surface.ts` is that specification as types, and
 // it is the only description of the surface this harness reads: the build's own
 // module for the surface is never imported.
 //
@@ -70,7 +70,7 @@
 // can be stated in ticks and mean the same thing on every machine. 120 Hz is also
 // exactly `1 / SUBSTEP_MAX`, so one frame of the default clock is one whole
 // sub-step and nothing is ever measured across a partial one. An item that is
-// specifically about the step size — `instrumentation.deterministic-core` — builds
+// specifically about the step size — `instrumentation.elapsed-time-steps` — builds
 // its own harnesses with clocks of its own.
 //
 // THE SEEDED ART IS SERVED HEADLESS. specs/assets.md has the build load its four
@@ -511,7 +511,7 @@ interface SpectraModel {
    *
    * `ticksFor(duration)` frames of the DEFAULT clock. A harness built with a clock
    * of its own advances the frames that clock hands out, so an item that supplied
-   * one — `instrumentation.deterministic-core` is the only one that does — counts
+   * one — `instrumentation.elapsed-time-steps` is the only one that does — counts
    * its own frames with {@link Harness.advance} instead.
    */
   advanceSeconds(duration: number): Promise<void>;
@@ -1143,7 +1143,7 @@ export const LANE_CENTER = (SHIP_X_MIN + SHIP_X_MAX) / 2;
  * reading needs.
  *
  * It is written for a FRESH harness, whose state is the opening one, so it does not
- * reset: the seed and the art are already as a run finds them. A validator that
+ * reset: the state and the art are already as a run finds them. A validator that
  * reuses a harness across scenarios calls `h.debug.reset()` first.
  */
 export function startPosed(h: Harness): void {

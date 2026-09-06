@@ -39,7 +39,8 @@
 // builds a drone the wave's own rules then fly, `addPlayerBullet` places a shot
 // the real collision code resolves, `setResonance` fills the meter the discharge
 // spends, and `reset` gives everything back. Posing through it is how a scenario
-// is reproducible, and it is the seam the case's specification documents.
+// is arranged the same way in every build, and it is the seam the case's
+// specification documents.
 // `surface.ts` is that specification as types, and it is the only description of
 // the surface this harness reads: the build's own module for it is never
 // imported.
@@ -76,7 +77,7 @@
 // integrated inside the sub-step loop specs/simulation.md fixes, which is why
 // `[instrumentation]` carries no `tick_hz` — so the fixed clock is the SUITE's
 // choice. A check that is specifically about the step size
-// (instrumentation/deterministic-core) builds its own harnesses with clocks of
+// (instrumentation/elapsed-time-steps) builds its own harnesses with clocks of
 // its own, passing {@link HarnessOptions.clock}.
 //
 // SPRITES, HEADLESS. The suite runs in `node`, where `fetch` and
@@ -1184,22 +1185,23 @@ export const captureStill: (h: Harness, outputId: string) => void =
 // about a Flux's band clock poses no bullet.
 
 /**
- * `reset({seed})`: the title screen, a seeded generator, every declared field at
- * its title-screen value. Every suite's opening move where the generator matters.
+ * `reset()`: the title screen, every declared field at its title-screen value,
+ * and the id counter back at the first id. Every suite's opening move where a
+ * fresh title matters.
  *
  * No frame is advanced. A pose acts on the live game at the call under this
  * engine (specs/instrumentation.md), so the state is restored when this returns,
  * and a check about what `reset` restores — `simTime` among them — reads a game
  * that has run no frame since.
  */
-export function resetTo(h: Harness, seed?: number): void {
-  h.debug.reset(seed === undefined ? undefined : { seed });
+export function resetTo(h: Harness): void {
+  h.debug.reset();
 }
 
 /**
  * A NEW RUN, opened the way a player opens one.
  *
- * `reset(seed)` for the title screen and a seeded generator, then `confirm` on
+ * `reset()` for the title screen, then `confirm` on
  * the title's highlighted first item — `TITLE_ITEMS[0]`, the mode entry — which
  * is what opens a run (specs/ui.md). No pose on the surface starts a run, and
  * there is not meant to be one: the run opens on its stage intro, and the wave
@@ -1209,8 +1211,8 @@ export function resetTo(h: Harness, seed?: number): void {
  * One frame runs, the frame that delivers the key's edge. The run opens on
  * `stageIntro`, so no drone exists yet when this returns.
  */
-export async function startRun(h: Harness, seed?: number): Promise<void> {
-  resetTo(h, seed);
+export async function startRun(h: Harness): Promise<void> {
+  resetTo(h);
   await tapAction(h, "confirm");
 }
 
@@ -1240,7 +1242,7 @@ export async function startRun(h: Harness, seed?: number): Promise<void> {
  * itself, and only that one. A check that finds itself needing a gate for any
  * other reason has been mis-posed.
  *
- * The generator is left as it stands, so a check that wants a seeded one calls
+ * The id counter is left as it stands, so a check that wants a fresh title calls
  * {@link resetTo} first. No frame is advanced: every pose here lands at the call.
  */
 export function startPosed(h: Harness): void {
@@ -1333,7 +1335,7 @@ export async function poseGameOverMenu(
  * the stage's wave is built by the game itself as the intro gives way
  * (specs/stages.md). Posing the intro's hold to zero and running one frame is
  * what lets it: the wave that stands when this returns is the wave the build's
- * own layout produced, at whatever bands and slots its seeded generator drew.
+ * own layout produced, at whatever bands and slots the build drew.
  *
  * ONLY the checks whose requirement IS that wave use this. Everything else poses
  * what it needs on the empty field {@link startPosed} opens, because a built wave

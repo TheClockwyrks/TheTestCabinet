@@ -49,12 +49,11 @@
 //      all. What CAN be decided is sensitivity: the same field is posed twice,
 //      differing in exactly that one fact, and the panel a build draws must differ
 //      between the two. A panel that never reports the fact cannot. The two poses
-//      are each opened by `reset({ seed })`, which "sets… the counter the next
-//      entity's id is taken from back to the first id, so two runs reset with the
-//      same seed report the same ids for the same scenario"
-//      (specs/instrumentation.md) — so the drone in both halves carries the same
-//      id at the same point, and the one thing left to tell them apart is the fact
-//      under test.
+//      are each opened by `reset()`, which "sets… the counter the next entity's
+//      id is taken from back to the first id, so the same scenario posed after two
+//      resets reports the same ids both times" (specs/instrumentation.md) — so the
+//      drone in both halves carries the same id at the same point, and the one
+//      thing left to tell them apart is the fact under test.
 //
 // THE VALUE HALF IS POSED AND THEN PAUSED. specs/ui.md freezes the field behind
 // the pause menu — "no drone moves, no bullet travels, no phase timer runs, none
@@ -216,9 +215,6 @@ const SHELL_FORMS = /core|broken|shell/i;
 
 /** The scales a build may honestly print a duration in: seconds to milliseconds. */
 const DURATION_SCALES = [1, 10, 100, 1000] as const;
-
-/** The seed the two halves of every sensitivity reading are opened with. */
-const TWIN_SEED = 3;
 
 /** Where the twin's one drone stands: mid-field, clear of both HUD strips. */
 const TWIN_AT = { x: 640, y: 300 } as const;
@@ -493,15 +489,14 @@ it("draws every registered value and changes nothing in the game", async () => {
   await toggleOverlay(h);
 
   /**
-   * The panel Spectra's own sources drew over a field posed from a fresh,
-   * identically seeded run.
+   * The panel Spectra's own sources drew over a field posed from a fresh reset.
    *
    * The bare frame is captured first and subtracted, so what comes back is the
    * overlay's own lines; the engine's two lines are dropped; and the overlay is
    * put back down for the next reading.
    */
   const panelOver = async (pose: () => void): Promise<string[]> => {
-    resetTo(h, TWIN_SEED);
+    resetTo(h);
     startPosed(h);
     pose();
 
@@ -532,8 +527,8 @@ it("draws every registered value and changes nothing in the game", async () => {
       first,
       `the overlay's own lines over a field posed with ${fact} — the two ` +
         `fields are identical in every other respect, and both runs are ` +
-        `opened by reset({ seed: ${TWIN_SEED} }) so the drone carries the ` +
-        `same id at the same point in each, so a panel that reports the fact ` +
+        `opened by reset() so the drone carries the same id at the same ` +
+        `point in each, so a panel that reports the fact ` +
         `draws something different and one that omits it cannot ` +
         `(specs/instrumentation.md, Diagnostics)`,
     );

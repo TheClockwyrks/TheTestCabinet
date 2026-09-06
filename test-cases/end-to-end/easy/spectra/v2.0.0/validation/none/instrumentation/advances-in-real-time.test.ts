@@ -41,7 +41,7 @@
 // WHAT THIS DOES NOT DECIDE. Not that `setAutoStep(false)` STOPS the loop — the
 // whole of the rest of this project rests on that and would be undecidable if it
 // did not hold — and not what a frame's delta is worth, which
-// `instrumentation/deterministic-core` decides from the other side.
+// `instrumentation/elapsed-time-steps` decides from the other side.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";

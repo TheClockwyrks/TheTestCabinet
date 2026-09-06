@@ -14,10 +14,9 @@
 // WHAT IS DELIBERATELY NOT ASSERTED. Where the escort stands and what band it
 // carries. specs/mode.md leaves both to the build — "beside it" fixes no distance
 // and "entering as an escort does" is specs/drones.md's entrance, whose path is
-// "of your design" — and the band is "drawn from the game's own generator", which
-// is a different requirement (`instrumentation/deterministic-core` grades the
-// generator). A check that pinned either would be grading the reference rather than
-// the specification.
+// "of your design" — and the band is "chosen at random, each band equally
+// likely", so either band is the outcome the specification allows. A check that
+// pinned either would be grading the reference rather than the specification.
 //
 // THE SHELL IS POSED STANDING, which is the branch this point is about; the other
 // branch is `overload/prism-core-no-escort`, and a build that adds an escort in

@@ -414,7 +414,7 @@ export interface MenuRect {
 
 /** The operations a check poses the game through. Every one crosses into the page. */
 export interface SpectraDebugApi {
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<SpectraSnapshot>;
   menuItemRect(index: number): Promise<MenuRect | null>;
 
@@ -506,9 +506,9 @@ export type SurfaceCall = PackageSurfaceCall<
 // fixes none: `specs/simulation.md` mandates no fixed timestep, every rate is per
 // second and integrated against the elapsed time of the frame, and a frame
 // divides into whole sub-steps of at most `SUBSTEP_MAX` itself. So a build must
-// reach the same place however that time was divided, and the check that is ABOUT
-// the division (`instrumentation/deterministic-core`) drives the same second as
-// one frame, as sixty and as a hundred and twenty.
+// resolve the same rules however that time was divided, and the check that is
+// ABOUT the division (`instrumentation/elapsed-time-steps`) drives the same second
+// as one frame, as sixty and as a hundred and twenty.
 //
 // The default is a steady 100 Hz, for one reason: every duration `specs/` fixes
 // is then a whole number of frames. `FIRE_INTERVAL` 0.16 s is 16, `FLIP_LOCKOUT`
@@ -2049,11 +2049,8 @@ export async function startStage(h: Harness, n: number): Promise<void> {
  * `reset` is the surface's own, and the rest is a real key through Chromium's
  * input pipeline.
  */
-export async function startRunFromTitle(
-  h: Harness,
-  options: { seed?: number } = {},
-): Promise<void> {
-  await h.debug.reset(options.seed === undefined ? undefined : options);
+export async function startRunFromTitle(h: Harness): Promise<void> {
+  await h.debug.reset();
   await h.debug.setMenuIndex(0);
   await h.tap("Enter");
   await h.advance(1);
