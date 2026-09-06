@@ -1,11 +1,13 @@
 // foes/corruptor-arrives — a corruptor arrives once the level gate opens.
 //
-// specs/foes.md: "From that level on, a corruptor enters after an interval drawn
-// from the run's seeded generator between CORRUPTOR_MIN_INTERVAL (14.0 s) and
-// CORRUPTOR_MAX_INTERVAL (22.0 s), timed from the moment the level's play
-// becomes active." The upper end of that interval is the bound this check holds
-// the build to, and it holds for every seed: whatever the generator draws, it
-// draws below CORRUPTOR_MAX_INTERVAL.
+// specs/foes.md: "From that level on, the corruptor's clock is drawn uniformly
+// between CORRUPTOR_MIN_INTERVAL (14.0 s) and CORRUPTOR_MAX_INTERVAL (22.0 s),
+// so a corruptor enters after such an interval timed from the moment the
+// level's play becomes active." The upper end of that interval is the bound
+// this check holds the build to, and it holds for every draw: whatever the
+// build draws, it draws below CORRUPTOR_MAX_INTERVAL. The clock is left to the
+// build's own draw rather than posed, because the draw's range IS the
+// requirement; `instrumentation/set-spawn-timer` is the check that poses it.
 //
 // The requirement IS the level's own spawning, so this is one of the few checks
 // that turns `setFoeSpawning` back on. The glitch and dropper spawners run

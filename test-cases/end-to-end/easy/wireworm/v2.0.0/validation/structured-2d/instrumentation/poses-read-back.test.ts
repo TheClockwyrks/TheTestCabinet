@@ -35,8 +35,8 @@
 // posed here is one the clamp leaves alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY } from "../constants";
-import { assertEqual } from "../assert";
+import { COLS, tileCX, tileCY } from "../constants";
+import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
   chargeAt,
@@ -48,6 +48,8 @@ import {
   startPlaying,
   tileCenter,
   wormById,
+  type Edge,
+  type FoeKind,
   type Harness,
   type WirewormSnapshot,
 } from "../harness";
@@ -101,6 +103,27 @@ const INVULNERABLE = 1.25;
 const FIRE_COOLDOWN = 0.09;
 const FOE_VX = 33;
 const FOE_VY = -44;
+
+/** The seconds posed on each kind's spawner clock, one value apiece. */
+const SPAWN_TIMERS: readonly (readonly [FoeKind, number])[] = [
+  ["glitch", 4.5],
+  ["dropper", 1.75],
+  ["corruptor", 9.25],
+];
+
+/**
+ * The tile posed for each kind's next entry, each inside the entry range
+ * specs/foes.md fixes for that kind: an edge column and an entry row for the two
+ * edge-entering kinds, row 0 and any column for the dropper.
+ */
+const FOE_ENTRIES: readonly (readonly [FoeKind, number, number])[] = [
+  ["glitch", COLS - 1, 11],
+  ["dropper", 7, 0],
+  ["corruptor", 0, 3],
+];
+
+/** The two edges the worm's entry is posed to, in turn. */
+const EDGES: readonly Edge[] = ["right", "left"];
 
 let h: Harness;
 
@@ -211,6 +234,37 @@ it("reports every posed field back through snapshot", async () => {
       (s) => s.cursor.contact,
       enabled,
       `snapshot().cursor.contact after setCursorContact(${enabled})`,
+    );
+  }
+
+  // ---- The level's draws ---------------------------------------------------
+
+  for (const [kind, seconds] of SPAWN_TIMERS) {
+    readsBack(
+      () => h.debug.setSpawnTimer(kind, seconds),
+      (s) => s[`${kind}Timer`],
+      seconds,
+      `snapshot().${kind}Timer after setSpawnTimer(${JSON.stringify(kind)}, ` +
+        `${seconds})`,
+    );
+  }
+  for (const [kind, c, r] of FOE_ENTRIES) {
+    h.debug.setNextFoeEntry(kind, c, r);
+    const field = `next${kind[0].toUpperCase()}${kind.slice(1)}Entry` as
+      "nextGlitchEntry" | "nextDropperEntry" | "nextCorruptorEntry";
+    assertDeepEqual(
+      h.snapshot()[field],
+      { c, r },
+      `snapshot().${field} after setNextFoeEntry(${JSON.stringify(kind)}, ` +
+        `${c}, ${r})`,
+    );
+  }
+  for (const edge of EDGES) {
+    readsBack(
+      () => h.debug.setNextWormEntry(edge),
+      (s) => s.nextWormEntry,
+      edge,
+      `snapshot().nextWormEntry after setNextWormEntry(${JSON.stringify(edge)})`,
     );
   }
 

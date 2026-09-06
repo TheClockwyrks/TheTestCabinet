@@ -29,7 +29,7 @@
 // read back is `instrumentation/poses-read-back`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ARC_LIFE, CHARGE_MAX, tileCX, tileCY } from "../constants";
+import { ARC_LIFE, CHARGE_MAX, COLS, tileCX, tileCY } from "../constants";
 import {
   assertContains,
   assertEqual,
@@ -44,12 +44,16 @@ import {
   poseWorm,
   startPlaying,
   ticksFor,
+  type Edge,
   type FoeKind,
   type Harness,
   type Phase,
   type Screen,
 } from "../harness";
 import { WIREWORM_DEBUG_VERSION } from "../surface";
+
+/** The two edges the worm's entry can be posed to. */
+const EDGES: readonly Edge[] = ["left", "right"];
 
 /** The six screens and the three phases, as specs/instrumentation.md lists them. */
 const SCREENS: readonly Screen[] = [
@@ -147,6 +151,12 @@ it("reports every documented field, from a board carrying one of everything", as
     h.debug.setFoeMind(id, false);
   });
 
+  // A posed draw of each kind, so no posed field reads null.
+  h.debug.setNextFoeEntry("glitch", 0, 9);
+  h.debug.setNextFoeEntry("dropper", 5, 0);
+  h.debug.setNextFoeEntry("corruptor", COLS - 1, 2);
+  h.debug.setNextWormEntry("left");
+
   // The fuse: a critical node with a charged neighbour, and a bolt under it.
   h.debug.setNode(FUSE_C, FUSE_R, CHARGE_MAX);
   h.debug.setNode(NEIGHBOUR_C, FUSE_R, 1);
@@ -186,6 +196,32 @@ it("reports every documented field, from a board carrying one of everything", as
   assertEqual(typeof s.muted, "boolean", "snapshot().muted");
   assertEqual(typeof s.foeSpawning, "boolean", "snapshot().foeSpawning");
   assertEqual(typeof s.wormEntry, "boolean", "snapshot().wormEntry");
+  assertEqual(
+    typeof s.glitchTimer,
+    "number",
+    "snapshot().glitchTimer, the level's glitch clock in seconds (specs/foes.md)",
+  );
+  assertEqual(
+    typeof s.dropperTimer,
+    "number",
+    "snapshot().dropperTimer, the dropper's check clock in seconds",
+  );
+  assertEqual(
+    typeof s.corruptorTimer,
+    "number",
+    "snapshot().corruptorTimer, the level's corruptor clock in seconds",
+  );
+  assertContains(
+    EDGES,
+    s.nextWormEntry,
+    "snapshot().nextWormEntry, the posed edge",
+  );
+  assertTile(s.nextGlitchEntry, "snapshot().nextGlitchEntry, the posed tile");
+  assertTile(s.nextDropperEntry, "snapshot().nextDropperEntry, the posed tile");
+  assertTile(
+    s.nextCorruptorEntry,
+    "snapshot().nextCorruptorEntry, the posed tile",
+  );
   assertEqual(
     typeof s.wormStepInterval,
     "number",

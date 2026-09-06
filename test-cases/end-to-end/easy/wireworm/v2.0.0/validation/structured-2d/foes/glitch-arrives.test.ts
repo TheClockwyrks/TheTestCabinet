@@ -1,11 +1,13 @@
 // foes/glitch-arrives — a glitch arrives once the level gate opens.
 //
-// specs/foes.md: "From that level on, a glitch enters after an interval drawn
-// from the run's seeded generator between GLITCH_MIN_INTERVAL (7.0 s) and
-// GLITCH_MAX_INTERVAL (12.0 s), timed from the moment the level's play becomes
-// active." The upper end of that interval is the bound this check holds the
-// build to, and it holds for every seed: whatever the generator draws, it draws
-// below GLITCH_MAX_INTERVAL.
+// specs/foes.md: "From that level on, the glitch's clock is drawn uniformly
+// between GLITCH_MIN_INTERVAL (7.0 s) and GLITCH_MAX_INTERVAL (12.0 s), so a
+// glitch enters after such an interval timed from the moment the level's play
+// becomes active." The upper end of that interval is the bound this check holds
+// the build to, and it holds for every draw: whatever the build draws, it draws
+// below GLITCH_MAX_INTERVAL. The clock is left to the build's own draw rather
+// than posed, because the draw's range IS the requirement;
+// `instrumentation/set-spawn-timer` is the check that poses it.
 //
 // The requirement IS the level's own spawning, so this is one of the few checks
 // that turns `setFoeSpawning` back on. Nothing else is posed: the board

@@ -1,13 +1,13 @@
-// Wireworm — instrumentation/deterministic-core: the simulation advances on the
+// Wireworm — instrumentation/render-free-core: the simulation advances on the
 // elapsed time it is handed and on nothing else, so one second of game time
 // reaches the same state however that second was divided into frames.
 //
-// specs/instrumentation.md rests the whole surface on it, under A deterministic
+// specs/instrumentation.md rests the whole surface on it, under A render-free
 // core: "every rate integrated against the delta time the game is given, so an
 // interval of game time reaches the same state however it was divided into
 // frames", and "Game state advances from the elapsed time the game is handed,
-// independent of a canvas, of the frame loop that measured it, and of wall-clock
-// time." It says the same thing again of the clock operation this engine alone
+// with no canvas, no frame loop of its own, and no wall clock". It says the same
+// thing again of the clock operation this engine alone
 // carries: "`advance(1, 1)` and `advance(1, 60)` cover the same second of game
 // time and reach the same outcome". specs/worm.md fixes the one clocked quantity
 // to the same rule: the step clock accumulates the simulated time that passes, so
@@ -72,13 +72,12 @@ const WORM_R = 3;
  * How far a run's accumulated `simTime` may sit from the second it was given, in
  * decimal digits for `assertCloseTo`.
  *
- * Nine digits, which is half a nanosecond. A conforming build accumulates
- * exactly the deltas it was handed and the only distance from `1.0` is the sum
- * of sixty doubles — this is that arithmetic, not room for a different reading
- * of the rule. A build running a clock of its own, or dropping a frame's delta,
- * misses by whole hundredths.
+ * Six digits, a microsecond, which is the tolerance the item states. A
+ * conforming build accumulates exactly the deltas it was handed and the only
+ * distance from `1.0` is the rounding of sixty doubles summed; a build running a
+ * clock of its own, or dropping a frame's delta, misses by whole hundredths.
  */
-const SIM_DIGITS = 9;
+const SIM_DIGITS = 6;
 
 /** A worm's head tile as `"c,r"`, or what the snapshot reported instead. */
 function headTile(snapshot: WirewormSnapshot, id: number): string {

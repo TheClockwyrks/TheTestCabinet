@@ -382,9 +382,10 @@ source = "specs/assets.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; every operation by name, signature and effect, the three world
-# gates among them; the snapshot shape; and a read-only debug overlay. Framed as an
+# The debugging and automation surface every build must expose: a render-free
+# core; every operation by name, signature and effect, the three world gates and
+# the three draw poses among them; the snapshot shape; and a read-only debug
+# overlay. Framed as an
 # ordinary developer affordance of the game. It branches on the engine for where
 # the surface is reached, the operation shape, and the two clock operations only an
 # engineless build owns.
@@ -528,7 +529,7 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These points check that it is really there,
-# really wired to the running game, really deterministic, and that each pose
+# really wired to the running game, really render-free, and that each pose
 # reads back — a surface that reports a plausible-looking object unconnected to
 # what is on screen is the failure mode worth naming.
 #
@@ -542,6 +543,13 @@ format = 2
 # and `setFoeTravel` do the same per entity. Each is verifiable by set-then-read,
 # and each has a point here because a gate the suite leans on has to be known to
 # work before anything leaning on it means anything.
+#
+# Three more are the DRAW POSES. The level draws when its next glitch and
+# corruptor enter, where each foe enters, and which edge its worm enters at, and
+# `setSpawnTimer`, `setNextFoeEntry` and `setNextWormEntry` each pose the outcome
+# of one of those draws for one entry. A validator whose requirement touches a
+# draw poses it rather than waiting on it, so each pose has a point here that
+# reads it back and reads the entry it decided.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -585,21 +593,12 @@ validation = { script = "instrumentation/reset-restores-title.test.ts", outputs 
   { id = "title", name = "The title screen reset returned to", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "reset-seeds-randomness"
-title = "reset seeds the game's randomness"
-description = "Two runs started after reset({ seed: 7 }) lay the identical starting scatter, and a run after reset({ seed: 8 }) lays a different one."
-domains = ["charge", "worm", "arcade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
-  { id = "scatter", name = "The scatter seed 7 laid", kind = "image" },
-] }
-[[review.categories.items]]
-id = "deterministic-core"
+id = "render-free-core"
 title = "The simulation advances on elapsed time alone"
-description = "One second of game time covered as one frame and as sixty frames adds 1.0 to simTime either way and leaves the worm on the same tile, so the simulation reads nothing from the renderer."
+description = "One second of game time covered as one frame and as sixty frames adds 1.0 to simTime either way, within 1e-6, and leaves the worm on the same tile, so the simulation advances on the elapsed time it is handed and reads nothing from the renderer."
 domains = ["charge", "worm", "arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+validation = { script = "instrumentation/render-free-core.test.ts", outputs = [
   { id = "stepped", name = "The board after one second of game time", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -711,6 +710,33 @@ validation = { script = "instrumentation/cursor-contact-gate.test.ts", outputs =
   { id = "gated", name = "The segment standing in the cursor's tile", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "set-spawn-timer"
+title = "setSpawnTimer poses the level's next arrival"
+description = "At level 2 with setFoeSpawning(true), setSpawnTimer(\"glitch\", 1.5) reads back as glitchTimer 1.5, no glitch is on the board 1.4 s later, and one has joined the roster by 1.6 s."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-spawn-timer.test.ts", outputs = [
+  { id = "arrival", name = "The glitch the posed clock brought in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-next-foe-entry"
+title = "setNextFoeEntry poses where the next foe enters"
+description = "After setNextFoeEntry(\"glitch\", 39, 12), read back as nextGlitchEntry, the glitch the level next brings in enters with its centre on tile (39, 12) heading left, and nextGlitchEntry reads null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-foe-entry.test.ts", outputs = [
+  { id = "entry", name = "The glitch entering on the posed tile", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-next-worm-entry"
+title = "setNextWormEntry poses the edge the next worm enters at"
+description = "After setNextWormEntry(\"right\"), read back as nextWormEntry, the worm a banner brings in enters from the right edge with its tail on column 39 and its head on column 40 - wormLength(level) heading left, and nextWormEntry reads null once it has."
+domains = ["worm"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-worm-entry.test.ts", outputs = [
+  { id = "entry", name = "The worm entering from the posed edge", kind = "image" },
+] }
+[[review.categories.items]]
 id = "set-score-grants-no-life"
 title = "Posing the score grants no bonus life"
 description = "setScore across a BONUS_LIFE_EVERY (12,000) boundary leaves lives exactly as it was: the award belongs to the scoring path, and a pose is a precondition."
@@ -741,8 +767,8 @@ validation = { script = "instrumentation/overlay.test.ts", outputs = [
 # figures specs/board.md fixes. The tile-to-stage map is stated in that one file
 # and nowhere else, so these points assert the formula rather than any drawn
 # artwork, and the scatter points assert the bounds and the density the rules
-# give rather than a particular layout — the layout is seeded randomness and
-# varies by design.
+# give rather than a particular layout — the layout is a random draw and varies
+# by design.
 [[review.categories]]
 id = "board"
 title = "Board and geometry"
@@ -794,7 +820,7 @@ validation = { script = "board/band-tinted.test.ts", outputs = [
 [[review.categories.items]]
 id = "scatter-density"
 title = "A new run scatters 10–15% of the scatter rows"
-description = "Starting a run lays nodes on between 10% and 15% of the 680 tiles of rows 1..17."
+description = "Starting a run lays nodes on between 10% and 15% of the 680 tiles of rows 1..17, on each of three runs opened afresh."
 domains = ["charge"]
 failure_cap = "passable"
 validation = { script = "board/scatter-density.test.ts", outputs = [
@@ -821,11 +847,11 @@ validation = { script = "board/scatter-inert.test.ts", outputs = [
 [[review.categories.items]]
 id = "scatter-varies"
 title = "The scatter is not a fixed layout"
-description = "Runs from two different seeds lay scatters that occupy different sets of tiles, over three seed pairs."
+description = "Two runs opened afresh lay scatters that occupy different sets of tiles, over three pairs of runs."
 domains = ["charge"]
 failure_cap = "passable"
 validation = { script = "board/scatter-varies.test.ts", outputs = [
-  { id = "scatter", name = "The second seed's scatter", kind = "image" },
+  { id = "scatter", name = "The second run's scatter", kind = "image" },
 ] }
 
 # --- The node field -----------------------------------------------------------
@@ -1320,7 +1346,7 @@ validation = { script = "worm/length-per-level.test.ts", outputs = [
 [[review.categories.items]]
 id = "enters-top-row"
 title = "The worm enters along the top row"
-description = "A level's worm enters on row 0 from a side edge with its vertical heading down."
+description = "With setNextWormEntry(\"left\"), a level's worm enters on row 0 from the left edge, its tail on column 0 and its head on column wormLength(level) - 1, heading right and down."
 domains = ["worm"]
 failure_cap = "scuffed"
 validation = { script = "worm/enters-top-row.test.ts", outputs = [
@@ -1522,7 +1548,7 @@ validation = { script = "cursor/invulnerable-ignores-contact.test.ts", outputs =
 # fix, never as booleans, and `glitch-darts` asserts a rule specs/foes.md states
 # outright — at each GLITCH_DART_INTERVAL the glitch reverses its horizontal
 # direction — rather than an unstated random re-pick. A validator that assumed
-# randomness would fail a spec-honouring build on an unlucky seed.
+# randomness would fail a spec-honouring build on an unlucky draw.
 [[review.categories]]
 id = "foes"
 title = "The support foes"

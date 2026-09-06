@@ -324,13 +324,13 @@ export function arcPolyline(from: Tile, to: Tile): { x: number; y: number }[] {
   const ay = tileCY(from.r);
   const bx = tileCX(to.c);
   const by = tileCY(to.r);
-  const seed =
+  const salt =
     ((from.c * 73856093) ^
       (from.r * 19349663) ^
       (to.c * 83492791) ^
       (to.r * 2654435761)) |
     0;
-  let noise = seed;
+  let noise = salt;
   const dx = bx - ax;
   const dy = by - ay;
   const length = Math.hypot(dx, dy) || 1;
@@ -626,12 +626,12 @@ function renderBanner(state: WirewormState, ctx: Ctx): void {
 
 /**
  * One step of a small integer mixer, used for the arc's jitter alone: the
- * draw in `[0, 1)` for `seed`, and the seed the next step takes. An arc's shape
+ * draw in `[0, 1)` for `salt`, and the salt the next step takes. An arc's shape
  * is a function of the two tiles it joins, so it holds for the arc's whole life
  * without being stored (`specs/discharge.md`).
  */
-function hashStep(seed: number): readonly [number, number] {
-  const next = (seed + 0x6d2b79f5) | 0;
+function hashStep(salt: number): readonly [number, number] {
+  const next = (salt + 0x6d2b79f5) | 0;
   let t = next;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);

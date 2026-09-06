@@ -15,6 +15,11 @@
 // one foe of each of the three kinds specs/foes.md names, a bolt in flight, and
 // a live discharge — and every per-entry field is read off a real entry.
 //
+// THE POSED DRAWS ARE POSED SO NONE READS NULL. Each of the four is `null` until
+// posed, and `null` satisfies "is a tile or null" while saying nothing about the
+// entry the specification describes, so a tile is posed for each foe kind and an
+// edge for the worm before the reading.
+//
 // THE DISCHARGE IS THE ONE THAT HAS TO BE DRIVEN. `arcs` is "empty except during
 // the `ARC_LIFE` (`0.32` s) window after a detonation" (specs/discharge.md), so
 // the only way to read an arc is to detonate something: a bolt is placed on the
@@ -29,7 +34,7 @@
 // read back is `instrumentation/poses-read-back`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ARC_LIFE, CHARGE_MAX } from "../constants";
+import { ARC_LIFE, CHARGE_MAX, COLS } from "../constants";
 import {
   assertContains,
   assertEqual,
@@ -45,11 +50,15 @@ import {
   poseWorm,
   startPlaying,
   WIREWORM_DEBUG_VERSION,
+  type Edge,
   type FoeKind,
   type Harness,
   type Phase,
   type Screen,
 } from "../harness";
+
+/** The two edges the worm's entry can be posed to. */
+const EDGES: readonly Edge[] = ["left", "right"];
 
 /** The six screens and the three phases, as specs/instrumentation.md lists them. */
 const SCREENS: readonly Screen[] = [
@@ -147,6 +156,12 @@ it("reports every documented field, from a board carrying one of everything", as
     });
   }
 
+  // A posed draw of each kind, so no posed field reads null.
+  await h.debug.setNextFoeEntry("glitch", 0, 9);
+  await h.debug.setNextFoeEntry("dropper", 5, 0);
+  await h.debug.setNextFoeEntry("corruptor", COLS - 1, 2);
+  await h.debug.setNextWormEntry("left");
+
   // The fuse: a critical node with a charged neighbour, and a bolt under it.
   await h.debug.setNode(FUSE_C, FUSE_R, CHARGE_MAX);
   await h.debug.setNode(NEIGHBOUR_C, FUSE_R, 1);
@@ -186,6 +201,32 @@ it("reports every documented field, from a board carrying one of everything", as
   assertEqual(typeof s.muted, "boolean", "snapshot().muted");
   assertEqual(typeof s.foeSpawning, "boolean", "snapshot().foeSpawning");
   assertEqual(typeof s.wormEntry, "boolean", "snapshot().wormEntry");
+  assertEqual(
+    typeof s.glitchTimer,
+    "number",
+    "snapshot().glitchTimer, the level's glitch clock in seconds (specs/foes.md)",
+  );
+  assertEqual(
+    typeof s.dropperTimer,
+    "number",
+    "snapshot().dropperTimer, the dropper's check clock in seconds",
+  );
+  assertEqual(
+    typeof s.corruptorTimer,
+    "number",
+    "snapshot().corruptorTimer, the level's corruptor clock in seconds",
+  );
+  assertContains(
+    EDGES,
+    s.nextWormEntry,
+    "snapshot().nextWormEntry, the posed edge",
+  );
+  assertTile(s.nextGlitchEntry, "snapshot().nextGlitchEntry, the posed tile");
+  assertTile(s.nextDropperEntry, "snapshot().nextDropperEntry, the posed tile");
+  assertTile(
+    s.nextCorruptorEntry,
+    "snapshot().nextCorruptorEntry, the posed tile",
+  );
   assertEqual(
     typeof s.wormStepInterval,
     "number",

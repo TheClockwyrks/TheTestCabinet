@@ -15,7 +15,7 @@
 // laid at all is, because a run that laid none could not be said to have kept out
 // of anything.
 //
-// Read over three seeds, each its own case, so a failure names the draw that
+// Read over three runs, each its own case, so a failure names the draw that
 // strayed.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -27,7 +27,7 @@ import {
 } from "../constants";
 import { assertBetween, assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { SEEDS, openRun } from "./scatter";
+import { RUNS, openRun } from "./scatter";
 
 let h: Harness;
 
@@ -39,16 +39,16 @@ afterEach(() => {
   h?.dispose();
 });
 
-it.each(SEEDS)(
-  "lays no node in row 0 and none in the band on seed %i",
-  async (seed) => {
-    const snapshot = await openRun(h, seed);
-    if (seed === SEEDS[0]) captureStill(h, "scatter");
+it.each(RUNS)(
+  "lays no node in row 0 and none in the band on run %i",
+  async (run) => {
+    const snapshot = await openRun(h);
+    if (run === RUNS[0]) captureStill(h, "scatter");
 
     assertGreaterThan(
       snapshot.nodes.length,
       0,
-      `a run opened on seed ${seed} lays a starting scatter (specs/nodes.md)`,
+      `run ${run} lays a starting scatter (specs/nodes.md)`,
     );
 
     for (const node of snapshot.nodes) {
@@ -56,8 +56,8 @@ it.each(SEEDS)(
         node.r,
         SCATTER_TOP_ROW,
         SCATTER_BOTTOM_ROW,
-        `the row of the scattered node on tile (${node.c}, ${node.r}), seed ` +
-          `${seed} — the scatter rows are ${SCATTER_TOP_ROW}..` +
+        `the row of the scattered node on tile (${node.c}, ${node.r}), run ` +
+          `${run} — the scatter rows are ${SCATTER_TOP_ROW}..` +
           `${SCATTER_BOTTOM_ROW}, never row 0, which the worm enters along, ` +
           `and never the band, rows ${BAND_TOP_ROW}..${ROWS - 1}`,
       );

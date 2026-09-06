@@ -9,8 +9,8 @@
 // test on; `fireCooldown` `0`; the world gates `foeSpawning` and `wormEntry` back
 // on; and `simTime` `0`.
 //
-// WHY IT MATTERS BEYOND ITS OWN POINT. `reset` is the operation that makes a
-// scenario reproducible: a check that reuses a harness across scenarios calls it
+// WHY IT MATTERS BEYOND ITS OWN POINT. `reset` is the operation that gives a
+// scenario a clean start: a check that reuses a harness across scenarios calls it
 // first, and a `reset` that leaves a score, a life count or a standing node
 // behind carries one scenario into the next.
 //
@@ -29,7 +29,7 @@
 // the snapshot is read first and the frame is run after it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BAND_TOP_ROW, START_LIVES, tileCY } from "../constants";
+import { BAND_TOP_ROW, COLS, START_LIVES, tileCY } from "../constants";
 import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import {
   BAND_CX,
@@ -98,6 +98,13 @@ it("restores every title value and leaves muted as it stands", async () => {
   poseWorm(h, 10, 4, 3);
   poseFoe(h, "glitch", 24, 6);
   poseBolt(h, 34, 19);
+  h.debug.setSpawnTimer("glitch", 3.3);
+  h.debug.setSpawnTimer("dropper", 3.3);
+  h.debug.setSpawnTimer("corruptor", 3.3);
+  h.debug.setNextFoeEntry("glitch", 0, 9);
+  h.debug.setNextFoeEntry("dropper", 5, 0);
+  h.debug.setNextFoeEntry("corruptor", COLS - 1, 2);
+  h.debug.setNextWormEntry("right");
 
   // Let it run, so `simTime` has plainly accumulated something to be cleared.
   await h.advance(PLAY_TICKS);
@@ -151,6 +158,40 @@ it("restores every title value and leaves muted as it stands", async () => {
 
   assertEqual(title.foeSpawning, true, "reset turns foe spawning back on");
   assertEqual(title.wormEntry, true, "reset turns worm entry back on");
+  assertCloseTo(
+    title.glitchTimer,
+    0,
+    EXACT,
+    "reset sets the glitch clock to 0",
+  );
+  assertCloseTo(
+    title.dropperTimer,
+    0,
+    EXACT,
+    "reset sets the dropper clock to 0",
+  );
+  assertCloseTo(
+    title.corruptorTimer,
+    0,
+    EXACT,
+    "reset sets the corruptor clock to 0",
+  );
+  assertEqual(title.nextWormEntry, null, "reset clears the posed worm entry");
+  assertEqual(
+    title.nextGlitchEntry,
+    null,
+    "reset clears the posed glitch entry",
+  );
+  assertEqual(
+    title.nextDropperEntry,
+    null,
+    "reset clears the posed dropper entry",
+  );
+  assertEqual(
+    title.nextCorruptorEntry,
+    null,
+    "reset clears the posed corruptor entry",
+  );
   assertCloseTo(title.simTime, 0, EXACT, "reset returns simTime to zero");
 
   // And the one field it must NOT touch.

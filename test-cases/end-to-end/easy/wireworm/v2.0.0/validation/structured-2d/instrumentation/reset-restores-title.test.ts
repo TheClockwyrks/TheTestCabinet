@@ -9,7 +9,8 @@
 // arc rosters; it places the cursor at the band's center, `(640, 688)`, with `0`
 // seconds of invulnerability and its contact test on; it sets `fireCooldown` to
 // `0`, turns the world gates `foeSpawning` and `wormEntry` back on, clears the
-// level's spawner clocks, and sets `simTime` to `0`. Every one of those is read
+// level's three spawner clocks to `0`, clears every posed draw, and sets
+// `simTime` to `0`. Every one of those is read
 // below, in that order, except the spawner clocks, which no field of the
 // snapshot reports.
 //
@@ -46,6 +47,7 @@ import {
   ARC_LIFE,
   BINDINGS,
   CHARGE_MAX,
+  COLS,
   CURSOR_X_MAX,
   CURSOR_X_MIN,
   CURSOR_Y_MAX,
@@ -69,6 +71,7 @@ import {
   poseWorm,
   startPlaying,
   ticksFor,
+  type FoeKind,
   type Harness,
 } from "../harness";
 
@@ -103,6 +106,10 @@ const CURSOR_X = 1200;
 const CURSOR_Y = CURSOR_Y_MIN;
 const INVULNERABLE = 1.75;
 const FIRE_COOLDOWN = 0.12;
+const SPAWN_TIMER = 3.3;
+
+/** The three foe kinds, each with a spawner clock of its own (specs/foes.md). */
+const KINDS: readonly FoeKind[] = ["glitch", "dropper", "corruptor"];
 
 /** The tiles the posed nodes stand on, and the charge each holds. */
 const NODE_ROW = 5;
@@ -205,6 +212,11 @@ it("restores every declared field to its title value and leaves muted alone", as
   h.debug.setFireCooldown(FIRE_COOLDOWN);
   h.debug.setFoeSpawning(false);
   h.debug.setWormEntry(false);
+  for (const kind of KINDS) h.debug.setSpawnTimer(kind, SPAWN_TIMER);
+  h.debug.setNextFoeEntry("glitch", 0, 9);
+  h.debug.setNextFoeEntry("dropper", 5, 0);
+  h.debug.setNextFoeEntry("corruptor", COLS - 1, 2);
+  h.debug.setNextWormEntry("right");
   h.debug.setScreen(SCREEN);
   h.debug.setPhase(PHASE);
 
@@ -286,6 +298,34 @@ it("restores every declared field to its title value and leaves muted alone", as
     title.wormEntry,
     true,
     "snapshot().wormEntry after reset(), which restores the gate to on",
+  );
+  for (const kind of KINDS) {
+    assertEqual(
+      title[`${kind}Timer`],
+      0,
+      `snapshot().${kind}Timer after reset(), which sets every spawner clock ` +
+        `to 0`,
+    );
+  }
+  assertEqual(
+    title.nextWormEntry,
+    null,
+    "snapshot().nextWormEntry after reset(), which clears every posed draw",
+  );
+  assertEqual(
+    title.nextGlitchEntry,
+    null,
+    "snapshot().nextGlitchEntry after reset(), which clears every posed draw",
+  );
+  assertEqual(
+    title.nextDropperEntry,
+    null,
+    "snapshot().nextDropperEntry after reset(), which clears every posed draw",
+  );
+  assertEqual(
+    title.nextCorruptorEntry,
+    null,
+    "snapshot().nextCorruptorEntry after reset(), which clears every posed draw",
   );
   assertEqual(title.simTime, 0, "snapshot().simTime after reset()");
 

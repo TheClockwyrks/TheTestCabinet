@@ -1,23 +1,24 @@
-// worm/enters-top-row — a level's worm enters along row 0, from a side edge,
-// heading down.
+// worm/enters-top-row — a level's worm enters along row 0, from the edge posed
+// for it, heading down.
 //
 // specs/worm.md, "Length and entry": "The worm enters along row `0`, the entry
-// row, from the left edge or the right edge. Every one of its segments is laid on
-// row `0`, the head furthest from the edge it entered at and the tail nearest it.
-// Its horizontal heading points inward from that edge, and its vertical heading is
-// down."
+// row, from the left edge or the right edge, each with probability `1/2`. Every
+// one of its segments is laid on row `0`, in a run of consecutive columns that
+// stands against the edge it entered at. Entering from the left, the tail
+// occupies column `0` and the head column `wormLength(level) - 1` ... `dh` is
+// `+1` entering from the left ... Its vertical heading `dv` is `+1`, down."
 //
-// WHICH EDGE IS THE BUILD'S, SO THE CHECK READS THE EDGE IT USED. The spec fixes
-// the row, the descent and that the entry is from a side edge; it deliberately
-// leaves the SIDE open, and a build is free to draw it from the seeded generator.
-// So the reading is: every segment on row `0`; the segments occupying a run of
-// consecutive columns; that run standing against column `0` or column `39`; the
-// head at the end furthest from that edge; the horizontal heading pointing inward
-// from it; and the vertical heading down. A build that entered mid-board fails on
-// the run standing against an edge, one that laid its segments apart fails on the
-// run being consecutive, one that entered tail-first fails on the head's column,
-// one that entered heading back off the board fails on the heading, and one that
-// entered rising fails on the descent — each naming its own reading.
+// THE EDGE IS POSED, SO EVERY READING IS EXACT. The edge is a coin flip the spec
+// leaves to the build, and specs/instrumentation.md's `setNextWormEntry` poses
+// the outcome of that one draw, so the check poses the LEFT edge and holds the
+// build to the left edge's own consequences: every segment on row `0`, the tail
+// on column `0`, the head on column `wormLength(level) - 1` with the run of
+// columns consecutive between them, `dh` of `+1`, and `dv` of `+1`. A build that
+// entered mid-board fails on the tail's column, one that laid its segments apart
+// fails on the run, one that entered tail-first fails on the head's column, one
+// that entered heading back off the board fails on `dh`, and one that entered
+// rising fails on `dv` — each naming its own reading. That the pose is honoured
+// from the right edge too is `instrumentation/set-next-worm-entry`'s.
 //
 // THE ENTRY GATE IS TURNED BACK ON, AND IT IS THIS POINT'S REQUIREMENT.
 // `startPlaying` shuts `wormEntry` so no other check is invaded by a worm it did
@@ -31,13 +32,8 @@
 // the worm AS IT ENTERED rather than one that has since stepped.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME, COLS } from "../constants";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertLength,
-  assertTrue,
-} from "../assert";
+import { BANNER_TIME } from "../constants";
+import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -52,6 +48,10 @@ const ENTRY_TIMEOUT = ticksFor(BANNER_TIME * 2);
 /** The row a worm enters along. */
 const ENTRY_ROW = 0;
 
+/** The edge posed for the entry, and the column its tail stands on. */
+const EDGE = "left";
+const TAIL_C = 0;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -62,9 +62,10 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lays the level's worm along row 0 at a side edge, heading inward and down", async () => {
+it("lays the level's worm along row 0 from the posed left edge, heading inward and down", async () => {
   startPlaying(h);
   h.debug.setWormEntry(true);
+  h.debug.setNextWormEntry(EDGE);
   h.debug.setPhase("banner");
   h.debug.setPhaseTimer(0);
 
@@ -92,39 +93,26 @@ it("lays the level's worm along row 0 at a side edge, heading inward and down", 
     "the rows the entering worm's segments occupy",
   );
 
-  const columns = worm.segments.map((tile) => tile.c);
-  const leftmost = Math.min(...columns);
-  const rightmost = Math.max(...columns);
+  const tail = worm.segments[worm.segments.length - 1];
   assertEqual(
-    rightmost - leftmost,
-    worm.segments.length - 1,
-    "the entering worm occupies a run of consecutive columns",
+    tail.c,
+    TAIL_C,
+    `the tail's column entering from the ${EDGE} edge (specs/worm.md)`,
   );
-
-  const fromLeft = leftmost === 0;
-  const fromRight = rightmost === COLS - 1;
-  assertTrue(
-    fromLeft || fromRight,
-    `the run to stand against column 0 or column ${COLS - 1}, which is what ` +
-      "entering from a side edge means",
-  );
-
-  // The head is the end furthest from the edge entered at, the tail the end
-  // nearest it.
   assertEqual(
     worm.segments[0].c,
-    fromLeft ? rightmost : leftmost,
-    fromLeft
-      ? "entering from the left: the head, furthest from column 0"
-      : `entering from the right: the head, furthest from column ${COLS - 1}`,
+    worm.segments.length - 1,
+    `the head's column entering from the ${EDGE} edge: wormLength(level) - 1, ` +
+      `the end furthest from column ${TAIL_C} (specs/worm.md)`,
   );
-
-  // Inward from whichever edge the build drew: rightward off the left edge,
-  // leftward off the right edge.
-  assertEqual(
-    worm.dh,
-    fromLeft ? 1 : -1,
-    `dh on entry, from the ${fromLeft ? "left" : "right"} edge`,
-  );
+  worm.segments.forEach((segment, index) => {
+    assertEqual(
+      segment.c,
+      worm.segments.length - 1 - index,
+      `segment ${index}: its column in the run of consecutive columns from ` +
+        "the head back to the tail",
+    );
+  });
+  assertEqual(worm.dh, 1, `dh on entry from the ${EDGE} edge, pointing inward`);
   assertEqual(worm.dv, 1, "dv on entry");
 });

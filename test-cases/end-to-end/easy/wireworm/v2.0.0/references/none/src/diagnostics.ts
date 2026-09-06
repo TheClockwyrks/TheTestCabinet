@@ -50,13 +50,13 @@ export function registerDiagnostics(api: InitApi, state: WirewormState): void {
   api.diagnostics.register("foes", () =>
     roster(
       state.foes.map(
-        (foe) => `#${foe.id} ${foe.kind} ${round(foe.x)},${round(foe.y)}`,
+        (foe) => `#${foe.id} ${foe.kind} ${round(foe.x)}, ${round(foe.y)}`,
       ),
     ),
   );
   api.diagnostics.register(
     "cursor",
-    () => `${round(state.cursor.x)},${round(state.cursor.y)}`,
+    () => `${round(state.cursor.x)}, ${round(state.cursor.y)}`,
   );
   api.diagnostics.register("bolts", () => state.bolts.length);
 }

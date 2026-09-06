@@ -16,12 +16,12 @@
 // nodes has no charge to be wrong about. How many were laid and where is
 // `board/scatter-density`'s and `board/scatter-rows`'s.
 //
-// Read over three seeds, each its own case, so a failure names the draw.
+// Read over three runs, each its own case, so a failure names the draw.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { SEEDS, openRun } from "./scatter";
+import { RUNS, openRun } from "./scatter";
 
 /** The charge specs/nodes.md lays every scattered node at: inert. */
 const SCATTER_CHARGE = 0;
@@ -36,22 +36,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-it.each(SEEDS)("lays every scattered node inert on seed %i", async (seed) => {
-  const snapshot = await openRun(h, seed);
-  if (seed === SEEDS[0]) captureStill(h, "scatter");
+it.each(RUNS)("lays every scattered node inert on run %i", async (run) => {
+  const snapshot = await openRun(h);
+  if (run === RUNS[0]) captureStill(h, "scatter");
 
   assertGreaterThan(
     snapshot.nodes.length,
     0,
-    `a run opened on seed ${seed} lays a starting scatter (specs/nodes.md)`,
+    `run ${run} lays a starting scatter (specs/nodes.md)`,
   );
 
   for (const node of snapshot.nodes) {
     assertEqual(
       node.charge,
       SCATTER_CHARGE,
-      `the charge of the scattered node on tile (${node.c}, ${node.r}), seed ` +
-        `${seed} (specs/nodes.md: every node of the scatter is laid at ` +
+      `the charge of the scattered node on tile (${node.c}, ${node.r}), run ` +
+        `${run} (specs/nodes.md: every node of the scatter is laid at ` +
         "charge 0)",
     );
   }

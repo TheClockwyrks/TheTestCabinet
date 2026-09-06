@@ -59,6 +59,24 @@ function runFoes(
   return cues;
 }
 
+/**
+ * Run the foes as {@link runFoes} does, holding every foe's travel off after
+ * each update so a foe that entered stays on the board: what these tests read
+ * is the entry, and a glitch let travel would skitter off the bottom before the
+ * stretch ends.
+ */
+function runFoesHolding(
+  state: WirewormState,
+  seconds: number,
+  frames: number,
+): void {
+  const cues = new CueLog();
+  for (let i = 0; i < frames; i += 1) {
+    updateFoes(state, seconds / frames, cues);
+    for (const foe of state.foes) foe.travel = false;
+  }
+}
+
 describe("the glitch", () => {
   test("it eats the node on its tile, whatever its charge", () => {
     for (const charge of [0, 1, 2, CHARGE_MAX]) {
@@ -268,14 +286,14 @@ describe("the level's own arrivals", () => {
 
     const live = posedState(GLITCH_FROM_LEVEL);
     live.foeSpawning = true;
-    runFoes(live, GLITCH_MAX_INTERVAL, 300);
+    runFoesHolding(live, GLITCH_MAX_INTERVAL, 300);
     expect(live.foes.some((foe) => foe.kind === "glitch")).toBe(true);
   });
 
   test("a glitch enters on the board, on a row it can skitter down from", () => {
     const state = posedState(GLITCH_FROM_LEVEL);
     state.foeSpawning = true;
-    runFoes(state, GLITCH_MAX_INTERVAL, 300);
+    runFoesHolding(state, GLITCH_MAX_INTERVAL, 300);
     const glitch = state.foes.find((foe) => foe.kind === "glitch");
     expect(glitch).toBeDefined();
     expect(glitch?.x).toBeGreaterThanOrEqual(0);

@@ -1,16 +1,17 @@
 // foes/corruptor-arrives — a corruptor arrives once the level gate opens.
 //
-// `specs/foes.md`: "From that level on, a corruptor enters after an interval
-// drawn from the run's seeded generator between CORRUPTOR_MIN_INTERVAL (14.0 s)
-// and CORRUPTOR_MAX_INTERVAL (22.0 s), timed from the moment the level's play
-// becomes active."
+// `specs/foes.md`: "From that level on, the corruptor's clock is drawn uniformly
+// between CORRUPTOR_MIN_INTERVAL (14.0 s) and CORRUPTOR_MAX_INTERVAL (22.0 s),
+// so a corruptor enters after such an interval timed from the moment the
+// level's play becomes active."
 //
 // The bound the point holds a build to is the UPPER END of that range, because
-// that is the only part of it that holds for every seed: whatever the generator
-// draws, it draws below `CORRUPTOR_MAX_INTERVAL`, so a build that honours the
-// pacing passes on any seed and a build that never spawns fails on every one.
-// The lower end is not asserted — it cannot be, without fixing what a particular
-// seed drew, which would grade the generator rather than the pacing.
+// that is the part of it that holds for every draw: whatever the build draws,
+// it draws below `CORRUPTOR_MAX_INTERVAL`, so a build that honours the pacing
+// passes on any draw and a build that never spawns fails on every one. The
+// clock is left to the build's own draw rather than posed, because the draw's
+// range IS this point's requirement; `instrumentation/set-spawn-timer` is the
+// point that poses it.
 //
 // The requirement this point decides IS the level's own spawning, so this is one
 // of the few points that turns `setFoeSpawning` back on. Nothing else is posed:
@@ -71,7 +72,7 @@ it("brings a corruptor in within the longest interval the specification allows",
     true,
     `a corruptor joins the roster within CORRUPTOR_MAX_INTERVAL ` +
       `(${CORRUPTOR_MAX_INTERVAL} s) of level-${LEVEL} play, whatever the ` +
-      `run's generator drew from ${CORRUPTOR_MIN_INTERVAL} s up; the roster ` +
+      `build drew from ${CORRUPTOR_MIN_INTERVAL} s up; the roster ` +
       `held ${foesOfKind(arrival.snapshot, "corruptor").length} corruptors ` +
       `when the sweep ran out`,
   );

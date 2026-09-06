@@ -1,7 +1,7 @@
-// Wireworm — instrumentation/deterministic-core: the simulation advances on the
+// Wireworm — instrumentation/render-free-core: the simulation advances on the
 // elapsed time it is handed, and on nothing else.
 //
-// specs/instrumentation.md "A deterministic core": every rate is integrated
+// specs/instrumentation.md "A render-free core": every rate is integrated
 // against the delta time the game is given, so an interval of game time reaches
 // the same state however it was divided into frames — and the dependency runs one
 // way, the simulation reading nothing from the renderer. specs/worm.md states the

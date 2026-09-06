@@ -30,7 +30,7 @@
 // its operations, so they mean the same thing in every build: `setNode` creates
 // the node if the tile was empty, `addWorm` appends a one-segment worm heading
 // right, a world gate stays off until something turns it back on, and `reset`
-// gives everything back. Posing through it is how a scenario is reproducible, and
+// gives everything back. Posing through it is how a scenario is arranged, and
 // it is the seam the case's specification documents. `surface.ts` is that
 // specification as types, and it is the only description of the surface this
 // harness reads: the build's own module for it is never imported.
@@ -141,6 +141,7 @@ import {
   READINGS,
   type ArcSnapshot,
   type BoltSnapshot,
+  type Edge,
   type FoeKind,
   type FoeSnapshot,
   type NodeSnapshot,
@@ -156,6 +157,7 @@ import {
 export type {
   ArcSnapshot,
   BoltSnapshot,
+  Edge,
   FoeKind,
   FoeSnapshot,
   MenuRect,
@@ -1093,7 +1095,7 @@ export const BAND_CY = (CURSOR_Y_MIN + CURSOR_Y_MAX) / 2;
  * reading needs.
  *
  * It is written for a FRESH harness, whose state is the opening one, so it does
- * not reset: the score, the lives and the seed are already at their title values.
+ * not reset: the score and the lives are already at their title values.
  * A check that reuses a harness across scenarios calls `h.debug.reset()` first.
  */
 export function startPlaying(h: Harness): void {

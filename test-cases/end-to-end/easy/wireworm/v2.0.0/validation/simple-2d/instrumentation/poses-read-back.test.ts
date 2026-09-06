@@ -31,8 +31,14 @@
 // `(-123, 45)` is no foe's resting velocity.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { tileCX, tileCY, wormLength, wormStepInterval } from "../constants";
-import { assertCloseTo, assertEqual } from "../assert";
+import {
+  COLS,
+  tileCX,
+  tileCY,
+  wormLength,
+  wormStepInterval,
+} from "../constants";
+import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
   chargeAt,
@@ -91,6 +97,23 @@ const FOE_R = 4;
 const FOE_VX = -123;
 const FOE_VY = 45;
 
+/** The seconds posed on each kind's spawner clock, one value apiece. */
+const GLITCH_TIMER = 4.5;
+const DROPPER_TIMER = 1.75;
+const CORRUPTOR_TIMER = 9.25;
+
+/**
+ * The tile posed for each kind's next entry, each inside the entry range
+ * specs/foes.md fixes for that kind: an edge column and an entry row for the two
+ * edge-entering kinds, row 0 and any column for the dropper.
+ */
+const GLITCH_ENTRY = { c: COLS - 1, r: 11 };
+const DROPPER_ENTRY = { c: 7, r: 0 };
+const CORRUPTOR_ENTRY = { c: 0, r: 3 };
+
+/** The edge posed for the worm's next entry. */
+const WORM_EDGE = "right";
+
 /** The bolt posed, at a center in logical units rather than on a tile. */
 const BOLT_X = 400;
 const BOLT_Y = 500;
@@ -131,6 +154,16 @@ it("reports every posed value through snapshot", async () => {
   h.debug.setFoeSpawning(false);
   h.debug.setWormEntry(false);
   h.debug.setCursorContact(false);
+
+  // ---- The level's draws --------------------------------------------------
+
+  h.debug.setSpawnTimer("glitch", GLITCH_TIMER);
+  h.debug.setSpawnTimer("dropper", DROPPER_TIMER);
+  h.debug.setSpawnTimer("corruptor", CORRUPTOR_TIMER);
+  h.debug.setNextFoeEntry("glitch", GLITCH_ENTRY.c, GLITCH_ENTRY.r);
+  h.debug.setNextFoeEntry("dropper", DROPPER_ENTRY.c, DROPPER_ENTRY.r);
+  h.debug.setNextFoeEntry("corruptor", CORRUPTOR_ENTRY.c, CORRUPTOR_ENTRY.r);
+  h.debug.setNextWormEntry(WORM_EDGE);
 
   // ---- The cursor and its bolts -----------------------------------------
 
@@ -201,6 +234,36 @@ it("reports every posed value through snapshot", async () => {
   assertEqual(posed.foeSpawning, false, "setFoeSpawning");
   assertEqual(posed.wormEntry, false, "setWormEntry");
   assertEqual(posed.cursor.contact, false, "setCursorContact");
+
+  assertCloseTo(posed.glitchTimer, GLITCH_TIMER, EXACT, "setSpawnTimer glitch");
+  assertCloseTo(
+    posed.dropperTimer,
+    DROPPER_TIMER,
+    EXACT,
+    "setSpawnTimer dropper",
+  );
+  assertCloseTo(
+    posed.corruptorTimer,
+    CORRUPTOR_TIMER,
+    EXACT,
+    "setSpawnTimer corruptor",
+  );
+  assertDeepEqual(
+    posed.nextGlitchEntry,
+    GLITCH_ENTRY,
+    "setNextFoeEntry glitch",
+  );
+  assertDeepEqual(
+    posed.nextDropperEntry,
+    DROPPER_ENTRY,
+    "setNextFoeEntry dropper",
+  );
+  assertDeepEqual(
+    posed.nextCorruptorEntry,
+    CORRUPTOR_ENTRY,
+    "setNextFoeEntry corruptor",
+  );
+  assertEqual(posed.nextWormEntry, WORM_EDGE, "setNextWormEntry");
 
   assertCloseTo(posed.cursor.x, CURSOR_X, EXACT, "setCursor's x");
   assertCloseTo(posed.cursor.y, CURSOR_Y, EXACT, "setCursor's y");

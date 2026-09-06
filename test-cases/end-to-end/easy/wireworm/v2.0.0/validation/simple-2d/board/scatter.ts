@@ -14,9 +14,8 @@
 // item, and `confirm` takes `DESCEND`, which specs/ui.md states "Opens a new run,
 // as specs/progression.md states".
 //
-// `reset(options)` takes the seed, so each point reads a scatter the run was
-// actually seeded for rather than whatever the last one left behind, and the
-// four points below read the same arrangement for four different requirements.
+// Each run opened is a fresh draw of the scatter, so the four points below read
+// several runs for the same requirement, and each names the run that missed.
 //
 // The reading is taken on the frame the run opens on, while the phase is still
 // `banner`. That is the moment the requirement is about, and it is also the only
@@ -35,26 +34,23 @@ import { type Harness, type WirewormSnapshot } from "../harness";
 export const SCATTER_TILES = COLS * (SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1);
 
 /**
- * The seeds the scatter is read over, three arbitrary distinct values.
+ * The runs the scatter is read over, three of them.
  *
- * More than one, because specs/nodes.md draws the tiles "from the run's seeded
- * random generator": a rule that holds for one draw and not another is a rule the
- * build did not implement, and a single seed cannot tell the two apart.
+ * More than one, because specs/nodes.md draws the tiles at random: a rule that
+ * holds for one draw and not another is a rule the build did not implement, and
+ * a single draw cannot tell the two apart.
  */
-export const SEEDS = [1, 2, 3] as const;
+export const RUNS = [1, 2, 3] as const;
 
 /**
- * Open a fresh run on `seed` the way a player does, and hand back the snapshot of
- * the frame it opened on.
+ * Open a fresh run the way a player does, and hand back the snapshot of the
+ * frame it opened on.
  *
  * `confirm` is bound to `Enter` (specs/controls.md), and `tap` runs the one frame
  * that delivers the key's edge, so the returned snapshot is the run's first.
  */
-export async function openRun(
-  h: Harness,
-  seed: number,
-): Promise<WirewormSnapshot> {
-  h.debug.reset({ seed });
+export async function openRun(h: Harness): Promise<WirewormSnapshot> {
+  h.debug.reset();
   await h.tap("Enter");
   return h.snapshot();
 }

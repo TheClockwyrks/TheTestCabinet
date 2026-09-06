@@ -40,9 +40,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed the run is posed with; the menu reads the same from any of them. */
-const SEED = 1;
-
 /**
  * Where the highlight rests on arriving at the title: the first item
  * (specs/ui.md), counted from `0`.
@@ -63,7 +60,7 @@ afterEach(() => {
 });
 
 it("plays one menu cue per move of the highlight", async () => {
-  resetTo(h, SEED);
+  resetTo(h);
   // One frame, so the title has been drawn before the highlight is moved on it.
   await h.advance(1);
   assertEqual(h.snapshot().screen, "title", "the game opens on the title");

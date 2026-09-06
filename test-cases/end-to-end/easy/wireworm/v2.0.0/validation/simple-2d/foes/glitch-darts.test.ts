@@ -6,7 +6,7 @@
 // clock starts when the glitch comes into existence and runs on the same
 // accumulate-and-carry rule the worm's step clock uses." The rule is stated
 // rather than left to a random re-pick precisely so a check can assert it
-// without an unlucky seed failing a spec-honouring build.
+// without an unlucky draw failing a spec-honouring build.
 //
 // So the reading is a COUNT and a SET OF FRAMES rather than a boolean: over the
 // span, the reported `vx` must reverse sign once per interval boundary and at

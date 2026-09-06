@@ -18,9 +18,10 @@
 // scatter rows and nothing else: a build that laid the right number in the wrong
 // rows fails there, and passing here is the honest reading of its count.
 //
-// Several seeds, because the count is drawn from the generator: a build whose
-// scatter is right on one draw and wrong on the next has a wrong rule, and the
-// seeds exercise that one edge the one way.
+// Several runs, because the count is a draw: a build whose scatter is right on
+// one draw and wrong on the next has a wrong rule, and each run opened afresh is
+// one draw of the same rule. Nothing is posed for the draw, because the rule
+// holds for every value it can take.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -45,8 +46,8 @@ const SCATTER_TILES = (SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1) * COLS;
 const FEWEST = SCATTER_MIN_FRACTION * SCATTER_TILES;
 const MOST = SCATTER_MAX_FRACTION * SCATTER_TILES;
 
-/** The seeds the count is read over. Each is one draw of the same rule. */
-const SEEDS = [1, 2, 3, 7, 11];
+/** The runs the count is read over. Each is one draw of the same rule. */
+const RUNS = [1, 2, 3];
 
 let h: Harness;
 
@@ -58,25 +59,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-it.each(SEEDS)(
-  "lays 10-15%% of the scatter rows from seed %i",
-  async (seed) => {
-    await startRun(h, seed);
-    await h.advance(1);
-    captureStill(h, "scatter");
+it.each(RUNS)("lays 10-15%% of the scatter rows on run %i", async (run) => {
+  await startRun(h);
+  await h.advance(1);
+  captureStill(h, "scatter");
 
-    const onScatterRows = h
-      .snapshot()
-      .nodes.filter(
-        (node) => node.r >= SCATTER_TOP_ROW && node.r <= SCATTER_BOTTOM_ROW,
-      );
-
-    assertBetween(
-      onScatterRows.length,
-      FEWEST,
-      MOST,
-      `nodes on the ${SCATTER_TILES} tiles of rows ` +
-        `${SCATTER_TOP_ROW}..${SCATTER_BOTTOM_ROW}, from seed ${seed}`,
+  const onScatterRows = h
+    .snapshot()
+    .nodes.filter(
+      (node) => node.r >= SCATTER_TOP_ROW && node.r <= SCATTER_BOTTOM_ROW,
     );
-  },
-);
+
+  assertBetween(
+    onScatterRows.length,
+    FEWEST,
+    MOST,
+    `nodes on the ${SCATTER_TILES} tiles of rows ` +
+      `${SCATTER_TOP_ROW}..${SCATTER_BOTTOM_ROW}, on run ${run}`,
+  );
+});

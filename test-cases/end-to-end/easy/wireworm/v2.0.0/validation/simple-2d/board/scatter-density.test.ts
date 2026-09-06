@@ -15,7 +15,7 @@
 // `board/scatter-rows`'s requirement, so a build that laid the right number in
 // the wrong rows is named by that point and not docked twice here.
 //
-// Read over three seeds, each its own case, so a failure names the draw that
+// Read over three runs, each its own case, so a failure names the draw that
 // missed rather than a build that happened to land on the first one.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -27,7 +27,7 @@ import {
 } from "../constants";
 import { assertBetween } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { SCATTER_TILES, SEEDS, occupied, openRun } from "./scatter";
+import { RUNS, SCATTER_TILES, occupied, openRun } from "./scatter";
 
 /**
  * The bounds, straight off specs/nodes.md's two fractions and the `680` tiles
@@ -50,21 +50,18 @@ afterEach(() => {
   h?.dispose();
 });
 
-it.each(SEEDS)(
-  "scatters 10–15%% of the scatter rows on seed %i",
-  async (seed) => {
-    const snapshot = await openRun(h, seed);
-    if (seed === SEEDS[0]) captureStill(h, "scatter");
+it.each(RUNS)("scatters 10–15%% of the scatter rows on run %i", async (run) => {
+  const snapshot = await openRun(h);
+  if (run === RUNS[0]) captureStill(h, "scatter");
 
-    assertBetween(
-      occupied(snapshot).size,
-      MIN_NODES,
-      MAX_NODES,
-      `tiles occupied by the starting scatter on seed ${seed}, out of the ` +
-        `${SCATTER_TILES} tiles rows ${SCATTER_TOP_ROW}..${SCATTER_BOTTOM_ROW} ` +
-        `hold (specs/nodes.md: ` +
-        `SCATTER_MIN_FRACTION ${SCATTER_MIN_FRACTION} to SCATTER_MAX_FRACTION ` +
-        `${SCATTER_MAX_FRACTION})`,
-    );
-  },
-);
+  assertBetween(
+    occupied(snapshot).size,
+    MIN_NODES,
+    MAX_NODES,
+    `tiles occupied by the starting scatter on run ${run}, out of the ` +
+      `${SCATTER_TILES} tiles rows ${SCATTER_TOP_ROW}..${SCATTER_BOTTOM_ROW} ` +
+      `hold (specs/nodes.md: ` +
+      `SCATTER_MIN_FRACTION ${SCATTER_MIN_FRACTION} to SCATTER_MAX_FRACTION ` +
+      `${SCATTER_MAX_FRACTION})`,
+  );
+});

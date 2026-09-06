@@ -244,7 +244,7 @@ asserts the rule `specs/foes.md` now states outright — at each
 by counting nine sign reversals of the reported `vx` over three seconds and
 reporting the distance swept each way, so a failure names a number. Stating the
 rule rather than leaving the re-pick to chance is the point: a check that assumed
-a random re-pick would fail a spec-honoring build on an unlucky seed, which is
+a random re-pick would fail a spec-honoring build on an unlucky draw, which is
 the flake this fix exists to remove rather than to move. **`instrumentation.entity-ids`**
 carries the other half of it: a foe is read by its `id` and its `kind`, never by
 its position in the roster.

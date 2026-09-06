@@ -28,7 +28,7 @@
 // that was posed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ARC_LIFE } from "../constants";
+import { ARC_LIFE, COLS } from "../constants";
 import {
   assertContains,
   assertEqual,
@@ -129,6 +129,12 @@ it("reports every documented field, with its documented type", async () => {
   // `bolts` is not the empty array.
   poseBolt(h, FREE_BOLT_C, FREE_BOLT_R);
 
+  // A posed draw of each kind, so no posed field reads null.
+  h.debug.setNextFoeEntry("glitch", 0, 9);
+  h.debug.setNextFoeEntry("dropper", 5, 0);
+  h.debug.setNextFoeEntry("corruptor", COLS - 1, 2);
+  h.debug.setNextWormEntry("left");
+
   // And the discharge, whose arcs are the only way `arcs` is ever non-empty.
   h.debug.setNode(CRITICAL_C, CRITICAL_R, 3);
   h.debug.setNode(CRITICAL_C + 1, CRITICAL_R, 3);
@@ -162,6 +168,23 @@ it("reports every documented field, with its documented type", async () => {
   assertEqual(typeof snapshot.muted, "boolean", "muted");
   assertEqual(typeof snapshot.foeSpawning, "boolean", "foeSpawning");
   assertEqual(typeof snapshot.wormEntry, "boolean", "wormEntry");
+  assertEqual(typeof snapshot.glitchTimer, "number", "glitchTimer");
+  assertEqual(typeof snapshot.dropperTimer, "number", "dropperTimer");
+  assertEqual(typeof snapshot.corruptorTimer, "number", "corruptorTimer");
+  assertContains(["left", "right"], snapshot.nextWormEntry, "nextWormEntry");
+  for (const field of [
+    "nextGlitchEntry",
+    "nextDropperEntry",
+    "nextCorruptorEntry",
+  ] as const) {
+    const tile = snapshot[field];
+    assertEqual(
+      typeof tile?.c,
+      "number",
+      `${field}.c, the posed tile's column`,
+    );
+    assertEqual(typeof tile?.r, "number", `${field}.r, the posed tile's row`);
+  }
   assertEqual(typeof snapshot.wormStepInterval, "number", "wormStepInterval");
   assertEqual(typeof snapshot.wormLength, "number", "wormLength");
   assertEqual(typeof snapshot.fireCooldown, "number", "fireCooldown");

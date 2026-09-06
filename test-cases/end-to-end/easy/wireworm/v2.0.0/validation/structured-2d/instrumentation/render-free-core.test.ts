@@ -1,8 +1,8 @@
-// Wireworm — instrumentation/deterministic-core: the simulation advances on the
+// Wireworm — instrumentation/render-free-core: the simulation advances on the
 // elapsed time it is handed and on nothing else, so one second of game time
 // reaches the same state however that second was divided into frames.
 //
-// specs/instrumentation.md rests the whole surface on it, under A deterministic
+// specs/instrumentation.md rests the whole surface on it, under A render-free
 // core: "every rate integrated against the delta time the game is given, so an
 // interval of game time reaches the same state however it was divided into
 // frames", and "Game state advances from the elapsed time the game is handed,
