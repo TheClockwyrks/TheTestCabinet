@@ -59,7 +59,7 @@ build = "npm run build"      # static-build command (required, non-empty)
 # "The TypeScript toolchain".
 [toolchain]
 typecheck = "npx tsc --noEmit"     # required; a non-zero exit rates the run broken
-lint = "npx eslint ."              # optional; recorded
+lint = "npx eslint . --max-warnings 0"  # optional; recorded
 format = "npx prettier --check ."  # optional; recorded
 test = "npx vitest run --coverage" # optional; results read from the reports it writes
 
@@ -501,7 +501,7 @@ that check it:
 ```toml
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 ```
@@ -512,6 +512,10 @@ test = "npx vitest run --coverage"
 | `lint`      | No       | Recorded.                                                                     |
 | `format`    | No       | Recorded.                                                                     |
 | `test`      | No       | Recorded, with the results and coverage read from the report files it writes. |
+
+A warning is a failure. `lint` runs ESLint with `--max-warnings 0`, so a warning
+exits non-zero the way an error does, and `format` exits non-zero on any file
+Prettier would change.
 
 Each declared command must be non-empty and runs from the implementation's
 repository root once the `[build]` install has completed, so the dependencies it

@@ -215,7 +215,7 @@ build = "npm run build"
 # the build's own files alone.
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 

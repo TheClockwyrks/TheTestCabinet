@@ -254,7 +254,7 @@ build = "npm run build"
 # commands are what `specs/overview.md` tells the model the repository must pass.
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 

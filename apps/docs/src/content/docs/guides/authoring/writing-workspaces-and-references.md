@@ -120,13 +120,15 @@ are the commands themselves:
 ```toml
 [toolchain]
 typecheck = "npx tsc --noEmit"
-lint = "npx eslint ."
+lint = "npx eslint . --max-warnings 0"
 format = "npx prettier --check ."
 test = "npx vitest run --coverage"
 ```
 
-A run's copies of these commands are recorded on the run record, with
-`typecheck` gating the run's rating. See
+A warning is a failure: `lint` runs ESLint with `--max-warnings 0`, and
+`format` exits non-zero on any file Prettier would change. A run's copies of
+these commands are recorded on the run record, with `typecheck` gating the
+run's rating. See
 [The TypeScript toolchain](/testing/end-to-end/manifests/#the-typescript-toolchain).
 
 ### Prettier and ESLint are configured in both projects
@@ -218,11 +220,11 @@ confirm each of the following.
   a package the engines also depend on matches the engine's version.
 - A shared package is pinned at one version across every project in the case
   version, and every reference's `package-lock.json` is in sync with it.
-- `prettier --check .` and `eslint .` both pass in every reference
-  implementation.
+- `prettier --check .` and `eslint . --max-warnings 0` both pass in every
+  reference implementation.
 - `prettier --check .` passes in every seeded workspace.
-- Every finding `eslint .` reports in a seeded workspace traces to code the model
-  is expected to write.
+- Every finding `eslint . --max-warnings 0` reports in a seeded workspace
+  traces to code the model is expected to write.
 - Each engine's reference starts from that engine's workspace and keeps the
   seeded tool configuration, extending it only for what a run's tree does not
   hold.
