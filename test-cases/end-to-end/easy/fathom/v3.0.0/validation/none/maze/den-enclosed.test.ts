@@ -23,7 +23,7 @@
 // on the corridor outside the gate with its brightness turned up, which puts the
 // chamber and its one doorway in frame.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -79,7 +79,7 @@ it("encloses the den chamber, leaving the gate its only opening onto the corrido
       one.breaches.length,
       MAX_BREACHES,
       `den-interior tiles with a corridor neighbor in the maze laid out from ` +
-        `seed ${one.board.seed}` +
+        `board ${one.board.ordinal}` +
         (named === "" ? "" : `, at ${named}`),
     );
   }

@@ -5,9 +5,9 @@ variant's reference implementation — `gameplay.json.gz`, `sonar-sweep.png` and
 `hunted.png` for base, `dive.json.gz`, `window.png` and `sonar.png` for kindle —
 playing a REAL dive: the title menu is opened and `DIVE` chosen with a key press, the
 forager is then steered with scripted arrow-key input against the build's own
-predators, several takes are auditioned (seed × play style), and the most
-watchable one is replayed under the engine's recorder. Nothing is posed
-mid-play.
+predators, several takes are auditioned (fresh trenches × play style), each
+recorded as it runs under the engine's recorder, and the most watchable one is
+kept. Nothing is posed mid-play.
 
 A driver is the validator harness reused as a recording rig. It is not a
 validator: no review item names it, it lives outside `validation/` so a run
@@ -57,35 +57,29 @@ Where the two drivers default differently, both are given.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `TCAB_VALIDATION_MEDIA_DIR` | unset | Where the media is written. Unset writes nothing, which is what makes an audition free. |
+| `TCAB_VALIDATION_MEDIA_DIR` | unset | Where the media is written. Unset writes nothing, so the run only judges. |
 | `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched to read this. A clip is recorded at 60 frames a second, so this is roughly `60 × seconds`; `2100` holds a thirty-five-second take whole. |
-| `TCAB_SHOWCASE_SEEDS` | base `1`–`12`, kindle `1`–`6` | The seeds auditioned. Each is crossed with all three play styles. |
+| `TCAB_SHOWCASE_TAKES` | `4` | How many takes of each of the three play styles are auditioned, each on a fresh trench. |
 | `TCAB_SHOWCASE_MIN_SECONDS` | `26` | The earliest the clip may end. |
 | `TCAB_SHOWCASE_QUIET_SECONDS` | base `33`, kindle `32` | When a merely calm frame is allowed to end a take that never took a drifter. |
 | `TCAB_SHOWCASE_MAX_SECONDS` | base `38`, kindle `35` | The hard ceiling, past which the take ends wherever it stands. |
-| `TCAB_SHOWCASE_TAKE` | unset | kindle only. `<seed>:<style>` records that take and auditions nothing, which is how the committed clip is reproduced without paying for the audition. |
+| `TCAB_SHOWCASE_TAKE` | unset | `<style>` records one take of that style and auditions nothing. |
 | `TCAB_SHOWCASE_QA_STILLS` | unset | `1` writes a still every few seconds, for eyeballing a take. |
 
 Both drivers run their whole audition inside one process, so give them
 `NODE_OPTIONS=--max-old-space-size=8192`.
 
-## Why it is reproducible
+## Why every take is recorded
 
-The capture is deterministic. The trench's layout is fixed, the seed drives the
-generator every creature's wandering is drawn from, and every decision the
-scripted player makes is a pure function of the debug snapshot, so a seed and a
-style replay the identical dive. That is what lets a take be auditioned with the
-recorder off and then re-run under it exactly.
+A take opens on whatever trench the game lays out for that reset, and every
+creature's wandering is the game's own draw, so no take can be run a second
+time. Each take is therefore recorded as it runs, under outputs prefixed
+`take-<n>-`, and judged afterward; the winner's recording and stills lose the
+prefix and the other takes' files are deleted, so what is left under the media
+directory is the showcase's own three outputs. Because the drivers keep every
+take's recording until the audition ends, an audition costs disk as well as
+time, which is what the take count is for.
 
-One caveat on byte-identity, which is weaker than identity of the dive: a
-recorded frame carries the engine's own frame number and its running clock, and
-both count from when the harness was created rather than from when the recorder
-was armed. Two runs that auditioned the same takes in the same order therefore
-write byte-identical files, and a run that auditioned a different set writes the
-same dive with a different time origin. Playback is unaffected, because a
-player paces itself off the per-frame deltas.
-
-The committed media: base seed 8 style 1, from the default audition, at cap
-2100 — a 31.2 s dive held whole at 60 frames a second.
-Kindle seed 4 style 2, from its own default audition, at the same cap — a
-34.1 s dive thinned to 2045 frames, which is 60 frames a second.
+The committed media: base, a style-1 take at cap 2100 — a 31.2 s dive held
+whole at 60 frames a second. Kindle, a style-2 take at the same cap — a 34.1 s
+dive thinned to 2045 frames, which is 60 frames a second.

@@ -97,8 +97,8 @@ const DEPTH = 1;
  * become `"playing"`, because that instant is release time `0` and each item pins
  * it itself. Every hunter is left with its mind running and its travel held.
  */
-export async function poseDenSchedule(h: Harness, seed: number): Promise<Tile> {
-  h.debug.reset(seed);
+export async function poseDenSchedule(h: Harness): Promise<Tile> {
+  h.debug.reset();
   const board = await poseMaze(h, BOARD);
   // The roster this point is about, laid out in the chamber the fixture carries.
   h.debug.setDepth(DEPTH);

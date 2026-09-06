@@ -44,9 +44,6 @@ import {
   watchSeconds,
 } from "./schedule";
 
-/** The seed the dive is opened on, so the maze this watch runs in replays. */
-const SEED = 1;
-
 /**
  * How much of the dive countdown is watched before it is ended, in seconds.
  *
@@ -73,7 +70,7 @@ afterEach(() => {
 });
 
 it("releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER, and none during the countdown", async () => {
-  await poseDenSchedule(h, SEED);
+  await poseDenSchedule(h);
 
   const opening = h.snapshot();
   assertEqual(

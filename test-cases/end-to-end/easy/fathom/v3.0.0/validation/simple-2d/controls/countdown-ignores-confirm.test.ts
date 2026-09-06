@@ -6,10 +6,11 @@
 // on a menu, and `Enter`, which takes a menu item — must do nothing at all while
 // the countdown runs.
 //
-// THE READING IS A COMPARISON OF TWO RUNS OF THE SAME COUNTDOWN, because "does
-// nothing" has no single reading of its own. One countdown is timed with nothing
-// touched, and a second — reset to the same seed, so it is the same dive — is
-// timed with both keys pressed through it. A build that let either key shorten
+// THE READING IS A COMPARISON OF TWO COUNTDOWNS, because "does nothing" has no
+// single reading of its own, and specs/ui.md fixes the countdown at one length
+// per build, "the same length on every countdown". One countdown is timed with
+// nothing touched, and a second, on a fresh reset, is timed with both keys
+// pressed through it. A build that let either key shorten
 // the hold gives way at a different simulated time; a build that let `Space`
 // reach the pulse has a wavefront in flight the untouched run does not.
 //
@@ -69,7 +70,7 @@ interface Timed {
 }
 
 /**
- * Pose a countdown on the seed a reset gives and time it, pressing `keys` at a
+ * Pose a countdown on a fresh reset and time it, pressing `keys` at a
  * steady cadence through it where any are named.
  *
  * The screen is posed straight through `setScreen`, because a dive REACHING the

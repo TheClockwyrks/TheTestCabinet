@@ -1,7 +1,7 @@
 // instrumentation/manual-clock — the game holds still on the driver's clock, and
 // a step of `n` ticks is worth exactly `n` ticks however it is spent.
 //
-// specs/instrumentation.md rests the surface on a deterministic core: "Game state
+// specs/instrumentation.md rests the surface on a render-free core: "Game state
 // advances from the elapsed time the game is handed, independent of a canvas, of
 // the frame loop that measured it, and of wall-clock time", and specs/movement.md
 // fixes the step at `TICK_DT` with `TICK_HZ` (`120`) of them a second. Under this

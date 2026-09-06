@@ -213,9 +213,6 @@ export const SCORE_DRIFTER = 200;
 export const SCORE_CLEAR = 500;
 export const START_LIVES = 3;
 
-/** The seed `reset()` takes when a caller names none. */
-export const DEFAULT_SEED = 1;
-
 // ---- The debugging surface (specs/instrumentation.md) --------------------
 
 /** The version the surface reports as `version`. */

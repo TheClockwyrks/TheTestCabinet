@@ -36,7 +36,7 @@
 // fixes its operations, so they mean the same thing in every build: `setMaze`
 // sets the layout and nothing else, `clearPredators` empties the roster,
 // `setPredatorMind(index, false)` holds one hunter exactly where it stands.
-// Posing through it is how a scenario is reproducible, and it is the seam the
+// Posing through it is how a scenario is arranged, and it is the seam the
 // case's specification documents. `surface.ts` is that specification as types, and
 // it is the only description of the surface this harness reads: the build's own
 // module for it is never imported.
@@ -728,8 +728,8 @@ export const captureStill = kit.captureStill;
 /**
  * Open a dive and reach live play, through the surface alone.
  *
- * `reset` seeds the generator and returns the game to the title on a freshly laid
- * out maze, and `setScreen("playing")` opens live play — which is where "the
+ * `reset` returns the game to the title on a freshly laid out maze, and
+ * `setScreen("playing")` opens live play — which is where "the
  * staggered release schedule specs/predators.md fixes takes its origin"
  * (specs/instrumentation.md). No menu key is pressed on the way and no countdown
  * is waited out: a build with a broken title menu and working play must fail the
@@ -741,8 +741,8 @@ export const captureStill = kit.captureStill;
  * Nothing is advanced here, so the caller's first tick is the game's first tick of
  * live play — which is what lets a scenario pose its board before anything moves.
  */
-export function startPlaying(h: Harness, seed?: number): FathomSnapshot {
-  h.debug.reset(seed);
+export function startPlaying(h: Harness): FathomSnapshot {
+  h.debug.reset();
   h.debug.setScreen("playing");
   return h.snapshot();
 }
@@ -764,8 +764,8 @@ export function startPlaying(h: Harness, seed?: number): FathomSnapshot {
 // add them up.
 
 /** Return the game to its title screen: `reset`, and nothing else. */
-export function openTitle(h: Harness, seed?: number): void {
-  h.debug.reset(seed);
+export function openTitle(h: Harness): void {
+  h.debug.reset();
 }
 
 /**

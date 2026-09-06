@@ -14,7 +14,7 @@
 // THE BOARD IS THE BUILD'S OWN. This is one of the eight points that read the
 // layout the game laid out for itself rather than a posed fixture, because
 // finding the property in a board a build invented IS the check. It is measured
-// over several freshly seeded layouts, so a generator that opens a room only
+// over several freshly laid-out layouts, so a generator that opens a room only
 // sometimes is caught.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -56,7 +56,7 @@ it("lays out corridors one tile wide, with no 2x2 block of open corridor", async
       one.blocks,
       MAX_OPEN_BLOCKS,
       `2x2 blocks whose four tiles are all corridor, in the maze laid out from ` +
-        `seed ${one.board.seed}`,
+        `board ${one.board.ordinal}`,
     );
   }
 });

@@ -42,13 +42,13 @@
 
 import type { DeepReadonly } from "ts-essentials";
 
-import { DEFAULT_SEED, FATHOM_DEBUG_VERSION } from "./constants";
+import { FATHOM_DEBUG_VERSION } from "./constants";
 
-// The two figures this module states about the surface are the specification's
-// like every other figure in this project, so they live in `constants.ts` with
-// the rest and are re-exported here for the checks that already name them off
-// the surface description.
-export { DEFAULT_SEED, FATHOM_DEBUG_VERSION };
+// The one figure this module states about the surface is the specification's
+// like every other figure in this project, so it lives in `constants.ts` with
+// the rest and is re-exported here for the checks that already name it off the
+// surface description.
+export { FATHOM_DEBUG_VERSION };
 
 /**
  * A menu item's hit region, as `menuItemRect` reports it (specs/instrumentation.md).
@@ -270,7 +270,7 @@ export interface FathomSnapshot {
  */
 export interface FathomDebugApi<S = unknown> {
   version: number;
-  reset(state: DeepReadonly<S>, seed?: number): S;
+  reset(state: DeepReadonly<S>): S;
   snapshot(state: DeepReadonly<S>): FathomSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows, and

@@ -7,7 +7,7 @@
 // WHAT A START TILE UP AMONG THE DEN'S OWN ROWS COSTS is a dive that opens inside
 // the hunters' reach every time, which is why the rule is a rule.
 //
-// IT IS MEASURED ON EVERY SEED, because it is cheap: a fresh layout is a `reset`
+// IT IS MEASURED ON EVERY BOARD, because it is cheap: a fresh layout is a `reset`
 // and a read, and several boards is what specs/maze.md's "every maze the game
 // lays out" asks of a generator.
 //
@@ -51,15 +51,15 @@ it("opens every maze on a corridor tile in rows 9 to 16", async () => {
     assertEqual(
       isCorridor(one.board.snapshot, one.tx, one.ty),
       true,
-      `the start tile (${one.tx}, ${one.ty}) of the maze laid out from seed ` +
-        `${one.board.seed} is an open corridor tile (specs/maze.md)`,
+      `the start tile (${one.tx}, ${one.ty}) of the maze laid out as board ` +
+        `${one.board.ordinal} is an open corridor tile (specs/maze.md)`,
     );
     assertBetween(
       one.ty,
       START_TILE_ROW_MIN,
       START_TILE_ROW_MAX,
-      `the row of the start tile of the maze laid out from seed ` +
-        `${one.board.seed} (specs/maze.md)`,
+      `the row of the start tile of the maze laid out as board ` +
+        `${one.board.ordinal} (specs/maze.md)`,
     );
   }
 });

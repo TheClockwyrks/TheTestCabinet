@@ -49,9 +49,6 @@ import {
   watchSeconds,
 } from "./schedule";
 
-/** The seed the dive is opened on, so the maze this watch runs in replays. */
-const SEED = 1;
-
 /**
  * How long a hunter posed onto the forager's own tile is given to take the life,
  * in ticks.
@@ -88,7 +85,7 @@ afterEach(() => {
 });
 
 it("returns every predator to the den on a catch and runs the whole staggered schedule again from the moment play resumes", async () => {
-  const home = await poseDenSchedule(h, SEED);
+  const home = await poseDenSchedule(h);
   h.debug.setScreen("playing");
 
   const opening = h.snapshot();

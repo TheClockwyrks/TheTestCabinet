@@ -9,12 +9,11 @@
 // `snapshot().tiles` straight, and all eight share the same three chores, which
 // live here rather than eight times over.
 //
-// SEVERAL LAYOUTS, NOT ONE. specs/instrumentation.md seeds every draw the game
-// makes — "for the maze it lays out" among them — from the generator `reset`
-// seeds, so a different seed is a different maze and the same seed is the same
-// maze every time. A generator that conforms only sometimes is exactly the
-// failure mode a single reading misses, so each point measures {@link SEEDS}
-// layouts and asserts its rule of each one, naming the seed that broke it.
+// SEVERAL LAYOUTS, NOT ONE. `specs/maze.md` states its rules of every maze the
+// game lays out, and each `reset` lays one out afresh, so a different reset may
+// be a different maze. A generator that conforms only sometimes is exactly the
+// failure mode a single reading misses, so each point measures {@link BOARD_COUNT}
+// layouts and asserts its rule of each one, naming the board that broke it.
 //
 // THE STILL IS THE OFFENDING BOARD. Each of the eight declares one `image`
 // output, and evidence of a rule broken on the fifth layout is a picture of the
@@ -36,8 +35,8 @@
 // pocket to its full `V` for.
 //
 // NONE OF THAT CAN REACH A VERDICT. Every reading a point asserts on is already
-// taken by the time the survey starts, and the survey runs on a board reset to
-// this seed rather than on the boards that were measured. A build that ignores
+// taken by the time the survey starts, and the survey runs on the measured board
+// posed back through `setMaze` rather than on a fresh one. A build that ignores
 // the pulse loses a wider picture; it does not lose a point.
 
 import { fail } from "../assert";
@@ -67,18 +66,18 @@ import {
 import { FathomSnapshot } from "../surface";
 
 /**
- * The seeds the eight structural points measure a layout at.
+ * How many fresh layouts the eight structural points measure.
  *
- * Eight of them. specs/maze.md states its rules of every maze the game lays out,
- * so the honest reading is many boards rather than one, and eight is enough that
- * a generator conforming half the time is caught with near certainty while the
- * whole category still runs in a moment.
+ * Eight of them. `specs/maze.md` states its rules of every maze the game lays
+ * out, so the honest reading is many boards rather than one, and eight is enough
+ * that a generator conforming half the time is caught with near certainty while
+ * the whole category still runs in a moment.
  */
-export const SEEDS: readonly number[] = [1, 2, 3, 4, 5, 6, 7, 8];
+export const BOARD_COUNT = 8;
 
-/** One freshly laid-out maze, and the seed the game laid it out from. */
+/** One freshly laid-out maze, and which of the fresh layouts it was. */
 export interface Board {
-  readonly seed: number;
+  readonly ordinal: number;
   readonly snapshot: FathomSnapshot;
 }
 
@@ -89,7 +88,8 @@ export interface Measured {
 }
 
 /**
- * Lay out one fresh maze per seed and hand back what the game reported of each.
+ * Lay out {@link BOARD_COUNT} fresh mazes and hand back what the game reported
+ * of each.
  *
  * Read with no frame advanced, so what is measured is the layout as the game
  * opened the dive on it: nothing has moved, nothing has been eaten, and no
@@ -99,8 +99,8 @@ export interface Measured {
  */
 export async function freshBoards(h: Harness): Promise<Board[]> {
   const boards: Board[] = [];
-  for (const seed of SEEDS) {
-    boards.push({ seed, snapshot: await startPlaying(h, { seed }) });
+  for (let ordinal = 1; ordinal <= BOARD_COUNT; ordinal += 1) {
+    boards.push({ ordinal, snapshot: await startPlaying(h) });
   }
   return boards;
 }
@@ -128,9 +128,9 @@ export function assertLaidOut(boards: readonly Board[]): void {
   const bare = boards.find((one) => corridorTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
   fail(
-    "every seed to lay out a maze with corridor in it, which is what " +
+    "every maze the game lays out to carry corridor, which is what " +
       "specs/maze.md states its rules of",
-    `the maze seed ${bare.seed} laid out carries no corridor tile at all`,
+    `maze ${bare.ordinal} the game laid out carries no corridor tile at all`,
   );
 }
 
@@ -146,9 +146,9 @@ export function assertDenChamber(boards: readonly Board[]): void {
   const bare = boards.find((one) => denTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
   fail(
-    "every seed to lay out a maze carrying the den chamber specs/maze.md " +
+    "every maze the game lays out to carry the den chamber specs/maze.md " +
       "requires of one",
-    `the maze seed ${bare.seed} laid out marks no den-interior tile`,
+    `maze ${bare.ordinal} the game laid out marks no den-interior tile`,
   );
 }
 
@@ -245,8 +245,8 @@ function gateApproach(view: MazeView): (Tile & { facing: Dir }) | null {
  * Lay the board out again and keep a lit picture of it as the point's `board`
  * output.
  *
- * The same seed lays out the same maze (specs/instrumentation.md), so what is
- * pictured is the board that was measured. Every predator is put away first, so
+ * The measured board is posed back through `setMaze`, so what is pictured is
+ * the board that was measured. Every predator is put away first, so
  * no hunter that wandered into the frame reads as part of the layout.
  *
  * Nothing here can change a verdict: it runs after every reading a point takes,
@@ -260,12 +260,16 @@ export async function captureBoard(
   output: string = OUTPUT,
 ): Promise<void> {
   try {
-    await startPlaying(h, { seed: board.seed });
+    await startPlaying(h);
+    h.debug.setMaze(board.snapshot.tiles);
     // Every predator off the board first, so no hunter that wandered into the
     // frame while the survey ran reads as part of the layout.
     h.debug.clearPredators();
     const view = h.snapshot();
-    const home = { tx: view.forager.tx, ty: view.forager.ty };
+    const home = {
+      tx: board.snapshot.forager.tx,
+      ty: board.snapshot.forager.ty,
+    };
 
     // The survey: one pulse from each vantage point, each given time to finish.
     for (const { fx, fy } of VANTAGES) {

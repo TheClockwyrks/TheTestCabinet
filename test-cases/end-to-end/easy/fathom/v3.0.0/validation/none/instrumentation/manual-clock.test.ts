@@ -1,7 +1,7 @@
 // instrumentation/manual-clock — the game holds still on the driver's clock, and
 // a step of `n` ticks is worth exactly `n` ticks however it is spent.
 //
-// `specs/instrumentation.md` puts both halves of the deterministic core on the
+// `specs/instrumentation.md` puts both halves of the render-free core on the
 // clock. `setAutoStep(false)` "stops the frame loop advancing the simulation from
 // the wall clock, so the game changes only when `advance` says so", and
 // `advance(ticks)` "runs `ticks` whole simulation ticks immediately and in order,

@@ -19,7 +19,7 @@
 // one usually breaks both, which is what a checklist of tightly focused points
 // looks like.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -105,14 +105,14 @@ it("pierces exactly one row, seals the rest, and keeps the den off it", async ()
       one.pierced.length,
       PIERCED_ROWS,
       "rows whose column 0 and column 35 tiles are both corridor in the maze " +
-        `laid out from seed ${one.board.seed}` +
+        `laid out as board ${one.board.ordinal}` +
         (one.pierced.length === 0 ? "" : `, at rows ${one.pierced.join(" ")}`),
     );
     assertLength(
       one.unsealed,
       0,
       "border-column tiles that are open on a row the tunnel does not pierce " +
-        `in the maze laid out from seed ${one.board.seed}` +
+        `in maze ${one.board.ordinal} the game laid out` +
         (one.unsealed.length === 0
           ? ""
           : `, at ${one.unsealed.map(tileKey).join(" ")}`),
@@ -121,7 +121,7 @@ it("pierces exactly one row, seals the rest, and keeps the den off it", async ()
       one.den,
       0,
       "den-interior tiles and den gates standing on the pierced row in the " +
-        `maze laid out from seed ${one.board.seed}` +
+        `maze laid out as board ${one.board.ordinal}` +
         (one.den.length === 0 ? "" : `, at ${one.den.map(tileKey).join(" ")}`),
     );
   }

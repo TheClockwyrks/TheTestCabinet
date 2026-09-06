@@ -28,7 +28,7 @@
 // picture of the trench taken anywhere else shows a reviewer nothing about the
 // chamber's doors.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -92,27 +92,27 @@ it("gives the den exactly one gate, on the top edge of its chamber", async () =>
   await captureBoard(h, witness(measured).board, "den");
 
   for (const one of measured) {
-    const seed = `the maze laid out from seed ${one.board.seed}`;
+    const board = `maze ${one.board.ordinal} the game laid out`;
     const where =
       one.gates.map((tile) => `(${tile.tx}, ${tile.ty})`).join(", ") ||
       "nowhere";
     assertEqual(
       one.gates.length,
       GATES,
-      `den-gate ('g') tiles in ${seed}, at ${where}`,
+      `den-gate ('g') tiles in ${board}, at ${where}`,
     );
     // Reached only when the assertion above found exactly one gate.
     const gate = one.gates[0];
     assertEqual(
       one.below,
       "d",
-      `the tile directly below the gate at (${gate.tx}, ${gate.ty}) in ${seed}, ` +
+      `the tile directly below the gate at (${gate.tx}, ${gate.ty}) in ${board}, ` +
         `which a gate on the chamber's top edge opens onto`,
     );
     assertEqual(
       one.above.length,
       MAX_ABOVE,
-      `den-interior tiles above the gate's row ${gate.ty} in ${seed}, which a ` +
+      `den-interior tiles above the gate's row ${gate.ty} in ${board}, which a ` +
         `gate on the chamber's top edge leaves none of`,
     );
   }

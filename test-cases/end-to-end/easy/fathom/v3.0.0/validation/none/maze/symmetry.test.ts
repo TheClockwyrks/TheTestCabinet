@@ -17,7 +17,7 @@
 // chamber's one gate sits on one side of the axis and has no partner on the
 // other. Every pair with a `d` or a `g` on either side is left out of the tally.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -61,7 +61,7 @@ it("lays out a maze that mirrors about the axis between columns 17 and 18", asyn
       one.mismatches,
       MAX_MISMATCHES,
       `cells that disagree with their mirror about being rock, den interior and ` +
-        `den gate exempt, in the maze laid out from seed ${one.board.seed}`,
+        `den gate exempt, in maze ${one.board.ordinal} the game laid out`,
     );
   }
 });

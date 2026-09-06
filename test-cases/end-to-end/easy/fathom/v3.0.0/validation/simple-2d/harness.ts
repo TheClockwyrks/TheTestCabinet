@@ -40,7 +40,7 @@
 // `setPredatorMind(index, false)` leaves a prop that decides nothing,
 // `setPredatorTravel(index, false)` a hunter that senses and alerts without ever
 // leaving its tile — each of them leaving the rest of the simulation running.
-// Posing through it is how a scenario is reproducible, and it is the seam the
+// Posing through it is how a scenario is arranged, and it is the seam the
 // case's specification documents. `surface.ts` is that specification as types, and
 // it is the only description of the surface this harness reads: the build's own
 // module for it is never imported.
@@ -684,8 +684,8 @@ export const captureStill = kit.captureStill;
  * Open a dive and reach live play through the surface alone, and hand back the
  * state it reaches.
  *
- * Two operations: `reset(seed)` for a reproducible board — a freshly laid out
- * maze at depth 1 with the roster in the den — and `setScreen("playing")` for
+ * Two operations: `reset()` for a fresh board — a freshly laid out maze at
+ * depth 1 with the roster in the den — and `setScreen("playing")` for
  * live play. Nothing here touches a menu: a build with a broken title screen and
  * a working dive must fail the navigation checks and pass the gameplay ones, so a
  * check that is about the menus drives them itself.
@@ -698,11 +698,8 @@ export const captureStill = kit.captureStill;
  * the whole roster in the den. A check that measures on a posed fixture reaches
  * for `poseMaze`, which empties all of that.
  */
-export async function startPlaying(
-  h: Harness,
-  options: { seed?: number } = {},
-): Promise<FathomSnapshot> {
-  h.debug.reset(options.seed);
+export async function startPlaying(h: Harness): Promise<FathomSnapshot> {
+  h.debug.reset();
   h.debug.setScreen("playing");
   return h.snapshot();
 }
@@ -724,8 +721,8 @@ export async function startPlaying(
 // add them up.
 
 /** Return the game to its title screen: `reset`, and nothing else. */
-export function openTitle(h: Harness, seed?: number): void {
-  h.debug.reset(seed);
+export function openTitle(h: Harness): void {
+  h.debug.reset();
 }
 
 /**
@@ -902,11 +899,8 @@ export function requireForagerMotion(
  * How a countdown scenario reaches its ground: `reset` to a clean title, then
  * `setScreen("countdown")`, nothing else.
  */
-export async function openCountdown(
-  h: Harness,
-  options: { seed?: number } = {},
-): Promise<FathomSnapshot> {
-  h.debug.reset(options.seed);
+export async function openCountdown(h: Harness): Promise<FathomSnapshot> {
+  h.debug.reset();
   h.debug.setScreen("countdown");
   return h.snapshot();
 }
