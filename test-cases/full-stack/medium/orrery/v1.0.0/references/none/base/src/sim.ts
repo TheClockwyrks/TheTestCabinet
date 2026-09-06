@@ -12,8 +12,8 @@
 // moment it begins, so an interval of game time reaches the same state however
 // it was divided into frames: `advance(1, 1)` and `advance(1, 60)` are the same
 // run (specs/instrumentation.md "A render-free core"). Nothing here reads the
-// canvas, the wall clock, or a random number; `sim.fraction` exists so a frame
-// can DRAW the motion, never so the simulation can decide with it.
+// canvas or the wall clock; `sim.fraction` exists so a frame can DRAW the
+// motion, never so the simulation can decide with it.
 //
 // A faulting cycle is a cycle whose plan names a sample fraction. The clock
 // carries the run up to exactly that fraction and freezes it there, so the run

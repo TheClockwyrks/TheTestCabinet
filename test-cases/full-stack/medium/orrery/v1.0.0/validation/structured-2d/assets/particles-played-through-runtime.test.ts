@@ -6,8 +6,8 @@
 // name, using its `./canvas` binding: a player is constructed over a parsed
 // system and a 2D rendering context and advanced each frame with that frame's
 // delta, and it simulates the system and composites the particles itself. Its
-// options carry the seed, the composite mode, and whether the context is cleared
-// before compositing, and the package's own types are the authoritative API."
+// options carry the composite mode and whether the context is cleared before
+// compositing, and the package's own types are the authoritative API."
 //
 // WHY IT IS ASKED. `particle-2d` authors a system as data, and what turns that
 // data into moving particles is the runtime: emitters, forces, curves, sub-
