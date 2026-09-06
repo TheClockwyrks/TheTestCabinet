@@ -129,9 +129,9 @@ code:
   that many whole 120 Hz simulation ticks — the same tick the loop runs —
   followed by a render. Drawing is unaffected either way, so the canvas always
   shows the state the last tick left, and `advance(0)` runs nothing at all.
-- `reset(options?)` and `snapshot()` — return every declared field of the state
-  to its title-screen value (seedable), and read a plain, JSON-serializable view
-  of the whole state.
+- `reset()` and `snapshot()` — return every declared field of the state to its
+  title-screen value, every posed draw included, and read a plain,
+  JSON-serializable view of the whole state.
 - `setScreen`, `setMenuIndex`, `setScore`, `setLives`, `setWave`,
   `setWaveBanner` — the screen and the run.
 - `setWaveSpawning` and `setSaucerSpawning` — the two **world gates**, so a
@@ -146,9 +146,14 @@ code:
   `removeRock` / `clearRocks` — the rosters, each with its own per-id removal and
   its own clear. `clearRocks` destroys nothing and scores nothing, so a field it
   emptied is a wave being played rather than a wave cleared.
-- `addSaucer`, `setSaucerVelocity`, `removeSaucer`, and `setSaucerMind` /
-  `setSaucerGun` / `setSaucerTravel` — the saucer's single slot and its three
-  separable faculties: it decides, it shoots, and it moves.
+- `addSaucer`, `setSaucerVelocity`, `removeSaucer`, `setSaucerWeave`, and
+  `setSaucerMind` / `setSaucerGun` / `setSaucerTravel` — the saucer's single
+  slot, its weave direction, and its three separable faculties: it decides, it
+  shoots, and it moves. `setSaucerDue` poses the figure the gap draw decides.
+- `setNextSaucerEdge`, `setNextSaucerRow`, `setNextSaucerAim`,
+  `setNextRockSpeed`, and `setNextRecycleEdge` — the **posed draws**: each sets
+  the outcome the game's next draw of one kind would decide, the draw consumes
+  it, and the snapshot reports it until then.
 
 Every operation but the two clock calls is a read of the state or a pose of **one
 field** of it: they arrange the world, and the game's own stepping, gravity,
@@ -232,7 +237,7 @@ src/
   game.ts                  The fixed step, the order inside one tick, the screens
   geometry.ts              The torus, the well's law, and the swept overlap test
   motion.ts                The pull, the travel, and the slide off the core
-  rng.ts                   The seeded generator, over ShatterState.rng
+  rng.ts                   The build's own random source, over Math.random
   entities.ts              Every body's construction, and the ids they take
   ship.ts                  Rotation, thrust, drag, the cap, and the grace clock
   weapons.ts               The gun: its gate, its cap, and where a round leaves

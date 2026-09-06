@@ -285,7 +285,7 @@ source = "specs/field.md"
 source = "specs/gravity.md.hbs"
 
 # The core the whole game advances on: the fixed timestep, the per-tick order, and
-# seeded randomness.
+# the draws the game makes at random.
 [[spec]]
 source = "specs/simulation.md.hbs"
 

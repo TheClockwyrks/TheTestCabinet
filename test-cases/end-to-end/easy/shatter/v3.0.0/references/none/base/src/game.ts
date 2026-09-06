@@ -23,7 +23,6 @@
 
 import {
   CUES,
-  DEFAULT_SEED,
   GAMEOVER_ITEMS,
   PAUSE_ITEMS,
   TICK_DT,
@@ -258,7 +257,7 @@ export const game: Game<ShatterState> = {
   initialize(api: InitApi): ShatterState {
     registerActions(api);
     defineCues(api);
-    const state = createState(DEFAULT_SEED);
+    const state = createState();
     registerDiagnostics(api, state);
     return state;
   },

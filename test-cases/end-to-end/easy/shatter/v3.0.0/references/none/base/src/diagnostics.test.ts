@@ -70,6 +70,7 @@ describe("the overlay's sources", () => {
       mind: true,
       gun: true,
       travel: true,
+      weave: 1,
       fireTimer: 1.6,
       weaveTimer: 1,
       age: 0,

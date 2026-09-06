@@ -144,7 +144,7 @@ being what keeps it out of there.
 
 `saucer/avoids-the-core` now flies 54 real crossings: nine rows from 80 units
 below the star's row to 80 above it in 20-unit steps, each from the left edge and
-from the right, the whole set repeated from three seeds. Every crossing is a
+from the right, the whole set flown with each weave direction. Every crossing is a
 course the specification's own entry rule produces, the whole approach is left for
 the build to steer through, and the closest approach of all 54 decides the point.
 

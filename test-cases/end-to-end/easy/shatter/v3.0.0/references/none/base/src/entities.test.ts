@@ -28,10 +28,23 @@ import {
   shipNose,
   takeId,
 } from "./entities";
+import type { FieldEdge, SaucerEdge } from "./types";
 
-/** A home for entities: the two fields a factory reads off the state. */
-function home(seedValue = 1): { rng: number; nextId: number } {
-  return { rng: seedValue, nextId: 0 };
+/** A home for entities: the fields a factory reads off the state. */
+function home(): {
+  nextId: number;
+  nextSaucerEdge: SaucerEdge | null;
+  nextSaucerRow: number | null;
+  nextRockSpeed: number | null;
+  nextRecycleEdge: FieldEdge | null;
+} {
+  return {
+    nextId: 0,
+    nextSaucerEdge: null,
+    nextSaucerRow: null,
+    nextRockSpeed: null,
+    nextRecycleEdge: null,
+  };
 }
 
 describe("identity", () => {
@@ -107,7 +120,7 @@ describe("rocks", () => {
   });
 
   it("drifts at a speed inside its size's own range", () => {
-    const source = home(4);
+    const source = home();
     for (let i = 0; i < 200; i += 1) {
       for (const size of ROCK_SIZES) {
         const rock = driftRock(source, size, 100, 100, 1);
@@ -119,16 +132,14 @@ describe("rocks", () => {
   });
 
   it("scales a wave's drift speed by the wave's multiplier", () => {
-    const plain = driftRock(home(9), "large", 0, 0, 1);
-    const faster = driftRock(home(9), "large", 0, 0, 1.2);
-    expect(Math.hypot(faster.vx, faster.vy)).toBeCloseTo(
-      Math.hypot(plain.vx, plain.vy) * 1.2,
-      6,
-    );
+    const plain = driftRock(home(), "large", 0, 0, 1, 100);
+    const faster = driftRock(home(), "large", 0, 0, 1.2, 100);
+    expect(Math.hypot(plain.vx, plain.vy)).toBeCloseTo(100, 6);
+    expect(Math.hypot(faster.vx, faster.vy)).toBeCloseTo(120, 6);
   });
 
   it("keeps one drawn outline for the life of a rock, and varies between rocks", () => {
-    const source = home(7);
+    const source = home();
     const first = makeRock(source, "large", 0, 0, 0, 0);
     const second = makeRock(source, "large", 0, 0, 0, 0);
     expect(first.verts).not.toEqual(second.verts);
@@ -141,7 +152,7 @@ describe("rocks", () => {
   });
 
   it("comes back from an edge, at its size's plain speed, as the same rock", () => {
-    const source = home(21);
+    const source = home();
     const rock = makeRock(source, "medium", 640, 360, 5, 5);
     const id = rock.id;
     const spin = rock.spin;
@@ -172,7 +183,7 @@ describe("rocks", () => {
 
 describe("the saucer", () => {
   it("arrives at a seam, crossing at cruise, with its clocks wound", () => {
-    const source = home(33);
+    const source = home();
     const seen = new Set<number>();
     for (let i = 0; i < 60; i += 1) {
       const saucer = enterSaucer(source);

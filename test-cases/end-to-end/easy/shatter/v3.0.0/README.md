@@ -71,7 +71,7 @@ for every variant and every engine. Each rule lives in exactly one file.
 | `overview.md`        | What is built, what stays as it is, the field's coordinate system and centre convention, the code quality, the commands run over the finished repository, and what a player must read at a glance. |
 | `field.md`           | The wrapping field, the seam and how a body crosses it, and the star fixed at the centre with its solid core.                                                                                      |
 | `gravity.md`         | The pull law, its softening, and which bodies it acts on and which are powered and never pulled.                                                                                                   |
-| `simulation.md`      | The fixed timestep, the order of work inside one tick, and seeded randomness.                                                                                                                      |
+| `simulation.md`      | The fixed timestep, the order of work inside one tick, and the draws the game makes at random.                                                                                                     |
 | `ship.md`            | The ship the player flies: rotation, thrust, drag, the speed cap and the safe point.                                                                                                               |
 | `weapons.md`         | What the ship shoots: the gun's muzzle velocity, lifetime, cap and gate, its trail, and the torpedo the warhead ruleset adds.                                                                      |
 | `rocks.md`           | The three sizes and their drift, the split ladder, star recycling, and the armor the warhead ruleset adds.                                                                                         |
@@ -83,7 +83,7 @@ for every variant and every engine. Each rule lives in exactly one file.
 | `ui.md`              | The five screens and their menus, how a mouse and a touch contact drive them, what the paused screen holds still, the HUD, and the wave banner.                                                    |
 | `audio.md`           | The six cues, the mute toggle, and that the game runs whether or not audio started.                                                                                                                |
 | `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                       |
-| `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the world gates and per-entity faculties, the snapshot shape, and the debug overlay.                                  |
+| `instrumentation.md` | The render-free core, every operation of the debug and automation surface, the world gates, per-entity faculties and posed draws, the snapshot shape, and the debug overlay.                       |
 | `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                                     |
 
 `field.md`, `ship.md`, `saucer.md` and `progression.md` are plain Markdown,

@@ -1,7 +1,7 @@
 # Shatter — The simulation
 
 This file defines the core the whole game advances on: the fixed timestep, the
-order of work inside one tick, and the randomness the game draws from.
+order of work inside one tick, and the draws the game makes at random.
 
 ## The fixed timestep
 
@@ -45,19 +45,19 @@ runs one way: the simulation reads nothing from the renderer. Whether a shot lan
 where a fragment goes, and when a wave turns over are all decided from the field
 alone.
 
-## Seeded randomness
+## Random draws
 
-Any randomness the game uses runs off a generator seeded from the state's
-generator field, and the generator keeps its whole state in that field, so
-reseeding and replaying the same calls reproduces the same result exactly. The
-draws the game makes are:
+The game's rules draw at random in the places below. Each draw's distribution is
+stated by the rule it belongs to, and how a build draws it is the build's own.
 
-- a wave's rock positions, their drift directions, and their base drift speeds;
-- the edge a recycled rock re-enters at and the point on it, and the fresh base
-  drift speed it takes;
-- the edge and the row a saucer enters at, the interval until the next arrival,
-  the direction of its first weave, and the aim error of each shot it takes;
-- the drawn spin a rock carries.
+- A wave's rock positions, their drift directions, and their base drift speeds
+  (`specs/progression.md`, `specs/rocks.md`).
+- The edge a recycled rock re-enters at and the point on it, and the fresh base
+  drift speed it takes (`specs/rocks.md`).
+- The edge and the row a saucer enters at, the interval until the next arrival,
+  the direction of its first weave, and the aim error of each shot it takes
+  (`specs/saucer.md`).
 
-Given the same seed and the same sequence of calls and elapsed game time, the game
-reaches the same state every time.
+The debug surface `specs/instrumentation.md` specifies poses the outcome of a draw
+before the game makes it, and the rule that draws then runs from the posed outcome
+exactly as it runs from a drawn one.

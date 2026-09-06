@@ -61,24 +61,19 @@ declares and exports its type, `ShatterDebugApi`.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic. `specs/simulation.md`
-fixes the game's timestep at `TICK_HZ` (`120`) and its per-tick order, so an
-interval of game time reaches the same state however it was divided into frames.
-Two more properties make the game driveable from code:
+The surface rests on the simulation being steppable apart from its drawing.
+`specs/simulation.md` fixes the game's timestep at `TICK_HZ` (`120`) and its
+per-tick order, so a step means the same thing whatever the frame rate, and the
+game's state advances from the elapsed time it is handed, independent of a canvas,
+of the frame loop that measured it, and of wall-clock time. The dependency runs
+one way: the simulation reads nothing from the renderer.
 
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer.
-- Seeded randomness. Every draw `specs/simulation.md` lists runs off a generator
-  seeded from the state's generator field, and the generator keeps its whole state
-  in that field, so reseeding and replaying the same calls reproduces the same
-  result exactly.
-
-Given the same seed and the same sequence of calls and elapsed game time, the game
-reaches the same state every time.
+Where a rule draws at random, the surface poses the outcome the draw decides
+before the game makes it, through the operations under Posed draws below. A posed
+outcome is a precondition like any other pose: the rule that draws runs from it
+exactly as it runs from a drawn one.
 
 ## What the runtime provides instead
 
@@ -163,8 +158,8 @@ read and changes nothing.
 
 | Operation | Effect |
 | --- | --- |
-{{#if (eq engine.slug "none")}}| `reset(options)` | Restores the state to the title-screen values listed below. |
-{{else}}| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+{{#if (eq engine.slug "none")}}| `reset()` | Restores the state to the title-screen values listed below. |
+{{else}}| `reset()` | Restores every declared field of the state to its title-screen value, listed below. |
 {{/if}}| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 | `menuItemRect(index)` | The hit region of the entry at `index` on the menu the current screen shows. It changes nothing. |
 
@@ -179,8 +174,9 @@ arrival clock to the start of a game's cadence, and sets `simTime` to `0`.
 It empties the torpedo roster and sets `torpedoCharge` to `1`.
 {{/if}}
 
-`options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
-game's randomness. `muted` is left exactly as it stands; muting is the runtime's.
+It clears every posed draw, returning `nextSaucerEdge`, `nextSaucerRow`,
+`nextSaucerAim`, `nextRockSpeed`, and `nextRecycleEdge` to `null`. `muted` is left
+exactly as it stands; muting is the runtime's.
 
 `menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
 region's top-left corner and `w` and `h` its size: the region a pointer selects
@@ -244,6 +240,16 @@ restored to on by `reset`, and each is reported by `snapshot`.
 | `setWaveSpawning(enabled)` | The game's own wave loop: noticing that the last rock has been destroyed, raising the `WAVE N` banner, advancing the wave number, and spawning the wave the banner announces. Off, an emptied field stays empty and the wave number holds. A banner already running still runs down. |
 | `setSaucerSpawning(enabled)` | The game's own arrival of a saucer, at `SAUCER_FIRST_DELAY` and at the gaps after it. Off, no saucer appears unless one is added. A saucer already on the field carries on and still leaves on its own clock. |
 
+### The saucer cadence
+
+| Operation | Effect |
+| --- | --- |
+| `setSaucerDue(seconds)` | Sets `saucerDue`, the seconds `saucerClock` must reach for the next saucer to arrive, which is the figure the gap draw decides. It moves nothing else: `saucerClock` stands where it is. |
+
+A saucer's departure draws a fresh `saucerDue` as `specs/saucer.md` states, so a
+value posed while a saucer is up is replaced when that saucer leaves, and a value
+posed while none is up stands until the arrival it times.
+
 ### The ship
 
 | Operation | Effect |
@@ -294,12 +300,34 @@ per-entity removal and the clear.
 
 | Operation | Effect |
 | --- | --- |
-| `addSaucer(x, y)` | Brings a saucer onto the field with its centre at a logical field position, travelling right at `SAUCER_SPEED` with no vertical component, its fire clock at `SAUCER_FIRE_INTERVAL`, its weave clock at `SAUCER_WEAVE_INTERVAL`, its own lifetime clock at zero, and all three faculties on. It replaces any saucer already up. |
+| `addSaucer(x, y)` | Brings a saucer onto the field with its centre at a logical field position, travelling right at `SAUCER_SPEED` with no vertical component, its weave direction `1`, its fire clock at `SAUCER_FIRE_INTERVAL`, its weave clock at `SAUCER_WEAVE_INTERVAL`, its own lifetime clock at zero, and all three faculties on. It replaces any saucer already up. |
 | `setSaucerVelocity(vx, vy)` | Sets the saucer's velocity, in logical units per second. |
+| `setSaucerWeave(direction)` | Sets the saucer's weave direction, `1` for down or `-1` for up: the direction its next reroll takes while it has no vertical velocity, as `specs/saucer.md` states. It changes no velocity. |
 | `removeSaucer()` | Clears the saucer from the field. |
 | `setSaucerMind(enabled)` | Gates the saucer's steering decisions alone: the vertical weave it rerolls every `SAUCER_WEAVE_INTERVAL` and the steering that keeps it clear of the star's core. Off, nothing it decides changes its velocity; it still travels and still fires. |
 | `setSaucerGun(enabled)` | Gates the saucer's firing alone: the aimed shot it takes every `SAUCER_FIRE_INTERVAL`. Off, it fires nothing; it still steers and still travels. |
 | `setSaucerTravel(enabled)` | Gates the saucer's locomotion alone: its centre holds where it stands. Its mind and its gun run on, so a held saucer still rerolls its weave and still fires. |
+
+### Posed draws
+
+Each operation below sets the outcome the game's next draw of one kind would
+decide, in place of the draw `specs/simulation.md` lists. A pose stands until the
+draw it names is made, which consumes it and returns its field to `null`; a call
+before then replaces it, and every draw after a consumed pose is random again. The
+field a pose is reported under is named in its row.
+
+| Operation | Effect |
+| --- | --- |
+| `setNextSaucerEdge(edge)` | Poses the edge, `"left"` or `"right"`, the next saucer the game's own cadence brings in enters at. Reported as `nextSaucerEdge`. |
+| `setNextSaucerRow(y)` | Poses the row, in logical units, the next saucer the game's own cadence brings in enters at. Reported as `nextSaucerRow`. |
+| `setNextSaucerAim(radians)` | Poses the aim error of the next shot the saucer fires, in radians, in place of the draw from `-SAUCER_AIM_ERROR` to `+SAUCER_AIM_ERROR`. Reported as `nextSaucerAim`. |
+| `setNextRockSpeed(speed)` | Poses the base drift speed, in logical units per second, that every rock of the next placement takes: the rocks of the next wave the game spawns, or the next rock the star recycles, whichever comes first. A wave's multiplier still applies over it. Reported as `nextRockSpeed`. |
+| `setNextRecycleEdge(edge)` | Poses the edge, `"top"`, `"bottom"`, `"left"`, or `"right"`, the next rock the star recycles re-enters at. The point on that edge is still drawn. Reported as `nextRecycleEdge`. |
+
+An arrival consumes whichever of `nextSaucerEdge` and `nextSaucerRow` stands and
+draws the other. A saucer `addSaucer` brings on makes no entry draw, so neither
+pose is consumed by it, and a shot `addEnemyBullet` places makes no aim draw. A
+rock `addRock` places is at rest and consumes no `nextRockSpeed`.
 {{#if (eq variant.slug "warhead")}}
 
 ### The torpedoes
@@ -318,10 +346,9 @@ per-entity removal and the clear.
 
 `snapshot` returns exactly this object. Every field an operation can set is
 present, so every operation is verifiable by setting a value and reading it back.
-The three exceptions are `tickClock`, `nextId`, and `rngState`, which `reset`
-restores and nothing else touches: they are the game's own bookkeeping, and what
-they do is already observable through the ids fresh entities take and through two
-games seeded alike running identically.
+The two exceptions are `tickClock` and `nextId`, which `reset` restores and
+nothing else touches: they are the game's own bookkeeping, and what they do is
+already observable through the ids fresh entities take and the ticks a frame runs.
 
 ```js
 {
@@ -337,6 +364,11 @@ games seeded alike running identically.
   saucerSpawning: <boolean>,    // the game's own saucer arrival runs
   saucerClock: <number>,        // seconds the current arrival cadence has run
   saucerDue: <number>,          // seconds saucerClock must reach for the next one
+  nextSaucerEdge: "left" | "right" | null,   // the posed entry edge; null when none stands
+  nextSaucerRow: <number> | null,            // the posed entry row
+  nextSaucerAim: <number> | null,            // the posed aim error of the next shot
+  nextRockSpeed: <number> | null,            // the posed base speed of the next placement
+  nextRecycleEdge: "top" | "bottom" | "left" | "right" | null,   // the posed re-entry edge
 {{#if (eq engine.slug "none")}}
   autoStep: <boolean>,          // the frame loop advances the simulation
 {{/if}}
@@ -372,6 +404,7 @@ games seeded alike running identically.
     id: <number>,               // fresh on each arrival; never reused while live
     x: <number>, y: <number>, vx: <number>, vy: <number>,
     mind: <boolean>, gun: <boolean>, travel: <boolean>,
+    weave: 1 | -1,              // the direction its next reroll takes from rest
     fireClock: <number>,        // seconds until its next shot
     weaveClock: <number>,       // seconds until it rerolls its weave
     age: <number>,              // seconds it has been on the field
@@ -419,11 +452,17 @@ what the game holds. Some entries need a note:
 - `waveSpawning`, `saucerSpawning`, `ship.collision`, and the saucer's `mind`,
   `gun`, and `travel` are the gates and faculties, reported so each operation is
   verifiable by setting a value and reading it back.
+- The saucer's `weave` is its weave direction, `1` or `-1`: drawn when the game
+  brings it in, `1` for a saucer `addSaucer` brings in, and posed by
+  `setSaucerWeave`.
+- `nextSaucerEdge`, `nextSaucerRow`, `nextSaucerAim`, `nextRockSpeed`, and
+  `nextRecycleEdge` are the posed draws, each `null` when no pose stands, reported
+  on the same terms: a pose is read back until the draw it names consumes it.
 - The saucer's `fireClock`, `weaveClock`, and `age` are the three clocks it
   carries, in seconds, and `saucerClock` and `saucerDue` are the arrival cadence's,
   reported on the same terms: `addSaucer` fixes the first three at
-  `SAUCER_FIRE_INTERVAL`, `SAUCER_WEAVE_INTERVAL`, and `0`, and `reset` returns the
-  last two to the start of a game's cadence.
+  `SAUCER_FIRE_INTERVAL`, `SAUCER_WEAVE_INTERVAL`, and `0`, `setSaucerDue` poses
+  the last, and `reset` returns the last two to the start of a game's cadence.
 {{#if (eq variant.slug "warhead")}}
 - Each torpedo's `homing` is its guidance gate, reported on the same terms.
 {{/if}}

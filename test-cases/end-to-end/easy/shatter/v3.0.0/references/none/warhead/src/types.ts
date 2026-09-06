@@ -78,6 +78,12 @@ export interface Rock {
   hitFlash: number;
 }
 
+/** The edge a saucer enters at. */
+export type SaucerEdge = "left" | "right";
+
+/** An edge of the field, where a recycled rock re-enters. */
+export type FieldEdge = "top" | "bottom" | "left" | "right";
+
 /** The enemy saucer. There is one slot, empty when no saucer is up. */
 export interface Saucer {
   /** Fresh on every arrival, and not reused while any live entity holds it. */
@@ -92,6 +98,11 @@ export interface Saucer {
   gun: boolean;
   /** Whether its locomotion runs. */
   travel: boolean;
+  /**
+   * Its weave direction, `1` for down and `-1` for up: the direction its next
+   * reroll takes while it has no vertical velocity (`specs/saucer.md`).
+   */
+  weave: 1 | -1;
   /** The seconds until its next shot. */
   fireTimer: number;
   /** The seconds until its weave rerolls. */
@@ -160,6 +171,17 @@ export interface ShatterState {
   /** What that clock must reach for the arrival to happen. */
   saucerDue: number;
 
+  // ---- Posed draws ------------------------------------------------------
+  //
+  // The outcome the debug surface has posed for a draw the game has yet to make,
+  // each `null` when no pose stands. The draw that consumes a pose returns its
+  // field to `null` (`specs/instrumentation.md`).
+  nextSaucerEdge: SaucerEdge | null;
+  nextSaucerRow: number | null;
+  nextSaucerAim: number | null;
+  nextRockSpeed: number | null;
+  nextRecycleEdge: FieldEdge | null;
+
   // ---- The rest ---------------------------------------------------------
   /** The fraction of a tick carried over from the previous frame, in seconds. */
   carry: number;
@@ -167,8 +189,6 @@ export interface ShatterState {
   simTime: number;
   /** The game's copy of the runtime's mute bit, refreshed in every update. */
   muted: boolean;
-  /** The whole state of the seeded generator every draw comes from. */
-  rng: number;
   /** The id the next entity created will take. */
   nextId: number;
 

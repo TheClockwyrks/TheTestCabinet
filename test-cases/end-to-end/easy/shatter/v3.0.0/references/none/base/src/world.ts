@@ -28,7 +28,7 @@ import {
 } from "./constants";
 import { driftRock, makeShip, placeAtSafePoint } from "./entities";
 import { wrappedDistance } from "./geometry";
-import { range, seed } from "./rng";
+import { range } from "./rng";
 import type { ShatterState } from "./types";
 
 /**
@@ -43,8 +43,8 @@ export function raise(state: ShatterState, cue: CueName): void {
   state.cues.push(cue);
 }
 
-/** A whole game at its title values, with the generator on `seedValue`. */
-export function createState(seedValue: number): ShatterState {
+/** A whole game at its title values. */
+export function createState(): ShatterState {
   const state: ShatterState = {
     screen: "title",
     menuIndex: 0,
@@ -61,17 +61,20 @@ export function createState(seedValue: number): ShatterState {
     saucerSpawning: true,
     saucerClock: 0,
     saucerDue: SAUCER_FIRST_DELAY,
+    nextSaucerEdge: null,
+    nextSaucerRow: null,
+    nextSaucerAim: null,
+    nextRockSpeed: null,
+    nextRecycleEdge: null,
     carry: 0,
     simTime: 0,
     muted: false,
-    rng: 1,
     nextId: 0,
     rockDestroyed: false,
     extraLifeShow: 0,
     cues: [],
     pointerPresses: [],
   };
-  seed(state, seedValue);
   return state;
 }
 
@@ -103,6 +106,11 @@ export function toTitle(state: ShatterState): void {
   state.saucerSpawning = true;
   state.saucerClock = 0;
   state.saucerDue = SAUCER_FIRST_DELAY;
+  state.nextSaucerEdge = null;
+  state.nextSaucerRow = null;
+  state.nextSaucerAim = null;
+  state.nextRockSpeed = null;
+  state.nextRecycleEdge = null;
   state.carry = 0;
   state.simTime = 0;
   state.rockDestroyed = false;
@@ -155,13 +163,18 @@ export function waveSpeedScale(wave: number): number {
  * Put wave `n` on the field: `WAVE_BASE_ROCKS + n` Large rocks, each clear of the
  * ship and of the star, each drifting on a random heading at its size's base
  * speed scaled by the wave.
+ *
+ * A posed `nextRockSpeed` is the base speed of every rock of this placement, and
+ * the placement consumes it (`specs/instrumentation.md`).
  */
 export function spawnWave(state: ShatterState, n: number): void {
   const count = WAVE_BASE_ROCKS + n;
   const scale = waveSpeedScale(n);
+  const base = state.nextRockSpeed;
+  state.nextRockSpeed = null;
   for (let i = 0; i < count; i += 1) {
     const spot = findSpawnPoint(state);
-    state.rocks.push(driftRock(state, "large", spot.x, spot.y, scale));
+    state.rocks.push(driftRock(state, "large", spot.x, spot.y, scale, base));
   }
 }
 
@@ -185,8 +198,8 @@ function spawnPointIsClear(state: ShatterState, x: number, y: number): boolean {
  */
 function findSpawnPoint(state: ShatterState): { x: number; y: number } {
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    const x = range(state, 0, FIELD_W);
-    const y = range(state, 0, FIELD_H);
+    const x = range(0, FIELD_W);
+    const y = range(0, FIELD_H);
     if (spawnPointIsClear(state, x, y)) return { x, y };
   }
   const steps = 32;

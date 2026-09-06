@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   BULLET_LIFE,
-  DEFAULT_SEED,
   FACE_UP,
+  FIELD_H,
+  FIELD_W,
   ROCK_RADIUS,
   SAFE_X,
   SAFE_Y,
   SAUCER_BULLET_LIFE,
+  SAUCER_FIRE_INTERVAL,
+  SAUCER_R,
   SAUCER_SPEED,
   SHATTER_DEBUG_VERSION,
   START_LIVES,
+  STAR_X,
+  STAR_Y,
   TICK_HZ,
   WAVE_BANNER_TIME,
 } from "./constants";
@@ -351,16 +356,19 @@ describe("reset", () => {
     expect(api.snapshot().muted).toBe(true);
   });
 
-  it("seeds the game's randomness, defaulting to the case's own seed", () => {
+  it("clears every posed draw", () => {
     const { state, api } = surface();
-    api.reset({ seed: 12 });
-    const twelve = state.rng;
-    api.reset({ seed: 12 });
-    expect(state.rng).toBe(twelve);
+    api.setNextSaucerEdge("right");
+    api.setNextSaucerRow(300);
+    api.setNextSaucerAim(0.1);
+    api.setNextRockSpeed(90);
+    api.setNextRecycleEdge("top");
     api.reset();
-    const fallback = state.rng;
-    api.reset({ seed: DEFAULT_SEED });
-    expect(state.rng).toBe(fallback);
+    expect(state.nextSaucerEdge).toBeNull();
+    expect(state.nextSaucerRow).toBeNull();
+    expect(state.nextSaucerAim).toBeNull();
+    expect(state.nextRockSpeed).toBeNull();
+    expect(state.nextRecycleEdge).toBeNull();
   });
 
   it("leaves the clock alone", () => {
@@ -368,5 +376,107 @@ describe("reset", () => {
     api.setAutoStep(false);
     api.reset();
     expect(clock.autoStep()).toBe(false);
+  });
+});
+
+describe("the posed draws", () => {
+  it("reports each pose until the draw that consumes it", () => {
+    const { state, api } = surface();
+    api.setNextSaucerEdge("right");
+    api.setNextSaucerRow(300);
+    api.setNextSaucerAim(0.1);
+    api.setNextRockSpeed(90);
+    api.setNextRecycleEdge("top");
+    const s = api.snapshot();
+    expect(s.nextSaucerEdge).toBe("right");
+    expect(s.nextSaucerRow).toBe(300);
+    expect(s.nextSaucerAim).toBe(0.1);
+    expect(s.nextRockSpeed).toBe(90);
+    expect(s.nextRecycleEdge).toBe("top");
+    expect(state.nextSaucerEdge).toBe("right");
+  });
+
+  it("ignores a value the draw could not decide", () => {
+    const { api } = surface();
+    api.setNextSaucerEdge("top" as unknown as "left");
+    api.setNextRecycleEdge("sideways" as unknown as "top");
+    api.setNextRockSpeed(-5);
+    api.setNextSaucerRow(Number.NaN);
+    const s = api.snapshot();
+    expect(s.nextSaucerEdge).toBeNull();
+    expect(s.nextRecycleEdge).toBeNull();
+    expect(s.nextRockSpeed).toBeNull();
+    expect(s.nextSaucerRow).toBeNull();
+  });
+
+  it("brings the next arrival in at the posed edge and row", () => {
+    const { state, api, advance } = surface();
+    api.setNextSaucerEdge("right");
+    api.setNextSaucerRow(333);
+    api.setSaucerSpawning(true);
+    api.setSaucerDue(0.5);
+    advance(Math.round(0.5 * TICK_HZ) + 1);
+    expect(state.saucer).not.toBeNull();
+    // Read within a tick of the arrival, so the craft is still at the seam.
+    expect(state.saucer?.x).toBeCloseTo(FIELD_W - SAUCER_R, -1);
+    expect(state.saucer?.y).toBe(333);
+    expect(state.saucer?.vx).toBe(-SAUCER_SPEED);
+    expect(api.snapshot().nextSaucerEdge).toBeNull();
+    expect(api.snapshot().nextSaucerRow).toBeNull();
+  });
+
+  it("fires the next shot with the posed aim error", () => {
+    const { state, api, advance } = surface();
+    state.ship.x = 200;
+    state.ship.y = 360;
+    api.addSaucer(600, 360);
+    api.setSaucerTravel(false);
+    api.setSaucerMind(false);
+    api.setNextSaucerAim(0);
+    advance(Math.round(SAUCER_FIRE_INTERVAL * TICK_HZ) + 1);
+    expect(state.enemyBullets).toHaveLength(1);
+    const round = state.enemyBullets[0];
+    // Straight at the ship, to the left, with the saucer at rest.
+    expect(round.vy).toBeCloseTo(0, 6);
+    expect(round.vx).toBeLessThan(0);
+    expect(api.snapshot().nextSaucerAim).toBeNull();
+  });
+
+  it("gives every rock of the next wave the posed base speed", () => {
+    const { state, api, advance } = surface();
+    api.setWaveSpawning(true);
+    api.setWave(6);
+    api.setNextRockSpeed(100);
+    api.setWaveBanner(0.1);
+    advance(Math.round(0.1 * TICK_HZ) + 1);
+    expect(state.rocks.length).toBeGreaterThan(0);
+    for (const rock of state.rocks) {
+      expect(Math.hypot(rock.vx, rock.vy)).toBeCloseTo(120, 0);
+    }
+    expect(api.snapshot().nextRockSpeed).toBeNull();
+  });
+
+  it("recycles the next rock the star takes at the posed edge and speed", () => {
+    const { state, api, advance } = surface();
+    api.addRock("large", STAR_X, STAR_Y);
+    api.setNextRecycleEdge("bottom");
+    api.setNextRockSpeed(80);
+    advance(1);
+    const rock = state.rocks[0];
+    expect(rock.y).toBeCloseTo(FIELD_H, 0);
+    expect(rock.vy).toBeLessThan(0);
+    expect(Math.hypot(rock.vx, rock.vy)).toBeCloseTo(80, 0);
+    expect(api.snapshot().nextRecycleEdge).toBeNull();
+    expect(api.snapshot().nextRockSpeed).toBeNull();
+  });
+
+  it("poses the saucer's weave direction and the cadence's due", () => {
+    const { api } = surface();
+    api.addSaucer(300, 300);
+    expect(api.snapshot().saucer?.weave).toBe(1);
+    api.setSaucerWeave(-1);
+    expect(api.snapshot().saucer?.weave).toBe(-1);
+    api.setSaucerDue(27.5);
+    expect(api.snapshot().saucerDue).toBe(27.5);
   });
 });
