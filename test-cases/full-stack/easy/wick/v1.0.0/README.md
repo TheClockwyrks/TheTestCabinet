@@ -29,13 +29,16 @@ dropping or blurring a row, and the checklist is cut to match: one item per
 weapon table row, per passive formula, per evolution recipe, per enemy, per
 spawn window, per screen, per cue, and per produced asset group.
 
-Determinism is what makes any of it decidable. The simulation advances on a
-fixed tick, every random draw comes from one seeded generator, and the timer
-rule of `specs/world.md` puts a timer set to `s` seconds due exactly
-`round(s × TICK_HZ)` ticks later, so a cooldown or a re-hit lands on an exact
-tick. A scenario poses the moment it wants through the debug surface rather than
-replaying a night from a seed, and no pose decides an outcome, so every hit,
-kill, drop and evolution a validator reads comes from stepping the real systems.
+A render-free, fixed-timestep core is what makes any of it decidable. The
+simulation advances on a fixed tick, and the timer rule of `specs/world.md`
+puts a timer set to `s` seconds due exactly `round(s × TICK_HZ)` ticks later,
+so a cooldown or a re-hit lands on an exact tick. A scenario poses the moment
+it wants through the debug surface, and where the game draws at random the
+surface poses the draw's outcome: which enemy spawns where, which offers are
+dealt, where a puddle lands, which target a strike picks, which item a chest
+levels, which way a swarm comes, and whether a kill drops bread or a draft. No
+pose decides an outcome, so every hit, kill, drop and evolution a validator
+reads comes from stepping the real systems.
 
 The full-stack half asks for a wide production pass — a walk cycle, thirteen
 enemy sheets, the weapon effects, the gems and pickups, a tiling ground,

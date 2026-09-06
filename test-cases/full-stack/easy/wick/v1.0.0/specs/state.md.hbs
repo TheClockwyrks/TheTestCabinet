@@ -55,6 +55,9 @@ specification is written against them:
   `draft`), and its world position.
 - The spawn director: the seconds until the next window spawn, and the
   run-clock times of the scripted events that have fired this run.
+- The posed outcomes `specs/instrumentation.md` states: the next spawn angle,
+  the next swarm angle, the next puddle offset, the next strike target, the
+  next chest item, and the next drop, each `null` while none is posed.
 - The next id to assign, one counter shared by enemies, projectiles, zones,
   gems, and pickups and never reused within a run.
 - The nine driver switches `specs/instrumentation.md` names, each a boolean,
@@ -62,16 +65,15 @@ specification is written against them:
   surface's `reset` restores every one to on.
 - The simulation time, in seconds, which every frame adds its delta time to
   whatever the screen. The snapshot reports it as `simTime`.
-- Whether audio is muted, and the state of the seeded random generator every
-  random draw comes from.
+- Whether audio is muted.
 
 Off the run, on `title`, `howto`, and `almanac`, the run's fields hold their
 idle values: tick `0`, level `1`, no experience, no kills, the lamplighter at
 the world origin facing right with `BASE_MAX_HP` (`100`) health and its hurt
 flash at `0`, no weapons, no passives, nothing alive, nothing dropped, no
 offers, no level-ups earned, no chest result, the spawn timer at `0`, no events
-fired, and the next id `0`. The `fallen` and `dawn` screens keep the run that
-just ended, since they report its time, level, and kills.
+fired, the next id `0`, and no outcome posed. The `fallen` and `dawn` screens
+keep the run that just ended, since they report its time, level, and kills.
 {{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` exports the state the game is written against. This section is
 that declaration: every name below is exported from `src/game.ts`, declared
@@ -227,6 +229,12 @@ export interface RunState {
   readonly spawnTimer: number;
   readonly firedEvents: readonly number[];
   readonly nextId: number;
+  readonly nextSpawnAngle: number | null;
+  readonly nextSwarmAngle: number | null;
+  readonly nextPuddleOffset: { readonly x: number; readonly y: number } | null;
+  readonly nextStrikeTarget: number | null;
+  readonly nextChestItem: WeaponId | PassiveId | null;
+  readonly nextDrop: "bread" | "draft" | "none" | null;
 }
 
 export interface WickState {
@@ -238,7 +246,6 @@ export interface WickState {
   readonly accumulator: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
   readonly spawning: boolean;
   readonly events: boolean;
   readonly despawning: boolean;
@@ -403,6 +410,12 @@ export interface RunState {
   spawnTimer: number;
   firedEvents: number[];
   nextId: number;
+  nextSpawnAngle: number | null;
+  nextSwarmAngle: number | null;
+  nextPuddleOffset: { x: number; y: number } | null;
+  nextStrikeTarget: number | null;
+  nextChestItem: WeaponId | PassiveId | null;
+  nextDrop: "bread" | "draft" | "none" | null;
 }
 
 export class WickState extends GameState {
@@ -414,7 +427,6 @@ export class WickState extends GameState {
   accumulator: number;
   simTime: number;
   muted: boolean;
-  rngState: number;
   spawning: boolean;
   events: boolean;
   despawning: boolean;
@@ -634,6 +646,10 @@ The run in progress or just ended.
 - `nextId`: the next id to assign, one counter shared by enemies,
   projectiles, zones, gems, and pickups. It is `0` when a run starts and is
   never reused within a run.
+- `nextSpawnAngle`, `nextSwarmAngle`, `nextPuddleOffset`, `nextStrikeTarget`,
+  `nextChestItem`, `nextDrop`: the posed outcomes `specs/instrumentation.md`
+  states under Drawn outcomes, each set by its operation, `null` while none is
+  posed, and `null` again once the draw it decides has consumed it.
 
 Where a field above, or the idle run below, is described by the screen it is
 read on, that is how play and the ticks maintain it. The debug surface's
@@ -662,6 +678,8 @@ since they report its time, level, and kills.
 | `spawnTimer` | `0` |
 | `firedEvents` | empty |
 | `nextId` | `0` |
+| `nextSpawnAngle`, `nextSwarmAngle`, `nextPuddleOffset` | `null` |
+| `nextStrikeTarget`, `nextChestItem`, `nextDrop` | `null` |
 
 A fresh run is the idle run with Taper at level `1` and cooldown `0` in the
 first weapon slot.
@@ -701,10 +719,6 @@ fields posed and read back by reading them.
 - `muted`: the game's readable copy of the engine's mute bit, refreshed every
   frame. The engine owns muting, and this field is what the debug surface
   reports.
-- `rngState`: the state of the game's one seeded random generator. A `reset`
-  with a seed sets it, and every random draw advances it: a spawn's angle and
-  type, an offer draw, a puddle's landing point, a strike's target, a chest's
-  fallback item, a swarm's direction, and the bread and draft draws.
 - `spawning`, `events`, `despawning`, `enemyMotion`, `enemyContact`,
   `weaponFire`, `effectMotion`, `drops`, `progression`: the nine driver
   switches `specs/instrumentation.md` names, each `true` from `initialize` and

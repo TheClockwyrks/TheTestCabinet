@@ -159,13 +159,15 @@ The spawn director decides what enters the night. It runs on every tick of the
 `despawning` is on, the scripted events fire while `events` is on, and the
 spawn timer counts and spawns while `spawning` is on. Every switch is on when
 the game is played. Everything the director spawns takes the spawn rules
-above, health scaling included. Its randomness, the spawn angle and the type
-choice, is drawn from the game's seeded generator.
+above, health scaling included. The spawn angle and the type choice are drawn
+at random as the rules below state, and `specs/instrumentation.md` states how
+a scenario poses a spawn's angle and a swarm's direction.
 
 ### The spawn ring
 
 A spawn point is `SPAWN_DISTANCE` (`760`) units from the lamplighter's center
-at an angle drawn uniformly from the seeded generator:
+at an angle drawn uniformly over the full circle, measured from `+x` toward
+`+y`:
 
 ```
 x = player.x + cos(angle) * SPAWN_DISTANCE
@@ -265,8 +267,8 @@ fired, in ascending order whatever order they fired in.
 | 9:00 | 540 | The Dark spawns at a spawn point |
 
 A gnat swarm spawns `SWARM_SIZE` (`24`) gnats on the same tick along a line
-perpendicular to a direction `d`, a unit vector at an angle drawn uniformly from
-the seeded generator. The line is `SWARM_LINE` (`720`) units long, centered
+perpendicular to a direction `d`, a unit vector at an angle drawn uniformly
+over the full circle. The line is `SWARM_LINE` (`720`) units long, centered
 `SPAWN_DISTANCE` from the lamplighter along `d`, and the gnats are evenly spaced
 along it with one at each end:
 

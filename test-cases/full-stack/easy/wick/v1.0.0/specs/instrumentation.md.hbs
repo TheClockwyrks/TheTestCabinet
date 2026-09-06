@@ -64,10 +64,10 @@ level transition. `src/game.ts` declares and exports its type, `WickDebugApi`.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic and steppable. Three
-properties make it so.
+The surface rests on the simulation being steppable. Two properties make it
+so.
 
 - A fixed timestep, decoupled from rendering. The simulation advances only in
   whole ticks of `TICK_DT` (`1 / 60`) seconds, `TICK_HZ` (`60`) of them per
@@ -81,29 +81,17 @@ properties make it so.
   an overlay or ending the run, is the last tick its frame runs, and the
   remainder is discarded; so is the remainder on any other frame or pose that
   leaves `playing`. On every other screen a frame ticks nothing and the
-  accumulator holds `0`. An interval of game time on `playing` therefore
-  reaches the same state however it was divided into frames, and drawing
-  advances nothing.
+  accumulator holds `0`. An interval of game time on `playing` therefore runs
+  the same ticks however it was divided into frames, and drawing advances
+  nothing.
 - A render-free core. Game state advances from ticks and input alone,
   independent of the canvas, of the frame loop that measured the delta time,
   and of wall-clock time. The simulation reads nothing from the renderer, and
   every hit, kill, drop, collection, level-up, and ending is decided from the
   state alone.
-- Seeded randomness. The game holds one pseudo-random generator, seeded by
-  `reset` and keeping its whole state in `rngState`, and every random draw
-  comes from it: a spawn's angle and type, an offer draw, a puddle's landing
-  point, a strike's target, a swarm's direction, a chest's fallback item, and
-  the bread and draft draws. The order in which the systems draw from it is
-  yours. `advanceRng` below takes a count of draws off the generator and
-  discards them, making no choice with them, so a scenario can reach the state
-  a known number of draws leaves and read a system's draws off `rngState`.
 
-Given the same seed, the same sequence of operations, and the same number of
-ticks, the game reaches the same `run` and `rngState` every time. The
-generator's whole sequence follows from its seed, so two runs seeded
-differently draw different sequences from their first draw on. `simTime` and
-`muted` stand outside that: `simTime` rises by every frame's delta time on every
-screen, and `muted` mirrors the runtime.
+`simTime` rises by every frame's delta time on every screen, and `muted`
+mirrors the runtime.
 
 Audio belongs to the ticks and the frames. A pose changes the state alone and
 sounds nothing; the cues a scenario hears come from the ticks and frames run
@@ -171,7 +159,7 @@ catching up for the ticks it missed.
 | `setEnemyContact(on)` | `enemyContact` | An overlapping enemy whose cooldown is due hits. | No enemy hits. Every `contactCooldown` still counts down. |
 | `setWeaponFire(on)` | `weaponFire` | Cooldown timers count down and due weapons fire or pulse. | Every cooldown timer holds where it stands and nothing fires or pulses. |
 | `setEffectMotion(on)` | `effectMotion` | Projectiles integrate, lanterns revolve, shards bounce, and sconces decelerate. | Every projectile holds its position and velocity, and every lantern holds its angle. `ttl` and every re-hit entry still count, and hits still resolve. |
-| `setDrops(on)` | `drops` | An enemy that dies leaves what `specs/world.md` gives it: a common's gem and the bread or draft its roll draws, and an elite's chest. | A death leaves nothing on the field and draws nothing from the generator. The enemy still dies, still counts as a kill, and still sounds. |
+| `setDrops(on)` | `drops` | An enemy that dies leaves what `specs/world.md` gives it: a common's gem and the bread or draft its roll drops, and an elite's chest. | A death leaves nothing on the field and makes no drop roll, so a posed `nextDrop` stands. The enemy still dies, still counts as a kill, and still sounds. |
 | `setProgression(on)` | `progression` | Experience gained is spent on levels as `specs/progression.md` states: `xp` falls by `xpToNext(level)`, `level` rises, and a level-up is queued. | No gain is spent: `xp` rises as gems are collected and stands however high it climbs, and `level` and `pendingLevelUps` hold where they are. |
 
 The overlays are gated by neither `drops` nor `progression`: on every `playing`
@@ -263,20 +251,17 @@ frame runs and the remainder is discarded. On any other screen the frame ticks
 nothing and the accumulator stays `0`. Then a render. This is the operation
 that poses a partial frame.
 
-#### `reset(options)`
+#### `reset()`
 {{else if (eq engine.slug "simple-2d")}}
-#### `reset(state, options)`
+#### `reset(state)`
 {{else}}
-#### `reset(options)`
+#### `reset()`
 {{/if}}
 
 Restores every declared field of the game's state to its title-screen value:
 the `title` screen with `menuIndex`, `almanacTab`, and `almanacScroll` all `0`,
 the idle run of `specs/state.md`, the accumulator and `simTime` at `0`, and
-every driver switch on. `options` is
-optional, and `options.seed` seeds the generator, defaulting to `DEFAULT_SEED`
-(`1`): a whole number from `0` to `2^32 − 1`, which `rngState` equals once the
-call returns; any other value is invalid. `muted` stays as it is.
+every driver switch on. `muted` stays as it is.
 {{#if (eq engine.slug "none")}}
 `autoStep` stays as it is: it belongs to the caller driving the game rather than
 to the session being played, so a `reset` inside a stepped scenario leaves the
@@ -316,8 +301,9 @@ below. It changes nothing.
 
 Sets `screen` to `name`, one of the `Screen` values, with `menuIndex`,
 `almanacTab`, and `almanacScroll` all `0`. Nothing else changes: the run, the
-loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, `rngState`,
-`simTime`, and the driver switches all stand exactly as they were, and no cue
+loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, every posed
+outcome, `simTime`, and the driver switches all stand exactly as they were, and
+no cue
 sounds at the call. A call that leaves `playing` discards the accumulator, as
 every frame and pose that leaves `playing` does. Applies on every screen.
 
@@ -429,20 +415,83 @@ so a clock posed past an event never fires it. Applies on a run screen.
 
 Sets `spawnTimer` to `seconds`, at least `0`. Applies on a run screen.
 
-### The generator
+### Drawn outcomes
+
+Where the game draws at random, each operation below sets what the next such
+draw decides, so a scenario poses the outcome rather than waiting on it. Each
+value is held in the run under the name its snapshot field carries, is `null`
+on the idle run and after the draw that consumed it, is left standing by
+`setScreen`, and is consumed by one draw alone. A value that is not valid at
+the moment its draw is made is discarded and the draw is made at random. Each
+operation applies on a run screen.
 
 {{#if (eq engine.slug "simple-2d")}}
-#### `advanceRng(state, draws)`
+#### `setNextSpawnAngle(state, degrees)`
 {{else}}
-#### `advanceRng(draws)`
+#### `setNextSpawnAngle(degrees)`
 {{/if}}
 
-Takes `draws` draws off the seeded generator and discards them, so `rngState`
-lands exactly where it would have landed had the game made `draws` random
-choices, and `0` leaves it where it stands. `draws` is a whole number of at
-least `0`; anything else is invalid. It makes no choice with what it drew:
-nothing spawns, nothing is offered, nothing lands, and no cue sounds. Applies on
-every screen.
+Sets `nextSpawnAngle` to `degrees`, a real number of at least `0` and below
+`360`, measured from `+x` toward `+y`; any other value is invalid. The next
+spawn point the director draws, for a window spawn or a scripted elite, is at
+that angle as `specs/enemies.md` states, and that spawn consumes it.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setNextSwarmAngle(state, degrees)`
+{{else}}
+#### `setNextSwarmAngle(degrees)`
+{{/if}}
+
+Sets `nextSwarmAngle` to `degrees`, in the same domain. The next gnat swarm's
+direction `d` is the unit vector at that angle, and that swarm consumes it.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setNextPuddleOffset(state, dx, dy)`
+{{else}}
+#### `setNextPuddleOffset(dx, dy)`
+{{/if}}
+
+Sets `nextPuddleOffset` to `(dx, dy)`, real numbers whose length is at most
+`OIL_SCATTER` (`400`); a longer offset is invalid. The first puddle the next
+Oil Splash or Blaze firing places lands at the lamplighter's center of that
+tick plus the offset, the firing's other puddles land at random, and that
+firing consumes it.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setNextStrikeTarget(state, id)`
+{{else}}
+#### `setNextStrikeTarget(id)`
+{{/if}}
+
+Sets `nextStrikeTarget` to `id`, the id of a live enemy; any other value is
+invalid. The first strike of the next Spark firing lands on that enemy when it
+is alive and within `SPARK_RANGE` of the player's center on the tick of the
+firing, the firing's other strikes are drawn from the other eligible enemies,
+and that firing consumes it. A firing on which it is dead or out of range
+discards it and draws every strike at random.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setNextChestItem(state, id)`
+{{else}}
+#### `setNextChestItem(id)`
+{{/if}}
+
+Sets `nextChestItem` to `id`, a base weapon id or a passive id; any other
+value is invalid. The next chest opened consumes it, whatever its result: when
+rule 2 of `specs/evolutions.md` decides that chest, the item rises by one level
+when it is held below its max level, and otherwise the chest draws at random.
+
+{{#if (eq engine.slug "simple-2d")}}
+#### `setNextDrop(state, kind)`
+{{else}}
+#### `setNextDrop(kind)`
+{{/if}}
+
+Sets `nextDrop` to `kind`, one of `bread`, `draft`, and `none`; any other
+value is invalid. The next common enemy killed by a weapon while `drops` is on
+drops that pickup beside its gem, or nothing for `none`, in place of its roll,
+and that kill consumes it. A death while `drops` is off, an elite's death, and
+the Dark's death leave it standing.
 
 ### The lamplighter
 
@@ -794,12 +843,11 @@ export interface WickRect {
   readonly height: number;
 }
 
+export type NextDrop = "bread" | "draft" | "none";
+
 export interface WickDebugApi {
   readonly version: number;
-  reset(
-    state: DeepReadonly<WickState>,
-    options?: { readonly seed?: number },
-  ): WickState;
+  reset(state: DeepReadonly<WickState>): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
   menuRects(state: DeepReadonly<WickState>): readonly WickRect[];
   tabRects(state: DeepReadonly<WickState>): readonly WickRect[];
@@ -816,7 +864,19 @@ export interface WickDebugApi {
   setProgression(state: DeepReadonly<WickState>, on: boolean): WickState;
   setTick(state: DeepReadonly<WickState>, tick: number): WickState;
   setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
-  advanceRng(state: DeepReadonly<WickState>, draws: number): WickState;
+  setNextSpawnAngle(state: DeepReadonly<WickState>, degrees: number): WickState;
+  setNextSwarmAngle(state: DeepReadonly<WickState>, degrees: number): WickState;
+  setNextPuddleOffset(
+    state: DeepReadonly<WickState>,
+    dx: number,
+    dy: number,
+  ): WickState;
+  setNextStrikeTarget(state: DeepReadonly<WickState>, id: number): WickState;
+  setNextChestItem(
+    state: DeepReadonly<WickState>,
+    id: WeaponId | PassiveId,
+  ): WickState;
+  setNextDrop(state: DeepReadonly<WickState>, kind: NextDrop): WickState;
   setPlayerPosition(
     state: DeepReadonly<WickState>,
     x: number,
@@ -937,9 +997,11 @@ export interface WickRect {
   readonly height: number;
 }
 
+export type NextDrop = "bread" | "draft" | "none";
+
 export interface WickDebugApi {
   readonly version: number;
-  reset(options?: { readonly seed?: number }): void;
+  reset(): void;
   snapshot(): WickSnapshot;
   menuRects(): readonly WickRect[];
   tabRects(): readonly WickRect[];
@@ -956,7 +1018,12 @@ export interface WickDebugApi {
   setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
-  advanceRng(draws: number): void;
+  setNextSpawnAngle(degrees: number): void;
+  setNextSwarmAngle(degrees: number): void;
+  setNextPuddleOffset(dx: number, dy: number): void;
+  setNextStrikeTarget(id: number): void;
+  setNextChestItem(id: WeaponId | PassiveId): void;
+  setNextDrop(kind: NextDrop): void;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;
@@ -1067,11 +1134,16 @@ export interface WickDebugApi {
     firedEvents: [<number>],       // run-clock seconds, ascending
     aliveCommons: <number>,
     nextId: <number>,
+    nextSpawnAngle: <number> | null,        // the posed outcomes, each null
+    nextSwarmAngle: <number> | null,        // while none is posed
+    nextPuddleOffset: { x, y } | null,
+    nextStrikeTarget: <number> | null,
+    nextChestItem: <string> | null,
+    nextDrop: "bread" | "draft" | "none" | null,
   },
   muted: <boolean>,
   accumulator: <number>,           // frame time waiting for the next tick
   simTime: <number>,               // accumulated simulation time, in seconds
-  rngState: <number>,
 }
 ```
 

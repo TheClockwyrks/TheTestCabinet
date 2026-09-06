@@ -10,23 +10,20 @@
 // LEAD_SECONDS below.
 //
 // EVERY OUTCOME ON SCREEN IS THE GAME'S. Two debug operations are called and
-// no others: `reset({ seed })`, which lays the generator the night's spawns,
-// offers, and drops are drawn from and is how a take is auditioned at all,
-// and `snapshot()`, a reading that changes nothing. Nothing is placed, killed,
-// healed, levelled, or steered through the surface — the lamplighter walks
-// because an arrow key is down, every moth is where the director put it, every
-// slash is Taper's own timer coming due, every gem is a kill's, and every
-// offer is the pool's draw. Arranging the input is authoring; posing the
-// outcome would be fabrication.
+// no others: `reset()`, which puts the game back on the title so each take is
+// a fresh night, and `snapshot()`, a reading that changes nothing. Nothing is
+// placed, killed, healed, levelled, or steered through the surface — the
+// lamplighter walks because an arrow key is down, every moth is where the
+// director put it, every slash is Taper's own timer coming due, every gem is a
+// kill's, and every offer is the pool's draw. Arranging the input is
+// authoring; posing the outcome would be fabrication.
 //
-// AUDITIONING. A seed fixes the whole night, so a take could in principle be
-// played silently and replayed identically under the recorder. It is recorded
-// as it is played anyway: the take that was judged is then provably the take
-// that was committed, and re-playing a take is the expensive half. The judge
-// scores what makes a watchable clip of THIS game — kills, the size of the
-// crowd on screen at once, gems collected, level-ups taken and the tools they
-// put on the HUD, surviving to the end, and a clean ending on the beat a kill
-// gives.
+// AUDITIONING. Every night the game draws is its own, so each take is recorded
+// as it is played and the winner is kept: the take that was judged is then the
+// take that is committed. The judge scores what makes a watchable clip of THIS
+// game — kills, the size of the crowd on screen at once, gems collected,
+// level-ups taken and the tools they put on the HUD, surviving to the end, and
+// a clean ending on the beat a kill gives.
 //
 // Run from the staged reference workspace root; `showcase/capture/README.md`
 // has the staging steps and the knobs:
@@ -438,7 +435,8 @@ function chooseOffer(offers: readonly OfferId[]): number {
 /** What a take left behind, and what the judge reads it by. */
 interface Take {
   frames: number;
-  seed: number;
+  /** Which take of the run this was, counted from `1`. */
+  take: number;
   /** Where the recorded stretch opened, in run-clock seconds. */
   from: number;
   /** Kills, level-ups and chests taken INSIDE the recorded stretch. */
@@ -464,8 +462,8 @@ class Session {
   private endedOnBeat = false;
   /** Whether the frames now running are the ones being kept. */
   private keeping = false;
-  /** The seed this night was laid with, for the record. */
-  private seed = 0;
+  /** Which take of the run this night is, for the record. */
+  private take = 0;
   /** What the best crowd still so far was worth; see {@link Session.offerCrowd}. */
   private crowdWorth = -1;
   /** What the best overlay still so far was worth. */
@@ -585,15 +583,15 @@ class Session {
   }
 
   /**
-   * Light the lamp: `reset` to the seed, a beat on the title, and the confirm
-   * that takes `LIGHT THE LAMP`.
+   * Light the lamp: `reset` to the title, a beat there, and the confirm that
+   * takes `LIGHT THE LAMP`.
    *
-   * Choosing the seed is choosing the night; nothing else in this class
-   * touches the surface but `snapshot()`.
+   * The reset is what makes each take a fresh night; nothing else in this
+   * class touches the surface but `snapshot()`.
    */
-  async open(seed: number): Promise<void> {
-    this.seed = seed;
-    this.h.reset(seed);
+  async open(take: number): Promise<void> {
+    this.take = take;
+    this.h.reset();
     await this.run(TITLE_HOLD);
     // Entry 0 of the title menu is LIGHT THE LAMP (`specs/ui.md`), highlighted
     // on entry, so one confirm lights it.
@@ -641,7 +639,7 @@ class Session {
     const ended = this.h.snapshot();
     return {
       frames: this.spent,
-      seed: this.seed,
+      take: this.take,
       from: opened.run.time,
       kills: ended.run.kills - opened.run.kills,
       levelUps: this.levelUps,
@@ -718,14 +716,13 @@ it("records night clips", async () => {
   // counter, the input edges the last take left armed, and whatever the last
   // render left on the canvas.
   const takes = Number(process.env.TCAB_SHOWCASE_TAKES ?? "8");
-  const firstSeed = Number(process.env.TCAB_SHOWCASE_FIRST_SEED ?? "1");
 
-  const runTake = async (label: string, seed: number): Promise<Take> => {
+  const runTake = async (label: string, take: number): Promise<Take> => {
     const h = await createHarness();
     try {
       await h.advance(1);
       const session = new Session(h, label);
-      await session.open(seed);
+      await session.open(take);
       await session.lead(LEAD_SECONDS);
       return await captureReplay(h, label, () => session.record());
     } finally {
@@ -734,13 +731,12 @@ it("records night clips", async () => {
   };
 
   let best: { label: string; score: number } | null = null;
-  for (let take = 0; take < takes; take += 1) {
-    const seed = firstSeed + take;
-    const label = `take-${String(seed).padStart(2, "0")}`;
-    const played = await runTake(label, seed);
+  for (let take = 1; take <= takes; take += 1) {
+    const label = `take-${String(take).padStart(2, "0")}`;
+    const played = await runTake(label, take);
     const score = judge(played);
     console.log(
-      `${label}: seed ${played.seed}, from ${played.from.toFixed(0)}s, ` +
+      `${label}: from ${played.from.toFixed(0)}s, ` +
         `${played.kills} killed, ${played.levelUps} level-ups to level ` +
         `${played.level}, ${played.chests} chests, ` +
         `${played.tools} tools and ${played.trinkets} trinkets, ` +
