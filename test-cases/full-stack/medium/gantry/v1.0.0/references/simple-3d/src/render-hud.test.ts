@@ -123,7 +123,7 @@ describe("the site select", () => {
     for (const name of SITE_NAMES) expect(out).toContain(name.toUpperCase());
     expect(out).toContain("CLEARED");
     expect(out).toContain("LOCKED");
-    expect(out).toContain("BEST   COST 2 400   TIME 18.00s");
+    expect(out).toContain("BEST   COST 2\u00A0400   TIME 18.00s");
   });
 });
 
@@ -132,7 +132,7 @@ describe("the build screen", () => {
     const out = record(setTool(yard(), "rail")).printed;
     expect(out).toContain(SITE_NAMES[2].toUpperCase());
     expect(out).toContain("SITE 3 / 6");
-    expect(out).toContain("COST 0 / 4 000");
+    expect(out).toContain("COST 0 / 4\u00A0000");
     expect(out).toContain("RAIL");
     expect(out).toContain("TAPE 0 STEPS");
   });
@@ -269,8 +269,8 @@ describe("the results screen", () => {
     const out = record(s).printed;
     expect(out).toContain(CLEARED_TEXT);
     expect(out).toContain("COST");
-    expect(out).toContain("PAR 2 400");
-    expect(out).toContain("BEST   COST 2 400   TIME 18.00s");
+    expect(out).toContain("PAR 2\u00A0400");
+    expect(out).toContain("BEST   COST 2\u00A0400   TIME 18.00s");
     expect(out).toContain("NEXT SITE");
     expect(out).toContain("SITE SELECT");
   });

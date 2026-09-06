@@ -30,9 +30,9 @@ describe("figures", () => {
   });
 
   it("groups a cost for reading", () => {
-    expect(cost(2400)).toBe("2 400");
+    expect(cost(2400)).toBe("2\u00A0400");
     expect(cost(999)).toBe("999");
-    expect(cost(1234567)).toBe("1 234 567");
+    expect(cost(1234567)).toBe("1\u00A0234\u00A0567");
   });
 
   it("reads the run clock off the tick count", () => {
