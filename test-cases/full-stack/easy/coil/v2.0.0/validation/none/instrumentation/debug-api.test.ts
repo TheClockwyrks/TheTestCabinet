@@ -67,8 +67,13 @@ import {
   type Harness,
 } from "../harness";
 
-/** Real time allowed to pass with the game off the clock and nothing advancing it. */
-const FROZEN_MS = 750;
+/**
+ * Paints of the page's own loop let by with the game off the clock and nothing
+ * advancing it. The loop keeps rendering while the simulation is held
+ * (specs/instrumentation.md), so each paint is a frame that loop ran, and a
+ * build still feeding elapsed time to the simulation from it ticks within a few.
+ */
+const FROZEN_PAINTS = 8;
 
 /** The chain this point poses to read the surface against, head first. */
 const POSED_HEAD = { col: 12, row: 6 };
@@ -125,9 +130,9 @@ it("carries its version and every operation its mode names, as functions", async
 
 it("takes the game off the wall clock, and runs whole frames on demand", async () => {
   // The harness has already called `setAutoStep(false)`. So a round is posed and
-  // real time is simply allowed to pass: a build still running itself off the
-  // wall clock resolves ticks and moves the snake while this waits, and one that
-  // really disconnected does not move at all.
+  // the page's own loop is let run for a count of paints: a build still feeding
+  // its simulation from that loop resolves ticks and moves the snake across
+  // them, and one that really disconnected does not move at all.
   const posed = await poseScene(h, {
     snake: chainFrom(POSED_HEAD, "right", 3),
     dir: "right",
@@ -135,7 +140,7 @@ it("takes the game off the wall clock, and runs whole frames on demand", async (
   });
   assertEqual(posed.autoStep, false, "autoStep after setAutoStep(false)");
 
-  await h.page.waitForTimeout(FROZEN_MS);
+  await h.awaitPaints(FROZEN_PAINTS);
   const still = await h.snapshot();
   assertEqual(still.ticks, posed.ticks, "ticks with the clock disconnected");
   assertCloseTo(

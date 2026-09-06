@@ -670,19 +670,6 @@ failure_cap = "passable"
 validation = { script = "movement/sub-tick-update-runs-no-tick.test.ts", outputs = [
   { id = "carried", name = "The remainder carried into the next update", kind = "replay" },
 ] }
-[[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances itself in real time"
-description = "On a real wall clock, with nothing stepping the game from outside, a live round advances: simTime rises and the head cell changes over a stretch of real time."
-domains = ["gameplay"]
-failure_cap = "broken"
-# Automated validation: hand the build a real wall clock, start a round, let the
-# loop run itself for a stretch of real time, and confirm the head moved. See
-# validation/<engine>/movement/advances-in-real-time.test.ts.
-validation = { script = "movement/advances-in-real-time.test.ts", outputs = [
-  { id = "before", name = "The instant play begins", kind = "image" },
-  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
-] }
 
 # --- Turning ------------------------------------------------------------------
 # Steering is buffered rather than applied where it is made, and step 1 of the

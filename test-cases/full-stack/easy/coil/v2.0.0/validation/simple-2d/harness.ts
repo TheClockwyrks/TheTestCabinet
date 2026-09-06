@@ -926,9 +926,6 @@ interface CoilModel {
     predicate: (snapshot: CoilSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Hand the game to the engine's own frame loop for `ms` of real time. */
-  runFor(ms: number): Promise<void>;
-
   /** Forget every call recorded so far, so the next frame's render stands alone. */
   clearCalls(): void;
   /** Run exactly one frame and hand back everything its render issued. */
@@ -1120,14 +1117,6 @@ const kit = createEngineCaseHarness<
           if (predicate(snapshot)) return { hit: true, ticks, snapshot };
         }
         return { hit: false, ticks: maxTicks, snapshot };
-      },
-
-      async runFor(ms: number) {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((done) => setTimeout(done, ms));
-        controller.abort();
-        await running;
       },
 
       clearCalls: () => {

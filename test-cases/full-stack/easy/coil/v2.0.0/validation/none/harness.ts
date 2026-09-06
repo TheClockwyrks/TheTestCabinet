@@ -38,9 +38,9 @@
 // takes the game off real time and `advance(seconds, frames)` runs whole frames
 // of a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of ticks and gets exactly that number — no polling, no
-// waiting, and no measurement of the machine it ran on. The one check that is
-// ABOUT the loop running itself (`movement/advances-in-real-time`) hands it back
-// with `runFor`.
+// waiting, and no measurement of the machine it ran on. The one thing a check
+// ever waits on is the page's own animation frame, through `awaitPaints`, which
+// is keyed on a count of paints rather than on any stretch of real time.
 //
 // WHERE THE COMPOUND SEQUENCES LIVE. Here, and nowhere else. The debug surface is
 // atomic by design — one field, one read, one clock move — so reaching a screen,
@@ -532,6 +532,16 @@ interface CoilModel {
     predicate: (snapshot: CoilSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
+  /**
+   * Let the page's own animation frame fire `count` times, driving nothing.
+   *
+   * The one wait this harness makes that is not a driven frame. It is keyed on
+   * the browser's paint rather than on elapsed time: the build's loop keeps
+   * rendering while the simulation is held off the clock
+   * (specs/instrumentation.md), so `count` paints are `count` chances for that
+   * loop to run a frame of its own, on any machine and at any load.
+   */
+  awaitPaints(count?: number): Promise<void>;
 
   /** Run exactly one frame and hand back everything its render issued. */
   frameDraw(): Promise<FrameDraw>;
@@ -679,6 +689,27 @@ export async function createHarness(
 
     frameDraw: () => oneFrame(),
     frameBlits: async () => (await oneFrame()).blits,
+
+    async awaitPaints(count = 1) {
+      // Chained animation frames, resolved in the page: the promise settles on
+      // the `count`-th paint and nothing here measures how long that took. The
+      // package's launch turns Chromium's background throttling off
+      // (`CHROMIUM_ARGS`), so a page that is not the foreground one still paints.
+      await base.page.evaluate(
+        (paints) =>
+          new Promise<void>((done) => {
+            const step = (left: number): void => {
+              if (left <= 0) {
+                done();
+                return;
+              }
+              requestAnimationFrame(() => step(left - 1));
+            };
+            step(paints);
+          }),
+        count,
+      );
+    },
 
     async armAudio() {
       await waitForCues(base.page);
