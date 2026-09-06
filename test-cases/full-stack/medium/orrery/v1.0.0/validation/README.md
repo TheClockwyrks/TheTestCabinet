@@ -81,8 +81,8 @@ Everything below is one call, under the same name, on all three engines.
 `h.advanceSeconds(seconds, frames)` runs a span of game time divided into whole
 frames, which is the primitive the two cycle helpers are built on;
 `advanceCycles(h, n)` and `advanceFraction(h, f)` name cycles and fractions of one
-at whatever speed the run is set to; `h.runFor(ms)` hands the game to its own
-loop; `h.until(pred, opts)` and `h.stepWatching(n, watch)` sweep.
+at whatever speed the run is set to; `h.until(pred, opts)` and
+`h.stepWatching(n, watch)` sweep.
 
 **Reading** — `h.snapshot()`, plus the readings in `snapshot.ts`
 (`partById`, `moteAt`, `poseOf`, `gripsOf`, `heldBy`, `constellationOf`,

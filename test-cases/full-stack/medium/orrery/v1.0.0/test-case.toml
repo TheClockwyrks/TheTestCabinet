@@ -616,20 +616,18 @@ description = "Every pose changes the state alone and sounds nothing, the three 
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "instrumentation/poses-sound-nothing.test.ts", outputs = [ { id = "silent", name = "The silently posed machine", kind = "replay" } ] }
-# The five points below are scoped to `none`. `specs/instrumentation.md` puts the
+# The four points below are scoped to `none`. `specs/instrumentation.md` puts the
 # clock switch and `advance` on the engineless surface alone; under `simple-2d`
 # and `structured-2d` the hold and the stepping are the engine's own scripted
 # clock, so a check on them returns the same verdict for every build. That an
 # interval of game time reaches the same state however it is divided into frames
 # is the build's own under every engine, and is decided by
 # `frame-division-independent` above.
-[[review.categories.items]]
-id = "clock-switch-holds-the-simulation"
-title = "The clock switch takes the game off real time"
-description = "With setAutoStep(false) the frame loop stops advancing the simulation from the wall clock, so a live run's cycle and fraction stand still across real time and change only when advance says so; setAutoStep(true) returns the game to running itself."
-domains = ["workshop"]
-failure_cap = "broken"
-validation = { script = "instrumentation/clock-switch-holds-the-simulation.test.ts", engines = ["none"], outputs = [ { id = "held", name = "The run held off the wall clock", kind = "replay" } ] }
+#
+# The hold ITSELF carries no point. Whether the simulation stands still while the
+# clock is held off it can only be read by letting real time pass, which makes the
+# verdict the host's scheduling rather than the build's work, so there is no point
+# on it and every point here is decided by frames the check drove.
 [[review.categories.items]]
 id = "clock-switch-leaves-input"
 title = "Input carries on while the simulation is held"

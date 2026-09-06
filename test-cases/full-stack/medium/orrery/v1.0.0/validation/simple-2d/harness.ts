@@ -549,9 +549,6 @@ export interface Harness {
     count: number,
     watch?: (snapshot: OrrerySnapshot, frame: number) => boolean,
   ): Promise<OrrerySnapshot[]>;
-  /** Hand the game to the engine's own frame loop for `ms` of real time. */
-  runFor(ms: number): Promise<void>;
-
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): Promise<void>;
   /** Release a key held by {@link hold}. */
@@ -801,14 +798,6 @@ export async function createHarness(
         if (watch?.(snapshot, i + 1) === true) break;
       }
       return seen;
-    },
-
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((done) => setTimeout(done, ms));
-      controller.abort();
-      await running;
     },
 
     hold: (code) => {
