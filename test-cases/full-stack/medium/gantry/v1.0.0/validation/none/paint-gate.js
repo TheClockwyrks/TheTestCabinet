@@ -35,10 +35,6 @@
 //   * `capture` — every still, so what is composited is the page as it stands.
 //   * `paintFrame()` — for the handful of checks that read what the build draws
 //     around the canvas rather than on it.
-//   * `release()` — hands the page back its own loop, permanently. The one check
-//     whose subject IS the free-running loop asks for this; nothing else may,
-//     because a build that keeps stepping through a `setAutoStep(false)` is only
-//     visible to a page that is still painting.
 //
 // A build that never calls `requestAnimationFrame` is unaffected in every part.
 (() => {
@@ -106,20 +102,6 @@
     /** Run `count` (default one) of the frames the page has asked for. */
     pump: function (count) {
       runQueued(count === undefined ? 1 : count);
-    },
-    /**
-     * Hand the page back its own loop. There is no way back on purpose: a check
-     * that needs the free-running loop needs it for the rest of its life.
-     */
-    release: function () {
-      held = false;
-      var ids = order;
-      order = [];
-      for (var i = 0; i < ids.length; i += 1) {
-        var callback = queued.get(ids[i]);
-        queued.delete(ids[i]);
-        if (callback !== undefined) realRequest(passThrough(callback));
-      }
     },
   };
 

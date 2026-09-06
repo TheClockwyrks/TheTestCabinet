@@ -136,23 +136,23 @@ for every one. `experimental` is off.
 What is committed: all thirteen specs (the five that branch three ways included),
 all three starter workspaces, the prompt, `asset_dimension = "3d"` so a run
 schedules onto the 3D full-stack image, the four scoring domains, a checklist of
-818 validator-rated points across 14 categories, a validator suite per engine, a
+817 validator-rated points across 14 categories, a validator suite per engine, a
 reference implementation per engine, the produced asset set with the scripts
 that made it, baseline media per engine, and a showcase.
 
 ### The validator suites, and where they differ
 
-The three harnesses export **one async API**, so 732 of the 818 suite files are
+The three harnesses export **one async API**, so 732 of the 817 suite files are
 byte-identical across the three engine directories and the same point is decided
 by the same file whichever runtime a run selected. The 80 forks are where the
 scene is genuinely read differently, plus four that are per-engine by the
 specification itself (where the debug surface is reached, and that nothing is
-installed on the page under an engine). Six further points carry
+installed on the page under an engine). Five further points carry
 `engines = ["none"]` and live under `validation/none/` alone: the debug
 overlay's visibility, its toggle key and its reading the game without changing
-it, the clock going off real time, and the stage's fit to the window are all the
-engine's under the two 3D runtimes, and a check on them there would grade the
-engine rather than the build.
+it, and the stage's fit to the window are all the engine's under the two 3D
+runtimes, and a check on them there would grade the engine rather than the
+build.
 
 The two engine projects run **in process**, not in vitest browser mode. The
 engine takes a `webgl2` context from its canvas the moment it is created, and
@@ -170,12 +170,12 @@ name, the produced file its geometry came from, the world position it stands at
 and the extent it covers. The `none` project drives the built site in real
 headless Chromium through `window.__gantry`, so the 812 points it shares are
 decided against a real browser as well as against the two in-process runtimes,
-and the six it carries alone are decided there only.
+and the five it carries alone are decided there only.
 
 ### What a suite run costs
 
 The `none` project is the largest validator suite in the repository and the only
-one that pays a browser crossing per tick: 818 suites, each loading the built
+one that pays a browser crossing per tick: 817 suites, each loading the built
 site into its own page. It is configured at eight workers rather than the shared
 default's four because the whole run must fit inside the platform's
 twenty-minute cap on a validator suite (`VITEST_TIMEOUT` in

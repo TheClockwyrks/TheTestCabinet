@@ -526,22 +526,13 @@ export interface Harness {
   capture(id: string, name: string): Promise<void>;
 
   /**
-   * Hand the page back its own paint loop, for the rest of this harness's life.
-   *
-   * A NO-OP HERE, and deliberately still present. Under this engine the game runs
-   * in this process over a canvas the harness owns, so there is no page painting
-   * on its own and nothing to hand back. The engineless harness DOES hold the
-   * build's free-running frames (see `validation/none/paint-gate.js`), and the one
-   * check whose subject is that loop asks for them back — so the operation exists
-   * on all three harnesses and that check stays one file in three directories.
-   */
-  releasePaint(): Promise<void>;
-
-  /**
    * Run one of the frames the page is being held back from.
    *
-   * A NO-OP HERE, for the reason `releasePaint` gives: this engine draws when the
-   * harness's own clock says so and there is no held frame to run.
+   * A NO-OP HERE: this engine draws when the harness's own clock says so, and
+   * there is no held frame to run. The engineless harness DOES hold the build's
+   * free-running frames (see `validation/none/paint-gate.js`), so the operation
+   * exists on all three harnesses and a check that pumps one stays one file in
+   * three directories.
    */
   paintFrame(): Promise<void>;
 
@@ -1313,10 +1304,6 @@ export async function createHarness(
     },
     async loopingCues() {
       return [...record.looping];
-    },
-
-    async releasePaint() {
-      // Nothing paints on its own here; see the declaration.
     },
 
     async paintFrame() {

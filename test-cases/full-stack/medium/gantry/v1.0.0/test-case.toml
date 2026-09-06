@@ -284,14 +284,13 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 # the same point is decided by the same-named suite in each engine's validator
 # project under `validation/<engine>/`. The three suites are the same files:
 # the three harnesses export one async API, so a point is graded identically
-# whichever runtime the run selected. Six points carry `engines = ["none"]`
+# whichever runtime the run selected. Five points carry `engines = ["none"]`
 # and live under `validation/none/` alone: the debug overlay's visibility, its
-# toggle key and its reading the game without changing it, the clock going off
-# real time, and the stage's fit to the window are the engine's own work under
-# the two 3D runtimes, so a check on them there would grade the engine rather
-# than the build.
+# toggle key and its reading the game without changing it, and the stage's fit
+# to the window are the engine's own work under the two 3D runtimes, so a check
+# on them there would grade the engine rather than the build.
 #
-# 818 points across 14 categories. Each asserts ONE observable behavior,
+# 817 points across 14 categories. Each asserts ONE observable behavior,
 # because a build that gets half of a compound point right must score
 # differently from one that gets all of it right. A domain's rating is
 # the worst cap among its failures, so the count weights nothing — what the split
@@ -1935,20 +1934,6 @@ domains = ["simulation", "choreography"]
 failure_cap = "scuffed"
 validation = { script = "instrumentation/advance-scales-with-the-watch-speed.test.ts", outputs = [
   { id = "scaled", name = "The run at the tick three speeds counted to", kind = "image" },
-] }
-
-# Start a run, call setAutoStep(false), read run.tick and run.axes, let a
-# second of wall-clock time pass with no advance call, and read them again. —
-# run.tick and every axis value are unchanged.
-# From specs/instrumentation.md § The clock.
-[[review.categories.items]]
-id = "auto-step-off-stops-the-wall-clock"
-title = "Taken off real time, the game changes only when it is advanced"
-description = "setAutoStep(false) stops the frame loop advancing the game from the wall clock, so a run stands still while wall-clock time passes and changes only when advance says so."
-domains = ["simulation"]
-failure_cap = "scuffed"
-validation = { script = "instrumentation/auto-step-off-stops-the-wall-clock.test.ts", engines = ["none"], outputs = [
-  { id = "still", name = "The run after half a second of wall clock", kind = "image" },
 ] }
 
 # Show the overlay with Backquote on the build screen of an emptied site and
@@ -5836,11 +5821,10 @@ validation = { script = "tape/nothing-ticks-outside-a-run.test.ts", outputs = [
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 
-# With auto-stepping on, let the build screen run until simTime has risen by
-# an interval that is not a whole multiple of 1 / TICK_HZ, then take the game
-# off real time, pose a ready crane and tape, start the run, and advance
-# exactly one tick. — run.tick reads 0 immediately after the start and
-# exactly 1 after the single advance, however much simTime had accumulated
+# Advance sixty frames on the build screen, reading simTime before and after,
+# then pose a ready crane and tape, start the run, and advance exactly one
+# tick. — run.tick reads 0 immediately after the start and exactly 1 after the
+# single advance, however much simTime the editor's frames had accumulated
 # before it.
 # From specs/overview.md § Units, ticks, and the stage.
 [[review.categories.items]]

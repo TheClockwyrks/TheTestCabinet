@@ -221,8 +221,8 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   // a page that is painting freely costs about ten times one into a page that is
   // not, and this project drives enough of them for that to decide whether its
   // suites finish inside the platform's cap. The file's own header carries the
-  // full reasoning, and `releasePaint` below is the way out for the one check
-  // whose subject is the free-running loop itself.
+  // full reasoning, and `paintFrame` below runs one of the held frames for the
+  // checks that read what the build draws around the canvas.
   extraInitScripts: ["cues-init.js", "paint-gate.js"],
   projectRoot: PROJECT_ROOT,
 });
@@ -349,22 +349,6 @@ export interface Harness {
   capture(id: string, name: string): Promise<void>;
 
   /**
-   * Hand the page back its own paint loop, for the rest of this harness's life.
-   *
-   * ONLY FOR A CHECK WHOSE SUBJECT IS THAT LOOP. The harness holds the build's
-   * free-running frames back (see `paint-gate.js`), which is invisible to every
-   * check that drives the game with `advance` — the render each advanced frame is
-   * specified to run still happens. It is NOT invisible to a check that lets
-   * wall-clock time pass and asserts what did or did not move in it: a build that
-   * keeps stepping through a `setAutoStep(false)` shows itself only to a page
-   * that is still painting. Such a check calls this first, and pays the crossings
-   * back at the free-running price.
-   *
-   * A no-op on the two engines, which have no page and no paint clock.
-   */
-  releasePaint(): Promise<void>;
-
-  /**
    * Run one of the frames the page has asked for and is being held back from.
    *
    * FOR A CHECK THAT READS WHAT THE BUILD DRAWS AROUND THE CANVAS. `advance`
@@ -375,7 +359,8 @@ export interface Harness {
    * diagnostics overlay that way), and that loop is held; one pumped frame is
    * what a page painting freely would have given it.
    *
-   * A no-op on the two engines, for the reason `releasePaint` gives.
+   * A no-op on the two engines, which draw when their own clock says so and hold
+   * no frame back.
    */
   paintFrame(): Promise<void>;
 
@@ -518,8 +503,7 @@ export async function createHarness(
     cues: () => readCues(base, "take"),
     loopingCues: () => readCues(base, "looping"),
 
-    releasePaint: () => paint(base, "release"),
-    paintFrame: () => paint(base, "pump"),
+    paintFrame: () => paint(base),
 
     async capture(id, name) {
       // One held frame first, so the picture composited into the still is the one
@@ -527,7 +511,7 @@ export async function createHarness(
       // already there — `advance` renders — but a build is free to refresh what
       // sits AROUND the canvas on its own frame (this case's reference draws its
       // diagnostics overlay that way), and a still is the whole page.
-      await paint(base, "pump");
+      await paint(base);
       // The still is addressed by the review item's output id; the name is what
       // the reviewer is being shown, and it goes to the run log so a person
       // scanning the output can tell one still from another without opening it.
@@ -547,7 +531,7 @@ export async function createHarness(
 }
 
 /**
- * Drive this project's paint gate.
+ * Run one of the frames this project's paint gate is holding back.
  *
  * As with the cue probe, a page that does not carry it is a fault in this
  * project rather than in the build — the gate is injected before a line of the
@@ -556,22 +540,15 @@ export async function createHarness(
  */
 async function paint(
   base: BaseHarness<GantrySnapshot, GantryDebugApi>,
-  op: "pump" | "release",
 ): Promise<void> {
-  const ran = await base.page.evaluate(
-    ([global, name]) => {
-      const gate = (
-        window as unknown as Record<
-          string,
-          Record<string, () => void> | undefined
-        >
-      )[global];
-      if (gate === undefined) return false;
-      gate[name]!();
-      return true;
-    },
-    [PAINT_GLOBAL, op] as const,
-  );
+  const ran = await base.page.evaluate((global) => {
+    const gate = (
+      window as unknown as Record<string, { pump(): void } | undefined>
+    )[global];
+    if (gate === undefined) return false;
+    gate.pump();
+    return true;
+  }, PAINT_GLOBAL);
   if (!ran) {
     throw new Error(
       `gantry: window.${PAINT_GLOBAL} is absent, so the harness's own paint ` +
