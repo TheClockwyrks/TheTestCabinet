@@ -263,7 +263,8 @@ export function readSound(...parts: readonly string[]): Sound | null {
       bits = bytes.readUInt16LE(body + 14);
       // WAVE_FORMAT_EXTENSIBLE carries the real encoding in its sub-format's
       // first two bytes, which is where an extended header puts it.
-      if (format === 0xfffe && size >= 40) format = bytes.readUInt16LE(body + 24);
+      if (format === 0xfffe && size >= 40)
+        format = bytes.readUInt16LE(body + 24);
     } else if (id === "data") {
       data = bytes.subarray(body, end);
     }

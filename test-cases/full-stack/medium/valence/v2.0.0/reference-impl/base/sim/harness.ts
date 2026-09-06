@@ -11,7 +11,13 @@
 //
 // Run the reports with:  npx tsx sim/run.ts
 
-import { FIXED_STEP, TOTAL_ROUNDS, TOWERS, type Branch, type TowerKind } from "../src/constants";
+import {
+  FIXED_STEP,
+  TOTAL_ROUNDS,
+  TOWERS,
+  type Branch,
+  type TowerKind,
+} from "../src/constants";
 import { mapById, type Pt } from "../src/board";
 import { MODE } from "../src/mode";
 import { Game } from "../src/sim";
@@ -62,7 +68,11 @@ export interface Controller {
 // list order, place any not-yet-placed due+affordable order, then push affordable
 // upgrades (cheapest-first) toward each order's target level/branch. A fair model of a
 // player working a build list from the top.
-export function layoutController(name: string, orders: BuildOrder[], note?: string): Controller {
+export function layoutController(
+  name: string,
+  orders: BuildOrder[],
+  note?: string,
+): Controller {
   const placed = new Map<BuildOrder, Tower>();
   return {
     name,
@@ -79,7 +89,10 @@ export function layoutController(name: string, orders: BuildOrder[], note?: stri
         progressed = false;
         const ups = [...placed.entries()]
           .filter(([o, t]) => t.level < (o.level ?? 1))
-          .sort((a, b) => (game.upgradeCost(a[1]) ?? 1e9) - (game.upgradeCost(b[1]) ?? 1e9));
+          .sort(
+            (a, b) =>
+              (game.upgradeCost(a[1]) ?? 1e9) - (game.upgradeCost(b[1]) ?? 1e9),
+          );
         for (const [o, t] of ups) {
           const br = t.level === 2 ? o.branch : undefined;
           if (t.level === 2 && !br) continue;
@@ -118,7 +131,10 @@ export interface MatchResult {
   rounds: RoundResult[];
 }
 
-export function runMatch(controller: Controller, opts?: { maxRoundSeconds?: number; funded?: boolean }): MatchResult {
+export function runMatch(
+  controller: Controller,
+  opts?: { maxRoundSeconds?: number; funded?: boolean },
+): MatchResult {
   const maxSteps = Math.round((opts?.maxRoundSeconds ?? 240) / FIXED_STEP);
   const g = newGame();
   g.start();
@@ -161,7 +177,8 @@ export function runMatch(controller: Controller, opts?: { maxRoundSeconds?: numb
     }
   }
 
-  const roundsCleared = outcome === "victory" ? TOTAL_ROUNDS : Math.max(0, g.round - 1);
+  const roundsCleared =
+    outcome === "victory" ? TOTAL_ROUNDS : Math.max(0, g.round - 1);
   return {
     controller: controller.name,
     note: controller.note,

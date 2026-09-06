@@ -122,7 +122,7 @@ that was not selected leaves the selection where it was.
 The refund is measured against everything spent on the tower, its build cost plus
 every upgrade paid on it:
 
-| The tower | Its refund |
-| --- | --- |
-| Fresh | `spent`, in full, with no rounding |
+| The tower | Its refund                                                  |
+| --------- | ----------------------------------------------------------- |
+| Fresh     | `spent`, in full, with no rounding                          |
 | Not fresh | `floor(REFUND_RATE * spent)`, which is `floor(0.7 * spent)` |

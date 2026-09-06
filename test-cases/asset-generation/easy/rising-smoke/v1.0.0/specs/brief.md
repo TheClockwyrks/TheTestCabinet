@@ -4,7 +4,7 @@ You are authoring a **rising smoke column**: a steady stream of soft grey smoke
 climbing from a single point source — the calm, ambient plume that drifts up from a
 chimney, a smouldering ember, or a snuffed candle. It is a **continuous, seamless
 loop**: a stream that has already reached a steady state and plays forever without a
-visible seam. You are authoring the *effect* as a **system**, not a single frozen
+visible seam. You are authoring the _effect_ as a **system**, not a single frozen
 frame.
 
 ## The field
@@ -102,11 +102,11 @@ Use only these colors — stated as gradient stops over each particle's life, an
 the only hues allowed in the smoke (neutral grey only; no browns, blues, or warm
 fire tints):
 
-| Role | Hex |
-| --- | --- |
+| Role                    | Hex       |
+| ----------------------- | --------- |
 | Smoke base (light grey) | `#cfccc6` |
-| Smoke body (mid grey) | `#908d87` |
-| Smoke tip (dark grey) | `#4c4a46` |
+| Smoke body (mid grey)   | `#908d87` |
+| Smoke tip (dark grey)   | `#4c4a46` |
 
 A natural read: each puff runs `#cfccc6` → `#908d87` → `#4c4a46` over its life as it
 rises and thins, while its opacity eases up and then fades to nothing.
@@ -126,7 +126,7 @@ Rendering is **on request**: run `particle-3d render` to simulate the whole syst
 over its duration, write the preview `effect.gif`, and **emit the `system.json`
 your result is built from** — you **must** render before you finish or the system
 is empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read, the steady rising
+slightly from play to play**; judge its _character_ — the read, the steady rising
 column, the seamless loop — across replays and from multiple orbit angles, not any
 single frame. The field size, duration, and fps are already seeded in a config
 beside your workspace, so no operation needs those flags. Run `particle-3d --help`

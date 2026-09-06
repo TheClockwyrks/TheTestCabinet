@@ -12,12 +12,12 @@ the tile grid.
 
 ## Movement
 
-| Quantity | Name | Value |
-| --- | --- | --- |
-| Gravity | `GRAVITY` | `1500` units per second squared |
-| Walk and lateral drift speed | `WALK_SPEED` | `250` units per second |
-| Fall terminal speed, empty | `FALL_TERMINAL_EMPTY` | `950` units per second |
-| Fall terminal speed, at the lift limit | `FALL_TERMINAL_LOADED` | `1600` units per second |
+| Quantity                               | Name                   | Value                           |
+| -------------------------------------- | ---------------------- | ------------------------------- |
+| Gravity                                | `GRAVITY`              | `1500` units per second squared |
+| Walk and lateral drift speed           | `WALK_SPEED`           | `250` units per second          |
+| Fall terminal speed, empty             | `FALL_TERMINAL_EMPTY`  | `950` units per second          |
+| Fall terminal speed, at the lift limit | `FALL_TERMINAL_LOADED` | `1600` units per second         |
 
 - Falling. With open space below, the miner accelerates downward at `GRAVITY` up
   to its terminal speed. Falling costs no fuel.
@@ -99,25 +99,25 @@ Fuel is the jetpack's charge. It is spent by thrusting, by drifting laterally in
 the air, by drilling, and by being underground, and it is replenished only by
 paying for it at the Fuel Depot. The maximum is set by the fuel tank tier.
 
-| Drain | Name | Value |
-| --- | --- | --- |
-| Thrust, at zero upward speed | `THRUST_BURN_MAX` | `5` fuel per second |
-| Thrust, at or above the cruise speed | `THRUST_BURN_MIN` | `2` fuel per second |
-| Upward speed at which the eased rate is reached | `CRUISE_SPEED` | `900` units per second |
-| Lateral drift in the air | `AIR_BURN` | `2` fuel per second |
-| Life support, while below the surface ground line | `LIFE_SUPPORT_BURN` | `0.4` fuel per second |
-| Each drill hit | `DRILL_HIT_FUEL` | `0.25` fuel |
+| Drain                                             | Name                | Value                  |
+| ------------------------------------------------- | ------------------- | ---------------------- |
+| Thrust, at zero upward speed                      | `THRUST_BURN_MAX`   | `5` fuel per second    |
+| Thrust, at or above the cruise speed              | `THRUST_BURN_MIN`   | `2` fuel per second    |
+| Upward speed at which the eased rate is reached   | `CRUISE_SPEED`      | `900` units per second |
+| Lateral drift in the air                          | `AIR_BURN`          | `2` fuel per second    |
+| Life support, while below the surface ground line | `LIFE_SUPPORT_BURN` | `0.4` fuel per second  |
+| Each drill hit                                    | `DRILL_HIT_FUEL`    | `0.25` fuel            |
 
 While thrust is held the burn is
 `THRUST_BURN_MAX + (THRUST_BURN_MIN - THRUST_BURN_MAX) * min(1, up / CRUISE_SPEED)`,
 where `up` is the miner's upward speed, then multiplied by the world size's
 `THRUST_BURN_SIZE_MULT`:
 
-| Size | `THRUST_BURN_SIZE_MULT` |
-| --- | --- |
-| `quick` | `2` |
-| `standard` | `1` |
-| `marathon` | `0.67` |
+| Size       | `THRUST_BURN_SIZE_MULT` |
+| ---------- | ----------------------- |
+| `quick`    | `2`                     |
+| `standard` | `1`                     |
+| `marathon` | `0.67`                  |
 
 Only the thrust burn is scaled by the world size. `CRUISE_SPEED` sits above every
 loaded climb cap and below every empty one, so an empty or light climb earns the
@@ -154,16 +154,16 @@ The miner is in exactly one animation state at a time, and the state is readable
 from the frame on screen. The miner also faces `east` or `west`, following the
 last lateral input, and its sprite mirrors to match.
 
-| State | The miner is |
-| --- | --- |
-| `idle` | Standing on solid ground, not moving and not drilling. |
-| `walk` | Moving laterally along the ground. |
-| `drill-down` | Braced and cutting the cell below. |
-| `drill-side` | Braced and cutting the cell beside it. |
-| `jetpack` | Holding thrust. |
-| `fall` | Descending through open space without thrust. |
-| `hurt` | Taking damage. The state holds for `HURT_TIME` (`0.4`) seconds from the blow, then gives way to whatever the miner is doing. |
-| `fuel-out` | Below the surface with fuel at `0`. |
+| State        | The miner is                                                                                                                 |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `idle`       | Standing on solid ground, not moving and not drilling.                                                                       |
+| `walk`       | Moving laterally along the ground.                                                                                           |
+| `drill-down` | Braced and cutting the cell below.                                                                                           |
+| `drill-side` | Braced and cutting the cell beside it.                                                                                       |
+| `jetpack`    | Holding thrust.                                                                                                              |
+| `fall`       | Descending through open space without thrust.                                                                                |
+| `hurt`       | Taking damage. The state holds for `HURT_TIME` (`0.4`) seconds from the blow, then gives way to whatever the miner is doing. |
+| `fuel-out`   | Below the surface with fuel at `0`.                                                                                          |
 
 More than one row describes the miner at once often enough that the order matters,
 so the states take this precedence, highest first: `drill-down` and `drill-side`,

@@ -142,7 +142,11 @@ profile disables the capability keeps nothing.
 ## Configuration
 
 ```json
-{ "id": "program-library", "enabled": true, "params": { "keep": 20, "idLength": 4 } }
+{
+  "id": "program-library",
+  "enabled": true,
+  "params": { "keep": 20, "idLength": 4 }
+}
 ```
 
 `keep` is how many of the agent's most recent programs are retained, and an
@@ -165,12 +169,12 @@ agent's own language.
 
 ## Where it lives
 
-| Piece | Where |
-| --- | --- |
-| The library, its retention, id minting, and the `keep` and `idLength` resolution | `crates/gg/src/programs.rs` |
-| The three host functions | `crates/gg/src/sandbox/membrane/programs.rs` |
-| The `programs` module in an arm's SDK | `packages/gg-sandbox/src/gg/programs.ts` |
-| The hand-over chain, and folding a submission's records | `crates/gg/src/agent.code.rs` |
-| Carrying the library across a succession | `crates/gg/src/agent.transitions.rs` |
+| Piece                                                                            | Where                                        |
+| -------------------------------------------------------------------------------- | -------------------------------------------- |
+| The library, its retention, id minting, and the `keep` and `idLength` resolution | `crates/gg/src/programs.rs`                  |
+| The three host functions                                                         | `crates/gg/src/sandbox/membrane/programs.rs` |
+| The `programs` module in an arm's SDK                                            | `packages/gg-sandbox/src/gg/programs.ts`     |
+| The hand-over chain, and folding a submission's records                          | `crates/gg/src/agent.code.rs`                |
+| Carrying the library across a succession                                         | `crates/gg/src/agent.transitions.rs`         |
 
 Every other language arm carries the same module in its own SDK package.

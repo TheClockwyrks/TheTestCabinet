@@ -9,12 +9,12 @@ covers standing that plane up. The clusters themselves are
 
 ## What runs there
 
-| Thing | Deployed as |
-| ----- | ----------- |
-| [Gallery origin](/components/site/serving/) (`tcab-gallery`) | An Azure Container App, one image, minimum one replica |
-| [Public projection](/components/backend/projection/) | An Azure Database for PostgreSQL Flexible Server instance, sized for the published set |
-| Published documents and media | A Cloudflare R2 bucket |
-| Per-run playable builds, [docs](/components/docs/overview/) | Cloudflare Pages sites |
+| Thing                                                        | Deployed as                                                                            |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| [Gallery origin](/components/site/serving/) (`tcab-gallery`) | An Azure Container App, one image, minimum one replica                                 |
+| [Public projection](/components/backend/projection/)         | An Azure Database for PostgreSQL Flexible Server instance, sized for the published set |
+| Published documents and media                                | A Cloudflare R2 bucket                                                                 |
+| Per-run playable builds, [docs](/components/docs/overview/)  | Cloudflare Pages sites                                                                 |
 
 The origin is one stateless service, so it runs as a Container App rather than a
 cluster of its own. The playable builds stay on Pages, where each run's build

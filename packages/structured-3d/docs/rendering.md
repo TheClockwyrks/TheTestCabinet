@@ -7,10 +7,10 @@ through the camera, and the screen pass draws the screen layer over it.
 `components.md` covers what each built-in component draws; this page covers the
 pipeline that draws them.
 
-| Surface | Object | Populated by | Drawn by |
-| --- | --- | --- | --- |
-| The scene | A `THREE.Scene`, rendered through a `THREE.WebGLRenderer` over the canvas | The pipeline, from the world's `world` components | The engine, through the camera |
-| The screen layer | A 2D canvas the engine owns, sized to the same backing store | The world's `screen` components | The engine, composited over the scene |
+| Surface          | Object                                                                    | Populated by                                      | Drawn by                              |
+| ---------------- | ------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------------- |
+| The scene        | A `THREE.Scene`, rendered through a `THREE.WebGLRenderer` over the canvas | The pipeline, from the world's `world` components | The engine, through the camera        |
+| The screen layer | A 2D canvas the engine owns, sized to the same backing store              | The world's `screen` components                   | The engine, composited over the scene |
 
 ## The scene the pipeline maintains
 
@@ -46,13 +46,23 @@ export class Rig extends Actor {
 
     this.attach(
       new LightComponent({
-        light: { kind: "hemisphere", sky: "#cfe4ff", ground: "#3a3324", intensity: 0.6 },
+        light: {
+          kind: "hemisphere",
+          sky: "#cfe4ff",
+          ground: "#3a3324",
+          intensity: 0.6,
+        },
       }),
     );
 
     const sun = this.attach(
       new LightComponent({
-        light: { kind: "directional", color: "#fff4e0", intensity: 1.4, castShadow: true },
+        light: {
+          kind: "directional",
+          color: "#fff4e0",
+          intensity: 1.4,
+          castShadow: true,
+        },
       }),
     );
     sun.offset.position = vec3(10, 16, 6);
@@ -73,7 +83,13 @@ and the meshes declare which side of a shadow they are on. `castShadow` and
 `receiveShadow` on a `MeshComponent` or a `ModelComponent` default to `false`.
 
 ```ts
-const engine = createEngine({ canvas, width: WIDTH, height: HEIGHT, game, shadows: true });
+const engine = createEngine({
+  canvas,
+  width: WIDTH,
+  height: HEIGHT,
+  game,
+  shadows: true,
+});
 ```
 
 ```ts
@@ -160,12 +176,12 @@ in the world pass is sampled by three under the texture's own filtering.
 type RenderMode = "shaded" | "wireframe" | "unlit" | "normals";
 ```
 
-| Mode | World pass | Screen pass |
-| --- | --- | --- |
-| `shaded` | Every material as declared, lit by the scene's lights. The default. | The full picture: fills, strokes, images, text, tint, and opacity. |
-| `wireframe` | Every mesh as its edges in one flat color, lights ignored. | Each component's outline alone, at one stroke width, with images reduced to their bounds. |
-| `unlit` | Every material's base color and map at full opacity, lights ignored. | Fills and images at full opacity with every tint dropped. |
-| `normals` | Every surface colored by its world-space normal, lights ignored. | The full picture. |
+| Mode        | World pass                                                           | Screen pass                                                                               |
+| ----------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `shaded`    | Every material as declared, lit by the scene's lights. The default.  | The full picture: fills, strokes, images, text, tint, and opacity.                        |
+| `wireframe` | Every mesh as its edges in one flat color, lights ignored.           | Each component's outline alone, at one stroke width, with images reduced to their bounds. |
+| `unlit`     | Every material's base color and map at full opacity, lights ignored. | Fills and images at full opacity with every tint dropped.                                 |
+| `normals`   | Every surface colored by its world-space normal, lights ignored.     | The full picture.                                                                         |
 
 The mode belongs to the pipeline and applies to everything it draws, so every
 game has all four modes available without writing anything. In the world pass
@@ -185,12 +201,12 @@ interface Renderer {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `mode` | The mode in force, `shaded` until it is set. |
-| `setMode` | Sets the mode. The next frame the pipeline runs draws under it. |
-| `collisionOverlay` | Whether the collision overlay draws. |
-| `setCollisionOverlay` | Turns the collision overlay on or off. |
+| Member                | Effect                                                          |
+| --------------------- | --------------------------------------------------------------- |
+| `mode`                | The mode in force, `shaded` until it is set.                    |
+| `setMode`             | Sets the mode. The next frame the pipeline runs draws under it. |
+| `collisionOverlay`    | Whether the collision overlay draws.                            |
+| `setCollisionOverlay` | Turns the collision overlay on or off.                          |
 
 The renderer is reached as `engine.renderer` and is available from construction,
 so whoever holds the engine drives both switches:
@@ -226,7 +242,12 @@ A HUD is an actor whose components are `screen` components, each offset to its
 logical position, on a layer above the field:
 
 ```ts
-import { Actor, ShapeComponent, TextComponent, vec3 } from "@clockwyrks/structured-3d";
+import {
+  Actor,
+  ShapeComponent,
+  TextComponent,
+  vec3,
+} from "@clockwyrks/structured-3d";
 import { LAYER, WIDTH } from "./constants";
 
 export class Hud extends Actor {

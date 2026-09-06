@@ -32,11 +32,11 @@ refuses the launch, naming the three that exist. What a profile binding somebody
 else's store is saying by naming one is under
 [Inheritance and the strategy](#inheritance-and-the-strategy).
 
-| Strategy | Always in context | Tools |
-| --- | --- | --- |
-| `scratchpad` | every memory, body and all | `write_memory`, `update_memory`, `delete_memory` |
-| `markdown` | the index (one `slug` — `description` line per memory) | `create_memory`, `read_memory`, `edit_memory`, `delete_memory` |
-| `keyword-search` | nothing | `create_memory`, `read_memory`, `edit_memory`, `delete_memory`, `search_memories` |
+| Strategy         | Always in context                                      | Tools                                                                             |
+| ---------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `scratchpad`     | every memory, body and all                             | `write_memory`, `update_memory`, `delete_memory`                                  |
+| `markdown`       | the index (one `slug` — `description` line per memory) | `create_memory`, `read_memory`, `edit_memory`, `delete_memory`                    |
+| `keyword-search` | nothing                                                | `create_memory`, `read_memory`, `edit_memory`, `delete_memory`, `search_memories` |
 
 All three work in both execution modes. Under
 [responses-as-code](/gg/responses-as-code/overview/) the same calls are the
@@ -52,7 +52,7 @@ verbatim. The count and the per-body length bound it, and the aggregate ceiling
 
 ### `markdown`
 
-A pinned index over memory files, one `` - `slug` — description `` line each.
+A pinned index over memory files, one ``- `slug` — description`` line each.
 The bodies stay out of the window until `read_memory` brings one in.
 `create_memory` adds the entry and `delete_memory` removes it, so the model never
 writes the index directly.
@@ -82,9 +82,9 @@ and the model is told to delete it instead.
 
 One slider sits in the capability's Features box, per agent.
 
-| Feature | Default | What switching it changes |
-| --- | --- | --- |
-| Revise memories | on | Off withholds `update_memory`, `edit_memory` and `delete_memory`, so memories are append-only. |
+| Feature         | Default | What switching it changes                                                                      |
+| --------------- | ------- | ---------------------------------------------------------------------------------------------- |
+| Revise memories | on      | Off withholds `update_memory`, `edit_memory` and `delete_memory`, so memories are append-only. |
 
 ## Limits
 
@@ -95,14 +95,14 @@ limit is turned off, so a run that wants no aggregate ceiling writes
 `maxTotalLen: 0`. A missing param, a param name the capability does not know, and
 a value gg cannot read as a whole count each refuse the launch.
 
-| Param | Applies to | What it bounds |
-| --- | --- | --- |
-| `maxCount` | `scratchpad`, `keyword-search` | How many memories the set holds at once. |
-| `maxLenPerMemory` | all three | Characters in one memory's body. |
-| `maxTotalLen` | `scratchpad` | Characters across every pinned body together. |
-| `maxLenIndex` | `markdown` | Characters in the pinned index. |
-| `maxLenDescription` | all three | Characters in one memory's description. |
-| `maxResults` | `keyword-search` | Hits one `search_memories` call returns. |
+| Param               | Applies to                     | What it bounds                                |
+| ------------------- | ------------------------------ | --------------------------------------------- |
+| `maxCount`          | `scratchpad`, `keyword-search` | How many memories the set holds at once.      |
+| `maxLenPerMemory`   | all three                      | Characters in one memory's body.              |
+| `maxTotalLen`       | `scratchpad`                   | Characters across every pinned body together. |
+| `maxLenIndex`       | `markdown`                     | Characters in the pinned index.               |
+| `maxLenDescription` | all three                      | Characters in one memory's description.       |
+| `maxResults`        | `keyword-search`               | Hits one `search_memories` call returns.      |
 
 Lengths are in characters of a memory's body. A description is bounded
 separately, by `maxLenDescription` under every strategy, because it is the one
@@ -146,7 +146,8 @@ memories.writeMemory({
   description: "Parsing the vendor CSV exports, which quote inconsistently.",
   body: "The third column is sometimes quoted and sometimes not; parseCsv handles both.",
   code: "export function parseCsv(text: string) { /* … */ }",
-  onUse: 'views.openText("csv-notes", "Row 1 is a header on exports after March.");',
+  onUse:
+    'views.openText("csv-notes", "Row 1 is a header on exports after March.");',
 });
 ```
 
@@ -170,10 +171,10 @@ way to say anything about them.
 A memory's code loads by the rule its strategy already sets for what is in
 context.
 
-| Strategy | The code loads on |
-| --- | --- |
-| `scratchpad` | the write, since every memory is in the window from the moment it exists |
-| `markdown`, `keyword-search` | the read, since a memory's code follows its body into context |
+| Strategy                     | The code loads on                                                        |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `scratchpad`                 | the write, since every memory is in the window from the moment it exists |
+| `markdown`, `keyword-search` | the read, since a memory's code follows its body into context            |
 
 A loaded module survives a compaction: it costs no tokens and is never
 summarized, so a boundary leaves it loaded and nothing makes an agent re-read a
@@ -209,12 +210,12 @@ The `scope` param says which instance an agent binds. Under `isolated` a memory
 instance belongs to one agent instance: a subagent starts with an empty notebook,
 and nothing it writes is seen by anyone else. The other three link agents.
 
-| `scope` | Which instance the agent binds |
-| --- | --- |
-| `isolated` | A fresh one, per agent instance |
-| `shared` | One per agent profile: every instance of it in the run, including those running in parallel |
-| `inherited` | Its spawner's, read/write, when it was spawned as a subagent; its own otherwise |
-| `read-only` | As `inherited`, but this agent may not write |
+| `scope`     | Which instance the agent binds                                                              |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| `isolated`  | A fresh one, per agent instance                                                             |
+| `shared`    | One per agent profile: every instance of it in the run, including those running in parallel |
+| `inherited` | Its spawner's, read/write, when it was spawned as a subagent; its own otherwise             |
+| `read-only` | As `inherited`, but this agent may not write                                                |
 
 ```json
 {
@@ -250,14 +251,14 @@ whatever the top of the chain created.
 `inherited` and `read-only` are defined against how the agent was started, so the
 four scopes read differently at each of the places gg starts one.
 
-| Started as | `isolated` | `shared` | `inherited` | `read-only` |
-| --- | --- | --- | --- | --- |
-| The run's root | its own | the profile's instance | its own (nothing spawned it) | its own, and writable |
-| An issue's implementer | its own | the profile's instance | its own (it is top-level, not a subagent) | its own, and writable |
-| A [subagent](/gg/subagents/) | its own | the profile's instance | its spawner's, read/write; its own if the spawner keeps no memories | its spawner's, read-only |
-| A reviewer or merge agent | its own | the profile's instance | its own (dispatched directly, not through a spawner) | its own, and writable |
-| A [`fork`](/gg/fork-and-exec/) | an independent copy | the same instance | its forker's, read/write | its forker's, read-only |
-| A successor ([`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/)) | transferred | its own profile's instance, re-bound | transferred | transferred, read-only |
+| Started as                                                                   | `isolated`          | `shared`                             | `inherited`                                                         | `read-only`              |
+| ---------------------------------------------------------------------------- | ------------------- | ------------------------------------ | ------------------------------------------------------------------- | ------------------------ |
+| The run's root                                                               | its own             | the profile's instance               | its own (nothing spawned it)                                        | its own, and writable    |
+| An issue's implementer                                                       | its own             | the profile's instance               | its own (it is top-level, not a subagent)                           | its own, and writable    |
+| A [subagent](/gg/subagents/)                                                 | its own             | the profile's instance               | its spawner's, read/write; its own if the spawner keeps no memories | its spawner's, read-only |
+| A reviewer or merge agent                                                    | its own             | the profile's instance               | its own (dispatched directly, not through a spawner)                | its own, and writable    |
+| A [`fork`](/gg/fork-and-exec/)                                               | an independent copy | the same instance                    | its forker's, read/write                                            | its forker's, read-only  |
+| A successor ([`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/)) | transferred         | its own profile's instance, re-bound | transferred                                                         | transferred, read-only   |
 
 The last row is a [transfer](/gg/modules/) rather than a binding, so it obeys the
 transfer rules first: a successor whose profile turns memories off gets none, and

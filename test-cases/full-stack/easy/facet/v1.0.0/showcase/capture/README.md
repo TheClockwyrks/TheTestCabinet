@@ -70,14 +70,14 @@ undoes the two `sed` edits, which are made to it rather than to the case's own
 
 ## The knobs
 
-| Variable | Does |
-| --- | --- |
-| `TCAB_VALIDATION_MEDIA_DIR` | Where the media is written. Nothing is written without it. |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | The written recording's frame cap, after the patch above. `1600` keeps every frame of a 24-second take, so the replay plays back at the 64 Hz it was driven at. |
-| `TCAB_SHOWCASE_SEED`, `TCAB_SHOWCASE_PHASE` | The take to record. Naming a seed skips the audition. |
-| `TCAB_SHOWCASE_SEEDS`, `TCAB_SHOWCASE_PHASES` | The takes auditioned when no seed is named, as comma-separated lists. |
-| `TCAB_SHOWCASE_MIN_SECONDS`, `TCAB_SHOWCASE_MAX_SECONDS` | The clip's bounds in game time. The take ends on the first settled board past the minimum, never mid-chain and never on the level-clear screen. |
-| `TCAB_SHOWCASE_QA_STILLS` | `1` writes a still every two seconds, for eyeballing a take. |
+| Variable                                                 | Does                                                                                                                                                            |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_VALIDATION_MEDIA_DIR`                              | Where the media is written. Nothing is written without it.                                                                                                      |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES`                        | The written recording's frame cap, after the patch above. `1600` keeps every frame of a 24-second take, so the replay plays back at the 64 Hz it was driven at. |
+| `TCAB_SHOWCASE_SEED`, `TCAB_SHOWCASE_PHASE`              | The take to record. Naming a seed skips the audition.                                                                                                           |
+| `TCAB_SHOWCASE_SEEDS`, `TCAB_SHOWCASE_PHASES`            | The takes auditioned when no seed is named, as comma-separated lists.                                                                                           |
+| `TCAB_SHOWCASE_MIN_SECONDS`, `TCAB_SHOWCASE_MAX_SECONDS` | The clip's bounds in game time. The take ends on the first settled board past the minimum, never mid-chain and never on the level-clear screen.                 |
+| `TCAB_SHOWCASE_QA_STILLS`                                | `1` writes a still every two seconds, for eyeballing a take.                                                                                                    |
 
 ## Auditioning
 

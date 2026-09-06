@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RegisteredAction, SurfaceMetrics } from "./contract";
-import { InputRegistry, MENU_ACTIONS, TOUCH_LAYOUTS, touchLayout } from "./input";
+import {
+  InputRegistry,
+  MENU_ACTIONS,
+  TOUCH_LAYOUTS,
+  touchLayout,
+} from "./input";
 
 /**
  * A surface over a bare `EventTarget`.
@@ -24,7 +29,9 @@ function surfaceOver(target: EventTarget): SurfaceMetrics {
  * to turn browser input into actions, so stubbing the event out would test nothing.
  */
 function keyDown(target: EventTarget, code: string, repeat = false): void {
-  target.dispatchEvent(new KeyboardEvent("keydown", { code, repeat, bubbles: true }));
+  target.dispatchEvent(
+    new KeyboardEvent("keydown", { code, repeat, bubbles: true }),
+  );
 }
 
 function keyUp(target: EventTarget, code: string): void {
@@ -93,17 +100,30 @@ describe("TOUCH_LAYOUTS", () => {
   });
 
   it("gives every stick layout four directions per stick, and no pad any", () => {
-    for (const name of ["single-stick", "dual-stick", "dual-stick-two-buttons"]) {
+    for (const name of [
+      "single-stick",
+      "dual-stick",
+      "dual-stick-two-buttons",
+    ]) {
       const actions = TOUCH_LAYOUTS[name]?.actions ?? [];
       expect(actions).toEqual(
-        expect.arrayContaining(["move-up", "move-down", "move-left", "move-right"]),
+        expect.arrayContaining([
+          "move-up",
+          "move-down",
+          "move-left",
+          "move-right",
+        ]),
       );
     }
 
     for (const name of ["dpad-4", "dpad-4-two-buttons"]) {
       const actions = TOUCH_LAYOUTS[name]?.actions ?? [];
-      expect(actions.filter((action) => action.startsWith("move-"))).toEqual([]);
-      expect(actions.filter((action) => action.startsWith("look-"))).toEqual([]);
+      expect(actions.filter((action) => action.startsWith("move-"))).toEqual(
+        [],
+      );
+      expect(actions.filter((action) => action.startsWith("look-"))).toEqual(
+        [],
+      );
     }
 
     // Only the two-stick entries carry a look axis, which is the whole distinction
@@ -121,7 +141,9 @@ describe("TOUCH_LAYOUTS", () => {
 
   it("carries the menu vocabulary in every layout, in the documented order and last", () => {
     for (const layout of Object.values(TOUCH_LAYOUTS)) {
-      expect(layout.actions.slice(-MENU_ACTIONS.length)).toEqual([...MENU_ACTIONS]);
+      expect(layout.actions.slice(-MENU_ACTIONS.length)).toEqual([
+        ...MENU_ACTIONS,
+      ]);
     }
     expect(MENU_ACTIONS).toEqual(["confirm", "back", "pause", "mute"]);
   });
@@ -148,14 +170,18 @@ describe("touchLayout", () => {
   });
 
   it("throws on an unknown layout rather than falling back to a default", () => {
-    expect(() => touchLayout("dpad-8")).toThrow(/Unknown touch layout "dpad-8"/);
+    expect(() => touchLayout("dpad-8")).toThrow(
+      /Unknown touch layout "dpad-8"/,
+    );
   });
 
   it("rejects a 2D layout name, since the catalogues are separate and closed", () => {
     // `dual-vertical` and `single-vertical` are the sibling 2D engine's entries; a
     // case that carried its layout across must fail rather than fall back.
     expect(() => touchLayout("dual-vertical")).toThrow(/Unknown touch layout/);
-    expect(() => touchLayout("single-vertical")).toThrow(/Unknown touch layout/);
+    expect(() => touchLayout("single-vertical")).toThrow(
+      /Unknown touch layout/,
+    );
   });
 
   it("names every valid layout in the failure, since the cause is usually a typo", () => {
@@ -196,17 +222,25 @@ describe("InputRegistry", () => {
       // What a validator dispatches: not a `KeyboardEvent` from this realm, but an
       // object shaped like one. The registry narrows structurally, so this is the
       // same path a player's keystroke takes.
-      const down = Object.assign(new Event("keydown"), { code: "Space", repeat: false });
+      const down = Object.assign(new Event("keydown"), {
+        code: "Space",
+        repeat: false,
+      });
       target.dispatchEvent(down);
 
       expect(input.value("fire")).toBe(1);
       expect(input.pressed("fire")).toBe(true);
 
-      const repeated = Object.assign(new Event("keydown"), { code: "Space", repeat: true });
+      const repeated = Object.assign(new Event("keydown"), {
+        code: "Space",
+        repeat: true,
+      });
       target.dispatchEvent(repeated);
       expect(input.pressed("fire")).toBe(false);
 
-      target.dispatchEvent(Object.assign(new Event("keyup"), { code: "Space" }));
+      target.dispatchEvent(
+        Object.assign(new Event("keyup"), { code: "Space" }),
+      );
       expect(input.value("fire")).toBe(0);
     });
 
@@ -389,7 +423,10 @@ describe("InputRegistry", () => {
     it("names both valid kinds in the rejection, so the fix is in the message", () => {
       let message = "";
       try {
-        input.register("throttle", { keys: ["ShiftLeft"], kind: "axis" as never });
+        input.register("throttle", {
+          keys: ["ShiftLeft"],
+          kind: "axis" as never,
+        });
       } catch (error) {
         message = (error as Error).message;
       }
@@ -415,7 +452,12 @@ describe("InputRegistry", () => {
 
     beforeEach(() => {
       input.useLayout("dual-stick");
-      for (const action of ["move-up", "move-down", "move-left", "move-right"]) {
+      for (const action of [
+        "move-up",
+        "move-down",
+        "move-left",
+        "move-right",
+      ]) {
         input.register(action, { keys: [], kind: "analog" });
       }
     });
@@ -431,10 +473,16 @@ describe("InputRegistry", () => {
 
     it("rebuilds the signed axis a game reads by subtracting one direction from its opposite", () => {
       pushStick(-0.5, 0);
-      expect(input.value("move-right") - input.value("move-left")).toBeCloseTo(-0.5, 6);
+      expect(input.value("move-right") - input.value("move-left")).toBeCloseTo(
+        -0.5,
+        6,
+      );
 
       pushStick(0.25, 0);
-      expect(input.value("move-right") - input.value("move-left")).toBeCloseTo(0.25, 6);
+      expect(input.value("move-right") - input.value("move-left")).toBeCloseTo(
+        0.25,
+        6,
+      );
 
       pushStick(0, 0);
       expect(input.value("move-right") - input.value("move-left")).toBe(0);
@@ -468,7 +516,12 @@ describe("InputRegistry", () => {
     });
 
     it("keeps the two sticks apart, so a look deflection leaves the move axis alone", () => {
-      for (const action of ["look-up", "look-down", "look-left", "look-right"]) {
+      for (const action of [
+        "look-up",
+        "look-down",
+        "look-left",
+        "look-right",
+      ]) {
         input.register(action, { keys: [], kind: "analog" });
       }
 
@@ -650,7 +703,11 @@ describe("InputRegistry", () => {
       input.register("look-right", { keys: ["ArrowRight"], kind: "analog" });
       input.setAction("look-right", 0.5);
 
-      for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      for (const bad of [
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        Number.NEGATIVE_INFINITY,
+      ]) {
         expect(() => input.setAction("look-right", bad)).toThrow(/finite/);
       }
 
@@ -664,7 +721,12 @@ describe("InputRegistry", () => {
       input.register("fire", { keys: ["Space"] });
 
       expect(input.actions()).toEqual<RegisteredAction[]>([
-        { name: "move-up", keys: ["KeyW", "ArrowUp"], kind: "analog", layout: null },
+        {
+          name: "move-up",
+          keys: ["KeyW", "ArrowUp"],
+          kind: "analog",
+          layout: null,
+        },
         { name: "fire", keys: ["Space"], kind: "digital", layout: null },
       ]);
     });
@@ -690,7 +752,11 @@ describe("InputRegistry", () => {
       input.register("c", { keys: ["KeyC"] });
       input.register("b", { keys: ["KeyN"] });
 
-      expect(input.actions().map((action) => action.name)).toEqual(["a", "b", "c"]);
+      expect(input.actions().map((action) => action.name)).toEqual([
+        "a",
+        "b",
+        "c",
+      ]);
       expect(input.actions()[1]?.keys).toEqual(["KeyN"]);
     });
 
@@ -715,7 +781,9 @@ describe("InputRegistry", () => {
     });
 
     it("accepts any name, including one no layout has ever heard of", () => {
-      expect(() => input.register("wobble-the-thing", { keys: ["KeyQ"] })).not.toThrow();
+      expect(() =>
+        input.register("wobble-the-thing", { keys: ["KeyQ"] }),
+      ).not.toThrow();
 
       keyDown(target, "KeyQ");
       expect(input.value("wobble-the-thing")).toBe(1);
@@ -771,7 +839,9 @@ describe("InputRegistry", () => {
       input.register("move-down", { keys: ["KeyS"] });
       input.register("boost", { keys: ["ShiftLeft"] });
 
-      const byName = new Map(input.actions().map((action) => [action.name, action.layout]));
+      const byName = new Map(
+        input.actions().map((action) => [action.name, action.layout]),
+      );
       expect(byName.get("move-up")).toBeNull();
       expect(byName.get("move-down")).toBe("dual-stick");
       expect(byName.get("boost")).toBeNull();
@@ -795,12 +865,19 @@ describe("InputRegistry", () => {
     it("attributes a whole registered vocabulary against the layout in one pass", () => {
       input.useLayout("dual-stick-two-buttons");
       for (const action of touchLayout("dual-stick-two-buttons").actions) {
-        input.register(action, { keys: [], kind: action.startsWith("look-") ? "analog" : "digital" });
+        input.register(action, {
+          keys: [],
+          kind: action.startsWith("look-") ? "analog" : "digital",
+        });
       }
 
       const registered = input.actions();
       expect(registered).toHaveLength(14);
-      expect(registered.every((action) => action.layout === "dual-stick-two-buttons")).toBe(true);
+      expect(
+        registered.every(
+          (action) => action.layout === "dual-stick-two-buttons",
+        ),
+      ).toBe(true);
     });
 
     it("reports the selected layout and its full vocabulary, as a copy", () => {

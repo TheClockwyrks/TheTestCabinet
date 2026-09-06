@@ -67,7 +67,12 @@ export function compilePanels(
     const query: GgQuery = {
       ...compiled,
       ...(compiled.stats
-        ? { stats: { ...compiled.stats, groupBy: retune(compiled.stats.groupBy, range) } }
+        ? {
+            stats: {
+              ...compiled.stats,
+              groupBy: retune(compiled.stats.groupBy, range),
+            },
+          }
         : {}),
     };
     if (scope) {
@@ -96,9 +101,14 @@ function retune(
   groupBy: readonly GgGroupKey[] | undefined,
   range: TimeRange,
 ): GgGroupKey[] | undefined {
-  if (!groupBy || groupBy.length === 0) return groupBy as GgGroupKey[] | undefined;
+  if (!groupBy || groupBy.length === 0)
+    return groupBy as GgGroupKey[] | undefined;
   const [first, ...rest] = groupBy;
-  if (!first || first.kind !== "bucket" || !GG_DATE_FIELDS.includes(first.field)) {
+  if (
+    !first ||
+    first.kind !== "bucket" ||
+    !GG_DATE_FIELDS.includes(first.field)
+  ) {
     return [...groupBy];
   }
   return [{ ...first, interval: range.interval }, ...rest];

@@ -32,19 +32,19 @@ observability requires no code change and no rebuild.
 
 ## Instrumented processes
 
-| Process | Service name | Instrumentation |
-| ------- | ------------ | --------------- |
-| [Core](/components/core/overview/) (in-process in every runner) | — | Orchestration spans for the run lifecycle (seeding, container execution, harness invocation, validation, publish), outbound context propagation on its HTTP calls, and `TRACEPARENT` on the subprocesses it shells out to. |
-| [Dispatcher](/components/dispatcher/overview/) | `tcab-dispatcher` | Control-loop spans for claiming queued runs and creating per-run driver `Job`s. |
-| [Driver](/components/driver/overview/) | `tcab-driver` | Run-execution spans, inbound trace-context extraction from the enqueued request, outbound context propagation to the backend, and publisher spans. |
-| [Backend](/components/backend/overview/) | `tcab-backend` | Axum server spans, inbound trace-context extraction, and request metrics. |
-| [Auth service](/components/auth/overview/) | `tcab-auth-service` | Axum server spans and inbound trace-context extraction. |
-| [Artifact service](/components/artifacts/overview/) | `tcab-artifacts` | Axum server spans and inbound trace-context extraction. |
-| [Arena service](/components/arena/overview/) | `tcab-arena` | Axum server spans and inbound trace-context extraction. |
-| [CLI](/components/cli/overview/) (`tcab`) | `tcab-cli` | Init plus a span per command, driving the core's run spans. |
-| [Agent harness](/harnesses/overview/) (in the run container) | `tcab-harness-<slug>` | Per harness, where the vendor supports it; see [harness telemetry](#harness-telemetry). |
-| [Tauri app](/components/tauri/overview/) | `tcab-desktop` | Init plus command spans, driving the core's run spans. |
-| [Web console](/components/web/overview/) | `tcab-web` | Browser traces only: a span per `fetch`, with a `traceparent` header injected on every outbound request. |
+| Process                                                         | Service name          | Instrumentation                                                                                                                                                                                                            |
+| --------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Core](/components/core/overview/) (in-process in every runner) | —                     | Orchestration spans for the run lifecycle (seeding, container execution, harness invocation, validation, publish), outbound context propagation on its HTTP calls, and `TRACEPARENT` on the subprocesses it shells out to. |
+| [Dispatcher](/components/dispatcher/overview/)                  | `tcab-dispatcher`     | Control-loop spans for claiming queued runs and creating per-run driver `Job`s.                                                                                                                                            |
+| [Driver](/components/driver/overview/)                          | `tcab-driver`         | Run-execution spans, inbound trace-context extraction from the enqueued request, outbound context propagation to the backend, and publisher spans.                                                                         |
+| [Backend](/components/backend/overview/)                        | `tcab-backend`        | Axum server spans, inbound trace-context extraction, and request metrics.                                                                                                                                                  |
+| [Auth service](/components/auth/overview/)                      | `tcab-auth-service`   | Axum server spans and inbound trace-context extraction.                                                                                                                                                                    |
+| [Artifact service](/components/artifacts/overview/)             | `tcab-artifacts`      | Axum server spans and inbound trace-context extraction.                                                                                                                                                                    |
+| [Arena service](/components/arena/overview/)                    | `tcab-arena`          | Axum server spans and inbound trace-context extraction.                                                                                                                                                                    |
+| [CLI](/components/cli/overview/) (`tcab`)                       | `tcab-cli`            | Init plus a span per command, driving the core's run spans.                                                                                                                                                                |
+| [Agent harness](/harnesses/overview/) (in the run container)    | `tcab-harness-<slug>` | Per harness, where the vendor supports it; see [harness telemetry](#harness-telemetry).                                                                                                                                    |
+| [Tauri app](/components/tauri/overview/)                        | `tcab-desktop`        | Init plus command spans, driving the core's run spans.                                                                                                                                                                     |
+| [Web console](/components/web/overview/)                        | `tcab-web`            | Browser traces only: a span per `fetch`, with a `traceparent` header injected on every outbound request.                                                                                                                   |
 
 The core has no service name of its own. It is a library that runs in-process
 inside whichever runner launched it, so its spans are emitted under that host's
@@ -52,7 +52,7 @@ service name: the CLI, the desktop app, or the driver.
 
 ## Cluster resource metrics
 
-Everything in the table above is telemetry our own processes *push*. It says
+Everything in the table above is telemetry our own processes _push_. It says
 nothing about what a container actually consumed — and that is the data needed to
 size a run pod's memory request to its real peak (run pods carry no memory limit;
 see [memory ceilings](/deployment/kubernetes/overview/#memory-ceilings)) and to
@@ -71,14 +71,14 @@ Only nine series per container are kept; cAdvisor exposes several hundred, and
 per-run pods churn their names constantly, so the rest would be TSDB weight nobody
 queries. What is kept, and why:
 
-| Series | Answers |
-| --- | --- |
-| `container_memory_max_usage_bytes` | The **cgroup's own high-water mark**, maintained continuously by the kernel — so it catches a spike that happened between two scrapes. This is the sizing number. |
-| `container_memory_working_set_bytes` | What the kubelet actually evicts on. |
-| `container_spec_memory_limit_bytes` | The configured limit, so a service's peaks can be compared to its ceiling without cross-referencing manifests. Run pods have no limit, so for them this series reports the cgroup's `max` sentinel and is meaningless. |
-| `container_cpu_usage_seconds_total` | Real CPU draw. |
-| `container_cpu_cfs_{periods,throttled_periods,throttled_seconds}_total` | Whether CPU oversubscription is actually costing anything. |
-| `container_spec_cpu_{quota,shares}` | The configured CPU limit and request. |
+| Series                                                                  | Answers                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `container_memory_max_usage_bytes`                                      | The **cgroup's own high-water mark**, maintained continuously by the kernel — so it catches a spike that happened between two scrapes. This is the sizing number.                                                      |
+| `container_memory_working_set_bytes`                                    | What the kubelet actually evicts on.                                                                                                                                                                                   |
+| `container_spec_memory_limit_bytes`                                     | The configured limit, so a service's peaks can be compared to its ceiling without cross-referencing manifests. Run pods have no limit, so for them this series reports the cgroup's `max` sentinel and is meaningless. |
+| `container_cpu_usage_seconds_total`                                     | Real CPU draw.                                                                                                                                                                                                         |
+| `container_cpu_cfs_{periods,throttled_periods,throttled_seconds}_total` | Whether CPU oversubscription is actually costing anything.                                                                                                                                                             |
+| `container_spec_cpu_{quota,shares}`                                     | The configured CPU limit and request.                                                                                                                                                                                  |
 
 Read the first two together rather than picking one. `max_usage` includes
 reclaimable page cache, which the kernel drops under pressure instead of
@@ -96,7 +96,7 @@ The windows differ because the questions do: a trace answers "what happened in t
 run" and is read within days, whereas a peak-memory figure is only trustworthy over
 a window wide enough to contain the rare heavy test case.
 
-Useful queries, in Grafana *Explore* against the Prometheus datasource:
+Useful queries, in Grafana _Explore_ against the Prometheus datasource:
 
 ```promql
 # The largest memory any run pod has ever reached — what the sandbox memory
@@ -121,7 +121,7 @@ max_over_time(container_memory_working_set_bytes{container="backend"}[30d])
 ```
 
 One limit worth knowing: cAdvisor labels series with `pod`, `namespace` and
-`container` only — never a pod's own labels. So these group by *pod*, not by test
+`container` only — never a pod's own labels. So these group by _pod_, not by test
 case, and a run pod's name carries no case identity. Global figures (the queries
 above) are exactly right for sizing one cluster-wide limit; per-case sizing would
 need `kube-state-metrics` deployed to join `kube_pod_labels` against the run's
@@ -187,16 +187,16 @@ The support matrix, the exact variables and config files written, and the reason
 for the gaps live with each harness, on its Telemetry page; start at
 [Harnesses](/harnesses/overview/). In summary:
 
-| Harness | Exports | Joins the run's trace |
-| --- | --- | --- |
-| [Claude Code](/harnesses/claude/telemetry/) | traces, metrics, logs | Yes, reads the standard `TRACEPARENT` |
-| [OpenCode](/harnesses/opencode/telemetry/) | traces, metrics, logs | Yes, via the plugin's `OPENCODE_TRACEPARENT` |
-| [Codex](/harnesses/codex/telemetry/) | traces, logs | No, correlate by resource attribute |
-| [Goose](/harnesses/goose/telemetry/) | traces, metrics, logs | No, correlate by resource attribute |
-| [Kilo Code](/harnesses/kilo/telemetry/) | traces, logs | No, correlate by resource attribute |
-| [Cline](/harnesses/cline/telemetry/) | — | — |
-| [Pi](/harnesses/pi/telemetry/) | — | — |
-| [Antigravity](/harnesses/antigravity/telemetry/) | — | — |
+| Harness                                          | Exports               | Joins the run's trace                        |
+| ------------------------------------------------ | --------------------- | -------------------------------------------- |
+| [Claude Code](/harnesses/claude/telemetry/)      | traces, metrics, logs | Yes, reads the standard `TRACEPARENT`        |
+| [OpenCode](/harnesses/opencode/telemetry/)       | traces, metrics, logs | Yes, via the plugin's `OPENCODE_TRACEPARENT` |
+| [Codex](/harnesses/codex/telemetry/)             | traces, logs          | No, correlate by resource attribute          |
+| [Goose](/harnesses/goose/telemetry/)             | traces, metrics, logs | No, correlate by resource attribute          |
+| [Kilo Code](/harnesses/kilo/telemetry/)          | traces, logs          | No, correlate by resource attribute          |
+| [Cline](/harnesses/cline/telemetry/)             | —                     | —                                            |
+| [Pi](/harnesses/pi/telemetry/)                   | —                     | —                                            |
+| [Antigravity](/harnesses/antigravity/telemetry/) | —                     | —                                            |
 
 Every exporting harness reports under the service name `tcab-harness-<slug>` and
 carries `tcab.harness`, `tcab.test_case`, `tcab.variant`, `tcab.model`, and
@@ -223,16 +223,16 @@ All binaries read the standard `OTEL_*` variables, consumed directly by the
 OpenTelemetry SDK, plus one custom variable. Export is over OTLP HTTP/protobuf to
 the collector's `:4318` port.
 
-| Variable | Purpose | Notes |
-| -------- | ------- | ----- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Master switch and collector base URL. Unset or blank disables export. | HTTP/protobuf base, e.g. `http://localhost:4318`. See the endpoint-duality note below. |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol selection. | The binaries export over HTTP/protobuf, the SDK default for the `:4318` endpoint. |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Extra export headers, such as an auth token for a hosted collector. | Comma-separated `key=value` pairs. |
-| `OTEL_SERVICE_NAME` | Overrides the seeded `service.name`. | Defaults to the per-binary name in the table above. |
-| `OTEL_RESOURCE_ATTRIBUTES` | Extra or overriding resource attributes. | Standard SDK variable. |
-| `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` | Sampler configuration. | Standard SDK variables. |
-| `TCAB_ENV` | Sets the `deployment.environment.name` resource attribute. | Custom to this project. Default `local`; set to `dev`, `staging`, or `prod`. |
-| `RUST_LOG` | Stdout log filter. | Falls back to each binary's default when unset. |
+| Variable                                          | Purpose                                                               | Notes                                                                                  |
+| ------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`                     | Master switch and collector base URL. Unset or blank disables export. | HTTP/protobuf base, e.g. `http://localhost:4318`. See the endpoint-duality note below. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`                     | Protocol selection.                                                   | The binaries export over HTTP/protobuf, the SDK default for the `:4318` endpoint.      |
+| `OTEL_EXPORTER_OTLP_HEADERS`                      | Extra export headers, such as an auth token for a hosted collector.   | Comma-separated `key=value` pairs.                                                     |
+| `OTEL_SERVICE_NAME`                               | Overrides the seeded `service.name`.                                  | Defaults to the per-binary name in the table above.                                    |
+| `OTEL_RESOURCE_ATTRIBUTES`                        | Extra or overriding resource attributes.                              | Standard SDK variable.                                                                 |
+| `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` | Sampler configuration.                                                | Standard SDK variables.                                                                |
+| `TCAB_ENV`                                        | Sets the `deployment.environment.name` resource attribute.            | Custom to this project. Default `local`; set to `dev`, `staging`, or `prod`.           |
+| `RUST_LOG`                                        | Stdout log filter.                                                    | Falls back to each binary's default when unset.                                        |
 
 The web console uses the same names with a `VITE_` prefix
 (`VITE_OTEL_EXPORTER_OTLP_ENDPOINT`, `VITE_OTEL_SERVICE_NAME`, `VITE_TCAB_ENV`);
@@ -246,10 +246,10 @@ The local Grafana LGTM stack runs in the k3d cluster, so the right value for
 `OTEL_EXPORTER_OTLP_ENDPOINT` depends on whether the process runs inside that
 cluster:
 
-| Process | Runs | Local endpoint |
-| ------- | ---- | -------------- |
-| Backend, auth, dispatcher, driver, artifacts, arena | in the cluster | `http://tcab-lgtm:4318` (in-cluster Service DNS), set by the [observability component](#local-stack-grafana-lgtm) |
-| `cargo run` binary in the devcontainer, host `tcab` CLI or desktop app, browser | outside the cluster | `http://localhost:4318`, via `make -C deployments/local local-grafana` |
+| Process                                                                         | Runs                | Local endpoint                                                                                                    |
+| ------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Backend, auth, dispatcher, driver, artifacts, arena                             | in the cluster      | `http://tcab-lgtm:4318` (in-cluster Service DNS), set by the [observability component](#local-stack-grafana-lgtm) |
+| `cargo run` binary in the devcontainer, host `tcab` CLI or desktop app, browser | outside the cluster | `http://localhost:4318`, via `make -C deployments/local local-grafana`                                            |
 
 The in-cluster services need no env-file change: the local overlay points each at
 `tcab-lgtm`. For a binary run outside the cluster, run

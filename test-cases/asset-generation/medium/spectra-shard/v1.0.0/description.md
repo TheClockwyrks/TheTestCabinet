@@ -1,4 +1,4 @@
-**Spectra Shard** is the fixed-band crystalline drone from *Spectra*, a two-band
+**Spectra Shard** is the fixed-band crystalline drone from _Spectra_, a two-band
 formation shooter. It is the basic enemy and the bulk of every formation.
 
 This asset-generation case asks a model to draw it as a 64×64 sprite using only

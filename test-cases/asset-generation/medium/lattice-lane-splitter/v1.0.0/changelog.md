@@ -12,5 +12,5 @@ Introduced.
   output arrow, splitting ridge, and moving spreader heads are drawn on a registered
   `mechanism` layer, and the transport-belt surface runs unbroken beneath it
   (including under the machine) instead of stopping at the mouths. So an item rides
-  the belt and passes *under* the mechanism, which the renderer can composite over
+  the belt and passes _under_ the mechanism, which the renderer can composite over
   items rather than fading them out at the machine.

@@ -20,9 +20,9 @@ it changes the axis it travels on only at a tile center.
 
 A bear is always settled on one tile or travelling into a neighboring one.
 
-| Reported | Meaning |
-| --- | --- |
-| `col`, `row` | The tile it last settled on. |
+| Reported             | Meaning                                                                    |
+| -------------------- | -------------------------------------------------------------------------- |
+| `col`, `row`         | The tile it last settled on.                                               |
 | `stepCol`, `stepRow` | The tile it is travelling into. Equal to `col`, `row` while it is settled. |
 
 While it is between tiles it occupies both of those tiles, and every rule that
@@ -62,10 +62,10 @@ A tile is **closed** to a bear when any of the following holds. A step into a
 closed tile is refused: the bear stays settled where it is, on the strait and
 unharmed, and chooses again on the next tick.
 
-| Closed when the tile |
-| --- |
-| Is outside the grid: `inBounds(col, row)` is false. |
-| Is on row `0` or row `1`, the far shore. |
+| Closed when the tile                                       |
+| ---------------------------------------------------------- |
+| Is outside the grid: `inBounds(col, row)` is false.        |
+| Is on row `0` or row `1`, the far shore.                   |
 | Is covered by a vehicle, as `specs/ice.md` fixes covering. |
 
 A tile is **open** to a bear when it is not closed and no vehicle of its lane
@@ -98,9 +98,9 @@ A slot falls empty when a crossing begins and when the bear filling it leaves th
 strait. An empty slot fills the moment both of its conditions hold, and a bear
 appears settled on the near shore in the critter's column, facing `up`.
 
-| Slot | Rows the critter must have advanced | Seconds since the slot fell empty |
-| --- | --- | --- |
-| First | `BEAR_EMERGE_ADVANCE` (`3`) | `BEAR_EMERGE_DELAY` (`0.6`) |
+| Slot   | Rows the critter must have advanced               | Seconds since the slot fell empty               |
+| ------ | ------------------------------------------------- | ----------------------------------------------- |
+| First  | `BEAR_EMERGE_ADVANCE` (`3`)                       | `BEAR_EMERGE_DELAY` (`0.6`)                     |
 | Second | `BEAR_EMERGE_ADVANCE + BEAR_SECOND_ADVANCE` (`6`) | `BEAR_EMERGE_DELAY + BEAR_SECOND_DELAY` (`2.0`) |
 
 `BEAR_SECOND_ADVANCE` is `3` and `BEAR_SECOND_DELAY` is `1.4`. The rows the
@@ -112,10 +112,10 @@ advanced none.
 
 A bear leaves the strait, and its slot falls empty, on each of these:
 
-| Event | What happens |
-| --- | --- |
+| Event                 | What happens                                                                                                         |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | Traffic arrives on it | A vehicle in a lane whose speed is above `0` covers either of the two tiles the bear occupies, and that bear leaves. |
-| A crossing ends | The critter loses a life, or a crossing ends in a bay, and every bear on the strait leaves. |
+| A crossing ends       | The critter loses a life, or a crossing ends in a bay, and every bear on the strait leaves.                          |
 
 A bear removed by traffic is replaced on the emerging conditions above, so its
 slot fills again once its delay has passed.

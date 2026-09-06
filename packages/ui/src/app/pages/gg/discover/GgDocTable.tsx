@@ -10,7 +10,11 @@
 // `metric.runTimeSeconds >= 1800` and getting a table with no run-time column is the
 // oldest failure of a results grid.
 import { Link } from "react-router";
-import type { GgFilter, GgRunDoc, GgSortKey } from "@clockwyrks/run-record/gg-query";
+import type {
+  GgFilter,
+  GgRunDoc,
+  GgSortKey,
+} from "@clockwyrks/run-record/gg-query";
 import { routes } from "../../../routes";
 import { ABSENT, formatFieldValue, rawValue } from "./cells";
 import styles from "./GgDiscover.module.scss";
@@ -113,7 +117,9 @@ export function GgDocTable({
                   return (
                     <td
                       key={column}
-                      className={typeof value === "number" ? styles.numCol : undefined}
+                      className={
+                        typeof value === "number" ? styles.numCol : undefined
+                      }
                       title={rawValue(value)}
                     >
                       {formatFieldValue(column, value)}

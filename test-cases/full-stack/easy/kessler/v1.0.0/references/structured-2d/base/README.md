@@ -58,15 +58,15 @@ The field is driven from the keyboard; the menus answer the pointer and touch
 as well. Keys are bound by physical position (`KeyboardEvent.code`), so they
 hold on any layout.
 
-| Action | Keys |
-| --- | --- |
-| Rotate the deflector | `ArrowLeft` / `KeyA` and `ArrowRight` / `KeyD` (held) |
-| Launch the parked ball | `Space` |
-| Menus: move the highlight | `ArrowUp` / `KeyW` and `ArrowDown` / `KeyS` |
-| Menus: confirm | `Space` or `Enter` |
-| Menus: pointer or touch | Move onto an entry to highlight it; press and release inside it to accept it |
-| Pause / back | `Escape` or `KeyP` |
-| Debug overlay | `Backquote` (`` ` ``) — engine chrome, not a game action |
+| Action                    | Keys                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| Rotate the deflector      | `ArrowLeft` / `KeyA` and `ArrowRight` / `KeyD` (held)                        |
+| Launch the parked ball    | `Space`                                                                      |
+| Menus: move the highlight | `ArrowUp` / `KeyW` and `ArrowDown` / `KeyS`                                  |
+| Menus: confirm            | `Space` or `Enter`                                                           |
+| Menus: pointer or touch   | Move onto an entry to highlight it; press and release inside it to accept it |
+| Pause / back              | `Escape` or `KeyP`                                                           |
+| Debug overlay             | `Backquote` (`` ` ``) — engine chrome, not a game action                     |
 
 ## The source, file by file
 

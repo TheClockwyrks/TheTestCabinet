@@ -85,7 +85,11 @@ export function decideValidatorRun(
       : overrides.map((o) => effectiveVerdicts(auto, o));
   const domainRatings = new Map<string, Rating>();
   for (const verdicts of verdictSets) {
-    for (const r of verdictDomainRatings(model.domains, model.items, verdicts)) {
+    for (const r of verdictDomainRatings(
+      model.domains,
+      model.items,
+      verdicts,
+    )) {
       const current = domainRatings.get(r.domain);
       domainRatings.set(
         r.domain,

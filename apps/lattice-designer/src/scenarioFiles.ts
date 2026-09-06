@@ -45,10 +45,7 @@ export async function readScenario(name: string): Promise<unknown> {
  * Overwrite a scenario file with `text`. The text is stored verbatim, so the caller
  * owns the formatting — pass `exportJson`'s output to match the committed style.
  */
-export async function writeScenario(
-  name: string,
-  text: string,
-): Promise<void> {
+export async function writeScenario(name: string, text: string): Promise<void> {
   const response = await fetch(`${ROUTE}/${name}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

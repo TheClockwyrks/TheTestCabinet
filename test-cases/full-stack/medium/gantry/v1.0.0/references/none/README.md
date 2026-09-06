@@ -73,44 +73,44 @@ keys and do not move with the layout.
 
 ### Everywhere
 
-| Key | Does |
-| --- | --- |
+| Key             | Does                                                               |
+| --------------- | ------------------------------------------------------------------ |
 | `↑` `↓` `←` `→` | Move the highlight on a menu; orbit the camera on the yard screens |
-| `Enter` | Take the highlighted menu entry |
-| `Esc` | Back out — see below |
-| `M` | Mute and unmute all sound |
-| `` ` `` | Show and hide the diagnostics overlay |
+| `Enter`         | Take the highlighted menu entry                                    |
+| `Esc`           | Back out — see below                                               |
+| `M`             | Mute and unmute all sound                                          |
+| `` ` ``         | Show and hide the diagnostics overlay                              |
 
 ### The yard camera (build, program and run screens)
 
-| Input | Does |
-| --- | --- |
-| `←` `→` | Turn the camera around the yard |
-| `↑` `↓` | Raise and lower the camera |
-| `=` `-` | Zoom in and out |
-| Drag | Orbit, at a quarter of a degree per pixel |
+| Input   | Does                                      |
+| ------- | ----------------------------------------- |
+| `←` `→` | Turn the camera around the yard           |
+| `↑` `↓` | Raise and lower the camera                |
+| `=` `-` | Zoom in and out                           |
+| Drag    | Orbit, at a quarter of a degree per pixel |
 
 The camera orbits a fixed point above the anchors, and its pose carries across
 the build, program and run screens. Opening a site returns it to its start pose.
 
 ### Building (build screen)
 
-| Key | Tool |
-| --- | --- |
-| `1` | Strut — stiff, cheap, short: the crane's bones |
+| Key | Tool                                                                      |
+| --- | ------------------------------------------------------------------------- |
+| `1` | Strut — stiff, cheap, short: the crane's bones                            |
 | `2` | Cable — very cheap and long, but pulls only; in compression it goes slack |
-| `3` | Rail — a strut that doubles as the trolley's track |
-| `4` | Ring — the slew ring the arm turns on. Every crane needs exactly one |
-| `5` | Weight — a counterweight block hung on a node, to balance the arm |
-| `6` | Delete — removes whatever is under the pointer |
+| `3` | Rail — a strut that doubles as the trolley's track                        |
+| `4` | Ring — the slew ring the arm turns on. Every crane needs exactly one      |
+| `5` | Weight — a counterweight block hung on a node, to balance the arm         |
+| `6` | Delete — removes whatever is under the pointer                            |
 
-| Key | Does |
-| --- | --- |
-| `Z` | Undo the last structure edit, back to when the site was opened |
-| `C` | Static check: solve the crane where it stands and report every member's load |
-| `P` | Go to the tape editor |
-| `G` | Run the tape |
-| `Esc` | Drop a held node, or leave for the site select |
+| Key   | Does                                                                         |
+| ----- | ---------------------------------------------------------------------------- |
+| `Z`   | Undo the last structure edit, back to when the site was opened               |
+| `C`   | Static check: solve the crane where it stands and report every member's load |
+| `P`   | Go to the tape editor                                                        |
+| `G`   | Run the tape                                                                 |
+| `Esc` | Drop a held node, or leave for the site select                               |
 
 With a strut, cable or rail selected, the **first click holds a lattice node**
 and the second click on another node places the member between them. Clicking
@@ -144,9 +144,9 @@ The tape editor is worked entirely with the pointer. Each step is a row:
 
 ### Watching a run (run screen)
 
-| Key | Does |
-| --- | --- |
-| `S` | Cycle the watch speed: ×1, ×2, ×4 |
+| Key   | Does                                          |
+| ----- | --------------------------------------------- |
+| `S`   | Cycle the watch speed: ×1, ×2, ×4             |
 | `Esc` | Abort the run and go back to the build screen |
 
 You steer nothing during a run — the tape does. You turn the camera and watch.
@@ -171,22 +171,22 @@ npm test             # vitest run --coverage
 Everything is under `src/`, and the whole of the running game is one value that
 the frame loop replaces each frame.
 
-| Path | What lives there |
-| --- | --- |
-| `src/main.ts` | The entry point `index.html` loads: finds the canvas and boots |
-| `src/app.ts` | The frame loop, the fixed-tick accumulator, and the cues a tick raises |
-| `src/state.ts` | The game's state and the pure transitions over it |
-| `src/sim/` | The simulation core: the truss solve, the axis controller, the pendulum, collisions, breakage, and the tick pipeline. It renders nothing and reads no input |
-| `src/editor.ts` | Pointer picking on the lattice and the six build tools |
-| `src/screens.ts`, `src/screens-tape.ts` | The seven screens, the navigation, and the tape editor's widgets |
-| `src/menus.ts` | Where the menu entries are laid out, and what a pointer or a contact lands on |
-| `src/render*.ts` | The `three` yard, the camera and projection, and the 2D screen layer over it |
-| `src/runtime*.ts` | The runtime this build stands on: canvas fit, keyboard, pointer, audio, and the diagnostics overlay |
-| `src/assets.ts` | Loading the produced models and sounds through the bundler |
-| `src/debug.ts` | The `window.__gantry` automation surface |
-| `src/constants.ts` | Every figure the game is specified in terms of |
-| `assets/` | The produced models (`.glb`) and sounds (`.wav`), committed |
-| `scripts/` | What produced them. Nothing here runs at build time |
+| Path                                    | What lives there                                                                                                                                            |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`                           | The entry point `index.html` loads: finds the canvas and boots                                                                                              |
+| `src/app.ts`                            | The frame loop, the fixed-tick accumulator, and the cues a tick raises                                                                                      |
+| `src/state.ts`                          | The game's state and the pure transitions over it                                                                                                           |
+| `src/sim/`                              | The simulation core: the truss solve, the axis controller, the pendulum, collisions, breakage, and the tick pipeline. It renders nothing and reads no input |
+| `src/editor.ts`                         | Pointer picking on the lattice and the six build tools                                                                                                      |
+| `src/screens.ts`, `src/screens-tape.ts` | The seven screens, the navigation, and the tape editor's widgets                                                                                            |
+| `src/menus.ts`                          | Where the menu entries are laid out, and what a pointer or a contact lands on                                                                               |
+| `src/render*.ts`                        | The `three` yard, the camera and projection, and the 2D screen layer over it                                                                                |
+| `src/runtime*.ts`                       | The runtime this build stands on: canvas fit, keyboard, pointer, audio, and the diagnostics overlay                                                         |
+| `src/assets.ts`                         | Loading the produced models and sounds through the bundler                                                                                                  |
+| `src/debug.ts`                          | The `window.__gantry` automation surface                                                                                                                    |
+| `src/constants.ts`                      | Every figure the game is specified in terms of                                                                                                              |
+| `assets/`                               | The produced models (`.glb`) and sounds (`.wav`), committed                                                                                                 |
+| `scripts/`                              | What produced them. Nothing here runs at build time                                                                                                         |
 
 The simulation is deterministic and has no randomness anywhere: the same crane
 and the same tape produce the same run, tick for tick, at any watch speed and

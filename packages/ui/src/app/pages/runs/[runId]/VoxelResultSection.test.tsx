@@ -187,7 +187,9 @@ describe("VoxelResultSection (animated)", () => {
     expect(
       screen.getByRole("slider", { name: /turret_yaw/ }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: /gun_pitch/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("slider", { name: /gun_pitch/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("slider", { name: /radar_spin/ })).toBeNull();
     expect(screen.queryByRole("slider", { name: /tread_l/ })).toBeNull();
 

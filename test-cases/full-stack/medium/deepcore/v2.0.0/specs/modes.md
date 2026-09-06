@@ -9,10 +9,10 @@ both.
 
 A death is any of:
 
-| Cause | Id |
-| --- | --- |
-| Fuel reaching `0` below the surface ground line | `fuel-out` |
-| Hull standing at `0` | `hull-destroyed` |
+| Cause                                                                                                     | Id                |
+| --------------------------------------------------------------------------------------------------------- | ----------------- |
+| Fuel reaching `0` below the surface ground line                                                           | `fuel-out`        |
+| Hull standing at `0`                                                                                      | `hull-destroyed`  |
 | The Core Sample's timer expiring while it is carried, or while it lies jettisoned within its blast radius | `core-detonation` |
 
 In both modes a death ends the expedition at the Game Over screen, destroys a Core Sample

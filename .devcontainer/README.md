@@ -13,7 +13,7 @@ program-language arms**: `purs` and `esbuild`, a JDK and TeaVM's jars, the Kotli
 compiler, the `wasm32-unknown-unknown` standard library, the Swift toolchain and
 its WebAssembly SDK, wasi-sdk, .NET with Roslyn, uv, and the pinned YARD. That is
 roughly **1.9 GB installed** and a good deal more downloaded to produce it, so
-expect the first *pull or build* of the image to take a while — but a first
+expect the first _pull or build_ of the image to take a while — but a first
 **create** no longer does, which is the point of baking them.
 
 They are not optional and they are not only for gg's tests. Each arm's
@@ -39,7 +39,7 @@ able to read the repository: its build context is the **repo root**, and
 per-dockerfile allowlist that applies to this build and no other — narrows that
 context to the ~230 kB slice the installers actually read. Every `COPY` in the
 Dockerfile is therefore written relative to the repo root. That per-dockerfile file is
-an *optimisation* rather than the thing that makes the build work — builders disagree
+an _optimisation_ rather than the thing that makes the build work — builders disagree
 about when to reach for it — so the root [`.dockerignore`](../.dockerignore) admits the
 same `.devcontainer/` paths as well (see the Podman note under
 [First-time setup](#first-time-setup)). The one toolchain
@@ -77,12 +77,12 @@ The devcontainer references two host-specific files that are not committed —
 without affecting the repository. Create them from the committed variants before
 opening the container.
 
-| Host | `docker-compose.local.yml` | `.env` |
-| --- | --- | --- |
-| Docker on Linux (the default) | `docker-compose.ubuntu.yml` | `.env.ubuntu` |
-| Rootless Podman on Linux (e.g. NixOS) | `docker-compose.nixos.yml` | `.env.podman` |
-| Docker on macOS — Docker Desktop or OrbStack | `docker-compose.macos-docker.yml` | `.env.ubuntu` |
-| Rootless Podman on macOS (`podman machine`) | `docker-compose.macos-podman.yml` | `.env.macos-podman` |
+| Host                                         | `docker-compose.local.yml`        | `.env`              |
+| -------------------------------------------- | --------------------------------- | ------------------- |
+| Docker on Linux (the default)                | `docker-compose.ubuntu.yml`       | `.env.ubuntu`       |
+| Rootless Podman on Linux (e.g. NixOS)        | `docker-compose.nixos.yml`        | `.env.podman`       |
+| Docker on macOS — Docker Desktop or OrbStack | `docker-compose.macos-docker.yml` | `.env.ubuntu`       |
+| Rootless Podman on macOS (`podman machine`)  | `docker-compose.macos-podman.yml` | `.env.macos-podman` |
 
 One macOS row covers Docker Desktop and OrbStack both: OrbStack is a drop-in
 Docker-API runtime, and where this file cares — a daemon in a managed VM, no UID
@@ -127,7 +127,7 @@ ends the build and names the architecture.
 > **Podman may read a different ignore file, and both are now correct.** Since the gg
 > toolchains were baked in, this image builds from the **repository root** and narrows
 > that context with [`ubuntu.dockerfile.dockerignore`](ubuntu.dockerfile.dockerignore)
-> — a *per-dockerfile* ignore file, which is a **BuildKit** rule. Buildah has its own
+> — a _per-dockerfile_ ignore file, which is a **BuildKit** rule. Buildah has its own
 > order (`--ignorefile`, then `<containerfile>.containerignore`, then
 > `<containerfile>.dockerignore`, then the context directory's `.containerignore` and
 > `.dockerignore`), and a rebuild driven by VS Code through `podman-compose` did not
@@ -160,7 +160,7 @@ ends the build and names the architecture.
 
 ### Podman on macOS
 
-Podman on macOS *is* `podman machine`: a Linux VM you own and configure, rather
+Podman on macOS _is_ `podman machine`: a Linux VM you own and configure, rather
 than one a runtime hides from you. Everything that makes this row different from
 the Docker row above follows from that, and from one rule worth stating plainly —
 **a bind mount's source is a path on your Mac, which the VM sees only because the
@@ -178,7 +178,7 @@ brew install podman podman-compose
 ```
 
 Then point the Dev Containers extension at them. Both settings are
-**machine-scoped**, so they belong in your *User* `settings.json` and cannot be
+**machine-scoped**, so they belong in your _User_ `settings.json` and cannot be
 committed here for you:
 
 ```json
@@ -212,7 +212,7 @@ the machine the path when you create it: `podman machine init -v /path:/path`.
 stopped), which is what `setup-host.sh` checks before it writes anything. Two
 things hang off it. The runtime socket a rootful machine serves is
 `/run/podman/podman.sock`, which is what the local service stack talks to; and
-`userns_mode: keep-id` — the setting the *Linux* Podman row uses to make the
+`userns_mode: keep-id` — the setting the _Linux_ Podman row uses to make the
 checkout writable — is rootless-only, so a rootful machine has to solve that
 problem a different way. It does, below.
 
@@ -391,7 +391,7 @@ The macOS Docker row deliberately does **not** interpolate the host's
 `$SSH_AUTH_SOCK` the way the Linux Podman row does. On macOS that variable names
 a per-boot random path (an `~/.ssh/agent/s.*` socket, or a launchd `Listeners`
 socket), the compose `up` VS Code runs inherits it, and a bind source the daemon
-cannot find is silently created *as a directory* — so one reboot later the
+cannot find is silently created _as a directory_ — so one reboot later the
 container refuses to start with `not a directory: Are you trying to mount a
 directory onto a file`, leaving a junk directory at the stale path to delete.
 The synthesised socket never goes stale because the runtime resolves it on its

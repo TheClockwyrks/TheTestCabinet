@@ -25,7 +25,10 @@ interface State {
 const game: Game<State, null> = {
   initialize(api: InitApi<State>): [State, null] {
     api.diagnostics.register("phase", (s) => s.phase);
-    api.diagnostics.register("score", (s) => `${s.score.left} - ${s.score.right}`);
+    api.diagnostics.register(
+      "score",
+      (s) => `${s.score.left} - ${s.score.right}`,
+    );
     api.diagnostics.register(
       "ball",
       (s) => `${s.ball.x.toFixed(0)}, ${s.ball.y.toFixed(0)}`,
@@ -92,7 +95,11 @@ interface Timing {
   readonly fps: number;
 }
 
-function update(state: DeepReadonly<Timing>, api: UpdateApi, dt: number): Timing {
+function update(
+  state: DeepReadonly<Timing>,
+  api: UpdateApi,
+  dt: number,
+): Timing {
   return { ...state, fps: Math.round(1000 / api.frame().lastDeltaMs) };
 }
 ```

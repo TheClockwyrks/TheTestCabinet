@@ -25,11 +25,11 @@ the diagonal at that same `CURSOR_SPEED`, so each axis contributes
 
 The cursor fires upward bolts, one at a time.
 
-| Figure | Constant | Value |
-| --- | --- | --- |
-| Interval between bolts | `FIRE_INTERVAL` | `0.15` s |
-| Bolts in flight at once | `MAX_BOLTS` | `3` |
-| Bolt speed | `BOLT_SPEED` | `900` units per second |
+| Figure                  | Constant        | Value                  |
+| ----------------------- | --------------- | ---------------------- |
+| Interval between bolts  | `FIRE_INTERVAL` | `0.15` s               |
+| Bolts in flight at once | `MAX_BOLTS`     | `3`                    |
+| Bolt speed              | `BOLT_SPEED`    | `900` units per second |
 
 The cursor carries a fire cooldown in seconds, which counts down against the
 delta time of each update and rests at `0`. While the fire action is held, a bolt
@@ -48,11 +48,11 @@ each update. Its center `x` never changes.
 As it climbs it resolves against the first thing its center reaches, which is the
 lowest of the following that lies above it in its column:
 
-| Struck | Reached when |
-| --- | --- |
-| A worm segment | The bolt's center is inside the segment's tile. |
-| A node | The bolt's center is inside the node's tile. |
-| A foe | The bolt's center is inside the foe's box, `FOE_HALF` (`12`) units from the foe's center on each axis. |
+| Struck         | Reached when                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| A worm segment | The bolt's center is inside the segment's tile.                                                        |
+| A node         | The bolt's center is inside the node's tile.                                                           |
+| A foe          | The bolt's center is inside the foe's box, `FOE_HALF` (`12`) units from the foe's center on each axis. |
 
 A bolt resolves against exactly one thing and is removed from flight in the same
 update. Where a worm segment and a node share a tile, the bolt resolves against

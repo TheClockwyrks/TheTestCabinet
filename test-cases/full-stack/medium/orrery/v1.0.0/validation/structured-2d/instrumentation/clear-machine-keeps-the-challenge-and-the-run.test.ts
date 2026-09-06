@@ -32,11 +32,7 @@
 // stands is a live run rather than a frozen one.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertEqual,
-  assertNotNull,
-} from "../assert";
+import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
 import { BARE, NORTH, ORIGIN } from "../fixtures";
 import {
   advanceCycles,

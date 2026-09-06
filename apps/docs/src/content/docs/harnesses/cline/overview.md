@@ -29,12 +29,12 @@ npm install -g cline@latest && npm cache clean --force
 A session runs the binary with these flags, followed by the prompt as the final
 positional argument:
 
-| Flag | Purpose |
-| ---- | ------- |
-| `--json` | Emit the line-delimited JSON stream consumed for [events](/harnesses/cline/events/) and [usage](/harnesses/cline/metrics/). |
-| `--auto-approve true` | Run unattended, without per-action approval prompts. |
-| `--provider openrouter` | Route the model through OpenRouter. |
-| `--model <model>` | The model to run. |
+| Flag                    | Purpose                                                                                                                     |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `--json`                | Emit the line-delimited JSON stream consumed for [events](/harnesses/cline/events/) and [usage](/harnesses/cline/metrics/). |
+| `--auto-approve true`   | Run unattended, without per-action approval prompts.                                                                        |
+| `--provider openrouter` | Route the model through OpenRouter.                                                                                         |
+| `--model <model>`       | The model to run.                                                                                                           |
 
 ## Authentication
 

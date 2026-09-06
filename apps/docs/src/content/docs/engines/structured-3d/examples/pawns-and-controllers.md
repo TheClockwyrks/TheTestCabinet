@@ -107,7 +107,11 @@ paddles as it adds its players.
 ## src/actors/lamp.ts
 
 ```ts
-import { Actor, LightComponent, quatFromEuler } from "@clockwyrks/structured-3d";
+import {
+  Actor,
+  LightComponent,
+  quatFromEuler,
+} from "@clockwyrks/structured-3d";
 
 export class Lamp extends Actor {
   constructor() {
@@ -126,7 +130,12 @@ export class Lamp extends Actor {
 ## src/actors/paddle.ts
 
 ```ts
-import { MeshComponent, Pawn, PlayerController, vec3 } from "@clockwyrks/structured-3d";
+import {
+  MeshComponent,
+  Pawn,
+  PlayerController,
+  vec3,
+} from "@clockwyrks/structured-3d";
 import type { Controller } from "@clockwyrks/structured-3d";
 import {
   COURT_HALF_HEIGHT,
@@ -266,8 +275,14 @@ export class DuelMode extends GameMode {
 
   override spawnPoint(controller: Controller): Transform {
     const x =
-      controller instanceof PlayerController ? -COURT_HALF_WIDTH : COURT_HALF_WIDTH;
-    return { position: vec3(x, 0, 0), rotation: QUAT_IDENTITY, scale: VEC3_ONE };
+      controller instanceof PlayerController
+        ? -COURT_HALF_WIDTH
+        : COURT_HALF_WIDTH;
+    return {
+      position: vec3(x, 0, 0),
+      rotation: QUAT_IDENTITY,
+      scale: VEC3_ONE,
+    };
   }
 }
 ```

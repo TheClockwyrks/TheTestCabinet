@@ -11,18 +11,10 @@
     {
       "name": "gold",
       "shape": "point",
-      "position": [
-        64.0,
-        80.0,
-        0.0
-      ],
+      "position": [64.0, 80.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -33,11 +25,7 @@
       "lifetimeSpread": 160.0,
       "speed": 96.0,
       "speedSpread": 26.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 21,
       "forces": {
@@ -73,18 +61,10 @@
     {
       "name": "thrill",
       "shape": "point",
-      "position": [
-        44.0,
-        66.0,
-        0.0
-      ],
+      "position": [44.0, 66.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -95,11 +75,7 @@
       "lifetimeSpread": 150.0,
       "speed": 86.0,
       "speedSpread": 22.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 34,
       "forces": {
@@ -135,18 +111,10 @@
     {
       "name": "thirst",
       "shape": "point",
-      "position": [
-        88.0,
-        72.0,
-        0.0
-      ],
+      "position": [88.0, 72.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -157,11 +125,7 @@
       "lifetimeSpread": 150.0,
       "speed": 88.0,
       "speedSpread": 22.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 47,
       "forces": {
@@ -197,18 +161,10 @@
     {
       "name": "cash",
       "shape": "point",
-      "position": [
-        64.0,
-        60.0,
-        0.0
-      ],
+      "position": [64.0, 60.0, 0.0],
       "extent": {
         "radius": 1.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "burst",
@@ -219,11 +175,7 @@
       "lifetimeSpread": 150.0,
       "speed": 90.0,
       "speedSpread": 24.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 360.0,
       "seed": 58,
       "forces": {

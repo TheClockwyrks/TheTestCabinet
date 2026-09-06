@@ -11,7 +11,7 @@ checksums its state and a mismatch means a simulation diverged.
 field you send is not taken on trust: for every snapshot the host re-serializes
 the `entities` beside it to canonical bytes, hashes those, and requires the
 result to equal both the `checksum` you reported and the reference's. So a
-snapshot passes only when its state *is* the reference's state — reporting the
+snapshot passes only when its state _is_ the reference's state — reporting the
 right checksum next to state that does not hash to it is a wrong answer, and so
 is naming an item the prototype table does not define. Two consequences worth
 planning for:

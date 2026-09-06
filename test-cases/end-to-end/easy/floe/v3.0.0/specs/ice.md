@@ -9,21 +9,21 @@ on top of. The rows the band occupies are in `specs/strait.md`.
 A lane item is a span rather than a point. Its reported `x` is its left edge and
 its length `len` is in tiles, so it occupies `[x, x + TILE * len)` on its own row.
 
-| It covers | When |
-| --- | --- |
+| It covers              | When                                       |
+| ---------------------- | ------------------------------------------ |
 | A point `x` on its row | `x` lies in `[itemX, itemX + TILE * len)`. |
-| A tile of its row | That tile's center is covered. |
-| A body on its row | That body's center is covered. |
+| A tile of its row      | That tile's center is covered.             |
+| A body on its row      | That body's center is covered.             |
 
 `specs/water.md` reads the same rule for a floe.
 
 ## The three vehicles
 
-| Kind | Length | Art |
-| --- | --- | --- |
-| `plow` | `3` tiles | `assets/plow/` |
+| Kind      | Length    | Art               |
+| --------- | --------- | ----------------- |
+| `plow`    | `3` tiles | `assets/plow/`    |
 | `dogsled` | `2` tiles | `assets/dogsled/` |
-| `car` | `2` tiles | `assets/car/` |
+| `car`     | `2` tiles | `assets/car/`     |
 
 `ITEM_LEN` names the length in tiles of every lane item, a floe's as well as a
 vehicle's.
@@ -40,16 +40,16 @@ and `-1` for a lane running leftward. Speed is in tiles per second at level 1,
 and gap is the whole tiles of clear ice a lane leaves between consecutive
 vehicles.
 
-| Row | Kind | Length | `dir` | Speed (level 1) | Gap |
-| --- | --- | --- | --- | --- | --- |
-| `11` | `plow` | `3` | `-1` | `1.7` | `8` |
-| `12` | `car` | `2` | `1` | `2.1` | `7` |
-| `13` | `dogsled` | `2` | `-1` | `2.5` | `7` |
-| `14` | `plow` | `3` | `1` | `1.6` | `8` |
-| `15` | `car` | `2` | `-1` | `2.0` | `7` |
-| `16` | `dogsled` | `2` | `1` | `2.3` | `7` |
-| `17` | `plow` | `3` | `-1` | `1.5` | `8` |
-| `18` | `car` | `2` | `1` | `1.8` | `7` |
+| Row  | Kind      | Length | `dir` | Speed (level 1) | Gap |
+| ---- | --------- | ------ | ----- | --------------- | --- |
+| `11` | `plow`    | `3`    | `-1`  | `1.7`           | `8` |
+| `12` | `car`     | `2`    | `1`   | `2.1`           | `7` |
+| `13` | `dogsled` | `2`    | `-1`  | `2.5`           | `7` |
+| `14` | `plow`    | `3`    | `1`   | `1.6`           | `8` |
+| `15` | `car`     | `2`    | `-1`  | `2.0`           | `7` |
+| `16` | `dogsled` | `2`    | `1`   | `2.3`           | `7` |
+| `17` | `plow`    | `3`    | `-1`  | `1.5`           | `8` |
+| `18` | `car`     | `2`    | `1`   | `1.8`           | `7` |
 
 A lane at speed `s` and direction `d` moves every one of its vehicles by
 `d * s * TILE` units per second of game time.

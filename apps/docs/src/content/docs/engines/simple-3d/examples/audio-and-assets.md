@@ -144,7 +144,11 @@ export const runner: Game<RunnerState, null> = {
     return [state, null];
   },
 
-  update(state: DeepReadonly<RunnerState>, api: UpdateApi, dt: number): RunnerState {
+  update(
+    state: DeepReadonly<RunnerState>,
+    api: UpdateApi,
+    dt: number,
+  ): RunnerState {
     if (api.input.pressed("mute")) api.audio.setMuted(!api.audio.muted());
 
     const startedLeft = api.input.pressed("left");

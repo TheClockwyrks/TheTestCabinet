@@ -43,7 +43,12 @@ export type Dir = "up" | "down" | "left" | "right";
 
 /** Every screen the state machine moves between. The game opens on `title`. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "gameover" | "cleared";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "gameover"
+  | "cleared";
 
 /** The two modes a variant of this case ships, as the snapshot reports one. */
 export type Mode = "classic" | "maze";
@@ -79,7 +84,8 @@ export const OBSTACLE_OPS = ["clearObstacles", "addObstacle"] as const;
 
 /** The name of one operation the surface carries. */
 export type OperationName =
-  (typeof REQUIRED_OPS)[number] | (typeof OBSTACLE_OPS)[number];
+  | (typeof REQUIRED_OPS)[number]
+  | (typeof OBSTACLE_OPS)[number];
 
 /**
  * The operations that READ the running game rather than pose it.

@@ -52,7 +52,14 @@ const CORPUS: GgRunDoc[] = [
     },
   },
   // No summary, no metrics: the run that would silently shrink a rate's denominator.
-  { fields: { id: "c", started: Date.UTC(2026, 6, 3), state: "infra_error", "has.summary": false } },
+  {
+    fields: {
+      id: "c",
+      started: Date.UTC(2026, 6, 3),
+      state: "infra_error",
+      "has.summary": false,
+    },
+  },
   // A run recorded before stage durations were measured: it carries the whole run's
   // wall clock and no session duration at all.
   {
@@ -94,12 +101,21 @@ describe("the built-in overview dashboard", () => {
 
   it("evaluates every panel to a real aggregation over a corpus", () => {
     for (const panel of OVERVIEW_DASHBOARD.panels) {
-      const result = evaluate(CORPUS, compileQuery(parseQuery(panel.query).query));
+      const result = evaluate(
+        CORPUS,
+        compileQuery(parseQuery(panel.query).query),
+      );
       // Every panel is an aggregation, so every one comes back with columns and at
       // least one bucket — a panel that silently produced a document list would be a
       // wall of rows in a quarter-width card.
-      expect(result.columns?.length ?? 0, `panel "${panel.title}"`).toBeGreaterThan(0);
-      expect(result.buckets?.length ?? 0, `panel "${panel.title}"`).toBeGreaterThan(0);
+      expect(
+        result.columns?.length ?? 0,
+        `panel "${panel.title}"`,
+      ).toBeGreaterThan(0);
+      expect(
+        result.buckets?.length ?? 0,
+        `panel "${panel.title}"`,
+      ).toBeGreaterThan(0);
     }
   });
 
@@ -123,7 +139,10 @@ describe("the built-in overview dashboard", () => {
     expect(panel?.query).toContain("metric.sessionSeconds");
     expect(panel?.query).not.toContain("metric.runTimeSeconds");
 
-    const result = evaluate(CORPUS, compileQuery(parseQuery(panel!.query).query));
+    const result = evaluate(
+      CORPUS,
+      compileQuery(parseQuery(panel!.query).query),
+    );
     const medians = new Map(
       (result.buckets ?? []).map((bucket) => [
         bucket.key[0]?.value,

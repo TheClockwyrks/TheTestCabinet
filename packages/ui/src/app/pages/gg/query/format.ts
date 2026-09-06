@@ -9,7 +9,13 @@
 // Canonical means: no redundant parentheses, `:` tight against its value and every other
 // operator spaced, keywords lowercase, and a literal quoted only when leaving it bare
 // would change what it means.
-import type { FieldRef, FilterNode, LiteralNode, QueryNode, StageNode } from "./ast";
+import type {
+  FieldRef,
+  FilterNode,
+  LiteralNode,
+  QueryNode,
+  StageNode,
+} from "./ast";
 import { KEYWORDS } from "./lex";
 
 /** Render a whole query. */
@@ -151,7 +157,11 @@ export function formatIdentifier(name: string): string {
  * quoted keyword still compares equal to the stored string.
  */
 export function formatLiteral(literal: LiteralNode): string {
-  if (!literal.quoted && lexesAsWord(literal.raw) && !isKeywordName(literal.raw)) {
+  if (
+    !literal.quoted &&
+    lexesAsWord(literal.raw) &&
+    !isKeywordName(literal.raw)
+  ) {
     return literal.raw;
   }
   return quote(literal.raw);

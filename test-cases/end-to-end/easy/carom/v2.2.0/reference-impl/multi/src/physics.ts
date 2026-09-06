@@ -68,7 +68,11 @@ function bounceOffPaddle(ball: Ball, p: Paddle, side: Side): void {
   const dir = side === "left" ? 1 : -1; // horizontal, toward the opponent
   ball.vx = dir * speed * Math.cos(theta);
   ball.vy = speed * Math.sin(theta);
-  ball.spin = clamp(ball.spin + p.vy * SPIN_FROM_PADDLE, -SPIN_CLAMP, SPIN_CLAMP);
+  ball.spin = clamp(
+    ball.spin + p.vy * SPIN_FROM_PADDLE,
+    -SPIN_CLAMP,
+    SPIN_CLAMP,
+  );
   // Place the ball just off the front face so it cannot re-trigger.
   ball.x = side === "left" ? p.frontX + BALL_R : p.frontX - BALL_R;
 }

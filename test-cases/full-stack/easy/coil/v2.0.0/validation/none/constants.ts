@@ -162,7 +162,12 @@ export const BODY_FILES: readonly string[] = SPRITE_FILES.slice(HEAD_FRAMES);
 
 /** The screen the game is in, as the snapshot reports it. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "gameover" | "cleared";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "gameover"
+  | "cleared";
 
 /** Every screen, in the order `specs/ui.md` tables them. */
 export const SCREENS: readonly Screen[] = [

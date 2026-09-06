@@ -23,5 +23,5 @@ the animated signal/construction/vehicle sheets, the pollution/dust/fireworks
 particle overlays, and the sound and music. It also authors the entire
 simulation in Rust compiled to WebAssembly behind a JS/TS view layer, and the
 compiled `.wasm` is committed as a build input. The case is inspired by city
-sims such as *SimCity* and by the flow pressure of *Mini Metro*; its name, look,
+sims such as _SimCity_ and by the flow pressure of _Mini Metro_; its name, look,
 system set, and scope are original.

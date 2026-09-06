@@ -130,7 +130,8 @@ const SMOKE = [
     name: "Furnace smelts ore + coal into a plate",
     blurb:
       "A furnace is fed iron-ore (from a belt to the west) and coal (from a source to the north), smelts them into iron-plate, and an inserter unloads it to a sink. Confirms a furnace smelts, needs BOTH its ore and its coal fuel, and is unloaded like an assembler.",
-    expected: "the sink consumes iron-plate (smelted from iron-ore, burning coal)",
+    expected:
+      "the sink consumes iron-plate (smelted from iron-ore, burning coal)",
     ticks: 300,
     scenario: scene(9, 5, 300, [
       // iron-ore feed from the west
@@ -193,7 +194,8 @@ const SMOKE = [
     name: "Two-stage make (furnace smelt → assembler craft)",
     blurb:
       "iron-ore is smelted to iron-plate in a coal-fired furnace, then two plates are crafted into an iron-gear by an assembler, the stages linked by an inserter and a belt. Confirms a furnace's output feeds the next machine's input.",
-    expected: "the sink consumes iron-gear (crafted from iron-plate, smelted from iron-ore + coal)",
+    expected:
+      "the sink consumes iron-gear (crafted from iron-plate, smelted from iron-ore + coal)",
     ticks: 900,
     scenario: scene(16, 6, 900, [
       // stage 1: iron-ore + coal -> iron-plate, in a furnace

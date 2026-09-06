@@ -158,17 +158,17 @@ its outer bond-integrity pool. `Total shells` is everything the board must strip
 to finish the unit outright, its own hit points plus everything it fragments
 into, which is also exactly what it pays out (`specs/gameplay.md`).
 
-| Type            | Traits         | Structure                          | Total shells | Speed  | Leak                    | What it asks of the board                |
-| --------------- | -------------- | ---------------------------------- | ------------ | ------ | ----------------------- | ---------------------------------------- |
-| Atom            | —              | 1–6 electrons (= shells)           | 1–6          | 44–112 | its remaining electrons | any damage                               |
-| Noble           | inert          | 1–6 electrons, shielded            | 1–6          | 44–112 | its remaining electrons | detect, then any damage                  |
-| Dimer           | bonded         | 2 atoms of 3, bond 5               | 11           | 50     | 1                       | chip bonds (kinetic best), then strip    |
-| Polymer         | bonded         | 6 atoms of 6, bond 11              | 47           | 40     | 2                       | chip a bond pool → a spray               |
-| Lattice         | bonded         | 16 atoms of 6, bond 8              | 104          | 34     | 4                       | a thin pool over a flood of atoms        |
-| Isotope (heavy) | heavy          | 9 shells, chain α α β              | 23           | 36     | 3                       | kinetic or nuclear; decays to α/β        |
-| Chelate         | inert + bonded | 6 atoms of 6, bond 11, shielded    | 47           | 44     | 2                       | detect, then chip bonds                  |
-| Shroud          | inert + heavy  | 9 shells, chain α α β, shielded    | 23           | 38     | 3                       | detect and kinetic/nuclear               |
-| Macromass       | heavy + bonded | see below                          | 616          | 28     | 12                      | a kinetic/nuclear line + cleanup         |
+| Type            | Traits         | Structure                       | Total shells | Speed  | Leak                    | What it asks of the board             |
+| --------------- | -------------- | ------------------------------- | ------------ | ------ | ----------------------- | ------------------------------------- |
+| Atom            | —              | 1–6 electrons (= shells)        | 1–6          | 44–112 | its remaining electrons | any damage                            |
+| Noble           | inert          | 1–6 electrons, shielded         | 1–6          | 44–112 | its remaining electrons | detect, then any damage               |
+| Dimer           | bonded         | 2 atoms of 3, bond 5            | 11           | 50     | 1                       | chip bonds (kinetic best), then strip |
+| Polymer         | bonded         | 6 atoms of 6, bond 11           | 47           | 40     | 2                       | chip a bond pool → a spray            |
+| Lattice         | bonded         | 16 atoms of 6, bond 8           | 104          | 34     | 4                       | a thin pool over a flood of atoms     |
+| Isotope (heavy) | heavy          | 9 shells, chain α α β           | 23           | 36     | 3                       | kinetic or nuclear; decays to α/β     |
+| Chelate         | inert + bonded | 6 atoms of 6, bond 11, shielded | 47           | 44     | 2                       | detect, then chip bonds               |
+| Shroud          | inert + heavy  | 9 shells, chain α α β, shielded | 23           | 38     | 3                       | detect and kinetic/nuclear            |
+| Macromass       | heavy + bonded | see below                       | 616          | 28     | 12                      | a kinetic/nuclear line + cleanup      |
 
 - Atom, the regular unit and the bulk of every round, carrying a number of
   electrons (its layers, `1`–`6`). Each electron is one shell, one hit point
@@ -222,11 +222,11 @@ transmutes the nucleus into a lighter one, and when its shells are finally spent
 the core bursts, emitting every remaining step at once. The chain is `55` steps
 and emits three kinds of matter:
 
-| Emission | What it is                                      | Total shells |
-| -------- | ----------------------------------------------- | ------------ |
-| Alpha    | a full `6`-electron atom                        | 6            |
-| Beta     | a light `2`-electron atom                       | 2            |
-| Daughter | a lighter but still radioactive Isotope         | 23           |
+| Emission | What it is                              | Total shells |
+| -------- | --------------------------------------- | ------------ |
+| Alpha    | a full `6`-electron atom                | 6            |
+| Beta     | a light `2`-electron atom               | 2            |
+| Daughter | a lighter but still radioactive Isotope | 23           |
 
 It sheds `6` daughters, `17` alphas, and `32` betas. The daughters are the point:
 each is a full Isotope in its own right, energy-immune and decaying into its own
@@ -248,48 +248,48 @@ of `n` electrons. A count is the number of units of that group spawned, not the
 number of pops it produces: a cluster or an isotope fragments, so one spawned
 Polymer becomes several units the board must finish.
 
-| Round | Composition                                                              |
-| ----- | ------------------------------------------------------------------------ |
-| 1     | 20 Atom(1)                                                               |
-| 2     | 35 Atom(1)                                                               |
-| 3     | 25 Atom(1), 5 Atom(2)                                                    |
-| 4     | 35 Atom(1), 18 Atom(2)                                                   |
-| 5     | 5 Atom(1), 27 Atom(2)                                                    |
-| 6     | 15 Atom(1), 15 Atom(2), 4 Atom(3)                                        |
-| 7     | 20 Atom(1), 20 Atom(2), 5 Atom(3)                                        |
-| 8     | 10 Atom(1), 20 Atom(2), 14 Atom(3)                                       |
-| 9     | 30 Atom(3)                                                               |
-| 10    | 102 Atom(2)                                                              |
-| 11    | 10 Atom(1), 10 Atom(2), 12 Atom(3), 3 Atom(4)                            |
-| 12    | 15 Atom(2), 10 Atom(3), 5 Atom(4)                                        |
-| 13    | 50 Atom(2), 23 Atom(3)                                                   |
-| 14    | 49 Atom(1), 15 Atom(2), 10 Atom(3), 9 Atom(4)                            |
-| 15    | 20 Atom(1), 15 Atom(2), 12 Atom(3), 10 Atom(4), 5 Atom(5)                |
-| 16    | 40 Atom(3), 8 Atom(4)                                                    |
-| 17    | 12 Atom(4)                                                               |
-| 18    | 80 Atom(3)                                                               |
-| 19    | 10 Atom(3), 9 Atom(4), 15 Atom(5)                                        |
-| 20    | 6 Dimer                                                                  |
-| 21    | 40 Atom(4), 14 Atom(5)                                                   |
-| 22    | 16 Dimer                                                                 |
-| 23    | 14 Dimer                                                                 |
-| 24    | 20 Atom(2), 1 Noble(3)                                                   |
-| 25    | 25 Atom(4), 10 Dimer                                                     |
-| 26    | 23 Atom(5), 4 Isotope                                                    |
-| 27    | 100 Atom(1), 60 Atom(2), 45 Atom(3), 45 Atom(4)                          |
-| 28    | 6 Isotope                                                                |
-| 29    | 65 Atom(4)                                                               |
-| 30    | 9 Isotope                                                                |
-| 31    | 16 Dimer, 10 Isotope                                                     |
-| 32    | 45 Dimer                                                                 |
-| 33    | 20 Noble(1), 13 Noble(4)                                                 |
-| 34    | 160 Atom(4), 6 Isotope                                                   |
-| 35    | 35 Atom(5), 55 Dimer, 5 Polymer                                          |
-| 36    | 140 Atom(5), 20 Noble(3)                                                 |
-| 37    | 50 Dimer, 7 shielded Dimer, 25 Isotope                                   |
-| 38    | 42 Atom(5), 17 Dimer, 24 Isotope, 2 Lattice                              |
-| 39    | 20 Dimer, 20 Isotope, 20 Polymer                                         |
-| 40    | 1 Macromass                                                              |
+| Round | Composition                                               |
+| ----- | --------------------------------------------------------- |
+| 1     | 20 Atom(1)                                                |
+| 2     | 35 Atom(1)                                                |
+| 3     | 25 Atom(1), 5 Atom(2)                                     |
+| 4     | 35 Atom(1), 18 Atom(2)                                    |
+| 5     | 5 Atom(1), 27 Atom(2)                                     |
+| 6     | 15 Atom(1), 15 Atom(2), 4 Atom(3)                         |
+| 7     | 20 Atom(1), 20 Atom(2), 5 Atom(3)                         |
+| 8     | 10 Atom(1), 20 Atom(2), 14 Atom(3)                        |
+| 9     | 30 Atom(3)                                                |
+| 10    | 102 Atom(2)                                               |
+| 11    | 10 Atom(1), 10 Atom(2), 12 Atom(3), 3 Atom(4)             |
+| 12    | 15 Atom(2), 10 Atom(3), 5 Atom(4)                         |
+| 13    | 50 Atom(2), 23 Atom(3)                                    |
+| 14    | 49 Atom(1), 15 Atom(2), 10 Atom(3), 9 Atom(4)             |
+| 15    | 20 Atom(1), 15 Atom(2), 12 Atom(3), 10 Atom(4), 5 Atom(5) |
+| 16    | 40 Atom(3), 8 Atom(4)                                     |
+| 17    | 12 Atom(4)                                                |
+| 18    | 80 Atom(3)                                                |
+| 19    | 10 Atom(3), 9 Atom(4), 15 Atom(5)                         |
+| 20    | 6 Dimer                                                   |
+| 21    | 40 Atom(4), 14 Atom(5)                                    |
+| 22    | 16 Dimer                                                  |
+| 23    | 14 Dimer                                                  |
+| 24    | 20 Atom(2), 1 Noble(3)                                    |
+| 25    | 25 Atom(4), 10 Dimer                                      |
+| 26    | 23 Atom(5), 4 Isotope                                     |
+| 27    | 100 Atom(1), 60 Atom(2), 45 Atom(3), 45 Atom(4)           |
+| 28    | 6 Isotope                                                 |
+| 29    | 65 Atom(4)                                                |
+| 30    | 9 Isotope                                                 |
+| 31    | 16 Dimer, 10 Isotope                                      |
+| 32    | 45 Dimer                                                  |
+| 33    | 20 Noble(1), 13 Noble(4)                                  |
+| 34    | 160 Atom(4), 6 Isotope                                    |
+| 35    | 35 Atom(5), 55 Dimer, 5 Polymer                           |
+| 36    | 140 Atom(5), 20 Noble(3)                                  |
+| 37    | 50 Dimer, 7 shielded Dimer, 25 Isotope                    |
+| 38    | 42 Atom(5), 17 Dimer, 24 Isotope, 2 Lattice               |
+| 39    | 20 Dimer, 20 Isotope, 20 Polymer                          |
+| 40    | 1 Macromass                                               |
 
 Round 40 is the Macromass alone (The boss, above): a single unit, and the whole
 round.
@@ -301,16 +301,16 @@ group's units are released back to back at a fixed interval for their type, so
 matter arrives in runs of one kind rather than interleaved, and the fragments of
 a cluster or isotope group overlap into a sustained spray:
 
-| Group type       | Interval between units |
-| ---------------- | ---------------------- |
-| Atom             | 90 ms                  |
-| Noble            | 110 ms                 |
-| Dimer            | 320 ms                 |
-| Chelate          | 340 ms                 |
-| Polymer          | 420 ms                 |
-| Lattice          | 520 ms                 |
-| Isotope, Shroud  | 500 ms                 |
-| Macromass        | 1500 ms                |
+| Group type      | Interval between units |
+| --------------- | ---------------------- |
+| Atom            | 90 ms                  |
+| Noble           | 110 ms                 |
+| Dimer           | 320 ms                 |
+| Chelate         | 340 ms                 |
+| Polymer         | 420 ms                 |
+| Lattice         | 520 ms                 |
+| Isotope, Shroud | 500 ms                 |
+| Macromass       | 1500 ms                |
 
 Successive groups are separated by a `900 ms` gap. If a round's total release
 span computed this way is under `22 s`, scale every interval in that round up by

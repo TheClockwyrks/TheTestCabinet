@@ -40,10 +40,10 @@ so the Load never squeezes through the corner gap between two diagonally touchin
 
 A route's length is the sum of its step lengths, measured in tiles.
 
-| Step | Length |
-| --- | --- |
-| Orthogonal | `1` |
-| Diagonal | `sqrt(2)`, about `1.4142` |
+| Step       | Length                    |
+| ---------- | ------------------------- |
+| Orthogonal | `1`                       |
+| Diagonal   | `sqrt(2)`, about `1.4142` |
 
 Length, not step count, is what the route minimizes and what every route figure in this
 game is reported in.

@@ -13,7 +13,12 @@
 
 /** The six screens the game moves between (specs/ui.md). */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
 
 /** The three sub-phases of the `playing` screen (specs/progression.md). */
 export type Phase = "banner" | "active" | "respawn";

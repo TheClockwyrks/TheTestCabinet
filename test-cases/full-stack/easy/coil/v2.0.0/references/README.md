@@ -3,11 +3,11 @@
 One directory per engine, and under it one per variant, matching the
 `[reference_implementation]` table each variant file declares:
 
-| Path | Declared by |
-| --- | --- |
-| `none/base`, `none/maze` | `variants/base.toml`, `variants/maze.toml` |
-| `simple-2d/base`, `simple-2d/maze` | the same two files |
-| `structured-2d/base`, `structured-2d/maze` | the same two files |
+| Path                                       | Declared by                                |
+| ------------------------------------------ | ------------------------------------------ |
+| `none/base`, `none/maze`                   | `variants/base.toml`, `variants/maze.toml` |
+| `simple-2d/base`, `simple-2d/maze`         | the same two files                         |
+| `structured-2d/base`, `structured-2d/maze` | the same two files                         |
 
 None of it is seeded into a run. A reference build is the authored, correct
 implementation the case's own validators are proven against, and the source
@@ -19,11 +19,11 @@ All six are written.
 
 `diff -rq` over `src/` names exactly one file in each pair:
 
-| Engine | The one file that differs |
-| --- | --- |
-| `none` | `src/mode.ts` |
-| `simple-2d` | `src/constants.ts` |
-| `structured-2d` | `src/constants.ts` |
+| Engine          | The one file that differs |
+| --------------- | ------------------------- |
+| `none`          | `src/mode.ts`             |
+| `simple-2d`     | `src/constants.ts`        |
+| `structured-2d` | `src/constants.ts`        |
 
 That file names the mode, and everything that follows from it is derived there:
 the menu entry and the HUD label, whether the interior carries `OBSTACLE_CELLS`,
@@ -85,10 +85,10 @@ files `specs/overview.md` lists among the ones a build must leave alone, and bot
 departures exist only because a reference lives inside this repository rather
 than in a run's own:
 
-| File | The departure |
-| --- | --- |
-| `package.json` | `@clockwyrks/simple-2d` resolves to `../../../../../../../../packages/simple-2d` instead of the `.vendor/engine/` copy a seed vendors. |
-| `.gitignore` | `dist/` is anchored to this project rather than left to match the vendored engine's own `dist/`, and `.vendor/` is ignored as validator scratch. |
+| File           | The departure                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `package.json` | `@clockwyrks/simple-2d` resolves to `../../../../../../../../packages/simple-2d` instead of the `.vendor/engine/` copy a seed vendors.           |
+| `.gitignore`   | `dist/` is anchored to this project rather than left to match the vendored engine's own `dist/`, and `.vendor/` is ignored as validator scratch. |
 
 Neither is a defect of the case. The runner grades a run's own tree, no review
 item reads a workspace file, and none should. Do not file it again.

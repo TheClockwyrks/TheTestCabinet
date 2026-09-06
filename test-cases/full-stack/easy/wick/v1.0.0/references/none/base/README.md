@@ -85,14 +85,14 @@ is resumed on the first key press or pointer press.
 The game is keyboard only. Keys are bound by physical position
 (`KeyboardEvent.code`), so they hold on any layout.
 
-| Action | Keys | Does |
-| --- | --- | --- |
-| Move | `ArrowUp` / `KeyW`, `ArrowDown` / `KeyS`, `ArrowLeft` / `KeyA`, `ArrowRight` / `KeyD` (held) | Moves the lamplighter; up and down also move a menu highlight |
-| Confirm | `Enter` / `Space` | Accepts the highlighted item; closes the chest overlay |
-| Back | `Escape` | Leaves the how-to screen; abandons a paused run; returns to the title from an end screen |
-| Pause | `KeyP` | Pauses the night; resumes it |
-| Mute | `KeyM` | Toggles sound, on every screen |
-| Diagnostics | `` ` `` (backquote) | Shows and hides the debug overlay: the screen, the clock, the loadout, the switches, the loops sounding, and the mute bit |
+| Action      | Keys                                                                                         | Does                                                                                                                      |
+| ----------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Move        | `ArrowUp` / `KeyW`, `ArrowDown` / `KeyS`, `ArrowLeft` / `KeyA`, `ArrowRight` / `KeyD` (held) | Moves the lamplighter; up and down also move a menu highlight                                                             |
+| Confirm     | `Enter` / `Space`                                                                            | Accepts the highlighted item; closes the chest overlay                                                                    |
+| Back        | `Escape`                                                                                     | Leaves the how-to screen; abandons a paused run; returns to the title from an end screen                                  |
+| Pause       | `KeyP`                                                                                       | Pauses the night; resumes it                                                                                              |
+| Mute        | `KeyM`                                                                                       | Toggles sound, on every screen                                                                                            |
+| Diagnostics | `` ` `` (backquote)                                                                          | Shows and hides the debug overlay: the screen, the clock, the loadout, the switches, the loops sounding, and the mute bit |
 
 ## The debug surface
 
@@ -104,15 +104,15 @@ poses one part of the game and sounds nothing.
 
 ## Layout
 
-| Path | Holds |
-| --- | --- |
-| `src/main.ts` | The entry point: assets, audio, keyboard, diagnostics, the loop, the surface. |
-| `src/constants.ts` | Every figure the specification fixes. |
-| `src/state.ts` | The state's shape, the idle run, and a fresh run. |
-| `src/game.ts` | The screens, the menus, the frame's update, and the cues. |
-| `src/sim/` | The tick: the lamplighter, enemies, weapons, effects, drops, and progression. |
+| Path                                                                                 | Holds                                                                                           |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `src/main.ts`                                                                        | The entry point: assets, audio, keyboard, diagnostics, the loop, the surface.                   |
+| `src/constants.ts`                                                                   | Every figure the specification fixes.                                                           |
+| `src/state.ts`                                                                       | The state's shape, the idle run, and a fresh run.                                               |
+| `src/game.ts`                                                                        | The screens, the menus, the frame's update, and the cues.                                       |
+| `src/sim/`                                                                           | The tick: the lamplighter, enemies, weapons, effects, drops, and progression.                   |
 | `src/runtime.ts`, `src/viewport.ts`, `src/input.ts`, `src/audio.ts`, `src/assets.ts` | The runtime layer: the frame loop, the canvas fit, the keyboard, the Web Audio bus, the loader. |
-| `src/render/` | The world under the camera, the effects over each hitbox, the HUD, and the screens. |
-| `src/surface.ts`, `src/diagnostics.ts`, `src/overlay.ts` | The debug surface and the overlay. |
-| `assets/` | The produced sprites, icons, and sounds; `ASSET-LAYOUT.md` maps them. |
-| `scripts/` | The asset production scripts, `gen-sprites.mjs` and `gen-audio.sh`, run once by hand. |
+| `src/render/`                                                                        | The world under the camera, the effects over each hitbox, the HUD, and the screens.             |
+| `src/surface.ts`, `src/diagnostics.ts`, `src/overlay.ts`                             | The debug surface and the overlay.                                                              |
+| `assets/`                                                                            | The produced sprites, icons, and sounds; `ASSET-LAYOUT.md` maps them.                           |
+| `scripts/`                                                                           | The asset production scripts, `gen-sprites.mjs` and `gen-audio.sh`, run once by hand.           |

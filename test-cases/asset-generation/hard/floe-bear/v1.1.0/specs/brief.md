@@ -43,17 +43,17 @@ change. **The camera never rotates to a side view**: when the bear faces left or
 right you are still looking straight down on its **back**, with its body simply
 turned across the frame — a side/profile silhouette is wrong for any frame.
 
-| Frames | Pose | Contents |
-| --- | --- | --- |
-| 0, 1 | **run — down** (toward the viewer) | Seen from above, head toward the bottom of the frame, a two-frame run: legs swap between the frames (front-left/back-right forward, then the opposite). Small dark eyes and nose on the low head. |
-| 2, 3 | **run — up** (away) | Seen from above, head toward the top (you see its back and haunches), two-frame run, legs swapping. |
-| 4, 5 | **run — left** | **Still seen from directly above** — the bear turned so its head points **left** and its spine runs left-to-right across the frame; you look down on its **back**, NOT a side profile. Two-frame run: the legs to either side reach and gather for a lumbering gallop. |
-| 6, 7 | **run — right** | The left run **mirrored** — head points **right**, still overhead (not a profile), two-frame run. |
-| 8, 9 | **swim — down** | Seen from above, **mostly under water**, heading **down** the screen: a muted, cool submerged silhouette (darker than the fur), only the top of the head/back breaking the surface in fur-white, and a pale **wake** (a couple of curved ripple lines) trailing **behind** it (up-screen). Two frames: shift the wake and paddle. |
-| 10, 11 | **swim — up** | The same submerged overhead read, heading **up** the screen; the wake trails behind it (down-screen). Two frames. |
-| 12, 13 | **swim — left** | The same submerged overhead read, heading **left** (still top-down, NOT a profile); the wake trails behind it (to the right). Two frames. |
-| 14, 15 | **swim — right** | The left swim **mirrored** — heading **right**, wake trailing to the left. Two frames. |
-| 16, 17 | **lunge** | The strike, still overhead: the bear **lunging forward** with its **maw open** (a red mouth) and front paws thrown forward with dark claws — unmistakably attacking. Two frames: wind-up, then the open-maw lunge. |
+| Frames | Pose                               | Contents                                                                                                                                                                                                                                                                                                                          |
+| ------ | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0, 1   | **run — down** (toward the viewer) | Seen from above, head toward the bottom of the frame, a two-frame run: legs swap between the frames (front-left/back-right forward, then the opposite). Small dark eyes and nose on the low head.                                                                                                                                 |
+| 2, 3   | **run — up** (away)                | Seen from above, head toward the top (you see its back and haunches), two-frame run, legs swapping.                                                                                                                                                                                                                               |
+| 4, 5   | **run — left**                     | **Still seen from directly above** — the bear turned so its head points **left** and its spine runs left-to-right across the frame; you look down on its **back**, NOT a side profile. Two-frame run: the legs to either side reach and gather for a lumbering gallop.                                                            |
+| 6, 7   | **run — right**                    | The left run **mirrored** — head points **right**, still overhead (not a profile), two-frame run.                                                                                                                                                                                                                                 |
+| 8, 9   | **swim — down**                    | Seen from above, **mostly under water**, heading **down** the screen: a muted, cool submerged silhouette (darker than the fur), only the top of the head/back breaking the surface in fur-white, and a pale **wake** (a couple of curved ripple lines) trailing **behind** it (up-screen). Two frames: shift the wake and paddle. |
+| 10, 11 | **swim — up**                      | The same submerged overhead read, heading **up** the screen; the wake trails behind it (down-screen). Two frames.                                                                                                                                                                                                                 |
+| 12, 13 | **swim — left**                    | The same submerged overhead read, heading **left** (still top-down, NOT a profile); the wake trails behind it (to the right). Two frames.                                                                                                                                                                                         |
+| 14, 15 | **swim — right**                   | The left swim **mirrored** — heading **right**, wake trailing to the left. Two frames.                                                                                                                                                                                                                                            |
+| 16, 17 | **lunge**                          | The strike, still overhead: the bear **lunging forward** with its **maw open** (a red mouth) and front paws thrown forward with dark claws — unmistakably attacking. Two frames: wind-up, then the open-maw lunge.                                                                                                                |
 
 Make it read as **one big animal**:
 
@@ -82,14 +82,14 @@ Make it read as **one big animal**:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Fur — light (body) | `#eef1ef` |
+| Role                                   | Hex       |
+| -------------------------------------- | --------- |
+| Fur — light (body)                     | `#eef1ef` |
 | Fur — cool shadow (underside/far side) | `#aebfc7` |
-| Outline / eyes / nose / claws | `#26323a` |
-| Submerged silhouette (swim frames) | `#5b6f7a` |
-| Wake / surface ripple (swim frames) | `#cfe6f2` |
-| Open maw (lunge frames) | `#c0473f` |
+| Outline / eyes / nose / claws          | `#26323a` |
+| Submerged silhouette (swim frames)     | `#5b6f7a` |
+| Wake / surface ripple (swim frames)    | `#cfe6f2` |
+| Open maw (lunge frames)                | `#c0473f` |
 
 ## Working the tool
 
@@ -99,7 +99,7 @@ underside with the cool fur shadow, then add the head with its dark eyes and nos
 and the four thick, stocky legs. Reuse that same overhead body for every other
 frame: swap the legs for each run pose, and **mirror the left run to make the
 right** and the left swim to make the right — keeping the camera overhead, so left
-and right are the bear turned sideways *as seen from above*, never a profile. For
+and right are the bear turned sideways _as seen from above_, never a profile. For
 the **swim** headings mute the body to a submerged silhouette with a pale wake
 trailing behind its heading (down, up, left, right). For the **lunge** throw the
 forepaws forward with dark claws and open the red maw. Use the filled-circle and

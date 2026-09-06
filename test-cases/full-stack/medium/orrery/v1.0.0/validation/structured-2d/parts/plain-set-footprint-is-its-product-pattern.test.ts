@@ -32,7 +32,12 @@
 // again before the next probe. No additional hex is claimed.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertTrue, assertUndefined } from "../assert";
+import {
+  assertEqual,
+  assertLength,
+  assertTrue,
+  assertUndefined,
+} from "../assert";
 import { at, neighbors, onField, sameHex, type Hex } from "../field";
 import { challenge, type Challenge } from "../formats";
 import { ONE_DUST, THREE_DUST_LINE } from "../fixtures";

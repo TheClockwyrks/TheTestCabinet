@@ -48,7 +48,9 @@ import { riseFootprint } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place_: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place_: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place_();
     return false;

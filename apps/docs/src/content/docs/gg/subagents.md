@@ -98,18 +98,18 @@ is offered when the caller's roster lists at least one spawnable target.
 `wait_for_subagents` and `send_message` are offered to any agent that can have
 children at all, whether by spawning them from its roster or by forking itself.
 
-| Feature | Default | What switching it changes |
-| --- | --- | --- |
-| Inter-agent messaging | on | Off withholds `send_message`, leaving spawn-and-wait. |
+| Feature               | Default | What switching it changes                             |
+| --------------------- | ------- | ----------------------------------------------------- |
+| Inter-agent messaging | on      | Off withholds `send_message`, leaving spawn-and-wait. |
 
-| Param | Meaning |
-| --- | --- |
+| Param      | Meaning                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------- |
 | `maxDepth` | The deepest an agent may sit in the delegation tree; a spawn at that depth fails as a limit. |
 
 An enabled subagents capability writes `maxDepth`. An absent one, and one
 carrying a value gg cannot honour exactly as written, refuse the launch alongside
 every other such value in the capability set. It bounds the run's whole agent
-tree rather than one agent, so it is read off the first profile; a *different*
+tree rather than one agent, so it is read off the first profile; a _different_
 `maxDepth` on another profile would be read by nothing and refuses the launch
 too.
 

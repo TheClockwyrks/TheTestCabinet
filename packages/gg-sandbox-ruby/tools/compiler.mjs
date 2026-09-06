@@ -54,7 +54,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
-const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PACKAGE_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 
 /**
  * Where the two files go. Required, with no default, exactly as it is in every arm's `build.sh` —
@@ -74,7 +77,9 @@ if (!OUT_DIR) {
 }
 
 /** Where `build.sh` resolved the pinned npm packages to. */
-const VENDOR = process.env.GG_RUBY_VENDOR ?? path.join(PACKAGE_DIR, ".build", "node_modules");
+const VENDOR =
+  process.env.GG_RUBY_VENDOR ??
+  path.join(PACKAGE_DIR, ".build", "node_modules");
 
 /**
  * The two sources the bundle is made of, in load order.
@@ -235,7 +240,9 @@ const bundle = [
 // Ask the bundle what Opal it is rather than reading a version out of a package manifest: the
 // artifact is what compiles a model's program, so the artifact is what has to be recorded.
 const context = vm.createContext({ console, process });
-vm.runInContext(bundle.slice(0, bundle.indexOf(DRIVER)), context, { filename: "ruby.opal.cjs" });
+vm.runInContext(bundle.slice(0, bundle.indexOf(DRIVER)), context, {
+  filename: "ruby.opal.cjs",
+});
 const opal = context.Opal;
 const version = String(
   opal.const_get_qualified(opal.const_get_relative([], "Opal"), "VERSION"),
@@ -246,14 +253,21 @@ const manifest = {
   language: "ruby",
   opal: version,
   rubyVersion,
-  opalCompilerPackage: JSON.parse(read(path.join(VENDOR, "opal-compiler", "package.json"))).version,
-  opalRuntimePackage: JSON.parse(read(path.join(VENDOR, "opal-runtime", "package.json"))).version,
+  opalCompilerPackage: JSON.parse(
+    read(path.join(VENDOR, "opal-compiler", "package.json")),
+  ).version,
+  opalRuntimePackage: JSON.parse(
+    read(path.join(VENDOR, "opal-runtime", "package.json")),
+  ).version,
   generatedFrom: "packages/gg-sandbox-ruby/tools/compiler.mjs",
 };
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 fs.writeFileSync(path.join(OUT_DIR, "ruby.opal.cjs"), bundle);
-fs.writeFileSync(path.join(OUT_DIR, "ruby.compiler.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+fs.writeFileSync(
+  path.join(OUT_DIR, "ruby.compiler.json"),
+  `${JSON.stringify(manifest, null, 2)}\n`,
+);
 
 process.stdout.write(
   `Wrote ${path.join(OUT_DIR, "ruby.opal.cjs")} (${bundle.length} bytes, Opal ${version}).\n`,

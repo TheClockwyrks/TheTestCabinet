@@ -13,10 +13,10 @@ Everything here is gated on the deployment exporting telemetry. See
 
 ## Exported signals
 
-| Signal | Exported | Notes |
-| ------ | -------- | ----- |
-| Traces | Yes | |
-| Logs | Yes | Codex calls these "events". |
+| Signal  | Exported   | Notes                                                                                                                           |
+| ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Traces  | Yes        |                                                                                                                                 |
+| Logs    | Yes        | Codex calls these "events".                                                                                                     |
 | Metrics | Configured | `codex exec`, the invocation a run uses, emits no metrics even with the exporter set. The exporter is still written explicitly. |
 
 ## Configuration

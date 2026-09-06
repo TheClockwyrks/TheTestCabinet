@@ -9,11 +9,11 @@ carry a card to a foundation in `specs/controls.md`.
 A foundation builds one suit upward from Ace to King. It accepts a card by these
 rules, and refuses every other card offered to it.
 
-| The foundation holds | It accepts |
-| --- | --- |
-| Nothing | An Ace, of any suit |
+| The foundation holds                           | It accepts                            |
+| ---------------------------------------------- | ------------------------------------- |
+| Nothing                                        | An Ace, of any suit                   |
 | Cards, its top card being rank `r` of suit `s` | The card of rank `r + 1` and suit `s` |
-| Its King | Nothing |
+| Its King                                       | Nothing                               |
 
 A foundation takes exactly one card at a time. A run of two or more cards is
 refused, even when its leading card alone would be accepted.

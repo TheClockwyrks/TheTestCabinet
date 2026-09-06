@@ -29,12 +29,12 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent && npm cache cle
 A session runs in `--print` mode with JSON output. The Test Cabinet passes these
 flags:
 
-| Flag | Purpose |
-| ---- | ------- |
-| `--mode json` | Emit the line-delimited JSON event stream consumed for [events](/harnesses/pi/events/) and usage. |
-| `--print` | Run non-interactively, printing output rather than entering an interactive session. |
-| `--provider openrouter` | Reach the model through OpenRouter. |
-| `--model <id>` | The model to run. |
+| Flag                    | Purpose                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `--mode json`           | Emit the line-delimited JSON event stream consumed for [events](/harnesses/pi/events/) and usage. |
+| `--print`               | Run non-interactively, printing output rather than entering an interactive session.               |
+| `--provider openrouter` | Reach the model through OpenRouter.                                                               |
+| `--model <id>`          | The model to run.                                                                                 |
 
 The prompt is passed as the final positional argument.
 

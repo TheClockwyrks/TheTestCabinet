@@ -44,7 +44,9 @@ import { sigilHexes } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -73,7 +75,11 @@ it("anchors an arm and a wheel on sigil, rise and set footprint hexes", async ()
 
   // The geometry the check claims to be posing.
   for (const hex of [SIGIL, SIGIL_SECOND, RISE, SET]) {
-    assertEqual(onField(hex), true, `the hex (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the hex (${hex.q}, ${hex.r}) is on the field`,
+    );
   }
   const footprint = sigilHexes("bind", SIGIL, 0);
   assertEqual(
@@ -117,8 +123,16 @@ it("anchors an arm and a wheel on sigil, rise and set footprint hexes", async ()
     false,
     "a wheel anchored on that sigil's second footprint hex is placed",
   );
-  assertEqual(riseRefused, false, "an arm anchored on a rise's footprint hex is placed");
-  assertEqual(setRefused, false, "a wheel anchored on a set's footprint hex is placed");
+  assertEqual(
+    riseRefused,
+    false,
+    "an arm anchored on a rise's footprint hex is placed",
+  );
+  assertEqual(
+    setRefused,
+    false,
+    "a wheel anchored on a set's footprint hex is placed",
+  );
 
   const snapshot = await h.snapshot();
   const seated: { part: number; kind: string; hex: Hex }[] = [

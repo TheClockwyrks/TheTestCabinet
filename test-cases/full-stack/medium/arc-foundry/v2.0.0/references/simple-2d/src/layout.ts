@@ -64,7 +64,12 @@ import type { Component } from "./types";
  * not fall through an overlay onto the yard.
  */
 export type ControlKind =
-  "menu" | "bar" | "panel" | "press" | "overlay" | "noop";
+  | "menu"
+  | "bar"
+  | "panel"
+  | "press"
+  | "overlay"
+  | "noop";
 
 /** One hit-testable region, as drawn. */
 export interface Control {

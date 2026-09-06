@@ -128,13 +128,13 @@ aura's radius and damage, and each Chandelier lantern's orbit, radius, and
 damage, are recomputed on every tick from the level, `areaMul`, and
 `damageMul` in force on that tick.
 
-| Column | Used as |
-| --- | --- |
-| Damage | table value × `damageMul` |
-| Cooldown | table value × `cooldownMul`, floored at `MIN_COOLDOWN` |
-| Width, Height, Radius, Orbit, Area | table value × `areaMul` |
-| Amount | table value + `amountBonus` |
-| Speed, Pierce, Duration | table value, unchanged |
+| Column                             | Used as                                                |
+| ---------------------------------- | ------------------------------------------------------ |
+| Damage                             | table value × `damageMul`                              |
+| Cooldown                           | table value × `cooldownMul`, floored at `MIN_COOLDOWN` |
+| Width, Height, Radius, Orbit, Area | table value × `areaMul`                                |
+| Amount                             | table value + `amountBonus`                            |
+| Speed, Pierce, Duration            | table value, unchanged                                 |
 
 `areaMul` scales every hitbox length, projectile collision radii included.
 `OIL_SCATTER`, `SPARK_RANGE`, `PIN_SPREAD`, the spread angles, and the re-hit
@@ -146,18 +146,18 @@ The ten base weapons are `BASE_WEAPON_IDS`, in this order, with their display
 names in `WEAPON_NAMES`. A weapon marked as needing a target does not fire
 without one.
 
-| Weapon | Id | Shape | Fires | Needs a target |
-| --- | --- | --- | --- | --- |
-| Taper | `taper` | horizontal slash rectangle | in the facing direction, from the player's `x` outward | no |
-| Ember | `ember` | bolt | at the nearest enemy | yes |
-| Pin | `pin` | dart | in the facing direction | no |
-| Lantern | `lantern` | orbiting lanterns | around the player for a duration | no |
-| Halo | `halo` | aura circle | pulses on everything inside | no |
-| Oil Splash | `oil-splash` | puddles | at random points near the player | no |
-| Spark | `spark` | strike | on random enemies within `SPARK_RANGE` | yes, within `SPARK_RANGE` |
-| Shard | `shard` | bouncing bolt | toward the nearest enemy, or in the facing direction if none, bouncing off the view edges | no |
-| Sconce | `sconce` | boomerang | toward the nearest enemy, decelerating and returning | yes |
-| Flare | `flare` | burst | on every enemy within range | no |
+| Weapon     | Id           | Shape                      | Fires                                                                                     | Needs a target            |
+| ---------- | ------------ | -------------------------- | ----------------------------------------------------------------------------------------- | ------------------------- |
+| Taper      | `taper`      | horizontal slash rectangle | in the facing direction, from the player's `x` outward                                    | no                        |
+| Ember      | `ember`      | bolt                       | at the nearest enemy                                                                      | yes                       |
+| Pin        | `pin`        | dart                       | in the facing direction                                                                   | no                        |
+| Lantern    | `lantern`    | orbiting lanterns          | around the player for a duration                                                          | no                        |
+| Halo       | `halo`       | aura circle                | pulses on everything inside                                                               | no                        |
+| Oil Splash | `oil-splash` | puddles                    | at random points near the player                                                          | no                        |
+| Spark      | `spark`      | strike                     | on random enemies within `SPARK_RANGE`                                                    | yes, within `SPARK_RANGE` |
+| Shard      | `shard`      | bouncing bolt              | toward the nearest enemy, or in the facing direction if none, bouncing off the view edges | no                        |
+| Sconce     | `sconce`     | boomerang                  | toward the nearest enemy, decelerating and returning                                      | yes                       |
+| Flare      | `flare`      | burst                      | on every enemy within range                                                               | no                        |
 
 Every level table has `MAX_WEAPON_LEVEL` (`8`) rows; row `i` is level `i + 1`.
 The tables are `TAPER_LEVELS`, `EMBER_LEVELS`, `PIN_LEVELS`,
@@ -177,15 +177,15 @@ With amount `2` a second slash fires on the same tick, mirrored to the opposite
 side of the player. Any amount above `TAPER_MAX_AMOUNT` (`2`) adds nothing.
 
 | Level | Damage | Cooldown | Width | Height | Amount |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 10 | 1.35 | 120 | 40 | 1 |
-| 2 | 15 | 1.35 | 120 | 40 | 1 |
-| 3 | 15 | 1.35 | 120 | 40 | 2 |
-| 4 | 15 | 1.35 | 140 | 48 | 2 |
-| 5 | 20 | 1.35 | 140 | 48 | 2 |
-| 6 | 20 | 1.20 | 140 | 48 | 2 |
-| 7 | 25 | 1.20 | 140 | 48 | 2 |
-| 8 | 30 | 1.20 | 160 | 56 | 2 |
+| ----- | ------ | -------- | ----- | ------ | ------ |
+| 1     | 10     | 1.35     | 120   | 40     | 1      |
+| 2     | 15     | 1.35     | 120   | 40     | 1      |
+| 3     | 15     | 1.35     | 120   | 40     | 2      |
+| 4     | 15     | 1.35     | 140   | 48     | 2      |
+| 5     | 20     | 1.35     | 140   | 48     | 2      |
+| 6     | 20     | 1.20     | 140   | 48     | 2      |
+| 7     | 25     | 1.20     | 140   | 48     | 2      |
+| 8     | 30     | 1.20     | 160   | 56     | 2      |
 
 ## Ember
 
@@ -199,15 +199,15 @@ nearest distinct enemies, fewer when fewer enemies exist. Ember needs at least
 one enemy to fire.
 
 | Level | Damage | Cooldown | Speed | Radius | Pierce | Duration | Amount |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 10 | 1.20 | 400 | 8 | 0 | 2.0 | 1 |
-| 2 | 10 | 1.20 | 400 | 8 | 0 | 2.0 | 2 |
-| 3 | 10 | 1.00 | 400 | 8 | 0 | 2.0 | 2 |
-| 4 | 15 | 1.00 | 400 | 8 | 0 | 2.0 | 2 |
-| 5 | 15 | 1.00 | 400 | 8 | 1 | 2.0 | 2 |
-| 6 | 15 | 1.00 | 400 | 8 | 1 | 2.0 | 3 |
-| 7 | 20 | 0.90 | 400 | 8 | 1 | 2.0 | 3 |
-| 8 | 25 | 0.80 | 450 | 10 | 2 | 2.0 | 3 |
+| ----- | ------ | -------- | ----- | ------ | ------ | -------- | ------ |
+| 1     | 10     | 1.20     | 400   | 8      | 0      | 2.0      | 1      |
+| 2     | 10     | 1.20     | 400   | 8      | 0      | 2.0      | 2      |
+| 3     | 10     | 1.00     | 400   | 8      | 0      | 2.0      | 2      |
+| 4     | 15     | 1.00     | 400   | 8      | 0      | 2.0      | 2      |
+| 5     | 15     | 1.00     | 400   | 8      | 1      | 2.0      | 2      |
+| 6     | 15     | 1.00     | 400   | 8      | 1      | 2.0      | 3      |
+| 7     | 20     | 0.90     | 400   | 8      | 1      | 2.0      | 3      |
+| 8     | 25     | 0.80     | 450   | 10     | 2      | 2.0      | 3      |
 
 ## Pin
 
@@ -220,15 +220,15 @@ from `0`, starts at `x = player.x` and
 `y = player.y + (i − (n − 1) / 2) × PIN_SPREAD`, with `PIN_SPREAD` (`10`).
 
 | Level | Damage | Cooldown | Speed | Radius | Pierce | Duration | Amount |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 6 | 0.50 | 600 | 6 | 1 | 1.5 | 1 |
-| 2 | 6 | 0.50 | 600 | 6 | 1 | 1.5 | 2 |
-| 3 | 8 | 0.50 | 600 | 6 | 1 | 1.5 | 2 |
-| 4 | 8 | 0.50 | 600 | 6 | 2 | 1.5 | 3 |
-| 5 | 10 | 0.50 | 600 | 6 | 2 | 1.5 | 3 |
-| 6 | 10 | 0.40 | 600 | 6 | 2 | 1.5 | 4 |
-| 7 | 12 | 0.40 | 600 | 6 | 3 | 1.5 | 4 |
-| 8 | 15 | 0.35 | 700 | 7 | 3 | 1.5 | 5 |
+| ----- | ------ | -------- | ----- | ------ | ------ | -------- | ------ |
+| 1     | 6      | 0.50     | 600   | 6      | 1      | 1.5      | 1      |
+| 2     | 6      | 0.50     | 600   | 6      | 1      | 1.5      | 2      |
+| 3     | 8      | 0.50     | 600   | 6      | 1      | 1.5      | 2      |
+| 4     | 8      | 0.50     | 600   | 6      | 2      | 1.5      | 3      |
+| 5     | 10     | 0.50     | 600   | 6      | 2      | 1.5      | 3      |
+| 6     | 10     | 0.40     | 600   | 6      | 2      | 1.5      | 4      |
+| 7     | 12     | 0.40     | 600   | 6      | 3      | 1.5      | 4      |
+| 8     | 15     | 0.35     | 700   | 7      | 3      | 1.5      | 5      |
 
 ## Lantern
 
@@ -250,15 +250,15 @@ fixed when it is created: a Mirror level gained while a set lives leaves that
 set's count as it is, and the next firing reads the new amount.
 
 | Level | Damage | Cooldown | Orbit | Radius | Duration | Amount |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 10 | 3.0 | 90 | 14 | 3.0 | 1 |
-| 2 | 10 | 3.0 | 90 | 14 | 3.0 | 2 |
-| 3 | 15 | 3.0 | 90 | 14 | 3.0 | 2 |
-| 4 | 15 | 3.0 | 100 | 16 | 3.5 | 2 |
-| 5 | 15 | 3.0 | 100 | 16 | 3.5 | 3 |
-| 6 | 20 | 2.5 | 100 | 16 | 3.5 | 3 |
-| 7 | 20 | 2.5 | 110 | 18 | 4.0 | 3 |
-| 8 | 25 | 2.5 | 120 | 20 | 4.0 | 4 |
+| ----- | ------ | -------- | ----- | ------ | -------- | ------ |
+| 1     | 10     | 3.0      | 90    | 14     | 3.0      | 1      |
+| 2     | 10     | 3.0      | 90    | 14     | 3.0      | 2      |
+| 3     | 15     | 3.0      | 90    | 14     | 3.0      | 2      |
+| 4     | 15     | 3.0      | 100   | 16     | 3.5      | 2      |
+| 5     | 15     | 3.0      | 100   | 16     | 3.5      | 3      |
+| 6     | 20     | 2.5      | 100   | 16     | 3.5      | 3      |
+| 7     | 20     | 2.5      | 110   | 18     | 4.0      | 3      |
+| 8     | 25     | 2.5      | 120   | 20     | 4.0      | 4      |
 
 ## Halo
 
@@ -273,15 +273,15 @@ aura takes `damage`, and the timer is set to the current cooldown. Halo pulses
 on the first `playing` tick it is held. Amount is ignored.
 
 | Level | Damage | Cooldown | Radius |
-| --- | --- | --- | --- |
-| 1 | 3 | 1.00 | 80 |
-| 2 | 3 | 1.00 | 90 |
-| 3 | 4 | 1.00 | 90 |
-| 4 | 4 | 0.80 | 100 |
-| 5 | 5 | 0.80 | 100 |
-| 6 | 5 | 0.80 | 110 |
-| 7 | 6 | 0.70 | 110 |
-| 8 | 8 | 0.60 | 120 |
+| ----- | ------ | -------- | ------ |
+| 1     | 3      | 1.00     | 80     |
+| 2     | 3      | 1.00     | 90     |
+| 3     | 4      | 1.00     | 90     |
+| 4     | 4      | 0.80     | 100    |
+| 5     | 5      | 0.80     | 100    |
+| 6     | 5      | 0.80     | 110    |
+| 7     | 6      | 0.70     | 110    |
+| 8     | 8      | 0.60     | 120    |
 
 ## Oil Splash
 
@@ -297,15 +297,15 @@ the tick it appears and on every `OIL_PULSE` interval of ticks after, and each
 pulse deals `damage` to every enemy overlapping it.
 
 | Level | Damage | Cooldown | Radius | Duration | Amount |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 4 | 3.0 | 50 | 2.5 | 1 |
-| 2 | 4 | 3.0 | 50 | 2.5 | 2 |
-| 3 | 5 | 3.0 | 55 | 2.5 | 2 |
-| 4 | 5 | 2.5 | 55 | 3.0 | 2 |
-| 5 | 6 | 2.5 | 60 | 3.0 | 3 |
-| 6 | 6 | 2.5 | 60 | 3.5 | 3 |
-| 7 | 7 | 2.0 | 65 | 3.5 | 3 |
-| 8 | 8 | 2.0 | 70 | 4.0 | 4 |
+| ----- | ------ | -------- | ------ | -------- | ------ |
+| 1     | 4      | 3.0      | 50     | 2.5      | 1      |
+| 2     | 4      | 3.0      | 50     | 2.5      | 2      |
+| 3     | 5      | 3.0      | 55     | 2.5      | 2      |
+| 4     | 5      | 2.5      | 55     | 3.0      | 2      |
+| 5     | 6      | 2.5      | 60     | 3.0      | 3      |
+| 6     | 6      | 2.5      | 60     | 3.5      | 3      |
+| 7     | 7      | 2.0      | 65     | 3.5      | 3      |
+| 8     | 8      | 2.0      | 70     | 4.0      | 4      |
 
 ## Spark
 
@@ -321,15 +321,15 @@ The strike is drawn for `SPARK_FLASH` (`0.2`) seconds and has no hitbox after
 the tick it lands.
 
 | Level | Damage | Cooldown | Area | Amount |
-| --- | --- | --- | --- | --- |
-| 1 | 15 | 2.0 | 40 | 1 |
-| 2 | 15 | 2.0 | 40 | 2 |
-| 3 | 20 | 2.0 | 40 | 2 |
-| 4 | 20 | 1.8 | 50 | 2 |
-| 5 | 25 | 1.8 | 50 | 3 |
-| 6 | 25 | 1.6 | 50 | 3 |
-| 7 | 30 | 1.6 | 60 | 3 |
-| 8 | 40 | 1.4 | 70 | 4 |
+| ----- | ------ | -------- | ---- | ------ |
+| 1     | 15     | 2.0      | 40   | 1      |
+| 2     | 15     | 2.0      | 40   | 2      |
+| 3     | 20     | 2.0      | 40   | 2      |
+| 4     | 20     | 1.8      | 50   | 2      |
+| 5     | 25     | 1.8      | 50   | 3      |
+| 6     | 25     | 1.6      | 50   | 3      |
+| 7     | 30     | 1.6      | 60   | 3      |
+| 8     | 40     | 1.4      | 70   | 4      |
 
 ## Shard
 
@@ -352,15 +352,15 @@ its direction rotated by `(i − (n − 1) / 2) × SHARD_SPREAD` degrees, with
 `SHARD_SPREAD` (`15`).
 
 | Level | Damage | Cooldown | Speed | Radius | Duration | Amount |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 8 | 2.5 | 500 | 8 | 3.0 | 1 |
-| 2 | 8 | 2.5 | 500 | 8 | 3.5 | 1 |
-| 3 | 10 | 2.5 | 500 | 8 | 3.5 | 2 |
-| 4 | 10 | 2.2 | 500 | 8 | 4.0 | 2 |
-| 5 | 12 | 2.2 | 500 | 8 | 4.0 | 2 |
-| 6 | 12 | 2.0 | 550 | 9 | 4.5 | 3 |
-| 7 | 15 | 2.0 | 550 | 9 | 4.5 | 3 |
-| 8 | 20 | 1.8 | 600 | 10 | 5.0 | 3 |
+| ----- | ------ | -------- | ----- | ------ | -------- | ------ |
+| 1     | 8      | 2.5      | 500   | 8      | 3.0      | 1      |
+| 2     | 8      | 2.5      | 500   | 8      | 3.5      | 1      |
+| 3     | 10     | 2.5      | 500   | 8      | 3.5      | 2      |
+| 4     | 10     | 2.2      | 500   | 8      | 4.0      | 2      |
+| 5     | 12     | 2.2      | 500   | 8      | 4.0      | 2      |
+| 6     | 12     | 2.0      | 550   | 9      | 4.5      | 3      |
+| 7     | 15     | 2.0      | 550   | 9      | 4.5      | 3      |
+| 8     | 20     | 1.8      | 600   | 10     | 5.0      | 3      |
 
 ## Sconce
 
@@ -382,15 +382,15 @@ direction rotated by `(i − (n − 1) / 2) × SCONCE_SPREAD` degrees, with
 `SCONCE_SPREAD` (`20`).
 
 | Level | Damage | Cooldown | Speed | Radius | Duration | Amount |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 12 | 2.0 | 600 | 12 | 2.5 | 1 |
-| 2 | 12 | 2.0 | 600 | 12 | 2.5 | 2 |
-| 3 | 16 | 2.0 | 600 | 12 | 2.5 | 2 |
-| 4 | 16 | 1.8 | 600 | 14 | 2.5 | 2 |
-| 5 | 20 | 1.8 | 600 | 14 | 2.5 | 3 |
-| 6 | 20 | 1.6 | 600 | 14 | 2.5 | 3 |
-| 7 | 24 | 1.6 | 600 | 16 | 2.5 | 3 |
-| 8 | 30 | 1.4 | 600 | 16 | 2.5 | 4 |
+| ----- | ------ | -------- | ----- | ------ | -------- | ------ |
+| 1     | 12     | 2.0      | 600   | 12     | 2.5      | 1      |
+| 2     | 12     | 2.0      | 600   | 12     | 2.5      | 2      |
+| 3     | 16     | 2.0      | 600   | 12     | 2.5      | 2      |
+| 4     | 16     | 1.8      | 600   | 14     | 2.5      | 2      |
+| 5     | 20     | 1.8      | 600   | 14     | 2.5      | 3      |
+| 6     | 20     | 1.6      | 600   | 14     | 2.5      | 3      |
+| 7     | 24     | 1.6      | 600   | 16     | 2.5      | 3      |
+| 8     | 30     | 1.4      | 600   | 16     | 2.5      | 4      |
 
 ## Flare
 
@@ -401,12 +401,12 @@ amount is ignored. The burst is drawn for `FLARE_FLASH` (`0.4`) seconds and
 has no hitbox after the tick it fires.
 
 | Level | Damage | Cooldown | Radius |
-| --- | --- | --- | --- |
-| 1 | 100 | 60 | 640 |
-| 2 | 100 | 55 | 640 |
-| 3 | 150 | 55 | 640 |
-| 4 | 150 | 50 | 640 |
-| 5 | 200 | 50 | 640 |
-| 6 | 200 | 45 | 640 |
-| 7 | 300 | 45 | 640 |
-| 8 | 500 | 40 | 640 |
+| ----- | ------ | -------- | ------ |
+| 1     | 100    | 60       | 640    |
+| 2     | 100    | 55       | 640    |
+| 3     | 150    | 55       | 640    |
+| 4     | 150    | 50       | 640    |
+| 5     | 200    | 50       | 640    |
+| 6     | 200    | 45       | 640    |
+| 7     | 300    | 45       | 640    |
+| 8     | 500    | 40       | 640    |

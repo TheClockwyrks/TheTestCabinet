@@ -138,12 +138,12 @@ Every registered arm emits schema 1: three provenance lines naming the schema,
 the language it was generated for and what it was reflected out of, then four
 sections. A catalogue must declare its schema, and gg refuses any number but 1.
 
-| Section | What it carries |
-| --- | --- |
-| `modules` | Every module the surface is divided into, in the order a model meets them, each with its gg id, the path this arm spells it under, a brief and optional detail, and the line a program writes to bring it into scope. |
-| `libraries` | The libraries a program may import, grouped as the artifact that decides the set groups them, each name spelled as a program must write it. Absent where an arm's programs get their runtime's standard library and nothing more. |
+| Section     | What it carries                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `modules`   | Every module the surface is divided into, in the order a model meets them, each with its gg id, the path this arm spells it under, a brief and optional detail, and the line a program writes to bring it into scope.                                                                                                                                                                       |
+| `libraries` | The libraries a program may import, grouped as the artifact that decides the set groups them, each name spelled as a program must write it. Absent where an arm's programs get their runtime's standard library and nothing more.                                                                                                                                                           |
 | `functions` | Every call a program can write, in one flat array. Each entry names the gg `operation` it binds, the `module` it is documented under, its `kind` and `receiver`, the `name` a program calls it by, its `fqn`, a brief with optional detail, its `signatures`, and its `returns` and `types` as resolved references. A second way into a capability the arm already binds carries `aliasOf`. |
-| `types` | Every type a signature refers to: its `fqn` and `module`, its declaration, the prose explaining what it is for, a line per member, and the member functions an arm hangs off the type. |
+| `types`     | Every type a signature refers to: its `fqn` and `module`, its declaration, the prose explaining what it is for, a line per member, and the member functions an arm hangs off the type.                                                                                                                                                                                                      |
 
 An entry reaches its gate through the `operation` id it names, and gating is
 gg's, so a catalogue carries no gate field and no capability id. A function
@@ -254,6 +254,7 @@ it anything. Nothing is compared between arms.
   name sets in bijection would assert a symmetry gg does not have: this surface
   is the strictly richer one, and a tool added for a tool-calling agent has no
   bearing on this table.
+
 - Capability coverage, per arm. Every operation gg offers has exactly one
   canonical binding on every arm that is not excused; every operation an arm
   names is one gg has; every alias names an operation that arm canonically

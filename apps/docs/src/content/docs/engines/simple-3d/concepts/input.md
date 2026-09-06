@@ -128,13 +128,13 @@ engine version.
 
 ## The 3D catalogue
 
-| Layout | Controls | Own vocabulary |
-| --- | --- | --- |
-| `dpad-4` | A four-way pad | `up`, `down`, `left`, `right` |
-| `dpad-4-two-buttons` | A four-way pad and two action buttons | `up`, `down`, `left`, `right`, `a`, `b` |
-| `single-stick` | One analog stick | `move-up`, `move-down`, `move-left`, `move-right` |
-| `dual-stick` | Two analog sticks | `move-up`, `move-down`, `move-left`, `move-right`, `look-up`, `look-down`, `look-left`, `look-right` |
-| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b` |
+| Layout                   | Controls                                 | Own vocabulary                                                                                       |
+| ------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `dpad-4`                 | A four-way pad                           | `up`, `down`, `left`, `right`                                                                        |
+| `dpad-4-two-buttons`     | A four-way pad and two action buttons    | `up`, `down`, `left`, `right`, `a`, `b`                                                              |
+| `single-stick`           | One analog stick                         | `move-up`, `move-down`, `move-left`, `move-right`                                                    |
+| `dual-stick`             | Two analog sticks                        | `move-up`, `move-down`, `move-left`, `move-right`, `look-up`, `look-down`, `look-left`, `look-right` |
+| `dual-stick-two-buttons` | Two analog sticks and two action buttons | The `dual-stick` vocabulary followed by `a`, `b`                                                     |
 
 The pads are digital and the sticks are analog. A 3D game moves through a
 world and turns a camera, which is two axes each, so the catalogue pairs a

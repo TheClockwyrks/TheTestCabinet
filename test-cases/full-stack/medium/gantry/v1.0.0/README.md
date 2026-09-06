@@ -48,11 +48,11 @@ simulation carried across a large surface rather than of any single hard idea.
 
 Gantry is designed for three engines, and seeds a different project for each:
 
-| Engine | What the seeded project supplies |
-| --- | --- |
-| `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the runtime, the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, asset loading, the diagnostics overlay and the `window.__gantry` surface, and then the game on top of it. It carries `@clockwyrks/voxel-runtime` as a baked-in `file:` dependency, which is what decodes a produced `.glb`. |
-| `simple-3d` | The [Simple 3D](/engines/simple-3d/) package, vendored at seed time, plus `src/constants.ts`, `src/main.ts`, and a stub `src/game.ts`. The build implements `src/game.ts`: the state, the debug surface, and the game's update and render. The engine holds the state by value, so a pose takes the current state and returns the next, applied through `engine.apply`, and a reading takes the state and returns what it read. |
-| `structured-3d` | The [Structured 3D](/engines/structured-3d/) package, vendored at seed time, plus the same three case-owned modules. The build implements `src/game.ts`: the game definition the engine drives, its instance, its mode, its live state class, and the debug surface its instance's `initialize` returns. The world is live, so a pose acts on it at the call and a reading returns plain data. |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`          | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the runtime, the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, asset loading, the diagnostics overlay and the `window.__gantry` surface, and then the game on top of it. It carries `@clockwyrks/voxel-runtime` as a baked-in `file:` dependency, which is what decodes a produced `.glb`. |
+| `simple-3d`     | The [Simple 3D](/engines/simple-3d/) package, vendored at seed time, plus `src/constants.ts`, `src/main.ts`, and a stub `src/game.ts`. The build implements `src/game.ts`: the state, the debug surface, and the game's update and render. The engine holds the state by value, so a pose takes the current state and returns the next, applied through `engine.apply`, and a reading takes the state and returns what it read.     |
+| `structured-3d` | The [Structured 3D](/engines/structured-3d/) package, vendored at seed time, plus the same three case-owned modules. The build implements `src/game.ts`: the game definition the engine drives, its instance, its mode, its live state class, and the debug surface its instance's `initialize` returns. The world is live, so a pose acts on it at the call and a reading returns plain data.                                      |
 
 Both stubs are written against `GantryState` and `GantryDebugApi`, so a freshly
 seeded engine workspace does not type-check until the build declares those two
@@ -82,35 +82,35 @@ reaches them in order. Every spec is common and seeded for every run.
 
 ## Contents
 
-| Path | Seeded to run? | Purpose |
-| --- | --- | --- |
-| `specs/` | Yes | The spec handed to the model, by concern. |
-| `workspaces/` | Yes | The starter TypeScript project, `<engine>/`, seeded at the run root. |
-| `prompt.hbs` | No | Rendered into the model's prompt; not seeded. |
-| `test-case.toml` | No | Manifest: workspace, toolchain, specs, domains, review items. |
-| `variants/` | No | One TOML file per variant (listed in `variants`). |
-| `description.md` | No | The site-facing introduction on the case's detail page. |
-| `changelog.md` | No | This version's entry in the case's changelog. |
-| `README.md` | No | This overview. |
+| Path             | Seeded to run? | Purpose                                                              |
+| ---------------- | -------------- | -------------------------------------------------------------------- |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                            |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root. |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                        |
+| `test-case.toml` | No             | Manifest: workspace, toolchain, specs, domains, review items.        |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).                    |
+| `description.md` | No             | The site-facing introduction on the case's detail page.              |
+| `changelog.md`   | No             | This version's entry in the case's changelog.                        |
+| `README.md`      | No             | This overview.                                                       |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run:
 
-| Spec | Covers |
-| --- | --- |
-| `overview.md` | What is built, the runtime layer the build is handed, the stage geometry and the tick, the code quality, and the commands run over the finished repository. |
-| `world.md` | The right-handed frame, the lattice and its pitch, the build envelope, obstacles and the contact rule, the load classes, and the anatomy of a site. |
-| `structure.md` | The three materials and their capacities, the ring, the trolley, counterweights and anchors, the editor's placement refusals, readiness, and the static check. |
-| `statics.md` | The lumped load model, the arm and tower solves and their order, the ring check, slack cables, the singularity test, utilization and the breakage cascade, and the collision tests. |
-| `rigging.md` | The hoist cable and its cap, the hook, the constraint-projected pendulum and its per-tick update, and the attach and release verdicts. |
-| `program.md` | The instruction tape, its steps, the four axes and their controller, the range checks, and the seven-stage tick pipeline. |
-| `controls.md` | The orbit camera, what the pointer picks and in what priority, and the registered actions and their keys. |
-| `state.md` | Every field the game's state carries, and the shape a reading of it takes. |
-| `instrumentation.md` | The debug and automation surface, the snapshot shape, and the diagnostics overlay. |
-| `ui.md` | The screens, the menus, the readouts, and the eleven audio cues. |
-| `sites.md` | The six sites: envelope, anchors, budget, par, loads, and obstacles. |
-| `assets.md` | The asset-production contract: every model and sound, which binary produces it, and how the build consumes it. |
-| `showcase.md` | The showcase the finished game ships beside its source: the description, the carousel, and the media each names. |
+| Spec                 | Covers                                                                                                                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overview.md`        | What is built, the runtime layer the build is handed, the stage geometry and the tick, the code quality, and the commands run over the finished repository.                         |
+| `world.md`           | The right-handed frame, the lattice and its pitch, the build envelope, obstacles and the contact rule, the load classes, and the anatomy of a site.                                 |
+| `structure.md`       | The three materials and their capacities, the ring, the trolley, counterweights and anchors, the editor's placement refusals, readiness, and the static check.                      |
+| `statics.md`         | The lumped load model, the arm and tower solves and their order, the ring check, slack cables, the singularity test, utilization and the breakage cascade, and the collision tests. |
+| `rigging.md`         | The hoist cable and its cap, the hook, the constraint-projected pendulum and its per-tick update, and the attach and release verdicts.                                              |
+| `program.md`         | The instruction tape, its steps, the four axes and their controller, the range checks, and the seven-stage tick pipeline.                                                           |
+| `controls.md`        | The orbit camera, what the pointer picks and in what priority, and the registered actions and their keys.                                                                           |
+| `state.md`           | Every field the game's state carries, and the shape a reading of it takes.                                                                                                          |
+| `instrumentation.md` | The debug and automation surface, the snapshot shape, and the diagnostics overlay.                                                                                                  |
+| `ui.md`              | The screens, the menus, the readouts, and the eleven audio cues.                                                                                                                    |
+| `sites.md`           | The six sites: envelope, anchors, budget, par, loads, and obstacles.                                                                                                                |
+| `assets.md`          | The asset-production contract: every model and sound, which binary produces it, and how the build consumes it.                                                                      |
+| `showcase.md`        | The showcase the finished game ships beside its source: the description, the carousel, and the media each names.                                                                    |
 
 ## Assets and media
 
@@ -190,14 +190,14 @@ The numbers pass this list used to call for is **done**. Every site in
 `specs/sites.md` has a worked crane and a tape that clears it inside its budget,
 inside par cost and inside par time, with no member breaking:
 
-| Site | Cost | Budget | Par cost | Clear | Par time | Peak utilization |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 First Lift | `2238.9` | `3000` | `2400` | `16.63 s` | `18` | `0.870` |
-| 2 Turnabout | `2278.9` | `3600` | `2400` | `52.35 s` | `55` | `0.868` |
-| 3 Over the Wall | `3369.6` | `4000` | `3550` | `37.92 s` | `40` | `0.908` |
-| 4 Long Reach | `4992.4` | `5600` | `5250` | `44.10 s` | `47` | `0.909` |
-| 5 High Shelf | `3982.6` | `4800` | `4200` | `95.87 s` | `101` | `0.814` |
-| 6 Heavy Haul | `4507.8` | `6000` | `4750` | `101.57 s` | `107` | `0.932` |
+| Site            | Cost     | Budget | Par cost | Clear      | Par time | Peak utilization |
+| --------------- | -------- | ------ | -------- | ---------- | -------- | ---------------- |
+| 1 First Lift    | `2238.9` | `3000` | `2400`   | `16.63 s`  | `18`     | `0.870`          |
+| 2 Turnabout     | `2278.9` | `3600` | `2400`   | `52.35 s`  | `55`     | `0.868`          |
+| 3 Over the Wall | `3369.6` | `4000` | `3550`   | `37.92 s`  | `40`     | `0.908`          |
+| 4 Long Reach    | `4992.4` | `5600` | `5250`   | `44.10 s`  | `47`     | `0.909`          |
+| 5 High Shelf    | `3982.6` | `4800` | `4200`   | `95.87 s`  | `101`    | `0.814`          |
+| 6 Heavy Haul    | `4507.8` | `6000` | `4750`   | `101.57 s` | `107`    | `0.932`          |
 
 Peak utilization runs from `0.814` at Site 5 to `0.932` at Site 6, so every
 worked crane is loaded hard and none of them is near breaking.
@@ -210,13 +210,13 @@ from the version directory as it stands, and the reference implementations
 listed above are what will change that — they need the same core. With the
 simulation in hand, most of this section comes back and one part of it does not:
 
-| Claim | What backs it |
-| --- | --- |
-| The summary table above — each site's cost, clear time, and peak utilization | The simulation, run per site over the worked crane and tape it holds for that site |
+| Claim                                                                                                              | What backs it                                                                           |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| The summary table above — each site's cost, clear time, and peak utilization                                       | The simulation, run per site over the worked crane and tape it holds for that site      |
 | The room figures for Sites 3 and 4 — the eleven variants' costs, how many of them clear, and the margins over them | The simulation, driven over a fixed list of ordinary perturbations of each worked crane |
-| Site 3's leanest clearing build, `3329.6` at `0.977` | The simulation, driven over the tower and arm variants at the height the wall forces |
-| The two-crane probe at `(16, 2, 6)` | The simulation, with Site 4's target moved back to it |
-| The wider search for a crane that clears `(16, 2, 6)` | One run that left no artifact; it is recorded below as a claim rather than a figure |
+| Site 3's leanest clearing build, `3329.6` at `0.977`                                                               | The simulation, driven over the tower and arm variants at the height the wall forces    |
+| The two-crane probe at `(16, 2, 6)`                                                                                | The simulation, with Site 4's target moved back to it                                   |
+| The wider search for a crane that clears `(16, 2, 6)`                                                              | One run that left no artifact; it is recorded below as a claim rather than a figure     |
 
 Par is set from that summary table by one rule, both halves alike: **par cost
 is 1.05x the worked crane's cost rounded up to the next `50`, and par time is

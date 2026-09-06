@@ -43,7 +43,11 @@ describe("the lexer", () => {
   });
 
   it("reads a leading `-` as negation but a signed number as a number", () => {
-    expect(tokenize("-state").map((t) => t.kind)).toEqual(["minus", "word", "eof"]);
+    expect(tokenize("-state").map((t) => t.kind)).toEqual([
+      "minus",
+      "word",
+      "eof",
+    ]);
     expect(tokenize("-5").map((t) => t.kind)).toEqual(["word", "eof"]);
     expect(tokenize("now-30d").map((t) => t.text)).toEqual(["now-30d", ""]);
   });
@@ -132,7 +136,9 @@ describe("the filter grammar", () => {
     // happens to spell a field name — `has.summary` alone is free text, and the
     // boolean marker is asked for as `has.summary:true`. Any other rule would make the
     // meaning of a bare word depend on whether the field catalog had loaded.
-    expect(compile("carom")).toEqual({ filter: { kind: "text", text: "carom" } });
+    expect(compile("carom")).toEqual({
+      filter: { kind: "text", text: "carom" },
+    });
     expect(compile("has.summary")).toEqual({
       filter: { kind: "text", text: "has.summary" },
     });
@@ -170,7 +176,9 @@ describe("the filter grammar", () => {
 
 describe("literal typing", () => {
   it("infers booleans and numbers from a bare literal", () => {
-    expect(compile("cap.compaction:false").filter).toMatchObject({ value: false });
+    expect(compile("cap.compaction:false").filter).toMatchObject({
+      value: false,
+    });
     expect(compile("cap.compaction.summaryHeadroom>0.5").filter).toMatchObject({
       value: 0.5,
     });
@@ -180,7 +188,9 @@ describe("literal typing", () => {
     // The only way to ask for the string "true" — and the only way to stop a case slug
     // that looks like a date from becoming a timestamp.
     expect(compile('note:"true"').filter).toMatchObject({ value: "true" });
-    expect(compile('case:"2026-01-01"').filter).toMatchObject({ value: "2026-01-01" });
+    expect(compile('case:"2026-01-01"').filter).toMatchObject({
+      value: "2026-01-01",
+    });
   });
 
   it("resolves a relative date in the client, so a saved query stays relative", () => {
@@ -224,9 +234,12 @@ describe("literal typing", () => {
   });
 
   it("does not read a number-shaped string as a number", () => {
-    expect(literalValue({ raw: "0x10", quoted: false, span: { start: 0, end: 0 } }, NOW)).toBe(
-      "0x10",
-    );
+    expect(
+      literalValue(
+        { raw: "0x10", quoted: false, span: { start: 0, end: 0 } },
+        NOW,
+      ),
+    ).toBe("0x10");
   });
 });
 
@@ -276,8 +289,14 @@ describe("the stages", () => {
         ],
       },
     });
-    expect(compile("| stats count() by bucket(started, 15m)").stats?.groupBy).toEqual([
-      { kind: "bucket", field: "started", interval: { count: 15, unit: "minute" } },
+    expect(
+      compile("| stats count() by bucket(started, 15m)").stats?.groupBy,
+    ).toEqual([
+      {
+        kind: "bucket",
+        field: "started",
+        interval: { count: 15, unit: "minute" },
+      },
     ]);
   });
 
@@ -295,18 +314,28 @@ describe("the stages", () => {
     // Bucket cardinality is the *product* of the keys' cardinalities, and a key that
     // vanished without a word would read as the evaluator losing data.
     const messages = problems("| stats count() by a, b, c, d");
-    expect(messages.some((m) => m.includes("At most 3 group-by keys"))).toBe(true);
-    expect(compile("| stats count() by a, b, c, d").stats?.groupBy).toHaveLength(3);
+    expect(messages.some((m) => m.includes("At most 3 group-by keys"))).toBe(
+      true,
+    );
+    expect(
+      compile("| stats count() by a, b, c, d").stats?.groupBy,
+    ).toHaveLength(3);
   });
 
   it("rejects an aggregation that needs a field and has none", () => {
-    expect(problems("| stats avg()").some((m) => m.includes("needs a field"))).toBe(true);
+    expect(
+      problems("| stats avg()").some((m) => m.includes("needs a field")),
+    ).toBe(true);
     // It is dropped from the compiled query rather than sent as a field-less fold.
-    expect(compile("| stats avg(), count()").stats?.aggs).toEqual([{ func: "count" }]);
+    expect(compile("| stats avg(), count()").stats?.aggs).toEqual([
+      { func: "count" },
+    ]);
   });
 
   it("names an unknown aggregation instead of guessing", () => {
-    expect(problems("| stats rate(score)")[0]).toContain("Unknown aggregation `rate`");
+    expect(problems("| stats rate(score)")[0]).toContain(
+      "Unknown aggregation `rate`",
+    );
   });
 
   it("rejects an interval the grammar does not carry", () => {
@@ -366,7 +395,9 @@ describe("the formatter", () => {
   it("re-derives parentheses rather than remembering them", () => {
     // Canonical output is what stops a saved query from churning every time it is opened
     // and re-saved.
-    expect(formatQuery(parseQuery("((a:1) and (b:2))").query)).toBe("a:1 and b:2");
+    expect(formatQuery(parseQuery("((a:1) and (b:2))").query)).toBe(
+      "a:1 and b:2",
+    );
     expect(formatQuery(parseQuery("a:1 or b:2 and c:3").query)).toBe(
       "a:1 or b:2 and c:3",
     );
@@ -376,7 +407,9 @@ describe("the formatter", () => {
   });
 
   it("writes `:` tight and every other operator spaced", () => {
-    expect(formatQuery(parseQuery("state : completed").query)).toBe("state:completed");
+    expect(formatQuery(parseQuery("state : completed").query)).toBe(
+      "state:completed",
+    );
     expect(formatQuery(parseQuery("score>=0.5").query)).toBe("score >= 0.5");
   });
 
@@ -396,7 +429,9 @@ describe("the formatter", () => {
   });
 
   it("quotes only what a bare spelling would break", () => {
-    expect(formatQuery(parseQuery('note:"a value"').query)).toBe('note:"a value"');
+    expect(formatQuery(parseQuery('note:"a value"').query)).toBe(
+      'note:"a value"',
+    );
     expect(formatQuery(parseQuery('note:"not"').query)).toBe('note:"not"');
     expect(formatQuery(parseQuery("limit:none").query)).toBe("limit:none");
     // A quoted literal stays quoted: unquoting it would change what it compiles to.

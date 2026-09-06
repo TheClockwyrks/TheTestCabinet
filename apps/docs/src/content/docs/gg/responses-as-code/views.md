@@ -14,12 +14,12 @@ that opened it.
 
 ## Kinds of view
 
-| Kind | Selector | [Band](/gg/context-visibility/) |
-| --- | --- | --- |
-| File | the path and, for a paged read, the line region | `FileView` |
-| Text | the label the program gave it | `TextView` |
-| Documentation | the name of the function or type it documents | `DocsView` |
-| Search | the constant `search results` for an agent's own search, the module path for an opening-turn listing | `SearchResults` |
+| Kind          | Selector                                                                                             | [Band](/gg/context-visibility/) |
+| ------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------- |
+| File          | the path and, for a paged read, the line region                                                      | `FileView`                      |
+| Text          | the label the program gave it                                                                        | `TextView`                      |
+| Documentation | the name of the function or type it documents                                                        | `DocsView`                      |
+| Search        | the constant `search results` for an agent's own search, the module path for an opening-turn listing | `SearchResults`                 |
 
 The opening turn's workspace tree is a text view under the constant selector
 `workspace tree`, so a program that opens that label again supersedes it rather
@@ -53,12 +53,12 @@ like a text view at that boundary: composed text under one label, closed by
 
 ## Opening and closing views
 
-| Function | What it does |
-| --- | --- |
+| Function                            | What it does                                                                                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `gg.views.openFile(path, options?)` | Reads the file and opens a view of it, returning exactly what `gg.files.readFile` returns for that window. `options` adds `maxLineChars` to the read's own; see [caps](#caps). |
-| `gg.views.openText(label, body)` | Opens the text view keyed by `label`. |
-| `gg.views.openDocsView(target)` | Opens the documentation view for one bound function or type. |
-| `gg.views.close(selector)` | Closes every file, text and search view carrying that selector, and returns how many it closed. |
+| `gg.views.openText(label, body)`    | Opens the text view keyed by `label`.                                                                                                                                          |
+| `gg.views.openDocsView(target)`     | Opens the documentation view for one bound function or type.                                                                                                                   |
+| `gg.views.close(selector)`          | Closes every file, text and search view carrying that selector, and returns how many it closed.                                                                                |
 
 `openText` and `openDocsView` are serviced whatever the run's capability set
 says, so a run that enables no tools can still show its model something.
@@ -133,12 +133,12 @@ closing is what takes back a page the agent still holds.
 
 ## Caps
 
-| Cap | Value | Bounds |
-| --- | --- | --- |
-| `MAX_TEXT_VIEW_BYTES` | 65,536 | one `openText` body; one file view's text body |
-| `MAX_VIEW_LABEL_BYTES` | 200 | one `openText` label |
-| `MAX_COMPOSED_VIEW_BYTES_PER_TURN` | 8 MiB | every `openText` body across one turn's programs |
-| `IMAGE_ATTACH_CAP` | 8 MiB | one attached picture |
+| Cap                                | Value  | Bounds                                           |
+| ---------------------------------- | ------ | ------------------------------------------------ |
+| `MAX_TEXT_VIEW_BYTES`              | 65,536 | one `openText` body; one file view's text body   |
+| `MAX_VIEW_LABEL_BYTES`             | 200    | one `openText` label                             |
+| `MAX_COMPOSED_VIEW_BYTES_PER_TURN` | 8 MiB  | every `openText` body across one turn's programs |
+| `IMAGE_ATTACH_CAP`                 | 8 MiB  | one attached picture                             |
 
 Breaching one of the three text-view caps is a catchable `ApiError` with code
 `limit-exceeded` stating the offending size and the bound (and, for the turn

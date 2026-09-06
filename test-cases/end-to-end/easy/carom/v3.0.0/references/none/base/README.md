@@ -139,7 +139,7 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   `setScore(p1, p2)`, `setWinner`, `setReceiver` — the screens, the menus and the
   match, one field each.
 - `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side,
-  driven)` — the paddles, one side at a time. A driven paddle moves at that
+driven)` — the paddles, one side at a time. A driven paddle moves at that
   side's `drivenVy` and neither the keys nor the AI touch it; the other side goes
   on playing normally.
 - `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,

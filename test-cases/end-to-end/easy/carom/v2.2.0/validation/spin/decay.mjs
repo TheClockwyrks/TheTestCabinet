@@ -134,8 +134,12 @@ export default function item() {
       );
       // The flight has to straighten with the number. Each bend must match the spin
       // the ball carried through it...
-      assertCurved(check, earlyBend, { who: "the shot while its spin is fresh" });
-      assertCurved(check, lateBend, { who: "the same shot once its spin has decayed" });
+      assertCurved(check, earlyBend, {
+        who: "the shot while its spin is fresh",
+      });
+      assertCurved(check, lateBend, {
+        who: "the same shot once its spin has decayed",
+      });
       // ...and the late one must be a fraction of the early one: the decay leaves
       // about a quarter of the spin by the time the second is measured, so a build
       // whose flight keeps bending as hard as it did at the hit fails here even

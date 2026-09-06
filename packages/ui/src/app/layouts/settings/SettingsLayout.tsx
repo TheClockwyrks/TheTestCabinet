@@ -64,7 +64,11 @@ export function SettingsLayout({ tab, children }: SettingsLayoutProps) {
 
   return (
     <PageLayout>
-      <PromptHeader command="--settings" blink comment={<>// tune the cabinet</>} />
+      <PromptHeader
+        command="--settings"
+        blink
+        comment={<>// tune the cabinet</>}
+      />
       <nav className={styles.tabs} aria-label="Settings sections">
         {tabs.map((entry) => (
           <NavLink

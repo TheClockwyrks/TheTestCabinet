@@ -21,13 +21,13 @@ those actions.
 
 ## Routes
 
-| Route | Purpose |
-| --- | --- |
-| `GET /matches/controllers` | List the controllers a case can pit |
-| `POST /matches` | Run one head-to-head match and return its replay |
-| `POST /tournaments` | Submit a tournament, driven in the background |
-| `GET /tournaments/{id}` | Read a tournament job's status |
-| `GET /tournaments/{id}/events` | Stream a tournament's live progress |
+| Route                          | Purpose                                          |
+| ------------------------------ | ------------------------------------------------ |
+| `GET /matches/controllers`     | List the controllers a case can pit              |
+| `POST /matches`                | Run one head-to-head match and return its replay |
+| `POST /tournaments`            | Submit a tournament, driven in the background    |
+| `GET /tournaments/{id}`        | Read a tournament job's status                   |
+| `GET /tournaments/{id}/events` | Stream a tournament's live progress              |
 
 These endpoints are unauthenticated behind the private-network boundary. Their
 CPU-bound execution is bounded by the capacity guard rather than by auth. The

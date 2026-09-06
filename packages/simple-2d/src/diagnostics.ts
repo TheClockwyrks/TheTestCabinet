@@ -24,7 +24,11 @@
  *   holding exactly as much as a run of one frame does.
  */
 
-import type { DiagnosticReading, DiagnosticValue, FrameMetrics } from "./contract";
+import type {
+  DiagnosticReading,
+  DiagnosticValue,
+  FrameMetrics,
+} from "./contract";
 
 /** Where the panel sits, and how much air its contents get, in device pixels. */
 const MARGIN = 8;
@@ -97,7 +101,8 @@ const IDLE_TIMINGS: FrameTimings = {
  */
 function formatValue(value: DiagnosticValue): string {
   if (typeof value === "string") return value;
-  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(3);
+  if (typeof value === "number")
+    return Number.isInteger(value) ? String(value) : value.toFixed(3);
   return String(value);
 }
 
@@ -110,7 +115,9 @@ function formatValue(value: DiagnosticValue): string {
  * a shape the compiler can narrow.
  */
 function readingText(reading: DiagnosticReading): string {
-  return reading.value === undefined ? (reading.error ?? "") : formatValue(reading.value);
+  return reading.value === undefined
+    ? (reading.error ?? "")
+    : formatValue(reading.value);
 }
 
 /**
@@ -251,7 +258,9 @@ export class Diagnostics {
     if (!this.on) return;
 
     const metrics = this.metrics();
-    const lines = this.read().map((reading) => `${reading.name}: ${readingText(reading)}`);
+    const lines = this.read().map(
+      (reading) => `${reading.name}: ${readingText(reading)}`,
+    );
     if (metrics.samples > 0) lines.push(metricsLine(metrics));
     if (lines.length === 0) return;
 
@@ -264,7 +273,8 @@ export class Diagnostics {
     // height is in device pixels, this tracks the device pixel ratio for free.
     const fontSize = Math.max(11, Math.round(height * 0.02));
     const lineHeight = Math.round(fontSize * 1.4);
-    const graphWidth = series.length > 0 ? Math.round(fontSize * GRAPH_WIDTH_EMS) : 0;
+    const graphWidth =
+      series.length > 0 ? Math.round(fontSize * GRAPH_WIDTH_EMS) : 0;
     const graphHeight = series.length > 0 ? lineHeight * GRAPH_HEIGHT_LINES : 0;
 
     ctx.save();
@@ -274,12 +284,20 @@ export class Diagnostics {
       ctx.textAlign = "left";
 
       let textWidth = 0;
-      for (const line of lines) textWidth = Math.max(textWidth, ctx.measureText(line).width);
+      for (const line of lines)
+        textWidth = Math.max(textWidth, ctx.measureText(line).width);
 
-      const contentWidth = textWidth + (graphWidth > 0 ? PADDING + graphWidth : 0);
+      const contentWidth =
+        textWidth + (graphWidth > 0 ? PADDING + graphWidth : 0);
       const contentHeight = Math.max(lines.length * lineHeight, graphHeight);
-      const panelWidth = Math.min(contentWidth + PADDING * 2, Math.max(width - MARGIN * 2, 0));
-      const panelHeight = Math.min(contentHeight + PADDING * 2, Math.max(height - MARGIN * 2, 0));
+      const panelWidth = Math.min(
+        contentWidth + PADDING * 2,
+        Math.max(width - MARGIN * 2, 0),
+      );
+      const panelHeight = Math.min(
+        contentHeight + PADDING * 2,
+        Math.max(height - MARGIN * 2, 0),
+      );
 
       ctx.fillStyle = PANEL_FILL;
       ctx.fillRect(MARGIN, MARGIN, panelWidth, panelHeight);
@@ -293,7 +311,14 @@ export class Diagnostics {
       }
 
       if (graphWidth > 0) {
-        this.drawGraph(ctx, series, left + textWidth + PADDING, top, graphWidth, graphHeight);
+        this.drawGraph(
+          ctx,
+          series,
+          left + textWidth + PADDING,
+          top,
+          graphWidth,
+          graphHeight,
+        );
       }
     } finally {
       // `finally`, not a trailing call: if measuring or drawing throws (a fake or a
@@ -332,10 +357,17 @@ export class Diagnostics {
       const sample = series[i] ?? 0;
       // A sample above the ceiling cannot happen (the ceiling is the maximum), but
       // clamping keeps a non-finite one from drawing a bar of `NaN` height.
-      const fraction = Number.isFinite(sample) ? Math.min(Math.max(sample, 0) / ceiling, 1) : 0;
+      const fraction = Number.isFinite(sample)
+        ? Math.min(Math.max(sample, 0) / ceiling, 1)
+        : 0;
       const barHeight = fraction * height;
       const barWidth = Math.max(columnWidth, 1);
-      ctx.fillRect(x + i * columnWidth, y + height - barHeight, barWidth, barHeight);
+      ctx.fillRect(
+        x + i * columnWidth,
+        y + height - barHeight,
+        barWidth,
+        barHeight,
+      );
     }
   }
 }

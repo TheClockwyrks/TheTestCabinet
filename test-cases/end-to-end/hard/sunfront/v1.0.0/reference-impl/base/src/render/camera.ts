@@ -14,7 +14,12 @@
  */
 
 import * as THREE from "three";
-import { ASPECT_RATIO, ARENA_SIZE, PLAYER_BASE, CORRIDOR_WIDTH } from "../constants";
+import {
+  ASPECT_RATIO,
+  ARENA_SIZE,
+  PLAYER_BASE,
+  CORRIDOR_WIDTH,
+} from "../constants";
 import { alongDiagonal, fromDiagonal } from "../mathutil";
 
 /** Fixed pitch below horizontal — steep enough to read height, low enough to be oblique. */
@@ -70,7 +75,11 @@ export class CommandCamera {
 
   /** Pan along the diagonal by `delta` logical units (positive = toward the enemy). */
   pan(delta: number): void {
-    this.panAlong = THREE.MathUtils.clamp(this.panAlong + delta, PAN_MIN, PAN_MAX);
+    this.panAlong = THREE.MathUtils.clamp(
+      this.panAlong + delta,
+      PAN_MIN,
+      PAN_MAX,
+    );
     this.update();
   }
 
@@ -93,9 +102,7 @@ export class CommandCamera {
   private update(): void {
     const g = fromDiagonal(this.panAlong, 0);
     this.target.set(g.x, 0, g.z);
-    this.camera.position
-      .copy(this.target)
-      .addScaledVector(DIAG, -this.back);
+    this.camera.position.copy(this.target).addScaledVector(DIAG, -this.back);
     this.camera.position.y = this.height;
     this.camera.lookAt(this.target);
     this.camera.updateProjectionMatrix();

@@ -21,10 +21,10 @@ parts, joints, pivots, and ranges that realize them are the model's to invent,
 and are what the test measures. Both required `[[model.animation]]` declarations
 are self-playing (`auto_play`, looping) idles:
 
-| Animation | Self-playing? | What it must show |
-| --- | --- | --- |
-| `crucible_pour` | Yes (idle) | The gantry crucible tips forward on its trunnions, pours a stream of molten metal into the casting bed, holds, and rights back level. |
-| `bellows_breathe` | Yes (idle) | The great flank bellows squeeze shut and draw back open in a slow, weighted breath that loops seamlessly. |
+| Animation         | Self-playing? | What it must show                                                                                                                     |
+| ----------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `crucible_pour`   | Yes (idle)    | The gantry crucible tips forward on its trunnions, pours a stream of molten metal into the casting bed, holds, and rights back level. |
+| `bellows_breathe` | Yes (idle)    | The great flank bellows squeeze shut and draw back open in a slow, weighted breath that loops seamlessly.                             |
 
 Each animation is a declaration only, with no keyframes, no period, and no bound
 joints. The model authors the motion as F-curves at run time with the

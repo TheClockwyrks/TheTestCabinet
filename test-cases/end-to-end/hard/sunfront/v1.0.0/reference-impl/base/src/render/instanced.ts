@@ -50,7 +50,10 @@ export class InstancedUnitRenderer {
         mesh.frustumCulled = false; // instances span the arena; culling by the shared box is wrong
         mesh.count = 0;
         // Enable the per-instance colour buffer (team tint) up front.
-        mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CAPACITY * 3), 3);
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(
+          new Float32Array(CAPACITY * 3),
+          3,
+        );
         parts.set(partName, mesh);
         this.group.add(mesh);
       }
@@ -64,7 +67,10 @@ export class InstancedUnitRenderer {
    * into instance slots per type in list order; each type's InstancedMesh `count` is
    * set to the number of live units of that type so stale slots are not drawn.
    */
-  sync(units: readonly RenderEntity[], typeOf: (e: RenderEntity) => UnitType | null): void {
+  sync(
+    units: readonly RenderEntity[],
+    typeOf: (e: RenderEntity) => UnitType | null,
+  ): void {
     const counts = new Map<UnitType, number>();
 
     for (const u of units) {
@@ -77,7 +83,8 @@ export class InstancedUnitRenderer {
       counts.set(type, i + 1);
 
       // Active animation overlaid on any caller-driven joints, then pose the rig.
-      const clip = rec.template.clips.get(u.role) ?? rec.template.clips.get("idle");
+      const clip =
+        rec.template.clips.get(u.role) ?? rec.template.clips.get("idle");
       const caller: Record<string, number> = u.caller ? { ...u.caller } : {};
       if (clip) Object.assign(caller, sampleAnimation(clip, u.animMs));
       const posed = poseRig(rec.template.rig, { caller, timeMs: u.animMs });

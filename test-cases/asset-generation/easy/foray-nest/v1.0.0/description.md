@@ -1,4 +1,4 @@
-**Foray Nest** is a colony's home tile in *Foray*, a top-down ant-colony raiding
+**Foray Nest** is a colony's home tile in _Foray_, a top-down ant-colony raiding
 game. It is the spawn mound a raider must reach to bank a carried seed, and the
 heart a soldier defends.
 

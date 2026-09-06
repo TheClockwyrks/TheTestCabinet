@@ -43,10 +43,10 @@ crossing states has to hold while something is chasing you through it.
 The case supports three engines and seeds a different project for each, which is
 what the manifest's `[workspaces]` table is for:
 
-| Engine | What the seeded project supplies |
-| --- | --- |
-| `none` | The toolchain configuration, `index.html`, and the sprite art under `assets/`. There is no `src/`: the build writes the game and the runtime under it, meaning the frame loop and the fixed-tick accumulator, the canvas fit, keyboard input, image loading, audio, the overlay, and the `window.__floe` surface. That surface additionally carries the two clock operations, `setAutoStep` and `advance`, because nothing outside the build owns the clock. |
-| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: `FloeState`, `FloeDebugApi`, `BACKGROUND`, and the three functions. Its `initialize` returns the debug surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value, so `update` is handed it as `DeepReadonly<FloeState>` and returns the next state, and a pose on the surface takes the state and returns the next, driven through `engine.apply`. |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`          | The toolchain configuration, `index.html`, and the sprite art under `assets/`. There is no `src/`: the build writes the game and the runtime under it, meaning the frame loop and the fixed-tick accumulator, the canvas fit, keyboard input, image loading, audio, the overlay, and the `window.__floe` surface. That surface additionally carries the two clock operations, `setAutoStep` and `advance`, because nothing outside the build owns the clock.                                                                                                                                                                                                                                                                                   |
+| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: `FloeState`, `FloeDebugApi`, `BACKGROUND`, and the three functions. Its `initialize` returns the debug surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value, so `update` is handed it as `DeepReadonly<FloeState>` and returns the next state, and a pose on the surface takes the state and returns the next, driven through `engine.apply`.                                                                                                                                                                        |
 | `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus `src/constants.ts` and `src/main.ts`. Its constants carry two groups the other workspaces do not: the one engine level the whole session runs in, and the tag each of the strait's actors carries. The build writes `src/game.ts`, deliberately absent from the seed: the `GameDefinition`, the game instance whose `initialize` registers the actions and cues and returns the debug surface, the game mode whose `gameStateClass` is the live `FloeState`, the actors, components, and controllers the strait is drawn and driven by, and `BACKGROUND`. The world is live, so the surface's poses take only their own arguments and act on it at the call. |
 
 Floe runs in **one** world for the whole session under `structured-2d`: every
@@ -69,42 +69,42 @@ every run, and the `.hbs` templates branch on `engine.slug` alone.
 
 ## Contents
 
-| Path | Seeded to run? | Purpose |
-| --- | --- | --- |
-| `specs/` | Yes | The spec handed to the model, by concern. |
-| `assets/` | Yes | The sprite art the game draws its critter, bear, vehicles and floes from. |
-| `workspaces/` | Yes | The starter TypeScript project, `<engine>/`, seeded at the run root. |
-| `prompt.hbs` | No | Rendered into the model's prompt; not seeded. |
-| `references/` | No | The authored, correct build, one directory per engine. Never seeded. |
-| `validation/` | No | The validator suites deciding every review point, `<engine>/`. |
-| `validation-baseline/` | No | The baseline media, captured from each reference build. |
-| `showcase/` | No | The variant's demo media and description for the catalog. |
-| `test-case.toml` | No | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
-| `variants/` | No | One TOML file per variant (listed in `variants`). |
-| `description.md` | No | The site-facing introduction on the case's detail page. |
-| `changelog.md` | No | This version's entry in the case's changelog. |
-| `README.md` | No | This overview. |
+| Path                   | Seeded to run? | Purpose                                                                   |
+| ---------------------- | -------------- | ------------------------------------------------------------------------- |
+| `specs/`               | Yes            | The spec handed to the model, by concern.                                 |
+| `assets/`              | Yes            | The sprite art the game draws its critter, bear, vehicles and floes from. |
+| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.      |
+| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                             |
+| `references/`          | No             | The authored, correct build, one directory per engine. Never seeded.      |
+| `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.            |
+| `validation-baseline/` | No             | The baseline media, captured from each reference build.                   |
+| `showcase/`            | No             | The variant's demo media and description for the catalog.                 |
+| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.   |
+| `variants/`            | No             | One TOML file per variant (listed in `variants`).                         |
+| `description.md`       | No             | The site-facing introduction on the case's detail page.                   |
+| `changelog.md`         | No             | This version's entry in the case's changelog.                             |
+| `README.md`            | No             | This overview.                                                            |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run. Each rule lives in exactly one file.
 
-| Spec | Covers |
-| --- | --- |
-| `overview.md` | What is built, what stays as it is, the stage, the position conventions, the fixed timestep, the code quality, the commands run over the finished repository, and what a player reads at a glance. |
-| `strait.md` | The HUD bar and the strait, the `40 x 20` grid, the five bands, the five bays' column pairs, and sole ownership of the tile-to-stage map. |
-| `hopping.md` | One tile per press, the hop cooldown and auto-repeat, where an accepted hop lands, and sole ownership of every rule that refuses a hop. |
-| `ice.md` | The eight ice lanes, the three vehicle kinds, the population model and its wrap, the per-level scaling, and the covering rule. |
-| `water.md` | The eight water lanes, the three floe kinds, the carry a rider takes from the floe under it, deep water, and being carried off the stage. |
-| `bays.md` | The five goal bays, what filling one does, when a level clears, and the bonus catch's cadence. |
-| `hunter.md` | The bear: its continuous glide, its ice and swim speeds, its emergence, its routing around traffic, the reset a vehicle deals it, and its catch. |
-| `progression.md` | Three lives and what costs one, the crossing timer, the three sub-phases and their pauses, the eight-level run, victory, game over, the bonus life, and what a pause suspends. |
-| `scoring.md` | Every score figure, the worked total for a completing hop, and the level and victory bonuses. |
-| `controls.md` | Every action the game answers to and the keys bound to it, menu navigation, pause, mute, and the overlay toggle. |
-| `ui.md` | The six screens and their menus, the five HUD readouts, the ten audio cues, and the mute requirement. |
-| `assets.md` | The seven sprite folders, their frame counts, which frame is drawn for which state, the mirroring rule, and what is drawn in code. |
-| `state.md` | What the game's state carries, in the shape the selected engine holds it in. |
-| `instrumentation.md` | The render-free core, every operation of the debugging and automation surface, the snapshot shape, and the debug overlay. |
-| `showcase.md` | The player-facing description and captured carousel the finished game ships beside its source. |
+| Spec                 | Covers                                                                                                                                                                                             |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overview.md`        | What is built, what stays as it is, the stage, the position conventions, the fixed timestep, the code quality, the commands run over the finished repository, and what a player reads at a glance. |
+| `strait.md`          | The HUD bar and the strait, the `40 x 20` grid, the five bands, the five bays' column pairs, and sole ownership of the tile-to-stage map.                                                          |
+| `hopping.md`         | One tile per press, the hop cooldown and auto-repeat, where an accepted hop lands, and sole ownership of every rule that refuses a hop.                                                            |
+| `ice.md`             | The eight ice lanes, the three vehicle kinds, the population model and its wrap, the per-level scaling, and the covering rule.                                                                     |
+| `water.md`           | The eight water lanes, the three floe kinds, the carry a rider takes from the floe under it, deep water, and being carried off the stage.                                                          |
+| `bays.md`            | The five goal bays, what filling one does, when a level clears, and the bonus catch's cadence.                                                                                                     |
+| `hunter.md`          | The bear: its continuous glide, its ice and swim speeds, its emergence, its routing around traffic, the reset a vehicle deals it, and its catch.                                                   |
+| `progression.md`     | Three lives and what costs one, the crossing timer, the three sub-phases and their pauses, the eight-level run, victory, game over, the bonus life, and what a pause suspends.                     |
+| `scoring.md`         | Every score figure, the worked total for a completing hop, and the level and victory bonuses.                                                                                                      |
+| `controls.md`        | Every action the game answers to and the keys bound to it, menu navigation, pause, mute, and the overlay toggle.                                                                                   |
+| `ui.md`              | The six screens and their menus, the five HUD readouts, the ten audio cues, and the mute requirement.                                                                                              |
+| `assets.md`          | The seven sprite folders, their frame counts, which frame is drawn for which state, the mirroring rule, and what is drawn in code.                                                                 |
+| `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                       |
+| `instrumentation.md` | The render-free core, every operation of the debugging and automation surface, the snapshot shape, and the debug overlay.                                                                          |
+| `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                                     |
 
 `strait.md`, `hopping.md`, `ice.md`, `water.md`, `bays.md`, `hunter.md`,
 `progression.md` and `scoring.md` are plain Markdown, identical under every

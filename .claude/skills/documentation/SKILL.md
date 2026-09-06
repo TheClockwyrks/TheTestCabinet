@@ -77,7 +77,7 @@ excessive.
 ### Minimize Negatives
 
 Documentation should state what designs should do and minimize mentions of what
-a design should *not* do. Specifying what a design should do has an exact
+a design should _not_ do. Specifying what a design should do has an exact
 target. Specifying what a design should not do is attempting to enumerate
 elements of an infinite set.
 

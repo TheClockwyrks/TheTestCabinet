@@ -40,8 +40,17 @@ The clock catalogue, the touch layout catalogue, and every type named in these
 pages come from the same entry point:
 
 ```ts
-import { createEngine, ConstantClock, TOUCH_LAYOUTS } from "@clockwyrks/simple-2d";
-import type { CueSpec, Engine, EngineOptions, Game } from "@clockwyrks/simple-2d";
+import {
+  createEngine,
+  ConstantClock,
+  TOUCH_LAYOUTS,
+} from "@clockwyrks/simple-2d";
+import type {
+  CueSpec,
+  Engine,
+  EngineOptions,
+  Game,
+} from "@clockwyrks/simple-2d";
 ```
 
 `DeepReadonly`, the view every reader of a game's state is handed, is the
@@ -141,17 +150,17 @@ interface EngineOptions<S, D = unknown> {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `canvas` | — | The canvas the engine sizes, clears, and renders through. |
-| `width` | — | The logical design width the game draws in. Finite and positive. |
-| `height` | — | The logical design height the game draws in. Finite and positive. |
-| `game` | — | The game this engine drives, bound for the engine's lifetime. Both `S` and `D` are inferred from it. |
-| `background` | — | A CSS color cleared to before every frame. Absent, the frame clears to transparency. |
-| `layout` | — | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`. |
-| `clock` | `new WallClock()` | The clock supplying each frame's delta. See `frame.md`. |
-| `surface` | Read from the canvas | Where the engine reads element size and device pixel ratio. |
-| `assetRoot` | `"assets/"` | The root every asset path resolves under. See `assets.md`. |
+| Field        | Default              | Meaning                                                                                              |
+| ------------ | -------------------- | ---------------------------------------------------------------------------------------------------- |
+| `canvas`     | —                    | The canvas the engine sizes, clears, and renders through.                                            |
+| `width`      | —                    | The logical design width the game draws in. Finite and positive.                                     |
+| `height`     | —                    | The logical design height the game draws in. Finite and positive.                                    |
+| `game`       | —                    | The game this engine drives, bound for the engine's lifetime. Both `S` and `D` are inferred from it. |
+| `background` | —                    | A CSS color cleared to before every frame. Absent, the frame clears to transparency.                 |
+| `layout`     | —                    | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`.       |
+| `clock`      | `new WallClock()`    | The clock supplying each frame's delta. See `frame.md`.                                              |
+| `surface`    | Read from the canvas | Where the engine reads element size and device pixel ratio.                                          |
+| `assetRoot`  | `"assets/"`          | The root every asset path resolves under. See `assets.md`.                                           |
 
 `width` and `height` are the coordinate system the game is written in, and they
 stay fixed for the life of the build. State every speed, size, and distance in
@@ -184,23 +193,23 @@ interface Engine<S, D = unknown> {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `events` | Subscribe to engine events. Available from construction. |
-| `state` | The current state, as a read-only view: the value the most recent transition left. Reading it before `initialize` resolves throws. |
-| `debug` | The debug surface the game returned beside its state. Reading it before `initialize` resolves throws. See `debug.md`. |
-| `initialize` | Run the game's `initialize` and resolve to the state it produced. |
-| `apply` | Replace the state with the one `transition` returns from the current one, and return the new state. See below. |
-| `run` | Drive frames off the host's frame callback until the signal aborts. |
-| `advance` | Tick the clock `frames` times, running a frame for each tick it accepts. |
-| `setClock` | Replace the clock. The next frame takes its delta from the new one. |
-| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
-| `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `diagnostics` | Every registered diagnostic source and what it reports now, in registration order. See `diagnostics.md`. |
-| `recording` | Whether draw-command recording is currently capturing. See `recording.md`. |
-| `startRecording` | Arm the recorder. Capture begins at the next frame. |
-| `stopRecording` | Disarm and return everything captured since `startRecording`. |
-| `destroy` | Halt the loop and drop every listener. |
+| Member           | Effect                                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `events`         | Subscribe to engine events. Available from construction.                                                                           |
+| `state`          | The current state, as a read-only view: the value the most recent transition left. Reading it before `initialize` resolves throws. |
+| `debug`          | The debug surface the game returned beside its state. Reading it before `initialize` resolves throws. See `debug.md`.              |
+| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                  |
+| `apply`          | Replace the state with the one `transition` returns from the current one, and return the new state. See below.                     |
+| `run`            | Drive frames off the host's frame callback until the signal aborts.                                                                |
+| `advance`        | Tick the clock `frames` times, running a frame for each tick it accepts.                                                           |
+| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                |
+| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                      |
+| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                  |
+| `diagnostics`    | Every registered diagnostic source and what it reports now, in registration order. See `diagnostics.md`.                           |
+| `recording`      | Whether draw-command recording is currently capturing. See `recording.md`.                                                         |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                |
+| `stopRecording`  | Disarm and return everything captured since `startRecording`.                                                                      |
+| `destroy`        | Halt the loop and drop every listener.                                                                                             |
 
 Calling `initialize` a second time resolves to the state already built, so a
 caller that cannot tell whether initialization has happened may ask again.
@@ -303,26 +312,26 @@ draws, so scaling never appears in the game's own code.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A `width` or `height` that is not finite and positive | `Error` naming the size |
-| A canvas that yields no 2D context | `Error` |
-| A `layout` outside the catalogue | `Error` naming every valid layout |
-| The game's `initialize` throws or rejects | `initialize` rejects with the cause |
-| `state`, `apply`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
-| `debug` read before `initialize` resolves | `Error` naming the ordering |
-| The game's `initialize` returns anything but `[state, debug]` | `initialize` rejects with an `Error` naming the pair |
-| `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
-| `update`, or a transition handed to `apply`, returns `undefined` | `Error` naming the transition; the engine keeps the state it had |
+| Condition                                                                  | Result                                                           |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| A `width` or `height` that is not finite and positive                      | `Error` naming the size                                          |
+| A canvas that yields no 2D context                                         | `Error`                                                          |
+| A `layout` outside the catalogue                                           | `Error` naming every valid layout                                |
+| The game's `initialize` throws or rejects                                  | `initialize` rejects with the cause                              |
+| `state`, `apply`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering                                      |
+| `debug` read before `initialize` resolves                                  | `Error` naming the ordering                                      |
+| The game's `initialize` returns anything but `[state, debug]`              | `initialize` rejects with an `Error` naming the pair             |
+| `advance` with a count that is not a whole, non-negative number            | `RangeError` naming the value                                    |
+| `update`, or a transition handed to `apply`, returns `undefined`           | `Error` naming the transition; the engine keeps the state it had |
 
 ## The rest of these pages
 
-| Page | Covers |
-| --- | --- |
-| `frame.md` | The loop, the clocks, `run` and `advance`, and `FrameInfo`. |
-| `input.md` | Actions, key bindings, edges, the pointer, and the touch layout catalogue. |
-| `audio.md` | Cue definition, file-backed cues, playback, looping, mute, and the unlock. |
-| `assets.md` | The asset root, the loaders, the path rules, and the load events. |
-| `diagnostics.md` | Registering sources, reading them back, the overlay, and frame metrics. |
-| `debug.md` | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`. |
-| `recording.md` | Arming the recorder, the recording format, and replaying a frame. |
+| Page             | Covers                                                                                                |
+| ---------------- | ----------------------------------------------------------------------------------------------------- |
+| `frame.md`       | The loop, the clocks, `run` and `advance`, and `FrameInfo`.                                           |
+| `input.md`       | Actions, key bindings, edges, the pointer, and the touch layout catalogue.                            |
+| `audio.md`       | Cue definition, file-backed cues, playback, looping, mute, and the unlock.                            |
+| `assets.md`      | The asset root, the loaders, the path rules, and the load events.                                     |
+| `diagnostics.md` | Registering sources, reading them back, the overlay, and frame metrics.                               |
+| `debug.md`       | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`. |
+| `recording.md`   | Arming the recorder, the recording format, and replaying a frame.                                     |

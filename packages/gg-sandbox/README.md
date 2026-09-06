@@ -10,7 +10,7 @@ that bakes both into the artifacts the Rust host embeds.
 
 **One guest, three arms.** The language a program is written in is a first-class
 axis of gg — it is what a cross-language A/B study compares arms on — so gg
-registers a *set* of program languages and most of them have a guest of their own.
+registers a _set_ of program languages and most of them have a guest of their own.
 A further language is normally a **sibling directory**, not a change here. This one
 is the exception in one direction: every arm whose program becomes JavaScript
 evaluates in `guest/`. `javascript` is the `typescript` arm with the type check
@@ -28,33 +28,33 @@ out of. So what a model is told about this surface, the compiler its program is 
 and the engine it then runs in all come out of this checkout on the build that embeds them
 rather than out of copies somebody last refreshed.
 
-| Artifact | What it is |
-| --- | --- |
+| Artifact                                 | What it is                                                                                                                                                                                                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `typescript.signatures.json` (generated) | The signature catalogue, `include_str!`d out of `OUT_DIR`. It is what documentation search and every documentation view are answered out of; only its module paths and their one-line briefs reach the system prompt, which names no function at all. |
-| `javascript.signatures.json` (generated) | The same catalogue under a second language id, differing in the import line each arm's modules are reached by. gg registers `javascript` as `typescript` with the compiler removed — same SDK, same signatures, annotations included. |
-| `typescript.tsc.js` (generated) | The compiler gg type-checks a model's program with, cut from the pinned `typescript`. **6.2 MB**, `include_str!`d and written out once per process. |
-| `typescript.lib.d.ts` (generated) | The ES2022 standard library, 57 files concatenated so a check opens one. |
-| `typescript.globals.d.ts` (generated) | `tools/program-globals.d.ts`, verbatim: the names a program reaches that no SDK declaration covers. |
-| `typescript.checker.json` (generated) | Which compiler, at which language level. |
-| `ecmascript.core.wasm` (generated) | The **ECMAScript guest**'s preview1 core module, ~1.1 MiB, built from `guest/`. gg encodes it into a component in its own process. |
-| `ecmascript.adapter.wasm` (generated) | The pinned `wasi_snapshot_preview1` reactor adapter that encode needs. |
-| `ecmascript.guest.json` (generated) | What built the two above. |
+| `javascript.signatures.json` (generated) | The same catalogue under a second language id, differing in the import line each arm's modules are reached by. gg registers `javascript` as `typescript` with the compiler removed — same SDK, same signatures, annotations included.                 |
+| `typescript.tsc.js` (generated)          | The compiler gg type-checks a model's program with, cut from the pinned `typescript`. **6.2 MB**, `include_str!`d and written out once per process.                                                                                                   |
+| `typescript.lib.d.ts` (generated)        | The ES2022 standard library, 57 files concatenated so a check opens one.                                                                                                                                                                              |
+| `typescript.globals.d.ts` (generated)    | `tools/program-globals.d.ts`, verbatim: the names a program reaches that no SDK declaration covers.                                                                                                                                                   |
+| `typescript.checker.json` (generated)    | Which compiler, at which language level.                                                                                                                                                                                                              |
+| `ecmascript.core.wasm` (generated)       | The **ECMAScript guest**'s preview1 core module, ~1.1 MiB, built from `guest/`. gg encodes it into a component in its own process.                                                                                                                    |
+| `ecmascript.adapter.wasm` (generated)    | The pinned `wasi_snapshot_preview1` reactor adapter that encode needs.                                                                                                                                                                                |
+| `ecmascript.guest.json` (generated)      | What built the two above.                                                                                                                                                                                                                             |
 
 ## Layout
 
-| Path | What it holds |
-| --- | --- |
-| `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; the guest's own generated glue is the real binding. |
-| `src/gg/*.ts` | **The model-facing surface**: one module per capability family, each exporting that family's functions and declaring the types they speak in. `src/gg/core.ts` declares no function and holds the types every other module names — `ApiError` above all. |
-| `src/internal/*.ts` | Everything the modules are built out of and no model reads: the argument validators, the failure normaliser, and the membrane lowerings shared by two modules. It is outside `src/gg/` because that is exactly what the reflector walks. |
-| `src/catalogue.ts` | The one thing a declaration cannot state: the module order, and which gg tool buys each operation. No name, no description and no operation id lives here. |
-| `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files under `dist/headers/gg/`. |
-| `tools/checker.mjs` | Cuts the `tsc` gg carries, and its standard library, out of the pinned `typescript`. |
-| `tools/program-globals.d.ts` | `console`, `performance`, `crypto`, the two UTF-8 codecs and `structuredClone` — declared for the TypeScript arm's compiler, beside the `guest/` that installs them. |
-| `guest/` | The **ECMAScript guest**: quickjs-ng inside a `wit-bindgen` component declaring gg's own `sandbox` world, with `src/gg/**` baked into it unchanged. The TypeScript, JavaScript and PureScript arms all evaluate programs in it. It lives here because it is cut from this package's SDK. `apps/docs/src/content/docs/gg/languages/ecmascript-guest.md` is the contract; `guest/src/lib.rs` is the argument. |
-| `guest.sh` | Builds `guest/` and writes `ecmascript.core.wasm`, `ecmascript.adapter.wasm` and `ecmascript.guest.json`. Called from `build.sh`, after the SDK emit it reads. |
-| `ecmascript-version.sh` | That guest's pins: the target, the adapter, the wasi-sdk it borrows, and the two compile flags that replace a fork of quickjs. |
-| `build.sh` | Writes every artifact this package produces except the catalogues — the guest and the four checker files — into `$GG_ARTIFACTS_OUT_DIR`. `signatures.sh` writes the catalogues, and `crates/gg/build.rs` runs that. |
+| Path                         | What it holds                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/membrane.d.ts`          | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; the guest's own generated glue is the real binding.                                                                                                                                                                                                                                                                 |
+| `src/gg/*.ts`                | **The model-facing surface**: one module per capability family, each exporting that family's functions and declaring the types they speak in. `src/gg/core.ts` declares no function and holds the types every other module names — `ApiError` above all.                                                                                                                                                    |
+| `src/internal/*.ts`          | Everything the modules are built out of and no model reads: the argument validators, the failure normaliser, and the membrane lowerings shared by two modules. It is outside `src/gg/` because that is exactly what the reflector walks.                                                                                                                                                                    |
+| `src/catalogue.ts`           | The one thing a declaration cannot state: the module order, and which gg tool buys each operation. No name, no description and no operation id lives here.                                                                                                                                                                                                                                                  |
+| `tools/signatures.mjs`       | Reflects the catalogue out of the emitted `.d.ts` files under `dist/headers/gg/`.                                                                                                                                                                                                                                                                                                                           |
+| `tools/checker.mjs`          | Cuts the `tsc` gg carries, and its standard library, out of the pinned `typescript`.                                                                                                                                                                                                                                                                                                                        |
+| `tools/program-globals.d.ts` | `console`, `performance`, `crypto`, the two UTF-8 codecs and `structuredClone` — declared for the TypeScript arm's compiler, beside the `guest/` that installs them.                                                                                                                                                                                                                                        |
+| `guest/`                     | The **ECMAScript guest**: quickjs-ng inside a `wit-bindgen` component declaring gg's own `sandbox` world, with `src/gg/**` baked into it unchanged. The TypeScript, JavaScript and PureScript arms all evaluate programs in it. It lives here because it is cut from this package's SDK. `apps/docs/src/content/docs/gg/languages/ecmascript-guest.md` is the contract; `guest/src/lib.rs` is the argument. |
+| `guest.sh`                   | Builds `guest/` and writes `ecmascript.core.wasm`, `ecmascript.adapter.wasm` and `ecmascript.guest.json`. Called from `build.sh`, after the SDK emit it reads.                                                                                                                                                                                                                                              |
+| `ecmascript-version.sh`      | That guest's pins: the target, the adapter, the wasi-sdk it borrows, and the two compile flags that replace a fork of quickjs.                                                                                                                                                                                                                                                                              |
+| `build.sh`                   | Writes every artifact this package produces except the catalogues — the guest and the four checker files — into `$GG_ARTIFACTS_OUT_DIR`. `signatures.sh` writes the catalogues, and `crates/gg/build.rs` runs that.                                                                                                                                                                                         |
 
 There is deliberately **one** copy of the WIT, and it lives in the Rust crate that
 embeds the component (`crates/gg/wit/`); `guest/build.rs` reads it from there.
@@ -75,7 +75,7 @@ The gg **operation** each function binds is written on the declaration too, as
 place to be wrong. The reflector fails in both directions: an exported function of
 `src/gg/` that names no operation is refused, and so is an operation
 `src/catalogue.ts` says this arm offers that no declaration binds. The operation's
-key also has to *name* its function (`files.read_file` is `readFile` and nothing
+key also has to _name_ its function (`files.read_file` is `readFile` and nothing
 else), so a catalogue entry names its function by derivation rather than through a
 second table to keep in step.
 
@@ -116,7 +116,7 @@ refreshing by hand**, the component included. Editing any of
 - the pinned `typescript` version in `package.json`,
 
 re-builds the guest and re-cuts the four checker files on the next `cargo build`. Running
-the script by hand is for *reading* what it emits, which is why the destination is required
+the script by hand is for _reading_ what it emits, which is why the destination is required
 and has no default.
 
 The script type-checks the SDK, builds `guest/` and cuts the **checker** gg type-checks a
@@ -136,18 +136,18 @@ takes a couple of seconds, and it writes both catalogues into whatever directory
 The catalogues are not in this table, and that is the point of generating them: there is
 no window in which a catalogue and the SDK can disagree, because the build that embeds one
 reflects it. The guest goes the same way, so what is left below is the rules the reflector and
-gg enforce on the prose itself — which matter *more* for it, because no reviewer sees the
+gg enforce on the prose itself — which matter _more_ for it, because no reviewer sees the
 emitted JSON on the way in.
 
-| Gate | Catches |
-| --- | --- |
-| `tsc -b` failing | `src/membrane.d.ts` disagreeing with the WIT, at build time |
-| gg's instantiation test | a WIT change the guest was not rebuilt against — the component's imports no longer match the host's linker. Not a state a `cargo build` can reach any more (the WIT is in this arm's rerun set); it is what catches a change made to the host's linker alone |
-| gg's `bound-operations` test | a tool added, renamed or removed in gg without the guest's generated glue following — the component says which names it binds and gg compares that with its own `ALL_TOOL_NAMES` |
-| `tools/signatures.mjs` exiting non-zero | an exported function of `src/gg/` naming no gg operation, an operation `src/catalogue.ts` lists that nothing binds, an operation whose key does not name its function, or two functions claiming one operation |
+| Gate                                    | Catches                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tsc -b` failing                        | `src/membrane.d.ts` disagreeing with the WIT, at build time                                                                                                                                                                                                                                                         |
+| gg's instantiation test                 | a WIT change the guest was not rebuilt against — the component's imports no longer match the host's linker. Not a state a `cargo build` can reach any more (the WIT is in this arm's rerun set); it is what catches a change made to the host's linker alone                                                        |
+| gg's `bound-operations` test            | a tool added, renamed or removed in gg without the guest's generated glue following — the component says which names it binds and gg compares that with its own `ALL_TOOL_NAMES`                                                                                                                                    |
+| `tools/signatures.mjs` exiting non-zero | an exported function of `src/gg/` naming no gg operation, an operation `src/catalogue.ts` lists that nothing binds, an operation whose key does not name its function, or two functions claiming one operation                                                                                                      |
 | `tools/signatures.mjs` exiting non-zero | a **module**, a **function**, an **argument**, an inline argument **field**, a **type** or a type **member** with no doc comment — an `@param` naming something the signature does not declare — a first paragraph that wraps onto a second line, so there is no brief in it — or a declared type nothing refers to |
-| gg's register gate | prose that has a brief and gets its register wrong: a paragraph in the brief field, a second-person instruction, emphasis by capitals, an unclosed code span |
-| gg's name rule and agreement gate | a fully-qualified name that is not module-qualified or does not end in the name a program writes, and the completeness rules read off the emitted catalogue rather than off TypeScript's AST, so every language is held to them |
+| gg's register gate                      | prose that has a brief and gets its register wrong: a paragraph in the brief field, a second-person instruction, emphasis by capitals, an unclosed code span                                                                                                                                                        |
+| gg's name rule and agreement gate       | a fully-qualified name that is not module-qualified or does not end in the name a program writes, and the completeness rules read off the emitted catalogue rather than off TypeScript's AST, so every language is held to them                                                                                     |
 
 Every one of those is the same rule under a different subject: **nothing a model reads
 about this SDK may be written anywhere but on the declaration it describes.** The JSDoc on
@@ -180,7 +180,7 @@ A second program language is a **sibling directory**, and there are now three to
 Opal's runtime into a guest of its own; and
 [`packages/gg-sandbox-purescript/`](../gg-sandbox-purescript/), which bakes **no guest
 at all** — it compiles a library set the host's `purs` needs, because that arm's
-compiled programs are self-contained JavaScript evaluated by *this* package's
+compiled programs are self-contained JavaScript evaluated by _this_ package's
 guest. None is an npm workspace and none shares code with this package. All are
 additive: nothing here changed when any of them landed. What they do share is three
 things, and only three.
@@ -217,7 +217,7 @@ embedded by that language's module in
 `crates/gg/src/sandbox/language/`. A catalogue is always the
 language's own — it carries the id it was generated for and the host asserts it, which is
 what stops eleven reflectors writing into one directory from ever handing a model another
-arm's surface — while a *component* may be shared by two languages whose programs it
+arm's surface — while a _component_ may be shared by two languages whose programs it
 evaluates identically, as `javascript` shares this guest's.
 A language whose prepare step judges the model's program carries what it judges it with —
 gg is copied as a single file into a run container, so a compiler it needs is a compiler it

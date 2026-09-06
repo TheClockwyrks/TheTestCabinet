@@ -12,11 +12,7 @@
         "height": 4
       },
       "ticks": 60,
-      "snapshots": [
-        20,
-        40,
-        60
-      ],
+      "snapshots": [20, 40, 60],
       "entities": [
         {
           "type": "source",
@@ -70,11 +66,7 @@
         "height": 7
       },
       "ticks": 60,
-      "snapshots": [
-        20,
-        40,
-        60
-      ],
+      "snapshots": [20, 40, 60],
       "entities": [
         {
           "type": "belt",
@@ -144,11 +136,7 @@
         "height": 8
       },
       "ticks": 120,
-      "snapshots": [
-        40,
-        80,
-        120
-      ],
+      "snapshots": [40, 80, 120],
       "entities": [
         {
           "type": "splitter",
@@ -237,11 +225,7 @@
         "height": 6
       },
       "ticks": 100,
-      "snapshots": [
-        33,
-        67,
-        100
-      ],
+      "snapshots": [33, 67, 100],
       "entities": [
         {
           "type": "source",
@@ -308,11 +292,7 @@
         "height": 5
       },
       "ticks": 300,
-      "snapshots": [
-        100,
-        200,
-        300
-      ],
+      "snapshots": [100, 200, 300],
       "entities": [
         {
           "type": "source",
@@ -392,11 +372,7 @@
         "height": 8
       },
       "ticks": 600,
-      "snapshots": [
-        200,
-        400,
-        600
-      ],
+      "snapshots": [200, 400, 600],
       "entities": [
         {
           "type": "source",
@@ -483,11 +459,7 @@
         "height": 7
       },
       "ticks": 80,
-      "snapshots": [
-        27,
-        53,
-        80
-      ],
+      "snapshots": [27, 53, 80],
       "entities": [
         {
           "type": "source",
@@ -562,11 +534,7 @@
         "height": 6
       },
       "ticks": 900,
-      "snapshots": [
-        300,
-        600,
-        900
-      ],
+      "snapshots": [300, 600, 900],
       "entities": [
         {
           "type": "source",

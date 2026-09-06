@@ -227,7 +227,12 @@ so a fill is asserted on directly.
 ```ts
 import { PANEL } from "../src/constants";
 
-expect(sample(h, PANEL.x + 4, PANEL.y + 4)).toEqual({ r: 0x1b, g: 0x24, b: 0x30, a: 255 });
+expect(sample(h, PANEL.x + 4, PANEL.y + 4)).toEqual({
+  r: 0x1b,
+  g: 0x24,
+  b: 0x30,
+  a: 255,
+});
 expect(sample(h, STAGE_W / 2, STAGE_H / 2).a).toBe(0);
 ```
 
@@ -255,7 +260,10 @@ export interface DrawCall {
   value?: unknown;
 }
 
-export function recordingScreen(): { screen: HTMLCanvasElement; calls: DrawCall[] } {
+export function recordingScreen(): {
+  screen: HTMLCanvasElement;
+  calls: DrawCall[];
+} {
   const calls: DrawCall[] = [];
   const screen = pageCanvas(STAGE_W, STAGE_H);
   const real = screen.getContext("2d")!;

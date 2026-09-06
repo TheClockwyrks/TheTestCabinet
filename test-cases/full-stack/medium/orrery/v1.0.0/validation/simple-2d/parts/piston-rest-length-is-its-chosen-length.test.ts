@@ -77,7 +77,11 @@ it("reports the placed length in editor.parts and the extended length in sim.pos
   assertNotNull(sim, "the run is live through the cycle that extended");
   assertEqual(sim?.status, "running", "the extend cycle reaches its boundary");
   assertNull(sim?.fault ?? null, "extend below ARM_MAX_LEN raises no fault");
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
 
   const pose = poseOf(snapshot, piston);
   assertNotNull(pose, "the run still reports a live pose for the piston");

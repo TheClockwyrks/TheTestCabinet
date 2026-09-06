@@ -27,14 +27,14 @@ Author the confetti in this festive multi-color palette, mixed together across t
 burst so it reads as bright, many-colored celebration. Spread the pieces roughly
 evenly across all six colors:
 
-| Role | Hex |
-| --- | --- |
-| Red | `#ff3b3b` |
-| Blue | `#3b6bff` |
-| Green | `#34d058` |
+| Role   | Hex       |
+| ------ | --------- |
+| Red    | `#ff3b3b` |
+| Blue   | `#3b6bff` |
+| Green  | `#34d058` |
 | Yellow | `#ffd23b` |
-| Pink | `#ff5ec7` |
-| Cyan | `#34e2ff` |
+| Pink   | `#ff5ec7` |
+| Cyan   | `#34e2ff` |
 
 The point of the effect is the **cheerful mix** — no single color should dominate,
 and the field should never read as one flat hue.
@@ -84,7 +84,7 @@ authored. Shape it, conceptually, as:
 
 with forces that read as fluttering paper: **gravity** pulling the pieces down and
 **drag** slowing them so they do not plummet — the drag is what lets them **sway
-side to side** as they fall rather than dropping straight. Author these as *intent*:
+side to side** as they fall rather than dropping straight. Author these as _intent_:
 read `particle-2d --help` for the exact emitter, force, and curve flags.
 
 ## Color, opacity, and size curves
@@ -120,6 +120,6 @@ already seeded alongside the workspace — no operation needs those flags.
 
 Because the effect is **simulated live**, it **varies slightly from one play to the
 next** — the confetti scatters and lands differently each time. That is correct for
-a confetti pop: author it so the *character* — the pop, the colorful spread, and the
+a confetti pop: author it so the _character_ — the pop, the colorful spread, and the
 fluttering fall — **reads the same across every replay**, rather than depending on
 any one frozen arrangement of pieces.

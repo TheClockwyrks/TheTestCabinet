@@ -144,7 +144,11 @@ export const hopper: Game<HopperState, null> = {
     ];
   },
 
-  update(state: DeepReadonly<HopperState>, api: UpdateApi, dt: number): HopperState {
+  update(
+    state: DeepReadonly<HopperState>,
+    api: UpdateApi,
+    dt: number,
+  ): HopperState {
     const paused = api.input.pressed("pause") ? !state.paused : state.paused;
     if (paused) return { ...state, paused };
 
@@ -155,8 +159,16 @@ export const hopper: Game<HopperState, null> = {
     const strafe = api.input.value("move-right") - api.input.value("move-left");
     const sin = Math.sin(yaw);
     const cos = Math.cos(yaw);
-    const x = clamp(state.x + (cos * strafe - sin * forward) * RUN * dt, -LIMIT, LIMIT);
-    const z = clamp(state.z - (sin * strafe + cos * forward) * RUN * dt, -LIMIT, LIMIT);
+    const x = clamp(
+      state.x + (cos * strafe - sin * forward) * RUN * dt,
+      -LIMIT,
+      LIMIT,
+    );
+    const z = clamp(
+      state.z - (sin * strafe + cos * forward) * RUN * dt,
+      -LIMIT,
+      LIMIT,
+    );
 
     const jumping = api.input.pressed("a") && state.grounded;
     const launched = jumping

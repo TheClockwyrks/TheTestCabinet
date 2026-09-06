@@ -2,7 +2,7 @@
 
 You are authoring an **arcane nova**: the flash of energy that erupts when a spell
 detonates at a point on the ground. It is a **one-shot** effect: **one cast**. A
-fresh instance plays each time the spell fires, so you are authoring the *effect* as
+fresh instance plays each time the spell fires, so you are authoring the _effect_ as
 a **system**, not a single frozen frame. Think of the burst of light and sparks that
 punches out of the ground when a mage slams a staff down — a sharp flash, a ring of
 force sweeping outward, a shower of glowing runic motes thrown into the air, and a
@@ -118,14 +118,14 @@ Use only these colors — stated as gradient stops over each particle's life, an
 the only hues allowed (a **cool arcane** palette: white, violet, cyan, pale violet —
 no warm fire colors, no greens):
 
-| Role | Hex |
-| --- | --- |
-| White flash | `#f2ecff` |
+| Role               | Hex       |
+| ------------------ | --------- |
+| White flash        | `#f2ecff` |
 | Arcane cyan (ring) | `#4fe3ff` |
-| Arcane violet | `#8a4dff` |
-| Pale-violet spark | `#cdb4ff` |
+| Arcane violet      | `#8a4dff` |
+| Pale-violet spark  | `#cdb4ff` |
 | Deep violet (fade) | `#3a1c78` |
-| Soft glow (dim) | `#5a3fa8` |
+| Soft glow (dim)    | `#5a3fa8` |
 
 A natural read: the **flash** runs `#f2ecff` → `#8a4dff`; the **ring** runs
 `#4fe3ff` → `#8a4dff`; the **sparks** run `#cdb4ff` → `#3a1c78` as they fall; the
@@ -147,7 +147,7 @@ Rendering is **on request**: run `particle-3d render` to simulate the whole syst
 over its duration, write the preview `effect.gif`, and **emit the `system.json`
 your result is built from** — you **must** render before you finish or the system
 is empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read, the single bright
+slightly from play to play**; judge its _character_ — the read, the single bright
 flash, the outward ring, the upward spark arc — across replays and from multiple
 orbit angles, not any single frame. The field size, duration, and fps are already
 seeded in a config beside your workspace, so no operation needs those flags. Run

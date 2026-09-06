@@ -20,7 +20,7 @@ fire, and the sprite should show it.
 But do **not** draw the **ore or plate** being smelted. A furnace smelts **whatever**
 ore a scenario feeds it — iron ore into iron plate, copper ore into copper plate — and
 the **renderer draws those items** arriving and leaving at run time. A fixed lump of
-iron or copper baked into the sprite would show the *same* cargo in every frame no
+iron or copper baked into the sprite would show the _same_ cargo in every frame no
 matter what the furnace is actually processing, which is wrong. So you draw the
 furnace, its coal fuel, and its fire — never a specific ore or plate.
 
@@ -49,10 +49,10 @@ front".
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
   has **12 frames, numbered 0–11**, forming **two** animation loops:
 
-| Frames | State | What it shows |
-| --- | --- | --- |
-| **0–3** | **Off (idle)** | The furnace **cold** — a dark, unlit firebox, no flames. A four-frame low idle. |
-| **4–11** | **Smelting** | The firebox **blazing** — a glowing fire that roils around a pulsing white-hot core. An eight-frame burn loop. |
+| Frames   | State          | What it shows                                                                                                  |
+| -------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
+| **0–3**  | **Off (idle)** | The furnace **cold** — a dark, unlit firebox, no flames. A four-frame low idle.                                |
+| **4–11** | **Smelting**   | The firebox **blazing** — a glowing fire that roils around a pulsing white-hot core. An eight-frame burn loop. |
 
 - Keep a small **even margin** (about 3–4 px) so the hearth sits inside its frame,
   centered, neither tiny in a corner nor clipped at the edge.
@@ -120,19 +120,19 @@ furnace is smelting. The steel body stays grey-blue in every frame.
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Dark outline / shadow | `#1b1d21` |
+| Role                    | Hex       |
+| ----------------------- | --------- |
+| Dark outline / shadow   | `#1b1d21` |
 | Steel light (grey-blue) | `#828c9b` |
-| Steel mid (grey-blue) | `#5a6472` |
-| Steel dark (grey-blue) | `#3a404b` |
-| Coal (unlit fuel) | `#33363d` |
-| Coal sheen | `#6b7a86` |
-| Heat — ember (dark) | `#7a2d16` |
-| Heat — red | `#d6473a` |
-| Heat — orange | `#f0894a` |
-| Heat — yellow | `#ffcf5c` |
-| Heat — white core | `#fff3cf` |
+| Steel mid (grey-blue)   | `#5a6472` |
+| Steel dark (grey-blue)  | `#3a404b` |
+| Coal (unlit fuel)       | `#33363d` |
+| Coal sheen              | `#6b7a86` |
+| Heat — ember (dark)     | `#7a2d16` |
+| Heat — red              | `#d6473a` |
+| Heat — orange           | `#f0894a` |
+| Heat — yellow           | `#ffcf5c` |
+| Heat — white core       | `#fff3cf` |
 
 The steel tones are the same grey-blue chassis the other Lattice machine icons use,
 so the furnace reads as one of the family. The heat ramp is the fire and belongs only

@@ -7,12 +7,12 @@ lost, the extra life, and the end of a run.
 
 A run starts with `START_LIVES` (`3`) lives.
 
-| What happens | Costs |
-| --- | --- |
-| An enemy bullet of the band opposite the ship's reaches the ship | One life |
-| Any drone's body reaches the ship, of either band | One life |
-| An enemy bullet of the ship's own band reaches the ship | Nothing, and it is absorbed |
-| A challenge drone's body reaches the ship | Nothing |
+| What happens                                                     | Costs                       |
+| ---------------------------------------------------------------- | --------------------------- |
+| An enemy bullet of the band opposite the ship's reaches the ship | One life                    |
+| Any drone's body reaches the ship, of either band                | One life                    |
+| An enemy bullet of the ship's own band reaches the ship          | Nothing, and it is absorbed |
+| A challenge drone's body reaches the ship                        | Nothing                     |
 
 `specs/bands.md` states which of the two a bullet is. One event costs exactly one
 life, whatever else is on the field at that instant.

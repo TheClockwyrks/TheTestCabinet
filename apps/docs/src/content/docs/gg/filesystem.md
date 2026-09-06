@@ -7,14 +7,14 @@ calls that say what is there, and the search that finds where to point them.
 Each capability is its own, so a study can withhold or reconfigure one without
 disturbing the others.
 
-| Capability | Tool | What it does |
-| --- | --- | --- |
-| `read-file` | `read_file` | Read a file, under the [read mode](#read-modes) below. |
-| `write-file` | `write_file` | Create or overwrite a whole file (parents created). |
-| `edit-file` | `edit_file` | Replace one exact, unique occurrence of a string. |
-| `list-dir` | `list_dir` | List a directory's entries (directories suffixed `/`). |
-| `list-dir` | `tree` | Render a depth-bounded tree of a directory, under the ignore rule in [trees](#trees) below. |
-| `search` | `search` | Content search over the workspace, under the ignore rule in [searching](#searching) below. |
+| Capability   | Tool         | What it does                                                                                |
+| ------------ | ------------ | ------------------------------------------------------------------------------------------- |
+| `read-file`  | `read_file`  | Read a file, under the [read mode](#read-modes) below.                                      |
+| `write-file` | `write_file` | Create or overwrite a whole file (parents created).                                         |
+| `edit-file`  | `edit_file`  | Replace one exact, unique occurrence of a string.                                           |
+| `list-dir`   | `list_dir`   | List a directory's entries (directories suffixed `/`).                                      |
+| `list-dir`   | `tree`       | Render a depth-bounded tree of a directory, under the ignore rule in [trees](#trees) below. |
+| `search`     | `search`     | Content search over the workspace, under the ignore rule in [searching](#searching) below.  |
 
 All five capabilities are enabled in a fresh configuration, and they appear as
 their own Filesystem group in the [configuration](/gg/configurations/) editor.
@@ -136,10 +136,10 @@ stops a single call from flooding the window and forces an agent to be deliberat
 about what it looks at, while costing a round trip per page. The two modes are
 the arms of that experiment.
 
-| Mode | A call that names no `limit` returns |
-| --- | --- |
-| `unlimited` | The rest of the file, from `offset` to its end. |
-| `default-cap` | `lineCap` lines, from `offset`. |
+| Mode          | A call that names no `limit` returns            |
+| ------------- | ----------------------------------------------- |
+| `unlimited`   | The rest of the file, from `offset` to its end. |
+| `default-cap` | `lineCap` lines, from `offset`.                 |
 
 Both modes take `offset` and `limit` and honor them whenever they are given.
 The mode decides only what a call that names no `limit` gets.

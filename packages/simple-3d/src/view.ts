@@ -99,7 +99,10 @@ export type Projection = CameraSnapshot["projection"];
  * {@link createCamera} should be checking against this array rather than
  * re-typing the pair.
  */
-export const PROJECTIONS: readonly Projection[] = ["perspective", "orthographic"];
+export const PROJECTIONS: readonly Projection[] = [
+  "perspective",
+  "orthographic",
+];
 
 /**
  * The pose and projection figures a camera starts at, shared by both classes.
@@ -410,7 +413,10 @@ export function createView(
           .applyMatrix4(projectionMatrixInverse)
           .applyMatrix4(matrixWorld);
         scratchDirection.copy(scratchTarget).sub(position).normalize();
-        return { origin: toVec3(position), direction: toVec3(scratchDirection) };
+        return {
+          origin: toVec3(position),
+          direction: toVec3(scratchDirection),
+        };
       }
 
       // An orthographic camera's rays are parallel, so the stage point picks the
@@ -423,7 +429,10 @@ export function createView(
       // `transformDirection` applies the rotation alone and normalizes, so the
       // direction is unit length under a scaled or nested camera too.
       scratchDirection.set(0, 0, -1).transformDirection(matrixWorld);
-      return { origin: toVec3(scratchTarget), direction: toVec3(scratchDirection) };
+      return {
+        origin: toVec3(scratchTarget),
+        direction: toVec3(scratchDirection),
+      };
     },
 
     project(point: Vec3): Projected {
@@ -436,8 +445,15 @@ export function createView(
       // World to view to clip, with `Vector3.applyMatrix4` performing the
       // perspective divide — the same two steps `THREE.Vector3.project` takes,
       // against this reading's matrices rather than the live camera's.
-      scratchPoint.applyMatrix4(matrixWorldInverse).applyMatrix4(projectionMatrix);
-      const logical = ndcToLogical(scratchPoint.x, scratchPoint.y, width, height);
+      scratchPoint
+        .applyMatrix4(matrixWorldInverse)
+        .applyMatrix4(projectionMatrix);
+      const logical = ndcToLogical(
+        scratchPoint.x,
+        scratchPoint.y,
+        width,
+        height,
+      );
 
       return { x: logical.x, y: logical.y, depth: scratchPoint.z, visible };
     },

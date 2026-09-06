@@ -34,25 +34,34 @@ profiles](/gg/configurations/).
             "name": "explore",
             "agentId": "explorer",
             "transitions": [
-              { "to": "build", "transfer": ["history", "tasks"],
-                "description": "when you understand the change and have a task list" }
-            ]
+              {
+                "to": "build",
+                "transfer": ["history", "tasks"],
+                "description": "when you understand the change and have a task list",
+              },
+            ],
           },
           {
             "name": "build",
             "agentId": "builder",
             "transitions": [
-              { "to": "verify", "transfer": ["history", "tasks"],
-                "description": "when the change compiles and you are ready to check it" },
-              { "to": "explore", "transfer": ["memories"],
-                "description": "when the change turns out to need more understanding" }
-            ]
+              {
+                "to": "verify",
+                "transfer": ["history", "tasks"],
+                "description": "when the change compiles and you are ready to check it",
+              },
+              {
+                "to": "explore",
+                "transfer": ["memories"],
+                "description": "when the change turns out to need more understanding",
+              },
+            ],
           },
-          { "name": "verify", "agentId": "verifier", "transitions": [] }
-        ]
-      }
-    }
-  ]
+          { "name": "verify", "agentId": "verifier", "transitions": [] },
+        ],
+      },
+    },
+  ],
 }
 ```
 
@@ -116,11 +125,11 @@ for.
 
 Per module, a transition does one of three things.
 
-| | |
-| --- | --- |
+|             |                                                                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Transferred | Named by the edge and held by the outgoing agent. The live module moves across, with its caps and its mode re-resolved from the receiving profile. |
-| Dropped | Held by the outgoing agent and not named, or named but turned off on the receiving profile. Its backing store is deleted. |
-| Initialized | Enabled on the receiving profile and not carried. A fresh, empty module, exactly as a new agent would get. |
+| Dropped     | Held by the outgoing agent and not named, or named but turned off on the receiving profile. Its backing store is deleted.                          |
+| Initialized | Enabled on the receiving profile and not carried. A fresh, empty module, exactly as a new agent would get.                                         |
 
 The successor is told all of this in an opening note at the tail of its window,
 along with whatever the transition's `note` argument said. An agent left to

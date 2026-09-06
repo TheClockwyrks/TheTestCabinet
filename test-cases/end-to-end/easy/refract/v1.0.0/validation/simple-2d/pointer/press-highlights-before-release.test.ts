@@ -41,7 +41,11 @@ it("highlights the pressed item while the press is still held", async () => {
     "the press alone moves the highlight to menu-1 " +
       "(specs/controls.md, Operating a screen with the pointer)",
   );
-  assertEqual(h.snapshot().screen, "title", "and takes nothing until the release");
+  assertEqual(
+    h.snapshot().screen,
+    "title",
+    "and takes nothing until the release",
+  );
   assertEqual(h.snapshot().pointer.down, true, "the press is still held");
   captureStill(h, "menu");
 });

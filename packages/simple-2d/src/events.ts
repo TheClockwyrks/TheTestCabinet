@@ -44,7 +44,9 @@ import type { EngineEventMap, EngineEvents } from "./contract";
 type ErasedHandler = (payload: never) => void;
 
 /** What a handler for `event` is called with. */
-type Handler<K extends keyof EngineEventMap> = (payload: EngineEventMap[K]) => void;
+type Handler<K extends keyof EngineEventMap> = (
+  payload: EngineEventMap[K],
+) => void;
 
 /**
  * The broadcaster behind `engine.events` and the `events` facade on `InitApi`.
@@ -77,7 +79,10 @@ export class EventBus implements EngineEvents {
    * second call would find the slot reoccupied by whatever subscribed after it and
    * silently unsubscribe a stranger.
    */
-  on<K extends keyof EngineEventMap>(event: K, handler: Handler<K>): () => void {
+  on<K extends keyof EngineEventMap>(
+    event: K,
+    handler: Handler<K>,
+  ): () => void {
     const bin = this.bins.get(event);
     if (bin) {
       bin.push(handler);
@@ -119,7 +124,10 @@ export class EventBus implements EngineEvents {
    * A nested emit is fine for the same reason. A handler that emits gets its own
    * snapshot, and the inner dispatch completes before the outer one resumes.
    */
-  emit<K extends keyof EngineEventMap>(event: K, payload: EngineEventMap[K]): void {
+  emit<K extends keyof EngineEventMap>(
+    event: K,
+    payload: EngineEventMap[K],
+  ): void {
     const bin = this.bins.get(event);
     if (!bin || bin.length === 0) return;
 

@@ -4,7 +4,7 @@ This is version `v2.2.0` of the **Carom** test case. The implemented game is an
 original paddle-and-ball duel titled **Carom**: classic paddle mechanics plus a
 **spin** mechanic (a paddle's motion curves the ball) and two **obstacles** in
 the field. Each variant plays the same two ways — Solo and Versus — and changes
-the *rules of the game itself* rather than adding a separate menu mode.
+the _rules of the game itself_ rather than adding a separate menu mode.
 
 `carom` is the catalog slug for this lineage of paddle-and-ball cases, and the
 game's in-fiction title. The case is inspired by classic paddle games (such as
@@ -62,7 +62,7 @@ model, guided by the palette and measurements in the specs and by the seeded
 reference screenshots.
 
 The seeded specs and the rendered reference screenshots are copied into a run's
-repository (plus assets, when a case has them). The reference *source* mockups
+repository (plus assets, when a case has them). The reference _source_ mockups
 are not seeded, so a model builds the UI from the specs and the screenshots
 rather than copying the mockup code.
 

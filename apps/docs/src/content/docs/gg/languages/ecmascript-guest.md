@@ -25,11 +25,11 @@ top-level `await`.
 
 ## What a program may import
 
-| Specifier | What it resolves to |
-| --- | --- |
-| `gg` | the whole SDK: one namespace per family, plus `ApiError` |
-| `gg:<family>` | one family alone, such as `gg:files` |
-| `lib:<name>` | a [code module](/gg/modules/) the agent loaded |
+| Specifier     | What it resolves to                                      |
+| ------------- | -------------------------------------------------------- |
+| `gg`          | the whole SDK: one namespace per family, plus `ApiError` |
+| `gg:<family>` | one family alone, such as `gg:files`                     |
+| `lib:<name>`  | a [code module](/gg/modules/) the agent loaded           |
 
 `gg:<family>` and the SDK's own copy of that family are one module instance, so
 `error instanceof ApiError` holds for an error the SDK threw.

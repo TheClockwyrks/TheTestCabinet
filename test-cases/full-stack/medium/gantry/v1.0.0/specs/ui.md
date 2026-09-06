@@ -6,15 +6,15 @@ here are the ones `specs/controls.md` binds.
 
 ## The screens
 
-| Screen | Purpose |
-| --- | --- |
-| `title` | The front door: the title, the tagline, and the main menu. |
-| `howto` | How the game is played, in a player's words. |
-| `select` | The six sites: progress, scores, and entry. |
-| `build` | The yard and the structure editor. |
-| `program` | The yard and the tape editor. |
-| `run` | The tape playing out under the simulation. |
-| `results` | A cleared site's score. |
+| Screen    | Purpose                                                    |
+| --------- | ---------------------------------------------------------- |
+| `title`   | The front door: the title, the tagline, and the main menu. |
+| `howto`   | How the game is played, in a player's words.               |
+| `select`  | The six sites: progress, scores, and entry.                |
+| `build`   | The yard and the structure editor.                         |
+| `program` | The yard and the tape editor.                              |
+| `run`     | The tape playing out under the simulation.                 |
+| `results` | A cleared site's score.                                    |
 
 On every menu `up` and `down` move the highlight by one entry and wrap at both
 ends, `confirm` takes the highlighted entry, and `left` and `right` reach the
@@ -26,11 +26,11 @@ Every menu also takes the pointer and a touch contact. Three screens show one:
 rectangular hit region on the stage, laid out as the build likes and reported by
 `menuItemRect` (`specs/instrumentation.md`).
 
-| Input | Effect |
-| --- | --- |
-| The pointer moves onto an entry's region | The highlight moves to that entry |
+| Input                                                         | Effect                                                     |
+| ------------------------------------------------------------- | ---------------------------------------------------------- |
+| The pointer moves onto an entry's region                      | The highlight moves to that entry                          |
 | The pointer is pressed and released inside one entry's region | The highlight moves to that entry, and that entry is taken |
-| A touch contact lands and lifts inside one entry's region | The highlight moves to that entry, and that entry is taken |
+| A touch contact lands and lifts inside one entry's region     | The highlight moves to that entry, and that entry is taken |
 
 Taking an entry does what `confirm` does with it on that screen. Both edges fall
 inside one region or nothing is taken: a release outside the region its press
@@ -90,11 +90,11 @@ marked, and the tape's step count.
 The `check` action runs the static check (`specs/structure.md`) and shows what
 it found:
 
-| What the check found | What the screen shows |
-| --- | --- |
-| A readiness issue | The issues by name, and no verdict: with a readiness issue the structure is not solved, and the check reports no member, so nothing is colored |
-| No readiness issue, and the structure does not stand | The issues by name, `empty-program` among them when the tape is empty, and that the structure does not stand; the check reports no member, so nothing is colored |
-| No readiness issue, and the structure stands | The issues by name, `empty-program` among them when the tape is empty, that the structure stands, and each member colored by its static utilization on the utilization ramp (`specs/overview.md`) |
+| What the check found                                 | What the screen shows                                                                                                                                                                             |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A readiness issue                                    | The issues by name, and no verdict: with a readiness issue the structure is not solved, and the check reports no member, so nothing is colored                                                    |
+| No readiness issue, and the structure does not stand | The issues by name, `empty-program` among them when the tape is empty, and that the structure does not stand; the check reports no member, so nothing is colored                                  |
+| No readiness issue, and the structure stands         | The issues by name, `empty-program` among them when the tape is empty, that the structure stands, and each member colored by its static utilization on the utilization ramp (`specs/overview.md`) |
 
 A refused edit is visible in the moment it is refused, in whatever form suits
 the look, so a player is never left wondering why a click did nothing.
@@ -139,11 +139,11 @@ beside the site's par cost and par time (`specs/sites.md`), and the menu
 on arriving. On the last site `NEXT SITE` is left out and the menu is the
 other two entries in the same order.
 
-| Entry | Where it leads |
-| --- | --- |
-| `NEXT SITE` | Opens the next site and shows its `build` screen |
-| `REPLAY` | Opens this site again and shows its `build` screen |
-| `SITE SELECT` | Returns to `select`, opening no site |
+| Entry         | Where it leads                                     |
+| ------------- | -------------------------------------------------- |
+| `NEXT SITE`   | Opens the next site and shows its `build` screen   |
+| `REPLAY`      | Opens this site again and shows its `build` screen |
+| `SITE SELECT` | Returns to `select`, opening no site               |
 
 Opening a site is the operation `specs/state.md` fixes, so `NEXT SITE` and
 `REPLAY` both return the camera to its start pose, empty the undo history, and
@@ -158,37 +158,37 @@ later clear replaces it when its cost is lower, or equal with a lower time.
 Each failure cause (`specs/statics.md`) is shown as the fixed copy `FAIL_TEXT`
 gives it:
 
-| Cause | Copy |
-| --- | --- |
-| `collapse` | `THE STRUCTURE COLLAPSED` |
-| `ring-overload` | `THE SLEW RING GAVE WAY` |
-| `cable-snap` | `THE HOIST CABLE SNAPPED` |
-| `structure-struck-obstacle` | `THE CRANE STRUCK AN OBSTACLE` |
-| `load-struck-obstacle` | `THE LOAD STRUCK AN OBSTACLE` |
-| `load-struck-ground` | `THE LOAD STRUCK THE GROUND` |
-| `attach-missed` | `NOTHING TO ATTACH` |
-| `release-misplaced` | `THE LOAD WAS DROPPED` |
-| `command-out-of-range` | `A COMMAND WAS OUT OF RANGE` |
-| `loads-unplaced` | `THE TAPE ENDED WITH LOADS UNPLACED` |
+| Cause                       | Copy                                 |
+| --------------------------- | ------------------------------------ |
+| `collapse`                  | `THE STRUCTURE COLLAPSED`            |
+| `ring-overload`             | `THE SLEW RING GAVE WAY`             |
+| `cable-snap`                | `THE HOIST CABLE SNAPPED`            |
+| `structure-struck-obstacle` | `THE CRANE STRUCK AN OBSTACLE`       |
+| `load-struck-obstacle`      | `THE LOAD STRUCK AN OBSTACLE`        |
+| `load-struck-ground`        | `THE LOAD STRUCK THE GROUND`         |
+| `attach-missed`             | `NOTHING TO ATTACH`                  |
+| `release-misplaced`         | `THE LOAD WAS DROPPED`               |
+| `command-out-of-range`      | `A COMMAND WAS OUT OF RANGE`         |
+| `loads-unplaced`            | `THE TAPE ENDED WITH LOADS UNPLACED` |
 
 ## Audio
 
 The game's sounds are the produced files `specs/assets.md` lists, played on
 these cues:
 
-| Cue | Plays |
-| --- | --- |
-| `place` | a structure edit places a member, the ring, or a counterweight |
-| `delete` | a structure edit removes one of those, and every `undo` |
-| `run-start` | a run starts |
-| `attach` | a load attaches |
-| `placed` | a load is set down on its pad |
-| `creak` | a member's utilization reaches `CREAK_THRESHOLD` (`0.8`) on a tick having been below it on the tick before, and no member creaks on a run's first tick; at most one `creak` across the structure per `CREAK_COOLDOWN` (`0.5`) run-clock seconds, counted in whole ticks from the tick the last one played: the first tick eligible again is `CREAK_COOLDOWN * TICK_HZ` (`30`) ticks after that one, and a tick that has an eligible member but falls inside the cooldown plays nothing and starts no new cooldown. The gate is a tick count, so a run's creaks fall on the same ticks at every watch speed |
-| `break` | a tick breaks one or more members, once for the tick |
-| `collapse` | a run fails as `collapse` or `ring-overload` |
-| `complete` | a run clears the site |
-| `fail` | a run fails, whatever the cause |
-| `motor` | loops while a run is in progress and any axis's rate is nonzero, and is silent otherwise: a run that leaves the running phase stops it, whether it cleared, failed, or was aborted, whatever rates its axes were left holding |
+| Cue         | Plays                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `place`     | a structure edit places a member, the ring, or a counterweight                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `delete`    | a structure edit removes one of those, and every `undo`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `run-start` | a run starts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `attach`    | a load attaches                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `placed`    | a load is set down on its pad                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `creak`     | a member's utilization reaches `CREAK_THRESHOLD` (`0.8`) on a tick having been below it on the tick before, and no member creaks on a run's first tick; at most one `creak` across the structure per `CREAK_COOLDOWN` (`0.5`) run-clock seconds, counted in whole ticks from the tick the last one played: the first tick eligible again is `CREAK_COOLDOWN * TICK_HZ` (`30`) ticks after that one, and a tick that has an eligible member but falls inside the cooldown plays nothing and starts no new cooldown. The gate is a tick count, so a run's creaks fall on the same ticks at every watch speed |
+| `break`     | a tick breaks one or more members, once for the tick                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `collapse`  | a run fails as `collapse` or `ring-overload`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `complete`  | a run clears the site                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `fail`      | a run fails, whatever the cause                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `motor`     | loops while a run is in progress and any axis's rate is nonzero, and is silent otherwise: a run that leaves the running phase stops it, whether it cleared, failed, or was aborted, whatever rates its axes were left holding                                                                                                                                                                                                                                                                                                                                                                              |
 
 Each cue is a distinct sound. A cue plays once for the event that raises it,
 and at most once on a given tick or edit; `motor` is the one loop. The title

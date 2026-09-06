@@ -5,7 +5,7 @@ breaking into spray where it lands, with a low haze of mist drifting off. It is 
 **steady-state** effect — the water is already falling and never stops. There is no
 start and no end: the fall, the spray, and the mist are all in full flow from the
 first frame to the last, and the effect **loops seamlessly** over its window. You are
-authoring the *effect* as a **system**, not a single frozen frame.
+authoring the _effect_ as a **system**, not a single frozen frame.
 
 ## The field
 
@@ -112,14 +112,14 @@ Use only these colors — stated as gradient stops over each particle's life, an
 the only hues allowed (cool water only: blues, white foam, and pale mist; no warm or
 saturated colors, no greens or purples):
 
-| Role | Hex |
-| --- | --- |
+| Role                   | Hex       |
+| ---------------------- | --------- |
 | Falling water (bright) | `#a9d8f5` |
-| Falling water (deep) | `#2f6ea6` |
-| White foam / spray | `#f4fbff` |
-| Spray (pale blue) | `#cfe8f8` |
-| Drifting mist (pale) | `#b9ccd6` |
-| Mist (thin, dim) | `#7f95a2` |
+| Falling water (deep)   | `#2f6ea6` |
+| White foam / spray     | `#f4fbff` |
+| Spray (pale blue)      | `#cfe8f8` |
+| Drifting mist (pale)   | `#b9ccd6` |
+| Mist (thin, dim)       | `#7f95a2` |
 
 A natural read: the **falling water** runs `#a9d8f5` → `#2f6ea6` as it drops; the
 **spray** runs `#f4fbff` → `#cfe8f8` as it billows and fades; the **mist** runs
@@ -140,7 +140,7 @@ Rendering is **on request**: run `particle-3d render` to simulate the whole syst
 over its duration, write the preview `effect.gif`, and **emit the `system.json`
 your result is built from** — you **must** render before you finish or the system
 is empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read, the falling sheet,
+slightly from play to play**; judge its _character_ — the read, the falling sheet,
 the billowing spray, the seamless loop — across replays and from multiple orbit
 angles, not any single frame. The field size, duration, and fps are already seeded
 in a config beside your workspace, so no operation needs those flags. Run

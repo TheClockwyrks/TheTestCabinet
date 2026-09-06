@@ -35,7 +35,11 @@ it("returns to the grid from a press and release on the back control", async () 
 
   const cell = targetCenter(targetById(await h.snapshot(), "board-1"));
   await pressRelease(h, cell);
-  assertEqual((await h.snapshot()).screen, "playing", "the first board is entered first");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "playing",
+    "the first board is entered first",
+  );
 
   const back = targetCenter(targetById(await h.snapshot(), "back"));
   await pressRelease(h, back);

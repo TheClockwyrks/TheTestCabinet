@@ -54,7 +54,12 @@ so a fill is asserted on directly.
 
 ```ts
 const { ball } = h.snapshot();
-expect(sample(h, ball.x, ball.y)).toEqual({ r: 0xf2, g: 0xf5, b: 0xf7, a: 255 });
+expect(sample(h, ball.x, ball.y)).toEqual({
+  r: 0xf2,
+  g: 0xf5,
+  b: 0xf7,
+  a: 255,
+});
 ```
 
 Reach for pixels when the claim is about the picture: the background color, a

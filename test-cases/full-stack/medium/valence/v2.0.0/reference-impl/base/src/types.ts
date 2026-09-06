@@ -1,6 +1,14 @@
 // Valence — shared runtime types (the simulation entities and UI intents).
 
-import type { Branch, DamageType, DecayEmission, MatterType, TargetingMode, TowerKind, Trait } from "./constants";
+import type {
+  Branch,
+  DamageType,
+  DecayEmission,
+  MatterType,
+  TargetingMode,
+  TowerKind,
+  Trait,
+} from "./constants";
 import type { Lane } from "./board";
 
 export interface AtomSpec {
@@ -66,7 +74,13 @@ export interface Tower {
 // A snapshot-visible particle burst (the debug API's `effects`, specs/instrumentation.md): a
 // short-lived mirror of a decomposition / muzzle burst so a caller can confirm the right
 // burst fired at the right place. A shell strip reads as "strip".
-export type EffectKind = "strip" | "bondsnap" | "split" | "neutralize" | "reveal" | "muzzle";
+export type EffectKind =
+  | "strip"
+  | "bondsnap"
+  | "split"
+  | "neutralize"
+  | "reveal"
+  | "muzzle";
 export interface EffectRec {
   id: number;
   kind: EffectKind;
@@ -119,16 +133,40 @@ export interface Zone {
   tickAcc: number; // accumulator for the damage cadence
 }
 
-export type GameState = "title" | "mapselect" | "howto" | "playing" | "paused" | "victory" | "defeat";
+export type GameState =
+  | "title"
+  | "mapselect"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "defeat";
 export type Phase = "build" | "round";
 
-export type FxKind = "energy" | "kinetic" | "nuclear" | "bondsnap" | "split" | "neutralize" | "muzzle" | "leak" | "reveal";
+export type FxKind =
+  | "energy"
+  | "kinetic"
+  | "nuclear"
+  | "bondsnap"
+  | "split"
+  | "neutralize"
+  | "muzzle"
+  | "leak"
+  | "reveal";
 export interface FxEvent {
   kind: FxKind;
   x: number;
   y: number;
 }
-export type Cue = "shot" | "kinetic" | "nuclear" | "snap" | "neutralize" | "build" | "alarm" | "reveal";
+export type Cue =
+  | "shot"
+  | "kinetic"
+  | "nuclear"
+  | "snap"
+  | "neutralize"
+  | "build"
+  | "alarm"
+  | "reveal";
 
 export interface Clickable {
   x: number;

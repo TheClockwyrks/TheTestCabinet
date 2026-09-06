@@ -41,7 +41,10 @@ describe("UiResultSection", () => {
     expect(
       screen.getByLabelText("Nine-slice stretch preview"),
     ).toBeInTheDocument();
-    expect(screen.getByAltText("panel")).toHaveAttribute("src", "element-0.png");
+    expect(screen.getByAltText("panel")).toHaveAttribute(
+      "src",
+      "element-0.png",
+    );
   });
 });
 

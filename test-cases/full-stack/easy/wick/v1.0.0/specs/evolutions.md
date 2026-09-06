@@ -18,14 +18,14 @@ A base weapon is eligible to evolve when all three hold at once:
 The recipes are `EVOLUTIONS`, keyed by the evolved weapon's id; the six ids
 are `EVOLUTION_IDS`, in this order, with display names in `WEAPON_NAMES`.
 
-| Evolution | Id | From | Passive |
-| --- | --- | --- | --- |
-| Pyre | `pyre` | Taper | Wick |
-| Beacon | `beacon` | Ember | Oil |
-| Hail | `hail` | Pin | Mirror |
-| Chandelier | `chandelier` | Lantern | Glass |
-| Corona | `corona` | Halo | Tinder |
-| Blaze | `blaze` | Oil Splash | Soot |
+| Evolution  | Id           | From       | Passive |
+| ---------- | ------------ | ---------- | ------- |
+| Pyre       | `pyre`       | Taper      | Wick    |
+| Beacon     | `beacon`     | Ember      | Oil     |
+| Hail       | `hail`       | Pin        | Mirror  |
+| Chandelier | `chandelier` | Lantern    | Glass   |
+| Corona     | `corona`     | Halo       | Tinder  |
+| Blaze      | `blaze`      | Oil Splash | Soot    |
 
 ## Opening a chest
 
@@ -88,8 +88,8 @@ Each enemy a Pyre slash hits heals the player `PYRE_HEAL` (`1`) health on
 the tick of the hit, capped at `maxHp`. The fixed row is `PYRE_STATS`.
 
 | Damage | Cooldown | Width | Height | Amount |
-| --- | --- | --- | --- | --- |
-| 60 | 1.2 | 200 | 60 | 2 |
+| ------ | -------- | ----- | ------ | ------ |
+| 60     | 1.2      | 200   | 60     | 2      |
 
 ## Beacon
 
@@ -101,8 +101,8 @@ fewer exist, and Beacon needs at least one enemy to fire. The fixed row is
 `BEACON_STATS`.
 
 | Damage | Cooldown | Speed | Radius | Pierce | Duration | Amount |
-| --- | --- | --- | --- | --- | --- | --- |
-| 20 | 0.25 | 500 | 10 | 2 | 2.0 | 1 |
+| ------ | -------- | ----- | ------ | ------ | -------- | ------ |
+| 20     | 0.25     | 500   | 10     | 2      | 2.0      | 1      |
 
 ## Hail
 
@@ -114,8 +114,8 @@ same tick, dart `i` counted from `0` starting at `x = player.x` and
 fixed row is `HAIL_STATS`.
 
 | Damage | Cooldown | Speed | Radius | Pierce | Duration | Amount |
-| --- | --- | --- | --- | --- | --- | --- |
-| 15 | 0.5 | 700 | 7 | 3 | 1.5 | 6 |
+| ------ | -------- | ----- | ------ | ------ | -------- | ------ |
+| 15     | 0.5      | 700   | 7      | 3      | 1.5      | 6      |
 
 ## Chandelier
 
@@ -142,8 +142,8 @@ Each lantern is a touching effect with re-hit interval `LANTERN_REHIT`
 (`0.5`), timed per lantern per enemy. The fixed row is `CHANDELIER_STATS`.
 
 | Damage | Orbit | Radius | Amount |
-| --- | --- | --- | --- |
-| 25 | 120 | 20 | 4 |
+| ------ | ----- | ------ | ------ |
+| 25     | 120   | 20     | 4      |
 
 ## Corona
 
@@ -164,8 +164,8 @@ capped at `maxHp`; an enemy another shape of the same tick already took to
 is the pulse interval.
 
 | Damage | Cooldown | Radius |
-| --- | --- | --- |
-| 12 | 0.5 | 150 |
+| ------ | -------- | ------ |
+| 12     | 0.5      | 150    |
 
 ## Blaze
 
@@ -181,5 +181,5 @@ after, and each pulse deals `damage` to every enemy overlapping it. The fixed
 row is `BLAZE_STATS`.
 
 | Damage | Cooldown | Radius | Duration | Amount |
-| --- | --- | --- | --- | --- |
-| 8 | 2.0 | 70 | 4.0 | 5 |
+| ------ | -------- | ------ | -------- | ------ |
+| 8      | 2.0      | 70     | 4.0      | 5      |

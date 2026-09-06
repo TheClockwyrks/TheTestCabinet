@@ -8,13 +8,13 @@ defines it.
 
 ## Figures
 
-| Figure | Value |
-| --- | --- |
-| Minimum extracted run | 3 cores |
+| Figure                  | Value        |
+| ----------------------- | ------------ |
+| Minimum extracted run   | 3 cores      |
 | Score for an extraction | `10 × n × k` |
-| `RECOIL` | 42 units |
-| `RECOIL_HOLD` | 0.4 s |
-| `CHAIN_RESET` | 2.0 s |
+| `RECOIL`                | 42 units     |
+| `RECOIL_HOLD`           | 0.4 s        |
+| `CHAIN_RESET`           | 2.0 s        |
 
 ## Runs
 
@@ -71,11 +71,11 @@ Every core a removal takes off the channel lowers the pressure, as
 The chain step `k` is an integer that is 1 when a level begins. Each extraction
 takes the value this table gives, then scores at it.
 
-| Event | Chain step |
-| --- | --- |
-| Extraction on an insertion | 1 |
-| Extraction on a merge | the previous step plus 1 |
-| `CHAIN_RESET` (2.0 s) elapses with no extraction | 1 |
+| Event                                            | Chain step               |
+| ------------------------------------------------ | ------------------------ |
+| Extraction on an insertion                       | 1                        |
+| Extraction on a merge                            | the previous step plus 1 |
+| `CHAIN_RESET` (2.0 s) elapses with no extraction | 1                        |
 
 An insertion-caused extraction therefore scores at step 1, the merge-caused
 extraction that follows it scores at step 2, and a third extraction reached by a

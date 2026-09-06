@@ -29,7 +29,11 @@ afterEach(async () => {
 it("highlights the pressed item while the press is still held", async () => {
   await h.debug.reset({ seed: 1 });
   await h.advance(1);
-  assertEqual((await h.snapshot()).menuIndex, 0, "the title opens with menuIndex 0");
+  assertEqual(
+    (await h.snapshot()).menuIndex,
+    0,
+    "the title opens with menuIndex 0",
+  );
 
   const item = targetCenter(targetById(await h.snapshot(), "menu-1"));
   await h.debug.pointerDown(item.x, item.y);
@@ -41,7 +45,15 @@ it("highlights the pressed item while the press is still held", async () => {
     "the press alone moves the highlight to menu-1 " +
       "(specs/controls.md, Operating a screen with the pointer)",
   );
-  assertEqual((await h.snapshot()).screen, "title", "and takes nothing until the release");
-  assertEqual((await h.snapshot()).pointer.down, true, "the press is still held");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "title",
+    "and takes nothing until the release",
+  );
+  assertEqual(
+    (await h.snapshot()).pointer.down,
+    true,
+    "the press is still held",
+  );
   await captureStill(h, "menu");
 });

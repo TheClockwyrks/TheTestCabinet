@@ -32,7 +32,7 @@ A flat pan of ice seen from **top-down**:
   3D or tall facets.
 - **Edge and waterline:** ring the slab with a slightly darker **ice edge** that
   follows its jagged outline, and add a thin **waterline shadow** along the bottom
-  rim where it meets the sea, so it reads as a pan *floating* on water (a low, flat
+  rim where it meets the sea, so it reads as a pan _floating_ on water (a low, flat
   thing), not a tall block.
 - A couple of faint cracks or specks in the ice edge tone are fine for texture.
 
@@ -45,11 +45,11 @@ not a smooth geometric pill.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Snow top (upper surface) | `#eef6fa` |
-| Ice body (pale blue surface) | `#c3dee9` |
-| Ice edge | `#8fb6c9` |
+| Role                          | Hex       |
+| ----------------------------- | --------- |
+| Snow top (upper surface)      | `#eef6fa` |
+| Ice body (pale blue surface)  | `#c3dee9` |
+| Ice edge                      | `#8fb6c9` |
 | Waterline shadow (bottom rim) | `#4d7488` |
 
 ## Working the tool

@@ -62,7 +62,8 @@ function sampleAt(
   bits: number,
   float: boolean,
 ): number {
-  if (float) return bits === 64 ? bytes.readDoubleLE(at) : bytes.readFloatLE(at);
+  if (float)
+    return bits === 64 ? bytes.readDoubleLE(at) : bytes.readFloatLE(at);
   if (bits === 8) return (bytes.readUInt8(at) - 128) / 128;
   if (bits === 16) return bytes.readInt16LE(at) / 32768;
   if (bits === 24) {
@@ -142,7 +143,12 @@ function readWave(name: string): Wave {
   for (let frame = 0; frame < frames; frame += 1) {
     let sum = 0;
     for (let channel = 0; channel < format.channels; channel += 1) {
-      sum += sampleAt(data, frame * stride + channel * width, format.bits, float);
+      sum += sampleAt(
+        data,
+        frame * stride + channel * width,
+        format.bits,
+        float,
+      );
     }
     const value = sum / format.channels;
     mono[frame] = value;

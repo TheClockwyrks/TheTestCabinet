@@ -30,14 +30,14 @@ advances from an empty accumulator.
 
 Each tick resolves these six steps, in this order.
 
-| Step | What happens |
-| --- | --- |
-| 1 | Take the oldest buffered turn, if any, and apply it to the snake's direction. |
-| 2 | Compute the new head cell as the current head cell plus the current direction. |
-| 3 | Test the new head cell for a fatal collision. If it is fatal, the round ends and steps 4 to 6 do not run. |
-| 4 | If the new head cell holds the pellet, prepend the new head and keep the tail. Otherwise prepend the new head and drop the tail cell. |
-| 5 | If the pellet was eaten, resolve the score and the combo, then spawn the next pellet. |
-| 6 | Draw `TICK_SECONDS` off the combo window, and lapse the window if it reaches zero. |
+| Step | What happens                                                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Take the oldest buffered turn, if any, and apply it to the snake's direction.                                                         |
+| 2    | Compute the new head cell as the current head cell plus the current direction.                                                        |
+| 3    | Test the new head cell for a fatal collision. If it is fatal, the round ends and steps 4 to 6 do not run.                             |
+| 4    | If the new head cell holds the pellet, prepend the new head and keep the tail. Otherwise prepend the new head and drop the tail cell. |
+| 5    | If the pellet was eaten, resolve the score and the combo, then spawn the next pellet.                                                 |
+| 6    | Draw `TICK_SECONDS` off the combo window, and lapse the window if it reaches zero.                                                    |
 
 ## Turning
 
@@ -73,21 +73,21 @@ Step 3 tests the new head cell alone, before the tail is resolved. The head
 entering any of these ends the round at once, with no grace tick and no second
 chance.
 
-| Fatal cell | Fixed by |
-| --- | --- |
-| A wall cell | `specs/board.md` |
-| An obstacle cell | `specs/mode.md` |
-| A cell holding a body segment, subject to the tail rule below | This file |
+| Fatal cell                                                    | Fixed by         |
+| ------------------------------------------------------------- | ---------------- |
+| A wall cell                                                   | `specs/board.md` |
+| An obstacle cell                                              | `specs/mode.md`  |
+| A cell holding a body segment, subject to the tail rule below | This file        |
 
 ### The tail rule
 
 Whether the tail's cell is fatal depends on whether the tail vacates it on this
 tick.
 
-| The tick | The current tail cell |
-| --- | --- |
-| Eats nothing, so the tail moves | Free. The head may enter it, and a snake may safely chase its own tail. |
-| Eats the pellet, so the tail stays | Solid. The head entering it ends the round. |
+| The tick                           | The current tail cell                                                   |
+| ---------------------------------- | ----------------------------------------------------------------------- |
+| Eats nothing, so the tail moves    | Free. The head may enter it, and a snake may safely chase its own tail. |
+| Eats the pellet, so the tail stays | Solid. The head entering it ends the round.                             |
 
 Every other body cell is solid on every tick.
 
@@ -95,7 +95,7 @@ Every other body cell is solid on every tick.
 
 A round ends in one of two ways, and each has its own screen in `specs/ui.md`.
 
-| Ending | Cause |
-| --- | --- |
-| Dead | The head entered a fatal cell at step 3. |
+| Ending        | Cause                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| Dead          | The head entered a fatal cell at step 3.                                                   |
 | Board cleared | Step 5 found no valid cell for the next pellet, as `specs/board.md` defines the valid set. |

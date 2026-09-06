@@ -33,7 +33,10 @@ const game: Game<State, null> = {
     return [{ score: 0, angle: 0 }, null];
   },
   update(state, api, dt) {
-    return { score: state.score + Math.floor(dt * 100), angle: state.angle + dt };
+    return {
+      score: state.score + Math.floor(dt * 100),
+      angle: state.angle + dt,
+    };
   },
   render(state, api) {
     if (crate) crate.rotation.y = state.angle;
@@ -223,8 +226,8 @@ rectangles the layer drew.
 ```ts
 function update(state: DeepReadonly<Yard>, api: UpdateApi, dt: number): Yard {
   const pointer = api.input.pointer();
-  const hovered = state.menu.items.findIndex((_, i) =>
-    Math.abs(pointer.y - (360 + i * 40)) < 20,
+  const hovered = state.menu.items.findIndex(
+    (_, i) => Math.abs(pointer.y - (360 + i * 40)) < 20,
   );
   const selected = hovered >= 0 ? hovered : state.menu.selected;
   return step({ ...state, menu: { ...state.menu, selected } }, dt);

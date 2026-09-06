@@ -169,8 +169,12 @@ by `update`, and nothing but a transition advances the simulation.
 
 ```ts
 interface UpdateApi {
-  readonly input: { /* see input.md */ };
-  readonly audio: { /* see audio.md */ };
+  readonly input: {
+    /* see input.md */
+  };
+  readonly audio: {
+    /* see audio.md */
+  };
   frame(): FrameInfo;
   viewport(): Viewport;
   view(): View;
@@ -216,20 +220,20 @@ interface EngineOptions<S, D = unknown> {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `canvas` | — | The canvas the engine sizes, clears, and renders the scene through. |
-| `width` | — | The logical design width the game draws in. Finite and positive. |
-| `height` | — | The logical design height the game draws in. Finite and positive. |
-| `game` | — | The game this engine drives, bound for the engine's lifetime. Both `S` and `D` are inferred from it. |
-| `background` | — | A CSS color the whole canvas is cleared to before every frame, letterbox bars included. Absent, it clears to transparency. |
-| `layout` | — | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`. |
-| `clock` | `new WallClock()` | The clock supplying each frame's delta. See `frame.md`. |
-| `surface` | Read from the canvas | Where the engine reads element size and device pixel ratio, and what it listens on. |
-| `assetRoot` | `"assets/"` | The root every asset path resolves under. See `assets.md`. |
-| `screen` | Created from the canvas's owning document | The canvas the screen layer draws on. See `rendering.md`. |
-| `projection` | `"perspective"` | Which camera class the engine creates and renders through. See `camera.md`. |
-| `shadows` | `false` | `true` enables PCF soft shadow maps on the renderer. |
+| Field        | Default                                   | Meaning                                                                                                                    |
+| ------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `canvas`     | —                                         | The canvas the engine sizes, clears, and renders the scene through.                                                        |
+| `width`      | —                                         | The logical design width the game draws in. Finite and positive.                                                           |
+| `height`     | —                                         | The logical design height the game draws in. Finite and positive.                                                          |
+| `game`       | —                                         | The game this engine drives, bound for the engine's lifetime. Both `S` and `D` are inferred from it.                       |
+| `background` | —                                         | A CSS color the whole canvas is cleared to before every frame, letterbox bars included. Absent, it clears to transparency. |
+| `layout`     | —                                         | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`.                             |
+| `clock`      | `new WallClock()`                         | The clock supplying each frame's delta. See `frame.md`.                                                                    |
+| `surface`    | Read from the canvas                      | Where the engine reads element size and device pixel ratio, and what it listens on.                                        |
+| `assetRoot`  | `"assets/"`                               | The root every asset path resolves under. See `assets.md`.                                                                 |
+| `screen`     | Created from the canvas's owning document | The canvas the screen layer draws on. See `rendering.md`.                                                                  |
+| `projection` | `"perspective"`                           | Which camera class the engine creates and renders through. See `camera.md`.                                                |
+| `shadows`    | `false`                                   | `true` enables PCF soft shadow maps on the renderer.                                                                       |
 
 `width` and `height` are the coordinate system the **screen layer** is drawn in,
 and they stay fixed for the life of the build. They also fix the picture's
@@ -268,26 +272,26 @@ interface Engine<S, D = unknown> {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `events` | Subscribe to engine events. Available from construction. |
-| `state` | The current state, as a read-only view: the value the most recent transition left. Reading it before `initialize` resolves throws. |
-| `debug` | The debug surface the game returned beside its state. Reading it before `initialize` resolves throws. See `debug.md`. |
-| `scene` | The scene the engine renders, live and retained. Available from construction and after `destroy`. |
-| `camera` | The camera the engine renders through, live and posed by the game's `render`. Available from construction. |
-| `initialize` | Run the game's `initialize` and resolve to the state it produced. |
-| `apply` | Replace the state with the one `transition` returns from the current one, and return the new state. See below. |
-| `run` | Drive frames off the host's frame callback until the signal aborts. |
-| `advance` | Tick the clock `frames` times, running a frame for each tick it accepts. |
-| `setClock` | Replace the clock. The next frame takes its delta from the new one. |
-| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
-| `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `view` | The camera as it stood at the most recent render, with picking and projection through it. See `camera.md`. |
-| `diagnostics` | Every registered diagnostic source and what it reports now, in registration order. See `diagnostics.md`. |
-| `recording` | Whether the recorder is capturing frames. See `recording.md`. |
-| `startRecording` | Arm the recorder. Capture begins at the next frame. |
-| `stopRecording` | Disarm, flush the encoder, and resolve with everything captured since `startRecording`. |
-| `destroy` | Halt the loop, drop every listener, and dispose the renderer. |
+| Member           | Effect                                                                                                                             |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `events`         | Subscribe to engine events. Available from construction.                                                                           |
+| `state`          | The current state, as a read-only view: the value the most recent transition left. Reading it before `initialize` resolves throws. |
+| `debug`          | The debug surface the game returned beside its state. Reading it before `initialize` resolves throws. See `debug.md`.              |
+| `scene`          | The scene the engine renders, live and retained. Available from construction and after `destroy`.                                  |
+| `camera`         | The camera the engine renders through, live and posed by the game's `render`. Available from construction.                         |
+| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                  |
+| `apply`          | Replace the state with the one `transition` returns from the current one, and return the new state. See below.                     |
+| `run`            | Drive frames off the host's frame callback until the signal aborts.                                                                |
+| `advance`        | Tick the clock `frames` times, running a frame for each tick it accepts.                                                           |
+| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                |
+| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                      |
+| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                  |
+| `view`           | The camera as it stood at the most recent render, with picking and projection through it. See `camera.md`.                         |
+| `diagnostics`    | Every registered diagnostic source and what it reports now, in registration order. See `diagnostics.md`.                           |
+| `recording`      | Whether the recorder is capturing frames. See `recording.md`.                                                                      |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                |
+| `stopRecording`  | Disarm, flush the encoder, and resolve with everything captured since `startRecording`.                                            |
+| `destroy`        | Halt the loop, drop every listener, and dispose the renderer.                                                                      |
 
 Calling `initialize` a second time resolves to the state already built, so a
 caller that cannot tell whether initialization has happened may ask again.
@@ -412,33 +416,33 @@ draws, so scaling never appears in the game's own code.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A `width` or `height` that is not finite and positive | `Error` naming the size |
-| The canvas yields no `webgl2` context | `Error` naming the canvas |
-| No `screen` canvas supplied and the stage canvas has no owning document | `Error` naming `screen` |
-| A `projection` outside `"perspective"` / `"orthographic"` | `Error` naming both values |
-| A `layout` outside the catalogue | `Error` naming every valid layout |
-| The game's `initialize` throws or rejects | `initialize` rejects with the cause |
-| The game's `initialize` returns anything but `[state, debug]` | `initialize` rejects with an `Error` naming the pair |
-| `state`, `apply`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
-| `debug` read before `initialize` resolves | `Error` naming the ordering |
-| `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
-| `update`, or a transition handed to `apply`, returns `undefined` | `Error` naming the transition; the engine keeps the state it had |
+| Condition                                                                  | Result                                                           |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| A `width` or `height` that is not finite and positive                      | `Error` naming the size                                          |
+| The canvas yields no `webgl2` context                                      | `Error` naming the canvas                                        |
+| No `screen` canvas supplied and the stage canvas has no owning document    | `Error` naming `screen`                                          |
+| A `projection` outside `"perspective"` / `"orthographic"`                  | `Error` naming both values                                       |
+| A `layout` outside the catalogue                                           | `Error` naming every valid layout                                |
+| The game's `initialize` throws or rejects                                  | `initialize` rejects with the cause                              |
+| The game's `initialize` returns anything but `[state, debug]`              | `initialize` rejects with an `Error` naming the pair             |
+| `state`, `apply`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering                                      |
+| `debug` read before `initialize` resolves                                  | `Error` naming the ordering                                      |
+| `advance` with a count that is not a whole, non-negative number            | `RangeError` naming the value                                    |
+| `update`, or a transition handed to `apply`, returns `undefined`           | `Error` naming the transition; the engine keeps the state it had |
 
 Each construction failure is raised by `createEngine`, so a build that would run
 and draw nothing is refused where the mistake is.
 
 ## The rest of these pages
 
-| Page | Covers |
-| --- | --- |
-| `frame.md` | The loop, its eleven steps, the clocks, `run` and `advance`, and `FrameInfo`. |
-| `rendering.md` | The scene, the render cache, lights, shadows, the background, the screen layer, and compositing. |
-| `camera.md` | The three spaces, posing the camera, `View`, picking with a ray, projection, and the letterbox rule. |
-| `input.md` | Actions, key bindings, edges, the pointer, the wheel, and the touch layout catalogue. |
-| `audio.md` | Cue definition, file-backed cues, positional playback, looping, mute, and the unlock. |
-| `assets.md` | The asset root, the loaders, textures, glTF models and `cloneModel`, the path rules, and the load events. |
-| `diagnostics.md` | Registering sources, reading them back, the overlay, and frame metrics. |
-| `debug.md` | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`. |
-| `recording.md` | Arming the recorder and the video it hands back. |
+| Page             | Covers                                                                                                    |
+| ---------------- | --------------------------------------------------------------------------------------------------------- |
+| `frame.md`       | The loop, its eleven steps, the clocks, `run` and `advance`, and `FrameInfo`.                             |
+| `rendering.md`   | The scene, the render cache, lights, shadows, the background, the screen layer, and compositing.          |
+| `camera.md`      | The three spaces, posing the camera, `View`, picking with a ray, projection, and the letterbox rule.      |
+| `input.md`       | Actions, key bindings, edges, the pointer, the wheel, and the touch layout catalogue.                     |
+| `audio.md`       | Cue definition, file-backed cues, positional playback, looping, mute, and the unlock.                     |
+| `assets.md`      | The asset root, the loaders, textures, glTF models and `cloneModel`, the path rules, and the load events. |
+| `diagnostics.md` | Registering sources, reading them back, the overlay, and frame metrics.                                   |
+| `debug.md`       | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`.     |
+| `recording.md`   | Arming the recorder and the video it hands back.                                                          |

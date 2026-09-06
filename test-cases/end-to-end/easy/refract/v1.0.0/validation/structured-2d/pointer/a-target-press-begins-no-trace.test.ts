@@ -33,7 +33,11 @@ afterEach(() => {
 it("leaves no trace live after a press on the clear control", async () => {
   await resetTo(h, 1);
   await loadBoard(h, R9_UNIQUE);
-  assertEqual(h.snapshot().tracing, null, "no trace is live on the posed board");
+  assertEqual(
+    h.snapshot().tracing,
+    null,
+    "no trace is live on the posed board",
+  );
 
   const clear = targetCenter(targetById(h.snapshot(), "clear"));
   h.debug.pointerDown(clear.x, clear.y);

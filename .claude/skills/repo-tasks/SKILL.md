@@ -69,7 +69,7 @@ excessive.
 ### Minimize Negatives
 
 Issues should state what designs should do and minimize mentions of what a
-design should *not* do. Specifying what a design should do has an exact target.
+design should _not_ do. Specifying what a design should do has an exact target.
 Specifying what a design should not do is attempting to enumerate elements of an
 infinite set.
 
@@ -81,6 +81,7 @@ look through the git history. **NEVER** write sentences like the following:
 ```
 This issue used to specify that ...
 ```
+
 ```
 Section 3 is superseded by ...
 ```

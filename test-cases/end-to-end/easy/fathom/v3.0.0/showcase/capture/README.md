@@ -55,16 +55,16 @@ staged `validation/` copy so the reference stays byte-clean.
 
 Where the two drivers default differently, both are given.
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_VALIDATION_MEDIA_DIR` | unset | Where the media is written. Unset writes nothing, which is what makes an audition free. |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched to read this. A clip is recorded at 60 frames a second, so this is roughly `60 × seconds`; `2100` holds a thirty-five-second take whole. |
-| `TCAB_SHOWCASE_SEEDS` | base `1`–`12`, kindle `1`–`6` | The seeds auditioned. Each is crossed with all three play styles. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `26` | The earliest the clip may end. |
-| `TCAB_SHOWCASE_QUIET_SECONDS` | base `33`, kindle `32` | When a merely calm frame is allowed to end a take that never took a drifter. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | base `38`, kindle `35` | The hard ceiling, past which the take ends wherever it stands. |
-| `TCAB_SHOWCASE_TAKE` | unset | kindle only. `<seed>:<style>` records that take and auditions nothing, which is how the committed clip is reproduced without paying for the audition. |
-| `TCAB_SHOWCASE_QA_STILLS` | unset | `1` writes a still every few seconds, for eyeballing a take. |
+| Variable                          | Default                       | What it does                                                                                                                                                               |
+| --------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_VALIDATION_MEDIA_DIR`       | unset                         | Where the media is written. Unset writes nothing, which is what makes an audition free.                                                                                    |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`                         | The harness's replay cap, patched to read this. A clip is recorded at 60 frames a second, so this is roughly `60 × seconds`; `2100` holds a thirty-five-second take whole. |
+| `TCAB_SHOWCASE_SEEDS`             | base `1`–`12`, kindle `1`–`6` | The seeds auditioned. Each is crossed with all three play styles.                                                                                                          |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `26`                          | The earliest the clip may end.                                                                                                                                             |
+| `TCAB_SHOWCASE_QUIET_SECONDS`     | base `33`, kindle `32`        | When a merely calm frame is allowed to end a take that never took a drifter.                                                                                               |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | base `38`, kindle `35`        | The hard ceiling, past which the take ends wherever it stands.                                                                                                             |
+| `TCAB_SHOWCASE_TAKE`              | unset                         | kindle only. `<seed>:<style>` records that take and auditions nothing, which is how the committed clip is reproduced without paying for the audition.                      |
+| `TCAB_SHOWCASE_QA_STILLS`         | unset                         | `1` writes a still every few seconds, for eyeballing a take.                                                                                                               |
 
 Both drivers run their whole audition inside one process, so give them
 `NODE_OPTIONS=--max-old-space-size=8192`.

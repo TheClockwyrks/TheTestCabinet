@@ -20,11 +20,11 @@ interface Game<S, D = unknown> {
 }
 ```
 
-| Member | Called | Receives | Returns |
-| --- | --- | --- | --- |
-| `initialize` | Once, from [`engine.initialize`](/engines/simple-3d/apis/engine/) | `InitApi<S>` | `[state, debug]`, or a promise of it |
-| `update` | Once per frame, first | The current state as `DeepReadonly<S>`, `UpdateApi`, and the frame's delta in seconds | The next state |
-| `render` | Once per frame, after `update` | The state `update` returned, as `DeepReadonly<S>`, and `RenderApi` | Nothing |
+| Member       | Called                                                            | Receives                                                                              | Returns                              |
+| ------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------ |
+| `initialize` | Once, from [`engine.initialize`](/engines/simple-3d/apis/engine/) | `InitApi<S>`                                                                          | `[state, debug]`, or a promise of it |
+| `update`     | Once per frame, first                                             | The current state as `DeepReadonly<S>`, `UpdateApi`, and the frame's delta in seconds | The next state                       |
+| `render`     | Once per frame, after `update`                                    | The state `update` returned, as `DeepReadonly<S>`, and `RenderApi`                    | Nothing                              |
 
 `S` is the game's own state, the first element of the pair `initialize` returns.
 The engine holds it by value: each frame is a transition over it, where `update`
@@ -156,7 +156,12 @@ drives a pose through `engine.apply` and a reading against `engine.state`.
 ```ts
 interface GantryDebug {
   readonly version: number;
-  setCraneVelocity(state: DeepReadonly<State>, vx: number, vy: number, vz: number): State;
+  setCraneVelocity(
+    state: DeepReadonly<State>,
+    vx: number,
+    vy: number,
+    vz: number,
+  ): State;
   snapshot(state: DeepReadonly<State>): Snapshot;
 }
 
@@ -291,24 +296,24 @@ interface FrameInfo {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `count` | Frames run since the loop started. |
-| `timeMs` | Accumulated simulated time in milliseconds: the sum of the deltas delivered. |
-| `lastDeltaMs` | The delta the most recent frame was stepped by, in milliseconds. |
+| Field         | Meaning                                                                      |
+| ------------- | ---------------------------------------------------------------------------- |
+| `count`       | Frames run since the loop started.                                           |
+| `timeMs`      | Accumulated simulated time in milliseconds: the sum of the deltas delivered. |
+| `lastDeltaMs` | The delta the most recent frame was stepped by, in milliseconds.             |
 
 `timeMs` and `lastDeltaMs` are milliseconds; the `dt` passed to `update` is
 seconds.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `initialize` throws or rejects | `engine.initialize` rejects with the cause, and no frame runs |
-| `update` or `render` throws under `run` | The error propagates to the host, and the loop schedules the next frame |
-| `update` or `render` throws under `advance` | `advance` rejects with the cause, and the remaining frames do not run |
-| `update` returns `undefined` under `run` | An `Error` naming `must return the next state` propagates to the host, the loop schedules the next frame, and the engine keeps the state it had |
-| `update` returns `undefined` under `advance` | `advance` rejects with that `Error`, the remaining frames do not run, and the engine keeps the state it had |
+| Condition                                    | Result                                                                                                                                          |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initialize` throws or rejects               | `engine.initialize` rejects with the cause, and no frame runs                                                                                   |
+| `update` or `render` throws under `run`      | The error propagates to the host, and the loop schedules the next frame                                                                         |
+| `update` or `render` throws under `advance`  | `advance` rejects with the cause, and the remaining frames do not run                                                                           |
+| `update` returns `undefined` under `run`     | An `Error` naming `must return the next state` propagates to the host, the loop schedules the next frame, and the engine keeps the state it had |
+| `update` returns `undefined` under `advance` | `advance` rejects with that `Error`, the remaining frames do not run, and the engine keeps the state it had                                     |
 
 A throw under `run` leaves the loop alive so one bad frame does not freeze the
 game permanently. A throw under `advance` stops immediately, because a caller

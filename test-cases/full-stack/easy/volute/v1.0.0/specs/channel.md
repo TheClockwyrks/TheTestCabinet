@@ -12,20 +12,20 @@ The channel is a polyline of twelve vertices, listed here from the inlet. Each
 row gives the vertex, the arc distance at it, and the length of the leg running
 from it to the next vertex.
 
-| # | Point | Arc distance | Leg length |
-| --- | --- | --- | --- |
-| 0 | `(40, 40)` | `0` | `880` |
-| 1 | `(920, 40)` | `880` | `460` |
-| 2 | `(920, 500)` | `1340` | `800` |
-| 3 | `(120, 500)` | `2140` | `380` |
-| 4 | `(120, 120)` | `2520` | `720` |
-| 5 | `(840, 120)` | `3240` | `300` |
-| 6 | `(840, 420)` | `3540` | `620` |
-| 7 | `(220, 420)` | `4160` | `200` |
-| 8 | `(220, 220)` | `4360` | `400` |
-| 9 | `(620, 220)` | `4760` | `100` |
-| 10 | `(620, 320)` | `4860` | `140` |
-| 11 | `(480, 320)` | `5000` | — |
+| #   | Point        | Arc distance | Leg length |
+| --- | ------------ | ------------ | ---------- |
+| 0   | `(40, 40)`   | `0`          | `880`      |
+| 1   | `(920, 40)`  | `880`        | `460`      |
+| 2   | `(920, 500)` | `1340`       | `800`      |
+| 3   | `(120, 500)` | `2140`       | `380`      |
+| 4   | `(120, 120)` | `2520`       | `720`      |
+| 5   | `(840, 120)` | `3240`       | `300`      |
+| 6   | `(840, 420)` | `3540`       | `620`      |
+| 7   | `(220, 420)` | `4160`       | `200`      |
+| 8   | `(220, 220)` | `4360`       | `400`      |
+| 9   | `(620, 220)` | `4760`       | `100`      |
+| 10  | `(620, 320)` | `4860`       | `140`      |
+| 11  | `(480, 320)` | `5000`       | —          |
 
 `PATH_LENGTH` (`5000`) is the channel's total arc length. Vertex `0` is the
 inlet, at arc distance `0`, and vertex `11` is the intake, at `PATH_LENGTH`.
@@ -70,11 +70,11 @@ positions; the hold a removal leaves on a segment is in `specs/extraction.md`.
 
 ### Advance
 
-| Group | Advances at |
-| --- | --- |
-| The lead segment | the effective feed speed |
-| Every other segment | `180` units/s |
-| A segment whose recoil hold has not expired | it does not advance |
+| Group                                       | Advances at              |
+| ------------------------------------------- | ------------------------ |
+| The lead segment                            | the effective feed speed |
+| Every other segment                         | `180` units/s            |
+| A segment whose recoil hold has not expired | it does not advance      |
 
 Each tick a segment's rate times the tick's elapsed time is added to the arc
 position of every core in it, so a segment keeps its spacing as it moves.
@@ -124,12 +124,12 @@ of the level.
 `pressure` is a real number held between `0` and `100` inclusive, clamped at
 both ends, and it is `0` when a level starts.
 
-| Figure | Value |
-| --- | --- |
-| Cores the channel carries before pressure rises (`PRESSURE_FREE`) | `24` |
-| Rise per second for each core above `PRESSURE_FREE` | `0.05` |
-| Bleed per second while the channel is not over `PRESSURE_FREE` | `2.0` |
-| Fall for each core a removal takes off the channel | `0.8` |
+| Figure                                                            | Value  |
+| ----------------------------------------------------------------- | ------ |
+| Cores the channel carries before pressure rises (`PRESSURE_FREE`) | `24`   |
+| Rise per second for each core above `PRESSURE_FREE`               | `0.05` |
+| Bleed per second while the channel is not over `PRESSURE_FREE`    | `2.0`  |
+| Fall for each core a removal takes off the channel                | `0.8`  |
 
 Each tick, with `coreCount` the number of cores on the channel:
 

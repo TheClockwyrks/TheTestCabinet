@@ -5,11 +5,7 @@
     "height": 32
   },
   "ticks": 2500,
-  "snapshots": [
-    625,
-    1250,
-    2500
-  ],
+  "snapshots": [625, 1250, 2500],
   "entities": [
     {
       "type": "belt",

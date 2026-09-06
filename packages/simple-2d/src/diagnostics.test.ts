@@ -18,7 +18,10 @@ interface RecordedCall {
  * what lets a test assert the *order* of `save`/`restore` around the drawing, and
  * tell the graph's bars from the panel behind them by the fill each was drawn with.
  */
-function fakeContext(): { calls: RecordedCall[]; ctx: CanvasRenderingContext2D } {
+function fakeContext(): {
+  calls: RecordedCall[];
+  ctx: CanvasRenderingContext2D;
+} {
   const calls: RecordedCall[] = [];
   const ctx = {
     font: "",
@@ -94,7 +97,10 @@ function plotArea(calls: RecordedCall[]): Rect | undefined {
 }
 
 /** A frame loop's timing, as the overlay reads it. */
-function timings(metrics: Partial<FrameMetrics>, series: readonly number[] = []): FrameTimings {
+function timings(
+  metrics: Partial<FrameMetrics>,
+  series: readonly number[] = [],
+): FrameTimings {
   const summary: FrameMetrics = {
     samples: series.length,
     meanMs: 0,
@@ -108,7 +114,8 @@ function timings(metrics: Partial<FrameMetrics>, series: readonly number[] = [])
 /** An overlay showing `values`, with no frames timed. */
 function withSources(values: Record<string, DiagnosticValue>): Diagnostics {
   const diagnostics = new Diagnostics();
-  for (const [name, value] of Object.entries(values)) diagnostics.register(name, () => value);
+  for (const [name, value] of Object.entries(values))
+    diagnostics.register(name, () => value);
   diagnostics.setEnabled(true);
   return diagnostics;
 }
@@ -163,7 +170,9 @@ describe("Diagnostics.read", () => {
     const diagnostics = new Diagnostics();
     for (let i = 0; i < 5000; i++) diagnostics.register("frames", () => i);
 
-    expect(diagnostics.read().map((reading) => reading.name)).toEqual(["frames"]);
+    expect(diagnostics.read().map((reading) => reading.name)).toEqual([
+      "frames",
+    ]);
   });
 
   it("reports a throwing source as an error with no value, and reads the others", () => {
@@ -192,7 +201,9 @@ describe("Diagnostics.read", () => {
       throw "just a string";
     });
 
-    expect(diagnostics.read()).toEqual([{ name: "odd", error: "just a string" }]);
+    expect(diagnostics.read()).toEqual([
+      { name: "odd", error: "just a string" },
+    ]);
   });
 
   it("returns values unformatted", () => {
@@ -266,8 +277,16 @@ describe("Diagnostics.metrics", () => {
   });
 
   it("passes the loop's summary through unchanged", () => {
-    const summary: FrameMetrics = { samples: 12, meanMs: 16.7, p95Ms: 22.4, p99Ms: 31 };
-    const diagnostics = new Diagnostics({ metrics: () => summary, series: () => [] });
+    const summary: FrameMetrics = {
+      samples: 12,
+      meanMs: 16.7,
+      p95Ms: 22.4,
+      p99Ms: 31,
+    };
+    const diagnostics = new Diagnostics({
+      metrics: () => summary,
+      series: () => [],
+    });
 
     expect(diagnostics.metrics()).toEqual(summary);
   });
@@ -275,7 +294,12 @@ describe("Diagnostics.metrics", () => {
   it("reads the loop again on every call", () => {
     let samples = 0;
     const diagnostics = new Diagnostics({
-      metrics: (): FrameMetrics => ({ samples: ++samples, meanMs: 0, p95Ms: 0, p99Ms: 0 }),
+      metrics: (): FrameMetrics => ({
+        samples: ++samples,
+        meanMs: 0,
+        p95Ms: 0,
+        p99Ms: 0,
+      }),
       series: () => [],
     });
 
@@ -405,7 +429,9 @@ describe("Diagnostics.draw", () => {
   });
 
   it("clamps the panel to the surface", () => {
-    const diagnostics = withSources({ "a-very-long-diagnostic-name": "with a long value too" });
+    const diagnostics = withSources({
+      "a-very-long-diagnostic-name": "with a long value too",
+    });
     const { calls, ctx } = fakeContext();
 
     diagnostics.draw(ctx, 120, 90);
@@ -430,7 +456,10 @@ describe("Diagnostics.draw", () => {
 describe("Diagnostics.draw frame metrics", () => {
   it("renders the figures it was handed, after the game's own lines", () => {
     const diagnostics = new Diagnostics(
-      timings({ samples: 600, meanMs: 16.66, p95Ms: 22.42, p99Ms: 31.04 }, [16, 17]),
+      timings(
+        { samples: 600, meanMs: 16.66, p95Ms: 22.42, p99Ms: 31.04 },
+        [16, 17],
+      ),
     );
     diagnostics.register("score", () => 3);
     diagnostics.setEnabled(true);
@@ -438,11 +467,16 @@ describe("Diagnostics.draw frame metrics", () => {
 
     diagnostics.draw(ctx, 640, 360);
 
-    expect(drawnLines(calls)).toEqual(["score: 3", "frame: 16.7 / 22.4 / 31.0 ms"]);
+    expect(drawnLines(calls)).toEqual([
+      "score: 3",
+      "frame: 16.7 / 22.4 / 31.0 ms",
+    ]);
   });
 
   it("draws the metrics with no source registered at all", () => {
-    const diagnostics = new Diagnostics(timings({ meanMs: 8, p95Ms: 9, p99Ms: 40 }, [8, 9, 40]));
+    const diagnostics = new Diagnostics(
+      timings({ meanMs: 8, p95Ms: 9, p99Ms: 40 }, [8, 9, 40]),
+    );
     diagnostics.setEnabled(true);
     const { calls, ctx } = fakeContext();
 
@@ -466,7 +500,9 @@ describe("Diagnostics.draw frame metrics", () => {
 
   it("plots one column per sample, oldest at the left", () => {
     const series = [4, 40, 4, 4];
-    const diagnostics = new Diagnostics(timings({ meanMs: 13, p95Ms: 40, p99Ms: 40 }, series));
+    const diagnostics = new Diagnostics(
+      timings({ meanMs: 13, p95Ms: 40, p99Ms: 40 }, series),
+    );
     diagnostics.setEnabled(true);
     const { calls, ctx } = fakeContext();
 
@@ -474,7 +510,9 @@ describe("Diagnostics.draw frame metrics", () => {
 
     const drawn = bars(calls);
     expect(drawn).toHaveLength(series.length);
-    expect(drawn.map((b) => b.x)).toEqual([...drawn.map((b) => b.x)].sort((a, b) => a - b));
+    expect(drawn.map((b) => b.x)).toEqual(
+      [...drawn.map((b) => b.x)].sort((a, b) => a - b),
+    );
     // The spike is the second sample, so it is the second column and the tallest.
     const heights = drawn.map((b) => b.h);
     expect(heights[1]).toBeGreaterThan(heights[0] ?? 0);
@@ -482,7 +520,9 @@ describe("Diagnostics.draw frame metrics", () => {
   });
 
   it("scales to the tallest sample, which fills the plot area", () => {
-    const diagnostics = new Diagnostics(timings({ meanMs: 60, p95Ms: 90, p99Ms: 90 }, [30, 90]));
+    const diagnostics = new Diagnostics(
+      timings({ meanMs: 60, p95Ms: 90, p99Ms: 90 }, [30, 90]),
+    );
     diagnostics.setEnabled(true);
     const { calls, ctx } = fakeContext();
 
@@ -497,7 +537,9 @@ describe("Diagnostics.draw frame metrics", () => {
 
   it("keeps an even run flat rather than amplifying it to full height", () => {
     const even = new Array<number>(120).fill(16.7);
-    const diagnostics = new Diagnostics(timings({ meanMs: 16.7, p95Ms: 16.7, p99Ms: 16.7 }, even));
+    const diagnostics = new Diagnostics(
+      timings({ meanMs: 16.7, p95Ms: 16.7, p99Ms: 16.7 }, even),
+    );
     diagnostics.setEnabled(true);
     const { calls, ctx } = fakeContext();
 
@@ -512,7 +554,9 @@ describe("Diagnostics.draw frame metrics", () => {
 
   it("keeps every bar inside the plot area, however long the window", () => {
     const series = Array.from({ length: 2048 }, (_, i) => (i % 97) + 1);
-    const diagnostics = new Diagnostics(timings({ meanMs: 49, p95Ms: 93, p99Ms: 97 }, series));
+    const diagnostics = new Diagnostics(
+      timings({ meanMs: 49, p95Ms: 93, p99Ms: 97 }, series),
+    );
     diagnostics.setEnabled(true);
     const { calls, ctx } = fakeContext();
 
@@ -534,7 +578,11 @@ describe("Diagnostics.draw frame metrics", () => {
 
   it("survives a non-finite sample", () => {
     const diagnostics = new Diagnostics(
-      timings({ meanMs: 16, p95Ms: 16, p99Ms: 16 }, [16, Number.NaN, Number.POSITIVE_INFINITY]),
+      timings({ meanMs: 16, p95Ms: 16, p99Ms: 16 }, [
+        16,
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+      ]),
     );
     diagnostics.setEnabled(true);
     const { calls, ctx } = fakeContext();

@@ -3,7 +3,7 @@
 You are drawing the **Lattice Assembler**, a **sprite sheet** for Lattice, a
 top-down factory simulation. The assembler is the **3×3 crafting machine**: it
 covers a 3×3 block of tiles, takes in input items, works for a while, and
-deposits a finished output. Everything below describes the *machine* and its
+deposits a finished output. Everything below describes the _machine_ and its
 working animation — not the items it crafts, and not the belts or inserters
 around it.
 
@@ -24,7 +24,7 @@ third dimension.
 - **No faux 3D.** No raised top face, no sides beveling away to the floor, no
   cast shadow implying the machine stands up off the ground. The assembler is a
   shape on the floor, not a solid block seen from an angle.
-- **The machine's character comes from what is drawn *on* it** — plating, panel
+- **The machine's character comes from what is drawn _on_ it** — plating, panel
   seams, bolts, vents, warning markings — not from pretending it has height.
 - **No facing.** The assembler is square and **non-directional**: it has no
   front, no back, and no nose, so it reads correctly however the factory is
@@ -39,11 +39,11 @@ third dimension.
 - You choose which frame an operation draws into with `--frame <index>`. The
   sheet has **24 frames, numbered 0–23**, in three tiers of eight:
 
-  | Frames | Tier | Hazard accent |
-  | --- | --- | --- |
-  | `0`–`7` | Tier 1 — base | amber |
-  | `8`–`15` | Tier 2 — reinforced, faster | red-orange |
-  | `16`–`23` | Tier 3 — advanced, fastest | blue |
+  | Frames    | Tier                        | Hazard accent |
+  | --------- | --------------------------- | ------------- |
+  | `0`–`7`   | Tier 1 — base               | amber         |
+  | `8`–`15`  | Tier 2 — reinforced, faster | red-orange    |
+  | `16`–`23` | Tier 3 — advanced, fastest  | blue          |
 
 - Each tier's eight frames are one **craft loop**.
 - The machine is **3×3 tiles at 32 px per tile**, so it fills the whole 96×96
@@ -58,11 +58,11 @@ tier to the next is exactly three things — the **hazard accent color**, the
 The grey-blue chassis, the footprint, the silhouette, and the teal working state
 stay the same, so a higher tier is unmistakably the same machine, only upgraded.
 
-| Tier | Hazard accent | Mechanical detail | Speed |
-| --- | --- | --- | --- |
-| Tier 1 | amber | the base machine — plain plating, one working area | base |
-| Tier 2 | red-orange | reinforced — corner brackets or bolt lines, a secondary panel or vent, richer plating | faster |
-| Tier 3 | blue | the most advanced — the densest plating and detailing, a subtle energy glow along the frame | fastest |
+| Tier   | Hazard accent | Mechanical detail                                                                           | Speed   |
+| ------ | ------------- | ------------------------------------------------------------------------------------------- | ------- |
+| Tier 1 | amber         | the base machine — plain plating, one working area                                          | base    |
+| Tier 2 | red-orange    | reinforced — corner brackets or bolt lines, a secondary panel or vent, richer plating       | faster  |
+| Tier 3 | blue          | the most advanced — the densest plating and detailing, a subtle energy glow along the frame | fastest |
 
 - **Hazard accent color.** The **hazard markings** carry the tier's accent color —
   amber, then red-orange, then blue — paired with the dark outline. The grey-blue
@@ -96,8 +96,8 @@ machine** filling its 3×3 footprint:
   grey-blue tones — plating, panel seams, and whatever mechanical detailing sells
   it as machinery. Keep it symmetric so it has no facing. The chassis is the
   **same in every tier**, gaining only reinforcement detail as the tier rises.
-- **A working area:** somewhere on the machine, a region that is visibly *where
-  the work happens* — and it is where the animation lives. Its shape, size, and
+- **A working area:** somewhere on the machine, a region that is visibly _where
+  the work happens_ — and it is where the animation lives. Its shape, size, and
   placement are yours to choose; what matters is that a viewer can tell at a
   glance which part of the machine is doing something. Place it the same way in
   every tier.
@@ -112,11 +112,11 @@ seamless **working loop**: the tier's frames play in order and wrap from the las
 back to the first.
 
 The loop has one job: playing it through must read as **the machine actively
-making something** — crafting, building, processing, assembling. *How* you show
+making something** — crafting, building, processing, assembling. _How_ you show
 that is yours to decide. Whatever you choose, it must hold to these:
 
 - **The machine itself holds still.** The chassis sits in exactly the same place
-  in every frame. The animation is the *work happening*, not the machine moving,
+  in every frame. The animation is the _work happening_, not the machine moving,
   wobbling, or changing shape.
 - **Teal means running.** The teal tones are the machine's "it is working"
   signal, and every tier's loop should use them — a viewer glancing at the sheet
@@ -139,22 +139,22 @@ tier; each tier draws its hazard markings in its own accent color.
 
 ### Shared body — every tier
 
-| Role | Hex |
-| --- | --- |
-| Dark outline / shadow | `#1b1d21` |
-| Chassis grey-blue — light | `#6a7884` |
-| Chassis grey-blue — mid | `#4d5a64` |
-| Chassis grey-blue — dark | `#36424b` |
-| Active / working — teal | `#38c6d6` |
+| Role                         | Hex       |
+| ---------------------------- | --------- |
+| Dark outline / shadow        | `#1b1d21` |
+| Chassis grey-blue — light    | `#6a7884` |
+| Chassis grey-blue — mid      | `#4d5a64` |
+| Chassis grey-blue — dark     | `#36424b` |
+| Active / working — teal      | `#38c6d6` |
 | Active / working — pale teal | `#9af0f7` |
 
 ### Tier hazard accents
 
-| Tier | Role | Hex |
-| --- | --- | --- |
-| Tier 1 | Hazard — amber | `#e6b329` |
-| Tier 2 | Hazard — red-orange | `#e6602a` |
-| Tier 3 | Hazard — blue | `#2f7fe6` |
+| Tier   | Role                    | Hex       |
+| ------ | ----------------------- | --------- |
+| Tier 1 | Hazard — amber          | `#e6b329` |
+| Tier 2 | Hazard — red-orange     | `#e6602a` |
+| Tier 3 | Hazard — blue           | `#2f7fe6` |
 | Tier 3 | Energy glow — pale blue | `#a9d4ff` |
 
 The two teals are the **working state** — use them only for the animated working

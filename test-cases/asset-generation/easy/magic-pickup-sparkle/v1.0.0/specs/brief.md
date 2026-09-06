@@ -1,7 +1,7 @@
 # Magic Pickup Sparkle — particle-effect brief
 
 You are authoring a **magic pickup sparkle**: the small, gentle marker that hovers
-over a collectible item to catch the player's eye and say *pick me up*. It is a
+over a collectible item to catch the player's eye and say _pick me up_. It is a
 soft, enchanting shimmer — a glowing point that pulses and twinkles, never harsh,
 never loud — the kind of effect that sits over a treasure, a power-up, or a magic
 trinket in a game and loops forever. You are authoring a **single 2D particle
@@ -28,12 +28,12 @@ effect**: a **planar, screen-space** system that plays flat, with **no depth**, 
 Author the effect in only these colors — a cool magical palette. A viewer judges
 the effect against this list, so keep every emitter, gradient, and glow inside it:
 
-| Role | Hex |
-| --- | --- |
-| Soft cyan glow | `#6fe4ff` |
+| Role                     | Hex       |
+| ------------------------ | --------- |
+| Soft cyan glow           | `#6fe4ff` |
 | Sparkle hot core / white | `#ffffff` |
-| Gold star accent | `#ffd66b` |
-| Violet mote accent | `#b08cff` |
+| Gold star accent         | `#ffd66b` |
+| Violet mote accent       | `#b08cff` |
 
 The look is **enchanting and gentle**: a cool cyan glow at heart, white-hot sparkle
 points tipped with a warm gold accent, and a faint violet in the drifting motes.
@@ -94,7 +94,7 @@ Graph) is authored. Shape it, conceptually, as:
 
 with forces kept **gentle** — a light upward drift on the motes, little or nothing
 on the rest. This is a calm marker, not an explosion: no hard radial blast, no
-strong gravity. Author these as *intent*: read `particle-2d --help` for the exact
+strong gravity. Author these as _intent_: read `particle-2d --help` for the exact
 emitter, force, and curve flags.
 
 ## Color, opacity, and size curves
@@ -130,7 +130,7 @@ already seeded alongside the workspace — no operation needs those flags.
 
 Because the effect is **simulated live**, it **varies slightly from one play to the
 next** — the sparkles twinkle at different spots each time. That is correct for a
-shimmer: author it so the *character* — the pulsing glow, twinkling stars, and
+shimmer: author it so the _character_ — the pulsing glow, twinkling stars, and
 rising motes, in the cool magical palette — **reads the same across every replay**
 and **loops seamlessly**, rather than depending on any one frozen arrangement of
 particles.

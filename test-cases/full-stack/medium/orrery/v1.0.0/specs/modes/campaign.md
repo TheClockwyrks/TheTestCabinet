@@ -73,11 +73,11 @@ mode. It lists every challenge of the course, in order, each row showing its
 number, its name, and its state, with the state readable without relying on
 hue alone:
 
-| State | Meaning |
-| --- | --- |
-| locked | Not yet reached. Cannot be entered. |
-| unlocked | Reached and not yet solved. Can be entered. |
-| solved | Completed at least once. Can be entered again. |
+| State    | Meaning                                        |
+| -------- | ---------------------------------------------- |
+| locked   | Not yet reached. Cannot be entered.            |
+| unlocked | Reached and not yet solved. Can be entered.    |
+| solved   | Completed at least once. Can be entered again. |
 
 Every row of the list is on the screen at once: however many challenges the
 list holds, up to `CAMPAIGN_MAX` (`16`), every row is drawn on the same

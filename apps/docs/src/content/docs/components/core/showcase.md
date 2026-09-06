@@ -32,11 +32,11 @@ subdirectories:
 A media file's kind is inferred from its extension, by the same rule as a
 declared proof:
 
-| Extension | Kind |
-| --- | --- |
-| `.png` | `image` |
+| Extension  | Kind                                                                                     |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `.png`     | `image`                                                                                  |
 | `.json.gz` | `replay`: a gzipped engine draw-command [recording](/components/core/engines/#recording) |
-| `.webm` | `video` |
+| `.webm`    | `video`                                                                                  |
 
 Replays are the preferred moving footage. The engine records them itself
 through its recording bracket, they are far smaller than video, and the player

@@ -21,14 +21,14 @@ kinds, the cuts, and the strain states the art covers.
 Exactly these six binaries are on your `PATH`, and no others (there is no `ui`,
 `paint`, `texture`, voxel, or mesh tool in the current environment):
 
-| Tool | Produces | Used in Facet for |
-| --- | --- | --- |
-| `draw` | one sprite to a PNG | the seven kinds at each of four strain states, the three cut treatments, the board frame |
-| `draw-sheet` | a sprite sheet, one PNG per frame | each kind's break animation, and the prism's idle turn |
-| `particle-2d` | a particle system to a `system.json` | the clear burst, the flawed detonation, the cut-gem flash, the cut aura |
-| `sfx-synth` | a procedural sound to a `.wav` | select, swap, refuse, land, flaw, cut, level-up, game-over, and the chain ladder |
-| `sfx-sample` | a sampled sound over the sample pack to a `.wav` | the shatter body layered under the clear cue |
-| `music` | sequenced music over the instrument bank to a `.wav` (+ `.mid`) | the title theme and the play bed |
+| Tool          | Produces                                                        | Used in Facet for                                                                        |
+| ------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `draw`        | one sprite to a PNG                                             | the seven kinds at each of four strain states, the three cut treatments, the board frame |
+| `draw-sheet`  | a sprite sheet, one PNG per frame                               | each kind's break animation, and the prism's idle turn                                   |
+| `particle-2d` | a particle system to a `system.json`                            | the clear burst, the flawed detonation, the cut-gem flash, the cut aura                  |
+| `sfx-synth`   | a procedural sound to a `.wav`                                  | select, swap, refuse, land, flaw, cut, level-up, game-over, and the chain ladder         |
+| `sfx-sample`  | a sampled sound over the sample pack to a `.wav`                | the shatter body layered under the clear cue                                             |
+| `music`       | sequenced music over the instrument bank to a `.wav` (+ `.mid`) | the title theme and the play bed                                                         |
 
 Each is a command-line tool. Run `<tool> --help` to learn its operations (and
 `<tool> <operation> --help` for one operation's flags); the operation vocabulary

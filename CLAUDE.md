@@ -10,8 +10,8 @@ corrected.
 - **What the project is:** [`README.md`](README.md).
 - **The documentation site is the source of truth.** Authoritative, narrative
   docs live under [`apps/docs/src/content/docs/`](apps/docs/src/content/docs/)
-  (Astro Starlight). Most questions about *how the system works* or *how to do
-  X* are answered there. Prefer reading these over inferring from code.
+  (Astro Starlight). Most questions about _how the system works_ or _how to do
+  X_ are answered there. Prefer reading these over inferring from code.
 - **System overview & how the pieces fit:**
   [`components/architecture.md`](apps/docs/src/content/docs/components/architecture.md).
 - **Glossary:** [`terminology.md`](apps/docs/src/content/docs/terminology.md)
@@ -23,22 +23,22 @@ Every component has an overview (and often deeper pages) under
 [`apps/docs/src/content/docs/components/`](apps/docs/src/content/docs/components/).
 Read the doc first; the code location is where the implementation lives.
 
-| Component | Authoritative doc | Code |
-| --- | --- | --- |
-| Core (headless orchestration; owns the data contracts) | [`components/core/`](apps/docs/src/content/docs/components/core/) | `crates/core/` |
-| CLI (`tcab`) | [`components/cli/overview.md`](apps/docs/src/content/docs/components/cli/overview.md) | `crates/cli/` |
-| Dispatcher (claims queued runs → one driver Job each) | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md) | `crates/dispatcher/` |
-| Driver (per-run-Job executor; streams to the backend) | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md) | `crates/driver/` |
-| Artifacts (serves produced run trees off a volume) | [`components/artifacts/overview.md`](apps/docs/src/content/docs/components/artifacts/overview.md) | `crates/artifacts/` |
-| Arena (runs adversarial matches/tournaments — CPU-bound wasm — off the backend) | [`components/arena/overview.md`](apps/docs/src/content/docs/components/arena/overview.md) | `crates/arena/` |
-| Tauri desktop app | [`components/tauri/overview.md`](apps/docs/src/content/docs/components/tauri/overview.md) | `crates/desktop/` (Rust shell) + `apps/desktop/` (React UI) |
-| Web console | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md) | `apps/web/` |
-| Backend (private def/results server) | [`components/backend/`](apps/docs/src/content/docs/components/backend/) | `crates/backend/` |
-| Site (public gallery) | [`components/site/`](apps/docs/src/content/docs/components/site/) | `apps/site/` |
-| UI library (`@clockwyrks/ui`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `packages/ui/` |
-| Voxel runtime (`@clockwyrks/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `packages/voxel-runtime/` |
-| Particle runtime (`@clockwyrks/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/` |
-| Docs site | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md) | `apps/docs/` |
+| Component                                                                                                                           | Authoritative doc                                                                                               | Code                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Core (headless orchestration; owns the data contracts)                                                                              | [`components/core/`](apps/docs/src/content/docs/components/core/)                                               | `crates/core/`                                              |
+| CLI (`tcab`)                                                                                                                        | [`components/cli/overview.md`](apps/docs/src/content/docs/components/cli/overview.md)                           | `crates/cli/`                                               |
+| Dispatcher (claims queued runs → one driver Job each)                                                                               | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md)             | `crates/dispatcher/`                                        |
+| Driver (per-run-Job executor; streams to the backend)                                                                               | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md)                     | `crates/driver/`                                            |
+| Artifacts (serves produced run trees off a volume)                                                                                  | [`components/artifacts/overview.md`](apps/docs/src/content/docs/components/artifacts/overview.md)               | `crates/artifacts/`                                         |
+| Arena (runs adversarial matches/tournaments — CPU-bound wasm — off the backend)                                                     | [`components/arena/overview.md`](apps/docs/src/content/docs/components/arena/overview.md)                       | `crates/arena/`                                             |
+| Tauri desktop app                                                                                                                   | [`components/tauri/overview.md`](apps/docs/src/content/docs/components/tauri/overview.md)                       | `crates/desktop/` (Rust shell) + `apps/desktop/` (React UI) |
+| Web console                                                                                                                         | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md)                           | `apps/web/`                                                 |
+| Backend (private def/results server)                                                                                                | [`components/backend/`](apps/docs/src/content/docs/components/backend/)                                         | `crates/backend/`                                           |
+| Site (public gallery)                                                                                                               | [`components/site/`](apps/docs/src/content/docs/components/site/)                                               | `apps/site/`                                                |
+| UI library (`@clockwyrks/ui`)                                                                                                       | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md)                             | `packages/ui/`                                              |
+| Voxel runtime (`@clockwyrks/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three)                                 | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md)       | `packages/voxel-runtime/`                                   |
+| Particle runtime (`@clockwyrks/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `packages/particle-runtime/`                                |
+| Docs site                                                                                                                           | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md)                         | `apps/docs/`                                                |
 
 **Naming gotcha:** the docs call the desktop app the **Tauri app** and the
 browser runner/reporter the **web console**, but on disk the desktop crate is
@@ -128,7 +128,7 @@ engines. Test cases should either support the 2D engines or the 3D engines, and
 most should support the "none" engine. The "none" engine provides no extra
 engine files and is critical for evaluating how well a model does when provided
 zero assistance whatsoever.
-  
+
 ## Subagents
 
 Unrestricted use of subagents is allowed at all times.
@@ -145,25 +145,25 @@ Two reasons to run one:
 
 1. **A fresh context window per step.** A strictly sequential chain is a perfectly
    good workflow: each stage starts clean instead of inheriting the accumulated
-   noise of the ones before it. *"These steps must happen in order"* is therefore
+   noise of the ones before it. _"These steps must happen in order"_ is therefore
    never a reason to skip the workflow and grind through inline — sequential and
    workflow-shaped are not in tension.
 2. **Fan-out** — parallel investigation, broad sweeps, adversarial verification.
 
 **Scope is not a reason to hesitate.** A workflow is the right tool for taking a
 large, fully scoped piece of work end to end in one go. The work has to be done
-either way, and it should be done *correctly* rather than quickly — so prefer the
+either way, and it should be done _correctly_ rather than quickly — so prefer the
 thorough decomposition over the one that finishes soonest, and do not trim scope
 to make a single pass fit.
 
-**Optimize for how the work gets reviewed.** The user validates by *exercising the
-functionality*, not by reading the diff. Two consequences:
+**Optimize for how the work gets reviewed.** The user validates by _exercising the
+functionality_, not by reading the diff. Two consequences:
 
 - **A large change with a small externally-visible surface is the ideal shape.**
   Do not split or shrink a change to make it easier to read.
 - **Code review will not be the thing that catches a defect** — so the gates and
-  the verification are load-bearing. Run them (see *Building, testing & the CI
-  gates* and *Verification & the live API key*), build adversarial verification
+  the verification are load-bearing. Run them (see _Building, testing & the CI
+  gates_ and _Verification & the live API key_), build adversarial verification
   into the workflow rather than trusting a single agent's report, and finish by
   telling the user **how to exercise the change** — the route, the command, the
   screen. Report honestly what was and was not verified.

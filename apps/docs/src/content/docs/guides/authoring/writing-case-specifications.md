@@ -71,10 +71,10 @@ and names the checks that must pass. Which figures get a name, how modules
 divide, where a rule lives, and what a comment explains are the model's
 decisions, and deciding them badly is a result worth measuring.
 
-| Coaching (cut) | Requirement (kept) |
-| --- | --- |
-| Name each fixed figure once in a module of your own and read it from there, rather than restating a value at each use. | The code is fit for a long-lived codebase shared with other developers. |
-| Read the pressed keys into a set each frame and check it when you move the paddles. | The left paddle moves up while `KeyW` is held and down while `KeyS` is held. |
+| Coaching (cut)                                                                                                         | Requirement (kept)                                                           |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Name each fixed figure once in a module of your own and read it from there, rather than restating a value at each use. | The code is fit for a long-lived codebase shared with other developers.      |
+| Read the pressed keys into a set each frame and check it when you move the paddles.                                    | The left paddle moves up while `KeyW` is held and down while `KeyS` is held. |
 
 The test is not whether a sentence names something a build could fail to do.
 "Every fixed figure is named once and imported where it is used" is a property a

@@ -191,7 +191,7 @@ honest refill hours later, is two first attempts rather than a second one.
 Writing a figure arms a retry. It is worth arming only where the first pass can
 plausibly do better on a second: a strategy whose summary can come back nearly
 as long as the thread it replaced. It cannot help where the window is over the
-trigger because the *pinned* prefix alone fills it — skills, memories, the board
+trigger because the _pinned_ prefix alone fills it — skills, memories, the board
 and locked specifications all cross the boundary verbatim, so no number of
 retries reclaims a byte of them. That configuration wants a wider window or less
 pinned state, and gg says so rather than compacting round in circles.

@@ -1,4 +1,4 @@
-**Spectra Burst** is the enemy-drone explosion VFX from *Spectra*, a two-band
+**Spectra Burst** is the enemy-drone explosion VFX from _Spectra_, a two-band
 formation shooter. It is the neon flash a swarm drone throws when the player's
 fire pops it.
 

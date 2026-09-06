@@ -1,6 +1,9 @@
 import { Link } from "react-router";
 import { routes } from "../routes";
-import { useNotifications, type AppNotification } from "../runtime/notifications";
+import {
+  useNotifications,
+  type AppNotification,
+} from "../runtime/notifications";
 import styles from "./toasts.module.scss";
 
 interface NotificationToastProps {

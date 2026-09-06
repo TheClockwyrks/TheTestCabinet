@@ -26,10 +26,10 @@ spent.
 
 An eaten pellet resolves the multiplier before it awards the points.
 
-| The window at the eat | `M` becomes |
-| --- | --- |
-| Open | One higher, up to `COMBO_MAX` |
-| Closed | `1` |
+| The window at the eat | `M` becomes                   |
+| --------------------- | ----------------------------- |
+| Open                  | One higher, up to `COMBO_MAX` |
+| Closed                | `1`                           |
 
 The eat then awards `PELLET_POINTS * M` at that new `M`, and reopens the window
 at a full `COMBO_WINDOW`. A window that runs out with no pellet eaten lapses, and

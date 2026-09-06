@@ -10,9 +10,9 @@ Every figure below carries the name this specification gives it here.
 
 The `1280 x 720` stage is split into two regions, side by side.
 
-| Region | Extent | Holds |
-| --- | --- | --- |
-| The reactor | `x` in `[0, REACTOR_W]` (`986`), `y` in `[0, 720]` | The casing band and the floor inside it. |
+| Region          | Extent                                                                        | Holds                                                  |
+| --------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------ |
+| The reactor     | `x` in `[0, REACTOR_W]` (`986`), `y` in `[0, 720]`                            | The casing band and the floor inside it.               |
 | The build panel | `x` in `[PANEL_X, 1280]` (`[986, 1280]`), `PANEL_W` (`294`) wide, full height | Every readout and every control `specs/hud.md` states. |
 
 The build panel is drawn across its whole strip for the full height of the stage.
@@ -44,9 +44,9 @@ A tile is addressed as `(c, r)`, both zero-indexed from the floor's top-left, so
 
 Each tile is in one of two states:
 
-| State | Meaning |
-| --- | --- |
-| Open | Empty floor. A surge unit walks over it, and a tower footprint may cover it. |
+| State   | Meaning                                                                                         |
+| ------- | ----------------------------------------------------------------------------------------------- |
+| Open    | Empty floor. A surge unit walks over it, and a tower footprint may cover it.                    |
 | Blocked | Covered by part of a tower's footprint. `specs/mazing.md` states what that means for the surge. |
 
 ## The tile-to-stage map
@@ -99,12 +99,12 @@ tile rows or columns. The side openings are four tiles across and the top and
 bottom openings are eight, and each covers exactly the run its opposite covers,
 so both vent-to-exhaust corridors run straight across the floor.
 
-| Opening | Constant | Casing edge | Tiles it opens onto |
-| --- | --- | --- | --- |
-| Left vent | `LEFT_VENT_ROWS` | Left | `(0, 16)` through `(0, 19)` |
-| Right exhaust | `RIGHT_EXHAUST_ROWS` | Right | `(49, 16)` through `(49, 19)` |
-| Top vent | `TOP_VENT_COLS` | Top | `(22, 0)` through `(29, 0)` |
-| Bottom exhaust | `BOTTOM_EXHAUST_COLS` | Bottom | `(22, 35)` through `(29, 35)` |
+| Opening        | Constant              | Casing edge | Tiles it opens onto           |
+| -------------- | --------------------- | ----------- | ----------------------------- |
+| Left vent      | `LEFT_VENT_ROWS`      | Left        | `(0, 16)` through `(0, 19)`   |
+| Right exhaust  | `RIGHT_EXHAUST_ROWS`  | Right       | `(49, 16)` through `(49, 19)` |
+| Top vent       | `TOP_VENT_COLS`       | Top         | `(22, 0)` through `(29, 0)`   |
+| Bottom exhaust | `BOTTOM_EXHAUST_COLS` | Bottom      | `(22, 35)` through `(29, 35)` |
 
 Both row runs are `16` through `19` inclusive and both column runs are `22`
 through `29` inclusive.
@@ -114,10 +114,10 @@ footprint may cover them, subject to the never-seal rule in `specs/mazing.md`.
 
 Each vent has a fixed opposite exhaust, given by `OPPOSITE`:
 
-| Vent | Its exhaust |
-| --- | --- |
-| `left` | `right` |
-| `top` | `bottom` |
+| Vent   | Its exhaust |
+| ------ | ----------- |
+| `left` | `right`     |
+| `top`  | `bottom`    |
 
 A unit that enters at a vent is assigned that vent's opposite exhaust for its
 whole life and never the nearer one, so each stream crosses the whole floor.

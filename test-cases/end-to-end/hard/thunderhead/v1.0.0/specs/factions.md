@@ -36,7 +36,7 @@ What differs, power to power, is a **package**:
 
 The three signature mechanics — Ironbound **damage control**, Meridian **shields
 and blink**, Geode the **resonance web** — are defined below at the level of what
-they *do*; `specs/combat.md` pins their numbers.
+they _do_; `specs/combat.md` pins their numbers.
 
 ## The Ironbound
 

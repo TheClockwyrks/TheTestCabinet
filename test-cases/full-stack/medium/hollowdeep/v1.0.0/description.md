@@ -18,5 +18,5 @@ Hollowdeep is the flagship full-stack case. The model under test produces the
 game's own assets during the run with the six asset-generation tools on the run
 image's `PATH`: the delver sprite sheets, the tile and machine sprites, the gas
 and dust particle overlays, and the sound and music. It then builds the game
-around them. The case is inspired by colony survival sims, notably *Oxygen Not
-Included*; its name, look, system set, and scope are original.
+around them. The case is inspired by colony survival sims, notably _Oxygen Not
+Included_; its name, look, system set, and scope are original.

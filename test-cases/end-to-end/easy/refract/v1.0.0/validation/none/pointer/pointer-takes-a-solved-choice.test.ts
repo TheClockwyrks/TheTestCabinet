@@ -45,8 +45,16 @@ it("takes the first choice from a press and release on its target", async () => 
   await h.debug.pointerUp();
   await h.advance(1);
 
-  assertEqual((await h.snapshot()).screen, "solved", "the board is solved first");
-  assertEqual((await h.snapshot()).menuIndex, 0, "with the first choice highlighted");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "solved",
+    "the board is solved first",
+  );
+  assertEqual(
+    (await h.snapshot()).menuIndex,
+    0,
+    "with the first choice highlighted",
+  );
 
   const first = targetCenter(targetById(await h.snapshot(), "menu-0"));
   await pressRelease(h, first);

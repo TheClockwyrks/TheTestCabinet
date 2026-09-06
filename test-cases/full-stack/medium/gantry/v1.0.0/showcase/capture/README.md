@@ -14,14 +14,14 @@ whole of what this case is. Playwright records the page natively, and
 
 Six sites, and the clip has to be one of them.
 
-| Site | Lift | Run clock |
-| --- | --- | --- |
-| 1 First Lift | one crate, a quarter turn, no obstacle | 16.6 s |
-| 2 Turnabout | two crates straight across | ~55 s (par) |
-| **3 Over the Wall** | **one crate up, over an 8-high wall, and down** | **37.9 s** |
-| 4 Long Reach | a heavy container far out, turned a quarter | ~47 s (par) |
-| 5 High Shelf | a container onto a platform, then a crate | 95.9 s |
-| 6 Heavy Haul | the game's heaviest load, then a light crate | ~107 s (par) |
+| Site                | Lift                                            | Run clock    |
+| ------------------- | ----------------------------------------------- | ------------ |
+| 1 First Lift        | one crate, a quarter turn, no obstacle          | 16.6 s       |
+| 2 Turnabout         | two crates straight across                      | ~55 s (par)  |
+| **3 Over the Wall** | **one crate up, over an 8-high wall, and down** | **37.9 s**   |
+| 4 Long Reach        | a heavy container far out, turned a quarter     | ~47 s (par)  |
+| 5 High Shelf        | a container onto a platform, then a crate       | 95.9 s       |
+| 6 Heavy Haul        | the game's heaviest load, then a light crate    | ~107 s (par) |
 
 Site 1 clears in sixteen and a half seconds and never leaves the ground plane —
 too slight to carry a catalog preview. Site 5 is the richest lift in the game
@@ -29,7 +29,7 @@ and takes a minute and a half to play, which is twice the length the
 [showcase guide](../../../../../../apps/docs/src/content/docs/guides/authoring/authoring-a-case-showcase.md)
 asks for and far too long for a stage a visitor watches while deciding whether
 to care. Site 3 is thirty-eight seconds, sits inside the guide's twenty-to-forty
-band, and is the shortest site whose lift is a *shape* rather than a swing: the
+band, and is the shortest site whose lift is a _shape_ rather than a swing: the
 crate is hooked on the far side of a wall it cannot go through, hoisted to the
 jib, carried in, slewed a hundred and sixty degrees around the tower, and
 lowered onto its pad. Its crane is a real tower crane — an 87-member truss with
@@ -79,7 +79,7 @@ The header of `capture.mjs` states this in full. In short:
 - **The whole crane**: 87 members, each two real mouse clicks on the stage, plus
   one click for the slew ring and one for each counterweight, with the tool
   chosen by its real digit key first. `__gantry.project(x, y, z)` is a reading —
-  it answers where a lattice node is *drawn* — so the driver clicks at that
+  it answers where a lattice node is _drawn_ — so the driver clicks at that
   point, and reads `snapshot().pick` back to confirm the game picked the node it
   aimed at before it presses. Every edit passes the rules a player's click
   passes; the run refuses to continue if the yard did not take one.
@@ -94,7 +94,7 @@ The header of `capture.mjs` states this in full. In short:
 
 1. **The tape.** `clearProgram`, `addMoveStep`, `addCommand` and `addActionStep`
    append the site's reference program. `specs/controls.md` fixes what a player
-   can *do* with the tape and leaves the widgets to the build — "the exact
+   can _do_ with the tape and leaves the widgets to the build — "the exact
    widgets are the build's design" — so clicking rows would be a script written
    against one build's layout rather than against the game, and the showcase is
    not about the editor. This is the one thing in the take that stands in for a
@@ -133,23 +133,23 @@ both playings are the same take.
 Pass 2 first scouts the whole run tick by tick — utilization, the hook, the
 bob — and the still ticks are read off that scout rather than written down:
 
-| Still | Tick it is taken at |
-| --- | --- |
-| `the-crane.png` | the build screen after `C`, before the run |
+| Still               | Tick it is taken at                                                        |
+| ------------------- | -------------------------------------------------------------------------- |
+| `the-crane.png`     | the build screen after `C`, before the run                                 |
 | `over-the-wall.png` | the tick the hardest-worked member works hardest with the load on the hook |
-| `setting-down.png` | the last tick the load is still `SET_DOWN_PAD_GAP` short of its pad |
+| `setting-down.png`  | the last tick the load is still `SET_DOWN_PAD_GAP` short of its pad        |
 
 ## The knobs
 
-| Variable | Default | Does |
-| --- | --- | --- |
-| `GANTRY_SHOWCASE_OUT` | `showcase/base` | Where the media is written. |
-| `GANTRY_SHOWCASE_SITE` | `3` | Which site is captured. |
-| `GANTRY_SHOWCASE_WORK` | `$TMPDIR/gantry-showcase` | Scratch for the raw recording. Never inside the version directory. |
-| `GANTRY_SHOWCASE_QA` | unset | `1` writes a frame a second of the run to the work directory, for eyeballing a take. |
-| `GANTRY_SHOWCASE_BUILD_YAW` / `_PITCH` / `_DIST` | `300` / `21` / `29` | The build framing. The yaw is a starting point: the driver searches outward from it for one every lattice node can be clicked from unambiguously (see below) and reports what it settled on. |
-| `GANTRY_SHOWCASE_RUN_YAW` / `_PITCH` / `_DIST` | `62` / `22` / `31` | The framing the run is watched from, before the drag starts turning it. The distance is set by the crane's height, not the load's size: pulled in closer the mast head and the jib's tie cables leave the top of the frame, and a tower crane with its head cut off is not what a reader came to see. |
-| `GANTRY_SHOWCASE_SET_DOWN_GAP` | `4.5` | How far short of its pad the load still is in `setting-down.png`, in world units along the ground. The camera looks down the line the trolley carries the load in on, so a load close to its pad is drawn on top of it; back this off and the pad stays lit in the clear beside the crate. |
+| Variable                                         | Default                   | Does                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GANTRY_SHOWCASE_OUT`                            | `showcase/base`           | Where the media is written.                                                                                                                                                                                                                                                                           |
+| `GANTRY_SHOWCASE_SITE`                           | `3`                       | Which site is captured.                                                                                                                                                                                                                                                                               |
+| `GANTRY_SHOWCASE_WORK`                           | `$TMPDIR/gantry-showcase` | Scratch for the raw recording. Never inside the version directory.                                                                                                                                                                                                                                    |
+| `GANTRY_SHOWCASE_QA`                             | unset                     | `1` writes a frame a second of the run to the work directory, for eyeballing a take.                                                                                                                                                                                                                  |
+| `GANTRY_SHOWCASE_BUILD_YAW` / `_PITCH` / `_DIST` | `300` / `21` / `29`       | The build framing. The yaw is a starting point: the driver searches outward from it for one every lattice node can be clicked from unambiguously (see below) and reports what it settled on.                                                                                                          |
+| `GANTRY_SHOWCASE_RUN_YAW` / `_PITCH` / `_DIST`   | `62` / `22` / `31`        | The framing the run is watched from, before the drag starts turning it. The distance is set by the crane's height, not the load's size: pulled in closer the mast head and the jib's tie cables leave the top of the frame, and a tower crane with its head cut off is not what a reader came to see. |
+| `GANTRY_SHOWCASE_SET_DOWN_GAP`                   | `4.5`                     | How far short of its pad the load still is in `setting-down.png`, in world units along the ground. The camera looks down the line the trolley carries the load in on, so a load close to its pad is drawn on top of it; back this off and the pad stays lit in the clear beside the crate.            |
 
 ## Two things that will bite a re-run
 
@@ -159,7 +159,7 @@ own projected position — distance zero — so it wins against anything not dra
 on top of it. But on an axis-aligned lattice the obvious yaws stack nodes onto
 one ray: at yaw 45 every node two along in `x` and two along in `z` projects to
 the same point, and which one a click takes is then a tie rule rather than the
-aim. So the driver measures, at the build camera, how near the nearest *other*
+aim. So the driver measures, at the build camera, how near the nearest _other_
 lattice node comes to each node it must click, refuses to work below a couple of
 pixels, and searches the yaw outward from the one asked for until it finds one
 that clears. It prints the pose and the margin it found.

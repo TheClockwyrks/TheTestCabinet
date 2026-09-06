@@ -118,9 +118,7 @@ it("completes every challenge of the course with its own reference machine", asy
       `${at}'s reference solution completes its run within CAMPAIGN_REFERENCE_CYCLES cycles of the run's start`,
     );
 
-    const placed = (document.parts ?? []).filter(
-      (part) => part.kind === "set",
-    );
+    const placed = (document.parts ?? []).filter((part) => part.kind === "set");
     for (const part of placed) {
       const product = part.index ?? -1;
       assertGreaterThanOrEqual(

@@ -16,11 +16,11 @@ the same state however it was divided into frames.
 
 The `playing` screen runs in one of three sub-phases.
 
-| Phase | What it is | Surge released |
-| --- | --- | --- |
-| `opening` | The untimed phase before Wave 1 | None |
-| `building` | The countdown between waves | None |
-| `wave` | A wave is being released and fought | Yes |
+| Phase      | What it is                          | Surge released |
+| ---------- | ----------------------------------- | -------------- |
+| `opening`  | The untimed phase before Wave 1     | None           |
+| `building` | The countdown between waves         | None           |
+| `wave`     | A wave is being released and fought | Yes            |
 
 Placing, upgrading, and selling are allowed in all three.
 

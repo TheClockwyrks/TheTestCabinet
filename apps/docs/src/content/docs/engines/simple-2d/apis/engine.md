@@ -40,17 +40,17 @@ interface EngineOptions<S, D = unknown> {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `canvas` | — | The canvas the engine sizes, clears, and renders through. |
-| `width` | — | The logical design width the game draws in. Finite and positive. |
-| `height` | — | The logical design height the game draws in. Finite and positive. |
-| `game` | — | The [game](/engines/simple-2d/apis/game/) this engine drives. |
-| `background` | — | A CSS color cleared to before every frame. Absent, the frame is cleared to transparency. |
-| `layout` | — | A touch layout from the [catalogue](/engines/simple-2d/apis/input/), whose vocabulary the game then registers. |
-| `clock` | `new WallClock()` | The [clock](/engines/simple-2d/apis/clocks/) supplying each frame's delta. |
-| `surface` | Read from the canvas | Where the engine reads its element size and device pixel ratio. |
-| `assetRoot` | `"assets/"` | The root every [asset path](/engines/simple-2d/apis/assets/) resolves under. |
+| Field        | Default              | Meaning                                                                                                        |
+| ------------ | -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `canvas`     | —                    | The canvas the engine sizes, clears, and renders through.                                                      |
+| `width`      | —                    | The logical design width the game draws in. Finite and positive.                                               |
+| `height`     | —                    | The logical design height the game draws in. Finite and positive.                                              |
+| `game`       | —                    | The [game](/engines/simple-2d/apis/game/) this engine drives.                                                  |
+| `background` | —                    | A CSS color cleared to before every frame. Absent, the frame is cleared to transparency.                       |
+| `layout`     | —                    | A touch layout from the [catalogue](/engines/simple-2d/apis/input/), whose vocabulary the game then registers. |
+| `clock`      | `new WallClock()`    | The [clock](/engines/simple-2d/apis/clocks/) supplying each frame's delta.                                     |
+| `surface`    | Read from the canvas | Where the engine reads its element size and device pixel ratio.                                                |
+| `assetRoot`  | `"assets/"`          | The root every [asset path](/engines/simple-2d/apis/assets/) resolves under.                                   |
 
 ## `SurfaceMetrics`
 
@@ -125,23 +125,23 @@ interface RunOptions {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `events` | Subscribe to engine [events](/engines/simple-2d/apis/game/). Available from construction. |
-| `state` | The current state, as a read-only view: the value the most recent transition left. |
-| `debug` | The [debug surface](/engines/simple-2d/apis/game/) the game returned beside its state. |
-| `initialize` | Run the game's `initialize` and resolve to the state it produced. |
-| `apply` | Replace the state with what a [`Transition<S>`](/engines/simple-2d/apis/game/) returns from the current one, and return the new state. |
-| `run` | Drive the game off the host's frame callback until the supplied signal aborts. |
-| `advance` | Tick the clock `frames` times, running a frame for each tick the clock accepts. |
-| `setClock` | Replace the clock. The next frame takes its delta from the new one. |
-| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
-| `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `diagnostics` | Every registered [diagnostic](/engines/simple-2d/apis/diagnostics/) source and what it reports now, in registration order. |
-| `recording` | Whether draw-command [recording](/engines/simple-2d/apis/recording/) is currently capturing. |
-| `startRecording` | Arm the recorder. Capture begins at the next frame. |
-| `stopRecording` | Disarm the recorder and return everything captured since `startRecording`. |
-| `destroy` | Halt the loop and drop every listener. |
+| Member           | Effect                                                                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`         | Subscribe to engine [events](/engines/simple-2d/apis/game/). Available from construction.                                              |
+| `state`          | The current state, as a read-only view: the value the most recent transition left.                                                     |
+| `debug`          | The [debug surface](/engines/simple-2d/apis/game/) the game returned beside its state.                                                 |
+| `initialize`     | Run the game's `initialize` and resolve to the state it produced.                                                                      |
+| `apply`          | Replace the state with what a [`Transition<S>`](/engines/simple-2d/apis/game/) returns from the current one, and return the new state. |
+| `run`            | Drive the game off the host's frame callback until the supplied signal aborts.                                                         |
+| `advance`        | Tick the clock `frames` times, running a frame for each tick the clock accepts.                                                        |
+| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                    |
+| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                          |
+| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                      |
+| `diagnostics`    | Every registered [diagnostic](/engines/simple-2d/apis/diagnostics/) source and what it reports now, in registration order.             |
+| `recording`      | Whether draw-command [recording](/engines/simple-2d/apis/recording/) is currently capturing.                                           |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                    |
+| `stopRecording`  | Disarm the recorder and return everything captured since `startRecording`.                                                             |
+| `destroy`        | Halt the loop and drop every listener.                                                                                                 |
 
 ### `initialize`
 
@@ -171,7 +171,10 @@ a contract violation loud at the point of the mistake.
 ### `apply`
 
 ```ts
-const posed = engine.apply((state) => ({ ...state, ball: { ...state.ball, vx: 0 } }));
+const posed = engine.apply((state) => ({
+  ...state,
+  ball: { ...state.ball, vx: 0 },
+}));
 ```
 
 `apply` hands the current state to `transition`, holds the state it returns,
@@ -239,18 +242,18 @@ over. A clock installed mid-run takes effect on the next frame.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A `width` or `height` that is not finite and positive | `Error` naming the size |
-| A canvas that yields no 2D context | `Error` |
-| A `layout` outside the catalogue | `Error` naming every valid layout |
-| The game's `initialize` throws or rejects | `initialize` rejects with the cause |
-| `state`, `apply`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
-| A transition handed to `apply` returns `undefined` | `Error` naming `must return the next state`; the state is unchanged |
-| `debug` read before `initialize` resolves | `Error` naming the ordering and the `[state, debug]` pair |
-| The game's `initialize` returns anything but a two-element array | `initialize` rejects with an `Error` naming the `[state, debug]` pair |
-| `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
-| `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
+| Condition                                                                  | Result                                                                |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| A `width` or `height` that is not finite and positive                      | `Error` naming the size                                               |
+| A canvas that yields no 2D context                                         | `Error`                                                               |
+| A `layout` outside the catalogue                                           | `Error` naming every valid layout                                     |
+| The game's `initialize` throws or rejects                                  | `initialize` rejects with the cause                                   |
+| `state`, `apply`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering                                           |
+| A transition handed to `apply` returns `undefined`                         | `Error` naming `must return the next state`; the state is unchanged   |
+| `debug` read before `initialize` resolves                                  | `Error` naming the ordering and the `[state, debug]` pair             |
+| The game's `initialize` returns anything but a two-element array           | `initialize` rejects with an `Error` naming the `[state, debug]` pair |
+| `advance` with a count that is not a whole, non-negative number            | `RangeError` naming the value                                         |
+| `startRecording` while already recording, or `stopRecording` while not     | `Error` naming the unbalanced call                                    |
 
 Each construction failure otherwise presents as a build that runs and draws
 nothing, which is the most expensive kind to trace, so each is refused where it

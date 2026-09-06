@@ -1,7 +1,7 @@
 # Geode Theme — music brief
 
 You are composing the **faction theme** for the **Geode**, one of the three rival
-powers in *Thunderhead*, a real-time fleet-command game fought across a cloud sea.
+powers in _Thunderhead_, a real-time fleet-command game fought across a cloud sea.
 This short cue captures the Geode's identity — it plays for the player as they
 consider or command this power. Sequence it note by note as instrument tracks over
 the `gm-lite` instrument bank, one operation at a time.

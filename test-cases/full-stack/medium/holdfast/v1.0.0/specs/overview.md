@@ -18,7 +18,7 @@ and stand up turrets and armed defenders — all while the settlers' own needs (
 rest, mood) run down and the day/night clock turns. Survival is the tension between
 those two clocks: the colony must grow its defenses and its larder faster than the
 raids escalate, or it is overrun. It is a small-scale colony sim in the spirit of
-*RimWorld*, entirely its own, with layered systems — a top-down tile world, needs-
+_RimWorld_, entirely its own, with layered systems — a top-down tile world, needs-
 and-mood-driven settlers on a job queue, a build-and-food economy, a day/night cycle,
 and a ranged-combat threat director — that interact.
 
@@ -142,26 +142,26 @@ carry the scene. The colony reads as tidy human structure — walls, floors, bed
 stove, farm rows, turrets — laid over rougher wild land, and the raiders come out of
 the dark edges in hostile red. The canonical palette and type are below; match them.
 
-| Element | Color |
-| --- | --- |
-| Deep shadow / void (background) | `#14110d` |
-| Soil / bare ground | `#5a4632` |
-| Grass / fertile ground | `#6a7638` |
-| Rock / impassable outcrop | `#38332c` |
-| Tree / forest node | `#3f6b3a` |
-| Ore node (mineral vein) | `#c9a24a` |
+| Element                              | Color     |
+| ------------------------------------ | --------- |
+| Deep shadow / void (background)      | `#14110d` |
+| Soil / bare ground                   | `#5a4632` |
+| Grass / fertile ground               | `#6a7638` |
+| Rock / impassable outcrop            | `#38332c` |
+| Tree / forest node                   | `#3f6b3a` |
+| Ore node (mineral vein)              | `#c9a24a` |
 | Built structure (walls, beds, stove) | `#8a6a44` |
-| Built floor / path | `#4a3f30` |
-| Settler (colonist) | `#4f93c9` |
-| Raider (hostile) | `#c0473f` |
-| Food / crop | `#7cc45a` |
-| Wood / material | `#b98b4e` |
-| Health / medical | `#e05a6a` |
-| Alert / danger | `#ff5a52` |
-| Panels / overlays | `#1b1712` |
-| Primary text | `#ece6db` |
-| Secondary text | `#a89e8d` |
-| Tertiary text / hints | `#6b6355` |
+| Built floor / path                   | `#4a3f30` |
+| Settler (colonist)                   | `#4f93c9` |
+| Raider (hostile)                     | `#c0473f` |
+| Food / crop                          | `#7cc45a` |
+| Wood / material                      | `#b98b4e` |
+| Health / medical                     | `#e05a6a` |
+| Alert / danger                       | `#ff5a52` |
+| Panels / overlays                    | `#1b1712` |
+| Primary text                         | `#ece6db` |
+| Secondary text                       | `#a89e8d` |
+| Tertiary text / hints                | `#6b6355` |
 
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do not
   depend on a web font that must be downloaded; a system monospace stack is required

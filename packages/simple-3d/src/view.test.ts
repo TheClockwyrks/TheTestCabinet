@@ -25,13 +25,19 @@ const CX = W / 2;
 const CY = H / 2;
 
 /** A perspective camera at the defaults, with its reader. */
-function perspective(width = W, height = H): ViewReader & { camera: SceneCamera } {
+function perspective(
+  width = W,
+  height = H,
+): ViewReader & { camera: SceneCamera } {
   const camera = createCamera("perspective", width, height);
   return { camera, ...createView(camera, width, height) };
 }
 
 /** An orthographic camera at the defaults, with its reader. */
-function orthographic(width = W, height = H): ViewReader & { camera: SceneCamera } {
+function orthographic(
+  width = W,
+  height = H,
+): ViewReader & { camera: SceneCamera } {
   const camera = createCamera("orthographic", width, height);
   return { camera, ...createView(camera, width, height) };
 }
@@ -87,14 +93,12 @@ describe("createCamera", () => {
   });
 
   it("holds a perspective camera's aspect at the design aspect, not the canvas's", () => {
-    expect((createCamera("perspective", 640, 360) as THREE.PerspectiveCamera).aspect).toBeCloseTo(
-      640 / 360,
-      12,
-    );
-    expect((createCamera("perspective", 512, 512) as THREE.PerspectiveCamera).aspect).toBeCloseTo(
-      1,
-      12,
-    );
+    expect(
+      (createCamera("perspective", 640, 360) as THREE.PerspectiveCamera).aspect,
+    ).toBeCloseTo(640 / 360, 12);
+    expect(
+      (createCamera("perspective", 512, 512) as THREE.PerspectiveCamera).aspect,
+    ).toBeCloseTo(1, 12);
   });
 
   it("builds an orthographic camera spanning the design size", () => {
@@ -144,14 +148,25 @@ describe("createCamera", () => {
     expect(() => createCamera(undefined as unknown as string, W, H)).toThrow(
       /"perspective" or "orthographic"/,
     );
-    expect(() => createCamera("" as string, W, H)).toThrow(/"perspective" or "orthographic"/);
+    expect(() => createCamera("" as string, W, H)).toThrow(
+      /"perspective" or "orthographic"/,
+    );
   });
 });
 
 describe("toVec3 and toQuat", () => {
   it("copy a three value into the plain shape the contract speaks in", () => {
-    expect(toVec3(new THREE.Vector3(1, -2, 3.5))).toEqual({ x: 1, y: -2, z: 3.5 });
-    expect(toQuat(new THREE.Quaternion(0, 0, 0, 1))).toEqual({ x: 0, y: 0, z: 0, w: 1 });
+    expect(toVec3(new THREE.Vector3(1, -2, 3.5))).toEqual({
+      x: 1,
+      y: -2,
+      z: 3.5,
+    });
+    expect(toQuat(new THREE.Quaternion(0, 0, 0, 1))).toEqual({
+      x: 0,
+      y: 0,
+      z: 0,
+      w: 1,
+    });
   });
 
   it("copies rather than aliases, so a later write to the three value is not seen", () => {
@@ -439,7 +454,7 @@ describe("project, perspective", () => {
     // Stated from first principles rather than from a recorded number: the
     // half-height of the frustum at distance d is d * tan(fov / 2), and the
     // half-width is that times the aspect.
-    const f = 1 / Math.tan(((60 * Math.PI) / 180) / 2);
+    const f = 1 / Math.tan((60 * Math.PI) / 180 / 2);
     const ndcX = ((f / (W / H)) * 2) / 10;
     const ndcY = (f * 1) / 10;
 
@@ -459,7 +474,9 @@ describe("project, perspective", () => {
   });
 
   it("reports a point behind the camera as out of view", () => {
-    expect(perspective().view.project({ x: 0, y: 0, z: 40 }).visible).toBe(false);
+    expect(perspective().view.project({ x: 0, y: 0, z: 40 }).visible).toBe(
+      false,
+    );
   });
 
   it("keeps a point inside the frustum inside the design field", () => {

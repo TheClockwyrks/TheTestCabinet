@@ -54,12 +54,12 @@ The ship still moves, fires, flips, and discharges during a challenge stage.
 A standard stage at `stage` scales four figures. Each formula takes the stage number
 and returns a multiplier or a duration.
 
-| Figure | Formula | Bound |
-| --- | --- | --- |
-| `droneSpeedScale(stage)` | `min(1.50, 1 + 0.06 * (stage - 1))` | Capped at `1.50` |
-| `bulletSpeedScale(stage)` | `min(1.40, 1 + 0.04 * (stage - 1))` | Capped at `1.40` |
-| `diveGapScale(stage)` | `max(0.55, 1 - 0.05 * (stage - 1))` | Floored at `0.55` |
-| `fluxHold(stage)` | `max(1.0, FLUX_HOLD_L1 - 0.05 * (stage - 1))` seconds, with `FLUX_HOLD_L1` (`1.6`) | Floored at `1.0` |
+| Figure                    | Formula                                                                            | Bound             |
+| ------------------------- | ---------------------------------------------------------------------------------- | ----------------- |
+| `droneSpeedScale(stage)`  | `min(1.50, 1 + 0.06 * (stage - 1))`                                                | Capped at `1.50`  |
+| `bulletSpeedScale(stage)` | `min(1.40, 1 + 0.04 * (stage - 1))`                                                | Capped at `1.40`  |
+| `diveGapScale(stage)`     | `max(0.55, 1 - 0.05 * (stage - 1))`                                                | Floored at `0.55` |
+| `fluxHold(stage)`         | `max(1.0, FLUX_HOLD_L1 - 0.05 * (stage - 1))` seconds, with `FLUX_HOLD_L1` (`1.6`) | Floored at `1.0`  |
 
 `droneSpeedScale` multiplies the entrance and dive speeds in `specs/swarm.md`,
 `bulletSpeedScale` the enemy bullet speed there, `diveGapScale` the gap between dive

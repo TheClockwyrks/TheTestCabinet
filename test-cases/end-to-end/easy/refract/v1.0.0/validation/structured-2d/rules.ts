@@ -32,7 +32,8 @@ export type Beams = Partial<Record<Channel, Cell[]>>;
 export type LimitRule = "R1" | "R2" | "R3" | "R4" | "R5";
 
 export type MoveVerdict =
-  { ok: true } | { ok: false; rule: LimitRule; reason: string };
+  | { ok: true }
+  | { ok: false; rule: LimitRule; reason: string };
 
 // ---------------------------------------------------------------------------
 // Lookup helpers.

@@ -48,7 +48,9 @@ export class Particles {
   private oneShots: OneShot[] = [];
   private loops = new Map<string, LiveFx>();
 
-  constructor(private readonly systems: Record<FxKind, ParticleSystem | undefined>) {}
+  constructor(
+    private readonly systems: Record<FxKind, ParticleSystem | undefined>,
+  ) {}
 
   private make(kind: FxKind, x: number, y: number): LiveFx | null {
     const system = this.systems[kind];
@@ -59,7 +61,10 @@ export class Particles {
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
     const composite = COMPOSITE[kind];
-    const player = new ParticleCanvasPlayer(system, ctx, { composite, clear: true });
+    const player = new ParticleCanvasPlayer(system, ctx, {
+      composite,
+      clear: true,
+    });
     return { kind, player, canvas, x, y, size: FOOTPRINT[kind], composite };
   }
 
@@ -95,7 +100,9 @@ export class Particles {
       b.age += dt * 1000;
     }
     // Keep a one-shot until its timeline is done AND its last particles have decayed.
-    this.oneShots = this.oneShots.filter((b) => b.age < b.dur + 200 || b.player.simulator.liveCount > 0);
+    this.oneShots = this.oneShots.filter(
+      (b) => b.age < b.dur + 200 || b.player.simulator.liveCount > 0,
+    );
     for (const b of this.loops.values()) b.player.update(dt);
   }
 

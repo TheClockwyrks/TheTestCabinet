@@ -178,7 +178,9 @@ export function GgDiscoverPage() {
   // the sidebar cannot see would be a guess.
   const insert = useCallback((text: string) => {
     setDraft((current) =>
-      current && !current.endsWith(" ") ? `${current} ${text}` : `${current}${text}`,
+      current && !current.endsWith(" ")
+        ? `${current} ${text}`
+        : `${current}${text}`,
     );
   }, []);
 
@@ -202,11 +204,18 @@ export function GgDiscoverPage() {
       />
 
       <div className={styles.layout}>
-        <GgFieldSidebar catalog={catalog} onInsert={insert} loading={catalogLoading} />
+        <GgFieldSidebar
+          catalog={catalog}
+          onInsert={insert}
+          loading={catalogLoading}
+        />
 
         <div className={styles.main}>
           <div className={styles.controls}>
-            <TimeRangePicker value={range} onChange={(next) => setRange(next.id)} />
+            <TimeRangePicker
+              value={range}
+              onChange={(next) => setRange(next.id)}
+            />
             {/* Saving carries the **text** and the range token, never the compiled
                 query, so the saved question re-resolves `now-30d` every time it runs.
                 It hands off to the Saved tab's form rather than opening a second

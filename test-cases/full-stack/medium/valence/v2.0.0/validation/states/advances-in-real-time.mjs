@@ -62,7 +62,9 @@ export default function item() {
       const id = await api.call("spawnUnit", {});
 
       const before = await api.snapshot();
-      const unit0 = (before.matter || []).find((m) => m.id === id) ?? (before.matter || [])[0];
+      const unit0 =
+        (before.matter || []).find((m) => m.id === id) ??
+        (before.matter || [])[0];
       if (before.phase !== "round" || !unit0) {
         throw preconditionUnmet(
           `the scenario round is not live with a unit on a path (phase ${before.phase}, ` +

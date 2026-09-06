@@ -110,8 +110,15 @@ it("turns an edge arm's gripper off the field and back with no fault", async () 
 
   const sim = snapshot.sim;
   assertNotNull(sim, "the run is live after the cycle that turned back");
-  assertEqual(sim?.status, "running", "the return cycle reaches its boundary too");
-  assertNull(sim?.fault ?? null, "no fault is raised by coming back onto the field");
+  assertEqual(
+    sim?.status,
+    "running",
+    "the return cycle reaches its boundary too",
+  );
+  assertNull(
+    sim?.fault ?? null,
+    "no fault is raised by coming back onto the field",
+  );
   assertEqual(sim?.cycle, 2, "both cycles ran to their boundaries");
   assertEqual(
     poseOf(snapshot, arm)?.rotation,

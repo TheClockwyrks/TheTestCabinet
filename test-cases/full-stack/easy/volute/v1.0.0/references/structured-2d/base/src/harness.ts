@@ -313,11 +313,10 @@ export function run(
   charge: ChargeId,
   mark: MachineryKind | null = null,
 ): PosedCore[] {
-  return Array.from({ length: count }, (_unused, i): PosedCore => [
-    head - i * 28,
-    charge,
-    i === 0 ? mark : null,
-  ]);
+  return Array.from(
+    { length: count },
+    (_unused, i): PosedCore => [head - i * 28, charge, i === 0 ? mark : null],
+  );
 }
 
 /**

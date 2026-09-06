@@ -37,11 +37,11 @@ applied instead of `overlays/prod`. The sha is pinned in three places there,
 because not every image reference is a container `image:` field the kustomize
 `images:` transformer can rewrite:
 
-| File | What it pins | Why it's separate |
-| --- | --- | --- |
+| File                                   | What it pins                       | Why it's separate                                                 |
+| -------------------------------------- | ---------------------------------- | ----------------------------------------------------------------- |
 | `kustomization.yaml` (`images:` block) | All eight service images' `newTag` | Normal `image:` fields, which the `images:` transformer rewrites. |
-| `patch-dispatcher-driver-image.yaml` | `TCAB_DRIVER_IMAGE` | An env value, not an `image:` field. |
-| `patch-dispatcher-publisher.yaml` | `TCAB_PUBLISHER_IMAGE` | An env value the dispatcher passes to each publish Job. |
+| `patch-dispatcher-driver-image.yaml`   | `TCAB_DRIVER_IMAGE`                | An env value, not an `image:` field.                              |
+| `patch-dispatcher-publisher.yaml`      | `TCAB_PUBLISHER_IMAGE`             | An env value the dispatcher passes to each publish Job.           |
 
 All three must move together so every service runs the same sha. The driver and
 publisher images are referenced as env values because the dispatcher spawns them

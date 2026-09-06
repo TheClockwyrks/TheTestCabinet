@@ -354,7 +354,10 @@ describe("viewportRect", () => {
     // agreement the whole design rests on — the HUD lands on the picture.
     expect(vp.offsetX + 0 * vp.scale).toBeCloseTo(rect.x, 9);
     expect(vp.offsetY + 0 * vp.scale).toBeCloseTo(rect.y, 9);
-    expect(vp.offsetX + vp.width * vp.scale).toBeCloseTo(rect.x + rect.width, 9);
+    expect(vp.offsetX + vp.width * vp.scale).toBeCloseTo(
+      rect.x + rect.width,
+      9,
+    );
     expect(vp.offsetY + vp.height * vp.scale).toBeCloseTo(
       rect.y + rect.height,
       9,

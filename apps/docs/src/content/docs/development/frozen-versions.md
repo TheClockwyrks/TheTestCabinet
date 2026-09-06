@@ -35,10 +35,10 @@ a permission flip all move the digest.
 
 Two gates recompute and compare it:
 
-| Gate | Where | Catches |
-| --- | --- | --- |
-| `scripts/hooks/frozen-paths.sh` | pre-commit hook | the mistake, at the moment you make it |
-| `scripts/ci/frozen-check.sh` | Azure + GitHub CI | commits made with `--no-verify` or without hooks installed |
+| Gate                            | Where             | Catches                                                    |
+| ------------------------------- | ----------------- | ---------------------------------------------------------- |
+| `scripts/hooks/frozen-paths.sh` | pre-commit hook   | the mistake, at the moment you make it                     |
+| `scripts/ci/frozen-check.sh`    | Azure + GitHub CI | commits made with `--no-verify` or without hooks installed |
 
 Both read the git index rather than a diff against a base branch, so the CI job
 needs no merge base, no fetch depth, and no toolchain. It checks that the tree it

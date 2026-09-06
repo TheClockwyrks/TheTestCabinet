@@ -105,7 +105,11 @@ it("grips the hex length out along its spoke and leaves the hexes between alone"
   assertNotNull(sim, "the run is live through the cycle that grabbed");
   assertEqual(sim?.status, "running", "the grab cycle reaches its boundary");
   assertNull(sim?.fault ?? null, "no fault was raised by the grab");
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
 
   for (const [index, arm] of ARMS.entries()) {
     const part = ids[index] ?? -1;

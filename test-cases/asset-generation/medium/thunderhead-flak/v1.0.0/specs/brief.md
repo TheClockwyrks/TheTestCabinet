@@ -1,10 +1,10 @@
 # Thunderhead Flak Burst — particle brief
 
-You are authoring the **anti-air flak burst** for *Thunderhead*, a naval
+You are authoring the **anti-air flak burst** for _Thunderhead_, a naval
 fleet-command game — the mid-air puff a proximity shell makes when it detonates
 near an aircraft. It is a **one-shot** volumetric effect: a brief fiery
 detonation, an outward burst of hot sparks and shrapnel, and a lingering dark
-smoke puff that drifts and dissipates. You are authoring the *effect* as a
+smoke puff that drifts and dissipates. You are authoring the _effect_ as a
 **system**, not a single frozen frame.
 
 ## The field
@@ -103,14 +103,14 @@ Ease the curves (rise/fall smoothly) rather than snapping between values.
 Use only these colors — stated as gradient stops over each particle's life, and as
 the only hues allowed in the burst (no blues, greens, or purples):
 
-| Role | Hex |
-| --- | --- |
-| White-hot core | `#fff4d6` |
+| Role                  | Hex       |
+| --------------------- | --------- |
+| White-hot core        | `#fff4d6` |
 | Core burnout (orange) | `#ff8a2a` |
-| Hot spark | `#ff6a1a` |
-| Spark ember (deep) | `#c0300c` |
-| Smoke (grey) | `#5a5a5e` |
-| Smoke (black) | `#1a1a1c` |
+| Hot spark             | `#ff6a1a` |
+| Spark ember (deep)    | `#c0300c` |
+| Smoke (grey)          | `#5a5a5e` |
+| Smoke (black)         | `#1a1a1c` |
 
 A natural read: the **core** runs `#fff4d6` → `#ff8a2a`; the **sparks** run
 `#ff6a1a` → `#c0300c`; the **smoke** runs `#5a5a5e` → `#1a1a1c` as it fades.
@@ -128,7 +128,7 @@ Rendering is **on request**: run `particle-3d render` to simulate the whole syst
 over its duration, write the preview `effect.gif`, and **emit the `system.json`
 your result is built from** — you **must** render before you finish or the system
 is empty. Because the simulation is **live and stochastic**, the effect **varies
-slightly from play to play**; judge its *character* — the read, the timing, the
+slightly from play to play**; judge its _character_ — the read, the timing, the
 motion — across replays and from multiple orbit angles, not any single frame. The
 field size, duration, and fps are already seeded in a config beside your
 workspace, so no operation needs those flags. Run `particle-3d --help` for the

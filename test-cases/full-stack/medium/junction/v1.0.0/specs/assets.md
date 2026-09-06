@@ -23,14 +23,14 @@ Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `
 `texture`, voxel, or mesh tool in this image), so **all HUD/dashboard/overlay chrome is
 drawn in code** (below):
 
-| Tool | Produces | Used for |
-| --- | --- | --- |
-| `draw` | one sprite → a PNG | zone buildings (per tier), road/rail/station tiles, power/water tiles, vehicles, HUD icons |
-| `draw-sheet` | a sprite sheet, **one PNG per frame** | animated signals/crossings, construction, vehicle cycles |
-| `particle-2d` | a particle system → a `system.json` | pollution haze, construction dust, milestone fireworks |
-| `sfx-synth` | a procedural sound → a `.wav` | build / chime / alert cues from raw synthesis |
-| `sfx-sample` | a sampled sound over the sample pack → a `.wav` | richer build / notification / alert cues |
-| `music` | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the ambient city music bed |
+| Tool          | Produces                                                       | Used for                                                                                   |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `draw`        | one sprite → a PNG                                             | zone buildings (per tier), road/rail/station tiles, power/water tiles, vehicles, HUD icons |
+| `draw-sheet`  | a sprite sheet, **one PNG per frame**                          | animated signals/crossings, construction, vehicle cycles                                   |
+| `particle-2d` | a particle system → a `system.json`                            | pollution haze, construction dust, milestone fireworks                                     |
+| `sfx-synth`   | a procedural sound → a `.wav`                                  | build / chime / alert cues from raw synthesis                                              |
+| `sfx-sample`  | a sampled sound over the sample pack → a `.wav`                | richer build / notification / alert cues                                                   |
+| `music`       | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the ambient city music bed                                                                 |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is the
@@ -68,8 +68,8 @@ like `/runs/<id>/build/`). So:
 - **Reference assets relative to the document or module instead.** Prefer letting your
   bundler resolve them: import each PNG / `.wav` / JSON, or use a bundler directory glob
   (for example Vite's `import.meta.glob('../assets/**/*.png', { eager: true, query:
-  '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
-  import.meta.url)` also works if your bundler can statically resolve it.
+'?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
+import.meta.url)` also works if your bundler can statically resolve it.
 - **Configure your bundler's base to be relative** (for Vite, `base: './'`) so the
   emitted JS, CSS, and asset URLs are all page-relative.
 
@@ -209,13 +209,13 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   bankruptcy (`specs/flow.md`).
 - The **data overlays** — the **traffic** (per-link load → gridlock), **utility**
   (served/unserved), and **pollution/land-value** overlays (`specs/controls.md`) are
-  drawn in code from the computed simulation fields. (The pollution *haze* is the
+  drawn in code from the computed simulation fields. (The pollution _haze_ is the
   produced particle system; the toggleable analytic overlay coloring tiles is code.)
 - **Selection and tool feedback** — the zone/road/rail/utility previews, the placement
   ghost, the hovered-tile cursor, illegal-placement rejection, and the cost readout
   (`specs/controls.md`).
 - The **pollution overlay's driving** — the logic that spawns and scales the produced
-  haze system from the tile pollution field (the *system* is produced; deciding where
+  haze system from the tile pollution field (the _system_ is produced; deciding where
   and how strongly to play it is code).
 
 ## Genuinely produce the assets — this is the point here

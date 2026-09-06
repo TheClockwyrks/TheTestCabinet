@@ -36,13 +36,13 @@ a caller drives the build through. What a single level needs it loads in its own
 
 ## The sections
 
-| Section | Covers |
-| --- | --- |
-| [APIs](/engines/structured-2d/apis/overview/) | The types, classes, and methods the engine exposes, as the specification its implementation satisfies. |
-| [Concepts](/engines/structured-2d/concepts/overview/) | How each subsystem works and why it is shaped that way. |
-| [Usage](/engines/structured-2d/usage/overview/) | How a build is expected to write its code against the engine. |
-| [Examples](/engines/structured-2d/examples/overview/) | Complete games written against the engine, read as working reference. |
-| [Validators](/engines/structured-2d/validators/overview/) | How a test case checks a build through the engine. |
+| Section                                                   | Covers                                                                                                 |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| [APIs](/engines/structured-2d/apis/overview/)             | The types, classes, and methods the engine exposes, as the specification its implementation satisfies. |
+| [Concepts](/engines/structured-2d/concepts/overview/)     | How each subsystem works and why it is shaped that way.                                                |
+| [Usage](/engines/structured-2d/usage/overview/)           | How a build is expected to write its code against the engine.                                          |
+| [Examples](/engines/structured-2d/examples/overview/)     | Complete games written against the engine, read as working reference.                                  |
+| [Validators](/engines/structured-2d/validators/overview/) | How a test case checks a build through the engine.                                                     |
 
 ## Where it fits
 
@@ -69,8 +69,8 @@ scenario its check is about and hands back the operations the pipeline issued,
 which a reviewer replays beside the same scenario driven against the case's
 reference implementation.
 
-| Family | Gameplay framework | Simulation and rendering |
-| --- | --- | --- |
-| Simple | None | The game writes both, in TypeScript |
-| Structured | Worlds, levels, game modes, actors, pawns, controllers | The engine renders; the game's simulation is TypeScript beside it |
-| Decoupled | The same framework | The simulation is Rust compiled to WebAssembly; the engine's TypeScript renderer draws it |
+| Family     | Gameplay framework                                     | Simulation and rendering                                                                  |
+| ---------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Simple     | None                                                   | The game writes both, in TypeScript                                                       |
+| Structured | Worlds, levels, game modes, actors, pawns, controllers | The engine renders; the game's simulation is TypeScript beside it                         |
+| Decoupled  | The same framework                                     | The simulation is Rust compiled to WebAssembly; the engine's TypeScript renderer draws it |

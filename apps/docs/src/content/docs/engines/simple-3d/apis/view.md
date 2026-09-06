@@ -11,11 +11,11 @@ owns.
 
 ## The three spaces
 
-| Space | Unit | Set by |
-| --- | --- | --- |
-| World | World units | The game, on every scene object |
+| Space   | Unit                                     | Set by                                              |
+| ------- | ---------------------------------------- | --------------------------------------------------- |
+| World   | World units                              | The game, on every scene object                     |
 | Logical | The design size handed to `createEngine` | The camera's projection, at aspect `width / height` |
-| Device | Device pixels | The viewport |
+| Device  | Device pixels                            | The viewport                                        |
 
 The camera carries the first mapping and the viewport the second, with `width`
 and `height` the logical design size. A world point goes through the camera's
@@ -23,8 +23,8 @@ view and projection matrices into clip space and is divided by `w` into
 normalized device coordinates, and those land on the logical field:
 
 ```ts
-logicalX = (ndcX + 1) / 2 * width;
-logicalY = (1 - ndcY) / 2 * height;
+logicalX = ((ndcX + 1) / 2) * width;
+logicalY = ((1 - ndcY) / 2) * height;
 depth = ndcZ;
 
 deviceX = offsetX + logicalX * scale;
@@ -96,14 +96,14 @@ interface Box3 {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `Ray.origin` | A world point the ray starts from. |
-| `Ray.direction` | The ray's direction in world space, unit length. |
-| `Projected.x`, `.y` | The point in logical design coordinates. |
-| `Projected.depth` | Normalized device depth in `-1..1`, near to far. |
+| Field               | Meaning                                             |
+| ------------------- | --------------------------------------------------- |
+| `Ray.origin`        | A world point the ray starts from.                  |
+| `Ray.direction`     | The ray's direction in world space, unit length.    |
+| `Projected.x`, `.y` | The point in logical design coordinates.            |
+| `Projected.depth`   | Normalized device depth in `-1..1`, near to far.    |
 | `Projected.visible` | Whether the point lies inside the camera's frustum. |
-| `Box3.min`, `.max` | The corners of an axis-aligned box in world units. |
+| `Box3.min`, `.max`  | The corners of an axis-aligned box in world units.  |
 
 A point outside the frustum still reports `x`, `y`, and `depth`, and a point
 behind the camera reports `visible: false`.
@@ -126,14 +126,14 @@ interface CameraSnapshot {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `projection` | Which projection the camera is. |
-| `position` | The camera's world position. |
-| `rotation` | The camera's world rotation. |
-| `fov` | The vertical field of view in degrees. Perspective only, `0` for an orthographic camera. |
-| `near`, `far` | The clipping planes, in world units along the view direction. |
-| `zoom` | The camera's zoom factor. |
+| Field                            | Meaning                                                                                    |
+| -------------------------------- | ------------------------------------------------------------------------------------------ |
+| `projection`                     | Which projection the camera is.                                                            |
+| `position`                       | The camera's world position.                                                               |
+| `rotation`                       | The camera's world rotation.                                                               |
+| `fov`                            | The vertical field of view in degrees. Perspective only, `0` for an orthographic camera.   |
+| `near`, `far`                    | The clipping planes, in world units along the view direction.                              |
+| `zoom`                           | The camera's zoom factor.                                                                  |
 | `left`, `right`, `top`, `bottom` | The orthographic extents, in world units. Orthographic only, `0` for a perspective camera. |
 
 The camera's pose and projection at one moment, as a plain value the caller
@@ -142,16 +142,16 @@ the reading it was taken from.
 
 ## Camera defaults
 
-| Field | Perspective | Orthographic |
-| --- | --- | --- |
-| `position` | `(0, 0, 10)` | `(0, 0, 10)` |
-| `rotation` | Identity, looking along `-Z` with `+Y` up | Identity, looking along `-Z` with `+Y` up |
-| `fov` | `60` | `0` |
-| `near` | `0.1` | `0.1` |
-| `far` | `1000` | `1000` |
-| `zoom` | `1` | `1` |
-| `left`, `right` | `0`, `0` | `-width / 2`, `width / 2` |
-| `top`, `bottom` | `0`, `0` | `height / 2`, `-height / 2` |
+| Field           | Perspective                               | Orthographic                              |
+| --------------- | ----------------------------------------- | ----------------------------------------- |
+| `position`      | `(0, 0, 10)`                              | `(0, 0, 10)`                              |
+| `rotation`      | Identity, looking along `-Z` with `+Y` up | Identity, looking along `-Z` with `+Y` up |
+| `fov`           | `60`                                      | `0`                                       |
+| `near`          | `0.1`                                     | `0.1`                                     |
+| `far`           | `1000`                                    | `1000`                                    |
+| `zoom`          | `1`                                       | `1`                                       |
+| `left`, `right` | `0`, `0`                                  | `-width / 2`, `width / 2`                 |
+| `top`, `bottom` | `0`, `0`                                  | `height / 2`, `-height / 2`               |
 
 The projection is chosen by
 [`EngineOptions.projection`](/engines/simple-3d/apis/engine/) and the camera
@@ -169,10 +169,10 @@ interface View {
 }
 ```
 
-| Method | Result |
-| --- | --- |
-| `camera` | The camera's pose and projection as a value the caller owns. |
-| `ray` | A world-space ray through the logical stage point `(x, y)`. |
+| Method    | Result                                                                                    |
+| --------- | ----------------------------------------------------------------------------------------- |
+| `camera`  | The camera's pose and projection as a value the caller owns.                              |
+| `ray`     | A world-space ray through the logical stage point `(x, y)`.                               |
 | `project` | The logical stage point a world point draws at, with its depth and whether it is in view. |
 
 `ray` is what picking reads. Through a perspective camera the ray starts at the

@@ -27,12 +27,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { MINER_W } from "../constants";
 import { assertEqual, assertLessThan } from "../assert";
-import {
-  TICK_HZ,
-  captureStill,
-  createHarness,
-  type Harness,
-} from "../harness";
+import { TICK_HZ, captureStill, createHarness, type Harness } from "../harness";
 import { frameImages, imageAt, sampleBox } from "./drawn";
 import { minerBox, minerCentre, showMiner } from "./miner";
 

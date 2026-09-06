@@ -72,7 +72,11 @@ it("fails loudly on a site index outside 0..SITE_COUNT-1, and sets nothing", asy
         );
       }
       const after = await h.snapshot();
-      assertEqual(after.siteIndex, before.siteIndex, `siteIndex across ${what}`);
+      assertEqual(
+        after.siteIndex,
+        before.siteIndex,
+        `siteIndex across ${what}`,
+      );
       assertDeepEqual(after.cleared, before.cleared, `cleared across ${what}`);
       assertDeepEqual(after.best, before.best, `best across ${what}`);
     }

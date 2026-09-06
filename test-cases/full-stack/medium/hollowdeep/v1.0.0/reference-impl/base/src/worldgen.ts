@@ -48,7 +48,8 @@ export function generateWorld(mode: ColonyMode, seed: number): GenResult {
     if (isBorder(tx, ty)) return; // never overwrite the seal
     tiles[idx(w, tx, ty)]!.kind = kind;
   };
-  const kindOf = (tx: number, ty: number): TileKind => tiles[idx(w, tx, ty)]!.kind;
+  const kindOf = (tx: number, ty: number): TileKind =>
+    tiles[idx(w, tx, ty)]!.kind;
 
   // 2. Rock patches: a handful of dense blobs, mostly in the deeper rows, gating expansion.
   const rockBlobs = 26;
@@ -62,7 +63,13 @@ export function generateWorld(mode: ColonyMode, seed: number): GenResult {
         if (rng.next() < 0.35) continue; // ragged edges
         const tx = cx + dx;
         const ty = cy + dy;
-        if (tx > 0 && tx < w - 1 && ty > 1 && ty < h - 1 && kindOf(tx, ty) === "dirt") {
+        if (
+          tx > 0 &&
+          tx < w - 1 &&
+          ty > 1 &&
+          ty < h - 1 &&
+          kindOf(tx, ty) === "dirt"
+        ) {
           set(tx, ty, "rock");
         }
       }

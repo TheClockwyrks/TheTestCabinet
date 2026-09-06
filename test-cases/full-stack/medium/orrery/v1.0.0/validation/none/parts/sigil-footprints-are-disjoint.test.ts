@@ -44,7 +44,9 @@ import { sigilHexes } from "../parts";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -55,7 +57,8 @@ async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean>
 
 /** How many hexes two placed footprints share. */
 function shared(left: readonly Hex[], right: readonly Hex[]): number {
-  return left.filter((hex) => right.some((other) => sameHex(hex, other))).length;
+  return left.filter((hex) => right.some((other) => sameHex(hex, other)))
+    .length;
 }
 
 /** The standing sigil's anchor, and the three anchors offered against it. */
@@ -129,7 +132,11 @@ it("refuses a second sigil whose footprint covers any hex of a placed one", asyn
     true,
     "a sigil whose anchor falls on a placed footprint hex is refused",
   );
-  assertEqual(afterOverSecond, 1, "that refusal added no part: the first sigil stands alone");
+  assertEqual(
+    afterOverSecond,
+    1,
+    "that refusal added no part: the first sigil stands alone",
+  );
   assertEqual(
     overAnchor,
     true,
@@ -143,8 +150,16 @@ it("refuses a second sigil whose footprint covers any hex of a placed one", asyn
   );
 
   const snapshot = await h.snapshot();
-  assertEqual(partById(snapshot, first)?.kind, "bind", "the first sigil still stands");
-  assertEqual(partById(snapshot, clear)?.kind, "bind", "the disjoint sigil stands beside it");
+  assertEqual(
+    partById(snapshot, first)?.kind,
+    "bind",
+    "the first sigil still stands",
+  );
+  assertEqual(
+    partById(snapshot, clear)?.kind,
+    "bind",
+    "the disjoint sigil stands beside it",
+  );
   assertEqual(
     (await partIds(h)).length,
     2,

@@ -49,7 +49,12 @@ export type Screen =
 export type Facing = "left" | "right";
 
 export type ZoneKind =
-  "puddle" | "lantern" | "aura" | "slash" | "strike" | "burst";
+  | "puddle"
+  | "lantern"
+  | "aura"
+  | "slash"
+  | "strike"
+  | "burst";
 
 export type ChestResult =
   | { kind: "evolve"; weapon: WeaponId }

@@ -98,12 +98,14 @@ function tools(): AlmanacEntry[] {
 
 /** The trinkets: the ten passives. */
 function trinkets(): AlmanacEntry[] {
-  return PASSIVE_IDS.map((passive): AlmanacEntry => ({
-    name: PASSIVES[passive].name,
-    picture: { of: "trinket", passive },
-    stats: [stat(STAT_LABELS.maxLevel, PASSIVES[passive].maxLevel)],
-    description: PASSIVE_DESCRIPTIONS[passive],
-  }));
+  return PASSIVE_IDS.map(
+    (passive): AlmanacEntry => ({
+      name: PASSIVES[passive].name,
+      picture: { of: "trinket", passive },
+      stats: [stat(STAT_LABELS.maxLevel, PASSIVES[passive].maxLevel)],
+      description: PASSIVE_DESCRIPTIONS[passive],
+    }),
+  );
 }
 
 /** The enemies: the thirteen of the night, commons through the Dark. */
@@ -125,18 +127,22 @@ function enemies(): AlmanacEntry[] {
 
 /** The pickups: the three gem tiers, then the three pickups. */
 function pickups(): AlmanacEntry[] {
-  const gems = GEM_TIERS.map((tier): AlmanacEntry => ({
-    name: GEM_NAMES[tier],
-    picture: { of: "gem", tier },
-    stats: [stat(STAT_LABELS.experience, GEM_VALUES[tier])],
-    description: GEM_DESCRIPTIONS[tier],
-  }));
-  const items = PICKUP_KINDS.map((pickup): AlmanacEntry => ({
-    name: PICKUP_NAMES[pickup],
-    picture: { of: "pickup", pickup },
-    stats: pickup === "bread" ? [stat(STAT_LABELS.heals, BREAD_HEAL)] : [],
-    description: PICKUP_DESCRIPTIONS[pickup],
-  }));
+  const gems = GEM_TIERS.map(
+    (tier): AlmanacEntry => ({
+      name: GEM_NAMES[tier],
+      picture: { of: "gem", tier },
+      stats: [stat(STAT_LABELS.experience, GEM_VALUES[tier])],
+      description: GEM_DESCRIPTIONS[tier],
+    }),
+  );
+  const items = PICKUP_KINDS.map(
+    (pickup): AlmanacEntry => ({
+      name: PICKUP_NAMES[pickup],
+      picture: { of: "pickup", pickup },
+      stats: pickup === "bread" ? [stat(STAT_LABELS.heals, BREAD_HEAL)] : [],
+      description: PICKUP_DESCRIPTIONS[pickup],
+    }),
+  );
   return [...gems, ...items];
 }
 

@@ -20,9 +20,9 @@ A sigil whose condition does not hold at a boundary waits.
 
 ### `bind`
 
-| Hex | Role |
-| --- | --- |
-| `(0, 0)` | first |
+| Hex      | Role   |
+| -------- | ------ |
+| `(0, 0)` | first  |
 | `(1, 0)` | second |
 
 When both hexes hold motes and no filament joins that pair, a filament of
@@ -31,12 +31,12 @@ binding two constellations merges them into one.
 
 ### `manifold`
 
-| Hex | Role |
-| --- | --- |
-| `(0, 0)` | center |
-| `(1, 0)` | reach |
-| `(-1, +1)` | reach |
-| `(0, -1)` | reach |
+| Hex        | Role   |
+| ---------- | ------ |
+| `(0, 0)`   | center |
+| `(1, 0)`   | reach  |
+| `(-1, +1)` | reach  |
+| `(0, -1)`  | reach  |
 
 When the center holds a mote, each reach hex that also holds a mote is bound
 to the center exactly as `bind` binds a pair: a weight `1` filament where none
@@ -45,9 +45,9 @@ already joined to the center.
 
 ### `triune`
 
-| Hex | Role |
-| --- | --- |
-| `(0, 0)` | first |
+| Hex      | Role   |
+| -------- | ------ |
+| `(0, 0)` | first  |
 | `(1, 0)` | second |
 
 When both hexes hold `nova` motes and no filament joins that pair, a filament
@@ -57,9 +57,9 @@ of weight `3` is created between them.
 
 ### `sunder`
 
-| Hex | Role |
-| --- | --- |
-| `(0, 0)` | first |
+| Hex      | Role   |
+| -------- | ------ |
+| `(0, 0)` | first  |
 | `(1, 0)` | second |
 
 When a filament joins the motes on its two hexes, that filament is removed,
@@ -69,8 +69,8 @@ whatever its weight.
 
 ### `wane`
 
-| Hex | Role |
-| --- | --- |
+| Hex      | Role |
+| -------- | ---- |
 | `(0, 0)` | seat |
 
 An essence mote on the seat becomes `dust`. Its filaments, its constellation,
@@ -78,8 +78,8 @@ and any hold on it are untouched.
 
 ### `mirror`
 
-| Hex | Role |
-| --- | --- |
+| Hex      | Role   |
+| -------- | ------ |
 | `(0, 0)` | source |
 | `(1, 0)` | target |
 
@@ -89,8 +89,8 @@ source condition exactly as a loose essence does.
 
 ### `ascend`
 
-| Hex | Role |
-| --- | --- |
+| Hex      | Role  |
+| -------- | ----- |
 | `(0, 0)` | prime |
 | `(1, 0)` | crown |
 
@@ -100,8 +100,8 @@ planet below `sol`, the `mercury` is consumed and the planet rises one rung of
 
 ### `conjoin`
 
-| Hex | Role |
-| --- | --- |
+| Hex      | Role  |
+| -------- | ----- |
 | `(0, 0)` | fount |
 | `(1, 0)` | fount |
 | `(0, 1)` | crown |
@@ -112,12 +112,12 @@ appears on the crown, unbonded and unheld.
 
 ### `eclipse`
 
-| Hex | Role |
-| --- | --- |
-| `(0, 0)` | fount |
-| `(1, 0)` | fount |
-| `(0, 1)` | umbral crown |
-| `(1, -1)` | lumen crown |
+| Hex       | Role         |
+| --------- | ------------ |
+| `(0, 0)`  | fount        |
+| `(1, 0)`  | fount        |
+| `(0, 1)`  | umbral crown |
+| `(1, -1)` | lumen crown  |
 
 When both founts hold unbonded, unheld `dust` and both crowns are vacant, both
 `dust` are consumed, an `umbra` appears on the umbral crown, and a `lumen`
@@ -125,11 +125,11 @@ appears on the lumen crown, each unbonded and unheld.
 
 ### `confluence`
 
-| Hex | Role |
-| --- | --- |
-| `(0, 0)` | crown |
-| `(1, 0)` | fount |
-| `(0, 1)` | fount |
+| Hex       | Role  |
+| --------- | ----- |
+| `(0, 0)`  | crown |
+| `(1, 0)`  | fount |
+| `(0, 1)`  | fount |
 | `(-1, 0)` | fount |
 | `(0, -1)` | fount |
 
@@ -139,12 +139,12 @@ and one `aether` appears on the crown, unbonded and unheld.
 
 ### `dispersion`
 
-| Hex | Role |
-| --- | --- |
-| `(0, 0)` | fount |
-| `(1, 0)` | nebula crown |
-| `(0, 1)` | comet crown |
-| `(-1, 0)` | nova crown |
+| Hex       | Role         |
+| --------- | ------------ |
+| `(0, 0)`  | fount        |
+| `(1, 0)`  | nebula crown |
+| `(0, 1)`  | comet crown  |
+| `(-1, 0)` | nova crown   |
 | `(0, -1)` | meteor crown |
 
 When the fount holds an unbonded, unheld `aether` and all four crowns are
@@ -155,10 +155,10 @@ named crown, unbonded and unheld.
 
 ### `void`
 
-| Hex | Role |
-| --- | --- |
-| `(0, 0)` | maw |
-| all six neighbors of `(0, 0)` | rim |
+| Hex                           | Role |
+| ----------------------------- | ---- |
+| `(0, 0)`                      | maw  |
+| all six neighbors of `(0, 0)` | rim  |
 
 An unbonded, unheld mote on the maw is consumed. The maw is the only hex that
 consumes; the rim takes part in the placement rules of `specs/parts.md` alone.

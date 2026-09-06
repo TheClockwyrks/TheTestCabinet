@@ -48,10 +48,10 @@ install them yourself. Either way you need:
 - A harness API key, exported in your shell or set in the gitignored repo-root
   `.env`. At least one of:
 
-  | Harness | Variable |
-  | --- | --- |
-  | `claude` | `ANTHROPIC_API_KEY` |
-  | `codex` | `OPENAI_API_KEY` |
+  | Harness                                          | Variable             |
+  | ------------------------------------------------ | -------------------- |
+  | `claude`                                         | `ANTHROPIC_API_KEY`  |
+  | `codex`                                          | `OPENAI_API_KEY`     |
   | `cline`, `goose`, `kilo`, `opencode`, `pi`, `gg` | `OPENROUTER_API_KEY` |
 
   ```sh

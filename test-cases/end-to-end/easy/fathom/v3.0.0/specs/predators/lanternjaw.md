@@ -9,11 +9,11 @@ it.
 
 The Lanternjaw senses the forager on any step where all three of these hold at once.
 
-| The condition | What it means |
-| --- | --- |
-| In range | The distance between the two centers is at most `R`, the Lanternjaw's detection range. |
-| In line of sight | The straight line between the two centers crosses no rock tile. |
-| Clear of ink | That same line crosses no ink cloud, and the Lanternjaw itself stands in none. |
+| The condition    | What it means                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| In range         | The distance between the two centers is at most `R`, the Lanternjaw's detection range. |
+| In line of sight | The straight line between the two centers crosses no rock tile.                        |
+| Clear of ink     | That same line crosses no ink cloud, and the Lanternjaw itself stands in none.         |
 
 `R` grows with the forager's brightness `G`:
 `R = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G`, with `LANTERN_RANGE_BASE` (`128`)
@@ -41,10 +41,10 @@ linger, and the Lanternjaw wanders for as long as the cloud blinds it.
 
 ## Speeds
 
-| While it is | It travels at, in logical units per second |
-| --- | --- |
-| Wandering | `DRIFTER_SPEED` (`64`), the bonus drifter's pace |
-| Chasing | `PREDATOR_SPEED` (`116`) |
+| While it is | It travels at, in logical units per second       |
+| ----------- | ------------------------------------------------ |
+| Wandering   | `DRIFTER_SPEED` (`64`), the bonus drifter's pace |
+| Chasing     | `PREDATOR_SPEED` (`116`)                         |
 
 Wandering it also takes the drifter's routing, choosing among the open directions at
 each junction exactly as a drifter does, so an undetected Lanternjaw drifts the
@@ -73,11 +73,11 @@ marking neither it nor a drifter, as `specs/sensing.md` states.
 
 ## States
 
-| From | To | When |
-| --- | --- | --- |
-| `"den"` | `"wander"` | It has swum out of the den chamber after its release time. |
-| `"wander"` | `"chase"` | Its sense holds the forager. |
-| `"chase"` | `"chase"` | Its sense holds the forager, or the linger is still running. |
-| `"chase"` | `"wander"` | `LINGER_TIME` runs out with nothing sensed, or ink blinds it. |
+| From       | To         | When                                                          |
+| ---------- | ---------- | ------------------------------------------------------------- |
+| `"den"`    | `"wander"` | It has swum out of the den chamber after its release time.    |
+| `"wander"` | `"chase"`  | Its sense holds the forager.                                  |
+| `"chase"`  | `"chase"`  | Its sense holds the forager, or the linger is still running.  |
+| `"chase"`  | `"wander"` | `LINGER_TIME` runs out with nothing sensed, or ink blinds it. |
 
 The Lanternjaw never reports `state` as `"search"`.

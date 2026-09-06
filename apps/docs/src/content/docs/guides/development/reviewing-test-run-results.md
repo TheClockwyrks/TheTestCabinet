@@ -254,13 +254,13 @@ grade directly under the reserved `overall` verdict id. That grade becomes the
 run's rating badge in place of a domain rating, and the run's overall grade is
 the worst across its reviews.
 
-| Grade | Points |
-| --- | --- |
-| `broken` | 0 |
-| `poor` | 1 |
-| `neutral` | 3 |
-| `great` | 5 |
-| `incredible` | 10 |
+| Grade        | Points |
+| ------------ | ------ |
+| `broken`     | 0      |
+| `poor`       | 1      |
+| `neutral`    | 3      |
+| `great`      | 5      |
+| `incredible` | 10     |
 
 A graded item's available points are its weight times 10, and it earns the graded
 tier's points times its weight. The reserved `overall` mark is excluded from the

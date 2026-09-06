@@ -17,17 +17,17 @@ which is the authoritative output — not the run's own previews.
 Frames are named `<entity>_<index>.png`, flat, mirroring Foray's `source/`
 convention. Each entity is seeded at its case's declared canvas.
 
-| Entity | Frames | Canvas | Motion |
-| --- | --- | --- | --- |
-| `belt` | 48 | 32×32 | three tiers of a straight loop (8) then a curve loop (8); tread scrolls at 12 / 16 / 20 fps |
-| `splitter` | 8 | 32×64 | scrolling loop, 12 fps |
-| `lane-splitter` | 8 | 32×64 | scrolling loop with two outward-riding spreader heads, 12 fps (engine-simulated; no scored scenario places one yet) |
-| `inserter` | 36 | 64×64 | three tiers of a 12-frame swing cycle, 12 / 16 / 20 fps |
-| `assembler` | 24 | 96×96 | three tiers of an 8-frame craft loop, 8 / 11 / 13 fps |
-| `source` | 6 | 32×32 | emit pulse, 8 fps |
-| `sink` | 6 | 32×32 | consume pulse, 8 fps |
-| `furnace` | 12 | 64×64 | two states — an `off` idle (0–3, 6 fps) then a `smelting` burn loop (4–11, 12 fps) |
-| `items` | 17 | 32×32 | **not an animation** — one static icon per frame |
+| Entity          | Frames | Canvas | Motion                                                                                                              |
+| --------------- | ------ | ------ | ------------------------------------------------------------------------------------------------------------------- |
+| `belt`          | 48     | 32×32  | three tiers of a straight loop (8) then a curve loop (8); tread scrolls at 12 / 16 / 20 fps                         |
+| `splitter`      | 8      | 32×64  | scrolling loop, 12 fps                                                                                              |
+| `lane-splitter` | 8      | 32×64  | scrolling loop with two outward-riding spreader heads, 12 fps (engine-simulated; no scored scenario places one yet) |
+| `inserter`      | 36     | 64×64  | three tiers of a 12-frame swing cycle, 12 / 16 / 20 fps                                                             |
+| `assembler`     | 24     | 96×96  | three tiers of an 8-frame craft loop, 8 / 11 / 13 fps                                                               |
+| `source`        | 6      | 32×32  | emit pulse, 8 fps                                                                                                   |
+| `sink`          | 6      | 32×32  | consume pulse, 8 fps                                                                                                |
+| `furnace`       | 12     | 64×64  | two states — an `off` idle (0–3, 6 fps) then a `smelting` burn loop (4–11, 12 fps)                                  |
+| `items`         | 17     | 32×32  | **not an animation** — one static icon per frame                                                                    |
 
 The belt, inserter, and assembler are drawn across **three upgrade tiers**, laid end
 to end in the frame order below. `sheet.json` records each tier's frame indices and
@@ -35,19 +35,19 @@ its own playback rate, and the renderer picks the tier from a belt's scenario `t
 (`slow`/`fast`/`express` → tier 1/2/3). The inserter and assembler have no engine
 tier yet, so the renderer draws tier 1 and the higher tiers wait for it.
 
-| Entity | Tier 1 | Tier 2 | Tier 3 |
-| --- | --- | --- | --- |
-| `belt` | 0–7 straight, 8–15 curve | 16–23 straight, 24–31 curve | 32–39 straight, 40–47 curve |
-| `inserter` | 0–11 | 12–23 | 24–35 |
-| `assembler` | 0–7 | 8–15 | 16–23 |
+| Entity      | Tier 1                   | Tier 2                      | Tier 3                      |
+| ----------- | ------------------------ | --------------------------- | --------------------------- |
+| `belt`      | 0–7 straight, 8–15 curve | 16–23 straight, 24–31 curve | 32–39 straight, 40–47 curve |
+| `inserter`  | 0–11                     | 12–23                       | 24–35                       |
+| `assembler` | 0–7                      | 8–15                        | 16–23                       |
 
 ## Using them
 
 **Grid and canvas.** The grid cell is 32 px. A belt, source, and sink each fill one
 cell. A splitter — and the `lane-splitter`, which shares its two-cell footprint —
 spans two cells along its cross-flow axis. The furnace covers 2×2
-cells; the assembler covers 3×3 cells. The inserter's canvas is *larger than its
-cell* — its swing arm reaches
+cells; the assembler covers 3×3 cells. The inserter's canvas is _larger than its
+cell_ — its swing arm reaches
 beyond the tile it is anchored to — so it is drawn centred on its anchor cell with
 the overhang bleeding into the adjacent cells. The engine resolves which tiles an
 entity occupies, so the renderer never derives that geometry itself.
@@ -92,25 +92,25 @@ never emits index 16 and this icon stays unused — and it is placed last, not a
 the other materials, precisely so every earlier index (the checksum contract) is
 unchanged when coal is eventually added to `ITEMS`.
 
-| Frame | Icon | Engine item id |
-| --- | --- | --- |
-| 0 | iron ore | `iron-ore` |
-| 1 | iron plate | `iron-plate` |
-| 2 | iron gear wheel | `iron-gear` |
-| 3 | copper ore | `copper-ore` |
-| 4 | copper plate | `copper-plate` |
-| 5 | copper cable | `copper-cable` |
-| 6 | electronic circuit | `circuit` |
-| 7 | transport belt (tier 1) | `transport-belt` *(provisional)* |
-| 8 | transport belt (tier 2) | `fast-transport-belt` *(provisional)* |
-| 9 | transport belt (tier 3) | `express-transport-belt` *(provisional)* |
-| 10 | assembler (tier 1) | `assembler` *(provisional)* |
-| 11 | assembler (tier 2) | `fast-assembler` *(provisional)* |
-| 12 | assembler (tier 3) | `express-assembler` *(provisional)* |
-| 13 | inserter (tier 1) | `inserter` *(provisional)* |
-| 14 | inserter (tier 2) | `fast-inserter` *(provisional)* |
-| 15 | inserter (tier 3) | `express-inserter` *(provisional)* |
-| 16 | coal | `coal` *(provisional)* |
+| Frame | Icon                    | Engine item id                           |
+| ----- | ----------------------- | ---------------------------------------- |
+| 0     | iron ore                | `iron-ore`                               |
+| 1     | iron plate              | `iron-plate`                             |
+| 2     | iron gear wheel         | `iron-gear`                              |
+| 3     | copper ore              | `copper-ore`                             |
+| 4     | copper plate            | `copper-plate`                           |
+| 5     | copper cable            | `copper-cable`                           |
+| 6     | electronic circuit      | `circuit`                                |
+| 7     | transport belt (tier 1) | `transport-belt` _(provisional)_         |
+| 8     | transport belt (tier 2) | `fast-transport-belt` _(provisional)_    |
+| 9     | transport belt (tier 3) | `express-transport-belt` _(provisional)_ |
+| 10    | assembler (tier 1)      | `assembler` _(provisional)_              |
+| 11    | assembler (tier 2)      | `fast-assembler` _(provisional)_         |
+| 12    | assembler (tier 3)      | `express-assembler` _(provisional)_      |
+| 13    | inserter (tier 1)       | `inserter` _(provisional)_               |
+| 14    | inserter (tier 2)       | `fast-inserter` _(provisional)_          |
+| 15    | inserter (tier 3)       | `express-inserter` _(provisional)_       |
+| 16    | coal                    | `coal` _(provisional)_                   |
 
 Reordering the `lattice-items` sheet, or changing which engine item id a frame maps
 to, breaks that correspondence.

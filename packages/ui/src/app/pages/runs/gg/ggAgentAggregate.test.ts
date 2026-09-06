@@ -871,7 +871,11 @@ describe("deriveGgAgentSummaries", () => {
     const surface = summaries.find((s) => s.profileId === "worker")!.surface!;
     expect(surface.apis[0]!.functions).toEqual([
       { name: "sendMessage", key: "delegation.send_message", offeredBy: 1 },
-      { name: "SubagentHandle.send", key: "delegation.send_message", offeredBy: 1 },
+      {
+        name: "SubagentHandle.send",
+        key: "delegation.send_message",
+        offeredBy: 1,
+      },
     ]);
   });
 

@@ -12,13 +12,13 @@ screens and their readouts in `specs/ui.md`.
 A run plays five levels over the same channel and starts at level 1. Each level
 fixes the charges in play, the quota, and the feed speed.
 
-| Level | Charges in play | Quota | Feed speed (units/s) |
-| --- | --- | --- | --- |
-| 1 | halide, sulfur, cobalt | 45 | 22 |
-| 2 | halide, sulfur, cobalt, garnet | 55 | 26 |
-| 3 | halide, sulfur, cobalt, garnet | 65 | 30 |
-| 4 | halide, sulfur, cobalt, garnet, olivine | 75 | 34 |
-| 5 | halide, sulfur, cobalt, garnet, olivine | 90 | 38 |
+| Level | Charges in play                         | Quota | Feed speed (units/s) |
+| ----- | --------------------------------------- | ----- | -------------------- |
+| 1     | halide, sulfur, cobalt                  | 45    | 22                   |
+| 2     | halide, sulfur, cobalt, garnet          | 55    | 26                   |
+| 3     | halide, sulfur, cobalt, garnet          | 65    | 30                   |
+| 4     | halide, sulfur, cobalt, garnet, olivine | 75    | 34                   |
+| 5     | halide, sulfur, cobalt, garnet, olivine | 90    | 38                   |
 
 The charges in play are the level's charge set, the set every charge draw falls
 back to. The feed speed is the level's base rate for the lead segment, before
@@ -45,16 +45,16 @@ A run starts with 3 cells. A core whose arc position `s` reaches 5000 arrives at
 the intake and spends a cell, which sets the run back as follows. A tick spends
 one cell at most.
 
-| Figure | Value after the spend |
-| --- | --- |
-| Cells | one fewer |
-| The channel | every core removed |
-| Projectiles | every one discarded |
-| Pressure | 0 |
-| Active machinery | cleared |
-| Chain step | 1 |
-| Quota | what a level start leaves it |
-| Level | unchanged, and it restarts after a 2 s interlude |
+| Figure           | Value after the spend                            |
+| ---------------- | ------------------------------------------------ |
+| Cells            | one fewer                                        |
+| The channel      | every core removed                               |
+| Projectiles      | every one discarded                              |
+| Pressure         | 0                                                |
+| Active machinery | cleared                                          |
+| Chain step       | 1                                                |
+| Quota            | what a level start leaves it                     |
+| Level            | unchanged, and it restarts after a 2 s interlude |
 
 A spend that takes the count to 0 ends the run in place of restarting the
 level, so the third arrival is a run's last.
@@ -65,12 +65,12 @@ An interlude lasts 2 s. It ends on its own, and the level that follows it begins
 at once. An ending holds until it is dismissed, and dismissing it returns the
 game to the title screen with every value of a fresh run restored.
 
-| Event | Screen | What follows |
-| --- | --- | --- |
-| Levels 1 through 4 cleared | `cleared` | the next level, after the interlude |
-| Level 5 cleared | `victory` | the run is over |
-| A cell spent with cells remaining | `setback` | the same level, after the interlude |
-| A cell spent taking the count to 0 | `gameover` | the run is over |
+| Event                              | Screen     | What follows                        |
+| ---------------------------------- | ---------- | ----------------------------------- |
+| Levels 1 through 4 cleared         | `cleared`  | the next level, after the interlude |
+| Level 5 cleared                    | `victory`  | the run is over                     |
+| A cell spent with cells remaining  | `setback`  | the same level, after the interlude |
+| A cell spent taking the count to 0 | `gameover` | the run is over                     |
 
 ## Danger
 

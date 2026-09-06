@@ -21,10 +21,10 @@ world.diagnostics.register(name: string, source: () => DiagnosticValue): void;
 invoked on each read, never sampled at registration, so it reports whatever the
 game holds at that instant.
 
-| Registry | Registered through | Lifetime |
-| --- | --- | --- |
-| Instance | `InitApi.diagnostics` | The life of the engine. Its sources survive every level transition. |
-| World | `world.diagnostics` | The life of the world. Its sources are dropped when the world closes. |
+| Registry | Registered through    | Lifetime                                                              |
+| -------- | --------------------- | --------------------------------------------------------------------- |
+| Instance | `InitApi.diagnostics` | The life of the engine. Its sources survive every level transition.   |
+| World    | `world.diagnostics`   | The life of the world. Its sources are dropped when the world closes. |
 
 Re-registering a name replaces its source and retains the name's original
 position in its registry. A name registered in both registries keeps a line in
@@ -92,7 +92,10 @@ a short placeholder string in the game's own vocabulary, such as `"none"` or
 `"-"`, so the name keeps its line and the reader sees a word the game chose:
 
 ```ts
-world.diagnostics.register("pawn", () => world.players()[0]?.pawn?.id ?? "none");
+world.diagnostics.register(
+  "pawn",
+  () => world.players()[0]?.pawn?.id ?? "none",
+);
 ```
 
 Prefer values the simulation already holds. A diagnostic that derives something
@@ -154,19 +157,19 @@ in a recording. The text is a column of lines, in order:
 2. The instance registry's lines, in the order the game registered them.
 3. The world registry's lines, in the order the game registered them.
 4. A metrics line reading `` `frame: ${meanMs} / ${p95Ms} / ${p99Ms} ms ·
-   ${drawCalls} draws · ${triangles} tris` ``.
+${drawCalls} draws · ${triangles} tris` ``.
 
 The frame-time graph sits beside the text, to its right.
 
 One line per source, formatted `` `${name}: ${value}` ``.
 
-| Reading | Drawn as |
-| --- | --- |
-| `string` value | The string itself. |
-| Integer `number` value | `String(value)`. |
-| Non-integer `number` value | `value.toFixed(3)`. |
-| `boolean` value | `"true"` or `"false"`. |
-| A source that threw | The `error` message, in the value's place. |
+| Reading                    | Drawn as                                   |
+| -------------------------- | ------------------------------------------ |
+| `string` value             | The string itself.                         |
+| Integer `number` value     | `String(value)`.                           |
+| Non-integer `number` value | `value.toFixed(3)`.                        |
+| `boolean` value            | `"true"` or `"false"`.                     |
+| A source that threw        | The `error` message, in the value's place. |
 
 A number that is not finite draws as `NaN`, `Infinity`, or `-Infinity`. Keep
 each value to about a line, since a line is the unit the panel draws.
@@ -190,14 +193,14 @@ interface FrameMetrics {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `samples` | How many frames the window holds. |
-| `meanMs` | The arithmetic mean of the window's samples, in milliseconds. |
-| `p95Ms` | The 95th percentile of the window's samples, in milliseconds. |
-| `p99Ms` | The 99th percentile of the window's samples, in milliseconds. |
+| Field       | Meaning                                                       |
+| ----------- | ------------------------------------------------------------- |
+| `samples`   | How many frames the window holds.                             |
+| `meanMs`    | The arithmetic mean of the window's samples, in milliseconds. |
+| `p95Ms`     | The 95th percentile of the window's samples, in milliseconds. |
+| `p99Ms`     | The 99th percentile of the window's samples, in milliseconds. |
 | `drawCalls` | The draw calls the renderer issued for the most recent frame. |
-| `triangles` | The triangles the renderer drew for the most recent frame. |
+| `triangles` | The triangles the renderer drew for the most recent frame.    |
 
 Percentiles are nearest-rank over the window's samples sorted ascending. An
 empty window reports `0` for all three. `drawCalls` and `triangles` are the

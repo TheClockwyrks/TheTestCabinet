@@ -76,7 +76,12 @@ export const BACKGROUND: string = COLOR.bg;
 // ---- The state contract (specs/state.md) ---------------------------------
 
 export type Screen =
-  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+  | "title"
+  | "howto"
+  | "select"
+  | "playing"
+  | "solved"
+  | "complete";
 
 export type Mode = "campaign" | "cascade";
 

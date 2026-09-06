@@ -112,10 +112,12 @@ function sweptPlan(
   steps: readonly PartStep[],
 ): CyclePlan {
   const sample = firstCollisionSample((t) =>
-    carried.map((entry): MotePoint => ({
-      mote: entry.mote,
-      ...moteMotionPosition(entry, t),
-    })),
+    carried.map(
+      (entry): MotePoint => ({
+        mote: entry.mote,
+        ...moteMotionPosition(entry, t),
+      }),
+    ),
   );
   return {
     fault:

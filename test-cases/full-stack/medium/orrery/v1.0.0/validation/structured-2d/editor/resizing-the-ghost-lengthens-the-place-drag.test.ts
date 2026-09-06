@@ -100,7 +100,11 @@ it("raises the ghost's length by one within the arm bounds and places at it", as
   );
 
   const ids = await partIds(h);
-  assertEqual(ids.length, 1, "the release on a legal hex placed the ghost's part");
+  assertEqual(
+    ids.length,
+    1,
+    "the release on a legal hex placed the ghost's part",
+  );
   assertEqual(
     partById(await h.snapshot(), ids[0] as number)?.length,
     ARM_MAX_LEN,

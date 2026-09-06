@@ -43,13 +43,13 @@ box.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Packet body (amber) | `#e8a83a` |
+| Role                               | Hex       |
+| ---------------------------------- | --------- |
+| Packet body (amber)                | `#e8a83a` |
 | Packet — dark (top/trailing shade) | `#6b4410` |
-| Packet edge (outline) | `#ffd98a` |
-| Glyph (down-chevron) | `#2a1a05` |
-| Motion trail / leading glow | `#fff0c2` |
+| Packet edge (outline)              | `#ffd98a` |
+| Glyph (down-chevron)               | `#2a1a05` |
+| Motion trail / leading glow        | `#fff0c2` |
 
 ## Working the tool
 

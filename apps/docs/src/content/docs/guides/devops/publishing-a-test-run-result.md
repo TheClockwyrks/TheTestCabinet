@@ -43,6 +43,7 @@ its record is already stored on the backend.
   ```
 
   See [Register and Log In](/quickstarts/setup/register-and-login/).
+
 - `TCAB_BACKEND_URL`, pointing at the backend holding the run.
 - For a legacy run, a review submitted before you publish, since publishing
   refuses a legacy run with no review. On the solo path below, a `<run-id>.md`

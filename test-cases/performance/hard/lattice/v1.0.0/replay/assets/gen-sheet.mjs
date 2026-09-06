@@ -75,7 +75,15 @@ const ENTITIES = [
       { fps: 20, loop: seq(32, 8), curve: seq(40, 8) },
     ],
   },
-  { name: "splitter", frames: 8, size: [32, 64], fps: 12, cells: [1, 2], offset: [0, 0], rotatable: true },
+  {
+    name: "splitter",
+    frames: 8,
+    size: [32, 64],
+    fps: 12,
+    cells: [1, 2],
+    offset: [0, 0],
+    rotatable: true,
+  },
   // The lane splitter (an "unzipper"): same two-cell footprint and scrolling loop as
   // the splitter, but it routes each input out to its output's OUTER lane rather than
   // balancing — a central splitting ridge and two spreader heads that ride outward.
@@ -85,7 +93,15 @@ const ENTITIES = [
   // `cells`/`offset`/`rotatable` mirror the splitter's (a 1x2 device in its canonical
   // east orientation), to be verified against `World::footprints()` when the engine
   // gains the entity — as the non-provisional rows above were.
-  { name: "lane-splitter", frames: 8, size: [32, 64], fps: 12, cells: [1, 2], offset: [0, 0], rotatable: true },
+  {
+    name: "lane-splitter",
+    frames: 8,
+    size: [32, 64],
+    fps: 12,
+    cells: [1, 2],
+    offset: [0, 0],
+    rotatable: true,
+  },
   // Three tiers of a 12-frame swing cycle. No engine tier field exists for
   // inserters yet, so the renderer draws tier 1 until one does; tiers 2-3 are
   // seeded and ready for it.
@@ -118,8 +134,24 @@ const ENTITIES = [
       { fps: 13, loop: seq(16, 8) },
     ],
   },
-  { name: "source", frames: 6, size: [32, 32], fps: 8, cells: [1, 1], offset: [0, 0], rotatable: true },
-  { name: "sink", frames: 6, size: [32, 32], fps: 8, cells: [1, 1], offset: [0, 0], rotatable: true },
+  {
+    name: "source",
+    frames: 6,
+    size: [32, 32],
+    fps: 8,
+    cells: [1, 1],
+    offset: [0, 0],
+    rotatable: true,
+  },
+  {
+    name: "sink",
+    frames: 6,
+    size: [32, 32],
+    fps: 8,
+    cells: [1, 1],
+    offset: [0, 0],
+    rotatable: true,
+  },
   // A non-directional 2x2 coal-fired smelter with TWO working STATES rather than
   // tiers: `off` (frames 0-3) while idle and `smelting` (frames 4-11) while working.
   // `states` is the untiered analogue of `tiers` — a named loop with its own rate —
@@ -247,7 +279,12 @@ function packRow(row) {
   return rects;
 }
 
-const atlas = { cellSize: CELL, sheet: { width: 0, height: 0 }, entities: {}, items: {} };
+const atlas = {
+  cellSize: CELL,
+  sheet: { width: 0, height: 0 },
+  entities: {},
+  items: {},
+};
 
 for (const row of ROWS) {
   const frames = packRow(row);
@@ -257,7 +294,8 @@ for (const row of ROWS) {
     // A tiered/stateful entity's top-level `fps` is its first sub-loop's rate, kept
     // so a consumer that ignores tiers/states still animates sensibly; `tiers` or
     // `states` carries the finer loops.
-    const fps = row.fps ?? row.tiers?.[0].fps ?? Object.values(row.states)[0].fps;
+    const fps =
+      row.fps ?? row.tiers?.[0].fps ?? Object.values(row.states)[0].fps;
     const entity = {
       frames,
       fps,
@@ -276,7 +314,10 @@ for (const row of ROWS) {
     }
     if (row.states) {
       entity.states = Object.fromEntries(
-        Object.entries(row.states).map(([name, s]) => [name, { fps: s.fps, loop: s.loop }]),
+        Object.entries(row.states).map(([name, s]) => [
+          name,
+          { fps: s.fps, loop: s.loop },
+        ]),
       );
     }
     atlas.entities[row.name] = entity;
@@ -345,7 +386,8 @@ function decodePng(buf) {
       else if (filter === 2) v = (v + b) & 0xff;
       else if (filter === 3) v = (v + ((a + b) >> 1)) & 0xff;
       else if (filter === 4) v = (v + paeth(a, b, c)) & 0xff;
-      else if (filter !== 0) throw new Error(`unsupported PNG filter ${filter}`);
+      else if (filter !== 0)
+        throw new Error(`unsupported PNG filter ${filter}`);
       cur[x] = v;
     }
     out.set(cur, y * stride);

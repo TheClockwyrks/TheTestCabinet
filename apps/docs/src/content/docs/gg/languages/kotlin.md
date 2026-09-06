@@ -117,7 +117,7 @@ The surface is idiomatic Kotlin:
 - A result is a `data class`, and a read is a sealed type narrowed by `when`.
 - A failure is a thrown `gg.core.ApiError` with an enum `code`, caught with
   `catch` or `runCatching`. Its message is ``​`operation` failed (code): what went
-  wrong``, so an uncaught one names all three; `detail` is gg's sentence alone.
+wrong``, so an uncaught one names all three; `detail` is gg's sentence alone.
 
 ## The catalogue
 
@@ -147,15 +147,15 @@ The checker is `kotlinc` rather than TeaVM, which translates what the Kotlin
 compiler accepted and judges nothing else. Naming a checker is what has this
 arm's compile time recorded on every turn, the failing path included.
 
-| What happened | How it is reported |
-| --- | --- |
-| the Kotlin compiler's `SYNTAX` diagnostic | a syntax failure |
-| any other Kotlin error in the model's own file | a compile failure |
-| TeaVM naming a class or method its classlib lacks | a compile failure |
-| a `package` declaration or a `@file:JvmName` | a shape refusal naming the line that moved the facade |
-| a program declaring `GgEntry` itself | a diagnostic against the model's own file naming the reserved class |
-| javac refusing gg's generated entry class | a shape refusal quoting the `fun main()` convention |
-| a compiler that could not run, a timeout, or a failed handshake | a toolchain failure |
+| What happened                                                   | How it is reported                                                  |
+| --------------------------------------------------------------- | ------------------------------------------------------------------- |
+| the Kotlin compiler's `SYNTAX` diagnostic                       | a syntax failure                                                    |
+| any other Kotlin error in the model's own file                  | a compile failure                                                   |
+| TeaVM naming a class or method its classlib lacks               | a compile failure                                                   |
+| a `package` declaration or a `@file:JvmName`                    | a shape refusal naming the line that moved the facade               |
+| a program declaring `GgEntry` itself                            | a diagnostic against the model's own file naming the reserved class |
+| javac refusing gg's generated entry class                       | a shape refusal quoting the `fun main()` convention                 |
+| a compiler that could not run, a timeout, or a failed handshake | a toolchain failure                                                 |
 
 The compile asks for `-Xrender-internal-diagnostic-names`, which is what makes
 the compiler's own names for its diagnostics readable. Telling a parse failure

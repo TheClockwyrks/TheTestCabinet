@@ -30,7 +30,11 @@ interface GgBucketTableProps {
   groupBy?: readonly GgGroupKey[];
 }
 
-export function GgBucketTable({ buckets, columns, groupBy }: GgBucketTableProps) {
+export function GgBucketTable({
+  buckets,
+  columns,
+  groupBy,
+}: GgBucketTableProps) {
   if (buckets.length === 0) {
     return <p className={styles.empty}>No run matches this query.</p>;
   }
@@ -53,7 +57,11 @@ export function GgBucketTable({ buckets, columns, groupBy }: GgBucketTableProps)
                 </th>
               ))
             )}
-            <th scope="col" className={styles.numCol} title="Documents in the bucket">
+            <th
+              scope="col"
+              className={styles.numCol}
+              title="Documents in the bucket"
+            >
               n
             </th>
             {columns.map((column) => (
@@ -72,18 +80,29 @@ export function GgBucketTable({ buckets, columns, groupBy }: GgBucketTableProps)
                 bucket.key.map((part, index) => (
                   <td
                     key={part.field}
-                    className={part.value === undefined ? styles.absent : undefined}
+                    className={
+                      part.value === undefined ? styles.absent : undefined
+                    }
                   >
-                    {formatBucketKey(part.field, part.value, isHistogram(groupBy, index))}
+                    {formatBucketKey(
+                      part.field,
+                      part.value,
+                      isHistogram(groupBy, index),
+                    )}
                   </td>
                 ))
               )}
               <td className={styles.numCol}>{formatNumber(bucket.n)}</td>
               {columns.map((column) => {
-                const value = bucket.values.find((entry) => entry.name === column.name);
+                const value = bucket.values.find(
+                  (entry) => entry.name === column.name,
+                );
                 if (!value) {
                   return (
-                    <td key={column.name} className={`${styles.numCol} ${styles.absent}`}>
+                    <td
+                      key={column.name}
+                      className={`${styles.numCol} ${styles.absent}`}
+                    >
                       {ABSENT}
                     </td>
                   );
@@ -147,5 +166,8 @@ function isHistogram(
 
 /** A stable React key for a bucket: its composite key, which is unique by construction. */
 function bucketKey(bucket: GgBucket): string {
-  return bucket.key.map((part) => `${part.field}=${String(part.value)}`).join("|") || "all";
+  return (
+    bucket.key.map((part) => `${part.field}=${String(part.value)}`).join("|") ||
+    "all"
+  );
 }

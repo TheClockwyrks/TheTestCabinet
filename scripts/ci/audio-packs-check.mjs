@@ -16,18 +16,19 @@
 // reordering — which silently changes what an unqualified `sfx-sample` or `music`
 // call plays — is visible in a CI log as well as in the manifest diff.
 
-import {
-  checkRepository,
-  repositoryRoot,
-} from "../lib/audio-packs.mjs";
+import { checkRepository, repositoryRoot } from "../lib/audio-packs.mjs";
 
 const root = process.argv[2] ?? repositoryRoot();
 const { errors, versions } = checkRepository({ root });
 
 for (const version of versions) {
-  if (version.testType !== "full-stack" && version.testType !== "game-jam") continue;
+  if (version.testType !== "full-stack" && version.testType !== "game-jam")
+    continue;
   const defaults = Object.entries(version.defaults)
-    .map(([kind, ref]) => `${kind === "sample-pack" ? "sfx-sample" : "music"} → ${ref}`)
+    .map(
+      ([kind, ref]) =>
+        `${kind === "sample-pack" ? "sfx-sample" : "music"} → ${ref}`,
+    )
     .join(", ");
   const declared =
     version.packs === null
@@ -44,4 +45,6 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log(`\nEvery declared audio pack resolves (${versions.length} versions checked).`);
+console.log(
+  `\nEvery declared audio pack resolves (${versions.length} versions checked).`,
+);

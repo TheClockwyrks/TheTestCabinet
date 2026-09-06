@@ -101,11 +101,18 @@ export class Goal extends Actor {
 
   constructor() {
     super();
-    this.attach(new ColliderComponent({
-      shape: { kind: "box", width: 0.5, height: ARENA.halfHeight * 2, depth: ARENA.depth },
-      channel: "goal",
-      responses: { ball: "overlap" },
-    }));
+    this.attach(
+      new ColliderComponent({
+        shape: {
+          kind: "box",
+          width: 0.5,
+          height: ARENA.halfHeight * 2,
+          depth: ARENA.depth,
+        },
+        channel: "goal",
+        responses: { ball: "overlap" },
+      }),
+    );
   }
 }
 ```
@@ -146,7 +153,9 @@ export function arenaAssets(): ArenaAssets {
 ```ts
 export const arena: LevelDefinition = {
   mode: ArenaMode,
-  actors: [/* ... */],
+  actors: [
+    /* ... */
+  ],
   async load(api) {
     const [court, paddle] = await Promise.all([
       api.assets.loadTexture("textures/court.png"),
@@ -342,7 +351,8 @@ export class ArenaMode extends GameMode {
   round = 1;
 
   beginPlay(): void {
-    this.round = typeof this.options.round === "number" ? this.options.round : 1;
+    this.round =
+      typeof this.options.round === "number" ? this.options.round : 1;
     const player = this.addPlayer({ name: "P1" });
     if (typeof this.options.carried === "number") {
       player.playerState.score = this.options.carried;

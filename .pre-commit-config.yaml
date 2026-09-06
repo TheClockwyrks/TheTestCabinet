@@ -72,7 +72,7 @@ repos:
         # there and ignores everything else, plus a whole-directory ignore for
         # `guests/`. That one is about WHETHER a generated artifact may be committed at
         # all; this one is about how big anything may be, anywhere.
-        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|(^|/)references/[^/]+(/[^/]+)?/assets/|^test-cases/.*/showcase/'
+        exclude: "(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|(^|/)references/[^/]+(/[^/]+)?/assets/|^test-cases/.*/showcase/"
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
@@ -114,7 +114,7 @@ repos:
         # Maintained tooling is still checked. They sit under */reference-impl/
         # on the older case layouts and under */references/ on the reworked
         # ones, so both names are named here.
-        exclude: '(^|/)(reference-impl|references)/'
+        exclude: "(^|/)(reference-impl|references)/"
 
   # Repo-specific gates. Their logic lives in committed scripts / this committed
   # config (never an untracked local file) so every clone runs the same checks.

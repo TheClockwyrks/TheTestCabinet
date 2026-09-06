@@ -15,9 +15,9 @@ interface Clock {
 }
 ```
 
-| Parameter | Meaning |
-| --- | --- |
-| `nowMs` | The host timestamp for this tick, in milliseconds, on the same time base as `performance.now`. |
+| Parameter | Meaning                                                                                        |
+| --------- | ---------------------------------------------------------------------------------------------- |
+| `nowMs`   | The host timestamp for this tick, in milliseconds, on the same time base as `performance.now`. |
 
 The result is the frame's delta in milliseconds, or `null` when this tick is not
 a frame. A `null` leaves the simulation untouched and the frame counter
@@ -36,13 +36,13 @@ component, or the game mode receives seconds.
 
 ## The catalogue
 
-| Clock | Constructor | Delta | Skips |
-| --- | --- | --- | --- |
-| `WallClock` | `new WallClock(maxDeltaMs?)` | Real elapsed time since the previous frame, floored at `0` and clamped to `maxDeltaMs`. | Never. |
-| `PacedClock` | `new PacedClock(fps, options?)` | One frame interval. | Ticks arriving before the next grid slot. |
-| `ConstantClock` | `new ConstantClock(stepMs)` | `stepMs`, every frame. | Never. |
-| `SequenceClock` | `new SequenceClock(stepsMs)` | The next entry, cycling. | Never. |
-| `JitterClock` | `new JitterClock(minMs, maxMs, seed)` | A seeded draw from `[minMs, maxMs]`. | Never. |
+| Clock           | Constructor                           | Delta                                                                                   | Skips                                     |
+| --------------- | ------------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `WallClock`     | `new WallClock(maxDeltaMs?)`          | Real elapsed time since the previous frame, floored at `0` and clamped to `maxDeltaMs`. | Never.                                    |
+| `PacedClock`    | `new PacedClock(fps, options?)`       | One frame interval.                                                                     | Ticks arriving before the next grid slot. |
+| `ConstantClock` | `new ConstantClock(stepMs)`           | `stepMs`, every frame.                                                                  | Never.                                    |
+| `SequenceClock` | `new SequenceClock(stepsMs)`          | The next entry, cycling.                                                                | Never.                                    |
+| `JitterClock`   | `new JitterClock(minMs, maxMs, seed)` | A seeded draw from `[minMs, maxMs]`.                                                    | Never.                                    |
 
 `WallClock` and `PacedClock` read `nowMs`. The other three ignore it.
 
@@ -57,9 +57,9 @@ class WallClock implements Clock {
 }
 ```
 
-| Parameter | Default | Meaning |
-| --- | --- | --- |
-| `maxDeltaMs` | `100` | The longest delta a frame may report. |
+| Parameter    | Default | Meaning                               |
+| ------------ | ------- | ------------------------------------- |
+| `maxDeltaMs` | `100`   | The longest delta a frame may report. |
 
 The first frame reports `0`, because a delta needs a previous frame to measure
 from. A timestamp behind the previous one reports `0` as well, so the simulation
@@ -82,10 +82,10 @@ interface PacedClockOptions {
 }
 ```
 
-| Parameter | Default | Meaning |
-| --- | --- | --- |
-| `fps` | — | Target frames per second. Finite and positive. |
-| `resyncAfter` | `4` | Intervals behind the grid at which the clock abandons the missed slots and restarts from the current tick. |
+| Parameter     | Default | Meaning                                                                                                    |
+| ------------- | ------- | ---------------------------------------------------------------------------------------------------------- |
+| `fps`         | —       | Target frames per second. Finite and positive.                                                             |
+| `resyncAfter` | `4`     | Intervals behind the grid at which the clock abandons the missed slots and restarts from the current tick. |
 
 Frame `n` is due at `t0 + n * 1000 / fps`. A tick before the next due time
 returns `null`; a tick at or after it returns one interval and moves the grid on
@@ -142,11 +142,11 @@ class JitterClock implements Clock {
 }
 ```
 
-| Parameter | Meaning |
-| --- | --- |
-| `minMs` | The shortest delta. Finite and positive. |
-| `maxMs` | The longest delta. Finite, positive, and at least `minMs`. |
-| `seed` | Seeds the draw. Finite. |
+| Parameter | Meaning                                                    |
+| --------- | ---------------------------------------------------------- |
+| `minMs`   | The shortest delta. Finite and positive.                   |
+| `maxMs`   | The longest delta. Finite, positive, and at least `minMs`. |
+| `seed`    | Seeds the draw. Finite.                                    |
 
 A delta is a function of the seed and the frame index alone, so frame `i` under
 seed `s` has one answer however that frame was reached. The seed is required,
@@ -158,17 +158,17 @@ the failing case replays exactly.
 Each constructor rejects its arguments where they are supplied, naming the
 offending value.
 
-| Condition | Result |
-| --- | --- |
-| `WallClock` with a `maxDeltaMs` that is not finite and positive | `RangeError` |
-| `PacedClock` with an `fps` that is not finite and positive | `RangeError` |
-| `PacedClock` with a `resyncAfter` below `1` | `RangeError` |
-| `ConstantClock` with a `stepMs` that is not finite and positive | `RangeError` |
-| `SequenceClock` with no steps | `RangeError` |
-| `SequenceClock` with a step that is not finite and positive | `RangeError` naming the value and its index |
-| `JitterClock` with bounds that are not finite and positive | `RangeError` naming both bounds |
-| `JitterClock` with `maxMs` below `minMs` | `RangeError` naming both bounds |
-| `JitterClock` with a non-finite `seed` | `RangeError` |
+| Condition                                                       | Result                                      |
+| --------------------------------------------------------------- | ------------------------------------------- |
+| `WallClock` with a `maxDeltaMs` that is not finite and positive | `RangeError`                                |
+| `PacedClock` with an `fps` that is not finite and positive      | `RangeError`                                |
+| `PacedClock` with a `resyncAfter` below `1`                     | `RangeError`                                |
+| `ConstantClock` with a `stepMs` that is not finite and positive | `RangeError`                                |
+| `SequenceClock` with no steps                                   | `RangeError`                                |
+| `SequenceClock` with a step that is not finite and positive     | `RangeError` naming the value and its index |
+| `JitterClock` with bounds that are not finite and positive      | `RangeError` naming both bounds             |
+| `JitterClock` with `maxMs` below `minMs`                        | `RangeError` naming both bounds             |
+| `JitterClock` with a non-finite `seed`                          | `RangeError`                                |
 
 ## Exports
 

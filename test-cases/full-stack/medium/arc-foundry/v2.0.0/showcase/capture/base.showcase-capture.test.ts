@@ -71,8 +71,12 @@ const SHOW_MS = 1000 / SHOW_HZ;
 const seconds = (s: number): number => Math.round(s * SHOW_HZ);
 
 /** Bounds on the recorded take, in frames. */
-const MIN_FRAMES = seconds(Number(process.env.TCAB_SHOWCASE_MIN_SECONDS ?? "20"));
-const MAX_FRAMES = seconds(Number(process.env.TCAB_SHOWCASE_MAX_SECONDS ?? "27"));
+const MIN_FRAMES = seconds(
+  Number(process.env.TCAB_SHOWCASE_MIN_SECONDS ?? "20"),
+);
+const MAX_FRAMES = seconds(
+  Number(process.env.TCAB_SHOWCASE_MAX_SECONDS ?? "27"),
+);
 
 /** Frames a level needs before it is worth opening another one. */
 const LEVEL_ROOM = seconds(6);
@@ -349,7 +353,11 @@ class Session {
       // later in a take, over a fuller yard.
       const busy = this.snapshot();
       const live = busy.units.length + busy.projectiles.length;
-      if (this.stills !== null && live > this.busiest && busy.units.length > 0) {
+      if (
+        this.stills !== null &&
+        live > this.busiest &&
+        busy.units.length > 0
+      ) {
         this.busiest = live;
         captureStill(this.h, `${this.stills}-wave`);
       }

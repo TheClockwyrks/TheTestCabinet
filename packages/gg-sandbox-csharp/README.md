@@ -7,10 +7,10 @@ and the builds that produce both.
 Not an npm package. This directory is a set of builds, and what they produce lives elsewhere —
 in the `OUT_DIR`s of the two crates that run those builds. **Nothing here is committed:**
 
-| Artifact | What it is |
-| --- | --- |
+| Artifact                                                                     | What it is                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `csharp.component.wasm`, in `crates/gg-sandbox-artifacts/csharp`'s `OUT_DIR` | The guest — Mono's IL interpreter, the .NET class libraries, ICU and gg's bridge, as one self-contained wasm component exporting gg's `sandbox` world (35.3 MB). Built by `build.sh`, which that crate runs on every build whose declared inputs moved. |
-| `csharp.signatures.json`, in the build's `OUT_DIR` | The **catalogue** — every module, signature, argument, type and type member a model is told about, in the normalized schema, reflected out of the SDK's own XML documentation comments by `signatures.sh`, which `crates/gg/build.rs` runs. |
+| `csharp.signatures.json`, in the build's `OUT_DIR`                           | The **catalogue** — every module, signature, argument, type and type member a model is told about, in the normalized schema, reflected out of the SDK's own XML documentation comments by `signatures.sh`, which `crates/gg/build.rs` runs.             |
 
 `build.sh` used to write a `csharp.toolchain.json` beside the component — the pins, the source
 digests and the byte count a drift test recomputed from the checkout. It went with the committing:
@@ -18,15 +18,15 @@ it was the only one of the per-arm toolchain declarations that nothing on the tu
 once the component was generated it described a question nobody could ask. `build.sh` records what
 each part of it became.
 
-| | |
-| --- | --- |
-| [`csharp-version.sh`](csharp-version.sh) | every toolchain release this arm is pinned to |
-| [`src/Gg/`](src/Gg/) | the **SDK** a model's program is compiled against, and the documentation comments every word a model reads is reflected out of |
-| [`Sources/`](Sources/) | the guest's C: the shell, the bridge, and the interpreter trampolines |
-| [`libraries.txt`](libraries.txt) | the namespaces this arm says a program may reach, grouped as the catalogue renders them |
-| [`build.sh`](build.sh) | builds the guest into `$GG_ARTIFACTS_OUT_DIR` |
-| [`signatures.sh`](signatures.sh) | reflects the catalogue out of the SDK, with Roslyn, into `$GG_SIGNATURES_OUT_DIR` |
-| [`tools/`](tools/) | the reflector `signatures.sh` runs and the identity table it reads, plus [`Parse.cs`](tools/Parse.cs) — the parse-only Roslyn driver gg builds and runs on a rejected program, to tell a typo from a program written against the wrong surface |
+|                                          |                                                                                                                                                                                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`csharp-version.sh`](csharp-version.sh) | every toolchain release this arm is pinned to                                                                                                                                                                                                  |
+| [`src/Gg/`](src/Gg/)                     | the **SDK** a model's program is compiled against, and the documentation comments every word a model reads is reflected out of                                                                                                                 |
+| [`Sources/`](Sources/)                   | the guest's C: the shell, the bridge, and the interpreter trampolines                                                                                                                                                                          |
+| [`libraries.txt`](libraries.txt)         | the namespaces this arm says a program may reach, grouped as the catalogue renders them                                                                                                                                                        |
+| [`build.sh`](build.sh)                   | builds the guest into `$GG_ARTIFACTS_OUT_DIR`                                                                                                                                                                                                  |
+| [`signatures.sh`](signatures.sh)         | reflects the catalogue out of the SDK, with Roslyn, into `$GG_SIGNATURES_OUT_DIR`                                                                                                                                                              |
+| [`tools/`](tools/)                       | the reflector `signatures.sh` runs and the identity table it reads, plus [`Parse.cs`](tools/Parse.cs) — the parse-only Roslyn driver gg builds and runs on a rejected program, to tell a typo from a program written against the wrong surface |
 
 ## The strategy, in one paragraph
 
@@ -38,15 +38,15 @@ registers every one of them and runs the program. That is the same shape the Pyt
 have — one prebuilt runtime, a payload per turn — rather than the shape Rust, Swift and C++
 have, and it is the whole reason C# is affordable. A prior feasibility study priced this arm
 on the only toolchain it looked at, `componentize-dotnet` (NativeAOT-LLVM, which compiles the
-*program* to native wasm): 25–43 seconds a turn, and the arm was cut as impractical.
+_program_ to native wasm): 25–43 seconds a turn, and the arm was cut as impractical.
 
 ## How the guest binds gg's WIT world
 
 It does not need to. `dotnet/runtime#113868` — closed unresolved — says there is no supported
 path for binding a custom WIT world from managed .NET code, and this arm never asks for one:
 
-- the component is **C**. Microsoft publishes Mono's wasm build as static archives *plus the
-  C that links them* (`src/driver.c`, `src/runtime.c`, `src/pinvoke.c`), precisely so the
+- the component is **C**. Microsoft publishes Mono's wasm build as static archives _plus the
+  C that links them_ (`src/driver.c`, `src/runtime.c`, `src/pinvoke.c`), precisely so the
   runtime can be relinked with an embedder's own natives. `build.sh` compiles those together
   with `wit-bindgen`'s C bindings for `crates/gg/wit` and the three files in `Sources/`.
 - the **managed** half reaches gg through `mono_add_internal_call`, Mono's embedding API for
@@ -97,7 +97,7 @@ digest against a manifest so that a rebuild forgotten was a named failure rather
 the committed component, because "did somebody forget?" is not a question a generated artifact has.
 
 What that costs is the one thing worth knowing about this arm: the toolchains below are needed to
-BUILD gg at all now, not merely to work on C#. They are ~1.4 GB no gg *run* needs, which is why
+BUILD gg at all now, not merely to work on C#. They are ~1.4 GB no gg _run_ needs, which is why
 they live in their own prefix and their own installer — see `scripts/ci/install-gg-build-toolchains.sh`.
 The devcontainer image and the CI image's `build-toolchains` tag both carry them.
 
@@ -117,10 +117,10 @@ scripts/gg-signatures.sh                     # all eleven, into target/gg-signat
 compiler, reading the same sources, as the compile itself. You never have to run it for
 correctness — `crates/gg/build.rs` runs it on every build of `test-cabinet-gg`, so an XML doc
 comment edited in `src/Gg/` reaches the model's prompt on the next `cargo build`. Run it by hand
-to *read* what it emitted; a `<returns>` dropped or a `<param>` truncated is invisible in the C#
+to _read_ what it emitted; a `<returns>` dropped or a `<param>` truncated is invisible in the C#
 and plain in the JSON.
 
-## What a *run* needs
+## What a _run_ needs
 
 Much less: a .NET runtime, Roslyn and the reference assemblies — ~122 MB, installed by
 `scripts/ci/install-dotnet.sh` and by `containers/gg-toolchains/Dockerfile`. **No wasm
@@ -131,11 +131,11 @@ compiled to wasm.
 
 - **`System.Net.Http`'s native handler.** Its WASI implementation is a set of `[DllImport]`s
   against `wasi:http/outgoing-handler@0.2.0`, which gg's world does not declare and gg's
-  linker does not define — a guest whose *pinvoke scan* included them could not be encoded as
+  linker does not define — a guest whose _pinvoke scan_ included them could not be encoded as
   a component at all. So `build.sh` keeps that one assembly **in the bundle and out of the
   scan**: the types exist, load and compile, and what is gone is the transport under
   `HttpClient`. A program reaches the network through the `shell` tool, as every other arm does.
-- **`System.Security.Cryptography`**, which is the *runtime's* gap rather than gg's: Mono's
+- **`System.Security.Cryptography`**, which is the _runtime's_ gap rather than gg's: Mono's
   wasi build ships the types as ones that throw `PlatformNotSupportedException`. Measured,
   not assumed — `csharp.substrate.test.rs` drives it — and nothing gg can do restores it.
 

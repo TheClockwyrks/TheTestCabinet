@@ -14,14 +14,14 @@ it.
 
 ## The awards
 
-| Event | Points |
-| --- | --- |
-| A hit that leaves the target alive | `50` |
-| Destroying a ring 1 target | `100` |
-| Destroying a ring 2 target | `200` |
-| Destroying a ring 3 target | `300` |
-| Catching a salvage pod | `25` |
-| The clearing event on wave `w` | `500 * w` |
+| Event                              | Points    |
+| ---------------------------------- | --------- |
+| A hit that leaves the target alive | `50`      |
+| Destroying a ring 1 target         | `100`     |
+| Destroying a ring 2 target         | `200`     |
+| Destroying a ring 3 target         | `300`     |
+| Catching a salvage pod             | `25`      |
+| The clearing event on wave `w`     | `500 * w` |
 
 A face hit and an edge hit award alike, and a hit awards exactly one row: the
 `50` while the target survives, its ring's destroy figure when it destroys. A

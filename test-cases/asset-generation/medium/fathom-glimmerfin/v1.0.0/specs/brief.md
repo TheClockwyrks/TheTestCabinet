@@ -4,7 +4,7 @@ You are drawing the **Glimmerfin**, a **sprite sheet** for a deep-sea maze-chase
 game. The Glimmerfin is **the player character**: a small bioluminescent
 **forager** that threads the flooded corridors of a pitch-dark trench, grazing
 drifting plankton while predators hunt it. Everything below describes the
-*player* — the hero you steer, not an enemy.
+_player_ — the hero you steer, not an enemy.
 
 You are drawing the forager swimming in four directions with a **chomp** as it
 grazes. Its signature **glow** — it brightens as it eats — flares up at any
@@ -27,12 +27,12 @@ creature itself.
 The sheet holds **four-direction movement** with a **two-frame chomp** per
 direction — a mouth-closed frame and a mouth-open frame:
 
-| Frames | Contents |
-| --- | --- |
-| 0, 1 | **graze down** — mouth closed, then mouth open |
-| 2, 3 | **graze up** — mouth closed, then mouth open |
-| 4, 5 | **graze left** — mouth closed, then mouth open |
-| 6, 7 | **graze right** — mouth closed, then mouth open |
+| Frames | Contents                                        |
+| ------ | ----------------------------------------------- |
+| 0, 1   | **graze down** — mouth closed, then mouth open  |
+| 2, 3   | **graze up** — mouth closed, then mouth open    |
+| 4, 5   | **graze left** — mouth closed, then mouth open  |
+| 6, 7   | **graze right** — mouth closed, then mouth open |
 
 In each frame the forager **faces its direction of travel**: the **mouth leads**
 (at the front, pointing the way it swims) and a small **forked tail trails**
@@ -65,12 +65,12 @@ dark**:
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Body (bright cyan) | `#46f0e0` |
+| Role                      | Hex       |
+| ------------------------- | --------- |
+| Body (bright cyan)        | `#46f0e0` |
 | Belly / lighter underside | `#9ffaf0` |
 | Outline / mouth (darkest) | `#08201e` |
-| Highlight (bright) | `#e8fffb` |
+| Highlight (bright)        | `#e8fffb` |
 
 ## Working the tool
 

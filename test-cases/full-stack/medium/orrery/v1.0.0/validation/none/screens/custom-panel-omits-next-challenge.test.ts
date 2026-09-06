@@ -136,7 +136,10 @@ it("leaves KEEP TINKERING then BACK TO SELECT, and no NEXT CHALLENGE, on a direc
 
   const keep = lineWith(lines, KEEP as string);
   const back = lineWith(lines, BACK as string);
-  assertNotNull(keep, `the menu is the remaining two items, so it draws ${String(KEEP)}`);
+  assertNotNull(
+    keep,
+    `the menu is the remaining two items, so it draws ${String(KEEP)}`,
+  );
   assertNotNull(back, `and it draws ${String(BACK)}`);
   assertGreaterThan(
     back?.y ?? Number.NEGATIVE_INFINITY,

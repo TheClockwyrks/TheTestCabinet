@@ -49,7 +49,10 @@ const PIANO = clipId("b2");
  * `gm-lite@0.1.0` (an instrument bank, one clip), plus the object lock that
  * publishes both clips. Returns the paths and the normalized key of each clip.
  */
-function fixtureRegistry({ publish = [KICK, PIANO], gmLiteVersion = "0.1.0" } = {}) {
+function fixtureRegistry({
+  publish = [KICK, PIANO],
+  gmLiteVersion = "0.1.0",
+} = {}) {
   const packsDir = join(tmpDir(), "sample-packs");
   write(
     join(packsDir, "clips.toml"),
@@ -77,7 +80,8 @@ function fixtureRegistry({ publish = [KICK, PIANO], gmLiteVersion = "0.1.0" } = 
   const registry = loadRegistry({ packsDir });
   const lock = {};
   for (const id of publish) {
-    const pack = id === KICK ? registry.get("combat-core") : registry.get("gm-lite");
+    const pack =
+      id === KICK ? registry.get("combat-core") : registry.get("gm-lite");
     lock[normalizedKey(id, pack.profile_id)] = {
       bucket: "test-cabinet-audio",
       sha256: id,
@@ -151,7 +155,10 @@ describe("the declaration rule", () => {
       lock,
     );
     assert.equal(errors.length, 1);
-    assert.match(errors[0], /a game-jam version that is not frozen must declare/);
+    assert.match(
+      errors[0],
+      /a game-jam version that is not frozen must declare/,
+    );
   });
 
   it("exempts a frozen version, which cannot be edited and takes the pinned default", () => {
@@ -187,7 +194,10 @@ describe("resolving a declared ref against the registry", () => {
   it("names a pack the registry does not hold", () => {
     const { registry, lock } = fixtureRegistry();
     const { errors } = checkVersion(
-      version({ id: "test-cases/full-stack/easy/facet/v1.0.0", packs: ["gm-lit@0.1.0"] }),
+      version({
+        id: "test-cases/full-stack/easy/facet/v1.0.0",
+        packs: ["gm-lit@0.1.0"],
+      }),
       registry,
       lock,
     );
@@ -200,7 +210,10 @@ describe("resolving a declared ref against the registry", () => {
   it("refuses a version the pack manifest does not carry", () => {
     const { registry, lock } = fixtureRegistry();
     const { errors } = checkVersion(
-      version({ id: "test-cases/full-stack/easy/facet/v1.0.0", packs: ["gm-lite@0.2.0"] }),
+      version({
+        id: "test-cases/full-stack/easy/facet/v1.0.0",
+        packs: ["gm-lite@0.2.0"],
+      }),
       registry,
       lock,
     );
@@ -215,7 +228,10 @@ describe("resolving a declared ref against the registry", () => {
     // the clip is in the registry but its normalized object was never uploaded.
     const { registry, lock } = fixtureRegistry({ publish: [KICK] });
     const { errors } = checkVersion(
-      version({ id: "test-cases/full-stack/easy/facet/v1.0.0", packs: ["gm-lite@0.1.0"] }),
+      version({
+        id: "test-cases/full-stack/easy/facet/v1.0.0",
+        packs: ["gm-lite@0.1.0"],
+      }),
       registry,
       lock,
     );
@@ -264,7 +280,11 @@ describe("resolving a declared ref against the registry", () => {
 
   it("leaves a malformed ref to manifest resolution rather than reporting it twice", () => {
     const { registry, lock } = fixtureRegistry();
-    const { errors } = checkVersion(version({ packs: ["gm-lite"] }), registry, lock);
+    const { errors } = checkVersion(
+      version({ packs: ["gm-lite"] }),
+      registry,
+      lock,
+    );
     assert.deepEqual(errors, []);
   });
 });

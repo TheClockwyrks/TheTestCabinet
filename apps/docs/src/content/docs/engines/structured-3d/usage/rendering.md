@@ -93,7 +93,9 @@ import { textures } from "./textures";
 
 export const arena: LevelDefinition = {
   mode: Match,
-  actors: [{ type: Ship, transform: { position: vec3(0, 1, 0) }, tags: ["ship"] }],
+  actors: [
+    { type: Ship, transform: { position: vec3(0, 1, 0) }, tags: ["ship"] },
+  ],
   async load(api) {
     textures.hull = await api.assets.loadTexture("hull.png");
   },
@@ -151,7 +153,12 @@ export class Rig extends Actor {
     super();
     this.attach(
       new LightComponent({
-        light: { kind: "hemisphere", sky: "#cfe3ff", ground: "#3a3328", intensity: 0.6 },
+        light: {
+          kind: "hemisphere",
+          sky: "#cfe3ff",
+          ground: "#3a3328",
+          intensity: 0.6,
+        },
       }),
     );
     const sun = this.attach(
@@ -366,7 +373,12 @@ export class Ship extends Actor {
     super();
     this.hull = this.attach(
       new MeshComponent({
-        geometry: { kind: "cylinder", radiusTop: 0, radiusBottom: 0.6, height: 2 },
+        geometry: {
+          kind: "cylinder",
+          radiusTop: 0,
+          radiusBottom: 0.6,
+          height: 2,
+        },
         material: { color: PALETTE.ship, flatShading: true },
       }),
     );
@@ -390,7 +402,12 @@ export class Ship extends Actor {
   tick(dt: number): void {
     for (let i = 0; i < SPARKS; i += 1) {
       const z = this.sparks.getZ(i) + 4 * dt;
-      this.sparks.setXYZ(i, 0.2 * Math.sin(i), 0.2 * Math.cos(i), z > 3 ? 1 : z);
+      this.sparks.setXYZ(
+        i,
+        0.2 * Math.sin(i),
+        0.2 * Math.cos(i),
+        z > 3 ? 1 : z,
+      );
     }
     this.sparks.needsUpdate = true;
   }

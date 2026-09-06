@@ -90,7 +90,10 @@ it("raises nothing for a bare hook standing inside an obstacle", async () => {
 
   const held = await runTicks(h, TICKS);
 
-  await h.capture("inside-the-box", "The bare hook standing inside the obstacle");
+  await h.capture(
+    "inside-the-box",
+    "The bare hook standing inside the obstacle",
+  );
 
   const inside = (v: number, min: number, size: number): boolean =>
     v > min && v < min + size;

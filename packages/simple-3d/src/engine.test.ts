@@ -74,7 +74,14 @@ const FIT: Viewport = {
 };
 
 /** The transform that fit puts on the screen layer, and the identity beside it. */
-const VIEWPORT_TRANSFORM = [FIT.scale, 0, 0, FIT.scale, FIT.offsetX, FIT.offsetY];
+const VIEWPORT_TRANSFORM = [
+  FIT.scale,
+  0,
+  0,
+  FIT.scale,
+  FIT.offsetX,
+  FIT.offsetY,
+];
 const IDENTITY = [1, 0, 0, 1, 0, 0];
 
 /**
@@ -137,7 +144,11 @@ function testGame(hooks: GameHooks = {}): TestGame {
         (returned instanceof Promise ? await returned : returned) ?? null;
       return [state, debug];
     },
-    update(state: DeepReadonly<TestState>, api: UpdateApi, dt: number): TestState {
+    update(
+      state: DeepReadonly<TestState>,
+      api: UpdateApi,
+      dt: number,
+    ): TestState {
       const updates = state.updates + 1;
       game.log.push(`update:${updates}`);
       const next: TestState = { updates, dts: [...state.dts, dt] };
@@ -746,7 +757,8 @@ describe("events", () => {
         api.audio.define("clank", { freq: 220, durationMs: 20 });
       },
       update: (state, api) => {
-        if (state.updates === 1) api.audio.play("clank", { at: { x: 1, y: 2, z: 3 } });
+        if (state.updates === 1)
+          api.audio.play("clank", { at: { x: 1, y: 2, z: 3 } });
       },
     });
     const { engine } = build({ game, clock: new ConstantClock(20) });
@@ -1062,9 +1074,9 @@ describe("apply", () => {
     const { engine } = build();
     const opening = await engine.initialize();
 
-    expect(() =>
-      engine.apply(() => undefined as unknown as TestState),
-    ).toThrow(/engine\.apply must return the next state/);
+    expect(() => engine.apply(() => undefined as unknown as TestState)).toThrow(
+      /engine\.apply must return the next state/,
+    );
     expect(engine.state).toBe(opening);
   });
 
@@ -1304,7 +1316,12 @@ describe("one frame, in order", () => {
 
     await engine.advance(1);
 
-    expect(screen.names()).toEqual(["setTransform", "clearRect", "setTransform", "setTransform"]);
+    expect(screen.names()).toEqual([
+      "setTransform",
+      "clearRect",
+      "setTransform",
+      "setTransform",
+    ]);
     expect(screen.opsOf("fillRect")).toEqual([]);
   });
 
@@ -1572,7 +1589,9 @@ describe("one frame, in order", () => {
     // three resets `renderer.info` at the top of every `render` call and the engine
     // makes two per frame, so a panel reading the renderer live would say one draw
     // and two triangles for every frame however much the game submitted.
-    const metrics = overlayText(screen).find((line) => line.startsWith("frame:"));
+    const metrics = overlayText(screen).find((line) =>
+      line.startsWith("frame:"),
+    );
     expect(metrics).toContain("1 draws · 12 tris");
   });
 
@@ -2010,9 +2029,7 @@ describe("run", () => {
     const game: Game<TestState, null> = {
       initialize: () => [{ dts: [], updates: 0 }, null],
       update: (state) =>
-        (state.updates === 0
-          ? undefined
-          : state) as unknown as TestState,
+        (state.updates === 0 ? undefined : state) as unknown as TestState,
       render: () => {},
     };
     const { engine } = build({ game });
@@ -2100,7 +2117,8 @@ describe("destroy", () => {
 
   it("drops every subscription, so a stale handler cannot observe a successor", async () => {
     const game = testGame({
-      initialize: (api) => api.audio.define("blip", { freq: 440, durationMs: 10 }),
+      initialize: (api) =>
+        api.audio.define("blip", { freq: 440, durationMs: 10 }),
       update: (_state, api) => api.audio.play("blip"),
     });
     const { engine } = build({ game });
@@ -2121,7 +2139,8 @@ describe("destroy", () => {
   it("stops every loop, so a cue cannot outlive the engine that started it", async () => {
     let audio: UpdateApi["audio"] | null = null;
     const game = testGame({
-      initialize: (api) => api.audio.define("hum", { freq: 110, durationMs: 10 }),
+      initialize: (api) =>
+        api.audio.define("hum", { freq: 110, durationMs: 10 }),
       update: (_state, api) => {
         audio = api.audio;
         api.audio.loop("hum");
@@ -2187,7 +2206,9 @@ describe("destroy", () => {
 /* -------------------------------------------------------------------------- */
 
 /** A rig whose host has WebCodecs and whose every canvas answers `getContext`. */
-function recordingRig(options: Partial<EngineOptions<TestState, unknown>> = {}): Rig & {
+function recordingRig(
+  options: Partial<EngineOptions<TestState, unknown>> = {},
+): Rig & {
   codecs: InstalledCodecs;
   /** What was drawn onto the recorder's own capture canvas, in order. */
   composed(canvas: HTMLCanvasElement): Context2dStub;
@@ -2245,7 +2266,9 @@ describe("recording", () => {
     const recording = await engine.stopRecording();
 
     expect(recording.frames.map((frame) => frame.count)).toEqual([1, 2, 3]);
-    expect(recording.frames.map((frame) => frame.deltaMs)).toEqual([20, 20, 20]);
+    expect(recording.frames.map((frame) => frame.deltaMs)).toEqual([
+      20, 20, 20,
+    ]);
     expect(recording.frames.map((frame) => frame.timeMs)).toEqual([20, 40, 60]);
     expect(recording.ended).toBe(false);
   });

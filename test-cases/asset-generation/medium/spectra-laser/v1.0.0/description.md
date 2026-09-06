@@ -1,4 +1,4 @@
-**Spectra Laser** is the player fighter's laser-fire sound effect from *Spectra*,
+**Spectra Laser** is the player fighter's laser-fire sound effect from _Spectra_,
 a two-band formation shooter. It is the shot the player hears constantly as the
 fighter fires upward at a swarm of drones.
 

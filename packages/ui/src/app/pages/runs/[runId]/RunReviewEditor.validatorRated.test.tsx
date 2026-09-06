@@ -20,30 +20,30 @@ const fixture = vi.hoisted(() => {
     // override) after every interaction.
     backend: { client: { readReviewItems } },
     local: false,
-  // Stable identities, as the real hooks return state: the editor's seeding
-  // effects key on the case's domain list, so a fresh object per render would
-  // re-seed forever.
-  testCase: {
-    domains: [],
-    variants: [
-      {
-        slug: "base",
-        referenceScreenshots: [],
-        domains: [
-          { id: "single-player", name: "Single player", description: "" },
-          { id: "versus", name: "Versus", description: "" },
-        ],
-      },
-    ],
-  },
-  gallery: {
-    proofMediaFor: () => [],
-    assetResultFor: () => null,
-    validationMediaFor: () => [],
-    // The verdict surfaces resolve the run's catalog variant for reference
-    // media; a null resolution just means no expected panes.
-    fetchCaseVariant: async () => null,
-  },
+    // Stable identities, as the real hooks return state: the editor's seeding
+    // effects key on the case's domain list, so a fresh object per render would
+    // re-seed forever.
+    testCase: {
+      domains: [],
+      variants: [
+        {
+          slug: "base",
+          referenceScreenshots: [],
+          domains: [
+            { id: "single-player", name: "Single player", description: "" },
+            { id: "versus", name: "Versus", description: "" },
+          ],
+        },
+      ],
+    },
+    gallery: {
+      proofMediaFor: () => [],
+      assetResultFor: () => null,
+      validationMediaFor: () => [],
+      // The verdict surfaces resolve the run's catalog variant for reference
+      // media; a null resolution just means no expected panes.
+      fetchCaseVariant: async () => null,
+    },
   };
 });
 

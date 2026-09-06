@@ -35,14 +35,14 @@ drifting and swaying downward with parallax, looping seamlessly.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                    |
-| ---------------- | -------------- | ---------------------------------------------------------- |
-| `specs/brief.md` | Yes            | The self-contained particle-effect brief.                  |
-| `prompt.hbs`     | No             | Rendered into the model's prompt.                          |
-| `test-case.toml` | No             | Manifest: particle field, tool, output, domain.            |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
-| `description.md` | No             | Site blurb.                                                |
-| `README.md`      | No             | This overview.                                             |
+| Path             | Seeded to run? | Purpose                                           |
+| ---------------- | -------------- | ------------------------------------------------- |
+| `specs/brief.md` | Yes            | The self-contained particle-effect brief.         |
+| `prompt.hbs`     | No             | Rendered into the model's prompt.                 |
+| `test-case.toml` | No             | Manifest: particle field, tool, output, domain.   |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`). |
+| `description.md` | No             | Site blurb.                                       |
+| `README.md`      | No             | This overview.                                    |
 
 A run receives the seeded brief, the `particle-2d` binary, and a seeded
 `particle-2d.config.json` alongside the workspace carrying the field dimensions,

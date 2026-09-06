@@ -1055,7 +1055,9 @@ export const SURFACE_SPRITES: readonly string[] = [
 
 /** The material sprites, the Core, and the Core Sample. */
 export const MATERIAL_SPRITES: readonly (
-  MaterialId | "core" | "core-sample"
+  | MaterialId
+  | "core"
+  | "core-sample"
 )[] = [...MATERIALS, "core", "core-sample"];
 
 /** The ten ores and the three gemstones, whose overlays are named in lower case. */

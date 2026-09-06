@@ -63,11 +63,11 @@ for how a palette is defined and which packs and banks ship.
 How many packs a case declares, and of which kind, follows from its
 `asset_kind`:
 
-| `asset_kind` | `packs` |
-| --- | --- |
-| `sfx-sample` | exactly one, a sample pack |
-| `music` | exactly one, an instrument bank |
-| `sfx-synth` | absent, or empty |
+| `asset_kind` | `packs`                         |
+| ------------ | ------------------------------- |
+| `sfx-sample` | exactly one, a sample pack      |
+| `music`      | exactly one, an instrument bank |
+| `sfx-synth`  | absent, or empty                |
 
 A `sfx-synth` case declares no pack because it synthesizes from oscillators
 alone. Declaring a different count, or a pack whose kind is the other one, is an

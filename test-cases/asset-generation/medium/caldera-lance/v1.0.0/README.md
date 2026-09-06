@@ -50,15 +50,15 @@ time.
 
 ## Contents
 
-| Path                  | Seeded to run? | Purpose                                                   |
-| --------------------- | -------------- | --------------------------------------------------------- |
-| `specs/brief.md.hbs`  | Yes            | The self-contained brief, rendered per variant.           |
-| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.             |
-| `test-case.toml`      | No             | Manifest: voxel volume, tool, output, animations, review. |
-| `variants/`           | No             | One TOML file per variant (listed in `variants`).         |
-| `description.md`      | No             | Site blurb.                                               |
-| `changelog.md`        | No             | This version's changelog entry.                           |
-| `README.md`           | No             | This overview.                                            |
+| Path                 | Seeded to run? | Purpose                                                   |
+| -------------------- | -------------- | --------------------------------------------------------- |
+| `specs/brief.md.hbs` | Yes            | The self-contained brief, rendered per variant.           |
+| `prompt.hbs`         | No             | Rendered into the model's prompt; not seeded.             |
+| `test-case.toml`     | No             | Manifest: voxel volume, tool, output, animations, review. |
+| `variants/`          | No             | One TOML file per variant (listed in `variants`).         |
+| `description.md`     | No             | Site blurb.                                               |
+| `changelog.md`       | No             | This version's changelog entry.                           |
+| `README.md`          | No             | This overview.                                            |
 
 A run receives the seeded brief, the `voxel-anim` binary, and a pre-seeded
 `rig.json` holding the required animation declarations, so the contract exists

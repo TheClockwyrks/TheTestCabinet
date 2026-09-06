@@ -35,11 +35,11 @@ The outputs land under
 per take, and the last line of the log names the winner and what each of its
 files is committed as:
 
-| Take file | Committed as |
-| --- | --- |
-| `take-NN.json.gz` | `showcase/base/gameplay.json.gz` |
-| `take-NN-wave.png` | `showcase/base/mid-wave.png` |
-| `take-NN-build.png` | `showcase/base/build-phase.png` |
+| Take file           | Committed as                     |
+| ------------------- | -------------------------------- |
+| `take-NN.json.gz`   | `showcase/base/gameplay.json.gz` |
+| `take-NN-wave.png`  | `showcase/base/mid-wave.png`     |
+| `take-NN-build.png` | `showcase/base/build-phase.png`  |
 
 ## Why every take is recorded
 
@@ -60,13 +60,13 @@ and whatever input edges the last take left armed.
 
 ## The knobs
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched above to read it. At `1700` a take of this length is kept whole, at 60 fps, with no thinning. |
-| `TCAB_SHOWCASE_TAKES` | `8` | How many takes to play and judge. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `20` | The clip ends at the first wave clear past this. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | `27` | The take is abandoned here; no level is opened with less than six seconds left of it. |
-| `TCAB_SHOWCASE_WAVE_SPEED` | `4` | The speed rung the player pushes to once the Load is crossing. |
+| Variable                          | Default | What it does                                                                                                                    |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`   | The harness's replay cap, patched above to read it. At `1700` a take of this length is kept whole, at 60 fps, with no thinning. |
+| `TCAB_SHOWCASE_TAKES`             | `8`     | How many takes to play and judge.                                                                                               |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `20`    | The clip ends at the first wave clear past this.                                                                                |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | `27`    | The take is abandoned here; no level is opened with less than six seconds left of it.                                           |
+| `TCAB_SHOWCASE_WAVE_SPEED`        | `4`     | The speed rung the player pushes to once the Load is crossing.                                                                  |
 
 The Substation's chain is a lap of the whole yard, so a Mote spends the better
 part of a minute walking it: the speed control is what keeps a clip watchable,

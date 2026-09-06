@@ -245,13 +245,13 @@ frame while one is in flight.
 
 ## What crossed
 
-| Survives | Is rebuilt |
-| --- | --- |
-| `RelayInstance` and its `bestScore` | The world, `ResultsMode`, and the game state |
-| The action bindings registered from `InitApi` | Every actor, component, and controller |
-| The instance's diagnostic source | The player states |
-| Subscriptions on `engine.events` | World timers and world-level diagnostic sources |
-| The frame counter and accumulated simulated time | `world.time`, which restarts at zero |
+| Survives                                         | Is rebuilt                                      |
+| ------------------------------------------------ | ----------------------------------------------- |
+| `RelayInstance` and its `bestScore`              | The world, `ResultsMode`, and the game state    |
+| The action bindings registered from `InitApi`    | Every actor, component, and controller          |
+| The instance's diagnostic source                 | The player states                               |
+| Subscriptions on `engine.events`                 | World timers and world-level diagnostic sources |
+| The frame counter and accumulated simulated time | `world.time`, which restarts at zero            |
 
 `{ score }` reaches the next level as `ResultsMode.options`. A figure that must
 outlive a transition is written onto the instance, which is what `bestScore` is.

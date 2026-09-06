@@ -49,7 +49,11 @@ const TIMED_OUT: GgRunDoc = {
   },
 };
 
-const CORPUS: GgRunDoc[] = [completed("run-long", 5400), completed("run-short", 42), TIMED_OUT];
+const CORPUS: GgRunDoc[] = [
+  completed("run-long", 5400),
+  completed("run-short", 42),
+  TIMED_OUT,
+];
 
 /** Evaluate query text over the corpus and render what came back. */
 function run(text: string) {
@@ -107,8 +111,17 @@ describe("absent is not zero", () => {
 describe("columns", () => {
   it("shows the identity columns whatever the query", () => {
     run("");
-    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
-    expect(headers).toEqual(["id", "started", "case", "model", "state", "score"]);
+    const headers = screen
+      .getAllByRole("columnheader")
+      .map((h) => h.textContent);
+    expect(headers).toEqual([
+      "id",
+      "started",
+      "case",
+      "model",
+      "state",
+      "score",
+    ]);
   });
 
   it("adds a column for every field the query filters on", () => {
@@ -122,7 +135,9 @@ describe("columns", () => {
 
   it("reads the fields off the compiled tree, through every combinator", () => {
     const query = compileQuery(
-      parseQuery("not (tool.editFile:* or preset:a) and score >= 0.5 | sort limit").query,
+      parseQuery(
+        "not (tool.editFile:* or preset:a) and score >= 0.5 | sort limit",
+      ).query,
     );
     expect(queryFields(query.filter, query.sort)).toEqual([
       "tool.editFile",

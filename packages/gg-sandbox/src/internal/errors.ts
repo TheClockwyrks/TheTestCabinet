@@ -42,12 +42,20 @@ import { ApiError } from "../gg/core.js";
  * `result<T, api-error>` arrives as an object whose only own key is `payload`. Anything that does
  * not carry all three fields is not a membrane failure and is left alone.
  */
-function unwrap(thrown: unknown): { operation: string; code: ErrorCode; message: string } | undefined {
+function unwrap(
+  thrown: unknown,
+): { operation: string; code: ErrorCode; message: string } | undefined {
   const nested =
-    thrown === null || thrown === undefined ? undefined : (thrown as { payload?: unknown }).payload;
+    thrown === null || thrown === undefined
+      ? undefined
+      : (thrown as { payload?: unknown }).payload;
   for (const candidate of [thrown, nested]) {
     if (candidate === null || typeof candidate !== "object") continue;
-    const record = candidate as { operation?: unknown; code?: unknown; message?: unknown };
+    const record = candidate as {
+      operation?: unknown;
+      code?: unknown;
+      message?: unknown;
+    };
     if (
       typeof record.operation === "string" &&
       typeof record.code === "string" &&
@@ -55,7 +63,11 @@ function unwrap(thrown: unknown): { operation: string; code: ErrorCode; message:
     ) {
       // The one place the membrane's `ErrorCode` becomes the model-facing `ApiErrorCode`: the
       // assignment below is what makes `tsc` reject a WIT arm `gg/core.ts` has not learned about.
-      return { operation: record.operation, code: record.code as ErrorCode, message: record.message };
+      return {
+        operation: record.operation,
+        code: record.code as ErrorCode,
+        message: record.message,
+      };
     }
   }
   return undefined;
@@ -74,7 +86,11 @@ export function asApiError(thrown: unknown): unknown {
   if (thrown instanceof ApiError) return thrown;
   const record = unwrap(thrown);
   return record
-    ? new ApiError(record.operation, record.code as ApiErrorCode, record.message)
+    ? new ApiError(
+        record.operation,
+        record.code as ApiErrorCode,
+        record.message,
+      )
     : thrown;
 }
 
@@ -104,7 +120,9 @@ export function isErrorLike(thrown: unknown): thrown is Error {
 
 /** An error-like value's `name`, defaulting to `Error` when it carries nothing usable. */
 export function errorName(error: Error): string {
-  return typeof error.name === "string" && error.name !== "" ? error.name : "Error";
+  return typeof error.name === "string" && error.name !== ""
+    ? error.name
+    : "Error";
 }
 
 /** An error-like value's `message`, coerced, so a cross-realm error is never rendered as `{}`. */
@@ -164,10 +182,17 @@ export function typeName(value: unknown): string {
  * `shell("npm test", 300)` — the shape the native tool-calling schema would have taken — is told
  * exactly that, instead of silently getting the default.
  */
-export function opts<T extends object>(fn: string, value: unknown): T | undefined {
+export function opts<T extends object>(
+  fn: string,
+  value: unknown,
+): T | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "object" || Array.isArray(value)) {
-    throw new ApiError(fn, "invalid-argument", `expected an options object, got ${typeName(value)}`);
+    throw new ApiError(
+      fn,
+      "invalid-argument",
+      `expected an options object, got ${typeName(value)}`,
+    );
   }
   return value as T;
 }
@@ -181,9 +206,19 @@ export const U32_MAX = 4_294_967_295;
  * The membrane lowers a negative or fractional number by silently wrapping it — `-1` arrives as
  * `4294967295` — so the range check has to happen on this side of it.
  */
-export function uint(fn: string, name: string, value: unknown, max: number): number | undefined {
+export function uint(
+  fn: string,
+  name: string,
+  value: unknown,
+  max: number,
+): number | undefined {
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > max
+  ) {
     throw new ApiError(
       fn,
       "invalid-argument",
@@ -194,7 +229,11 @@ export function uint(fn: string, name: string, value: unknown, max: number): num
 }
 
 /** A finite positive number, or an `ApiError`. */
-export function positive(fn: string, name: string, value: unknown): number | undefined {
+export function positive(
+  fn: string,
+  name: string,
+  value: unknown,
+): number | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     throw new ApiError(
@@ -217,10 +256,18 @@ export function positive(fn: string, name: string, value: unknown): number | und
  * — is a list of records; the check itself is the same, and it is deliberately shallow, because the
  * bindings already reject a wrong element with a message that names the offending case.
  */
-export function arrayArg<T = string>(fn: string, name: string, value: unknown): T[] {
+export function arrayArg<T = string>(
+  fn: string,
+  name: string,
+  value: unknown,
+): T[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
-    throw new ApiError(fn, "invalid-argument", `\`${name}\` must be an array, got ${typeName(value)}`);
+    throw new ApiError(
+      fn,
+      "invalid-argument",
+      `\`${name}\` must be an array, got ${typeName(value)}`,
+    );
   }
   return value as T[];
 }
@@ -232,8 +279,16 @@ export function arrayArg<T = string>(fn: string, name: string, value: unknown): 
  * model really writes — and by the time the call crosses the membrane the WIT has declared the
  * parameter a string, so the host cannot tell a number from the text of one.
  */
-export function requireString(fn: string, expected: string, value: unknown): asserts value is string {
+export function requireString(
+  fn: string,
+  expected: string,
+  value: unknown,
+): asserts value is string {
   if (typeof value !== "string") {
-    throw new ApiError(fn, "invalid-argument", `expected ${expected}, got ${typeName(value)}`);
+    throw new ApiError(
+      fn,
+      "invalid-argument",
+      `expected ${expected}, got ${typeName(value)}`,
+    );
   }
 }

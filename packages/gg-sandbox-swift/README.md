@@ -6,7 +6,7 @@ libraries a program may import, and the builds that commit all of it into gg's b
 
 It is not an npm package and not a Cargo crate. It is a directory of sources and three scripts,
 because what it produces is not a library anybody links from this repository — it is compile
-*inputs* that ride inside `gg` and are unpacked next to a model's program once per machine.
+_inputs_ that ride inside `gg` and are unpacked next to a model's program once per machine.
 
 [responses as code]: https://docs.testcabinet.ai/gg/responses-as-code/overview/
 
@@ -43,17 +43,17 @@ which is what gets both the message and the model's own line and column out.
 
 ## What is here
 
-| | |
-| --- | --- |
-| `Sources/SDK/` | **The SDK a model writes against.** One file per capability module under `Modules/`, each carrying its functions and the types they produce, plus `Internal/` — the wire bridge and the two public functions that belong to no module. Compiled ahead of time into a module called `gg`. |
-| `Sources/shell.swift` | gg's shell — the two exports the sandbox world declares and the call into the model's own top-level code, under two file-scoped imports that reach nothing the model wrote. Compiled ahead of time into `shell.o` as a module of its own and linked into every program. |
-| `Sources/gg-shell.h` | The shell's header: the generated WIT surface as C, `stdlib.h` for the allocator the canonical ABI's post-return frees with, and the one declaration that is not generated (the program's entry point). |
-| `Sources/module.modulemap` | The clang module the shell imports that header through, which is what keeps the header out of the model's own file. |
-| `libraries.txt` | Every module a program may `import`, grouped as the catalogue renders them. One declaration, two readers: `tools/signatures.py` and a gg test that compiles a program importing all of them. |
-| `swift-version.sh` | Every pin — the Swift release, the wasm SDK, the target triple, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release, the three vendored packages — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-swift.sh`. |
-| `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
-| `build.sh` | Compiles those bindings and the SDK for wasm, vendors and compiles the library set, cuts the two archives, resolves the adapter, and writes the manifest — into `$GG_ARTIFACTS_OUT_DIR`. Run by `crates/gg-sandbox-artifacts/swift` on every build of gg whose declared inputs moved. |
-| `signatures.sh`, `tools/` | The catalogue: a symbol graph in, `swift.signatures.json` out, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build. `tools/catalogue.py` is the module table — gg's thirteen ids, the order a reader meets them in, and the Swift path each answers under — and `tools/signatures.py` is everything else. A function's gg operation id is not in either: it is a `- ggop:` line in the declaration's own doc comment. |
+|                            |                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Sources/SDK/`             | **The SDK a model writes against.** One file per capability module under `Modules/`, each carrying its functions and the types they produce, plus `Internal/` — the wire bridge and the two public functions that belong to no module. Compiled ahead of time into a module called `gg`.                                                                                                                                                     |
+| `Sources/shell.swift`      | gg's shell — the two exports the sandbox world declares and the call into the model's own top-level code, under two file-scoped imports that reach nothing the model wrote. Compiled ahead of time into `shell.o` as a module of its own and linked into every program.                                                                                                                                                                      |
+| `Sources/gg-shell.h`       | The shell's header: the generated WIT surface as C, `stdlib.h` for the allocator the canonical ABI's post-return frees with, and the one declaration that is not generated (the program's entry point).                                                                                                                                                                                                                                      |
+| `Sources/module.modulemap` | The clang module the shell imports that header through, which is what keeps the header out of the model's own file.                                                                                                                                                                                                                                                                                                                          |
+| `libraries.txt`            | Every module a program may `import`, grouped as the catalogue renders them. One declaration, two readers: `tools/signatures.py` and a gg test that compiles a program importing all of them.                                                                                                                                                                                                                                                 |
+| `swift-version.sh`         | Every pin — the Swift release, the wasm SDK, the target triple, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release, the three vendored packages — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-swift.sh`.                                                                                                                             |
+| `bindings.sh`              | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build.                                                                                                                                                                                                                                                                              |
+| `build.sh`                 | Compiles those bindings and the SDK for wasm, vendors and compiles the library set, cuts the two archives, resolves the adapter, and writes the manifest — into `$GG_ARTIFACTS_OUT_DIR`. Run by `crates/gg-sandbox-artifacts/swift` on every build of gg whose declared inputs moved.                                                                                                                                                        |
+| `signatures.sh`, `tools/`  | The catalogue: a symbol graph in, `swift.signatures.json` out, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build. `tools/catalogue.py` is the module table — gg's thirteen ids, the order a reader meets them in, and the Swift path each answers under — and `tools/signatures.py` is everything else. A function's gg operation id is not in either: it is a `- ggop:` line in the declaration's own doc comment. |
 
 ## What a Swift program looks like
 
@@ -95,7 +95,7 @@ Everything else is Swift's own idiom:
   record anywhere in this surface — `files.readFile("a.swift", limit: 40)` skips `offset:` because
   Swift lets it.
 - **Argument labels carry the roles the function's name does not**: `files.editFile("a",
-  replacing: "x", with: "y")`, `delegation.sendMessage("note", to: id)`,
+replacing: "x", with: "y")`, `delegation.sendMessage("note", to: id)`,
   `tasks.setBlockedBy("t1", to: ["t0"])`.
 - **A fixed choice is an `enum`**, never a string: `.done`, `.inProgress`, `.file`. A choice that
   carries something is an `enum` with an associated value, so a child's brief is `.prompt("…")` or
@@ -229,4 +229,3 @@ script.** The two halves have two rerun sets — the artifact crate's and `crate
 a signature step that reached `build.sh` for its bindings would collapse them into one, so editing a
 doc comment would re-cut 3.6 MB of archives that are not even byte-reproducible. That is the whole
 inner-loop cost the artifact crates exist to avoid.
-

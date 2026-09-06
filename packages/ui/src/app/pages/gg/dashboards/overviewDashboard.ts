@@ -52,7 +52,8 @@ export const OVERVIEW_DASHBOARD_ID = "overview";
 export const OVERVIEW_DASHBOARD: GgDashboard = {
   id: OVERVIEW_DASHBOARD_ID,
   name: "Overview",
-  description: "The built-in board: volume, outcomes, models, configurations, cost.",
+  description:
+    "The built-in board: volume, outcomes, models, configurations, cost.",
   rangeId: "all",
   updatedAt: "",
   panels: [

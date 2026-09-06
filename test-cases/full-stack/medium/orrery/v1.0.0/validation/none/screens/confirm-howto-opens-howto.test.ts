@@ -21,7 +21,11 @@
 // go.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, assertNotEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertNotEqual,
+} from "../assert";
 import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
@@ -80,9 +84,5 @@ it("goes to the how-to when HOW TO PLAY is taken", async () => {
     "select",
     "HOW TO PLAY chooses no course, so it does not go where the other two items go",
   );
-  assertEqual(
-    after.screen,
-    "howto",
-    "confirm on HOW TO PLAY opens the how-to",
-  );
+  assertEqual(after.screen, "howto", "confirm on HOW TO PLAY opens the how-to");
 });

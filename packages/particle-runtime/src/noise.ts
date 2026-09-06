@@ -104,8 +104,16 @@ export class CurlNoise {
     const ay = axis === 1 ? EPSILON : 0;
     const az = axis === 2 ? EPSILON : 0;
     return (
-      this.valueNoise(px + ax + offset[0], py + ay + offset[1], pz + az + offset[2]) -
-      this.valueNoise(px - ax + offset[0], py - ay + offset[1], pz - az + offset[2])
+      this.valueNoise(
+        px + ax + offset[0],
+        py + ay + offset[1],
+        pz + az + offset[2],
+      ) -
+      this.valueNoise(
+        px - ax + offset[0],
+        py - ay + offset[1],
+        pz - az + offset[2],
+      )
     );
   }
 
@@ -121,9 +129,21 @@ export class CurlNoise {
     const yf = smooth(y - yi);
     const zf = smooth(z - zi);
 
-    const c00 = lerp(this.lattice(xi, yi, zi), this.lattice(xi + 1, yi, zi), xf);
-    const c10 = lerp(this.lattice(xi, yi + 1, zi), this.lattice(xi + 1, yi + 1, zi), xf);
-    const c01 = lerp(this.lattice(xi, yi, zi + 1), this.lattice(xi + 1, yi, zi + 1), xf);
+    const c00 = lerp(
+      this.lattice(xi, yi, zi),
+      this.lattice(xi + 1, yi, zi),
+      xf,
+    );
+    const c10 = lerp(
+      this.lattice(xi, yi + 1, zi),
+      this.lattice(xi + 1, yi + 1, zi),
+      xf,
+    );
+    const c01 = lerp(
+      this.lattice(xi, yi, zi + 1),
+      this.lattice(xi + 1, yi, zi + 1),
+      xf,
+    );
     const c11 = lerp(
       this.lattice(xi, yi + 1, zi + 1),
       this.lattice(xi + 1, yi + 1, zi + 1),
@@ -173,7 +193,10 @@ const ORIGIN: Vec3 = [0, 0, 0];
 
 /** Which memo slot a lattice corner lands in — a cheap 32-bit spatial hash. */
 function slotOf(x: number, y: number, z: number): number {
-  let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ Math.imul(z, 0x9e3779b1);
+  let h =
+    Math.imul(x, 0x27d4eb2d) ^
+    Math.imul(y, 0x165667b1) ^
+    Math.imul(z, 0x9e3779b1);
   h ^= h >>> 15;
   h = Math.imul(h, 0x85ebca6b);
   h ^= h >>> 13;

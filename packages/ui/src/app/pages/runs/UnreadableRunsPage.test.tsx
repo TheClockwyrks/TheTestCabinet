@@ -150,7 +150,9 @@ describe("UnreadableRunsPage", () => {
   it("sizes its pager from the total and asks for the chosen page", async () => {
     // The total counts every unreadable run rather than this page's rows, so a
     // cabinet holding more than one page's worth gets a pager that reaches them.
-    const { listUnreadableRuns } = renderPage([unreadable("r1")], { total: 45 });
+    const { listUnreadableRuns } = renderPage([unreadable("r1")], {
+      total: 45,
+    });
     await waitFor(() =>
       expect(listUnreadableRuns).toHaveBeenCalledWith({ limit: 20, offset: 0 }),
     );
@@ -161,7 +163,10 @@ describe("UnreadableRunsPage", () => {
 
     fireEvent.click(third);
     await waitFor(() =>
-      expect(listUnreadableRuns).toHaveBeenCalledWith({ limit: 20, offset: 40 }),
+      expect(listUnreadableRuns).toHaveBeenCalledWith({
+        limit: 20,
+        offset: 40,
+      }),
     );
   });
 

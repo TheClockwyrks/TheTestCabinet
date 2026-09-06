@@ -43,22 +43,22 @@ binaries on `PATH`.
 
 `asset_dimension = "2d"`, the default, carries the six 2D binaries.
 
-| Binary | Produces | Consumed as |
-| --- | --- | --- |
-| `draw` | a single sprite → PNG | a PNG the game draws |
-| `draw-sheet` | a sprite sheet → per-frame PNGs | frames the game animates |
-| `particle-2d` | a particle system → `system.json` | played live via `@clockwyrks/particle-runtime`'s `./canvas` binding |
-| `sfx-synth` | a procedural sound effect → `.wav` | played via Web Audio |
-| `sfx-sample` | a sampled effect over a declared sample pack → `.wav` | played via Web Audio |
-| `music` | sequenced music over a declared instrument bank → `.wav` + `.mid` | played via Web Audio |
+| Binary        | Produces                                                          | Consumed as                                                         |
+| ------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `draw`        | a single sprite → PNG                                             | a PNG the game draws                                                |
+| `draw-sheet`  | a sprite sheet → per-frame PNGs                                   | frames the game animates                                            |
+| `particle-2d` | a particle system → `system.json`                                 | played live via `@clockwyrks/particle-runtime`'s `./canvas` binding |
+| `sfx-synth`   | a procedural sound effect → `.wav`                                | played via Web Audio                                                |
+| `sfx-sample`  | a sampled effect over a declared sample pack → `.wav`             | played via Web Audio                                                |
+| `music`       | sequenced music over a declared instrument bank → `.wav` + `.mid` | played via Web Audio                                                |
 
 `asset_dimension = "3d"` carries those six and three more.
 
-| Binary | Produces | Consumed as |
-| --- | --- | --- |
-| `voxel` | a static voxel model → `mesh.glb` | decoded by `@clockwyrks/voxel-runtime`'s `parseGlb` |
-| `voxel-anim` | a rigged, animated model → per-part `.glb` + `rig.json` | posed and drawn via the voxel runtime's `./three` binding |
-| `particle-3d` | a volumetric particle system → `system.json` | played live via `@clockwyrks/particle-runtime`'s `./three` binding |
+| Binary        | Produces                                                | Consumed as                                                        |
+| ------------- | ------------------------------------------------------- | ------------------------------------------------------------------ |
+| `voxel`       | a static voxel model → `mesh.glb`                       | decoded by `@clockwyrks/voxel-runtime`'s `parseGlb`                |
+| `voxel-anim`  | a rigged, animated model → per-part `.glb` + `rig.json` | posed and drawn via the voxel runtime's `./three` binding          |
+| `particle-3d` | a volumetric particle system → `system.json`            | played live via `@clockwyrks/particle-runtime`'s `./three` binding |
 
 Each binary's `--help` is its contract, and the
 [asset-generation binary pages](/testing/asset-generation/overview/) are the

@@ -81,7 +81,8 @@ function configurePlaywrightHostPlatformOverride() {
     return;
   }
   const isUbuntu2604 =
-    /^ID=ubuntu$/m.test(osRelease) && /^VERSION_ID="?26\.04"?$/m.test(osRelease);
+    /^ID=ubuntu$/m.test(osRelease) &&
+    /^VERSION_ID="?26\.04"?$/m.test(osRelease);
   if (process.platform !== "linux" || !isUbuntu2604) {
     return;
   }

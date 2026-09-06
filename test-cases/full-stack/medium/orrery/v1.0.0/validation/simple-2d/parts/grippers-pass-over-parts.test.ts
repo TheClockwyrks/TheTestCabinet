@@ -106,7 +106,11 @@ it("turns an arm whose gripper and shaft cross a sigil, a track and another arm"
     sim?.fault ?? null,
     "no fault is raised by a gripper or a shaft crossing a part",
   );
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
   assertEqual(
     poseOf(snapshot, sweeper)?.rotation,
     1,

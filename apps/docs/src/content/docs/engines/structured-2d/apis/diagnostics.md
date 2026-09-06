@@ -30,10 +30,10 @@ a number. A source always returns a value, and where the thing it names is
 absent it returns a short placeholder string in the game's own vocabulary, such
 as `"none"` or `"-"`.
 
-| Registry | Registered through | Lifetime |
-| --- | --- | --- |
-| Instance | [`InitApi.diagnostics`](/engines/structured-2d/apis/game-instance/) | The life of the engine. Its sources survive every level transition. |
-| World | [`world.diagnostics`](/engines/structured-2d/apis/worlds/) | The life of the world. Its sources are dropped when the world closes. |
+| Registry | Registered through                                                  | Lifetime                                                              |
+| -------- | ------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Instance | [`InitApi.diagnostics`](/engines/structured-2d/apis/game-instance/) | The life of the engine. Its sources survive every level transition.   |
+| World    | [`world.diagnostics`](/engines/structured-2d/apis/worlds/)          | The life of the world. Its sources are dropped when the world closes. |
 
 Re-registering a name replaces its source and retains the name's original
 position in its registry. A name registered in both registries keeps a line in
@@ -52,14 +52,14 @@ metrics(): FrameMetrics;
 draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
 ```
 
-| Member | Returns | Behavior |
-| --- | --- | --- |
-| `setEnabled(enabled)` | `void` | Shows the overlay when `true`, hides it when `false`. |
-| `enabled()` | `boolean` | Whether the overlay is currently drawn. |
-| `toggle()` | `void` | Inverts the enabled state. |
-| `read()` | `readonly DiagnosticReading[]` | Evaluates every source in both registries and returns what each one reports. |
-| `metrics()` | `FrameMetrics` | The frame-time metrics over the current window. |
-| `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine after the pipeline renders. |
+| Member                     | Returns                        | Behavior                                                                       |
+| -------------------------- | ------------------------------ | ------------------------------------------------------------------------------ |
+| `setEnabled(enabled)`      | `void`                         | Shows the overlay when `true`, hides it when `false`.                          |
+| `enabled()`                | `boolean`                      | Whether the overlay is currently drawn.                                        |
+| `toggle()`                 | `void`                         | Inverts the enabled state.                                                     |
+| `read()`                   | `readonly DiagnosticReading[]` | Evaluates every source in both registries and returns what each one reports.   |
+| `metrics()`                | `FrameMetrics`                 | The frame-time metrics over the current window.                                |
+| `draw(ctx, width, height)` | `void`                         | Draws the overlay onto `ctx`. Called by the engine after the pipeline renders. |
 
 The overlay is hidden when the engine is created.
 
@@ -107,12 +107,12 @@ interface FrameMetrics {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `samples` | How many frames the window holds. |
-| `meanMs` | The arithmetic mean of the window's samples, in milliseconds. |
-| `p95Ms` | The 95th percentile of the window's samples, in milliseconds. |
-| `p99Ms` | The 99th percentile of the window's samples, in milliseconds. |
+| Field     | Meaning                                                       |
+| --------- | ------------------------------------------------------------- |
+| `samples` | How many frames the window holds.                             |
+| `meanMs`  | The arithmetic mean of the window's samples, in milliseconds. |
+| `p95Ms`   | The 95th percentile of the window's samples, in milliseconds. |
+| `p99Ms`   | The 99th percentile of the window's samples, in milliseconds. |
 
 Percentiles are nearest-rank over the window's samples sorted ascending, so
 `p95Ms` is the sample at index `ceil(0.95 * samples) - 1`. An empty window
@@ -169,13 +169,13 @@ registered [input](/engines/structured-2d/apis/input/) action.
 
 One line per reading, formatted `` `${name}: ${value}` ``.
 
-| Reading | Displayed as |
-| --- | --- |
-| `string` value | The string itself. |
-| Integer `number` value | `String(value)`. |
-| Non-integer `number` value | `value.toFixed(3)`. |
-| `boolean` value | `"true"` or `"false"`. |
-| A source that threw | The `error` message, in the value's place. |
+| Reading                    | Displayed as                               |
+| -------------------------- | ------------------------------------------ |
+| `string` value             | The string itself.                         |
+| Integer `number` value     | `String(value)`.                           |
+| Non-integer `number` value | `value.toFixed(3)`.                        |
+| `boolean` value            | `"true"` or `"false"`.                     |
+| A source that threw        | The `error` message, in the value's place. |
 
 A number that is not finite displays as `NaN`, `Infinity`, or `-Infinity`.
 

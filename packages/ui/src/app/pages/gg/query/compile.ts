@@ -73,7 +73,10 @@ const DAY_MS = 86_400_000;
 type LiteralPosition = "value" | "upperBound";
 
 /** Compile a parsed query into the wire form. */
-export function compileQuery(query: QueryNode, options: CompileOptions = {}): GgQuery {
+export function compileQuery(
+  query: QueryNode,
+  options: CompileOptions = {},
+): GgQuery {
   const now = options.now ?? Date.now();
   const compiled: GgQuery = {};
 
@@ -99,7 +102,10 @@ export function compileQuery(query: QueryNode, options: CompileOptions = {}): Gg
           groupBy.push({
             kind: "bucket",
             field: group.field.name,
-            interval: { count: group.interval.count, unit: group.interval.unit },
+            interval: {
+              count: group.interval.count,
+              unit: group.interval.unit,
+            },
           });
         }
       }

@@ -56,7 +56,10 @@ it("answers challenge 1 with at most CAMPAIGN_OPENER_PARTS parts", async () => {
   const document = await referenceSolution(h, "campaign", 0);
   await openChallenge(h, "campaign", 0);
   const view = (await h.snapshot()).challenge;
-  assertNotNull(document ?? null, "campaign challenge 1 ships a reference solution");
+  assertNotNull(
+    document ?? null,
+    "campaign challenge 1 ships a reference solution",
+  );
   assertTrue(
     document !== null && Array.isArray(document.parts),
     "campaign challenge 1's reference solution carries a parts list",

@@ -38,10 +38,30 @@ import {
   type TowerKind,
   type Trait,
 } from "./constants";
-import { Board, DEFAULT_MAP, MAPS, TOWER_FOOTPRINT, type GameMap, type Lane, type Pt } from "./board";
+import {
+  Board,
+  DEFAULT_MAP,
+  MAPS,
+  TOWER_FOOTPRINT,
+  type GameMap,
+  type Lane,
+  type Pt,
+} from "./board";
 import type { CampaignMode } from "./mode";
 import { buildWave, type Wave } from "./waves";
-import type { AtomSpec, Cue, EffectKind, EffectRec, FxEvent, GameState, Phase, Projectile, Tower, Unit, Zone } from "./types";
+import type {
+  AtomSpec,
+  Cue,
+  EffectKind,
+  EffectRec,
+  FxEvent,
+  GameState,
+  Phase,
+  Projectile,
+  Tower,
+  Unit,
+  Zone,
+} from "./types";
 
 // How long a snapshot-visible burst lingers in `effects` (specs/instrumentation.md) — long
 // enough that a driven scenario can step onto the hit and read the burst back.
@@ -216,19 +236,30 @@ export class Game {
   private emitFx(kind: FxEvent["kind"], x: number, y: number): void {
     this.fxQueue.push({ kind, x, y });
     const mapped = FX_TO_EFFECT[kind];
-    if (mapped) this.effects.push({ id: this.nextId++, kind: mapped, x, y, life: FX_EFFECT_LIFE });
+    if (mapped)
+      this.effects.push({
+        id: this.nextId++,
+        kind: mapped,
+        x,
+        y,
+        life: FX_EFFECT_LIFE,
+      });
   }
 
   private ageEffects(dt: number): void {
     if (this.effects.length === 0) return;
     for (const e of this.effects) e.life -= dt;
-    if (this.effects.some((e) => e.life <= 0)) this.effects = this.effects.filter((e) => e.life > 0);
+    if (this.effects.some((e) => e.life <= 0))
+      this.effects = this.effects.filter((e) => e.life > 0);
   }
 
   private spawnDue(): void {
     const w = this.wave;
     if (!w) return;
-    while (this.spawnCursor < w.events.length && w.events[this.spawnCursor]!.atMs <= this.waveClock) {
+    while (
+      this.spawnCursor < w.events.length &&
+      w.events[this.spawnCursor]!.atMs <= this.waveClock
+    ) {
       const e = w.events[this.spawnCursor]!;
       this.units.push(this.makeUnit(e.type, e.lane, e.electrons, e.inert));
       this.spawned++;
@@ -241,7 +272,12 @@ export class Game {
   // ignored by the bonded / isotope types, which read their stats from MATTER. `inert`
   // shields a unit of any type, the way a round table entry can call for shielded matter
   // (specs/matter.md); a type that is already inert is unaffected.
-  private makeUnit(type: MatterType, lane: Lane, electrons?: number, inert = false): Unit {
+  private makeUnit(
+    type: MatterType,
+    lane: Lane,
+    electrons?: number,
+    inert = false,
+  ): Unit {
     const def = MATTER[type];
     const traits = [...def.traits] as Trait[];
     if (inert && !traits.includes("inert")) traits.push("inert");
@@ -276,7 +312,10 @@ export class Game {
     };
     if (traits.includes("bonded")) {
       const shells = def.atomShells || def.shells;
-      u.atoms = Array.from({ length: def.atoms }, () => ({ element: def.element, shells }) as AtomSpec);
+      u.atoms = Array.from(
+        { length: def.atoms },
+        () => ({ element: def.element, shells }) as AtomSpec,
+      );
       u.bondHP = def.bondHP;
       u.maxBondHP = u.bondHP;
     }
@@ -309,7 +348,13 @@ export class Game {
     u.radius = atomRadius(e);
   }
 
-  private makeFreeAtom(lane: Lane, s: number, element: 0 | 1, electrons: number, inert: boolean): Unit {
+  private makeFreeAtom(
+    lane: Lane,
+    s: number,
+    element: 0 | 1,
+    electrons: number,
+    inert: boolean,
+  ): Unit {
     const u: Unit = {
       id: this.nextId++,
       type: inert ? "noble" : "atom",
@@ -364,7 +409,12 @@ export class Game {
       if (t.kind === "catalyst") {
         for (const u of this.unitsInRange(t)) {
           if (this.hasTrait(u, "inert")) {
-            if (!u.revealed) this.emitFx("reveal", this.board.sample(u.lane, u.s).x, this.board.sample(u.lane, u.s).y);
+            if (!u.revealed)
+              this.emitFx(
+                "reveal",
+                this.board.sample(u.lane, u.s).x,
+                this.board.sample(u.lane, u.s).y,
+              );
             u.revealed = true;
             u.revealTimer = s.revealLinger;
           }
@@ -373,7 +423,9 @@ export class Game {
       } else if (t.kind === "moderator") {
         for (const u of this.unitsInRange(t)) {
           if (u.type === "macromass") continue; // the boss is immune (specs/matter.md)
-          const applied = this.hasTrait(u, "heavy") ? Math.max(s.auraSlowHeavy, s.auraSlow) : s.auraSlow;
+          const applied = this.hasTrait(u, "heavy")
+            ? Math.max(s.auraSlowHeavy, s.auraSlow)
+            : s.auraSlow;
           u.slowFactor = Math.min(u.slowFactor, applied);
           if (s.auraExcite > 0) u.excite = Math.max(u.excite, s.auraExcite); // Containment brittleness
         }
@@ -381,7 +433,8 @@ export class Game {
     }
     // On-hit slow (Cleaver Impactor) folds in after the auras.
     for (const u of this.units) {
-      if (u.hitSlowTimer > 0) u.slowFactor = Math.min(u.slowFactor, u.hitSlowFactor);
+      if (u.hitSlowTimer > 0)
+        u.slowFactor = Math.min(u.slowFactor, u.hitSlowFactor);
     }
   }
 
@@ -501,7 +554,8 @@ export class Game {
   private unitHP(u: Unit): number {
     if (this.hasTrait(u, "bonded")) {
       let hp = Math.max(0, u.bondHP);
-      for (let i = u.fragmentsShed; i < u.atoms.length; i++) hp += u.atoms[i]!.shells;
+      for (let i = u.fragmentsShed; i < u.atoms.length; i++)
+        hp += u.atoms[i]!.shells;
       return hp;
     }
     return Math.max(0, u.shells);
@@ -515,7 +569,10 @@ export class Game {
     return this.canDamage(s, u);
   }
 
-  private canDamage(s: { damageType: DamageType | null; hitsHeavy: boolean }, u: Unit): boolean {
+  private canDamage(
+    s: { damageType: DamageType | null; hitsHeavy: boolean },
+    u: Unit,
+  ): boolean {
     if (!this.hasTrait(u, "heavy")) return true; // bonds and shells take any damage type
     // Heavy: immune to energy unless the shot explicitly hits heavies (Beam Disruptor).
     return s.damageType !== "energy" || s.hitsHeavy;
@@ -597,7 +654,8 @@ export class Game {
       for (const u of this.units) {
         if (u.dead || pr.hitIds.includes(u.id)) continue;
         const q = this.board.sample(u.lane, u.s);
-        if (Math.hypot(q.x - p.x, q.y - p.y) <= pr.splash) this.strike(pr, u, q.x, q.y);
+        if (Math.hypot(q.x - p.x, q.y - p.y) <= pr.splash)
+          this.strike(pr, u, q.x, q.y);
       }
     }
     // Pierce — pass through further units (a line, or the whole lane for a Lance).
@@ -660,21 +718,28 @@ export class Game {
       this.bondDamage(u, bd, x, y);
       this.emitFx(pr.damageType, x, y);
     } else {
-      const raw = pr.dmg + bonus + (this.hasTrait(u, "heavy") ? pr.heavyBonus : 0);
+      const raw =
+        pr.dmg + bonus + (this.hasTrait(u, "heavy") ? pr.heavyBonus : 0);
       this.damageUnit(u, raw, pr.damageType, { x, y });
     }
     if (pr.splashOnHeavy > 0 && u.dead && this.hasTrait(u, "heavy")) {
       for (const o of this.units) {
         if (o === u || o.dead || !this.hasTrait(o, "heavy")) continue;
         const q = this.board.sample(o.lane, o.s);
-        if (Math.hypot(q.x - x, q.y - y) <= pr.splashOnHeavy) this.damageUnit(o, pr.dmg, "kinetic", q);
+        if (Math.hypot(q.x - x, q.y - y) <= pr.splashOnHeavy)
+          this.damageUnit(o, pr.dmg, "kinetic", q);
       }
     }
   }
 
   // Bare shell damage (used by strike and by a Fallout zone's DoT). `dmgType` only picks
   // the burst colour here; trait gating is the caller's job.
-  private damageUnit(u: Unit, amount: number, dmgType: DamageType, p: { x: number; y: number }): void {
+  private damageUnit(
+    u: Unit,
+    amount: number,
+    dmgType: DamageType,
+    p: { x: number; y: number },
+  ): void {
     if (u.dead) return;
     u.hitFlash = 0;
     // Energy is paid for shells actually stripped, so overkill past the last shell pays
@@ -706,10 +771,15 @@ export class Game {
     const inert = this.hasTrait(u, "inert");
     if (k > 1) {
       const chunk = u.maxBondHP / (k - 1);
-      const target = Math.min(k - 1, Math.floor((u.maxBondHP - Math.max(0, u.bondHP)) / chunk));
+      const target = Math.min(
+        k - 1,
+        Math.floor((u.maxBondHP - Math.max(0, u.bondHP)) / chunk),
+      );
       while (u.fragmentsShed < target) {
         const a = u.atoms[u.fragmentsShed]!;
-        this.units.push(this.makeFreeAtom(u.lane, u.s + 4, a.element, a.shells, inert));
+        this.units.push(
+          this.makeFreeAtom(u.lane, u.s + 4, a.element, a.shells, inert),
+        );
         u.fragmentsShed++;
         this.emitFx("bondsnap", x, y);
         this.sndQueue.push("snap");
@@ -731,7 +801,10 @@ export class Game {
         return;
       }
       // The cluster is fully opened — it becomes its last free atom.
-      const last = u.atoms[k - 1] ?? { element: u.element, shells: MATTER[u.type].atomShells || 1 };
+      const last = u.atoms[k - 1] ?? {
+        element: u.element,
+        shells: MATTER[u.type].atomShells || 1,
+      };
       u.traits = u.traits.filter((t) => t !== "bonded");
       u.type = inert ? "noble" : "atom";
       this.setAtom(u, last.shells, last.element); // shells/speed/radius from its electrons
@@ -763,7 +836,10 @@ export class Game {
   private decayProgress(u: Unit, p: { x: number; y: number }): void {
     if (u.fragmentTarget <= 0) return;
     const step = u.maxShells / (u.fragmentTarget + 1); // reserve the last band for finalize
-    const want = Math.min(u.fragmentTarget, Math.floor((u.maxShells - Math.max(0, u.shells)) / step));
+    const want = Math.min(
+      u.fragmentTarget,
+      Math.floor((u.maxShells - Math.max(0, u.shells)) / step),
+    );
     while (u.fragmentsShed < want && u.shells > 0) {
       this.emitDecayParticle(u, u.fragmentsShed);
       u.fragmentsShed++;
@@ -836,13 +912,16 @@ export class Game {
   // is one integrity), so partial damage still helps; other types cost their fixed leak
   // value (specs/matter.md, specs/gameplay.md).
   private leakOf(u: Unit): number {
-    if (u.type === "atom" || u.type === "noble") return Math.max(1, Math.round(u.shells));
+    if (u.type === "atom" || u.type === "noble")
+      return Math.max(1, Math.round(u.shells));
     return MATTER[u.type].leak;
   }
 
   private cullDead(): void {
-    if (this.units.some((u) => u.dead)) this.units = this.units.filter((u) => !u.dead);
-    if (this.projectiles.some((p) => p.dead)) this.projectiles = this.projectiles.filter((p) => !p.dead);
+    if (this.units.some((u) => u.dead))
+      this.units = this.units.filter((u) => !u.dead);
+    if (this.projectiles.some((p) => p.dead))
+      this.projectiles = this.projectiles.filter((p) => !p.dead);
   }
 
   // ---- Round flow -------------------------------------------------------------
@@ -868,7 +947,10 @@ export class Game {
     this.buildTimer = BUILD_PHASE_SECONDS;
     this.nextWave = this.makeWave(this.round + 1);
     if (this.mode.interest) {
-      this.energy += Math.min(INTEREST_CAP, Math.floor(this.energy * INTEREST_RATE));
+      this.energy += Math.min(
+        INTEREST_CAP,
+        Math.floor(this.energy * INTEREST_RATE),
+      );
     }
     for (const t of this.towers) t.refundable = false;
   }
@@ -991,20 +1073,38 @@ export class Game {
 
   // Put one real unit onto a path through the real construction path, so it flows, is
   // targeted, decomposes, leaks, and pays out like any spawned unit. Returns its id.
-  debugSpawnUnit(spec: { type?: string; electrons?: number; inert?: boolean; pathId?: number; progress?: number }): number {
+  debugSpawnUnit(spec: {
+    type?: string;
+    electrons?: number;
+    inert?: boolean;
+    pathId?: number;
+    progress?: number;
+  }): number {
     const raw = spec.type ?? "atom";
     const type = (raw === "isotope" ? "heavy" : raw) as MatterType;
     const lanes = this.board.pathCount;
     const lane = Math.max(0, Math.min(lanes - 1, Math.round(spec.pathId ?? 0)));
     const u = this.makeUnit(type, lane, spec.electrons, Boolean(spec.inert));
-    u.s = Math.max(0, Math.min(this.board.pathLength(lane), spec.progress ?? 0));
+    u.s = Math.max(
+      0,
+      Math.min(this.board.pathLength(lane), spec.progress ?? 0),
+    );
     this.units.push(u);
     return u.id;
   }
 
   // Build a tower through the real placement path, reporting the exact refusal reason.
-  debugPlaceTower(kind: TowerKind, x: number, y: number): { ok: boolean; id: number | null; reason: "path" | "overlap" | "bounds" | "cost" | null } {
-    if (this.energy < TOWERS[kind].cost) return { ok: false, id: null, reason: "cost" };
+  debugPlaceTower(
+    kind: TowerKind,
+    x: number,
+    y: number,
+  ): {
+    ok: boolean;
+    id: number | null;
+    reason: "path" | "overlap" | "bounds" | "cost" | null;
+  } {
+    if (this.energy < TOWERS[kind].cost)
+      return { ok: false, id: null, reason: "cost" };
     const reason = this.board.placementReason(x, y, this.towers);
     if (reason) return { ok: false, id: null, reason };
     const t = this.place(x, y, kind);
@@ -1056,9 +1156,17 @@ export class Game {
   // A pure, JSON-serializable read of the full observable state (specs/instrumentation.md),
   // shared by the debug API's snapshot() and the debug overlay. Never mutates anything.
   debugSnapshot(): ValenceSnapshot {
-    const inRun = this.state === "playing" || this.state === "paused" || this.state === "victory" || this.state === "defeat";
+    const inRun =
+      this.state === "playing" ||
+      this.state === "paused" ||
+      this.state === "victory" ||
+      this.state === "defeat";
     const paths = inRun
-      ? this.board.paths.map((p, i) => ({ id: i, length: p.length, points: p.poly.map((q) => ({ x: q.x, y: q.y })) }))
+      ? this.board.paths.map((p, i) => ({
+          id: i,
+          length: p.length,
+          points: p.poly.map((q) => ({ x: q.x, y: q.y })),
+        }))
       : [];
     return {
       version: 1,
@@ -1080,8 +1188,16 @@ export class Game {
       score: this.score,
       round: this.round,
       totalRounds: TOTAL_ROUNDS,
-      buildCountdown: this.phase === "build" && this.buildTimed ? Math.max(0, this.buildTimer) : null,
-      result: this.state === "victory" ? "victory" : this.state === "defeat" ? "defeat" : null,
+      buildCountdown:
+        this.phase === "build" && this.buildTimed
+          ? Math.max(0, this.buildTimer)
+          : null,
+      result:
+        this.state === "victory"
+          ? "victory"
+          : this.state === "defeat"
+            ? "defeat"
+            : null,
       paths,
       matter: this.units.map((u) => {
         const p = this.board.sample(u.lane, u.s);
@@ -1100,7 +1216,11 @@ export class Game {
           electrons: isAtom ? Math.max(0, u.shells) : null,
           bond: this.hasTrait(u, "bonded") ? Math.max(0, u.bondHP) : null,
           maxBond: this.hasTrait(u, "bonded") ? u.maxBondHP : null,
-          traits: { bonded: this.hasTrait(u, "bonded"), heavy: this.hasTrait(u, "heavy"), inert: this.hasTrait(u, "inert") },
+          traits: {
+            bonded: this.hasTrait(u, "bonded"),
+            heavy: this.hasTrait(u, "heavy"),
+            inert: this.hasTrait(u, "inert"),
+          },
           revealed: u.revealed,
           slow: u.slowFactor,
           damageBonus: u.excite + (u.markTimer > 0 ? u.markBonus : 0),
@@ -1138,7 +1258,12 @@ export class Game {
         damage: pr.dmg,
         targetId: pr.targetId,
       })),
-      effects: this.effects.map((e) => ({ id: e.id, kind: e.kind, x: e.x, y: e.y })),
+      effects: this.effects.map((e) => ({
+        id: e.id,
+        kind: e.kind,
+        x: e.x,
+        y: e.y,
+      })),
       simTime: this.simTime,
     };
   }
@@ -1165,7 +1290,9 @@ export class Game {
   // ---- Player actions (called by input, routed via clickables) ----------------
   startRound(): void {
     if (this.state !== "playing" || this.phase !== "build") return;
-    const early = this.buildTimed ? Math.max(0, Math.floor(this.buildTimer)) : 0;
+    const early = this.buildTimed
+      ? Math.max(0, Math.floor(this.buildTimer))
+      : 0;
     this.beginRound(early);
   }
 
@@ -1206,7 +1333,10 @@ export class Game {
 
   // Is (x, y) a legal, affordable spot for `kind`? Off the paths, in bounds, no overlap.
   canBuildAt(x: number, y: number, kind: TowerKind): boolean {
-    return this.energy >= TOWERS[kind].cost && this.board.canPlaceAt(x, y, this.towers);
+    return (
+      this.energy >= TOWERS[kind].cost &&
+      this.board.canPlaceAt(x, y, this.towers)
+    );
   }
 
   // Place a tower at a free board position (specs/board.md). Returns the built tower, or
@@ -1328,7 +1458,9 @@ export class Game {
 
   // ---- Derived reads for the HUD ---------------------------------------------
   get selectedTower(): Tower | null {
-    return this.selectedTowerId != null ? (this.towers.find((t) => t.id === this.selectedTowerId) ?? null) : null;
+    return this.selectedTowerId != null
+      ? (this.towers.find((t) => t.id === this.selectedTowerId) ?? null)
+      : null;
   }
   get comingRound(): Wave {
     return this.nextWave;
@@ -1348,7 +1480,16 @@ export class Game {
 
 // The matter `type` as reported to the snapshot: the internal "heavy" isotope reads as
 // "isotope" on the surface (its `traits.heavy` flag still marks the trait).
-export type MatterSnapType = "atom" | "dimer" | "polymer" | "lattice" | "noble" | "isotope" | "chelate" | "shroud" | "macromass";
+export type MatterSnapType =
+  | "atom"
+  | "dimer"
+  | "polymer"
+  | "lattice"
+  | "noble"
+  | "isotope"
+  | "chelate"
+  | "shroud"
+  | "macromass";
 
 export interface MatterSnapshot {
   id: number;

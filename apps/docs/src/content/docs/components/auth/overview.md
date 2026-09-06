@@ -95,11 +95,11 @@ server over its own account store, with Argon2id password hashing and opaque
 bearer tokens. It is configured entirely through environment variables, all of
 which have defaults.
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `TCAB_AUTH_BIND` | Bind address. | `127.0.0.1:8789` |
+| Variable                 | Purpose                                                                                        | Default                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `TCAB_AUTH_BIND`         | Bind address.                                                                                  | `127.0.0.1:8789`                       |
 | `TCAB_AUTH_DATABASE_URL` | Its own accounts database, separate from the backend's; the scheme picks SQLite or PostgreSQL. | `sqlite://./tcab-auth.sqlite?mode=rwc` |
-| `TCAB_AUTH_DB_AZURE_AD` | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token. | `false` |
+| `TCAB_AUTH_DB_AZURE_AD`  | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                      | `false`                                |
 
 Like the backend, the auth service has no public surface and lives on the
 private network. It stores Argon2id password hashes, which the

@@ -30,7 +30,11 @@ export function AboutLayout({ tab, children }: AboutLayoutProps) {
 
   return (
     <PageLayout>
-      <PromptHeader command="--about" blink comment={<>// shall we play a game?</>} />
+      <PromptHeader
+        command="--about"
+        blink
+        comment={<>// shall we play a game?</>}
+      />
       <nav className={styles.tabs} aria-label="About sections">
         {tabs.map((entry) => (
           <NavLink

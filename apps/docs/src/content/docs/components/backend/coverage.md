@@ -18,7 +18,7 @@ A plan may also pin one-off members directly; the two are unioned.
 A plan answers "have I run this yet?". Its sibling, the
 [ladder](/components/backend/ladders/), answers "how far does this model get?" —
 the same buffer, the same counting rules, and the same halting controls, applied to
-an *ordered* series of cases that a combination climbs until it fails one. Read
+an _ordered_ series of cases that a combination climbs until it fails one. Read
 this page first: everything below about counting, buffering, and halting is shared.
 
 ## Counts are global, judgement is yours
@@ -32,7 +32,7 @@ else produced satisfies the target and is never re-requested. A plan does not ow
 runs; it observes them.
 
 **Judgement is per account.** "Unreviewed" means there is no
-[review](/components/core/results/#reviews) row for the *requesting* account, and
+[review](/components/core/results/#reviews) row for the _requesting_ account, and
 every gate and buffer decision reads only that account's own review. A run's stored
 `rating` is the worst domain across **every** reviewer, so a plan or ladder must
 never read it: one stranger's harsh review would otherwise stall a queue that is
@@ -117,16 +117,16 @@ fed.
 cases with the combinations, and returns one cell per pair with the counts that say
 where it stands:
 
-| field | meaning |
-| --- | --- |
-| `desired` | the target, from the plan's `runsPerCell` |
-| `completed` | completed runs of the cell, counted globally |
-| `inFlight` | jobs queued, pending, dispatched, starting, or running — globally |
-| `pending` | the subset of `inFlight` the queue is deliberately holding back |
-| `unreviewed` | completed runs **you** have not reviewed |
-| `remaining` | `max(0, desired - (completed + inFlight))` |
-| `latestVersion` / `stale` | whether a newer version of the case has been ingested |
-| `unlaunchable` | why a top-up cannot launch this cell, or null |
+| field                     | meaning                                                           |
+| ------------------------- | ----------------------------------------------------------------- |
+| `desired`                 | the target, from the plan's `runsPerCell`                         |
+| `completed`               | completed runs of the cell, counted globally                      |
+| `inFlight`                | jobs queued, pending, dispatched, starting, or running — globally |
+| `pending`                 | the subset of `inFlight` the queue is deliberately holding back   |
+| `unreviewed`              | completed runs **you** have not reviewed                          |
+| `remaining`               | `max(0, desired - (completed + inFlight))`                        |
+| `latestVersion` / `stale` | whether a newer version of the case has been ingested             |
+| `unlaunchable`            | why a top-up cannot launch this cell, or null                     |
 
 `pending` is a subset of `inFlight`, not an addition to it. It is surfaced
 separately because it is the answer to "my buffer is full but nothing is running":
@@ -135,7 +135,7 @@ a job sits `pending` when its harness is at its
 it is a [game jam](/testing/game-jam/overview/#repeat-runs)
 run of a model that already has a jam run in flight. Both are the queue working as
 designed, and neither is distinguishable from a wedged dispatcher unless the count
-is reported on its own. A top-up will not *prefer* to create the first kind — see
+is reported on its own. A top-up will not _prefer_ to create the first kind — see
 [harness parallelism comes first](#harness-parallelism-comes-first) — but it will
 still queue depth behind a cap once there is nothing else to launch.
 
@@ -158,7 +158,7 @@ way to execution without any component in between having to preserve it.
 Each job takes a monotonic `queue_seq` when it is inserted, and the
 [dispatcher](/components/dispatcher/overview/#queue-order) claims strictly in
 ascending order — passing over only a job whose harness is at its cap. So the
-sequence in which a top-up *emits* cells is the sequence in which the runs *start*.
+sequence in which a top-up _emits_ cells is the sequence in which the runs _start_.
 Nothing in the dispatcher, the driver, or the queue needs to know a plan exists:
 choosing the emission order is the entire mechanism. That is also why the top-up
 itself reads the caps when it chooses that order — see
@@ -189,7 +189,7 @@ A plan is not a queue. Firing every missing run the moment a plan is saved spend
 the entire budget before a single run has been looked at, and the first review is
 usually what tells you the plan was wrong — the wrong variant, the wrong version, a
 model that cannot get off the title screen. So a plan holds a bounded **review
-buffer** instead: keep *N* runs outstanding, and refill as they are reviewed.
+buffer** instead: keep _N_ runs outstanding, and refill as they are reviewed.
 
 **Outstanding** is what the reviewer still owes attention to, across the plan's
 cells:
@@ -201,7 +201,7 @@ outstanding = in-flight jobs + completed runs the requesting account has not rev
 Both halves belong there. In-flight work is already coming, and a finished run
 nobody has judged is exactly the backlog the buffer is meant to bound. This is the
 one place the [per-account](#counts-are-global-judgement-is-yours) number enters the
-arithmetic: it never changes what a cell *needs*, only whether the plan is allowed
+arithmetic: it never changes what a cell _needs_, only whether the plan is allowed
 to ask for more right now.
 
 ### The buffer target
@@ -220,11 +220,11 @@ Collapsing the two would make "leave me alone" unexpressible.
 
 Top-up is a **server endpoint the console calls**, not a background daemon. There
 is no ticker quietly spending money while nobody is looking: a plan enqueues when
-you open its dashboard, when you press *Top up now*, or — if `autoTopUp` is on —
+you open its dashboard, when you press _Top up now_, or — if `autoTopUp` is on —
 when you submit a review, which is precisely the moment a buffer slot frees.
 
 A [ladder](/components/backend/ladders/#a-ladder-starts-disabled) is fed by the same
-endpoint but not by the same moments: it is created *disabled*, opening its dashboard
+endpoint but not by the same moments: it is created _disabled_, opening its dashboard
 enqueues nothing, and enabling it is what starts the climb.
 
 The algorithm is the same for plans and ladders:
@@ -253,7 +253,7 @@ because another top-up held the claim.
 
 ### Harness parallelism comes first
 
-The buffer bounds the *reviewer's* backlog, but what produces that backlog is the
+The buffer bounds the _reviewer's_ backlog, but what produces that backlog is the
 queue — and the queue will not start a run whose harness is already at its
 [maximum parallelism](/components/core/harnesses/#per-harness-configuration).
 
@@ -268,12 +268,12 @@ looks like a resource limit and is not one.
 So the walk prefers cells that can actually start. A cell whose harness has no free
 slot is set aside, the cells behind it on idle harnesses are emitted first, and the
 set-aside cells are picked up in a second pass over whatever buffer is left. Within
-one harness the plan's order is untouched; only the interleaving *between* harnesses
+one harness the plan's order is untouched; only the interleaving _between_ harnesses
 changes — which is the same reordering the
 [dispatcher](/components/dispatcher/overview/#queue-order) already performs when it
 skips a capped job to claim a later claimable one.
 
-The second pass is not an afterthought. A plan whose harnesses are *all* throttled
+The second pass is not an afterthought. A plan whose harnesses are _all_ throttled
 must still queue real depth ahead of the reviewer, because top-up is an endpoint the
 console calls and not a daemon: a plan holding only as many runs as can execute at
 once would stop dead the moment the reviewer stopped submitting reviews. A single-
@@ -298,7 +298,7 @@ whatever else the queue picked up in between, destroys the comparison the repeat
 existed for. Briefly running a few runs over target is cheap; arriving interleaved
 is not recoverable.
 
-The check therefore happens at the boundary *between* cells and never inside one.
+The check therefore happens at the boundary _between_ cells and never inside one.
 
 ### One top-up at a time
 
@@ -359,7 +359,7 @@ was already empty" and "nothing I launched was found".
 
 The global equivalents — **Clear pending**, **Kill active**, and **Stop all** on the
 console's Runs page — sweep the same states with no origin filter at all. They are
-explicitly *not* plan-scoped: they are the "stop the cabinet" controls, and
+explicitly _not_ plan-scoped: they are the "stop the cabinet" controls, and
 narrowing them by account would silently skip jobs recorded before attribution
 existed.
 

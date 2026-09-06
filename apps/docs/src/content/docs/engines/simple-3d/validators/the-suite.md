@@ -185,8 +185,7 @@ export function createHarness(
       engine.apply((s) => engine.debug.setHookPosition(s, x, y, z)),
     setHookVelocity: (vx, vy, vz) =>
       engine.apply((s) => engine.debug.setHookVelocity(s, vx, vy, vz)),
-    setHeldCrate: (id) =>
-      engine.apply((s) => engine.debug.setHeldCrate(s, id)),
+    setHeldCrate: (id) => engine.apply((s) => engine.debug.setHeldCrate(s, id)),
     snapshot: () => engine.debug.snapshot(engine.state),
   };
 }
@@ -299,8 +298,18 @@ export interface Debug {
   version: number;
   setScreen(state: DeepReadonly<State>, screen: Screen): State;
   setMode(state: DeepReadonly<State>, mode: Mode): State;
-  setHookPosition(state: DeepReadonly<State>, x: number, y: number, z: number): State;
-  setHookVelocity(state: DeepReadonly<State>, vx: number, vy: number, vz: number): State;
+  setHookPosition(
+    state: DeepReadonly<State>,
+    x: number,
+    y: number,
+    z: number,
+  ): State;
+  setHookVelocity(
+    state: DeepReadonly<State>,
+    vx: number,
+    vy: number,
+    vz: number,
+  ): State;
   setHeldCrate(state: DeepReadonly<State>, id: number | null): State;
   snapshot(state: DeepReadonly<State>): Snapshot;
 }
@@ -327,11 +336,11 @@ A suite imports the build, so a case fixes three module paths and what each one
 exports. That contract is stated in the case's specification and is what gives
 every build of the case the same shape to check.
 
-| Module | Supplied by | Holds |
-| --- | --- | --- |
-| `src/constants.ts` | The case | The logical design size, the world's extents, the palette, the names the build gives its scene objects, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
-| `src/game.ts` | The build | The `State` type the case declares and the `Game` the engine drives, whose `initialize` returns `[state, surface]` to the instrumentation spec. |
-| `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it. |
+| Module             | Supplied by | Holds                                                                                                                                                                                                       |
+| ------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/constants.ts` | The case    | The logical design size, the world's extents, the palette, the names the build gives its scene objects, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
+| `src/game.ts`      | The build   | The `State` type the case declares and the `Game` the engine drives, whose `initialize` returns `[state, surface]` to the instrumentation spec.                                                             |
+| `src/main.ts`      | The case    | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it.                                                                                                            |
 
 A suite imports `constants.ts` for the numbers and names its assertions are
 stated in and `game.ts` for the game it drives. `main.ts` belongs to the built

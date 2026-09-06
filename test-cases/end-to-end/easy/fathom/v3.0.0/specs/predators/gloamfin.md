@@ -13,10 +13,10 @@ The Gloamfin reports `hearingRange` as `GLOAMFIN_HEAR` (`64`) and `detectRange`,
 The Gloamfin takes a fix by three paths, and each one is a fresh acquisition that
 fires the detection alert `specs/predators.md` defines.
 
-| The path | The fix it takes |
-| --- | --- |
-| Its own ping. The front of a ping it cast reaches the forager's tile. | The tile the front caught the forager on. |
-| The forager's pulse. The front of the forager's sonar pulse reaches the Gloamfin's tile. | The forager's tile at that moment. |
+| The path                                                                                        | The fix it takes                                  |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Its own ping. The front of a ping it cast reaches the forager's tile.                           | The tile the front caught the forager on.         |
+| The forager's pulse. The front of the forager's sonar pulse reaches the Gloamfin's tile.        | The forager's tile at that moment.                |
 | Close hearing. The distance between the two centers is at most `GLOAMFIN_HEAR` (`64`), 2 tiles. | The forager's current tile, refreshed every step. |
 
 Close hearing works in the dark, through rock, and through ink. While it holds, the
@@ -52,11 +52,11 @@ it is cast, and it catches the forager at most once.
 
 ## Speeds
 
-| While it is | It travels at, in logical units per second |
-| --- | --- |
-| Wandering | `PREDATOR_SPEED` (`116`), steady for as long as it wanders |
-| Chasing | its chase speed, at most `GLOAMFIN_CHASE_SPEED` (`134`) |
-| Searching | `PREDATOR_SPEED` (`116`) |
+| While it is | It travels at, in logical units per second                 |
+| ----------- | ---------------------------------------------------------- |
+| Wandering   | `PREDATOR_SPEED` (`116`), steady for as long as it wanders |
+| Chasing     | its chase speed, at most `GLOAMFIN_CHASE_SPEED` (`134`)    |
+| Searching   | `PREDATOR_SPEED` (`116`)                                   |
 
 The wander speed never winds up: a Gloamfin that has wandered for a minute travels at
 `PREDATOR_SPEED` exactly as one released a moment ago.
@@ -93,10 +93,10 @@ opening cap.
 
 ## States
 
-| From | To | When |
-| --- | --- | --- |
-| `"den"` | `"wander"` | It has swum out of the den chamber after its release time. |
-| `"wander"` | `"chase"` | Any of the three senses takes a fix. |
-| `"chase"` | `"search"` | It reaches its fixed tile and the forager is not there. |
-| `"search"` | `"chase"` | Any of the three senses takes a fix. |
-| `"search"` | `"wander"` | `GLOAMFIN_GIVEUP` runs out. |
+| From       | To         | When                                                       |
+| ---------- | ---------- | ---------------------------------------------------------- |
+| `"den"`    | `"wander"` | It has swum out of the den chamber after its release time. |
+| `"wander"` | `"chase"`  | Any of the three senses takes a fix.                       |
+| `"chase"`  | `"search"` | It reaches its fixed tile and the forager is not there.    |
+| `"search"` | `"chase"`  | Any of the three senses takes a fix.                       |
+| `"search"` | `"wander"` | `GLOAMFIN_GIVEUP` runs out.                                |

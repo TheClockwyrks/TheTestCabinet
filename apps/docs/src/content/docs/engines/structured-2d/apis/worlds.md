@@ -17,11 +17,11 @@ interface LevelDefinition {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `mode` | — | The [game mode](/engines/structured-2d/apis/game-mode/) class constructed when the world is built. |
-| `actors` | No placed actors | The actors the level places, spawned in the order given. |
-| `load` | No load step | Runs before the world is built, and is awaited. Where the level's assets and cues are loaded. |
+| Field    | Default          | Meaning                                                                                            |
+| -------- | ---------------- | -------------------------------------------------------------------------------------------------- |
+| `mode`   | —                | The [game mode](/engines/structured-2d/apis/game-mode/) class constructed when the world is built. |
+| `actors` | No placed actors | The actors the level places, spawned in the order given.                                           |
+| `load`   | No load step     | Runs before the world is built, and is awaited. Where the level's assets and cues are loaded.      |
 
 The registry a level name is looked up in, and the level the engine opens
 first, are declared on the [game
@@ -38,12 +38,12 @@ interface ActorSpec<A extends Actor = Actor> {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `type` | — | The [actor](/engines/structured-2d/apis/actors/) class constructed. |
-| `transform` | `{ x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 }` | Written over the constructed actor's transform, field by field. |
-| `tags` | No tags | Tags carried by the actor from the moment it is attached. |
-| `configure` | — | Runs on the constructed actor after the transform and the tags are applied, before it begins play. |
+| Field       | Default                                             | Meaning                                                                                            |
+| ----------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `type`      | —                                                   | The [actor](/engines/structured-2d/apis/actors/) class constructed.                                |
+| `transform` | `{ x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 }` | Written over the constructed actor's transform, field by field.                                    |
+| `tags`      | No tags                                             | Tags carried by the actor from the moment it is attached.                                          |
+| `configure` | —                                                   | Runs on the constructed actor after the transform and the tags are applied, before it begins play. |
 
 Every actor a level declares exists before any of their `beginPlay` runs, so an
 actor finds its peers there rather than in `configure`.
@@ -58,11 +58,11 @@ interface LoadApi {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `assets` | The [asset loaders](/engines/structured-2d/apis/assets/), resolving under `assetRoot`. |
-| `audio` | Binds a cue name to an audio file. Cue definitions belong to the engine, so a cue loaded here survives every later transition. |
-| `events` | The engine's broadcaster. |
+| Member   | Effect                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `assets` | The [asset loaders](/engines/structured-2d/apis/assets/), resolving under `assetRoot`.                                         |
+| `audio`  | Binds a cue name to an audio file. Cue definitions belong to the engine, so a cue loaded here survives every later transition. |
+| `events` | The engine's broadcaster.                                                                                                      |
 
 The engine awaits `load` before any actor of the level exists, so a component
 receives its image as a plain value.
@@ -107,33 +107,33 @@ interface World {
 }
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `level` | The name the world was opened under. |
-| `mode` | The game mode running this world. |
-| `state` | The game state the mode built. |
-| `camera` | The world's [camera](/engines/structured-2d/apis/camera/). |
-| `collision` | The world's [collision](/engines/structured-2d/apis/collision/) queries and reported pairs. |
-| `time` | Seconds of simulated time the world has been stepped by. Incremented before the controllers tick. |
-| `paused` | Whether the world's simulation is suspended. |
-| `audio` | The cue bus this world plays through. |
-| `assets` | The asset loaders, resolving under `assetRoot`. |
-| `diagnostics` | The world's diagnostic registry. |
-| `events` | The engine's broadcaster. |
-| `spawn` | Constructs the actor, applies `spec`, attaches it to the world, and runs its `beginPlay` and each component's `beginPlay` before returning. Its first `tick` is the next frame. |
-| `actors` | Every live actor, in spawn order, as a copy the caller owns. |
-| `byTag` | The live actors carrying `tag`, in spawn order. |
-| `ofType` | The live actors that are instances of `type`, in spawn order. |
-| `find` | The first entry `ofType` would return, or `null`. |
-| `controllers` | Every [controller](/engines/structured-2d/apis/controllers/), player and AI alike, in the order they were added. |
-| `players` | The player controllers alone, in index order. |
-| `after` | Runs `fn` once, `seconds` of simulated world time from now. |
-| `every` | Runs `fn` every `seconds` of simulated world time, until cleared or the world closes. |
-| `clearTimer` | Cancels the scheduled callback the handle identifies. |
-| `setPaused` | Pauses or resumes the world's simulation. A paused world still renders. |
-| `open` | Requests a transition to `level`. The request is deferred to the end of the frame. |
-| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
-| `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
+| Member        | Semantics                                                                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `level`       | The name the world was opened under.                                                                                                                                            |
+| `mode`        | The game mode running this world.                                                                                                                                               |
+| `state`       | The game state the mode built.                                                                                                                                                  |
+| `camera`      | The world's [camera](/engines/structured-2d/apis/camera/).                                                                                                                      |
+| `collision`   | The world's [collision](/engines/structured-2d/apis/collision/) queries and reported pairs.                                                                                     |
+| `time`        | Seconds of simulated time the world has been stepped by. Incremented before the controllers tick.                                                                               |
+| `paused`      | Whether the world's simulation is suspended.                                                                                                                                    |
+| `audio`       | The cue bus this world plays through.                                                                                                                                           |
+| `assets`      | The asset loaders, resolving under `assetRoot`.                                                                                                                                 |
+| `diagnostics` | The world's diagnostic registry.                                                                                                                                                |
+| `events`      | The engine's broadcaster.                                                                                                                                                       |
+| `spawn`       | Constructs the actor, applies `spec`, attaches it to the world, and runs its `beginPlay` and each component's `beginPlay` before returning. Its first `tick` is the next frame. |
+| `actors`      | Every live actor, in spawn order, as a copy the caller owns.                                                                                                                    |
+| `byTag`       | The live actors carrying `tag`, in spawn order.                                                                                                                                 |
+| `ofType`      | The live actors that are instances of `type`, in spawn order.                                                                                                                   |
+| `find`        | The first entry `ofType` would return, or `null`.                                                                                                                               |
+| `controllers` | Every [controller](/engines/structured-2d/apis/controllers/), player and AI alike, in the order they were added.                                                                |
+| `players`     | The player controllers alone, in index order.                                                                                                                                   |
+| `after`       | Runs `fn` once, `seconds` of simulated world time from now.                                                                                                                     |
+| `every`       | Runs `fn` every `seconds` of simulated world time, until cleared or the world closes.                                                                                           |
+| `clearTimer`  | Cancels the scheduled callback the handle identifies.                                                                                                                           |
+| `setPaused`   | Pauses or resumes the world's simulation. A paused world still renders.                                                                                                         |
+| `open`        | Requests a transition to `level`. The request is deferred to the end of the frame.                                                                                              |
+| `frame`       | The frame counter, the accumulated simulated time, and the most recent delta.                                                                                                   |
+| `viewport`    | The current logical-to-device fit, as a snapshot the caller owns.                                                                                                               |
 
 `world.diagnostics.register` registers a source that lives as long as the world
 and is dropped when the world closes. The game instance's sources persist across
@@ -176,14 +176,14 @@ interface WorldAudio {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `play` | Emits `cue:played` and, when audible, sounds the [cue](/engines/structured-2d/apis/audio/). Playing a cue that was never declared throws, naming the cue. |
-| `loop` | Starts the cue looping if it is not already, emitting `cue:looped` once. Throws for an undeclared cue. |
-| `stop` | Stops the cue's loop if it is looping, emitting `cue:stopped` once. Throws for an undeclared cue. |
-| `looping` | Whether the cue is looping. `false` for an undeclared cue. |
-| `setMuted` | Sets the mute bit. A muted cue still emits its event, reporting `gain: 0`, and every running loop follows the bit live. |
-| `muted` | The current mute bit. |
+| Member     | Effect                                                                                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `play`     | Emits `cue:played` and, when audible, sounds the [cue](/engines/structured-2d/apis/audio/). Playing a cue that was never declared throws, naming the cue. |
+| `loop`     | Starts the cue looping if it is not already, emitting `cue:looped` once. Throws for an undeclared cue.                                                    |
+| `stop`     | Stops the cue's loop if it is looping, emitting `cue:stopped` once. Throws for an undeclared cue.                                                         |
+| `looping`  | Whether the cue is looping. `false` for an undeclared cue.                                                                                                |
+| `setMuted` | Sets the mute bit. A muted cue still emits its event, reporting `gain: 0`, and every running loop follows the bit live.                                   |
+| `muted`    | The current mute bit.                                                                                                                                     |
 
 ## Pausing
 
@@ -229,13 +229,13 @@ object for the start level.
 
 ## What crosses a transition
 
-| Survives | Is rebuilt |
-| --- | --- |
-| The game instance and its fields | The world, its game mode, and its game state |
-| Action bindings, cue definitions, and instance-level assets | Every actor, component, and controller |
-| Subscriptions on `engine.events` | The player states |
-| Instance-level diagnostic sources | World timers and world-level diagnostic sources |
-| The frame counter and accumulated simulated time | `world.time`, which restarts at zero |
+| Survives                                                    | Is rebuilt                                      |
+| ----------------------------------------------------------- | ----------------------------------------------- |
+| The game instance and its fields                            | The world, its game mode, and its game state    |
+| Action bindings, cue definitions, and instance-level assets | Every actor, component, and controller          |
+| Subscriptions on `engine.events`                            | The player states                               |
+| Instance-level diagnostic sources                           | World timers and world-level diagnostic sources |
+| The frame counter and accumulated simulated time            | `world.time`, which restarts at zero            |
 
 The camera is part of the world, so it is rebuilt with it. A value that must
 survive travel lives on the [game
@@ -244,10 +244,10 @@ match lives on the game state.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `engine.world` read before `initialize` resolves | `Error` naming the ordering |
-| `world.audio.play` naming a cue that was never declared | `Error` naming the cue |
+| Condition                                               | Result                      |
+| ------------------------------------------------------- | --------------------------- |
+| `engine.world` read before `initialize` resolves        | `Error` naming the ordering |
+| `world.audio.play` naming a cue that was never declared | `Error` naming the cue      |
 
 A world is reachable once `engine.initialize` resolves, which is the point at
 which the start level's `load` has resolved, its actors have begun play, and its

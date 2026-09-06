@@ -10,14 +10,14 @@ opponent's paddle.
 Although the rules read like the oldest arcade game there is, Carom is its own
 game. Its defining mechanic is **spin**: the motion of a paddle at the instant
 it strikes the ball curves the ball's path afterward, so good play is about
-*shaping* a shot rather than merely blocking it. The two fixed obstacles turn
+_shaping_ a shot rather than merely blocking it. The two fixed obstacles turn
 the open field into a bank-shot puzzle, rewarding players who can read angles a
 couple of bounces ahead.
 
 ## Why it is a benchmark
 
 Carom looks trivial and is deliberately so on the surface — but building a
-version a person would actually *enjoy* is not. A strong implementation has to
+version a person would actually _enjoy_ is not. A strong implementation has to
 deliver smooth real-time rendering, a believable physics loop with spin, a
 competent AI opponent, a local two-player mode, and the menus and state
 transitions that tie a title screen, live gameplay, and a game-over screen
@@ -29,6 +29,6 @@ can be measured.
 
 A run receives the self-contained specification and the rendered reference
 screenshots that act as visual targets — the title screen, gameplay, and the
-game-over screen. The reference *source* mockups are withheld, so the look has
+game-over screen. The reference _source_ mockups are withheld, so the look has
 to be rebuilt from the specification rather than copied. There are no assets to
 provide: Carom's visuals are simple enough to draw entirely in code.

@@ -35,7 +35,7 @@ Four fixtures sit on the board:
   half** on the shipped map). A cache is worth **1** and is consumed when a raider
   eats it.
 - **Large seeds** — **2 per half**, each worth **3**. They are not tiles, they are
-  *objects*: they **move**. See [Large seeds](#large-seeds--the-moving-prize).
+  _objects_: they **move**. See [Large seeds](#large-seeds--the-moving-prize).
 - **Royal jelly nodes** — **2 per half** power nodes. See
   [Royal jelly](#royal-jelly).
 
@@ -62,7 +62,7 @@ controller chooses who pushes across to raid and who stays home to defend, and m
 change that assignment every tick.
 
 The observation gives each agent's current `role` directly, so you never derive
-it yourself — but understanding *why* it flips is the heart of the game.
+it yourself — but understanding _why_ it flips is the heart of the game.
 
 ## Eating, carrying, banking
 
@@ -91,14 +91,14 @@ Two enemies **meet** when they share a tile, **or** when they try to trade tiles
 in the same tick (see [No slipping past a defender](#no-slipping-past-a-defender)).
 
 Because a role is decided purely by which half a tile is on, a meeting is
-*always* one **soldier** (whose half it is) against one enemy **raider**. There is
+_always_ one **soldier** (whose half it is) against one enemy **raider**. There is
 no other pairing. What happens turns only on **royal jelly**:
 
-| | |
-| --- | --- |
-| **Neither is immune** | The **soldier tags the raider**. Home turf wins. |
+|                           |                                                      |
+| ------------------------- | ---------------------------------------------------- |
+| **Neither is immune**     | The **soldier tags the raider**. Home turf wins.     |
 | **Exactly one is immune** | The **immune one tags the other** — whichever it is. |
-| **Both are immune** | **Nothing happens.** They pass the moment by. |
+| **Both are immune**       | **Nothing happens.** They pass the moment by.        |
 
 Put plainly: **an immune ant cannot be killed, and it kills any non-immune enemy
 it meets.** Immunity is not merely a shield — it is a weapon.
@@ -125,7 +125,7 @@ faster than a soldier** — the Pac-Man edge over the ghosts, which is what lets
 colony break a defended line and make progress at all.
 
 Movement uses a **speed accumulator** so speeds can be finer than one tile per
-tick. Each agent earns a fixed amount of *movement charge* per tick and steps one
+tick. Each agent earns a fixed amount of _movement charge_ per tick and steps one
 tile once it has banked a full tile's worth (`W = 8` charge, the **movement
 resolution**). The charge earned per tick is the agent's **speed**:
 
@@ -138,18 +138,18 @@ resolution**). The charge earned per tick is the agent's **speed**:
   floor of `1` (an over-loaded raider crawls but never freezes completely).
 
 The number that drives this is **`load`**, not the number of objects you are
-holding. A **large seed counts as 3** — it is worth 3 *and it weighs 3*.
+holding. A **large seed counts as 3** — it is worth 3 _and it weighs 3_.
 
-| Load | Raider speed (charge/tick) | Versus a soldier (7) |
-| --- | --- | --- |
-| 0–3 | 8 | faster (moves every tick) |
-| 4 | 7 | equal |
-| 5 | 6 | slower by one |
-| 6 | 5 | slower by two |
-| 7 | 4 | half speed (every other tick) |
-| 8 | 3 | … |
-| 9 | 2 | … |
-| 10+ | 1 (floor) | crawling |
+| Load | Raider speed (charge/tick) | Versus a soldier (7)          |
+| ---- | -------------------------- | ----------------------------- |
+| 0–3  | 8                          | faster (moves every tick)     |
+| 4    | 7                          | equal                         |
+| 5    | 6                          | slower by one                 |
+| 6    | 5                          | slower by two                 |
+| 7    | 4                          | half speed (every other tick) |
+| 8    | 3                          | …                             |
+| 9    | 2                          | …                             |
+| 10+  | 1 (floor)                  | crawling                      |
 
 Read the table against a large seed and the tension falls out. A raider carrying
 **nothing but a large seed** sits at load 3 — still light, still outrunning every
@@ -158,7 +158,7 @@ you are at load 4: soldier speed, no edge, and probably caught.
 
 This inverts the usual capture-the-flag question. Hoarding makes a raider slow and
 easy to run down, and a tagged raider loses **everything** it carries. So **load
-is both your score and your vulnerability**: *when to break off and bank* is a
+is both your score and your vulnerability**: _when to break off and bank_ is a
 real, continuous decision, not an afterthought.
 
 The observation tells you, per owned agent, its `load` and whether it
@@ -177,10 +177,10 @@ the other just was). Neither moves.
 
 But the two are then treated as having **met**, and the tagging rule above settles
 it. With no jelly in play that means the defender **catches** the raider as it
-tries to slip past. You can never get *through* a defender by trading places — to
+tries to slip past. You can never get _through_ a defender by trading places — to
 get past one you must go around it, and trying to swap is how you die.
 
-Any *other* head-on swap **resolves** — the two agents pass through each other.
+Any _other_ head-on swap **resolves** — the two agents pass through each other.
 Two **soldiers** meeting at the central seam, or two **raiders** passing as each
 carries a load home, exchange tiles freely, because no tag is at stake.
 
@@ -196,7 +196,7 @@ follows from that.
   cache — it simply walks out from under you.
 - **Nothing but the border stops it.** It keeps walking until it cannot go further
   without crossing, and comes to rest on the **last column of its own half** —
-  right on the seam. It never crosses on its own: a seed is *stolen by a raid*,
+  right on the seam. It never crosses on its own: a seed is _stolen by a raid_,
   never conceded by the clock.
 - **So an ignored large seed becomes nearly free for the enemy.** A seed sitting on
   the seam is one step from an enemy raider, who can take it and bank it by
@@ -229,7 +229,7 @@ Eating a **royal jelly** node grants **the eater** **immunity** for a window of
   standing safely on its own half.
 
 That second clause is the one that changes the game. Jelly is how you punch a heavy
-load home through a defended border, *and* how you break a defender who has parked
+load home through a defended border, _and_ how you break a defender who has parked
 itself on something you want. A defender squatting a seed cache is untouchable
 right up until a raider arrives with jelly running.
 
@@ -262,7 +262,7 @@ A match ends the moment **either** condition is met:
   wins.
 
 A **level score** at the time limit is broken by **efficiency**: the win goes to the
-colony that burned **less total fuel** over the match. Only a level score *and*
+colony that burned **less total fuel** over the match. Only a level score _and_
 level fuel is a true draw. Being wasteful is a way to lose a game you drew.
 
 A controller that crashes (traps), exhausts its per-tick fuel or memory, or emits
@@ -271,25 +271,25 @@ a contract-invalid action **forfeits** the match — see `specs/sandbox.md` and
 
 ## The numbers (shipped defaults)
 
-| Quantity | Value |
-| --- | --- |
-| Board | `32 × 16`, border between cols 15/16 (`border_x = 16`) |
-| Agents per side | 3 (ids 0–2) |
-| Ordinary seed caches per half | 14 (worth 1 each) |
-| Large seeds per half | 2 (worth **and weighing** 3 each) |
-| Total value per half | 20 |
-| Royal jelly nodes per half | 2 |
-| Movement resolution `W` | 8 charge per tile |
-| Soldier speed | 7 charge/tick (just under one tile/tick) |
-| Light raider speed | 8 charge/tick (every tick) for loads 0–3 |
-| Carry penalty | −1 charge/tick per unit of **load** past 3, floored at 1 |
-| Jelly immunity `J` | 40 ticks |
-| Jelly respawn | 1,200 ticks (regrows at the same tile) |
-| Large seed drift `D` | 1 tile per 300 ticks, toward the border |
-| Large seed recall `R` | 150 consecutive ticks standing on it |
-| Large seed recall guard | must have drifted ≥ 3 tiles from spawn |
-| Timestep | 16 ms (fixed, faked) |
-| Max ticks | 37,500 (10 minutes of game time) |
+| Quantity                      | Value                                                    |
+| ----------------------------- | -------------------------------------------------------- |
+| Board                         | `32 × 16`, border between cols 15/16 (`border_x = 16`)   |
+| Agents per side               | 3 (ids 0–2)                                              |
+| Ordinary seed caches per half | 14 (worth 1 each)                                        |
+| Large seeds per half          | 2 (worth **and weighing** 3 each)                        |
+| Total value per half          | 20                                                       |
+| Royal jelly nodes per half    | 2                                                        |
+| Movement resolution `W`       | 8 charge per tile                                        |
+| Soldier speed                 | 7 charge/tick (just under one tile/tick)                 |
+| Light raider speed            | 8 charge/tick (every tick) for loads 0–3                 |
+| Carry penalty                 | −1 charge/tick per unit of **load** past 3, floored at 1 |
+| Jelly immunity `J`            | 40 ticks                                                 |
+| Jelly respawn                 | 1,200 ticks (regrows at the same tile)                   |
+| Large seed drift `D`          | 1 tile per 300 ticks, toward the border                  |
+| Large seed recall `R`         | 150 consecutive ticks standing on it                     |
+| Large seed recall guard       | must have drifted ≥ 3 tiles from spawn                   |
+| Timestep                      | 16 ms (fixed, faked)                                     |
+| Max ticks                     | 37,500 (10 minutes of game time)                         |
 
 These constants are part of the game definition, not levers you can change. They
 are listed so you can plan around them — chiefly the carry-weight speed curve, the

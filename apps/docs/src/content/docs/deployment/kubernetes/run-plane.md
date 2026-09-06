@@ -20,11 +20,11 @@ The dispatcher (`tcab-dispatcher`) claims queued runs, creates one `Job` per run
 watches them, reads a dead driver pod's logs, and deletes the sandbox pods that
 driver orphaned. It creates no pods directly.
 
-| Resource | Verbs | Why |
-| --- | --- | --- |
-| `batch`/`jobs` | `create`, `get`, `list`, `watch`, `delete` | create the per-run driver `Job`, watch it to completion, delete it |
-| `core`/`pods` | `get`, `list`, `delete` | find the `Job`'s driver pod; reap the sandbox pods a `SIGKILL`ed driver could not delete itself (see [sandbox reaping](/components/dispatcher/overview/#sandbox-reaping)) |
-| `core`/`pods/log` | `get` | surface a dead driver pod's logs in the run's failure detail |
+| Resource          | Verbs                                      | Why                                                                                                                                                                       |
+| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `batch`/`jobs`    | `create`, `get`, `list`, `watch`, `delete` | create the per-run driver `Job`, watch it to completion, delete it                                                                                                        |
+| `core`/`pods`     | `get`, `list`, `delete`                    | find the `Job`'s driver pod; reap the sandbox pods a `SIGKILL`ed driver could not delete itself (see [sandbox reaping](/components/dispatcher/overview/#sandbox-reaping)) |
+| `core`/`pods/log` | `get`                                      | surface a dead driver pod's logs in the run's failure detail                                                                                                              |
 
 The `delete` verb is for sandbox pods, not driver pods: the reaper's selector
 pins the driver's `managed-by` label alongside the job id, so it cannot match a
@@ -38,10 +38,10 @@ The driver (`tcab-driver`) runs inside each `Job` and is the trusted process tha
 creates the untrusted sandbox pod. The dispatcher names this `ServiceAccount` on
 every `Job` it creates.
 
-| Resource | Verbs | Why |
-| --- | --- | --- |
-| `core`/`pods` | `create`, `get`, `list`, `delete` | start the sandbox pod, wait for it to be `Running`, delete it when the run ends |
-| `core`/`pods/exec` | `get`, `create` | seed the working tree and run the harness session in the sandbox pod |
+| Resource           | Verbs                             | Why                                                                             |
+| ------------------ | --------------------------------- | ------------------------------------------------------------------------------- |
+| `core`/`pods`      | `create`, `get`, `list`, `delete` | start the sandbox pod, wait for it to be `Running`, delete it when the run ends |
+| `core`/`pods/exec` | `get`, `create`                   | seed the working tree and run the harness session in the sandbox pod            |
 
 Both verbs on `pods/exec` are required. The driver's Kubernetes client execs over
 a WebSocket, which the API server authorizes as a `get` on the subresource;
@@ -66,26 +66,26 @@ backend's run queue, claims a queued run, and creates one driver `Job` for it.
 Keep it at one replica: claims are atomic, so a second replica only duplicates
 work.
 
-| Variable | Required | Purpose | Default |
-| --- | --- | --- | --- |
-| `TCAB_BACKEND_URL` | yes | The backend `Service`, e.g. `http://tcab-backend:8787` | — |
-| `TCAB_BACKEND_SERVICE_TOKEN` | yes | Shared service token authenticating the claim. The backend must carry the same value | — |
-| `TCAB_DRIVER_IMAGE` | yes | The `tcab-driver` image each `Job` runs | — |
-| `TCAB_DISPATCHER_NAMESPACE` | no | Namespace the `Job`s are created in | the dispatcher's own namespace |
-| `TCAB_DISPATCHER_DRIVER_SA` | no | `ServiceAccount` named on every driver `Job` | the namespace default |
-| `TCAB_DISPATCHER_MAX_INFLIGHT` | no | Queue-admission cap on concurrent runs | `8` |
-| `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | Back-off after an empty claim or a full cap | `2` |
-| `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | TTL after which a finished `Job` is garbage-collected | `300` |
-| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container. They keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first, and the memory request is the node's reservation for the driver | `100m` / `2Gi` |
-| `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | A memory limit on the driver container. Unset by default, deliberately: a memory limit is enforced by `SIGKILL`, and a driver OOM-killed mid-run destroys a run that has already paid for its API calls. Set it only when a namespace `LimitRange` or quota forces one | — |
-| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU limit on the driver container. The post-run toolchain sizes its worker pools from the CPU the container is allowed, so without a limit a large node multiplies the driver's memory footprint. Over-limit CPU is throttled, never killed. A blank value leaves the CPU unbounded | `2` |
-| `TCAB_DISPATCHER_DRIVER_SECRETS` | no | Comma-separated `Secret` names mounted into each driver `Job` with `envFrom`, carrying the harness API keys | — |
-| `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET` | no | `Secret` of harness subscription credential files, mounted read-only into each driver `Job` | — |
-| `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` | no | Where that Secret is mounted, forwarded to the driver | `/var/run/tcab/subscription` |
-| `TCAB_DISPATCHER_DRIVER_AUTH_MODE` | no | Locks the harness auth mode for every run (`auto`, `subscription`, `api-key`) | per-run selection |
-| `TCAB_PUBLISHER_IMAGE` | no | The `tcab-publisher` image each publish `Job` runs. Unset disables the publish path | — |
-| `TCAB_DISPATCHER_PUBLISHER_SECRETS` | no | Comma-separated `Secret` names mounted into each publish `Job` with `envFrom` | — |
-| `TCAB_DISPATCHER_PUBLISHER_CPU_REQUEST` / `_MEMORY_REQUEST` / `_MEMORY_LIMIT` | no | Requests and the memory limit on each publish `Job`'s container. A publisher runs no toolchain, so `TCAB_DISPATCHER_PUBLISHER_CPU_LIMIT` is unset | `100m` / `1Gi` / `1Gi` |
+| Variable                                                                      | Required | Purpose                                                                                                                                                                                                                                                                                 | Default                        |
+| ----------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `TCAB_BACKEND_URL`                                                            | yes      | The backend `Service`, e.g. `http://tcab-backend:8787`                                                                                                                                                                                                                                  | —                              |
+| `TCAB_BACKEND_SERVICE_TOKEN`                                                  | yes      | Shared service token authenticating the claim. The backend must carry the same value                                                                                                                                                                                                    | —                              |
+| `TCAB_DRIVER_IMAGE`                                                           | yes      | The `tcab-driver` image each `Job` runs                                                                                                                                                                                                                                                 | —                              |
+| `TCAB_DISPATCHER_NAMESPACE`                                                   | no       | Namespace the `Job`s are created in                                                                                                                                                                                                                                                     | the dispatcher's own namespace |
+| `TCAB_DISPATCHER_DRIVER_SA`                                                   | no       | `ServiceAccount` named on every driver `Job`                                                                                                                                                                                                                                            | the namespace default          |
+| `TCAB_DISPATCHER_MAX_INFLIGHT`                                                | no       | Queue-admission cap on concurrent runs                                                                                                                                                                                                                                                  | `8`                            |
+| `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS`                                       | no       | Back-off after an empty claim or a full cap                                                                                                                                                                                                                                             | `2`                            |
+| `TCAB_DISPATCHER_JOB_TTL_SECONDS`                                             | no       | TTL after which a finished `Job` is garbage-collected                                                                                                                                                                                                                                   | `300`                          |
+| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST`                      | no       | Requests on the driver container. They keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first, and the memory request is the node's reservation for the driver                                                                                 | `100m` / `2Gi`                 |
+| `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT`                                         | no       | A memory limit on the driver container. Unset by default, deliberately: a memory limit is enforced by `SIGKILL`, and a driver OOM-killed mid-run destroys a run that has already paid for its API calls. Set it only when a namespace `LimitRange` or quota forces one                  | —                              |
+| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT`                                            | no       | The CPU limit on the driver container. The post-run toolchain sizes its worker pools from the CPU the container is allowed, so without a limit a large node multiplies the driver's memory footprint. Over-limit CPU is throttled, never killed. A blank value leaves the CPU unbounded | `2`                            |
+| `TCAB_DISPATCHER_DRIVER_SECRETS`                                              | no       | Comma-separated `Secret` names mounted into each driver `Job` with `envFrom`, carrying the harness API keys                                                                                                                                                                             | —                              |
+| `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET`                                  | no       | `Secret` of harness subscription credential files, mounted read-only into each driver `Job`                                                                                                                                                                                             | —                              |
+| `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR`                                     | no       | Where that Secret is mounted, forwarded to the driver                                                                                                                                                                                                                                   | `/var/run/tcab/subscription`   |
+| `TCAB_DISPATCHER_DRIVER_AUTH_MODE`                                            | no       | Locks the harness auth mode for every run (`auto`, `subscription`, `api-key`)                                                                                                                                                                                                           | per-run selection              |
+| `TCAB_PUBLISHER_IMAGE`                                                        | no       | The `tcab-publisher` image each publish `Job` runs. Unset disables the publish path                                                                                                                                                                                                     | —                              |
+| `TCAB_DISPATCHER_PUBLISHER_SECRETS`                                           | no       | Comma-separated `Secret` names mounted into each publish `Job` with `envFrom`                                                                                                                                                                                                           | —                              |
+| `TCAB_DISPATCHER_PUBLISHER_CPU_REQUEST` / `_MEMORY_REQUEST` / `_MEMORY_LIMIT` | no       | Requests and the memory limit on each publish `Job`'s container. A publisher runs no toolchain, so `TCAB_DISPATCHER_PUBLISHER_CPU_LIMIT` is unset                                                                                                                                       | `100m` / `1Gi` / `1Gi`         |
 
 The dispatcher also forwards a set of variables into each `Job` verbatim without
 interpreting them: `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_SERVICE_ACCOUNT`,

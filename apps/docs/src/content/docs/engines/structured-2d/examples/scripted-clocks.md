@@ -14,10 +14,10 @@ surface is read off `engine.debug`.
 
 ## The three clocks
 
-| Clock | Each frame is worth |
-| --- | --- |
-| `ConstantClock(stepMs)` | `stepMs`, every frame |
-| `SequenceClock(stepsMs)` | the next entry, repeating from the start |
+| Clock                             | Each frame is worth                                                  |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `ConstantClock(stepMs)`           | `stepMs`, every frame                                                |
+| `SequenceClock(stepsMs)`          | the next entry, repeating from the start                             |
 | `JitterClock(minMs, maxMs, seed)` | a draw from the range, as a function of the seed and the frame index |
 
 A seeded draw replays exactly, so two engines given the same seed take the same
@@ -245,13 +245,13 @@ to have run at three step sizes rather than three times at one.
 These are the figures a validator asserts on, because a build that integrates
 against the delta it is given produces them whatever the clock delivered.
 
-| Figure | Why it holds |
-| --- | --- |
-| The event count | One overlap begins once, whichever frame finds it |
-| The score and the orbs left | Both follow from the event count |
-| The order of events | The frame order is fixed, so a collection precedes what it caused |
-| Elapsed simulated time | `advanceMs` stops at the target, overshooting by at most one step |
-| A position, as a band | The travel is the same, and the band absorbs one step of it |
+| Figure                      | Why it holds                                                      |
+| --------------------------- | ----------------------------------------------------------------- |
+| The event count             | One overlap begins once, whichever frame finds it                 |
+| The score and the orbs left | Both follow from the event count                                  |
+| The order of events         | The frame order is fixed, so a collection precedes what it caused |
+| Elapsed simulated time      | `advanceMs` stops at the target, overshooting by at most one step |
+| A position, as a band       | The travel is the same, and the band absorbs one step of it       |
 
 A position compared for equality across two step sizes is a check of the step
 size rather than of the build. The band is one step of travel at the widest step

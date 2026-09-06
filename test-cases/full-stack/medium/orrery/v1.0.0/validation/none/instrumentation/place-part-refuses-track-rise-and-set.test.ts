@@ -75,7 +75,11 @@ it("throws on track, rise and set, and places nothing", async () => {
     if (!threw) {
       fail(
         `a thrown Error (placePart with a kind of ${entry.kind}, which has place${
-          entry.kind === "track" ? "Track" : entry.kind === "rise" ? "Rise" : "Set"
+          entry.kind === "track"
+            ? "Track"
+            : entry.kind === "rise"
+              ? "Rise"
+              : "Set"
         } of its own)`,
         "the call returned without throwing",
       );

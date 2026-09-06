@@ -151,7 +151,10 @@ export class Ball extends Actor {
   velocity: Vec3 = vec3(BALL_SPEED, BALL_SPEED * 0.4, 0);
 
   tick(dt: number): void {
-    this.transform.position = add(this.transform.position, scale(this.velocity, dt));
+    this.transform.position = add(
+      this.transform.position,
+      scale(this.velocity, dt),
+    );
 
     const { y } = this.transform.position;
     if (y < -COURT.halfHeight || y > COURT.halfHeight) {
@@ -297,7 +300,12 @@ export class Tank extends Actor {
 
     this.turret = this.attach(
       new MeshComponent({
-        geometry: { kind: "cylinder", radiusTop: 0.6, radiusBottom: 0.6, height: 0.5 },
+        geometry: {
+          kind: "cylinder",
+          radiusTop: 0.6,
+          radiusBottom: 0.6,
+          height: 0.5,
+        },
         material: { color: PALETTE.turret },
       }),
     );
@@ -309,7 +317,10 @@ export class Tank extends Actor {
   }
 
   muzzle(): Vec3 {
-    return transformPoint(this.turret.worldTransform(), vec3(0, 0, -TANK.barrel));
+    return transformPoint(
+      this.turret.worldTransform(),
+      vec3(0, 0, -TANK.barrel),
+    );
   }
 }
 ```

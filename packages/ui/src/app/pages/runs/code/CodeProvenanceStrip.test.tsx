@@ -45,10 +45,14 @@ describe("CodeProvenanceStrip", () => {
   // The authored set falling back to the whole tree counts the seeded scaffolding as
   // the model's own work. Nothing in a size figure shows it, so the strip has to.
   it("names a degraded authored set as degraded, in words", () => {
-    render(<CodeProvenanceStrip summary={summary({ authoredBasis: "allFiles" })} />);
+    render(
+      <CodeProvenanceStrip summary={summary({ authoredBasis: "allFiles" })} />,
+    );
     expect(screen.getByText("Degraded")).toBeInTheDocument();
     expect(
-      screen.getByText(/seeded scaffolding is counted as the model's own work/i),
+      screen.getByText(
+        /seeded scaffolding is counted as the model's own work/i,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Not comparable with runs measured from a seed commit/i),
@@ -57,7 +61,9 @@ describe("CodeProvenanceStrip", () => {
 
   it("distinguishes an inferred basis from an exact one", () => {
     render(
-      <CodeProvenanceStrip summary={summary({ authoredBasis: "rootCommit" })} />,
+      <CodeProvenanceStrip
+        summary={summary({ authoredBasis: "rootCommit" })}
+      />,
     );
     expect(screen.getByText("Inferred")).toBeInTheDocument();
   });
@@ -72,7 +78,9 @@ describe("CodeProvenanceStrip", () => {
     );
     expect(screen.getByText("Post-validation")).toBeInTheDocument();
     expect(
-      screen.getByText(/build output, a rewritten lockfile and toolchain caches/i),
+      screen.getByText(
+        /build output, a rewritten lockfile and toolchain caches/i,
+      ),
     ).toBeInTheDocument();
   });
 

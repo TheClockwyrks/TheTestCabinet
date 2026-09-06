@@ -18,11 +18,11 @@ interface GameDefinition<D = unknown> {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `instance` | `GameInstance` | The class constructed once and kept across every level. Its `initialize` fixes `D`, the debug surface. |
-| `levels` | — | The level registry, keyed by level name. At least one entry. |
-| `startLevel` | — | The level `engine.initialize` opens. A key of `levels`. |
+| Field        | Default        | Meaning                                                                                                |
+| ------------ | -------------- | ------------------------------------------------------------------------------------------------------ |
+| `instance`   | `GameInstance` | The class constructed once and kept across every level. Its `initialize` fixes `D`, the debug surface. |
+| `levels`     | —              | The level registry, keyed by level name. At least one entry.                                           |
+| `startLevel` | —              | The level `engine.initialize` opens. A key of `levels`.                                                |
 
 The definition is what
 [`EngineOptions.game`](/engines/structured-2d/apis/engine/) carries, and one
@@ -50,12 +50,12 @@ class GameInstance<D = unknown> {
 }
 ```
 
-| Member | Called |
-| --- | --- |
-| `initialize` | Once, before the start level opens. Returns the debug surface. |
-| `worldOpened` | After each world's game mode has begun play. |
-| `worldClosing` | Before each world's actors end play. |
-| `shutdown` | Once, from `engine.destroy`. |
+| Member         | Called                                                         |
+| -------------- | -------------------------------------------------------------- |
+| `initialize`   | Once, before the start level opens. Returns the debug surface. |
+| `worldOpened`  | After each world's game mode has begun play.                   |
+| `worldClosing` | Before each world's actors end play.                           |
+| `shutdown`     | Once, from `engine.destroy`.                                   |
 
 A game supplies its own subclass through `GameDefinition.instance`. The class
 takes no constructor arguments, and the engine constructs it with none. Omitting
@@ -140,7 +140,9 @@ class Arcade extends GameInstance<Debug> {
         velocity.x = vx;
         velocity.y = vy;
       },
-      snapshot: () => ({ score: (this.engine.world.state as ArenaState).score }),
+      snapshot: () => ({
+        score: (this.engine.world.state as ArenaState).score,
+      }),
     };
   }
 }
@@ -200,11 +202,11 @@ the engine awaits before any actor of that level exists.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `initialize` throws or rejects | `engine.initialize` rejects with the cause, and no frame runs |
-| `initialize` returns `undefined` | `engine.initialize` rejects with an `Error` naming the debug surface, and no frame runs |
-| `engine.debug` read before `engine.initialize` resolves | `Error` naming the ordering |
+| Condition                                               | Result                                                                                  |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `initialize` throws or rejects                          | `engine.initialize` rejects with the cause, and no frame runs                           |
+| `initialize` returns `undefined`                        | `engine.initialize` rejects with an `Error` naming the debug surface, and no frame runs |
+| `engine.debug` read before `engine.initialize` resolves | `Error` naming the ordering                                                             |
 
 A failure here reaches the caller that built the engine, so a build reports a
 missing asset or a bad binding at the point it was asked for rather than as a

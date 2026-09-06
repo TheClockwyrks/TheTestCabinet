@@ -48,7 +48,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -158,13 +160,25 @@ it("refuses a rise or set covering a sigil's, another rise's, or a set's footpri
   );
   assertEqual(afterRiseOverSet, 3, "that refusal added no part");
 
-  assertEqual(secondClear, false, "the second rise is placed where no footprint reaches");
+  assertEqual(
+    secondClear,
+    false,
+    "the second rise is placed where no footprint reaches",
+  );
 
   const snapshot = await h.snapshot();
   assertEqual(partById(snapshot, bind)?.kind, "bind", "the sigil still stands");
-  assertEqual(partById(snapshot, rise)?.kind, "rise", "the first rise still stands");
+  assertEqual(
+    partById(snapshot, rise)?.kind,
+    "rise",
+    "the first rise still stands",
+  );
   assertEqual(partById(snapshot, product)?.kind, "set", "the set still stands");
-  assertEqual(partById(snapshot, second)?.kind, "rise", "the second rise stands clear");
+  assertEqual(
+    partById(snapshot, second)?.kind,
+    "rise",
+    "the second rise stands clear",
+  );
   assertEqual(
     (await partIds(h)).length,
     4,

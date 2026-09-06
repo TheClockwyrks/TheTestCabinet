@@ -9,11 +9,11 @@ accepts once play begins is in `specs/foundations.md`, `specs/tableau.md`, and
 
 One standard deck of `DECK_SIZE` (`52`) cards.
 
-| Part | Values |
-| --- | --- |
-| Suits | `SUITS`, the four suits `spades`, `hearts`, `diamonds`, and `clubs` |
-| Ranks | Whole numbers from `RANK_MIN` (`1`, the Ace) to `RANK_MAX` (`13`, the King) |
-| Colors | Hearts and diamonds are red; spades and clubs are black |
+| Part   | Values                                                                      |
+| ------ | --------------------------------------------------------------------------- |
+| Suits  | `SUITS`, the four suits `spades`, `hearts`, `diamonds`, and `clubs`         |
+| Ranks  | Whole numbers from `RANK_MIN` (`1`, the Ace) to `RANK_MAX` (`13`, the King) |
+| Colors | Hearts and diamonds are red; spades and clubs are black                     |
 
 Each of the fifty-two suit-and-rank pairs appears in the deck exactly once. Ace
 is the low rank and King the high one, and a card's rank orders it against every

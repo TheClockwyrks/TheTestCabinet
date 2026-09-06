@@ -42,7 +42,12 @@ export const DEFAULT_SEED = 1;
 
 /** The screens the state machine moves between. */
 export type Screen =
-  "title" | "howto" | "select" | "playing" | "solved" | "complete";
+  | "title"
+  | "howto"
+  | "select"
+  | "playing"
+  | "solved"
+  | "complete";
 
 /** The two ways to play, chosen from the title menu. */
 export type Mode = "campaign" | "cascade";

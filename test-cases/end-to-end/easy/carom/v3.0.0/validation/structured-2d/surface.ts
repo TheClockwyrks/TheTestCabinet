@@ -62,7 +62,12 @@ export const DEFAULT_SEED = 1;
 
 /** The screens the state machine moves between. */
 export type Screen =
-  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
+  | "title"
+  | "howto"
+  | "countdown"
+  | "playing"
+  | "paused"
+  | "matchover";
 
 /** The two screens a pause can resume to, which `resumeScreen` holds. */
 export type ResumeScreen = "countdown" | "playing";

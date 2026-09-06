@@ -55,12 +55,12 @@ type's settings panel in the [configuration](/gg/configurations/) editor, and
 the agent-type selector is its switch. Four parameters are read, and a
 profile that enables the capability writes all four:
 
-| Param | Meaning |
-| --- | --- |
-| `language` | The program language this agent writes in. |
-| `timeoutSecs` | Guest-execution ceiling for one program, in seconds. A fraction is honoured. |
-| `maxMemoryBytes` | Guest linear-memory ceiling for one program, as a whole number of bytes. |
-| `docViewTypes` | Which SDK types opening a function's documentation opens beside it, as independent toggles keyed `return`, `parameters` and `errors`. `true` opens all three, `false` opens none, and an object names each of the three. |
+| Param            | Meaning                                                                                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `language`       | The program language this agent writes in.                                                                                                                                                                               |
+| `timeoutSecs`    | Guest-execution ceiling for one program, in seconds. A fraction is honoured.                                                                                                                                             |
+| `maxMemoryBytes` | Guest linear-memory ceiling for one program, as a whole number of bytes.                                                                                                                                                 |
+| `docViewTypes`   | Which SDK types opening a function's documentation opens beside it, as independent toggles keyed `return`, `parameters` and `errors`. `true` opens all three, `false` opens none, and an object names each of the three. |
 
 The four of them are what a responses-as-code arm is, so each is read off the
 profile and none is chosen for it. Neither numeric param is clamped.

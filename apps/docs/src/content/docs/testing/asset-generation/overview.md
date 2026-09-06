@@ -56,20 +56,20 @@ produces. `asset_kind` is a property of the whole version. A case is exactly one
 kind and a variant cannot change it. No kind carries a target image: every kind
 is reviewed against the brief.
 
-| `asset_kind` | What the model produces | Binaries |
-| --- | --- | --- |
-| `sprite` (default) | one small pixel image drawn onto the whole canvas | [`draw`](/testing/asset-generation/sprite-binaries/) |
-| `sprite-sheet` | a set of animation frames, each its own file | [`draw-sheet`](/testing/asset-generation/sprite-binaries/) |
-| `ui` | a high-resolution interface asset or kit of elements | [`paint`, `ui`](/testing/asset-generation/ui-binaries/) |
-| `material` | a tileable PBR material | [`texture`, `pbr`](/testing/asset-generation/material-binaries/) |
-| `voxel-model` / `voxel-animation` | a cube-voxel volume, static or rigged | [`voxel`, `voxel-anim`](/testing/asset-generation/voxel-binaries/) |
-| `mc-model` / `mc-animation` | a low-poly meshed surface, static or rigged | [`mc`, `mc-anim`](/testing/asset-generation/mesh-binaries/) |
-| `sn-model` / `sn-animation` | a smooth meshed surface, static or rigged | [`sn`, `sn-anim`](/testing/asset-generation/mesh-binaries/) |
-| `dc-model` / `dc-animation` | a sharp-edged meshed surface, static or rigged | [`dc`, `dc-anim`](/testing/asset-generation/mesh-binaries/) |
-| `mc-skinned` / `sn-skinned` / `dc-skinned` | a skinned character that deforms across its joints | [`mc-skin`, `sn-skin`, `dc-skin`](/testing/asset-generation/skinned-binaries/) |
-| `blender-character` / `blender-prop` / `blender-mechanism` | a native glTF authored in headless Blender | [`tcab-blend`](/testing/asset-generation/blender-binaries/) |
-| `particle-2d` / `particle-3d` | a live-simulated particle effect | [`particle-2d`, `particle-3d`](/testing/asset-generation/particle-binaries/) |
-| `sfx-synth` / `sfx-sample` / `music` | a rendered PCM audio clip | [`sfx-synth`, `sfx-sample`, `music`](/testing/asset-generation/audio-binaries/) |
+| `asset_kind`                                               | What the model produces                              | Binaries                                                                        |
+| ---------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `sprite` (default)                                         | one small pixel image drawn onto the whole canvas    | [`draw`](/testing/asset-generation/sprite-binaries/)                            |
+| `sprite-sheet`                                             | a set of animation frames, each its own file         | [`draw-sheet`](/testing/asset-generation/sprite-binaries/)                      |
+| `ui`                                                       | a high-resolution interface asset or kit of elements | [`paint`, `ui`](/testing/asset-generation/ui-binaries/)                         |
+| `material`                                                 | a tileable PBR material                              | [`texture`, `pbr`](/testing/asset-generation/material-binaries/)                |
+| `voxel-model` / `voxel-animation`                          | a cube-voxel volume, static or rigged                | [`voxel`, `voxel-anim`](/testing/asset-generation/voxel-binaries/)              |
+| `mc-model` / `mc-animation`                                | a low-poly meshed surface, static or rigged          | [`mc`, `mc-anim`](/testing/asset-generation/mesh-binaries/)                     |
+| `sn-model` / `sn-animation`                                | a smooth meshed surface, static or rigged            | [`sn`, `sn-anim`](/testing/asset-generation/mesh-binaries/)                     |
+| `dc-model` / `dc-animation`                                | a sharp-edged meshed surface, static or rigged       | [`dc`, `dc-anim`](/testing/asset-generation/mesh-binaries/)                     |
+| `mc-skinned` / `sn-skinned` / `dc-skinned`                 | a skinned character that deforms across its joints   | [`mc-skin`, `sn-skin`, `dc-skin`](/testing/asset-generation/skinned-binaries/)  |
+| `blender-character` / `blender-prop` / `blender-mechanism` | a native glTF authored in headless Blender           | [`tcab-blend`](/testing/asset-generation/blender-binaries/)                     |
+| `particle-2d` / `particle-3d`                              | a live-simulated particle effect                     | [`particle-2d`, `particle-3d`](/testing/asset-generation/particle-binaries/)    |
+| `sfx-synth` / `sfx-sample` / `music`                       | a rendered PCM audio clip                            | [`sfx-synth`, `sfx-sample`, `music`](/testing/asset-generation/audio-binaries/) |
 
 ## 2D pixel assets
 

@@ -17,13 +17,13 @@ interface Transform {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `x` | `0` | Position along the world's horizontal axis, in world units. |
-| `y` | `0` | Position along the world's vertical axis, in world units. |
-| `rotation` | `0` | Radians, clockwise, with `0` pointing along `+x`. |
-| `scaleX` | `1` | Scale along the horizontal axis. |
-| `scaleY` | `1` | Scale along the vertical axis. |
+| Field      | Default | Meaning                                                     |
+| ---------- | ------- | ----------------------------------------------------------- |
+| `x`        | `0`     | Position along the world's horizontal axis, in world units. |
+| `y`        | `0`     | Position along the world's vertical axis, in world units.   |
+| `rotation` | `0`     | Radians, clockwise, with `0` pointing along `+x`.           |
+| `scaleX`   | `1`     | Scale along the horizontal axis.                            |
+| `scaleY`   | `1`     | Scale along the vertical axis.                              |
 
 A `Partial<Transform>` on an `ActorSpec` or a `SpawnSpec` fills its absent
 fields from these defaults.
@@ -60,25 +60,25 @@ class Actor {
 }
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `world` | The world the actor belongs to. Assigned after construction and before `beginPlay`. |
-| `id` | Unique within the world, assigned in spawn order from `1`. |
-| `transform` | The actor's own position, rotation, and scale, in world units. Mutable in place. |
-| `components` | The attached components, in attachment order. |
-| `tags` | The tags the actor carries. |
-| `alive` | `false` from the moment `destroy` is called. |
-| `tickEnabled` | Defaults to `true`. A `false` actor and its components skip their tick. |
-| `tickWhenPaused` | Defaults to `false`. A `true` actor ticks with its components while the world is paused. |
-| `beginPlay` | Runs once, after the actor has a world. |
-| `tick` | Runs once per frame, with the frame's delta in seconds. |
-| `endPlay` | Runs once, when the actor is destroyed or when its world closes. |
-| `attach` | Attaches the component and returns it. Attaching after `beginPlay` runs the component's `beginPlay` before returning. |
-| `detach` | Runs the component's `endPlay("destroyed")` and removes it. |
-| `component` | The first attached component that is an instance of `type`, or `null`. |
-| `componentsOf` | Every attached component that is an instance of `type`, in attachment order. |
-| `addTag` / `removeTag` / `hasTag` | The tag calls. |
-| `destroy` | Marks the actor. `alive` becomes `false` at once, and the actor leaves the world at the end of the frame. |
+| Member                            | Semantics                                                                                                             |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `world`                           | The world the actor belongs to. Assigned after construction and before `beginPlay`.                                   |
+| `id`                              | Unique within the world, assigned in spawn order from `1`.                                                            |
+| `transform`                       | The actor's own position, rotation, and scale, in world units. Mutable in place.                                      |
+| `components`                      | The attached components, in attachment order.                                                                         |
+| `tags`                            | The tags the actor carries.                                                                                           |
+| `alive`                           | `false` from the moment `destroy` is called.                                                                          |
+| `tickEnabled`                     | Defaults to `true`. A `false` actor and its components skip their tick.                                               |
+| `tickWhenPaused`                  | Defaults to `false`. A `true` actor ticks with its components while the world is paused.                              |
+| `beginPlay`                       | Runs once, after the actor has a world.                                                                               |
+| `tick`                            | Runs once per frame, with the frame's delta in seconds.                                                               |
+| `endPlay`                         | Runs once, when the actor is destroyed or when its world closes.                                                      |
+| `attach`                          | Attaches the component and returns it. Attaching after `beginPlay` runs the component's `beginPlay` before returning. |
+| `detach`                          | Runs the component's `endPlay("destroyed")` and removes it.                                                           |
+| `component`                       | The first attached component that is an instance of `type`, or `null`.                                                |
+| `componentsOf`                    | Every attached component that is an instance of `type`, in attachment order.                                          |
+| `addTag` / `removeTag` / `hasTag` | The tag calls.                                                                                                        |
+| `destroy`                         | Marks the actor. `alive` becomes `false` at once, and the actor leaves the world at the end of the frame.             |
 
 The base class's `beginPlay`, `tick`, and `endPlay` do nothing, so a subclass
 overrides only what it needs.
@@ -100,7 +100,11 @@ defaults; anything that reads `this.world` or another actor belongs in
 `beginPlay`.
 
 ```ts
-import { Actor, ColliderComponent, ShapeComponent } from "@clockwyrks/structured-2d";
+import {
+  Actor,
+  ColliderComponent,
+  ShapeComponent,
+} from "@clockwyrks/structured-2d";
 import { LAYER, PADDLE, PALETTE, TAGS } from "./constants";
 
 export class Paddle extends Actor {
@@ -244,11 +248,11 @@ class Pawn extends Actor {
 }
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `controller` | The controller holding this pawn, or `null`. |
+| Member        | Semantics                                          |
+| ------------- | -------------------------------------------------- |
+| `controller`  | The controller holding this pawn, or `null`.       |
 | `possessedBy` | Notification that `controller` has taken the pawn. |
-| `unpossessed` | Notification that the pawn has been released. |
+| `unpossessed` | Notification that the pawn has been released.      |
 
 `possessedBy` and `unpossessed` are notifications; possession itself is the
 controller's call, and the base implementations do nothing. A pawn is an actor
@@ -258,8 +262,8 @@ what possession buys.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A `beginPlay` throws while the start level is built | `engine.initialize` rejects with the cause |
-| A `tick` throws under `run` | The error propagates to the host, and the loop schedules the next frame |
-| A `tick` throws under `advance` | `advance` rejects with the cause, and the remaining frames do not run |
+| Condition                                           | Result                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------- |
+| A `beginPlay` throws while the start level is built | `engine.initialize` rejects with the cause                              |
+| A `tick` throws under `run`                         | The error propagates to the host, and the loop schedules the next frame |
+| A `tick` throws under `advance`                     | `advance` rejects with the cause, and the remaining frames do not run   |

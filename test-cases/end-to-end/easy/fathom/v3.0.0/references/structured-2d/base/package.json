@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Fathom \u2014 a bioluminescent deep-sea maze chase, built on the Structured 2D engine, that runs entirely in the browser.",
+  "description": "Fathom — a bioluminescent deep-sea maze chase, built on the Structured 2D engine, that runs entirely in the browser.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",

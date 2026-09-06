@@ -75,7 +75,9 @@ function run(text: string) {
 function row(key: string): string[] {
   const cell = screen.getByRole("cell", { name: key });
   const tr = cell.closest("tr");
-  return [...(tr?.querySelectorAll("td") ?? [])].map((td) => td.textContent ?? "");
+  return [...(tr?.querySelectorAll("td") ?? [])].map(
+    (td) => td.textContent ?? "",
+  );
 }
 
 describe("the denominator", () => {
@@ -110,8 +112,12 @@ describe("absent is not zero", () => {
 describe("bucket keys", () => {
   it("renders a date-histogram key as a timestamp, not as epoch milliseconds", () => {
     run("| stats count() by bucket(started, 1d)");
-    expect(screen.getByRole("cell", { name: "2026-07-01 00:00" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "2026-07-03 00:00" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("cell", { name: "2026-07-01 00:00" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("cell", { name: "2026-07-03 00:00" }),
+    ).toBeInTheDocument();
   });
 
   it("draws a date histogram chronologically", () => {

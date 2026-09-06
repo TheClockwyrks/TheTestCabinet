@@ -2,38 +2,22 @@
   "parts": [
     {
       "name": "base",
-      "pivot": [
-        12,
-        0,
-        11
-      ]
+      "pivot": [12, 0, 11]
     },
     {
       "name": "post",
       "parent": "base",
-      "pivot": [
-        12,
-        6,
-        11
-      ]
+      "pivot": [12, 6, 11]
     },
     {
       "name": "collar",
       "parent": "post",
-      "pivot": [
-        12,
-        35,
-        11
-      ]
+      "pivot": [12, 35, 11]
     },
     {
       "name": "drum",
       "parent": "post",
-      "pivot": [
-        12,
-        42,
-        11
-      ]
+      "pivot": [12, 42, 11]
     }
   ],
   "joints": [
@@ -42,11 +26,7 @@
       "part": "drum",
       "kind": "rotation",
       "axis": "z",
-      "pivot": [
-        12,
-        42,
-        11
-      ],
+      "pivot": [12, 42, 11],
       "min": -1000.0,
       "max": 1000.0,
       "rest": 0.0,

@@ -14,12 +14,12 @@ built-in component draws; this page covers the pipeline that draws them.
 type RenderMode = "shaded" | "wireframe" | "unlit" | "silhouette";
 ```
 
-| Mode | Draws |
-| --- | --- |
-| `shaded` | The full picture: fills, strokes, images, text, tint, and opacity. The default. |
-| `wireframe` | Each component's outline alone, at one stroke width, with images reduced to their bounds. |
-| `unlit` | Fills and images at full opacity with every tint dropped. |
-| `silhouette` | Each component filled flat in its layer's color, in layer order. |
+| Mode         | Draws                                                                                     |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| `shaded`     | The full picture: fills, strokes, images, text, tint, and opacity. The default.           |
+| `wireframe`  | Each component's outline alone, at one stroke width, with images reduced to their bounds. |
+| `unlit`      | Fills and images at full opacity with every tint dropped.                                 |
+| `silhouette` | Each component filled flat in its layer's color, in layer order.                          |
 
 The mode belongs to the pipeline and applies to every component it draws, so
 every game has all four modes available.
@@ -35,12 +35,12 @@ interface Renderer {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `mode` | The mode in force, `shaded` until it is set. |
-| `setMode` | Sets the mode. The next frame the pipeline runs draws under it. |
-| `collisionOverlay` | Whether the collision overlay draws. |
-| `setCollisionOverlay` | Turns the collision overlay on or off. |
+| Member                | Effect                                                          |
+| --------------------- | --------------------------------------------------------------- |
+| `mode`                | The mode in force, `shaded` until it is set.                    |
+| `setMode`             | Sets the mode. The next frame the pipeline runs draws under it. |
+| `collisionOverlay`    | Whether the collision overlay draws.                            |
+| `setCollisionOverlay` | Turns the collision overlay on or off.                          |
 
 The renderer is reached as `engine.renderer` and is available from
 construction, so whoever holds the engine drives both switches.
@@ -142,14 +142,14 @@ abstract class DrawComponent extends RenderComponent {
 }
 ```
 
-| Member | Meaning |
-| --- | --- |
-| `ctx` | The 2D context, already carrying the transform of the component's `space`. |
-| `mode` | The mode in force for this frame. |
-| `space` | The component's space: `world` for the world-to-device transform, `screen` for the viewport alone. |
-| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
-| `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `camera` | The camera's position, zoom, and rotation for this frame. |
+| Member     | Meaning                                                                                            |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| `ctx`      | The 2D context, already carrying the transform of the component's `space`.                         |
+| `mode`     | The mode in force for this frame.                                                                  |
+| `space`    | The component's space: `world` for the world-to-device transform, `screen` for the viewport alone. |
+| `frame`    | The frame counter, the accumulated simulated time, and the most recent delta.                      |
+| `viewport` | The current logical-to-device fit, as a snapshot the caller owns.                                  |
+| `camera`   | The camera's position, zoom, and rotation for this frame.                                          |
 
 `DrawComponent` is the direct-drawing path, for a case that measures the drawing
 itself. The engine calls `draw` in the component's place in the layer order,

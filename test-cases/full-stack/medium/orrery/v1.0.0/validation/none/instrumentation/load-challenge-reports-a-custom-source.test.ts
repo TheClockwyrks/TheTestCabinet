@@ -74,7 +74,10 @@ it("reports custom with a null index for a loaded document, and the mode and ind
 
   await openChallenge(h, "campaign", 0);
   const campaign = (await h.snapshot()).challenge;
-  assertNotNull(campaign, "a shipped challenge opened after a custom one is open");
+  assertNotNull(
+    campaign,
+    "a shipped challenge opened after a custom one is open",
+  );
   assertEqual(
     campaign?.source,
     "campaign",

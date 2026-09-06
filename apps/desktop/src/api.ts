@@ -155,8 +155,7 @@ export const tournamentDoneChannel = (id: string) => `tournament://${id}/done`;
 // auth method, API key, and subscription files each run's harness authenticates
 // with. Each mutating call returns the refreshed list, so the UI updates in one
 // round-trip. Mirrors `crates/desktop/src/harness_auth.rs`.
-export const listHarnessAuth = () =>
-  invoke<HarnessAuth[]>("list_harness_auth");
+export const listHarnessAuth = () => invoke<HarnessAuth[]>("list_harness_auth");
 export const setHarnessAuthMode = (slug: string, mode: HarnessAuthMode) =>
   invoke<HarnessAuth[]>("set_harness_auth_mode", { slug, mode });
 export const setHarnessApiKey = (slug: string, key: string | null) =>

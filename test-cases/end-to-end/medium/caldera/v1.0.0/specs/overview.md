@@ -134,7 +134,7 @@ in abstract **flow units per second (`f/s`)** defined in `specs/fluids.md`.
 - **Hexagon size.** A cell's outer radius (center to corner) is **`10` units**.
   One cell spans roughly `17` units across the flats.
 - **Elevation is discrete.** Each cell has an integer **elevation level** in
-  `0…8`. One level is a fixed **`3`-unit** vertical step (the *elevation step*), so
+  `0…8`. One level is a fixed **`3`-unit** vertical step (the _elevation step_), so
   terrain rises to about `24` units. Two adjacent cells are joined by their shared
   edge according to their level difference `d` (this is the heart of the terrain —
   full rules in `specs/world.md`):
@@ -143,8 +143,8 @@ in abstract **flow units per second (`f/s`)** defined in `specs/fluids.md`.
     fixed number of stepped terrace treads with vertical risers between, not a
     smooth ramp.
   - `d ≥ 2` — a **cliff**: a vertical face with no terrace.
-  Pipes and Slag traverse **flat** and **terraced** edges; a **cliff** edge is
-  impassable to both.
+    Pipes and Slag traverse **flat** and **terraced** edges; a **cliff** edge is
+    impassable to both.
 - **`+Y` is up.** The horizontal plane carries the hex grid. `+Y` is elevation and
   the open air above the terrain.
 - The simulation must be **frame-rate independent**: unit movement, fire cadence,
@@ -168,44 +168,44 @@ the **Slag** in **obsidian** black with an **acid-green** glow — and Slag **ti
 are told apart by an accent that plates over the same silhouette. The canonical
 palette and type are below; match them.
 
-| Element | Color |
-| --- | --- |
-| Sky (background) | `#9fb4bf` |
-| Sky haze (horizon) | `#d8c8b0` |
-| Terrain — grass top | `#6b9a44` |
-| Terrain — grass shadow | `#517a34` |
-| Terrain — dirt / soil | `#6b4e34` |
-| Terrain — rock / andesite | `#5f5c58` |
-| Terrain — rock dark / basalt | `#3a3836` |
-| Terrain — scorched (near vents) | `#7a4a38` |
-| Terrain — ash / path | `#b8a877` |
-| Water — deep (lake / ocean) | `#2f6f8f` |
-| Water — shallow (river) | `#4f97b0` |
-| Water — foam / highlight | `#dbeef2` |
-| Geothermal vent — glow | `#ff7a3d` |
-| Geothermal vent — hot core | `#ffd08a` |
-| Holdfast — brass (Core, towers) | `#c8a24a` |
-| Holdfast — brass dark (shadow) | `#8a6d2e` |
-| Holdfast — steel (accent) | `#b8bcc2` |
-| Steam (vapor / powered) | `#dfeaea` |
-| Pipe — water | `#3d9bd6` |
-| Pipe — steam | `#7fcabc` |
-| Pipe — base (provided kit, recolored) | `#808890` |
-| Slag — obsidian (Tier I body) | `#241f2b` |
-| Slag — acid glow (energy / eye) | `#9ede3a` |
-| Slag — accent plate (authored; recolored per tier) | `#4a4358` |
-| Slag — Tier II plating (steel) | `#c9ced6` |
-| Slag — Tier III trim (elite) | `#b56bff` |
+| Element                                                               | Color     |
+| --------------------------------------------------------------------- | --------- |
+| Sky (background)                                                      | `#9fb4bf` |
+| Sky haze (horizon)                                                    | `#d8c8b0` |
+| Terrain — grass top                                                   | `#6b9a44` |
+| Terrain — grass shadow                                                | `#517a34` |
+| Terrain — dirt / soil                                                 | `#6b4e34` |
+| Terrain — rock / andesite                                             | `#5f5c58` |
+| Terrain — rock dark / basalt                                          | `#3a3836` |
+| Terrain — scorched (near vents)                                       | `#7a4a38` |
+| Terrain — ash / path                                                  | `#b8a877` |
+| Water — deep (lake / ocean)                                           | `#2f6f8f` |
+| Water — shallow (river)                                               | `#4f97b0` |
+| Water — foam / highlight                                              | `#dbeef2` |
+| Geothermal vent — glow                                                | `#ff7a3d` |
+| Geothermal vent — hot core                                            | `#ffd08a` |
+| Holdfast — brass (Core, towers)                                       | `#c8a24a` |
+| Holdfast — brass dark (shadow)                                        | `#8a6d2e` |
+| Holdfast — steel (accent)                                             | `#b8bcc2` |
+| Steam (vapor / powered)                                               | `#dfeaea` |
+| Pipe — water                                                          | `#3d9bd6` |
+| Pipe — steam                                                          | `#7fcabc` |
+| Pipe — base (provided kit, recolored)                                 | `#808890` |
+| Slag — obsidian (Tier I body)                                         | `#241f2b` |
+| Slag — acid glow (energy / eye)                                       | `#9ede3a` |
+| Slag — accent plate (authored; recolored per tier)                    | `#4a4358` |
+| Slag — Tier II plating (steel)                                        | `#c9ced6` |
+| Slag — Tier III trim (elite)                                          | `#b56bff` |
 | Holdfast — accent fitting (authored verdigris; recolored per upgrade) | `#2f7d72` |
-| Health — healthy | `#5ec96b` |
-| Health — critical | `#ff5c5a` |
-| Funds / gold accent | `#ffce54` |
-| Placement — valid | `#7fe0a0` |
-| Placement — invalid | `#ff5c5a` |
-| Alert / warning | `#ff7a3d` |
-| Primary text | `#eef3f7` |
-| Secondary text | `#9fb0c0` |
-| Faint text / hints | `#6f8090` |
+| Health — healthy                                                      | `#5ec96b` |
+| Health — critical                                                     | `#ff5c5a` |
+| Funds / gold accent                                                   | `#ffce54` |
+| Placement — valid                                                     | `#7fe0a0` |
+| Placement — invalid                                                   | `#ff5c5a` |
+| Alert / warning                                                       | `#ff7a3d` |
+| Primary text                                                          | `#eef3f7` |
+| Secondary text                                                        | `#9fb0c0` |
+| Faint text / hints                                                    | `#6f8090` |
 
 - Use a **monospace** type family for all HUD and menu text (funds, timers,
   labels, counts). Do not depend on a downloaded web font; a system monospace

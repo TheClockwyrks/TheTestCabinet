@@ -386,7 +386,11 @@ export async function actCurveOffset(api, ticks) {
  * gently spun shot (the AI's own chase speed decides its spin, so its curve is
  * whatever its motion earns) is not graded to the pixel. Records into `check`.
  */
-export function assertCurved(check, curve, { who, tolerance = 0.2, floor = 4 }) {
+export function assertCurved(
+  check,
+  curve,
+  { who, tolerance = 0.2, floor = 4 },
+) {
   const required = Math.abs(curve.predicted);
   check.expectClose(
     `${who} bends the flight as far as its spin requires (px off the straight line after ${curve.ticks} ticks)`,
@@ -1382,7 +1386,11 @@ export async function armAudio(api) {
  * `{ reached, snap, before, after, waited }` — `before`/`after` being the length of
  * the audio log either side of the event.
  */
-export async function actCue(api, reached, { ms = 2500, poll = 25, tailTicks = 60 } = {}) {
+export async function actCue(
+  api,
+  reached,
+  { ms = 2500, poll = 25, tailTicks = 60 } = {},
+) {
   const before = (await api.audio()).length;
   await api.call("setAutoStep", true);
   let snap = await api.snapshot();

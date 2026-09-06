@@ -40,7 +40,9 @@ describe("canonicalModelId", () => {
   });
 
   it("keeps a trailing tag for provider-native harnesses (codex/claude/antigravity)", () => {
-    expect(canonicalModelId("gpt-5.5:preview", "codex")).toBe("gpt-5.5:preview");
+    expect(canonicalModelId("gpt-5.5:preview", "codex")).toBe(
+      "gpt-5.5:preview",
+    );
     expect(canonicalModelId("some-model:tag", "claude")).toBe("some-model:tag");
   });
 

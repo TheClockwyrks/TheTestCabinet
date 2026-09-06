@@ -43,7 +43,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -73,10 +75,26 @@ it("refuses an arm or a wheel anchored off the field and accepts one on it", asy
 
   // The geometry the check claims to be posing, read off `specs/field.md`'s own
   // formula rather than assumed: two anchors outside the field and two on it.
-  assertEqual(onField(OFF_EAST), false, "the east anchor posed is off the field");
-  assertEqual(onField(OFF_SOUTH), false, "the south anchor posed is off the field");
-  assertEqual(onField(ON_EAST), true, "the east control anchor is on the field");
-  assertEqual(onField(ON_SOUTH), true, "the south control anchor is on the field");
+  assertEqual(
+    onField(OFF_EAST),
+    false,
+    "the east anchor posed is off the field",
+  );
+  assertEqual(
+    onField(OFF_SOUTH),
+    false,
+    "the south anchor posed is off the field",
+  );
+  assertEqual(
+    onField(ON_EAST),
+    true,
+    "the east control anchor is on the field",
+  );
+  assertEqual(
+    onField(ON_SOUTH),
+    true,
+    "the south control anchor is on the field",
+  );
 
   const armOff = await refusesPlacement(() =>
     h.debug.placePart("arm", OFF_EAST.q, OFF_EAST.r, 0),
@@ -110,7 +128,11 @@ it("refuses an arm or a wheel anchored off the field and accepts one on it", asy
     true,
     `a wheel anchored on (${OFF_SOUTH.q}, ${OFF_SOUTH.r}) is refused: its anchor is off the field`,
   );
-  assertEqual(afterWheelOff, 0, "the refused wheel added no part to the machine");
+  assertEqual(
+    afterWheelOff,
+    0,
+    "the refused wheel added no part to the machine",
+  );
 
   assertEqual(
     armOn,

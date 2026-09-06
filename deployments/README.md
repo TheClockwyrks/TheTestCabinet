@@ -8,7 +8,7 @@ creates one **driver** (`tcab-driver`) Job per queued run, and each driver spawn
 separate **sandbox pod** via the Kubernetes API. There is no worker pool and no
 headless Service.
 
-This folder holds the *assets*; the authoritative, narrative documentation is the
+This folder holds the _assets_; the authoritative, narrative documentation is the
 **Deployment** section of the docs site, which explains what these files are for
 and how they fit together:
 

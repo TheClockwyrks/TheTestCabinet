@@ -22,14 +22,14 @@ Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `
 `texture`, voxel, or mesh tool in this image), so all UI/HUD chrome is drawn **in code**
 (below):
 
-| Tool | Produces | Used for |
-| --- | --- | --- |
-| `draw` | one sprite → a PNG | terrain tiles, resource nodes, structures, item and HUD icons |
-| `draw-sheet` | a sprite sheet, **one PNG per frame** | the settlers' and raiders' animations |
-| `particle-2d` | a particle system → a `system.json` | muzzle flash, blood/impact, fire, explosion, construction dust |
-| `sfx-synth` | a procedural sound → a `.wav` | gunshot / hit / build / alarm cues from raw synthesis |
-| `sfx-sample` | a sampled sound over the sample pack → a `.wav` | richer gunshot / hit / build / alarm cues |
-| `music` | sequenced music over an instrument bank → a `.wav` (+ `.mid`) | the ambient / tension music bed |
+| Tool          | Produces                                                      | Used for                                                       |
+| ------------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| `draw`        | one sprite → a PNG                                            | terrain tiles, resource nodes, structures, item and HUD icons  |
+| `draw-sheet`  | a sprite sheet, **one PNG per frame**                         | the settlers' and raiders' animations                          |
+| `particle-2d` | a particle system → a `system.json`                           | muzzle flash, blood/impact, fire, explosion, construction dust |
+| `sfx-synth`   | a procedural sound → a `.wav`                                 | gunshot / hit / build / alarm cues from raw synthesis          |
+| `sfx-sample`  | a sampled sound over the sample pack → a `.wav`               | richer gunshot / hit / build / alarm cues                      |
+| `music`       | sequenced music over an instrument bank → a `.wav` (+ `.mid`) | the ambient / tension music bed                                |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is the
@@ -65,8 +65,8 @@ origin** — when it is played back it is mounted under a **per-run sub-path** (
 - **Reference assets relative to the document or module instead.** Prefer letting your
   bundler resolve them: import each PNG / `.wav` / JSON, or use a bundler directory glob
   (for example Vite's `import.meta.glob('../assets/**/*.png', { eager: true, query:
-  '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
-  import.meta.url)` also works if your bundler can statically resolve it.
+'?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
+import.meta.url)` also works if your bundler can statically resolve it.
 - **Configure your bundler's base to be relative** (for Vite, `base: './'`) so the
   emitted JS, CSS, and asset URLs are all page-relative.
 
@@ -206,7 +206,7 @@ drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
 - **Selection and tool feedback** — chop/mine designations, build ghosts, the
   hovered-tile cursor, cover indicators, priority marks (`specs/controls.md`).
 - The **day/night lighting** — the cooling, dimming overlay that reads the hour
-  (`specs/time.md`) — and the driving of the produced effects (the *systems* are
+  (`specs/time.md`) — and the driving of the produced effects (the _systems_ are
   produced; deciding where and when to play them is code).
 
 ## Genuinely produce the assets — this is the point here

@@ -44,7 +44,15 @@
 // front of the model.
 
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -96,7 +104,8 @@ const closure = new Set();
 const visit = (name) => {
   if (closure.has(name)) return;
   const entry = byName.get(name);
-  if (!entry) throw new Error(`shippable package ${name} not found under packages/`);
+  if (!entry)
+    throw new Error(`shippable package ${name} not found under packages/`);
   closure.add(name);
   for (const dep of Object.keys(entry.pkg.dependencies ?? {})) {
     if (dep.startsWith("@clockwyrks/")) visit(dep);
@@ -108,10 +117,14 @@ const members = [...closure];
 // Build each package (its `build` script is `tsc -b`, which also builds the
 // project references it depends on), so `dist/` is present to stage.
 console.log(`building ${members.join(", ")}`);
-execFileSync("npm", ["run", "build", ...members.flatMap((n) => ["-w", n]), "--if-present"], {
-  cwd: repoRoot,
-  stdio: "inherit",
-});
+execFileSync(
+  "npm",
+  ["run", "build", ...members.flatMap((n) => ["-w", n]), "--if-present"],
+  {
+    cwd: repoRoot,
+    stdio: "inherit",
+  },
+);
 
 // Stage each package into outDir/<name> (the name carries its @scope).
 rmSync(outDir, { recursive: true, force: true });
@@ -142,16 +155,24 @@ for (const name of members) {
   if (staged.peerDependencies) {
     staged.peerDependenciesMeta = { ...staged.peerDependenciesMeta };
     for (const peer of Object.keys(staged.peerDependencies)) {
-      staged.peerDependenciesMeta[peer] = { ...staged.peerDependenciesMeta[peer], optional: true };
+      staged.peerDependenciesMeta[peer] = {
+        ...staged.peerDependenciesMeta[peer],
+        optional: true,
+      };
     }
   }
-  writeFileSync(join(dest, "package.json"), `${JSON.stringify(staged, null, 2)}\n`);
+  writeFileSync(
+    join(dest, "package.json"),
+    `${JSON.stringify(staged, null, 2)}\n`,
+  );
 
   // Copy the files the package publishes (default ["dist"]).
   for (const file of pkg.files ?? ["dist"]) {
     const src = join(dir, file);
     if (!existsSync(src)) {
-      throw new Error(`${name} declares files entry "${file}" but ${src} does not exist`);
+      throw new Error(
+        `${name} declares files entry "${file}" but ${src} does not exist`,
+      );
     }
     cpSync(src, join(dest, file), { recursive: true });
   }

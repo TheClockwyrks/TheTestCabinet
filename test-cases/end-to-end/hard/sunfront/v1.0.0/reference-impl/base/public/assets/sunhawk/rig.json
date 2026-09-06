@@ -2,92 +2,52 @@
   "parts": [
     {
       "name": "hull",
-      "pivot": [
-        36,
-        12,
-        38
-      ]
+      "pivot": [36, 12, 38]
     },
     {
       "name": "nacelle_l",
       "parent": "hull",
-      "pivot": [
-        15,
-        14,
-        41
-      ]
+      "pivot": [15, 14, 41]
     },
     {
       "name": "nacelle_r",
       "parent": "hull",
-      "pivot": [
-        58,
-        14,
-        41
-      ]
+      "pivot": [58, 14, 41]
     },
     {
       "name": "rotor_l",
       "parent": "nacelle_l",
-      "pivot": [
-        15,
-        23,
-        41
-      ]
+      "pivot": [15, 23, 41]
     },
     {
       "name": "rotor_r",
       "parent": "nacelle_r",
-      "pivot": [
-        58,
-        23,
-        41
-      ]
+      "pivot": [58, 23, 41]
     },
     {
       "name": "cannon_yoke",
       "parent": "hull",
-      "pivot": [
-        36,
-        6,
-        58
-      ]
+      "pivot": [36, 6, 58]
     },
     {
       "name": "cannon",
       "parent": "cannon_yoke",
-      "pivot": [
-        36,
-        5,
-        58
-      ]
+      "pivot": [36, 5, 58]
     },
     {
       "name": "barrel",
       "parent": "cannon",
-      "pivot": [
-        36,
-        5,
-        68
-      ]
+      "pivot": [36, 5, 68]
     },
     {
       "name": "tailfin",
       "parent": "hull",
-      "pivot": [
-        36,
-        19,
-        8
-      ]
+      "pivot": [36, 19, 8]
     },
     {
       "name": "skids",
       "parent": "hull",
-      "pivot": [
-        36,
-        3,
-        36
-      ]
+      "pivot": [36, 3, 36]
     }
   ],
   "joints": [
@@ -96,11 +56,7 @@
       "part": "hull",
       "kind": "translation",
       "axis": "y",
-      "pivot": [
-        36,
-        12,
-        38
-      ],
+      "pivot": [36, 12, 38],
       "min": -3.2,
       "max": 3.2,
       "rest": 0.0,
@@ -111,11 +67,7 @@
       "part": "rotor_l",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        15,
-        23,
-        41
-      ],
+      "pivot": [15, 23, 41],
       "min": -6.2832,
       "max": 6.2832,
       "rest": 0.0,
@@ -126,11 +78,7 @@
       "part": "rotor_r",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        58,
-        23,
-        41
-      ],
+      "pivot": [58, 23, 41],
       "min": -6.2832,
       "max": 6.2832,
       "rest": 0.0,
@@ -141,11 +89,7 @@
       "part": "cannon",
       "kind": "rotation",
       "axis": "x",
-      "pivot": [
-        36,
-        5,
-        58
-      ],
+      "pivot": [36, 5, 58],
       "min": -0.72,
       "max": 0.3,
       "rest": 0.0,
@@ -156,11 +100,7 @@
       "part": "barrel",
       "kind": "translation",
       "axis": "z",
-      "pivot": [
-        36,
-        5,
-        68
-      ],
+      "pivot": [36, 5, 68],
       "min": -3.0,
       "max": 0.0,
       "rest": 0.0,
@@ -171,11 +111,7 @@
       "part": "tailfin",
       "kind": "rotation",
       "axis": "y",
-      "pivot": [
-        36,
-        19,
-        8
-      ],
+      "pivot": [36, 19, 8],
       "min": -0.35,
       "max": 0.35,
       "rest": 0.0,
@@ -266,10 +202,7 @@
               "tMs": 0,
               "value": -1.8,
               "interp": "ease-in-out",
-              "inHandle": [
-                -240.0,
-                0.0
-              ]
+              "inHandle": [-240.0, 0.0]
             },
             {
               "tMs": 520,
@@ -280,23 +213,14 @@
               "tMs": 1150,
               "value": 2.0,
               "interp": "bezier",
-              "outHandle": [
-                300.0,
-                0.0
-              ],
-              "inHandle": [
-                -280.0,
-                0.0
-              ]
+              "outHandle": [300.0, 0.0],
+              "inHandle": [-280.0, 0.0]
             },
             {
               "tMs": 1760,
               "value": 2.0,
               "interp": "ease-in-out",
-              "inHandle": [
-                -260.0,
-                0.0
-              ]
+              "inHandle": [-260.0, 0.0]
             },
             {
               "tMs": 2320,
@@ -312,19 +236,13 @@
               "tMs": 2980,
               "value": -1.8,
               "interp": "bezier",
-              "outHandle": [
-                220.0,
-                0.0
-              ]
+              "outHandle": [220.0, 0.0]
             },
             {
               "tMs": 3200,
               "value": -1.8,
               "interp": "bezier",
-              "inHandle": [
-                -220.0,
-                0.0
-              ]
+              "inHandle": [-220.0, 0.0]
             }
           ]
         }
@@ -369,19 +287,13 @@
               "tMs": 1000,
               "value": -0.545,
               "interp": "bezier",
-              "outHandle": [
-                260.0,
-                0.0
-              ]
+              "outHandle": [260.0, 0.0]
             },
             {
               "tMs": 1520,
               "value": -0.545,
               "interp": "ease-in-out",
-              "inHandle": [
-                -300.0,
-                0.0
-              ]
+              "inHandle": [-300.0, 0.0]
             },
             {
               "tMs": 2080,
@@ -407,10 +319,7 @@
               "tMs": 0,
               "value": 0.0,
               "interp": "bezier",
-              "outHandle": [
-                500.0,
-                0.0
-              ]
+              "outHandle": [500.0, 0.0]
             },
             {
               "tMs": 1040,
@@ -471,19 +380,13 @@
               "tMs": 1560,
               "value": 0.0,
               "interp": "bezier",
-              "outHandle": [
-                400.0,
-                0.0
-              ]
+              "outHandle": [400.0, 0.0]
             },
             {
               "tMs": 2600,
               "value": 0.0,
               "interp": "bezier",
-              "inHandle": [
-                -400.0,
-                0.0
-              ]
+              "inHandle": [-400.0, 0.0]
             }
           ]
         }

@@ -102,9 +102,7 @@ function faultsNamedOnField(calls: readonly DrawCall[]): string[] {
       .join("")
       .toLowerCase(),
   );
-  return FAULTS.filter((fault) =>
-    lines.some((line) => line.includes(fault)),
-  );
+  return FAULTS.filter((fault) => lines.some((line) => line.includes(fault)));
 }
 
 it("draws a banner naming the fault while faulted, and none while paused, running or complete", async () => {
@@ -178,11 +176,7 @@ it("draws a banner naming the fault while faulted, and none while paused, runnin
     0,
     "and no such banner is on the field while the run is paused",
   );
-  assertEqual(
-    whileRunning.length,
-    0,
-    "nor while it is running",
-  );
+  assertEqual(whileRunning.length, 0, "nor while it is running");
   assertEqual(
     whileComplete.length,
     0,

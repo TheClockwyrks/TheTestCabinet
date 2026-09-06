@@ -46,7 +46,10 @@ it("returns to select from the program screen", async () => {
   await h.press(BACK);
 
   const after = await h.snapshot();
-  await h.capture("state", "the select screen back left the program screen for");
+  await h.capture(
+    "state",
+    "the select screen back left the program screen for",
+  );
 
   assertEqual(
     after.screen,

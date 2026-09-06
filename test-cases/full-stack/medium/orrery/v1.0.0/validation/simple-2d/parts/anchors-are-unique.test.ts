@@ -50,7 +50,9 @@ import type { PartName } from "../constants";
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -86,7 +88,11 @@ afterEach(async () => {
 it("refuses a second arm or wheel on an occupied anchor, in every pairing", async () => {
   await openChallengeDocument(h, BARE);
   assertEqual(onField(TAKEN), true, "the contested anchor is on the field");
-  assertEqual(onField(BESIDE), true, "the free anchor three hexes off is on the field");
+  assertEqual(
+    onField(BESIDE),
+    true,
+    "the free anchor three hexes off is on the field",
+  );
 
   // The representative pairing, posed and drawn first so the evidence exists
   // whichever pairing of the sweep below turns out to fail.
@@ -115,13 +121,21 @@ it("refuses a second arm or wheel on an occupied anchor, in every pairing", asyn
     for (const second of ANCHORED) {
       const pairing = `${first} then ${second}`;
       await clearWorld(h);
-      assertEqual((await partIds(h)).length, 0, `${pairing}: the machine starts empty`);
+      assertEqual(
+        (await partIds(h)).length,
+        0,
+        `${pairing}: the machine starts empty`,
+      );
 
       let held = -1;
       const heldRefused = await refusesPlacement(async () => {
         held = await placePart(h, first, TAKEN, 0);
       });
-      assertEqual(heldRefused, false, `${pairing}: the first part takes the anchor`);
+      assertEqual(
+        heldRefused,
+        false,
+        `${pairing}: the first part takes the anchor`,
+      );
       assertEqual(
         partById(await h.snapshot(), held)?.kind,
         first,

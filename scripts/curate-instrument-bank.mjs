@@ -86,7 +86,8 @@ const CC0_SPDX = "CC0-1.0";
 
 // Freesound reports a license as its deed URL. Only the CC0 waiver is ingested, so a
 // source whose deed is anything else is rejected outright.
-const CC0_DEED = /^https?:\/\/creativecommons\.org\/publicdomain\/zero\/1\.0\/?$/;
+const CC0_DEED =
+  /^https?:\/\/creativecommons\.org\/publicdomain\/zero\/1\.0\/?$/;
 const isCC0 = (license) => CC0_DEED.test(license ?? "");
 
 // The MIDI note recorded for an unpitched one-shot. It is never used to transpose (a
@@ -291,55 +292,254 @@ const GM_LITE_SPEC = [
 // mixed choir, and thunderous orchestral percussion.
 const CINEMATIC_SPEC = [
   // Strings
-  inst("staccato_strings", "staccato strings", ["strings", "staccato", "cinematic"], "A short, sharp staccato string-section stab.", [48, 88]),
-  inst("tremolo_strings", "tremolo strings", ["strings", "tremolo", "tension"], "A tense sustained tremolo string note.", [48, 88]),
-  inst("string_ensemble", "string ensemble", ["strings", "ensemble", "pad"], "A lush sustained string-ensemble note.", [48, 84]),
-  inst("solo_cello", "cello note", ["strings", "bowed", "solo"], "An expressive sustained solo-cello note.", [36, 74]),
-  inst("pizzicato_strings", "pizzicato strings", ["strings", "pizzicato", "plucked"], "A short plucked pizzicato string note.", [40, 84]),
+  inst(
+    "staccato_strings",
+    "staccato strings",
+    ["strings", "staccato", "cinematic"],
+    "A short, sharp staccato string-section stab.",
+    [48, 88],
+  ),
+  inst(
+    "tremolo_strings",
+    "tremolo strings",
+    ["strings", "tremolo", "tension"],
+    "A tense sustained tremolo string note.",
+    [48, 88],
+  ),
+  inst(
+    "string_ensemble",
+    "string ensemble",
+    ["strings", "ensemble", "pad"],
+    "A lush sustained string-ensemble note.",
+    [48, 84],
+  ),
+  inst(
+    "solo_cello",
+    "cello note",
+    ["strings", "bowed", "solo"],
+    "An expressive sustained solo-cello note.",
+    [36, 74],
+  ),
+  inst(
+    "pizzicato_strings",
+    "pizzicato strings",
+    ["strings", "pizzicato", "plucked"],
+    "A short plucked pizzicato string note.",
+    [40, 84],
+  ),
   // Brass
-  inst("horns", "french horn", ["brass", "horns"], "A bold sustained french-horn note.", [40, 77]),
-  inst("low_brass", "trombone note", ["brass", "low"], "A heavy sustained low-brass note.", [36, 67]),
-  inst("trumpet", "trumpet note", ["brass"], "A bright, heroic sustained trumpet note.", [52, 88]),
+  inst(
+    "horns",
+    "french horn",
+    ["brass", "horns"],
+    "A bold sustained french-horn note.",
+    [40, 77],
+  ),
+  inst(
+    "low_brass",
+    "trombone note",
+    ["brass", "low"],
+    "A heavy sustained low-brass note.",
+    [36, 67],
+  ),
+  inst(
+    "trumpet",
+    "trumpet note",
+    ["brass"],
+    "A bright, heroic sustained trumpet note.",
+    [52, 88],
+  ),
   // Choir
-  inst("choir_aah", "choir aah", ["choir", "voice", "aah"], "A sustained mixed-choir 'aah' vowel.", [48, 84]),
-  inst("choir_ooh", "choir ooh", ["choir", "voice", "ooh"], "A sustained mixed-choir 'ooh' vowel.", [48, 84]),
+  inst(
+    "choir_aah",
+    "choir aah",
+    ["choir", "voice", "aah"],
+    "A sustained mixed-choir 'aah' vowel.",
+    [48, 84],
+  ),
+  inst(
+    "choir_ooh",
+    "choir ooh",
+    ["choir", "voice", "ooh"],
+    "A sustained mixed-choir 'ooh' vowel.",
+    [48, 84],
+  ),
   // Woodwind
-  inst("oboe", "oboe note", ["woodwind", "reed"], "A plaintive sustained oboe note.", [58, 91]),
-  inst("flute", "flute note", ["woodwind"], "A breathy sustained flute note.", [60, 96]),
+  inst(
+    "oboe",
+    "oboe note",
+    ["woodwind", "reed"],
+    "A plaintive sustained oboe note.",
+    [58, 91],
+  ),
+  inst(
+    "flute",
+    "flute note",
+    ["woodwind"],
+    "A breathy sustained flute note.",
+    [60, 96],
+  ),
   // Keys / plucked
-  inst("celesta", "celesta", ["mallets", "bells", "keys"], "A delicate, bell-like celesta note.", [60, 108]),
-  inst("harp", "harp note", ["plucked", "harp"], "A resonant plucked-harp note.", [36, 96]),
+  inst(
+    "celesta",
+    "celesta",
+    ["mallets", "bells", "keys"],
+    "A delicate, bell-like celesta note.",
+    [60, 108],
+  ),
+  inst(
+    "harp",
+    "harp note",
+    ["plucked", "harp"],
+    "A resonant plucked-harp note.",
+    [36, 96],
+  ),
   // Percussion (unpitched one-shots)
-  perc("timpani", "timpani", ["percussion", "timpani", "drum"], "A deep, resonant orchestral timpani hit."),
-  perc("taiko", "taiko", ["percussion", "taiko", "drum"], "A thunderous taiko drum hit."),
-  perc("bass_drum", "orchestral bass drum", ["percussion", "drum", "low"], "A deep orchestral bass-drum hit."),
-  perc("cymbal", "cymbal crash", ["percussion", "cymbal"], "A large orchestral cymbal crash."),
-  perc("orchestral_hit", "orchestral hit", ["percussion", "hit", "stab"], "A punchy full-orchestra hit/stab."),
+  perc(
+    "timpani",
+    "timpani",
+    ["percussion", "timpani", "drum"],
+    "A deep, resonant orchestral timpani hit.",
+  ),
+  perc(
+    "taiko",
+    "taiko",
+    ["percussion", "taiko", "drum"],
+    "A thunderous taiko drum hit.",
+  ),
+  perc(
+    "bass_drum",
+    "orchestral bass drum",
+    ["percussion", "drum", "low"],
+    "A deep orchestral bass-drum hit.",
+  ),
+  perc(
+    "cymbal",
+    "cymbal crash",
+    ["percussion", "cymbal"],
+    "A large orchestral cymbal crash.",
+  ),
+  perc(
+    "orchestral_hit",
+    "orchestral hit",
+    ["percussion", "hit", "stab"],
+    "A punchy full-orchestra hit/stab.",
+  ),
 ];
 
 // A domain-tailored SYNTHWAVE / ELECTRONIC bank for retro-synth, EDM, and lo-fi cues —
 // analog leads and basses, pads, FM bells, and an electronic drum machine.
 const SYNTHWAVE_SPEC = [
   // Leads / plucks
-  inst("saw_lead", "saw synth", ["synth", "lead", "saw"], "A bright sawtooth synth-lead note.", [40, 96]),
-  inst("square_lead", "square synth", ["synth", "lead", "square"], "A hollow square-wave synth note.", [40, 96]),
-  inst("pluck", "synth pluck", ["synth", "pluck"], "A short, bright synth-pluck note.", [40, 96]),
+  inst(
+    "saw_lead",
+    "saw synth",
+    ["synth", "lead", "saw"],
+    "A bright sawtooth synth-lead note.",
+    [40, 96],
+  ),
+  inst(
+    "square_lead",
+    "square synth",
+    ["synth", "lead", "square"],
+    "A hollow square-wave synth note.",
+    [40, 96],
+  ),
+  inst(
+    "pluck",
+    "synth pluck",
+    ["synth", "pluck"],
+    "A short, bright synth-pluck note.",
+    [40, 96],
+  ),
   // Bass
-  inst("synth_bass", "synth bass", ["synth", "bass"], "A round analog synth-bass note.", [28, 60]),
-  inst("sub_bass", "sub bass", ["synth", "bass", "sub"], "A deep sub-bass synth note.", [24, 55]),
+  inst(
+    "synth_bass",
+    "synth bass",
+    ["synth", "bass"],
+    "A round analog synth-bass note.",
+    [28, 60],
+  ),
+  inst(
+    "sub_bass",
+    "sub bass",
+    ["synth", "bass", "sub"],
+    "A deep sub-bass synth note.",
+    [24, 55],
+  ),
   // Pads / keys
-  inst("warm_pad", "synth pad", ["synth", "pad"], "A warm sustained synth-pad note.", [40, 88]),
-  inst("analog_pad", "analog pad", ["synth", "pad", "analog"], "A lush analog synth-pad note.", [40, 88]),
-  inst("fm_bell", "fm bell", ["synth", "bell", "fm"], "A glassy FM synth-bell note.", [52, 96]),
-  inst("synth_brass", "synth brass", ["synth", "brass"], "A punchy synth-brass note.", [40, 84]),
-  inst("synth_strings", "synth strings", ["synth", "strings", "pad"], "A shimmering synth-strings note.", [48, 84]),
+  inst(
+    "warm_pad",
+    "synth pad",
+    ["synth", "pad"],
+    "A warm sustained synth-pad note.",
+    [40, 88],
+  ),
+  inst(
+    "analog_pad",
+    "analog pad",
+    ["synth", "pad", "analog"],
+    "A lush analog synth-pad note.",
+    [40, 88],
+  ),
+  inst(
+    "fm_bell",
+    "fm bell",
+    ["synth", "bell", "fm"],
+    "A glassy FM synth-bell note.",
+    [52, 96],
+  ),
+  inst(
+    "synth_brass",
+    "synth brass",
+    ["synth", "brass"],
+    "A punchy synth-brass note.",
+    [40, 84],
+  ),
+  inst(
+    "synth_strings",
+    "synth strings",
+    ["synth", "strings", "pad"],
+    "A shimmering synth-strings note.",
+    [48, 84],
+  ),
   // Percussion (unpitched one-shots)
-  perc("kick_808", "808 kick", ["drum", "kick", "808", "electronic"], "A deep, booming 808-style kick."),
-  perc("snare_electronic", "electronic snare", ["drum", "snare", "electronic"], "A snappy electronic snare."),
-  perc("clap", "clap one shot", ["drum", "clap", "electronic"], "A tight electronic hand-clap."),
-  perc("hat_closed", "closed hihat", ["drum", "hihat", "electronic"], "A crisp electronic closed hi-hat."),
-  perc("hat_open", "open hihat", ["drum", "hihat", "open", "electronic"], "A sizzling electronic open hi-hat."),
-  perc("tom_electronic", "electronic tom", ["drum", "tom", "electronic"], "A synthetic electronic tom."),
+  perc(
+    "kick_808",
+    "808 kick",
+    ["drum", "kick", "808", "electronic"],
+    "A deep, booming 808-style kick.",
+  ),
+  perc(
+    "snare_electronic",
+    "electronic snare",
+    ["drum", "snare", "electronic"],
+    "A snappy electronic snare.",
+  ),
+  perc(
+    "clap",
+    "clap one shot",
+    ["drum", "clap", "electronic"],
+    "A tight electronic hand-clap.",
+  ),
+  perc(
+    "hat_closed",
+    "closed hihat",
+    ["drum", "hihat", "electronic"],
+    "A crisp electronic closed hi-hat.",
+  ),
+  perc(
+    "hat_open",
+    "open hihat",
+    ["drum", "hihat", "open", "electronic"],
+    "A sizzling electronic open hi-hat.",
+  ),
+  perc(
+    "tom_electronic",
+    "electronic tom",
+    ["drum", "tom", "electronic"],
+    "A synthetic electronic tom.",
+  ),
 ];
 
 // The bank registry. Each bank names its manifest (`<name>.toml`), the `version` a
@@ -356,14 +556,16 @@ const BANKS = {
   cinematic: {
     name: "cinematic",
     version: "0.1.0",
-    blurb: "An epic-orchestral instrument bank (strings, brass, choir, orchestral percussion)",
+    blurb:
+      "An epic-orchestral instrument bank (strings, brass, choir, orchestral percussion)",
     percussion: "percussion",
     spec: CINEMATIC_SPEC,
   },
   synthwave: {
     name: "synthwave",
     version: "0.1.0",
-    blurb: "A synthwave / electronic instrument bank (analog synths, pads, drum machine)",
+    blurb:
+      "A synthwave / electronic instrument bank (analog synths, pads, drum machine)",
     percussion: "drum-machine",
     spec: SYNTHWAVE_SPEC,
   },
@@ -459,7 +661,9 @@ function parseArgs(argv) {
     } else fail(`unknown arg ${a} (try --help)`);
   }
   if (o.ingest.length > 0 && o.bankGiven) {
-    fail("--ingest ingests one clip and --bank curates a whole bank; pass one or the other");
+    fail(
+      "--ingest ingests one clip and --bank curates a whole bank; pass one or the other",
+    );
   }
   if (o.seedSources && (o.ingest.length > 0 || o.bankGiven)) {
     fail(
@@ -470,14 +674,19 @@ function parseArgs(argv) {
   if (o.force && !o.seedSources) {
     fail("--force applies to --seed-sources");
   }
-  if (o.rootNote !== null && (!Number.isInteger(o.rootNote) || o.rootNote < 0 || o.rootNote > 127)) {
+  if (
+    o.rootNote !== null &&
+    (!Number.isInteger(o.rootNote) || o.rootNote < 0 || o.rootNote > 127)
+  ) {
     fail(`--root-note must be a MIDI integer 0..127, got ${o.rootNote}`);
   }
   if (o.rootNote !== null && o.unpitched) {
     fail("--root-note and --unpitched are mutually exclusive");
   }
   if ((o.rootNote !== null || o.unpitched) && o.ingest.length === 0) {
-    fail("--root-note and --unpitched apply to --ingest; a bank detects each clip's pitch");
+    fail(
+      "--root-note and --unpitched apply to --ingest; a bank detects each clip's pitch",
+    );
   }
   return o;
 }
@@ -556,7 +765,9 @@ async function soundMetadata(id, key) {
     new URLSearchParams({ fields: "id,name,license,duration,previews" });
   const res = await fetch(url, { headers: { Authorization: `Token ${key}` } });
   if (!res.ok) {
-    throw new Error(`freesound sound ${id} -> HTTP ${res.status} ${res.statusText}`);
+    throw new Error(
+      `freesound sound ${id} -> HTTP ${res.status} ${res.statusText}`,
+    );
   }
   return res.json();
 }
@@ -583,8 +794,7 @@ async function fetchSource(url, key) {
   } catch {
     throw new Error(`not a URL: ${url}`);
   }
-  const freesound =
-    host === "freesound.org" || host.endsWith(".freesound.org");
+  const freesound = host === "freesound.org" || host.endsWith(".freesound.org");
   const headers = freesound && key ? { Authorization: `Token ${key}` } : {};
   const res = await fetch(url, { headers });
   if (!res.ok) {
@@ -602,7 +812,9 @@ function freesoundIdOf(src) {
   if (/^\d+$/.test(src.trim())) return Number(src.trim());
   const preview = src.match(/\/previews\/\d+\/(\d+)_/);
   if (preview) return Number(preview[1]);
-  const page = src.match(/freesound\.org\/(?:s|(?:people\/[^/]+\/sounds))\/(\d+)/);
+  const page = src.match(
+    /freesound\.org\/(?:s|(?:people\/[^/]+\/sounds))\/(\d+)/,
+  );
   if (page) return Number(page[1]);
   return null;
 }
@@ -694,7 +906,20 @@ const MIN_CONFIDENCE = 0.5;
 
 /** MIDI number → note name (for logs). */
 function midiName(m) {
-  const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const names = [
+    "C",
+    "C#",
+    "D",
+    "D#",
+    "E",
+    "F",
+    "F#",
+    "G",
+    "G#",
+    "A",
+    "A#",
+    "B",
+  ];
   return `${names[m % 12]}${Math.floor(m / 12) - 1}`;
 }
 
@@ -736,10 +961,20 @@ function upsertClip(clips, { id, source_url, freesound_id, root_note }) {
 async function publishSource(id, bytes, lock, r2, force = false) {
   const key = sourceKey(id);
   const record = lock[key];
-  if (!force && record && record.sha256 === id && record.bytes === bytes.length) {
+  if (
+    !force &&
+    record &&
+    record.sha256 === id &&
+    record.bytes === bytes.length
+  ) {
     return false;
   }
-  await putObject({ ...r2, key, body: bytes, contentType: "application/octet-stream" });
+  await putObject({
+    ...r2,
+    key,
+    body: bytes,
+    contentType: "application/octet-stream",
+  });
   lock[key] = { bucket: r2.bucket, sha256: id, bytes: bytes.length };
   return true;
 }
@@ -806,7 +1041,9 @@ async function runIngest(opts) {
     });
     registryDirty ||= added || updated;
     const note =
-      rootNote === undefined ? "" : ` root_note=${midiName(rootNote)}(${rootNote})`;
+      rootNote === undefined
+        ? ""
+        : ` root_note=${midiName(rootNote)}(${rootNote})`;
     log(`${added ? "+" : "="} ${id}${note}  ${url}`);
 
     if (opts.dryRun) continue;
@@ -854,7 +1091,9 @@ function resolveIngestRootNote(opts, bytes, url) {
         "Pass --root-note <midi> for a melodic clip, or --unpitched for percussion.",
     );
   }
-  log(`  detected ${midiName(det.midi)}(${det.midi}) conf=${det.conf.toFixed(2)}`);
+  log(
+    `  detected ${midiName(det.midi)}(${det.midi}) conf=${det.conf.toFixed(2)}`,
+  );
   return det.midi;
 }
 
@@ -952,12 +1191,20 @@ async function runSeedSources(opts) {
 
     const size = `${loaded.bytes.length} bytes${loaded.cached ? ", cached" : ""}`;
     if (!upload) {
-      log(`${at} ${clip.id} verified, would upload ${sourceKey(clip.id)} (${size})`);
+      log(
+        `${at} ${clip.id} verified, would upload ${sourceKey(clip.id)} (${size})`,
+      );
       continue;
     }
 
     try {
-      const put = await publishSource(clip.id, loaded.bytes, lock, r2, opts.force);
+      const put = await publishSource(
+        clip.id,
+        loaded.bytes,
+        lock,
+        r2,
+        opts.force,
+      );
       if (put) {
         uploaded++;
         // Written after every upload so an interrupted seed resumes where it stopped.
@@ -967,11 +1214,14 @@ async function runSeedSources(opts) {
       log(`${at} ${clip.id} ${what} ${sourceKey(clip.id)} (${size})`);
     } catch (err) {
       failures.push({ clip, message: err.message });
-      warn(`${at} ${clip.id} FAILED uploading ${sourceKey(clip.id)}: ${err.message}`);
+      warn(
+        `${at} ${clip.id} FAILED uploading ${sourceKey(clip.id)}: ${err.message}`,
+      );
     }
   }
 
-  if (uploaded > 0) log(`\nuploaded ${uploaded} of ${todo.length}, wrote ${OBJECTS_LOCK_PATH}`);
+  if (uploaded > 0)
+    log(`\nuploaded ${uploaded} of ${todo.length}, wrote ${OBJECTS_LOCK_PATH}`);
   else if (upload) log(`\nnothing uploaded; ${OBJECTS_LOCK_PATH} unchanged`);
   else {
     log(
@@ -981,9 +1231,13 @@ async function runSeedSources(opts) {
   }
 
   if (failures.length > 0) {
-    process.stderr.write(`\n${failures.length} of ${todo.length} clips failed:\n`);
+    process.stderr.write(
+      `\n${failures.length} of ${todo.length} clips failed:\n`,
+    );
     for (const f of failures) {
-      process.stderr.write(`  ${f.clip.id}\n    ${f.clip.source_url}\n    ${f.message}\n`);
+      process.stderr.write(
+        `  ${f.clip.id}\n    ${f.clip.source_url}\n    ${f.message}\n`,
+      );
     }
     process.exit(1);
   }
@@ -996,7 +1250,9 @@ async function runSeedSources(opts) {
 async function runCuration(opts) {
   const bank = BANKS[opts.bank];
   if (!bank) {
-    fail(`unknown --bank "${opts.bank}" (one of: ${Object.keys(BANKS).join(", ")})`);
+    fail(
+      `unknown --bank "${opts.bank}" (one of: ${Object.keys(BANKS).join(", ")})`,
+    );
   }
   const outPath = opts.out ?? packPath(bank.name);
   const key = requireFreesoundKey();
@@ -1077,7 +1333,9 @@ async function runCuration(opts) {
     else if (res.updated) updated++;
   }
   writeClips(clips);
-  log(`wrote ${CLIPS_PATH} (${added} new, ${updated} filled in, ${chosen.length - added - updated} reused)`);
+  log(
+    `wrote ${CLIPS_PATH} (${added} new, ${updated} filled in, ${chosen.length - added - updated} reused)`,
+  );
 
   if (r2) {
     const lock = readObjectsLock();
@@ -1086,7 +1344,9 @@ async function runCuration(opts) {
       if (await publishSource(c.id, c.bytes, lock, r2)) uploads++;
     }
     writeObjectsLock(lock);
-    log(`wrote ${OBJECTS_LOCK_PATH} (${uploads} uploaded, ${chosen.length - uploads} already published)`);
+    log(
+      `wrote ${OBJECTS_LOCK_PATH} (${uploads} uploaded, ${chosen.length - uploads} already published)`,
+    );
   }
 
   const previous = readExistingManifest(outPath);
@@ -1094,7 +1354,11 @@ async function runCuration(opts) {
   writeFileSync(outPath, renderManifest(bank, chosen, version, previous));
   log(`wrote ${outPath} (${chosen.length} instruments, version ${version})`);
 
-  if (previous && version === previous.version && manifestChanged(previous, chosen)) {
+  if (
+    previous &&
+    version === previous.version &&
+    manifestChanged(previous, chosen)
+  ) {
     warn(
       `${bank.name} changed but still says version ${version} — a pack is immutable, so ` +
         "bump it (--version <x.y.z>) before publishing",
@@ -1131,7 +1395,10 @@ function readExistingManifest(path) {
   for (const row of Array.isArray(doc.entry) ? doc.entry : []) {
     if (typeof row?.name === "string") entries.set(row.name, row);
   }
-  return { version: typeof doc.version === "string" ? doc.version : null, entries };
+  return {
+    version: typeof doc.version === "string" ? doc.version : null,
+    entries,
+  };
 }
 
 /** Whether the curated set differs from the manifest it replaces. */

@@ -72,7 +72,12 @@ export type Facing = "left" | "right";
 
 /** The six kinds of zone. */
 export type ZoneKind =
-  "puddle" | "lantern" | "aura" | "slash" | "strike" | "burst";
+  | "puddle"
+  | "lantern"
+  | "aura"
+  | "slash"
+  | "strike"
+  | "burst";
 
 /** What the open chest overlay reports. */
 export type ChestResult =
@@ -82,7 +87,12 @@ export type ChestResult =
 
 /** The weapons `spawnProjectile` takes. */
 export type ProjectileWeapon =
-  "ember" | "pin" | "shard" | "sconce" | "beacon" | "hail";
+  | "ember"
+  | "pin"
+  | "shard"
+  | "sconce"
+  | "beacon"
+  | "hail";
 
 /** The weapons `spawnPuddle` takes. */
 export type PuddleWeapon = "oil-splash" | "blaze";

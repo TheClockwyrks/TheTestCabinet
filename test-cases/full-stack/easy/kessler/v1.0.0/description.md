@@ -4,7 +4,7 @@
 at the center of the field, circled by three rings of derelict satellites and
 junk clusters slated for demolition, and the player rides the **deflector** — a
 curved paddle on a low circular track above the planet — batting a demolition
-ball outward into the rings. Sweeping the derelicts from the sky *is* the
+ball outward into the rings. Sweeping the derelicts from the sky _is_ the
 cleanup: every hit chips or breaks one, a breaking derelict may shed a **salvage
 pod**, and a caught pod grants the deflector a tool — a wider span, a narrower
 one, extra balls, a one-shot shield, or a ball that pierces straight through.
@@ -15,7 +15,7 @@ faster and worth more, and the run ends when the last ball is lost with no lives
 left. What keeps Kessler from being pure reflex is the bounce: where the ball
 meets the deflector decides the angle it leaves at, and every other surface
 bends the ball gently back toward the radial, so lazy caroms decay and the
-strong player *steers* — placing the deflector so the ball comes off it into the
+strong player _steers_ — placing the deflector so the ball comes off it into the
 gap, the moving ring, or the last derelict standing.
 
 What lifts Kessler past a plain arcade port is that the model produces the
@@ -30,7 +30,7 @@ containment field, the starfield and the HUD stay drawn in code.
 ## Why it is a benchmark
 
 Kessler's simulation lives entirely in polar coordinates around one center, and
-that is the trap: every rule is easy to state and easy to get *almost* right.
+that is the trap: every rule is easy to state and easy to get _almost_ right.
 Contacts are crossing events with direction gates — a ball is saved only as it
 crosses the deflector's radius moving inward, hits a derelict's face only as it
 crosses the ring's contact radius toward it, and hits an edge only as its angle
@@ -46,7 +46,7 @@ On top of that correctness sits a full production pass: sprites, a sheet, three
 particle systems, thirteen cues and two beds that loop without a seam. A tidy
 game with code-drawn placeholders, or handsome produced assets bolted to a
 bounce that mishandles its english, both fall short; Kessler rewards the model
-that gets the code *and* the craft right.
+that gets the code _and_ the craft right.
 
 ## What a model is given
 

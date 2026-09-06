@@ -172,30 +172,64 @@ The per-tick view handed to the controller. The world is fully observable:
 {
   "tick": 412,
   "timestep_ms": 16,
-  "team": "red",                  // which colony this controller drives
+  "team": "red", // which colony this controller drives
   "board": {
-    "width": 32, "height": 16,
-    "border_x": 16,               // first column belonging to Blue's half
-    "walls": [[3,4],[3,5]]        // blocked tiles, static for the match
+    "width": 32,
+    "height": 16,
+    "border_x": 16, // first column belonging to Blue's half
+    "walls": [
+      [3, 4],
+      [3, 5],
+    ], // blocked tiles, static for the match
   },
   "score": { "red": 7, "blue": 5 },
   "seeds_remaining": { "red_half": 13, "blue_half": 11 },
-  "my_agents": [                  // always this team's three agents
+  "my_agents": [
+    // always this team's three agents
     // `load` = carrying + 3 * carrying_large: what it banks AND what it weighs.
-    { "id": 0, "x": 14, "y": 8, "role": "raider", "carrying": 4,
-      "carrying_large": 0, "load": 4, "immune_ticks": 0,
-      "can_move_this_tick": false }
+    {
+      "id": 0,
+      "x": 14,
+      "y": 8,
+      "role": "raider",
+      "carrying": 4,
+      "carrying_large": 0,
+      "load": 4,
+      "immune_ticks": 0,
+      "can_move_this_tick": false,
+    },
   ],
-  "enemies": [                    // the opposing colony's three agents
-    { "id": 0, "x": 20, "y": 8, "role": "soldier", "carrying": 0,
-      "carrying_large": 0, "load": 0, "immune_ticks": 0 }
+  "enemies": [
+    // the opposing colony's three agents
+    {
+      "id": 0,
+      "x": 20,
+      "y": 8,
+      "role": "soldier",
+      "carrying": 0,
+      "carrying_large": 0,
+      "load": 0,
+      "immune_ticks": 0,
+    },
   ],
-  "seeds": [ [18,3], [21,9], [15,6] ],  // EVERY takeable tile, ordinary AND large
-  "large_seeds": [                      // what `seeds` alone cannot say
-    { "x": 15, "y": 6, "home_x": 1, "home_y": 6, "half": "red", "value": 3,
-      "ticks_to_drift": 128 }
+  "seeds": [
+    [18, 3],
+    [21, 9],
+    [15, 6],
+  ], // EVERY takeable tile, ordinary AND large
+  "large_seeds": [
+    // what `seeds` alone cannot say
+    {
+      "x": 15,
+      "y": 6,
+      "home_x": 1,
+      "home_y": 6,
+      "half": "red",
+      "value": 3,
+      "ticks_to_drift": 128,
+    },
   ],
-  "jelly": [ { "x": 24, "y": 1, "active": true } ]  // ACTIVE nodes only
+  "jelly": [{ "x": 24, "y": 1, "active": true }], // ACTIVE nodes only
 }
 ```
 
@@ -215,10 +249,10 @@ One move per owned agent, every tick:
 ```jsonc
 {
   "moves": [
-    { "agent": 0, "dir": "N" },     // N | S | E | W | Stop
+    { "agent": 0, "dir": "N" }, // N | S | E | W | Stop
     { "agent": 1, "dir": "Stop" },
-    { "agent": 2, "dir": "W" }
-  ]
+    { "agent": 2, "dir": "W" },
+  ],
 }
 ```
 
@@ -241,15 +275,17 @@ everything needed to re-run `foray-core` and reproduce the match bit for bit:
 ```jsonc
 {
   "version": 1,
-  "map": "mirror-32x16",          // map id; playback regenerates the maze
-  "seed": "0xC0FFEE",             // seeds any randomness in the original run
+  "map": "mirror-32x16", // map id; playback regenerates the maze
+  "seed": "0xC0FFEE", // seeds any randomness in the original run
   "timestep_ms": 16,
   "participants": { "red": "<controller id>", "blue": "<controller id>" },
-  "ticks": [
-    { "red": { "moves": [] }, "blue": { "moves": [] } }
-  ],
-  "result": { "winner": "red", "score": { "red": 41, "blue": 39 },
-              "ended": "swept", "ticks": 9123 }
+  "ticks": [{ "red": { "moves": [] }, "blue": { "moves": [] } }],
+  "result": {
+    "winner": "red",
+    "score": { "red": 41, "blue": 39 },
+    "ended": "swept",
+    "ticks": 9123,
+  },
   // "ended" is one of: "swept" | "time_limit" | "forfeit"
 }
 ```

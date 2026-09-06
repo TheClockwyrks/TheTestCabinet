@@ -44,11 +44,11 @@ artifacts from `packages/gg-sandbox-cpp` into that crate's `OUT_DIR`, and the
 arm embeds them through `GG_ARTIFACTS_CPP`. None of them are committed. This arm's
 warm-up is unpacking the guest archive.
 
-| Artifact | What it carries |
-| --- | --- |
-| `cpp.guest.tar.gz` | the generated WIT header, the SDK headers under the `include/` root a program's own `#include <gg/…>` resolves against, the library set `prelude.hpp` declares, gg's shell as source and as an object, and the SDK, bindings and component-type objects the link needs |
-| `cpp.adapter.wasm` | this arm's pinned `wasi_snapshot_preview1` reactor adapter |
-| `cpp.toolchain.json` | the pinned release, target, standard and adapter version, and the header list read out of the prelude |
+| Artifact             | What it carries                                                                                                                                                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cpp.guest.tar.gz`   | the generated WIT header, the SDK headers under the `include/` root a program's own `#include <gg/…>` resolves against, the library set `prelude.hpp` declares, gg's shell as source and as an object, and the SDK, bindings and component-type objects the link needs |
+| `cpp.adapter.wasm`   | this arm's pinned `wasi_snapshot_preview1` reactor adapter                                                                                                                                                                                                             |
+| `cpp.toolchain.json` | the pinned release, target, standard and adapter version, and the header list read out of the prelude                                                                                                                                                                  |
 
 Three compile flags decide what a model can write and read.
 `-fwasm-exceptions` with `-mllvm -wasm-use-legacy-eh=false` selects the

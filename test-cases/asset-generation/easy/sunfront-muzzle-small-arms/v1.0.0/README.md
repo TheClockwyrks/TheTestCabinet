@@ -2,7 +2,7 @@
 
 This is version `v1.0.0` of the **Sunfront Small-Arms Muzzle Flash** test case:
 an asset-generation case (`asset_kind = "particle-3d"`) that asks a model to
-author the *Sunfront* small-arms muzzle flash as a volumetric, one-shot particle
+author the _Sunfront_ small-arms muzzle flash as a volumetric, one-shot particle
 system, simulated live.
 
 Sunfront is a real-time tug-of-war of solar-powered war automatons. This is the

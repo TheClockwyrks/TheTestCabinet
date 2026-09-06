@@ -466,7 +466,12 @@ export const HOP_KEY: Readonly<Record<Facing, string>> = {
 
 /** The six screens the game moves between. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
 
 /** The three phases of the `playing` screen. */
 export type Phase = "crossing" | "dying" | "clearing";

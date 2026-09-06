@@ -34,10 +34,10 @@ below the bottom row.
 
 Two radii govern a gem.
 
-| Constant | Value | Governs |
-| --- | --- | --- |
-| `GEM_R` | `30` | Every gem's drawn form fits inside this radius of its cell center. |
-| `GEM_HIT_R` | `36` | A cell is targeted by the pointer when the pointer is within this radius of that cell's center. |
+| Constant    | Value | Governs                                                                                         |
+| ----------- | ----- | ----------------------------------------------------------------------------------------------- |
+| `GEM_R`     | `30`  | Every gem's drawn form fits inside this radius of its cell center.                              |
+| `GEM_HIT_R` | `36`  | A cell is targeted by the pointer when the pointer is within this radius of that cell's center. |
 
 ## Kinds
 
@@ -104,22 +104,22 @@ tokens, read from the top-left to the bottom-right. Each line is one row, and
 the tokens within a line run in column order. A token is a kind letter, then a
 strain digit, then an optional cut letter.
 
-| Letter | Kind |
-| --- | --- |
-| `R` | `ruby` |
-| `A` | `amber` |
-| `C` | `citrine` |
-| `J` | `jade` |
-| `B` | `beryl` |
-| `S` | `sapphire` |
-| `M` | `amethyst` |
-| `X` | A `prism`, which carries no kind. Its strain digit still applies. |
+| Letter | Kind                                                              |
+| ------ | ----------------------------------------------------------------- |
+| `R`    | `ruby`                                                            |
+| `A`    | `amber`                                                           |
+| `C`    | `citrine`                                                         |
+| `J`    | `jade`                                                            |
+| `B`    | `beryl`                                                           |
+| `S`    | `sapphire`                                                        |
+| `M`    | `amethyst`                                                        |
+| `X`    | A `prism`, which carries no kind. Its strain digit still applies. |
 
-| Cut letter | Cut |
-| --- | --- |
-| (none) | `plain` |
-| `b` | `brilliant` |
-| `s` | `star` |
+| Cut letter | Cut         |
+| ---------- | ----------- |
+| (none)     | `plain`     |
+| `b`        | `brilliant` |
+| `s`        | `star`      |
 
 The strain digit is `0`, `1`, `2`, or `3`, and `3` is flawed. So `R0` is a plain
 ruby at strain `0`, `J3` is a flawed jade, `S1b` is a sapphire brilliant at

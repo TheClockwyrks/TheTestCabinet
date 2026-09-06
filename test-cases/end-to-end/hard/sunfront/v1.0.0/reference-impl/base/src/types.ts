@@ -8,7 +8,12 @@
  * of these; this file is the vocabulary, not the mutable state.
  */
 
-import type { ModelSpec, AnimationSpec, ParticleSystem, PartMesh } from "./runtime";
+import type {
+  ModelSpec,
+  AnimationSpec,
+  ParticleSystem,
+  PartMesh,
+} from "./runtime";
 
 /** The two legions. The player always holds the origin corner (specs/playfield.md). */
 export type Team = "player" | "enemy";

@@ -26,7 +26,12 @@
 // hex ADJACENT to the anchor — one hex out, which is what a length of `1` means.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertNotNull, assertTrue } from "../assert";
+import {
+  assertEqual,
+  assertLength,
+  assertNotNull,
+  assertTrue,
+} from "../assert";
 import { ARM_MAX_LEN, ARM_MIN_LEN } from "../constants";
 import { adjacent, at } from "../field";
 import { BARE, ORIGIN } from "../fixtures";
@@ -88,7 +93,9 @@ it("holds a wheel at length 1 in the machine, in the solution, and on its ring",
     "the solution readSolution returns records the wheel at length 1, as specs/formats.md requires",
   );
 
-  const refused = await refuses(() => h.debug.setPartLength(wheel, ARM_MAX_LEN));
+  const refused = await refuses(() =>
+    h.debug.setPartLength(wheel, ARM_MAX_LEN),
+  );
 
   await h.advance(1);
   const snapshot = await h.snapshot();

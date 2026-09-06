@@ -49,16 +49,16 @@ windows the run built.
 
 The record captures every input that changes control flow:
 
-| Entry | What it holds |
-| --- | --- |
-| `model_io` | The pooled request, the response, and the call's latency |
-| `model_error` | The pooled request and why the call failed |
-| `tool_result` | The call and the exact outcome the dispatch returned |
-| `prompt_frame` | One agent's context window as it stood for the turn just recorded |
-| `shell` | One shell command gg ran, with its origin, exit status and pooled streams |
-| `git` | One `git` subprocess gg's own orchestration ran, with its pooled streams |
-| `cancel_probe` | One read of the cancel file, and what it found |
-| `clock` | One read of the wall-clock deadline: elapsed and remaining milliseconds |
+| Entry          | What it holds                                                             |
+| -------------- | ------------------------------------------------------------------------- |
+| `model_io`     | The pooled request, the response, and the call's latency                  |
+| `model_error`  | The pooled request and why the call failed                                |
+| `tool_result`  | The call and the exact outcome the dispatch returned                      |
+| `prompt_frame` | One agent's context window as it stood for the turn just recorded         |
+| `shell`        | One shell command gg ran, with its origin, exit status and pooled streams |
+| `git`          | One `git` subprocess gg's own orchestration ran, with its pooled streams  |
+| `cancel_probe` | One read of the cancel file, and what it found                            |
+| `clock`        | One read of the wall-clock deadline: elapsed and remaining milliseconds   |
 
 A recorded request carries two discriminators. Its `role` is either the agent's
 own turn loop or the [compaction](/gg/compaction/) summarizer, which rewrites
@@ -173,7 +173,7 @@ contiguous prefix and no entry can reference a body that was never written.
 Every stop is a recorded fact and the run is untouched. Capture degrades; it
 never fails the run it observes.
 
-That holds even when the failure is gg's own: a journal writer that *panics* is
+That holds even when the failure is gg's own: a journal writer that _panics_ is
 reported as a write failure — never as no failure, which would describe a
 journal missing an unknown number of lines as a clean recording — and it does
 not end the run, which is the one gg defect that does not. The journal is a
@@ -192,11 +192,11 @@ cannot write a self-reported truncation marker either.
 
 Three ceilings bound what a capture costs.
 
-| Ceiling | Value | Applies to |
-| --- | --- | --- |
-| Journal bytes (`replayMaxBytes`) | the configured figure | The whole journal; capture stops |
-| Subprocess stream | 32 KiB | One recorded stdout or stderr |
-| Tool payload | 256 KiB | One recorded tool output or lifted data text |
+| Ceiling                          | Value                 | Applies to                                   |
+| -------------------------------- | --------------------- | -------------------------------------------- |
+| Journal bytes (`replayMaxBytes`) | the configured figure | The whole journal; capture stops             |
+| Subprocess stream                | 32 KiB                | One recorded stdout or stderr                |
+| Tool payload                     | 256 KiB               | One recorded tool output or lifted data text |
 
 The journal ceiling is configurable among the run's
 [execution limits](/gg/execution-limits/). It is the one ceiling that stops the
@@ -241,16 +241,16 @@ stops early yields a shorter record that says so; a journal whose indices do not
 line up would yield a record that looks complete and describes a conversation
 that never happened.
 
-| Condition | Outcome |
-| --- | --- |
-| No terminating line | `session_killed`; everything read is kept |
-| A torn or unparseable line | `corrupt_journal` at the last complete `seq` |
-| A terminating line whose count disagrees with the walk | `corrupt_journal` |
-| The journal writer failed | `write_failed`, as the recorder reported it |
-| The byte ceiling was crossed | `byte_ceiling`, as the recorder reported it |
-| A pool line whose index is not the next one | Refused; no record is written |
-| An entry referencing past a pool's end | Refused; no record is written |
-| A journal in a format this build does not write | Refused; no record is written |
+| Condition                                              | Outcome                                      |
+| ------------------------------------------------------ | -------------------------------------------- |
+| No terminating line                                    | `session_killed`; everything read is kept    |
+| A torn or unparseable line                             | `corrupt_journal` at the last complete `seq` |
+| A terminating line whose count disagrees with the walk | `corrupt_journal`                            |
+| The journal writer failed                              | `write_failed`, as the recorder reported it  |
+| The byte ceiling was crossed                           | `byte_ceiling`, as the recorder reported it  |
+| A pool line whose index is not the next one            | Refused; no record is written                |
+| An entry referencing past a pool's end                 | Refused; no record is written                |
+| A journal in a format this build does not write        | Refused; no record is written                |
 
 The journal's structure outranks its self-report: a recorder that stopped
 deliberately still wrote a correct journal, so its reported reason stands unless
@@ -301,11 +301,11 @@ undo a commit the model already made.
 
 A record carries three identities, and they answer three different questions.
 
-| Field | Question | May a reader branch on it? |
-| --- | --- | --- |
-| `formatVersion` | Can this build parse this record? | Yes; the compatibility contract |
-| `recorder.ggVersion` | Which build wrote it? | No; explanatory only |
-| `recorder.commit` | Which exact build wrote it? | Only to verify a resolved binary |
+| Field                | Question                          | May a reader branch on it?       |
+| -------------------- | --------------------------------- | -------------------------------- |
+| `formatVersion`      | Can this build parse this record? | Yes; the compatibility contract  |
+| `recorder.ggVersion` | Which build wrote it?             | No; explanatory only             |
+| `recorder.commit`    | Which exact build wrote it?       | Only to verify a resolved binary |
 
 Gating on the gg version is wrong in both directions: a version bump with no
 prompt change must not invalidate every record on every release, and an

@@ -28,7 +28,10 @@ class GameMode {
   endPlay(reason: EndPlayReason): void;
 
   addPlayer(options?: PlayerOptions): PlayerController;
-  addBot(type: ControllerClass<AIController>, options?: BotOptions): AIController;
+  addBot(
+    type: ControllerClass<AIController>,
+    options?: BotOptions,
+  ): AIController;
   restart(controller: Controller): Pawn | null;
   spawnPoint(controller: Controller): Transform;
   pawnDied(controller: Controller, pawn: Pawn): void;
@@ -36,25 +39,25 @@ class GameMode {
 }
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `world` | The world this mode governs. |
-| `options` | Whatever `world.open` was given, or an empty object for the start level. |
-| `state` | The world's game state, the instance built from `gameStateClass`. |
-| `phase` | The match phase. `"waiting"` when the mode begins play. |
-| `gameStateClass` | Defaults to `GameState`. Read once, when the world is built. |
-| `playerStateClass` | Defaults to `PlayerState`. Read on each `addPlayer` and `addBot`. |
-| `playerControllerClass` | Defaults to `PlayerController`. The controller `addPlayer` builds when its options name none. |
-| `pawnClass` | Defaults to `null`. The pawn `restart` spawns. `null` for a mode whose controllers possess nothing. |
-| `beginPlay` | Runs after every declared actor has begun play. Where a mode adds its players and sets its phase. |
-| `tick` | Runs once per frame, after every actor has ticked and after collision has been reported. |
-| `endPlay` | Runs when the world closes, after every actor has ended play. |
-| `addPlayer` | Builds the player state, the player controller, and the pawn, and possesses. Assigns the next free index when the options name none. |
-| `addBot` | The same for an AI controller whose class the caller names. |
-| `restart` | Destroys the controller's current pawn, spawns `pawnClass` at `spawnPoint(controller)`, and possesses it. Returns `null` when `pawnClass` is `null`. |
-| `spawnPoint` | Where `restart` places a pawn, as a whole `Transform`. The base implementation returns the identity transform. |
-| `pawnDied` | Runs when a possessed pawn is destroyed, after the pawn's `endPlay`. |
-| `setPhase` | Sets the phase, writes it onto the game state, and emits `match:phase`. Setting the phase it already holds emits nothing. |
+| Member                  | Semantics                                                                                                                                            |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `world`                 | The world this mode governs.                                                                                                                         |
+| `options`               | Whatever `world.open` was given, or an empty object for the start level.                                                                             |
+| `state`                 | The world's game state, the instance built from `gameStateClass`.                                                                                    |
+| `phase`                 | The match phase. `"waiting"` when the mode begins play.                                                                                              |
+| `gameStateClass`        | Defaults to `GameState`. Read once, when the world is built.                                                                                         |
+| `playerStateClass`      | Defaults to `PlayerState`. Read on each `addPlayer` and `addBot`.                                                                                    |
+| `playerControllerClass` | Defaults to `PlayerController`. The controller `addPlayer` builds when its options name none.                                                        |
+| `pawnClass`             | Defaults to `null`. The pawn `restart` spawns. `null` for a mode whose controllers possess nothing.                                                  |
+| `beginPlay`             | Runs after every declared actor has begun play. Where a mode adds its players and sets its phase.                                                    |
+| `tick`                  | Runs once per frame, after every actor has ticked and after collision has been reported.                                                             |
+| `endPlay`               | Runs when the world closes, after every actor has ended play.                                                                                        |
+| `addPlayer`             | Builds the player state, the player controller, and the pawn, and possesses. Assigns the next free index when the options name none.                 |
+| `addBot`                | The same for an AI controller whose class the caller names.                                                                                          |
+| `restart`               | Destroys the controller's current pawn, spawns `pawnClass` at `spawnPoint(controller)`, and possesses it. Returns `null` when `pawnClass` is `null`. |
+| `spawnPoint`            | Where `restart` places a pawn, as a whole `Transform`. The base implementation returns the identity transform.                                       |
+| `pawnDied`              | Runs when a possessed pawn is destroyed, after the pawn's `endPlay`.                                                                                 |
+| `setPhase`              | Sets the phase, writes it onto the game state, and emits `match:phase`. Setting the phase it already holds emits nothing.                            |
 
 A mode is constructed with no arguments, so a constructor sets its class fields
 and its own defaults; `world`, `options`, and `state` are assigned before
@@ -87,11 +90,11 @@ figures without a cast at every use.
 type MatchPhase = "waiting" | "playing" | "over";
 ```
 
-| Phase | Meaning |
-| --- | --- |
+| Phase     | Meaning                                                                        |
+| --------- | ------------------------------------------------------------------------------ |
 | `waiting` | The match is being set up. This is the phase a mode holds when it begins play. |
-| `playing` | The match is running. `GameState.elapsed` accumulates only in this phase. |
-| `over` | The match is decided. |
+| `playing` | The match is running. `GameState.elapsed` accumulates only in this phase.      |
+| `over`    | The match is decided.                                                          |
 
 The phase changes only through `setPhase`. Each call writes the phase onto the
 game state and emits `match:phase`, so anything that reacts to the match
@@ -134,12 +137,12 @@ interface BotOptions {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `index` | The index the player state carries. Absent, `addPlayer` assigns the next free index. |
-| `name` | The name written onto the player state. |
-| `controller` | The controller class to build. Absent, `addPlayer` builds `playerControllerClass`. |
-| `pawn` | The pawn class to spawn and possess, in place of `pawnClass`. `null` adds a controller that possesses nothing. |
+| Field        | Meaning                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| `index`      | The index the player state carries. Absent, `addPlayer` assigns the next free index.                           |
+| `name`       | The name written onto the player state.                                                                        |
+| `controller` | The controller class to build. Absent, `addPlayer` builds `playerControllerClass`.                             |
+| `pawn`       | The pawn class to spawn and possess, in place of `pawnClass`. `null` adds a controller that possesses nothing. |
 
 `addBot` takes the controller class as its first argument, so `BotOptions` names
 no controller.
@@ -302,8 +305,8 @@ since an action reaches the game only through a player controller. See
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `beginPlay` throws while the start level is opening | `engine.initialize` rejects with the cause |
-| `tick` throws under `run` | The error propagates to the host, and the loop schedules the next frame |
-| `tick` throws under `advance` | `advance` rejects with the cause, and the remaining frames do not run |
+| Condition                                           | Result                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------- |
+| `beginPlay` throws while the start level is opening | `engine.initialize` rejects with the cause                              |
+| `tick` throws under `run`                           | The error propagates to the host, and the loop schedules the next frame |
+| `tick` throws under `advance`                       | `advance` rejects with the cause, and the remaining frames do not run   |

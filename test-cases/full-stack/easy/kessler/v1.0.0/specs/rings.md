@@ -11,11 +11,11 @@ in `specs/deflector-and-ball.md`.
 Each ring is an annulus of slots, and each slot holds one derelict target. A
 ring is positioned by one angle in degrees, its ring angle.
 
-| Ring | Slots | Slot width | Target arc | Hit points | Orbit speed at wave `w` |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `12` | `30` degrees | `26` degrees | `1` | `0` (stationary) |
-| 2 | `16` | `22.5` degrees | `18.5` degrees | `2` | `+min(12 + 3 * (w - 1), 45)` degrees per second |
-| 3 | `20` | `18` degrees | `14` degrees | `1` | `-min(8 + 2 * (w - 1), 30)` degrees per second |
+| Ring | Slots | Slot width     | Target arc     | Hit points | Orbit speed at wave `w`                         |
+| ---- | ----- | -------------- | -------------- | ---------- | ----------------------------------------------- |
+| 1    | `12`  | `30` degrees   | `26` degrees   | `1`        | `0` (stationary)                                |
+| 2    | `16`  | `22.5` degrees | `18.5` degrees | `2`        | `+min(12 + 3 * (w - 1), 45)` degrees per second |
+| 3    | `20`  | `18` degrees   | `14` degrees   | `1`        | `-min(8 + 2 * (w - 1), 30)` degrees per second  |
 
 Slot `k` of a ring, with `k` running from `0` to the slot count minus one,
 begins at the ring's angle plus `k` times the slot width. The slot's target

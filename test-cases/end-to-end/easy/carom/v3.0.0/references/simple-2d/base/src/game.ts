@@ -98,7 +98,12 @@ export const BACKGROUND: string = COLOR.bg;
  * render the live field; the rest are menu or overlay screens.
  */
 export type Screen =
-  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
+  | "title"
+  | "howto"
+  | "countdown"
+  | "playing"
+  | "paused"
+  | "matchover";
 
 /** The two screens a pause can resume to. */
 export type ResumeScreen = "countdown" | "playing";

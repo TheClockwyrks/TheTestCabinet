@@ -258,7 +258,9 @@ it("drops a broken member's mass from the nodes it hung on", async () => {
     for (const [where, force] of reference) {
       const survived = broken.get(where);
       if (survived === undefined) {
-        throw new Error("gantry: the broken crane reports no member at " + where);
+        throw new Error(
+          "gantry: the broken crane reports no member at " + where,
+        );
       }
       assertNear(
         survived,

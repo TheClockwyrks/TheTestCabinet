@@ -267,7 +267,10 @@ export interface Snapshot {
   screen: Screen;
   mode: Mode;
   score: { p1: number; p2: number };
-  paddles: { left: { cy: number; vy: number }; right: { cy: number; vy: number } };
+  paddles: {
+    left: { cy: number; vy: number };
+    right: { cy: number; vy: number };
+  };
   ball: { x: number; y: number; vx: number; vy: number };
 }
 
@@ -302,11 +305,11 @@ A suite imports the build, so a case fixes three module paths and what each one
 exports. That contract is stated in the case's specification and is what gives
 every build of the case the same shape to check.
 
-| Module | Owned by | Holds |
-| --- | --- | --- |
+| Module             | Owned by  | Holds                                                                                                                                                                                                                   |
+| ------------------ | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/constants.ts` | The build | The build's copy of the logical design size, the palette, the action names with the keys they bind, the cue names, and every tunable the specification fixes. It is seeded with the workspace and the build imports it. |
-| `src/game.ts` | The build | The `State` type the case declares and the `Game` the engine drives, whose `initialize` returns `[state, surface]` to the instrumentation spec. |
-| `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it. |
+| `src/game.ts`      | The build | The `State` type the case declares and the `Game` the engine drives, whose `initialize` returns `[state, surface]` to the instrumentation spec.                                                                         |
+| `src/main.ts`      | The case  | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it.                                                                                                                        |
 
 A suite imports `game.ts` for the game it drives, and takes every figure it
 asserts from the project's own

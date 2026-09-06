@@ -119,7 +119,10 @@ export interface SearchMatch {
  * @throws `ApiError` with `invalid-argument` for an empty path, and `not-found` for a path that is
  * not there.
  */
-export function readFile(path: string, options?: { offset?: number; limit?: number }): FileRead {
+export function readFile(
+  path: string,
+  options?: { offset?: number; limit?: number },
+): FileRead {
   const o = opts<{ offset?: number; limit?: number }>("readFile", options);
   const offset = uint("readFile", "offset", o?.offset, U32_MAX);
   const limit = uint("readFile", "limit", o?.limit, U32_MAX);
@@ -150,7 +153,11 @@ export function writeFile(path: string, contents: string): number {
  * @throws `ApiError` with `not-found` when the text does not appear, and `conflict` — carrying the
  * number of matches — when it appears more than once.
  */
-export function editFile(path: string, oldString: string, newString: string): void {
+export function editFile(
+  path: string,
+  oldString: string,
+  newString: string,
+): void {
   call(() => raw.editFile(path, oldString, newString));
 }
 
@@ -205,7 +212,11 @@ export function tree(options?: { path?: string; depth?: number }): string {
   const o = opts<{ path?: string; depth?: number }>("tree", options);
   const depth = uint("tree", "depth", o?.depth, U32_MAX);
   if (depth === 0) {
-    throw new ApiError("tree", "invalid-argument", "`depth` must be at least 1, got 0");
+    throw new ApiError(
+      "tree",
+      "invalid-argument",
+      "`depth` must be at least 1, got 0",
+    );
   }
   return call(() => raw.tree(o?.path, depth));
 }
@@ -240,11 +251,18 @@ export function tree(options?: { path?: string; depth?: number }): string {
  * @throws `ApiError` with `invalid-argument` for a blank query, a pattern that does not parse, or a
  * `limit` of zero, and `not-found` for a `path` that is not there.
  */
-export function search(query: string, options?: { path?: string; limit?: number }): SearchMatch[] {
+export function search(
+  query: string,
+  options?: { path?: string; limit?: number },
+): SearchMatch[] {
   const o = opts<{ path?: string; limit?: number }>("search", options);
   const limit = uint("search", "limit", o?.limit, U32_MAX);
   if (limit === 0) {
-    throw new ApiError("search", "invalid-argument", "`limit` must be at least 1, got 0");
+    throw new ApiError(
+      "search",
+      "invalid-argument",
+      "`limit` must be at least 1, got 0",
+    );
   }
   return call(() => raw.search(query, o?.path, limit));
 }

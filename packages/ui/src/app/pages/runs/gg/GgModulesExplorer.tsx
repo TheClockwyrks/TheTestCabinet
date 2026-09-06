@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type {
-  GgCapabilitySet,
-  GgModuleKind,
-} from "@clockwyrks/run-record/gg";
+import type { GgCapabilitySet, GgModuleKind } from "@clockwyrks/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import { formatEventTime } from "../../../eventFeed";
 import type {

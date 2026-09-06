@@ -11,12 +11,12 @@ exactly as its band's rock does, spending the same time and fuel, but when its
 health reaches `0` it detonates instead of clearing cleanly. The cell becomes an
 open tunnel either way.
 
-| Quantity | Name | Value |
-| --- | --- | --- |
-| Damage where gas first appears, at depth fraction `0.25` | `GAS_DAMAGE_MIN` | `60` hull |
-| Damage at the deepest minable row | `GAS_DAMAGE_MAX` | `400` hull |
-| Radius within which the miner is hit | `GAS_BLAST_TILES` | `1.5` tiles |
-| Speed the blast shoves the miner away at | `GAS_KNOCKBACK` | `700` units per second |
+| Quantity                                                 | Name              | Value                  |
+| -------------------------------------------------------- | ----------------- | ---------------------- |
+| Damage where gas first appears, at depth fraction `0.25` | `GAS_DAMAGE_MIN`  | `60` hull              |
+| Damage at the deepest minable row                        | `GAS_DAMAGE_MAX`  | `400` hull             |
+| Radius within which the miner is hit                     | `GAS_BLAST_TILES` | `1.5` tiles            |
+| Speed the blast shoves the miner away at                 | `GAS_KNOCKBACK`   | `700` units per second |
 
 A detonation at depth fraction `f` deals
 `GAS_DAMAGE_MIN + (GAS_DAMAGE_MAX - GAS_DAMAGE_MIN) * max(0, f - 0.25) / 0.75`
@@ -43,10 +43,10 @@ breathe.
 Lava appears from the deepstone band down and grows denser with depth, forming
 pools rather than isolated cells.
 
-| Quantity | Name | Value |
-| --- | --- | --- |
-| Hull drained per second while touching lava, before the radiator | `LAVA_CONTACT_DPS` | `32` |
-| Hull burned by drilling through a deepstone lava cell, before the radiator | `LAVA_DRILL_DEEPSTONE` | `60` |
+| Quantity                                                                   | Name                   | Value |
+| -------------------------------------------------------------------------- | ---------------------- | ----- |
+| Hull drained per second while touching lava, before the radiator           | `LAVA_CONTACT_DPS`     | `32`  |
+| Hull burned by drilling through a deepstone lava cell, before the radiator | `LAVA_DRILL_DEEPSTONE` | `60`  |
 | Hull burned by drilling through a coreshell lava cell, before the radiator | `LAVA_DRILL_CORESHELL` | `100` |
 
 - Contact drains hull at `LAVA_CONTACT_DPS` for as long as the miner's box
@@ -64,10 +64,10 @@ pools rather than isolated cells.
 
 A landing above a safe speed costs hull.
 
-| Quantity | Name | Value |
-| --- | --- | --- |
-| Landing speed below which a landing is harmless | `IMPACT_SAFE_SPEED` | `700` units per second |
-| Hull per unit of downward speed above the safe speed | `IMPACT_DAMAGE_RATE` | `0.1` |
+| Quantity                                             | Name                 | Value                  |
+| ---------------------------------------------------- | -------------------- | ---------------------- |
+| Landing speed below which a landing is harmless      | `IMPACT_SAFE_SPEED`  | `700` units per second |
+| Hull per unit of downward speed above the safe speed | `IMPACT_DAMAGE_RATE` | `0.1`                  |
 
 A landing at downward speed `v` deals
 `max(0, v - IMPACT_SAFE_SPEED) * IMPACT_DAMAGE_RATE` hull, plays the hurt state

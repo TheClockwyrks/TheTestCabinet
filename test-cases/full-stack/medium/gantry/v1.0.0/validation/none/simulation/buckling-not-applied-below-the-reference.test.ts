@@ -18,7 +18,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertNear, assertTrue } from "../assert";
-import { BUCKLE_REF, RAIL_CAP_COMPRESSION, STRUT_CAP_COMPRESSION } from "../constants";
+import {
+  BUCKLE_REF,
+  RAIL_CAP_COMPRESSION,
+  STRUT_CAP_COMPRESSION,
+} from "../constants";
 import {
   clearAll,
   createHarness,

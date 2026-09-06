@@ -28,16 +28,16 @@ class ModelComponent extends RenderComponent {
 }
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `model` | The loaded model the component was built from. |
-| `castShadow` | Defaults to `false`. Whether the model's meshes cast shadows. |
-| `receiveShadow` | Defaults to `false`. Whether the model's meshes receive shadows. |
-| `time` | Seconds into the playing animation, `0` when nothing is playing. Writable, so a game seeks. |
-| `play` | Plays the named clip. `loop` defaults to `true` and `speed` to `1`, a multiplier on the clip's rate. |
-| `stop` | Stops the playing clip. |
-| `animation` | The name of the playing clip, or `null`. |
-| `node` | A live handle onto the named node's local transform, or `null` for a name the model lacks. |
+| Member          | Semantics                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
+| `model`         | The loaded model the component was built from.                                                       |
+| `castShadow`    | Defaults to `false`. Whether the model's meshes cast shadows.                                        |
+| `receiveShadow` | Defaults to `false`. Whether the model's meshes receive shadows.                                     |
+| `time`          | Seconds into the playing animation, `0` when nothing is playing. Writable, so a game seeks.          |
+| `play`          | Plays the named clip. `loop` defaults to `true` and `speed` to `1`, a multiplier on the clip's rate. |
+| `stop`          | Stops the playing clip.                                                                              |
+| `animation`     | The name of the playing clip, or `null`.                                                             |
+| `node`          | A live handle onto the named node's local transform, or `null` for a name the model lacks.           |
 
 An `animation` given at construction is played looping from the first frame.
 
@@ -203,8 +203,8 @@ two flags on the component rather than on each part. See `rendering.md`.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `ModelComponent.play` is given a name the model lacks | `Error` naming the animation |
-| `ModelComponent.node` is given a name the model lacks | Returns `null` |
-| `loadModel` cannot fetch or decode the file | Rejects with the cause, and emits `asset:failed` |
+| Condition                                             | Result                                           |
+| ----------------------------------------------------- | ------------------------------------------------ |
+| `ModelComponent.play` is given a name the model lacks | `Error` naming the animation                     |
+| `ModelComponent.node` is given a name the model lacks | Returns `null`                                   |
+| `loadModel` cannot fetch or decode the file           | Rejects with the cause, and emits `asset:failed` |

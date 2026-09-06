@@ -1,6 +1,6 @@
 # Siege Warden Turret — modeling-and-rigging brief
 
-Build the **Warden automated defense turret**, a *Siege* emplacement, as a
+Build the **Warden automated defense turret**, a _Siege_ emplacement, as a
 **rigidly-articulated mechanism** in **Blender**. You write one Blender Python
 script (`build.py`) that constructs the turret as **separate parented parts** and
 authors its animations as **object motion**, then runs it headless through
@@ -8,7 +8,7 @@ authors its animations as **object motion**, then runs it headless through
 **node-hierarchy animations**) and renders a preview.
 
 This measures **creativity and mechanical craft**, not instruction-following: the
-brief says *what the turret is* and *how it must move*; the parts you build, where
+brief says _what the turret is_ and _how it must move_; the parts you build, where
 you place their pivots, and how you shape everything are **yours to invent**. There
 is no target image.
 
@@ -44,8 +44,8 @@ emplacement within the seeded bounding box (`config["bounds"]`, in world units:
 
 A real turret gives the game two things, and you must author both:
 
-1. **Baked animation clips** the game *plays* by name (deploy, fire, stow).
-2. **Caller DOFs** the game *drives* every frame from its own state to *aim* the
+1. **Baked animation clips** the game _plays_ by name (deploy, fire, stow).
+2. **Caller DOFs** the game _drives_ every frame from its own state to _aim_ the
    turret (yaw and pitch). These are **not** clips — the game sets them directly.
 
 ### Animation clips

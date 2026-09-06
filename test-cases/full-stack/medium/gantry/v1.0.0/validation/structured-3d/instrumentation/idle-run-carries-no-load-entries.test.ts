@@ -50,7 +50,11 @@ it("reports no load entries on an opened site, an aborted run and a reset", asyn
   // Opening a site.
   await openSite(h, SITE);
   const opened = await h.snapshot();
-  assertLength(opened.site.loads, authored, "the loads site 2 is authored with");
+  assertLength(
+    opened.site.loads,
+    authored,
+    "the loads site 2 is authored with",
+  );
   assertEqual(opened.run.phase, "idle", "the run a site opening puts back");
   assertLength(
     opened.run.loads,

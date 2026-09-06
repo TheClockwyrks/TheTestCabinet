@@ -37,14 +37,14 @@ cache.
 
 ## Pages
 
-| Page | Covers |
-| --- | --- |
-| [Creating the Engine](/engines/simple-3d/usage/creating-the-engine/) | The design size, the options `createEngine` takes, `three` as a peer dependency, the screen canvas, the projection, shadows, sizing the canvas from CSS, choosing a clock, and teardown. |
-| [The Game Loop](/engines/simple-3d/usage/the-game-loop/) | Writing `initialize`, `update`, and `render`, booting the engine, integrating against delta time, pausing, and ending a run. |
-| [The Scene](/engines/simple-3d/usage/the-scene/) | Building objects once and updating them from the state each frame, the render cache, adding and removing objects as the state changes, models and `cloneModel`, lights, shadows, and the scene background. |
-| [The Camera and Pointer](/engines/simple-3d/usage/the-camera-and-pointer/) | Posing an orbit camera from the state, picking a world object from the pointer with `view().ray`, projecting a world point for a label, and the letterbox rule. |
-| [The Screen Layer](/engines/simple-3d/usage/the-screen-layer/) | Drawing the HUD in logical coordinates on the cleared screen layer, composited over the 3D picture. |
-| [Actions](/engines/simple-3d/usage/actions/) | Registering actions, reading held values and edges, and selecting a touch layout. |
-| [Audio and Assets](/engines/simple-3d/usage/audio-and-assets/) | Defining and loading cues, playing them from `update`, positional playback, and loading images, textures, models, and audio under the asset root. |
-| [Diagnostics](/engines/simple-3d/usage/diagnostics/) | Registering overlay sources and choosing what a case's checks can read. |
-| [Debug Surface](/engines/simple-3d/usage/debug/) | Declaring the surface type, writing its poses and readings over the state, exposing it from `initialize`, and driving it through `engine.apply` and `engine.state`. |
+| Page                                                                       | Covers                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Creating the Engine](/engines/simple-3d/usage/creating-the-engine/)       | The design size, the options `createEngine` takes, `three` as a peer dependency, the screen canvas, the projection, shadows, sizing the canvas from CSS, choosing a clock, and teardown.                   |
+| [The Game Loop](/engines/simple-3d/usage/the-game-loop/)                   | Writing `initialize`, `update`, and `render`, booting the engine, integrating against delta time, pausing, and ending a run.                                                                               |
+| [The Scene](/engines/simple-3d/usage/the-scene/)                           | Building objects once and updating them from the state each frame, the render cache, adding and removing objects as the state changes, models and `cloneModel`, lights, shadows, and the scene background. |
+| [The Camera and Pointer](/engines/simple-3d/usage/the-camera-and-pointer/) | Posing an orbit camera from the state, picking a world object from the pointer with `view().ray`, projecting a world point for a label, and the letterbox rule.                                            |
+| [The Screen Layer](/engines/simple-3d/usage/the-screen-layer/)             | Drawing the HUD in logical coordinates on the cleared screen layer, composited over the 3D picture.                                                                                                        |
+| [Actions](/engines/simple-3d/usage/actions/)                               | Registering actions, reading held values and edges, and selecting a touch layout.                                                                                                                          |
+| [Audio and Assets](/engines/simple-3d/usage/audio-and-assets/)             | Defining and loading cues, playing them from `update`, positional playback, and loading images, textures, models, and audio under the asset root.                                                          |
+| [Diagnostics](/engines/simple-3d/usage/diagnostics/)                       | Registering overlay sources and choosing what a case's checks can read.                                                                                                                                    |
+| [Debug Surface](/engines/simple-3d/usage/debug/)                           | Declaring the surface type, writing its poses and readings over the state, exposing it from `initialize`, and driving it through `engine.apply` and `engine.state`.                                        |

@@ -189,7 +189,10 @@ export function App() {
 
   const openScenario = useCallback(
     (name: string) => {
-      if (dirty && !window.confirm("Discard unsaved changes and open " + name + "?")) {
+      if (
+        dirty &&
+        !window.confirm("Discard unsaved changes and open " + name + "?")
+      ) {
         return;
       }
       setFileNotice(null);
@@ -240,7 +243,10 @@ export function App() {
    */
   const importScenario = useCallback(
     (name: string) => {
-      if (dirty && !window.confirm("Discard unsaved changes and import " + name + "?")) {
+      if (
+        dirty &&
+        !window.confirm("Discard unsaved changes and import " + name + "?")
+      ) {
         return;
       }
       setFileNotice(null);

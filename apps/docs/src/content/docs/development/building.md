@@ -302,14 +302,14 @@ container installs the musl target for its own architecture, which is what
 Then build with the aliases defined in `.cargo/config.toml`, each of which
 writes to `target/x86_64-unknown-linux-musl/release/`:
 
-| Alias | Binary |
-| --- | --- |
-| `cargo build-portable` | `tcab` |
-| `cargo build-portable-backend` | `tcab-backend` |
+| Alias                             | Binary            |
+| --------------------------------- | ----------------- |
+| `cargo build-portable`            | `tcab`            |
+| `cargo build-portable-backend`    | `tcab-backend`    |
 | `cargo build-portable-dispatcher` | `tcab-dispatcher` |
-| `cargo build-portable-driver` | `tcab-driver` |
-| `cargo build-portable-artifacts` | `tcab-artifacts` |
-| `cargo build-portable-gg` | `gg` |
+| `cargo build-portable-driver`     | `tcab-driver`     |
+| `cargo build-portable-artifacts`  | `tcab-artifacts`  |
+| `cargo build-portable-gg`         | `gg`              |
 
 The backend links statically too: its SeaORM SQLite driver compiles SQLite from
 vendored C source with the same musl toolchain, and its PostgreSQL driver is pure
@@ -359,7 +359,8 @@ npm run build
 
 The other root scripts delegate to each workspace that defines them:
 `npm run dev`, `npm run lint`, `npm run test`, and `npm run typecheck`.
-`npm run lint` also runs `lint:specs` after the per-workspace linters.
+`npm run lint` also runs `lint:specs` and `lint:format` after the per-workspace
+linters.
 
 `npm run test` runs `vitest` in each workspace and is one of the pre-commit
 gates. Iterate on the gallery's own suite with `npm run test -w
@@ -414,6 +415,22 @@ Markdown, HTML, CSS, TOML, and Handlebars under `test-cases/**` and
 `game-jams/**` that a case or jam ships to a model. Add a legitimate domain term to
 `.cspell/project-words.txt` when `cspell` flags it. This is the linter the
 test-case authoring and variant guides refer to under "Validate your work".
+
+Check formatting over the whole checkout with:
+
+```sh
+npm run lint:format   # check
+npm run format        # rewrite
+```
+
+It runs `prettier --check` over every file in the repository: the packages, the
+front ends, the documentation, and every test case's specs, validators, seeded
+workspaces and reference implementations. A formatting warning anywhere fails
+the check. Two things are left out: what `.prettierignore` names (build trees,
+vendored copies, and the Handlebars templates prettier does not parse), and the
+frozen test-case versions, which `scripts/format-check.mjs` derives from their
+`.frozen` markers on each run. Azure DevOps runs it through
+`scripts/ci/format-check.sh`.
 
 ## Generating the data contract
 

@@ -1,4 +1,4 @@
-**Thunderhead HUD** is the fleet-command interface kit for *Thunderhead*, a naval
+**Thunderhead HUD** is the fleet-command interface kit for _Thunderhead_, a naval
 fleet-command strategy game.
 
 This asset-generation case asks a model to paint it as a high-resolution UI kit

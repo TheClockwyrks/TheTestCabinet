@@ -1,7 +1,7 @@
 # Hollowdeep
 
 **Hollowdeep** is a side-view **sealed-colony survival sim** for the browser, in
-the spirit of *Oxygen Not Included*. You look at a cross-section of a sealed
+the spirit of _Oxygen Not Included_. You look at a cross-section of a sealed
 underground and keep a small crew of **delvers** alive: **dig** into
 dirt/ore/rock to open living space and mine ore, **refine** ore into build
 **material**, and place **build orders** — walls, floors, ladders, wires,
@@ -18,8 +18,8 @@ There is **no win screen** — survival is open-ended and the game measures
 **cycles survived**. The colony is **lost** when the last delver dies
 (suffocation or starvation); the colony-lost screen shows cycles survived and
 offers RESTART / MENU. This directory is the authored **reference
-implementation** of the case's `base` variant (the *New Colony* start) — the
-*correct*, ground-truth build the case is judged against. It is a self-contained
+implementation** of the case's `base` variant (the _New Colony_ start) — the
+_correct_, ground-truth build the case is judged against. It is a self-contained
 static web app: plain **TypeScript** rendering to a single **HTML5 canvas**,
 bundled with **Vite**. No backend, accounts, network calls, or API keys;
 everything needed to play is in the built bundle.
@@ -34,7 +34,7 @@ and sound the game plays is **produced during the build** with the six
 asset-generation tools on the run image's `PATH` (`draw`, `draw-sheet`,
 `particle-2d`, `sfx-synth`, `sfx-sample`, `music`) and committed under
 [`assets/`](assets/) — see the case's `specs/assets.md` and
-[`ASSETS.md`](ASSETS.md). At runtime the game only *loads* those committed files;
+[`ASSETS.md`](ASSETS.md). At runtime the game only _loads_ those committed files;
 the tools are not invoked by the build. The gas overlays and one-shot bursts are
 played live through **`@clockwyrks/particle-runtime`** (vendored under
 [`vendor/`](vendor/) so a plain `npm ci` resolves it outside the monorepo), and

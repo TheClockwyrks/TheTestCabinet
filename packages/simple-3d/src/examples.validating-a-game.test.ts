@@ -258,7 +258,8 @@ const game: Game<State, Debug> = {
     if (ball) ball.position.set(state.ball.x, BALL_R, state.ball.z);
 
     const paddle = api.scene.getObjectByName("paddle");
-    if (paddle) paddle.position.set(PADDLE_AT_X, PADDLE_HEIGHT / 2, state.paddle.z);
+    if (paddle)
+      paddle.position.set(PADDLE_AT_X, PADDLE_HEIGHT / 2, state.paddle.z);
 
     api.camera.position.set(0, 14, 10);
     api.camera.lookAt(0, 0, 0);
@@ -331,7 +332,11 @@ class KeyEvent extends Event {
   }
 }
 
-function toDevice(view: Viewport, x: number, y: number): { x: number; y: number } {
+function toDevice(
+  view: Viewport,
+  x: number,
+  y: number,
+): { x: number; y: number } {
   return {
     x: Math.round(view.offsetX + x * view.scale),
     y: Math.round(view.offsetY + y * view.scale),
@@ -512,7 +517,8 @@ async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
   // overload set on `HTMLCanvasElement`, and a one-signature function is not
   // assignable to it under this repository's `lib.dom`, so the assignment is
   // cast rather than reshaped: what runs is the page's own line.
-  screen.getContext = (() => recorded) as unknown as HTMLCanvasElement["getContext"];
+  screen.getContext = (() =>
+    recorded) as unknown as HTMLCanvasElement["getContext"];
 
   const events = new EventTarget();
   const surface: SurfaceMetrics = {
@@ -755,12 +761,18 @@ describe("asserting on the scene", () => {
     harness.dispose();
   });
 
-  type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  type StandardMesh = THREE.Mesh<
+    THREE.BufferGeometry,
+    THREE.MeshStandardMaterial
+  >;
 
   function mesh(harness: Harness, name: string): StandardMesh {
     const object = harness.engine.scene.getObjectByName(name);
     expect(object).toBeInstanceOf(THREE.Mesh);
-    return object as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+    return object as THREE.Mesh<
+      THREE.BufferGeometry,
+      THREE.MeshStandardMaterial
+    >;
   }
 
   it("places the ball and the paddle where the state says", async () => {
@@ -776,7 +788,9 @@ describe("asserting on the scene", () => {
     expect(ball.y).toBeCloseTo(BALL_RADIUS, 6);
     expect(ball.z).toBeCloseTo(-2, 6);
 
-    const paddle = mesh(harness, "paddle").getWorldPosition(new THREE.Vector3());
+    const paddle = mesh(harness, "paddle").getWorldPosition(
+      new THREE.Vector3(),
+    );
     expect(paddle.x).toBeCloseTo(PADDLE_X, 6);
     expect(paddle.z).toBeCloseTo(1, 6);
   });
@@ -784,9 +798,15 @@ describe("asserting on the scene", () => {
   it("colors the ball and the paddle as the case fixes", async () => {
     await harness.engine.advance(1);
 
-    expect(`#${mesh(harness, "ball").material.color.getHexString()}`).toBe(BALL_COLOR);
-    expect(`#${mesh(harness, "paddle").material.color.getHexString()}`).toBe(PADDLE_COLOR);
-    expect(mesh(harness, "ball").geometry.getAttribute("position").count).toBeGreaterThan(0);
+    expect(`#${mesh(harness, "ball").material.color.getHexString()}`).toBe(
+      BALL_COLOR,
+    );
+    expect(`#${mesh(harness, "paddle").material.color.getHexString()}`).toBe(
+      PADDLE_COLOR,
+    );
+    expect(
+      mesh(harness, "ball").geometry.getAttribute("position").count,
+    ).toBeGreaterThan(0);
   });
 
   it("looks at the origin from where the case fixes", async () => {
@@ -969,7 +989,10 @@ describe("asserting an action drives the game", () => {
     harness.hold("ArrowUp");
     await engine.advance(120);
 
-    expect(engine.state.paddle.z).toBeCloseTo(-(COURT_DEPTH / 2 - PADDLE_LENGTH / 2), 6);
+    expect(engine.state.paddle.z).toBeCloseTo(
+      -(COURT_DEPTH / 2 - PADDLE_LENGTH / 2),
+      6,
+    );
   });
 
   it("drives the same action from either of the case's two keys", async () => {

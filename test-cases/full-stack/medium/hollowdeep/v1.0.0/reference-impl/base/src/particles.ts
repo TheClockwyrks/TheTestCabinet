@@ -19,7 +19,15 @@
 import { ParticleCanvasPlayer } from "@clockwyrks/particle-runtime/canvas";
 import type { ParticleSystem } from "@clockwyrks/particle-runtime";
 import type { FxEvent, World } from "./types";
-import { GAS_CAPACITY, TILE, VIEW_H, VIEW_W, VIEW_X0, VIEW_Y0, isOpenToGas } from "./constants";
+import {
+  GAS_CAPACITY,
+  TILE,
+  VIEW_H,
+  VIEW_W,
+  VIEW_X0,
+  VIEW_Y0,
+  isOpenToGas,
+} from "./constants";
 
 const FIELD = 128; // the authored field size of every fx system
 
@@ -32,13 +40,18 @@ function screenY(world: World, wy: number): number {
   return VIEW_Y0 + (wy - world.camera.y) * world.camera.zoom;
 }
 
-function makePlayer(system: ParticleSystem): { canvas: HTMLCanvasElement; player: ParticleCanvasPlayer } | null {
+function makePlayer(
+  system: ParticleSystem,
+): { canvas: HTMLCanvasElement; player: ParticleCanvasPlayer } | null {
   const canvas = document.createElement("canvas");
   canvas.width = FIELD;
   canvas.height = FIELD;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
-  const player = new ParticleCanvasPlayer(system, ctx, { composite: "lighter", clear: true });
+  const player = new ParticleCanvasPlayer(system, ctx, {
+    composite: "lighter",
+    clear: true,
+  });
   return { canvas, player };
 }
 
@@ -53,7 +66,10 @@ export class GasOverlay {
   private oxPlayer: ParticleCanvasPlayer | null = null;
   private co2Player: ParticleCanvasPlayer | null = null;
 
-  constructor(oxygen: ParticleSystem | undefined, co2: ParticleSystem | undefined) {
+  constructor(
+    oxygen: ParticleSystem | undefined,
+    co2: ParticleSystem | undefined,
+  ) {
     if (oxygen) {
       const m = makePlayer(oxygen);
       if (m) {
@@ -87,8 +103,14 @@ export class GasOverlay {
     // Visible tile window (a margin of one tile so edge tiles still draw).
     const txMin = Math.max(0, Math.floor(cam.x / TILE) - 1);
     const tyMin = Math.max(0, Math.floor(cam.y / TILE) - 1);
-    const txMax = Math.min(world.w - 1, Math.ceil((cam.x + VIEW_W / zoom) / TILE) + 1);
-    const tyMax = Math.min(world.h - 1, Math.ceil((cam.y + VIEW_H / zoom) / TILE) + 1);
+    const txMax = Math.min(
+      world.w - 1,
+      Math.ceil((cam.x + VIEW_W / zoom) / TILE) + 1,
+    );
+    const tyMax = Math.min(
+      world.h - 1,
+      Math.ceil((cam.y + VIEW_H / zoom) / TILE) + 1,
+    );
 
     ctx.save();
     ctx.beginPath();
@@ -108,11 +130,31 @@ export class GasOverlay {
         const sy = screenY(world, ty * TILE);
         if (this.oxCanvas && t.oxygen > 1) {
           ctx.globalAlpha = Math.min(0.72, (t.oxygen / GAS_CAPACITY) * 0.9);
-          ctx.drawImage(this.oxCanvas, (tx * 37) % span, (ty * 29) % span, patch, patch, sx, sy, size, size);
+          ctx.drawImage(
+            this.oxCanvas,
+            (tx * 37) % span,
+            (ty * 29) % span,
+            patch,
+            patch,
+            sx,
+            sy,
+            size,
+            size,
+          );
         }
         if (this.co2Canvas && t.co2 > 1) {
           ctx.globalAlpha = Math.min(0.8, (t.co2 / GAS_CAPACITY) * 1.1);
-          ctx.drawImage(this.co2Canvas, (ty * 53) % span, (tx * 41) % span, patch, patch, sx, sy, size, size);
+          ctx.drawImage(
+            this.co2Canvas,
+            (ty * 53) % span,
+            (tx * 41) % span,
+            patch,
+            patch,
+            sx,
+            sy,
+            size,
+            size,
+          );
         }
       }
     }
@@ -191,7 +233,13 @@ export class Bursts {
         existing.y = spec.y;
       } else {
         const m = makePlayer(this.steam);
-        if (m) this.vents.set(spec.id, { player: m.player, canvas: m.canvas, x: spec.x, y: spec.y });
+        if (m)
+          this.vents.set(spec.id, {
+            player: m.player,
+            canvas: m.canvas,
+            x: spec.x,
+            y: spec.y,
+          });
       }
     }
     for (const id of [...this.vents.keys()]) {
@@ -204,7 +252,9 @@ export class Bursts {
       b.player.update(dt);
       b.age += dt * 1000;
     }
-    this.oneShots = this.oneShots.filter((b) => b.age < b.dur + 120 || b.player.simulator.liveCount > 0);
+    this.oneShots = this.oneShots.filter(
+      (b) => b.age < b.dur + 120 || b.player.simulator.liveCount > 0,
+    );
     for (const v of this.vents.values()) v.player.update(dt);
   }
 

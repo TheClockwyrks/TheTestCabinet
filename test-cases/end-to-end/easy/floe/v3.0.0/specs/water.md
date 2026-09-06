@@ -6,9 +6,9 @@ what the water between them does. The rows the band occupies are in
 
 ## The three floes
 
-| Kind | Length | Art |
-| --- | --- | --- |
-| `pan` | `1` tile | `assets/pan/` |
+| Kind    | Length    | Art                       |
+| ------- | --------- | ------------------------- |
+| `pan`   | `1` tile  | `assets/pan/`             |
 | `raft3` | `3` tiles | `assets/raft/`, frame `0` |
 | `raft4` | `4` tiles | `assets/raft/`, frame `1` |
 
@@ -24,16 +24,16 @@ and drifts at one speed. `dir` is `1` for a lane drifting rightward (increasing
 1, and gap is the whole tiles of open water a lane leaves between consecutive
 floes.
 
-| Row | Kind | Length | `dir` | Speed (level 1) | Gap |
-| --- | --- | --- | --- | --- | --- |
-| `2` | `raft3` | `3` | `-1` | `3.3` | `3` |
-| `3` | `raft4` | `4` | `1` | `3.5` | `3` |
-| `4` | `raft3` | `3` | `-1` | `4.2` | `3` |
-| `5` | `pan` | `1` | `1` | `3.6` | `2` |
-| `6` | `raft4` | `4` | `-1` | `3.2` | `3` |
-| `7` | `raft3` | `3` | `1` | `3.8` | `3` |
-| `8` | `pan` | `1` | `-1` | `3.4` | `2` |
-| `9` | `raft4` | `4` | `1` | `3.0` | `3` |
+| Row | Kind    | Length | `dir` | Speed (level 1) | Gap |
+| --- | ------- | ------ | ----- | --------------- | --- |
+| `2` | `raft3` | `3`    | `-1`  | `3.3`           | `3` |
+| `3` | `raft4` | `4`    | `1`   | `3.5`           | `3` |
+| `4` | `raft3` | `3`    | `-1`  | `4.2`           | `3` |
+| `5` | `pan`   | `1`    | `1`   | `3.6`           | `2` |
+| `6` | `raft4` | `4`    | `-1`  | `3.2`           | `3` |
+| `7` | `raft3` | `3`    | `1`   | `3.8`           | `3` |
+| `8` | `pan`   | `1`    | `-1`  | `3.4`           | `2` |
+| `9` | `raft4` | `4`    | `1`   | `3.0`           | `3` |
 
 A lane at speed `s` and direction `d` moves every one of its floes by
 `d * s * TILE` units per second of game time.

@@ -38,7 +38,7 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
   hull repair** at the Fuel Depot and **buy upgrades** (fuel, drill, cargo, hull, jetpack,
   radiator, scanner) → **save** at the Save Pad → dig deeper. Nothing refills for free —
   fuel and repair are a paid sink, so the tension is both getting home before the tank runs
-  dry *and* affording the trip back down. The cargo bay caps ore by **slot count**; ore
+  dry _and_ affording the trip back down. The cargo bay caps ore by **slot count**; ore
   also has **weight** the jetpack must lift — open the **inventory** (`I`) to **drop** ore
   when overloaded.
 - **Field supplies** — six single-use items bought at the **Supply Depot** (their own
@@ -107,19 +107,19 @@ paths the built site serves.
 
 ## Controls
 
-| Input | Action |
-| --- | --- |
-| `A` / `D` or `←` / `→` | Move & drill sideways |
-| `S` or `↓` | Drill down |
-| `W` / `↑` / `Space` | Fire the jetpack (climb; burns fuel) |
-| `E` / `Enter` or click a building | Activate a surface building — opens its panel (Fuel Depot, Ore Market, Upgrade Shop, Supply Depot, Launch Pad), or **saves** directly at the Save Pad |
-| `I` or the **BAG** button | Open the inventory (cargo hold) to review and **drop** ore, and **USE** field supplies |
-| `1`–`6` | Use a field-supply item (dynamite, plastic explosives, quantum teleporter, matter transmitter, nanobots, emergency fuel) — bought at the **Supply Depot** |
-| `J` | Jettison the carried Core Sample onto the ground (timer keeps running; one-way — can't be picked back up) |
-| `Esc` | Pause (also closes an open panel) |
-| `M` | Mute / unmute |
-| `` ` `` | Show and hide the engine's diagnostics overlay |
-| Mouse | Menus, panels, and the SELL / BUY / FABRICATE / LAUNCH buttons |
+| Input                             | Action                                                                                                                                                    |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `A` / `D` or `←` / `→`            | Move & drill sideways                                                                                                                                     |
+| `S` or `↓`                        | Drill down                                                                                                                                                |
+| `W` / `↑` / `Space`               | Fire the jetpack (climb; burns fuel)                                                                                                                      |
+| `E` / `Enter` or click a building | Activate a surface building — opens its panel (Fuel Depot, Ore Market, Upgrade Shop, Supply Depot, Launch Pad), or **saves** directly at the Save Pad     |
+| `I` or the **BAG** button         | Open the inventory (cargo hold) to review and **drop** ore, and **USE** field supplies                                                                    |
+| `1`–`6`                           | Use a field-supply item (dynamite, plastic explosives, quantum teleporter, matter transmitter, nanobots, emergency fuel) — bought at the **Supply Depot** |
+| `J`                               | Jettison the carried Core Sample onto the ground (timer keeps running; one-way — can't be picked back up)                                                 |
+| `Esc`                             | Pause (also closes an open panel)                                                                                                                         |
+| `M`                               | Mute / unmute                                                                                                                                             |
+| `` ` ``                           | Show and hide the engine's diagnostics overlay                                                                                                            |
+| Mouse                             | Menus, panels, and the SELL / BUY / FABRICATE / LAUNCH buttons                                                                                            |
 
 Audio does not start until your first interaction (browsers block autoplay); `M` toggles
 mute.

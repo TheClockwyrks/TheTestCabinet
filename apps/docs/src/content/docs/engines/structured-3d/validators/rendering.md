@@ -35,7 +35,9 @@ expect(mesh?.geometry.kind).toBe("sphere");
 expect(mesh?.material.color).toBe(COLORS.ball);
 expect(mesh?.visible).toBe(true);
 
-const lights = world.actors().flatMap((actor) => actor.componentsOf(LightComponent));
+const lights = world
+  .actors()
+  .flatMap((actor) => actor.componentsOf(LightComponent));
 expect(lights.some((light) => light.light.kind === "directional")).toBe(true);
 ```
 
@@ -90,7 +92,9 @@ const [mesh] = meshesAt(engine.scene, ball.transform.position);
 expect(mesh).toBeDefined();
 expect(mesh.visible).toBe(true);
 expect(mesh.geometry.getAttribute("position").count).toBeGreaterThan(0);
-expect(`#${(mesh.material as THREE.MeshStandardMaterial).color.getHexString()}`).toBe(COLORS.ball);
+expect(
+  `#${(mesh.material as THREE.MeshStandardMaterial).color.getHexString()}`,
+).toBe(COLORS.ball);
 
 ball.destroy();
 await engine.advance(1);
@@ -184,7 +188,12 @@ function read(ctx: CanvasRenderingContext2D, at: { x: number; y: number }) {
 
 export function rgba(color: string) {
   const value = Number.parseInt(color.slice(1), 16);
-  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255, a: 255 };
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+    a: 255,
+  };
 }
 
 export function sample(h: Harness, point: Vec2) {
@@ -383,7 +392,10 @@ engine.renderer.setCollisionOverlay(true);
 await engine.advance(1);
 const overlaid = picture(h);
 
-const changed = plain.reduce((n, byte, i) => (byte === overlaid[i] ? n : n + 1), 0);
+const changed = plain.reduce(
+  (n, byte, i) => (byte === overlaid[i] ? n : n + 1),
+  0,
+);
 expect(engine.renderer.collisionOverlay()).toBe(true);
 expect(changed).toBeGreaterThan(0);
 ```

@@ -8,11 +8,11 @@ and draws the screen pass through the viewport alone.
 
 ## The three spaces
 
-| Space | Unit | Set by |
-| --- | --- | --- |
-| World | World units | The game, on every transform |
-| Logical | The design size handed to `createEngine` | The camera |
-| Device | Device pixels | The viewport |
+| Space   | Unit                                     | Set by                       |
+| ------- | ---------------------------------------- | ---------------------------- |
+| World   | World units                              | The game, on every transform |
+| Logical | The design size handed to `createEngine` | The camera                   |
+| Device  | Device pixels                            | The viewport                 |
 
 A world point passes through the camera's view matrix (the inverse of its world
 transform) and its projection matrix, then the perspective divide, and lands on
@@ -67,25 +67,25 @@ interface Camera {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `position` | `{ x: 0, y: 0, z: 10 }` | The camera's world position. |
-| `rotation` | `{ x: 0, y: 0, z: 0, w: 1 }` | The camera's world rotation. It looks along its local `-Z` with local `+Y` up. |
-| `projection` | `"perspective"` | The projection the world pass renders through. |
-| `fov` | `60` | The vertical field of view in degrees, read under `perspective`. |
-| `near` | `0.1` | The near clipping plane, in world units from the camera. |
-| `far` | `1000` | The far clipping plane, in world units from the camera. |
-| `orthoHeight` | The logical design height | The world units the view spans vertically, read under `orthographic`. |
-| `bounds` | `null` | A box in world units the camera's position is kept inside. |
-| `target` | `null` | The actor the camera follows. |
+| Field         | Default                      | Meaning                                                                        |
+| ------------- | ---------------------------- | ------------------------------------------------------------------------------ |
+| `position`    | `{ x: 0, y: 0, z: 10 }`      | The camera's world position.                                                   |
+| `rotation`    | `{ x: 0, y: 0, z: 0, w: 1 }` | The camera's world rotation. It looks along its local `-Z` with local `+Y` up. |
+| `projection`  | `"perspective"`              | The projection the world pass renders through.                                 |
+| `fov`         | `60`                         | The vertical field of view in degrees, read under `perspective`.               |
+| `near`        | `0.1`                        | The near clipping plane, in world units from the camera.                       |
+| `far`         | `1000`                       | The far clipping plane, in world units from the camera.                        |
+| `orthoHeight` | The logical design height    | The world units the view spans vertically, read under `orthographic`.          |
+| `bounds`      | `null`                       | A box in world units the camera's position is kept inside.                     |
+| `target`      | `null`                       | The actor the camera follows.                                                  |
 
-| Method | Result |
-| --- | --- |
-| `follow` | Sets `target`. `null` clears it and returns the pose to the game. |
-| `lookAt` | Writes `rotation` so the camera looks from `position` toward `point`, with local `+Y` as near `up` as the view allows. `up` defaults to `UP`. |
-| `snapshot` | The projection as a value the caller owns. |
-| `worldToLogical` | A world point on the logical field, through the camera as it stands at the call. |
-| `logicalToRay` | A world-space ray through a logical point, from the camera as it stands at the call. |
+| Method           | Result                                                                                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `follow`         | Sets `target`. `null` clears it and returns the pose to the game.                                                                             |
+| `lookAt`         | Writes `rotation` so the camera looks from `position` toward `point`, with local `+Y` as near `up` as the view allows. `up` defaults to `UP`. |
+| `snapshot`       | The projection as a value the caller owns.                                                                                                    |
+| `worldToLogical` | A world point on the logical field, through the camera as it stands at the call.                                                              |
+| `logicalToRay`   | A world-space ray through a logical point, from the camera as it stands at the call.                                                          |
 
 A world's camera starts at those defaults, at `(0, 0, 10)` looking along `-Z` at
 the origin, so a mesh at the origin is in view before the game moves anything.
@@ -211,11 +211,11 @@ interface Ray {
 }
 ```
 
-| `Projected` field | Meaning |
-| --- | --- |
-| `x`, `y` | The logical point the world point draws at. |
-| `depth` | Normalized device depth in `-1..1`, near to far, which is what sorts two labels that overlap. |
-| `visible` | Whether the point lies inside the camera's frustum. A point behind the camera reports `false`. |
+| `Projected` field | Meaning                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------- |
+| `x`, `y`          | The logical point the world point draws at.                                                    |
+| `depth`           | Normalized device depth in `-1..1`, near to far, which is what sorts two labels that overlap.  |
+| `visible`         | Whether the point lies inside the camera's frustum. A point behind the camera reports `false`. |
 
 `worldToLogical` gives the logical point a world point draws at, in the same
 coordinates the screen layer draws in, so a label, a health bar, or a marker
@@ -299,7 +299,10 @@ or treats it as a miss:
 const pointer = this.input.pointer();
 const vp = this.world.viewport();
 const onStage =
-  pointer.x >= 0 && pointer.x <= vp.width && pointer.y >= 0 && pointer.y <= vp.height;
+  pointer.x >= 0 &&
+  pointer.x <= vp.width &&
+  pointer.y >= 0 &&
+  pointer.y <= vp.height;
 if (!onStage) return;
 ```
 
@@ -315,13 +318,13 @@ interface Viewport {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `width` | The logical design width. |
-| `height` | The logical design height. |
-| `scale` | Device pixels per logical unit, with the device pixel ratio folded in. |
-| `offsetX` | The left letterbox bar, in device pixels. |
-| `offsetY` | The top letterbox bar, in device pixels. |
+| Field     | Meaning                                                                |
+| --------- | ---------------------------------------------------------------------- |
+| `width`   | The logical design width.                                              |
+| `height`  | The logical design height.                                             |
+| `scale`   | Device pixels per logical unit, with the device pixel ratio folded in. |
+| `offsetX` | The left letterbox bar, in device pixels.                              |
+| `offsetY` | The top letterbox bar, in device pixels.                               |
 
 `scale` and both offsets are device pixels. The CSS-pixel figure is `scale`
 divided by the device pixel ratio.

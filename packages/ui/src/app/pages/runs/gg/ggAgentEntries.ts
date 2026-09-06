@@ -16,10 +16,7 @@
 // becomes a compile error here, which is exactly where it should surface.
 
 import type { ComponentType } from "react";
-import type {
-  GgCapabilitySet,
-  GgModuleKind,
-} from "@clockwyrks/run-record/gg";
+import type { GgCapabilitySet, GgModuleKind } from "@clockwyrks/run-record/gg";
 import { agentCapabilityOn } from "./ggCatalog";
 import type { GgModuleInstance } from "./ggModules";
 import type { GgAgentSurface } from "./useGgRunState";

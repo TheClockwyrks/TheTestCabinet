@@ -37,7 +37,10 @@ it("carries version as the plain number GANTRY_DEBUG_VERSION", async () => {
   }, HANDLE);
 
   await h.advance(1);
-  await h.capture("surface-version", "The build the surface version was read from");
+  await h.capture(
+    "surface-version",
+    "The build the surface version was read from",
+  );
 
   assertEqual(version.kind, "number", `the type of window.${HANDLE}.version`);
   assertEqual(

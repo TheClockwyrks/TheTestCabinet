@@ -16,11 +16,11 @@ led by its highest card, which is the card that lands on the target.
 
 A column accepts a run by these rules, and refuses every other run offered to it.
 
-| The column's state | It accepts |
-| --- | --- |
-| Empty | A run led by a King |
+| The column's state                                    | It accepts                                                       |
+| ----------------------------------------------------- | ---------------------------------------------------------------- |
+| Empty                                                 | A run led by a King                                              |
 | Its lowest card is face-up, of rank `r` and color `c` | A run led by a card of rank `r - 1` and the color other than `c` |
-| Its lowest card is face-down | Nothing |
+| Its lowest card is face-down                          | Nothing                                                          |
 
 A run whose cards are not in run order is refused by every column and by every
 foundation.

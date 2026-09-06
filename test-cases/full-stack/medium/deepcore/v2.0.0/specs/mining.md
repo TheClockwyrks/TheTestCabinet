@@ -14,18 +14,18 @@ tunnel and the ore is left behind, with a `cargo full` note shown.
 Ten mineral ores exist. Each has a fixed value in Credits, a fixed weight in
 kilograms, and a depth curve that decides how often it is the ore a vein holds.
 
-| Ore | Value | Weight | `peak` | `spread` | `pick` |
-| --- | --- | --- | --- | --- | --- |
-| Ferron | `28` | `10` | `0.01` | `0.34` | `1` |
-| Marlite | `46` | `14` | `0.08` | `0.34` | `1` |
-| Cuprite | `65` | `18` | `0.19` | `0.34` | `1` |
-| Argenite | `150` | `24` | `0.36` | `0.34` | `1` |
-| Cobaltine | `240` | `31` | `0.49` | `0.34` | `1` |
-| Voltite | `380` | `39` | `0.61` | `0.34` | `1` |
-| Halcite | `560` | `48` | `0.72` | `0.34` | `1` |
-| Pyronium | `820` | `58` | `0.87` | `0.34` | `1` |
-| Cindrite | `1250` | `70` | `0.94` | `0.34` | `1` |
-| Adamite | `1900` | `84` | `0.97` | `0.45` | `0.06` |
+| Ore       | Value  | Weight | `peak` | `spread` | `pick` |
+| --------- | ------ | ------ | ------ | -------- | ------ |
+| Ferron    | `28`   | `10`   | `0.01` | `0.34`   | `1`    |
+| Marlite   | `46`   | `14`   | `0.08` | `0.34`   | `1`    |
+| Cuprite   | `65`   | `18`   | `0.19` | `0.34`   | `1`    |
+| Argenite  | `150`  | `24`   | `0.36` | `0.34`   | `1`    |
+| Cobaltine | `240`  | `31`   | `0.49` | `0.34`   | `1`    |
+| Voltite   | `380`  | `39`   | `0.61` | `0.34`   | `1`    |
+| Halcite   | `560`  | `48`   | `0.72` | `0.34`   | `1`    |
+| Pyronium  | `820`  | `58`   | `0.87` | `0.34`   | `1`    |
+| Cindrite  | `1250` | `70`   | `0.94` | `0.34`   | `1`    |
+| Adamite   | `1900` | `84`   | `0.97` | `0.45`   | `0.06` |
 
 Which ore a vein holds is drawn at the cell's depth fraction `f`, with each ore
 weighted by
@@ -46,11 +46,11 @@ the same curve as the ores above, so it adds no density of its own, and it behav
 exactly like an ore once collected: it fills one cargo slot, carries its weight,
 and sells at the Ore Market.
 
-| Gemstone | Value | Weight | `peak` | `spread` | `pick` |
-| --- | --- | --- | --- | --- | --- |
-| Verdite | `450` | `48` | `0.375` | `0.125` | `0.03` |
-| Roselite | `1140` | `78` | `0.625` | `0.125` | `0.03` |
-| Aurite | `2460` | `116` | `0.875` | `0.125` | `0.03` |
+| Gemstone | Value  | Weight | `peak`  | `spread` | `pick` |
+| -------- | ------ | ------ | ------- | -------- | ------ |
+| Verdite  | `450`  | `48`   | `0.375` | `0.125`  | `0.03` |
+| Roselite | `1140` | `78`   | `0.625` | `0.125`  | `0.03` |
+| Aurite   | `2460` | `116`  | `0.875` | `0.125`  | `0.03` |
 
 Each gemstone's narrow curve confines it to its own band and its low `pick` keeps
 it under `1%` of that band's cells, so a gemstone is an occasional find rather
@@ -87,10 +87,10 @@ materials satchel, and the held field supplies.
 Three exotic materials exist, and each is consumed by one rocket component. They
 are held in the satchel, are never sold, and carry no weight.
 
-| Material | Source |
-| --- | --- |
-| Resonite | The single material node in the rockbed band. |
-| Cryenite | The single material node in the deepstone band. |
+| Material    | Source                                              |
+| ----------- | --------------------------------------------------- |
+| Resonite    | The single material node in the rockbed band.       |
+| Cryenite    | The single material node in the deepstone band.     |
 | Core Sample | Drilled downward onto the Core in the Core chamber. |
 
 Drilling a material node banks its material and removes the node. Collecting a

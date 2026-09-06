@@ -199,7 +199,7 @@ terminal. A gg run holds its dispatcher slot for the length of its wind-down,
 bounded by the 20-minute grace.
 
 The one exception is a destroyed run whose teardown failed. There the teardown
-*is* the kill, so the driver exits non-zero instead: a failed driver Job is what
+_is_ the kill, so the driver exits non-zero instead: a failed driver Job is what
 the dispatcher's [reaper](#sandbox-lifetime) looks for, and reporting the
 failure hands it the sandbox that is still running the harness. A destroyed run
 also sweeps twice, a couple of seconds apart, because dropping the run future
@@ -224,7 +224,7 @@ keep-alive command is `sleep infinity`, and it deliberately carries no
 `ownerReference` for Kubernetes to garbage-collect it by. (Its only candidate parent
 is the driver `Job`, which `ttlSecondsAfterFinished` reaps minutes after the run
 ends — as an owner that would cascade-delete healthy sandboxes out from under long
-runs.) A leaked sandbox holds its CPU and memory *requests* against the node for as
+runs.) A leaked sandbox holds its CPU and memory _requests_ against the node for as
 long as it lives, which crowds out new runs.
 
 Two mechanisms outside the driver close that gap:

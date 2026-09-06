@@ -107,17 +107,17 @@ and its player state persist for the length of the world.
 
 ## What each role owns
 
-| Role | Owns | Lifetime |
-| --- | --- | --- |
-| Game instance | Action bindings, cue definitions, game-wide assets, instance diagnostic sources | Constructed before the start level opens, shut down from `engine.destroy` |
-| World | Actors, controllers, the camera, the collision world, timers, world diagnostic sources | One open level, from the level opening to the level closing |
-| Game mode | The rules of the match: players, bots, respawns, and the phase | Built with the world, ends play with the world |
-| Game state | The match figures: phase, elapsed match time, the player states | Built with the world, ends with the world |
-| Player state | One participant's index, name, score, and the figures a game adds | From `addPlayer` or `addBot` until the world closes |
-| Actor | Its transform, its tags, and its components | From `spawn` until `destroy` or the world closes |
-| Pawn | The same, plus the link to the controller possessing it | The same as any actor |
-| Controller | The pawn it possesses, its player state, and a player controller's input reader | From `addPlayer` or `addBot` until the world closes |
-| Component | Its offset from its actor and the one behavior or appearance it supplies | From `attach` until `detach` or its actor ends play |
+| Role          | Owns                                                                                   | Lifetime                                                                  |
+| ------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Game instance | Action bindings, cue definitions, game-wide assets, instance diagnostic sources        | Constructed before the start level opens, shut down from `engine.destroy` |
+| World         | Actors, controllers, the camera, the collision world, timers, world diagnostic sources | One open level, from the level opening to the level closing               |
+| Game mode     | The rules of the match: players, bots, respawns, and the phase                         | Built with the world, ends play with the world                            |
+| Game state    | The match figures: phase, elapsed match time, the player states                        | Built with the world, ends with the world                                 |
+| Player state  | One participant's index, name, score, and the figures a game adds                      | From `addPlayer` or `addBot` until the world closes                       |
+| Actor         | Its transform, its tags, and its components                                            | From `spawn` until `destroy` or the world closes                          |
+| Pawn          | The same, plus the link to the controller possessing it                                | The same as any actor                                                     |
+| Controller    | The pawn it possesses, its player state, and a player controller's input reader        | From `addPlayer` or `addBot` until the world closes                       |
+| Component     | Its offset from its actor and the one behavior or appearance it supplies               | From `attach` until `detach` or its actor ends play                       |
 
 ## Match phases
 

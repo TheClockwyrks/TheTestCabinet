@@ -98,7 +98,10 @@ export function parseRef(ref) {
  * declaration rule turns on — and an array (possibly empty) when it does. `id` is the
  * version's path relative to `root`, which is how every message names it.
  */
-export function discoverVersions({ root, dirs = ["test-cases", "game-jams"] } = {}) {
+export function discoverVersions({
+  root,
+  dirs = ["test-cases", "game-jams"],
+} = {}) {
   const found = [];
   for (const sub of dirs) {
     const start = join(root, sub);

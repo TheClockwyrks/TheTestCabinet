@@ -85,18 +85,18 @@ export const debug: Debug = {
 };
 ```
 
-| Figure | Value |
-| --- | --- |
-| Logical design size | `640 × 360` |
-| Background | `#101018` |
-| Court | `16 × 10` world units on the `y = 0` plane, centred on the origin with `x` across and `z` along, drawn as one plane named `court` |
-| Ball | Radius `0.4`, a sphere named `ball` in `#f45b69`, resting on the court and reflected by the two side walls at `z = ±5` |
-| Paddle | A `0.5 × 1 × 3` box named `paddle` at `x = -7`, in `#e8e8e8`, moving along `z` at `6` units per second and clamped to the court |
-| Camera | Perspective, at `(0, 14, 10)`, looking at the origin |
-| Actions | `up` bound to `KeyW` and `ArrowUp`, moving the paddle toward `-z`; `down` bound to `KeyS` and `ArrowDown` |
-| Cues | `bounce`, played at the ball's position on the frame a wall reflects the ball |
-| Diagnostics | `ball`, reporting `` `${x}, ${z}` `` to one decimal place, and `paddle`, reporting the paddle's `z` |
-| HUD | A `120 × 40` panel at `(8, 8)` filled `#1c2033`, with `` `score ${score}` `` over it at `(16, 32)` in `#ffffff` |
+| Figure              | Value                                                                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Logical design size | `640 × 360`                                                                                                                       |
+| Background          | `#101018`                                                                                                                         |
+| Court               | `16 × 10` world units on the `y = 0` plane, centred on the origin with `x` across and `z` along, drawn as one plane named `court` |
+| Ball                | Radius `0.4`, a sphere named `ball` in `#f45b69`, resting on the court and reflected by the two side walls at `z = ±5`            |
+| Paddle              | A `0.5 × 1 × 3` box named `paddle` at `x = -7`, in `#e8e8e8`, moving along `z` at `6` units per second and clamped to the court   |
+| Camera              | Perspective, at `(0, 14, 10)`, looking at the origin                                                                              |
+| Actions             | `up` bound to `KeyW` and `ArrowUp`, moving the paddle toward `-z`; `down` bound to `KeyS` and `ArrowDown`                         |
+| Cues                | `bounce`, played at the ball's position on the frame a wall reflects the ball                                                     |
+| Diagnostics         | `ball`, reporting `` `${x}, ${z}` `` to one decimal place, and `paddle`, reporting the paddle's `z`                               |
+| HUD                 | A `120 × 40` panel at `(8, 8)` filled `#1c2033`, with `` `score ${score}` `` over it at `(16, 32)` in `#ffffff`                   |
 
 ## Layout
 
@@ -318,7 +318,11 @@ class KeyEvent extends Event {
   }
 }
 
-function toDevice(view: Viewport, x: number, y: number): { x: number; y: number } {
+function toDevice(
+  view: Viewport,
+  x: number,
+  y: number,
+): { x: number; y: number } {
   return {
     x: Math.round(view.offsetX + x * view.scale),
     y: Math.round(view.offsetY + y * view.scale),
@@ -352,19 +356,27 @@ function recorder(
   });
 }
 
-export function callsTo(calls: readonly DrawCall[], method: string): unknown[][] {
+export function callsTo(
+  calls: readonly DrawCall[],
+  method: string,
+): unknown[][] {
   return calls.flatMap((call) =>
     call.kind === "call" && call.method === method ? [call.args] : [],
   );
 }
 
-export function setsOf(calls: readonly DrawCall[], property: string): unknown[] {
+export function setsOf(
+  calls: readonly DrawCall[],
+  property: string,
+): unknown[] {
   return calls.flatMap((call) =>
     call.kind === "set" && call.property === property ? [call.value] : [],
   );
 }
 
-export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
+export async function createHarness(
+  options: HarnessOptions = {},
+): Promise<Harness> {
   const cssWidth = options.cssWidth ?? FIELD_WIDTH;
   const cssHeight = options.cssHeight ?? FIELD_HEIGHT;
   const dpr = options.dpr ?? 1;
@@ -501,7 +513,12 @@ through the surface, advances, and reads a snapshot back.
 // validation/simulation.test.ts
 import { ConstantClock } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { BALL_RADIUS, COURT_DEPTH, createHarness, type Harness } from "./harness";
+import {
+  BALL_RADIUS,
+  COURT_DEPTH,
+  createHarness,
+  type Harness,
+} from "./harness";
 
 let harness: Harness;
 
@@ -559,7 +576,12 @@ case fixes as positional is checked for where it sounded beside when.
 // validation/audio.test.ts
 import { ConstantClock, type Vec3 } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { BALL_RADIUS, COURT_DEPTH, createHarness, type Harness } from "./harness";
+import {
+  BALL_RADIUS,
+  COURT_DEPTH,
+  createHarness,
+  type Harness,
+} from "./harness";
 
 let harness: Harness;
 
@@ -678,7 +700,10 @@ afterEach(() => {
   harness.dispose();
 });
 
-type StandardMesh = THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+type StandardMesh = THREE.Mesh<
+  THREE.BufferGeometry,
+  THREE.MeshStandardMaterial
+>;
 
 function mesh(harness: Harness, name: string): StandardMesh {
   const object = harness.engine.scene.getObjectByName(name);
@@ -707,9 +732,15 @@ it("places the ball and the paddle where the state says", async () => {
 it("colors the ball and the paddle as the case fixes", async () => {
   await harness.engine.advance(1);
 
-  expect(`#${mesh(harness, "ball").material.color.getHexString()}`).toBe(BALL_COLOR);
-  expect(`#${mesh(harness, "paddle").material.color.getHexString()}`).toBe(PADDLE_COLOR);
-  expect(mesh(harness, "ball").geometry.getAttribute("position").count).toBeGreaterThan(0);
+  expect(`#${mesh(harness, "ball").material.color.getHexString()}`).toBe(
+    BALL_COLOR,
+  );
+  expect(`#${mesh(harness, "paddle").material.color.getHexString()}`).toBe(
+    PADDLE_COLOR,
+  );
+  expect(
+    mesh(harness, "ball").geometry.getAttribute("position").count,
+  ).toBeGreaterThan(0);
 });
 
 it("looks at the origin from where the case fixes", async () => {
@@ -743,7 +774,13 @@ against the same logical coordinates the screen layer draws in.
 ```ts
 // validation/projection.test.ts
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { BALL_RADIUS, FIELD_HEIGHT, FIELD_WIDTH, createHarness, type Harness } from "./harness";
+import {
+  BALL_RADIUS,
+  FIELD_HEIGHT,
+  FIELD_WIDTH,
+  createHarness,
+  type Harness,
+} from "./harness";
 
 let harness: Harness;
 
@@ -885,7 +922,12 @@ specification states.
 // validation/input.test.ts
 import { ConstantClock } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { COURT_DEPTH, PADDLE_LENGTH, createHarness, type Harness } from "./harness";
+import {
+  COURT_DEPTH,
+  PADDLE_LENGTH,
+  createHarness,
+  type Harness,
+} from "./harness";
 
 let harness: Harness;
 
@@ -917,7 +959,10 @@ it("clamps the paddle at the far wall", async () => {
   harness.hold("ArrowUp");
   await engine.advance(120);
 
-  expect(engine.state.paddle.z).toBeCloseTo(-(COURT_DEPTH / 2 - PADDLE_LENGTH / 2), 6);
+  expect(engine.state.paddle.z).toBeCloseTo(
+    -(COURT_DEPTH / 2 - PADDLE_LENGTH / 2),
+    6,
+  );
 });
 ```
 
@@ -964,7 +1009,10 @@ declare module "@vitest/browser/context" {
   }
 }
 
-export async function emitReplay(output: string, recording: Recording): Promise<void> {
+export async function emitReplay(
+  output: string,
+  recording: Recording,
+): Promise<void> {
   if (recording.frames.length === 0) return;
   await commands.emitReplay(output, toBase64(recording.video));
 }
@@ -986,7 +1034,12 @@ counter and simulated time for each video frame.
 // validation/recording.test.ts
 import { ConstantClock } from "@clockwyrks/simple-3d";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { FIELD_HEIGHT, FIELD_WIDTH, createHarness, type Harness } from "./harness";
+import {
+  FIELD_HEIGHT,
+  FIELD_WIDTH,
+  createHarness,
+  type Harness,
+} from "./harness";
 import { emitReplay } from "./replay";
 
 let harness: Harness;

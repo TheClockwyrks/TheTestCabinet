@@ -1259,7 +1259,8 @@ export function assembleEngine<D = unknown>(
      * engine's, so a check that wants to know what the game named reads here
      * instead of inspecting what the panel drew.
      */
-    diagnostics: (): readonly DiagnosticReading[] => subsystems.diagnostics.read(),
+    diagnostics: (): readonly DiagnosticReading[] =>
+      subsystems.diagnostics.read(),
 
     recording: (): boolean => recorder.active,
 

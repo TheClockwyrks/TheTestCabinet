@@ -17,7 +17,12 @@
 
 import * as THREE from "three";
 import { parseGlb, buildPartGeometry, poseRig } from "./runtime";
-import type { ModelSpec, AnimationSpec, ParticleSystem, PartMesh } from "./runtime";
+import type {
+  ModelSpec,
+  AnimationSpec,
+  ParticleSystem,
+  PartMesh,
+} from "./runtime";
 import type {
   LoadedAssets,
   MuzzleKind,
@@ -84,10 +89,48 @@ async function fetchGlb(rel: string): Promise<ArrayBuffer | null> {
  */
 const ROLE_FALLBACK_KEYWORDS: Record<string, readonly string[]> = {
   idle: ["idle", "hover", "spin", "breathe", "bob", "pulse", "track", "sweep"],
-  move: ["march", "walk", "fly", "stride", "run", "move", "hover", "strafe", "track"],
-  attack: ["fire", "bombard", "smash", "bite", "attack", "shoot", "heal", "pulse", "aim", "flak", "lance", "strafe"],
+  move: [
+    "march",
+    "walk",
+    "fly",
+    "stride",
+    "run",
+    "move",
+    "hover",
+    "strafe",
+    "track",
+  ],
+  attack: [
+    "fire",
+    "bombard",
+    "smash",
+    "bite",
+    "attack",
+    "shoot",
+    "heal",
+    "pulse",
+    "aim",
+    "flak",
+    "lance",
+    "strafe",
+  ],
   brace: ["brace", "guard", "crouch"],
-  emit: ["emit", "hatch", "pour", "ramp", "door", "stamp", "launch", "raise", "drop", "swing", "bloom", "charge", "turn", "slide"],
+  emit: [
+    "emit",
+    "hatch",
+    "pour",
+    "ramp",
+    "door",
+    "stamp",
+    "launch",
+    "raise",
+    "drop",
+    "swing",
+    "bloom",
+    "charge",
+    "turn",
+    "slide",
+  ],
   idle_auto: ["radar_spin", "spin", "idle"],
 };
 
@@ -108,7 +151,11 @@ function resolveClips(
   for (const anim of anims) byName.set(anim.name, anim);
 
   const clips = new Map<string, AnimationSpec>();
-  const roles = new Set<string>([...Object.keys(manifestClips), "idle", "move"]);
+  const roles = new Set<string>([
+    ...Object.keys(manifestClips),
+    "idle",
+    "move",
+  ]);
   for (const role of roles) {
     const wanted = manifestClips[role];
     let anim = wanted ? byName.get(wanted) : undefined;
@@ -116,11 +163,14 @@ function resolveClips(
       const kws = ROLE_FALLBACK_KEYWORDS[role] ?? [];
       anim = anims.find((a) => kws.some((k) => a.name.includes(k)));
     }
-    if (!anim && role === "idle") anim = anims.find((a) => a.autoPlay) ?? anims[0];
+    if (!anim && role === "idle")
+      anim = anims.find((a) => a.autoPlay) ?? anims[0];
     if (anim) {
       clips.set(role, anim);
       if (wanted && anim.name !== wanted) {
-        console.info(`[assets] ${id}: role "${role}" -> "${wanted}" absent; using "${anim.name}"`);
+        console.info(
+          `[assets] ${id}: role "${role}" -> "${wanted}" absent; using "${anim.name}"`,
+        );
       }
     }
   }
@@ -134,23 +184,35 @@ function resolveClips(
  * to ground each instance (`minY`) and centre its footprint on its position, because
  * the rigs are sculpted in a positive octant, not about their own centre.
  */
-function computeBounds(rig: ModelSpec, meshes: Map<string, PartMesh>): RigBounds {
+function computeBounds(
+  rig: ModelSpec,
+  meshes: Map<string, PartMesh>,
+): RigBounds {
   const posed = poseRig(rig, { caller: {}, timeMs: 0 });
   const world = new Map(posed.map((p) => [p.name, p.worldMatrix]));
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    minZ = Infinity;
+  let maxX = -Infinity,
+    maxY = -Infinity,
+    maxZ = -Infinity;
   for (const [name, mesh] of meshes) {
     const m = world.get(name);
     if (!m) continue;
     const p = mesh.positions;
     for (let i = 0; i < p.length; i += 3) {
-      const x = p[i], y = p[i + 1], z = p[i + 2];
+      const x = p[i],
+        y = p[i + 1],
+        z = p[i + 2];
       const wx = m[0] * x + m[4] * y + m[8] * z + m[12];
       const wy = m[1] * x + m[5] * y + m[9] * z + m[13];
       const wz = m[2] * x + m[6] * y + m[10] * z + m[14];
-      if (wx < minX) minX = wx; if (wx > maxX) maxX = wx;
-      if (wy < minY) minY = wy; if (wy > maxY) maxY = wy;
-      if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
+      if (wx < minX) minX = wx;
+      if (wx > maxX) maxX = wx;
+      if (wy < minY) minY = wy;
+      if (wy > maxY) maxY = wy;
+      if (wz < minZ) minZ = wz;
+      if (wz > maxZ) maxZ = wz;
     }
   }
   if (!Number.isFinite(minX)) {
@@ -173,7 +235,10 @@ function computeBounds(rig: ModelSpec, meshes: Map<string, PartMesh>): RigBounds
  * manifest's `clips` map (specs/assets.md — read the real animation name from the
  * rig, keyed via the role map, never hard-coded), and measure the rig's rest bounds.
  */
-async function loadRigTemplate(id: string, entry: ManifestEntity): Promise<RigTemplate> {
+async function loadRigTemplate(
+  id: string,
+  entry: ManifestEntity,
+): Promise<RigTemplate> {
   const rig = await fetchJson<ModelSpec>(entry.model);
   const dir = dirOf(entry.model);
 
@@ -216,11 +281,22 @@ async function loadRigTemplate(id: string, entry: ManifestEntity): Promise<RigTe
  * muzzle from the model, don't hard-code a single name).
  */
 const MUZZLE_PART_KEYWORDS: readonly string[] = [
-  "muzzle", "barrel", "barrels", "cannon_barrel", "rifle", "lance", "cannon", "gun",
+  "muzzle",
+  "barrel",
+  "barrels",
+  "cannon_barrel",
+  "rifle",
+  "lance",
+  "cannon",
+  "gun",
 ];
 
 /** The Aegis fires from three turrets (specs/waves.md); these are their barrel parts. */
-const AEGIS_MUZZLE_PARTS: readonly string[] = ["cannon_barrel", "sgun_l", "sgun_r"];
+const AEGIS_MUZZLE_PARTS: readonly string[] = [
+  "cannon_barrel",
+  "sgun_l",
+  "sgun_r",
+];
 
 /**
  * Build a {@link MuzzleMount} for one rig part: the forward tip of the part's geometry
@@ -237,16 +313,29 @@ function muzzleMountFor(
   const mesh = meshes.get(part);
   if (!mesh || mesh.positions.length === 0) return null;
   const p = mesh.positions;
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    minZ = Infinity;
+  let maxX = -Infinity,
+    maxY = -Infinity,
+    maxZ = -Infinity;
   for (let i = 0; i < p.length; i += 3) {
-    const x = p[i], y = p[i + 1], z = p[i + 2];
-    if (x < minX) minX = x; if (x > maxX) maxX = x;
-    if (y < minY) minY = y; if (y > maxY) maxY = y;
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    const x = p[i],
+      y = p[i + 1],
+      z = p[i + 2];
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
   }
   if (!Number.isFinite(minX)) return null;
-  const local: [number, number, number] = [(minX + maxX) / 2, (minY + maxY) / 2, maxZ];
+  const local: [number, number, number] = [
+    (minX + maxX) / 2,
+    (minY + maxY) / 2,
+    maxZ,
+  ];
   const scale = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
   return { kind, part, local, scale };
 }
@@ -276,14 +365,21 @@ function resolveMuzzleMounts(
   let part = rig.parts.find((pt) => pt.name === "muzzle")?.name;
   if (!part) {
     for (const kw of MUZZLE_PART_KEYWORDS) {
-      const hit = rig.parts.find((pt) => pt.name.includes(kw) && meshes.has(pt.name));
-      if (hit) { part = hit.name; break; }
+      const hit = rig.parts.find(
+        (pt) => pt.name.includes(kw) && meshes.has(pt.name),
+      );
+      if (hit) {
+        part = hit.name;
+        break;
+      }
     }
   }
   if (!part) part = rig.parts[rig.parts.length - 1]?.name;
   const mount = part ? muzzleMountFor(meshes, part, kind) : null;
   if (!mount) {
-    console.info(`[assets] ${id}: muzzle "${kind}" declared but no muzzle part resolved`);
+    console.info(
+      `[assets] ${id}: muzzle "${kind}" declared but no muzzle part resolved`,
+    );
     return [];
   }
   return [mount];

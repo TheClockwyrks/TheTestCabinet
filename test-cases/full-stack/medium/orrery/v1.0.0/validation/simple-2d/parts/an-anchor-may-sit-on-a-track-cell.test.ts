@@ -41,7 +41,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -75,14 +77,22 @@ it("anchors an arm and a wheel on cells of a track", async () => {
 
   // The geometry the check claims to be posing.
   for (const hex of PATH) {
-    assertEqual(onField(hex), true, `the cell (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the cell (${hex.q}, ${hex.r}) is on the field`,
+    );
   }
   assertEqual(
     PATH.filter((cell) => sameHex(cell, MIDDLE) || sameHex(cell, LAST)).length,
     2,
     "both anchors offered are cells of the path",
   );
-  assertEqual(sameHex(MIDDLE, LAST), false, "the two anchors are different hexes");
+  assertEqual(
+    sameHex(MIDDLE, LAST),
+    false,
+    "the two anchors are different hexes",
+  );
 
   const track = await placeTrack(h, PATH);
 
@@ -110,13 +120,21 @@ it("anchors an arm and a wheel on cells of a track", async () => {
   );
 
   const snapshot = await h.snapshot();
-  assertEqual(partById(snapshot, arm)?.kind, "arm", "the arm stands on the machine");
+  assertEqual(
+    partById(snapshot, arm)?.kind,
+    "arm",
+    "the arm stands on the machine",
+  );
   assertEqual(
     `${partById(snapshot, arm)?.q},${partById(snapshot, arm)?.r}`,
     `${MIDDLE.q},${MIDDLE.r}`,
     "the arm is anchored on the path's middle cell",
   );
-  assertEqual(partById(snapshot, wheel)?.kind, "wheel", "the wheel stands on the machine");
+  assertEqual(
+    partById(snapshot, wheel)?.kind,
+    "wheel",
+    "the wheel stands on the machine",
+  );
   assertEqual(
     `${partById(snapshot, wheel)?.q},${partById(snapshot, wheel)?.r}`,
     `${LAST.q},${LAST.r}`,

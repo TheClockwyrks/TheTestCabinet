@@ -1,4 +1,4 @@
-**Lattice Lane Splitter** is the two-tile belt *unzipper* of the Lattice factory — a
+**Lattice Lane Splitter** is the two-tile belt _unzipper_ of the Lattice factory — a
 standalone machine that takes a **single belt input** and unzips it into **two belt
 outputs**, splitting that one belt's two lanes apart and routing each lane out to the
 outer lane of its own output. The input sits on the top (anchor) cell — grid-aligned
@@ -15,7 +15,7 @@ while the housing shell, splitting ridge, and arrow-shaped output end stay still
 Its look is deliberately distinct from the plain splitter: where that machine takes
 two belts and hides a side-to-side balancing shuttle behind a flat lid, the lane
 splitter takes one belt, wraps it in a funnel, and shows a lengthwise ridge splitting
-it down the middle with two heads diverging outward — an unmistakable *unzip* rather
+it down the middle with two heads diverging outward — an unmistakable _unzip_ rather
 than a balance.
 
 The recorded operations are regenerated into each frame, which a reviewer judges

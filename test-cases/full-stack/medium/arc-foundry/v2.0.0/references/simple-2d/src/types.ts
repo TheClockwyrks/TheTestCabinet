@@ -122,7 +122,8 @@ export type Structure = Component | Candidate | Blocker;
  * is the one keep.
  */
 export type Harvest =
-  { readonly mode: "none" } | { readonly mode: "keep"; readonly id: number };
+  | { readonly mode: "none" }
+  | { readonly mode: "keep"; readonly id: number };
 
 // ---- The Load ------------------------------------------------------------
 

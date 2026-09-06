@@ -11,7 +11,7 @@ evaluated by**.
 holding a language runtime: `gg-sandbox` bakes a JavaScript engine, `gg-sandbox-python`
 a whole CPython, `gg-sandbox-ruby` an Opal. Rust has no runtime of that kind. `rustc`
 does not produce a Rust interpreter that later runs a program — it produces the
-program, and that module *is* the component. There is nothing of this language to
+program, and that module _is_ the component. There is nothing of this language to
 bake, which is why the seam grew a shape for it: a language may answer "no guest
 component" and hand its bytes back from the preparation instead.
 
@@ -37,12 +37,12 @@ Nothing here is committed. Every file below is generated during an ordinary
 [`build.sh`](build.sh) is run by `crates/gg-sandbox-artifacts/rust`, and
 [`signatures.sh`](signatures.sh) by `crates/gg/build.rs`.
 
-| Artifact | What it is |
-| --- | --- |
-| `rust.libraries.tar.gz`, in `$GG_ARTIFACTS_RUST` | Every `.rlib` a program links — this SDK and the curated set — gzipped. ~9.4 MB, `include_bytes!`d by the host and unpacked once per machine into a shared, sealed, read-only directory named on `rustc -L`. |
-| `rust.adapter.wasm`, in `$GG_ARTIFACTS_RUST` | The pinned `wasi_snapshot_preview1` **reactor** adapter, 52 KB, which turns the preview1 core module `rustc` emits into the component gg's engine instantiates. `include_bytes!`d by the host and never written to disk. |
-| `rust.toolchain.json`, in `$GG_ARTIFACTS_RUST` | What that set was built by — the compiler, the target, the `wit-bindgen` release, the adapter — and every crate in it, each marked with whether a **program** may name it. |
-| `rust.signatures.json`, in the build's `OUT_DIR` | The signature catalogue: the whole of what a model is told about this surface, reflected out of this crate's own rustdoc by `signatures.sh`, which `crates/gg/build.rs` runs on every build. |
+| Artifact                                         | What it is                                                                                                                                                                                                               |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rust.libraries.tar.gz`, in `$GG_ARTIFACTS_RUST` | Every `.rlib` a program links — this SDK and the curated set — gzipped. ~9.4 MB, `include_bytes!`d by the host and unpacked once per machine into a shared, sealed, read-only directory named on `rustc -L`.             |
+| `rust.adapter.wasm`, in `$GG_ARTIFACTS_RUST`     | The pinned `wasi_snapshot_preview1` **reactor** adapter, 52 KB, which turns the preview1 core module `rustc` emits into the component gg's engine instantiates. `include_bytes!`d by the host and never written to disk. |
+| `rust.toolchain.json`, in `$GG_ARTIFACTS_RUST`   | What that set was built by — the compiler, the target, the `wit-bindgen` release, the adapter — and every crate in it, each marked with whether a **program** may name it.                                               |
+| `rust.signatures.json`, in the build's `OUT_DIR` | The signature catalogue: the whole of what a model is told about this surface, reflected out of this crate's own rustdoc by `signatures.sh`, which `crates/gg/build.rs` runs on every build.                             |
 
 There is no `rust.component.wasm`: the component is the program, compiled per turn.
 
@@ -76,25 +76,25 @@ with the one on the machine; there is no longer an interval in which the two can
 
 ## Layout
 
-| Path | What it holds |
-| --- | --- |
-| `rust-version.sh` | The pins: the compiler (read out of `rust-toolchain.toml`), the target, the preview1 reactor adapter, and the `wit-bindgen` release. Sourced by every script here and by `containers/build.sh`. |
-| `Cargo.toml` | Its own workspace on purpose — it is compiled for wasm and its output is a set of `.rlib` files, so a member of the repository's workspace would be built by every `cargo build --workspace` for no reason. |
-| `src/lib.rs` | The crate's own front door: the capability modules with the gg module id each declares itself to be, and `log`. |
-| `src/files.rs`, `src/shell.rs`, … | One file per capability module. Each declares its functions with the gg operation each binds, the types those functions hand back, and the gg tools they dispatch (`OPERATIONS`). |
-| `src/core.rs` | The two types that belong to no module because they belong to all of them: `ApiError` and `ApiErrorCode`. |
-| `src/wire.rs` | The bridge onto the generated bindings — the only part of this crate a model never reads. |
-| `src/program.rs` | The shell: the type gg's world is exported on, the `export!` that makes a program a component, the call into the model's own `main`, the `Failure` type that `main` returns, and what `bound-operations` answers. |
-| `signatures.sh`, `tools/` | The catalogue: `rustdoc` JSON in, `rust.signatures.json` out, into `$GG_SIGNATURES_OUT_DIR`. `tools/catalogue.py` holds the one thing the sources cannot say — which modules the surface is divided into and in what order a reader meets them — and `tools/signatures.py` is everything else. A function's gg operation id is written on the declaration itself, as `#[doc(alias = "ggop:files.read_file")]`, and a module's as `#[doc(alias = "ggmodule:files")]`. |
-| `src/bindings.rs` | **Generated and not committed** — a pure function of `crates/gg/wit/gg-sandbox.wit` and the pinned `wit-bindgen`. `bindings.sh` writes it. |
-| `bindings.sh` | Resolves the pinned `wit-bindgen` and generates `src/bindings.rs`. Its own script rather than a step of `build.sh` because both `build.sh` and `signatures.sh` need it, and folding it into `build.sh` would give the two one rerun set instead of two — see below. |
-| `build.sh` | Generates the bindings, compiles the set for `wasm32-wasip1`, packs it with the pinned adapter and writes the manifest. |
+| Path                              | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rust-version.sh`                 | The pins: the compiler (read out of `rust-toolchain.toml`), the target, the preview1 reactor adapter, and the `wit-bindgen` release. Sourced by every script here and by `containers/build.sh`.                                                                                                                                                                                                                                                                      |
+| `Cargo.toml`                      | Its own workspace on purpose — it is compiled for wasm and its output is a set of `.rlib` files, so a member of the repository's workspace would be built by every `cargo build --workspace` for no reason.                                                                                                                                                                                                                                                          |
+| `src/lib.rs`                      | The crate's own front door: the capability modules with the gg module id each declares itself to be, and `log`.                                                                                                                                                                                                                                                                                                                                                      |
+| `src/files.rs`, `src/shell.rs`, … | One file per capability module. Each declares its functions with the gg operation each binds, the types those functions hand back, and the gg tools they dispatch (`OPERATIONS`).                                                                                                                                                                                                                                                                                    |
+| `src/core.rs`                     | The two types that belong to no module because they belong to all of them: `ApiError` and `ApiErrorCode`.                                                                                                                                                                                                                                                                                                                                                            |
+| `src/wire.rs`                     | The bridge onto the generated bindings — the only part of this crate a model never reads.                                                                                                                                                                                                                                                                                                                                                                            |
+| `src/program.rs`                  | The shell: the type gg's world is exported on, the `export!` that makes a program a component, the call into the model's own `main`, the `Failure` type that `main` returns, and what `bound-operations` answers.                                                                                                                                                                                                                                                    |
+| `signatures.sh`, `tools/`         | The catalogue: `rustdoc` JSON in, `rust.signatures.json` out, into `$GG_SIGNATURES_OUT_DIR`. `tools/catalogue.py` holds the one thing the sources cannot say — which modules the surface is divided into and in what order a reader meets them — and `tools/signatures.py` is everything else. A function's gg operation id is written on the declaration itself, as `#[doc(alias = "ggop:files.read_file")]`, and a module's as `#[doc(alias = "ggmodule:files")]`. |
+| `src/bindings.rs`                 | **Generated and not committed** — a pure function of `crates/gg/wit/gg-sandbox.wit` and the pinned `wit-bindgen`. `bindings.sh` writes it.                                                                                                                                                                                                                                                                                                                           |
+| `bindings.sh`                     | Resolves the pinned `wit-bindgen` and generates `src/bindings.rs`. Its own script rather than a step of `build.sh` because both `build.sh` and `signatures.sh` need it, and folding it into `build.sh` would give the two one rerun set instead of two — see below.                                                                                                                                                                                                  |
+| `build.sh`                        | Generates the bindings, compiles the set for `wasm32-wasip1`, packs it with the pinned adapter and writes the manifest.                                                                                                                                                                                                                                                                                                                                              |
 
 ## Why the bindings are generated by a CLI rather than by the macro
 
 `wit_bindgen::generate!` is the ordinary way to do this and it does not work here. The
 macro leaves a dependency on the `wit-bindgen-rust-macro` **proc macro** in the rlib's
-metadata, and a proc macro is a *host* dynamic library — so `rustc` then refuses to load
+metadata, and a proc macro is a _host_ dynamic library — so `rustc` then refuses to load
 the library set unless that `.so` is beside it, which would mean shipping one build of the
 set per host architecture (measured: `E0463: can't find crate for wit_bindgen_rust_macro
 which gg depends on`). Generating ahead of time leaves the set depending on nothing but the
@@ -103,7 +103,7 @@ which gg depends on`). Generating ahead of time leaves the set depending on noth
 Two generator options are load-bearing and neither is a default.
 `--pub-export-macro` makes the generated `export!` macro reachable from outside this crate,
 and `--default-bindings-module gg::bindings` makes it expand against these bindings — which
-together are what let the *program*'s crate export the world while the bindings stay
+together are what let the _program_'s crate export the world while the bindings stay
 prebuilt. Without them the whole strategy collapses back to recompiling the binding surface
 on every turn.
 
@@ -146,7 +146,7 @@ the model's prompt on the next `cargo build`. It needs this checkout's own `rust
 `wasm32-wasip1` standard library (`scripts/ci/install-rust-wasm.sh`) and
 `src/bindings.rs`, which it generates with `bindings.sh` when it is missing. Run it by hand
 — with `GG_SIGNATURES_OUT_DIR` set, or through `scripts/gg-signatures.sh` — when you want
-to *read* the emitted JSON, which is where a reflector bug shows and nowhere else.
+to _read_ the emitted JSON, which is where a reflector bug shows and nowhere else.
 
 **`signatures.sh` writes the catalogue and nothing else, and that is why the bindings are
 their own script.** Both halves are generated during `cargo build`, by two different crates

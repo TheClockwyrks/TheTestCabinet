@@ -43,11 +43,15 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
-const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PACKAGE_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const BUILD_DIR = path.join(PACKAGE_DIR, ".build");
 
 /** Where `build.sh` vendored the pinned npm packages (Opal's runtime and its self-hosted compiler). */
-const VENDOR = process.env.GG_RUBY_VENDOR ?? path.join(BUILD_DIR, "node_modules");
+const VENDOR =
+  process.env.GG_RUBY_VENDOR ?? path.join(BUILD_DIR, "node_modules");
 
 /** Where `build.sh` unpacked the Opal gem of the same release, for the libraries' Ruby sources. */
 const SOURCES = process.env.GG_OPAL_SOURCES ?? path.join(BUILD_DIR, "opal-gem");
@@ -93,20 +97,26 @@ const PRELOADED = ["corelib/pattern_matching"];
 /** One vendored file, or a readable failure naming what to run. */
 function read(file) {
   if (!fs.existsSync(file)) {
-    throw new Error(`${file} is missing — run packages/gg-sandbox-ruby/build.sh, which vendors it`);
+    throw new Error(
+      `${file} is missing — run packages/gg-sandbox-ruby/build.sh, which vendors it`,
+    );
   }
   return fs.readFileSync(file, "utf8");
 }
 
 /** Opal's compiler, loaded once in this process. */
 function opalCompiler() {
-  const load = (file) => vm.runInThisContext(read(path.join(VENDOR, file)), { filename: file });
+  const load = (file) =>
+    vm.runInThisContext(read(path.join(VENDOR, file)), { filename: file });
   load("opal-runtime/src/opal.js");
   load("opal-compiler/src/opal-builder.js");
   globalThis.Opal.require("corelib/string/unpack");
   globalThis.Opal.require("opal/compiler");
   const Opal = globalThis.Opal;
-  return Opal.const_get_qualified(Opal.const_get_relative([], "Opal"), "Compiler");
+  return Opal.const_get_qualified(
+    Opal.const_get_relative([], "Opal"),
+    "Compiler",
+  );
 }
 
 const Compiler = opalCompiler();
@@ -133,7 +143,9 @@ const Compiler = opalCompiler();
 function compile(source, file, requirable) {
   const options = { file, enable_source_location: true, arity_check: true };
   if (requirable) options.requirable = true;
-  return String(Compiler.$new(source, globalThis.Opal.hash(options)).$compile());
+  return String(
+    Compiler.$new(source, globalThis.Opal.hash(options)).$compile(),
+  );
 }
 
 /** Where a library's Ruby source lives in the unpacked gem: `stdlib/` for a library, `opal/` for corelib. */
@@ -166,17 +178,22 @@ function manifest() {
     }
     const required = /^require\s+"([^"]+)"\s*$/.exec(line);
     if (!required) {
-      if (/^\s*require/.test(line)) throw new Error(`src/library.rb: unreadable require: ${line}`);
+      if (/^\s*require/.test(line))
+        throw new Error(`src/library.rb: unreadable require: ${line}`);
       continue;
     }
     if (current === undefined) {
-      throw new Error(`src/library.rb: \`require "${required[1]}"\` sits under no --- heading ---`);
+      throw new Error(
+        `src/library.rb: \`require "${required[1]}"\` sits under no --- heading ---`,
+      );
     }
-    if (seen.has(required[1])) throw new Error(`src/library.rb: ${required[1]} is required twice`);
+    if (seen.has(required[1]))
+      throw new Error(`src/library.rb: ${required[1]} is required twice`);
     seen.add(required[1]);
     current.modules.push(required[1]);
   }
-  if (groups.length === 0) throw new Error("src/library.rb declares no libraries at all");
+  if (groups.length === 0)
+    throw new Error("src/library.rb declares no libraries at all");
   return groups;
 }
 
@@ -192,7 +209,9 @@ function libraries(declared) {
       if (compiled.has(name)) continue;
       const source = librarySource(name);
       if (source === undefined) {
-        throw new Error(`no Ruby source for \`require "${name}"\` in the vendored Opal gem`);
+        throw new Error(
+          `no Ruby source for \`require "${name}"\` in the vendored Opal gem`,
+        );
       }
       compiled.set(name, compile(source, `${name}.rb`, true));
     }
@@ -200,16 +219,23 @@ function libraries(declared) {
     if (missing.length === 0) return compiled;
     for (const name of missing) if (!want.includes(name)) want.push(name);
   }
-  throw new Error("the library set did not settle after 64 rounds of dependency resolution");
+  throw new Error(
+    "the library set did not settle after 64 rounds of dependency resolution",
+  );
 }
 
 /** Every module a clean Opal could not find while requiring `declared`, one round's worth. */
 function unresolved(compiled, declared) {
   const context = vm.createContext({ console });
-  vm.runInContext(read(path.join(VENDOR, "opal-runtime/src/opal.js")), context, {
-    filename: "opal.js",
-  });
-  for (const source of compiled.values()) vm.runInContext(source, context, { filename: "lib.js" });
+  vm.runInContext(
+    read(path.join(VENDOR, "opal-runtime/src/opal.js")),
+    context,
+    {
+      filename: "opal.js",
+    },
+  );
+  for (const source of compiled.values())
+    vm.runInContext(source, context, { filename: "lib.js" });
   const missing = new Set();
   for (const name of [...declared, ...PRELOADED]) {
     try {
@@ -217,7 +243,10 @@ function unresolved(compiled, declared) {
     } catch (thrown) {
       const message = String(thrown && thrown.message);
       const match = /cannot load such file -- (\S+)/.exec(message);
-      if (!match) throw new Error(`\`require "${name}"\` failed in a clean Opal: ${message}`);
+      if (!match)
+        throw new Error(
+          `\`require "${name}"\` failed in a clean Opal: ${message}`,
+        );
       missing.add(match[1]);
     }
   }
@@ -240,7 +269,9 @@ fs.writeFileSync(
   ].join("\n"),
 );
 
-const sdk = SDK.map((file) => read(path.join(PACKAGE_DIR, "src", file))).join("\n");
+const sdk = SDK.map((file) => read(path.join(PACKAGE_DIR, "src", file))).join(
+  "\n",
+);
 const knowledge = read(path.join(PACKAGE_DIR, "src", "knowledge.rb"));
 fs.writeFileSync(
   path.join(BUILD_DIR, "gg.js"),

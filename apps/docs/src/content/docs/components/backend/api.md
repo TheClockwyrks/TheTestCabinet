@@ -109,8 +109,8 @@ The request body is optional JSON:
 ```jsonc
 {
   "testCases": ["carom", "coil@v1.1.0"], // restrict the scan (default: all)
-  "force": true,             // re-ingest even versions already in the store
-  "catalogVersion": "a1b2c3" // tag a whole-catalog ingest with its content version
+  "force": true, // re-ingest even versions already in the store
+  "catalogVersion": "a1b2c3", // tag a whole-catalog ingest with its content version
 }
 ```
 
@@ -202,11 +202,15 @@ description rides the resolved version's variant.
         "version": "v1.1.0",
         "variant": "base",
         "media": [
-          { "file": "ai-block.json.gz", "name": "The AI blocks a shot", "kind": "replay" }
-        ]
-      }
-    }
-  ]
+          {
+            "file": "ai-block.json.gz",
+            "name": "The AI blocks a shot",
+            "kind": "replay",
+          },
+        ],
+      },
+    },
+  ],
 }
 ```
 
@@ -217,7 +221,7 @@ Anything heavier — the description, the variants with their prompts,
 seeded specs, references and checklists, plus the changelog and errata — lives on
 [`GET /test-cases/{slug}/versions/{version}`](#get-test-casesslugversionsversion)
 and is fetched only for the case a visitor opens. Folding that detail into the
-listing costs a request per version *and* per variant, for every case in the
+listing costs a request per version _and_ per variant, for every case in the
 catalog, before the listing can paint.
 
 A case whose latest manifest cannot be read is omitted from this listing rather
@@ -270,15 +274,20 @@ A representative response:
   // The engines this version supports, each with the version range it accepts.
   // A launcher offers exactly this set; `minVersion` and `maxVersion` are
   // present only on an engine the case pinned.
-  "engines": [{ "slug": "none" }, { "slug": "simple-2d", "minVersion": "1.0.0" }],
+  "engines": [
+    { "slug": "none" },
+    { "slug": "simple-2d", "minVersion": "1.0.0" },
+  ],
   "build": { "install": "npm ci", "build": "npm run build" },
   "promptTemplate": "…handlebars source…",
   "commonSpecs": [
-    { "source": "specs/overview.hbs", "dest": "specs/overview.md", "template": true }
+    {
+      "source": "specs/overview.hbs",
+      "dest": "specs/overview.md",
+      "template": true,
+    },
   ],
-  "assets": [
-    { "source": "assets/ball.png", "dest": "assets/ball.png" }
-  ],
+  "assets": [{ "source": "assets/ball.png", "dest": "assets/ball.png" }],
   "variants": [
     {
       "slug": "base",
@@ -290,8 +299,8 @@ A representative response:
         {
           "view": "title",
           "kind": "rendered",
-          "mediaUrl": "/test-cases/carom/versions/v1.0.0/references/base/title.png"
-        }
+          "mediaUrl": "/test-cases/carom/versions/v1.0.0/references/base/title.png",
+        },
       ],
       // Variant-specific reviewer checklist items, for the consoles' guided
       // review. Empty when the variant declares none. On an engine-format
@@ -302,10 +311,14 @@ A representative response:
       "showcase": {
         "description": "…the authored showcase.md, verbatim markdown…",
         "media": [
-          { "file": "ai-block.json.gz", "name": "The AI blocks a shot", "kind": "replay" }
-        ]
-      }
-    }
+          {
+            "file": "ai-block.json.gz",
+            "name": "The AI blocks a shot",
+            "kind": "replay",
+          },
+        ],
+      },
+    },
   ],
   // True when the version is on the engine-supported manifest format, which
   // makes its runs validator-rated.
@@ -314,23 +327,27 @@ A representative response:
     {
       "view": "gameplay",
       "kind": "rendered",
-      "mediaUrl": "/test-cases/carom/versions/v1.0.0/references/_common/gameplay.png"
-    }
+      "mediaUrl": "/test-cases/carom/versions/v1.0.0/references/_common/gameplay.png",
+    },
   ],
   "checks": [
     {
       "view": "title",
       "name": "Title",
       "referenceView": "title",
-      "actions": [{ "type": "wait", "ms": 500 }]
-    }
+      "actions": [{ "type": "wait", "ms": 500 }],
+    },
   ],
   // Reviewer checklist items common to every variant.
   "commonReviewItems": [
-    { "id": "controls", "title": "Controls", "text": "Both paddles respond to input." }
+    {
+      "id": "controls",
+      "title": "Controls",
+      "text": "Both paddles respond to input.",
+    },
   ],
   // Known-issue errata recorded for this version. Empty when it has none.
-  "errata": []
+  "errata": [],
 }
 ```
 
@@ -439,9 +456,9 @@ home page's per-group leaderboards.
       "slug": "tower-defense",
       "name": "Tower Defense",
       "summary": "Mazes, waves, and tower placement.",
-      "cases": ["meltdown", "valence", "arc-foundry"]
-    }
-  ]
+      "cases": ["meltdown", "valence", "arc-foundry"],
+    },
+  ],
 }
 ```
 
@@ -782,12 +799,19 @@ validator-rated run's detail and its card never disagree.
       "writeup": "Plays well, but…",
       // A validator-rated review's checklist holds only its overrides.
       "checklist": [
-        { "id": "controls.ai", "status": "fail", "note": "Precondition unmet." }
+        {
+          "id": "controls.ai",
+          "status": "fail",
+          "note": "Precondition unmet.",
+        },
       ],
-      "reviewedAt": "2026-06-21T18:00:00Z"
-    }
+      "reviewedAt": "2026-06-21T18:00:00Z",
+    },
   ],
-  "links": { "sourceRepo": "https://github.com/…", "playableBuild": "https://…" }
+  "links": {
+    "sourceRepo": "https://github.com/…",
+    "playableBuild": "https://…",
+  },
 }
 ```
 
@@ -818,7 +842,7 @@ probe another's plan ids. The concepts, and the reasoning behind them, live on
 Two conventions differ from the rest of this page, both because this is a
 console-only surface rather than a cross-component one: the collections return
 **bare JSON arrays** rather than the wrapped object [above](#conventions), and a
-plan's or ladder's *declaration* and its *schedule* (`outerAxis`, `paused`,
+plan's or ladder's _declaration_ and its _schedule_ (`outerAxis`, `paused`,
 `autoTopUp`, `bufferTarget`) are flattened into one object on the way out while
 being written separately — an absent `schedule` on a `PUT` means "leave it alone",
 so saving an edited model list can never un-pause a running plan.
@@ -846,10 +870,10 @@ Every member list on this surface — a `kind: "combo"` group, a plan's or ladde
 one-off members, and the body of `POST /ladders/{id}/climbers` — carries the same
 `ReviewPlanCombo`, which takes one of two shapes:
 
-| shape | fields |
-| --- | --- |
-| harness | `harness`, `model`, optional `provider` |
-| gg | `ggConfigId` (`saved:<id>`), `ggSlotModels` (a model per launch slot) |
+| shape   | fields                                                                |
+| ------- | --------------------------------------------------------------------- |
+| harness | `harness`, `model`, optional `provider`                               |
+| gg      | `ggConfigId` (`saved:<id>`), `ggSlotModels` (a model per launch slot) |
 
 A member naming a `ggConfigId` is a [gg
 combination](/components/backend/coverage/#combinations) and runs the `gg` harness;
@@ -886,7 +910,7 @@ as it arrived and belongs to no configuration's cell.
   number of queued runs.
 - `GET /coverage-plans/summary` — the roll-up the plans list and the Home widget
   render: cell counts, runs missing, runs unreviewed by you, plus `paused` and
-  `autoTopUp` so the list can say *why* a plan with missing runs is not filling
+  `autoTopUp` so the list can say _why_ a plan with missing runs is not filling
   itself.
 - `GET /coverage-plans/{id}/coverage` — the full matrix: one cell per
   `case × combination` **in the plan's own emission order**, with the `outerAxis`
@@ -925,6 +949,7 @@ running", which is otherwise indistinguishable from a wedged queue.
   claim is held, or `skipped: "paused"` when the plan is paused. A top-up that ran
   and found nothing to do reports neither, with `enqueued: 0`. Otherwise idempotent:
   it recomputes the shortfall on every call.
+
 - `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting
   account has not reviewed, **in the plan's own order** rather than newest-first
   like the global unreviewed listing, so reviewing walks the buffer in the order it
@@ -936,11 +961,11 @@ running", which is otherwise indistinguishable from a wedged queue.
 Three controls per plan, and the same three per ladder, distinguished by what they
 cost rather than by how hard they sound:
 
-| endpoint | pauses | cancels |
-| --- | --- | --- |
-| `POST /coverage-plans/{id}/pause` | yes (body: `{ "paused": true }`) | nothing |
-| `POST /coverage-plans/{id}/halt` | yes | its `queued` + `pending` jobs |
-| `POST /coverage-plans/{id}/halt-all` | yes | the above **plus** `dispatched`, `starting`, `running` |
+| endpoint                             | pauses                           | cancels                                                |
+| ------------------------------------ | -------------------------------- | ------------------------------------------------------ |
+| `POST /coverage-plans/{id}/pause`    | yes (body: `{ "paused": true }`) | nothing                                                |
+| `POST /coverage-plans/{id}/halt`     | yes                              | its `queued` + `pending` jobs                          |
+| `POST /coverage-plans/{id}/halt-all` | yes                              | the above **plus** `dispatched`, `starting`, `running` |
 
 `pause` takes the state as a body rather than being two verbs, so a console can
 drive a toggle without tracking which direction it is going.
@@ -1015,11 +1040,11 @@ token, and all answer
 flags let a client phrase what it just did ("stopped 12 runs, including 3 already
 executing") from the response rather than from which button it pressed.
 
-| endpoint | sweeps | console label |
-| --- | --- | --- |
-| `POST /jobs/cancel-waiting` | `queued`, `pending` | Clear pending |
-| `POST /jobs/cancel-active` | `dispatched`, `starting`, `running` | Kill active |
-| `POST /jobs/cancel-all` | both, in one transition | Stop all |
+| endpoint                    | sweeps                              | console label |
+| --------------------------- | ----------------------------------- | ------------- |
+| `POST /jobs/cancel-waiting` | `queued`, `pending`                 | Clear pending |
+| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running` | Kill active   |
+| `POST /jobs/cancel-all`     | both, in one transition             | Stop all      |
 
 They are named after the job states they reach rather than after those labels,
 because `pending` is a distinct state that is surfaced on its own — a
@@ -1093,7 +1118,7 @@ behalf. The request body is optional JSON, every field optional:
   // Completion calls per input prompt (default 8, at most 128).
   "samples": 8,
   // Completion-token cap per call.
-  "maxTokens": 3500
+  "maxTokens": 3500,
 }
 ```
 
@@ -1162,8 +1187,8 @@ therefore answer different questions.
   "models": 63,
   "weekly": [
     { "weekStart": "2026-03-02", "runs": 0 },
-    { "weekStart": "2026-03-09", "runs": 118 }
-  ]
+    { "weekStart": "2026-03-09", "runs": 118 },
+  ],
 }
 ```
 
@@ -1242,16 +1267,16 @@ is no backlog to catch up on.
 Opens the stream. Every frame is a **named** SSE event, so there is no unnamed
 `message` frame and a client using `EventSource.onmessage` alone receives nothing.
 
-| `event:` | payload | topic |
-| --- | --- | --- |
-| `stream` | `{ "streamId": "…" }` | always — the first frame |
-| `notification` | `Notification` | `notifications` |
-| `run` | `RunEvent` | `runs` |
-| `resync` | `{ "dropped": n }` | always |
-| `heartbeat` | *(none)* | always — every 15s while idle |
+| `event:`       | payload               | topic                         |
+| -------------- | --------------------- | ----------------------------- |
+| `stream`       | `{ "streamId": "…" }` | always — the first frame      |
+| `notification` | `Notification`        | `notifications`               |
+| `run`          | `RunEvent`            | `runs`                        |
+| `resync`       | `{ "dropped": n }`    | always                        |
+| `heartbeat`    | _(none)_              | always — every 15s while idle |
 
 The **hello frame** (`stream`) arrives first and carries the id the client quotes
-back to change its topics. The id is minted per *connection*, not per client: an
+back to change its topics. The id is minted per _connection_, not per client: an
 `EventSource` reconnects on its own, and the reconnected stream is a new subscriber
 with default topics, so a client must re-apply what it wanted each time a hello
 frame arrives.
@@ -1260,10 +1285,10 @@ The **`resync` frame** says this client fell behind far enough that the backend
 dropped messages for it. Nothing can be replayed, so the client's recovery is to
 re-read the authoritative lists (`GET /jobs/active`, and the run listing if it is
 showing produced runs). It exists because this is one of the two ways a client can
-stop being current *without* the connection dropping.
+stop being current _without_ the connection dropping.
 
 The **`heartbeat` frame** covers the other. It carries no payload — its arrival is
-the whole message — and it is why an SSE *comment* keep-alive is not enough here:
+the whole message — and it is why an SSE _comment_ keep-alive is not enough here:
 the browser's `EventSource` consumes comments internally and surfaces nothing to
 the page, so a client cannot tell a healthy idle stream from a half-open socket
 that will never deliver anything again. With a heartbeat it can: arm a watchdog,
@@ -1273,12 +1298,12 @@ want the comment traffic.
 
 ### Topics
 
-| topic | carries | default |
-| --- | --- | --- |
-| `notifications` | a run finished; a publish failed | **on** |
-| `runs` | every in-flight list transition | **off** |
+| topic           | carries                          | default |
+| --------------- | -------------------------------- | ------- |
+| `notifications` | a run finished; a publish failed | **on**  |
+| `runs`          | every in-flight list transition  | **off** |
 
-The split is between *alerting* and *list maintenance*. A notification is
+The split is between _alerting_ and _list maintenance_. A notification is
 something a person should be told about, filed to the bell and raised as a toast,
 so it fires only for the two things worth interrupting someone over. A run event
 is every transition a list must reflect, including the many nobody wants a toast
@@ -1290,7 +1315,7 @@ must arrive wherever the user is, so the console holds one stream open for the
 whole session, while the churn is worth carrying only while a page is showing it.
 
 A `RunEvent` carries enough to patch a list in place without a round-trip — the
-run's identity and its state *after* the transition:
+run's identity and its state _after_ the transition:
 
 ```json
 {
@@ -1335,7 +1360,7 @@ produced one and `detail` when it failed or was cancelled. Note that a cancelled
 run raises a run event but **no** notification: it is an operator action, not a
 failure to alert on — but the list must still drop the row.
 
-A run that produced a record also makes the *produced-run* listing stale, which the
+A run that produced a record also makes the _produced-run_ listing stale, which the
 event does not carry; a client re-reads that separately.
 
 ### `PUT /notifications/{stream}/topics` — change topics
@@ -1367,12 +1392,12 @@ something tells it its own list may be wrong, and lives on the events in between
 There are four such moments, and between them they cover every way a client can
 fall out of step:
 
-| trigger | what it recovers |
-| --- | --- |
+| trigger                              | what it recovers                                             |
+| ------------------------------------ | ------------------------------------------------------------ |
 | the `runs` topic goes from off to on | anything published while it was off, which is never replayed |
-| the stream (re)connects | the gap, since the stream keeps no backlog |
-| a `resync` frame | messages the backend dropped for a client that fell behind |
-| the watchdog forces a reopen | a stream that died without saying so |
+| the stream (re)connects              | the gap, since the stream keeps no backlog                   |
+| a `resync` frame                     | messages the backend dropped for a client that fell behind   |
+| the watchdog forces a reopen         | a stream that died without saying so                         |
 
 The last two are the ones that make dropping the poll safe, and both are new: a
 lagged client used to be skipped in silence, and a wedged `EventSource` was

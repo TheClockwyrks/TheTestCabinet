@@ -1,9 +1,9 @@
 # Foray Nest — drawing brief
 
-You are drawing the **Foray nest**, a single 16×16 sprite for *Foray*, a
+You are drawing the **Foray nest**, a single 16×16 sprite for _Foray_, a
 top-down ant-colony raiding game. Two colonies raid each other's territory; the
 **nest is a colony's home tile** — the spawn mound a raider must reach to bank a
-carried seed, and the heart a soldier defends. You are drawing the *nest tile*,
+carried seed, and the heart a soldier defends. You are drawing the _nest tile_,
 the same sprite for either colony (see **Palette** for why it is drawn in
 neutral grey).
 
@@ -35,12 +35,12 @@ draw it **once in a neutral grey ramp** — never in red or blue. Use only these
 colors (the drawing is regenerated pixel-for-pixel, so stray or off-palette
 colors and anti-aliased fringes count against you):
 
-| Role | Hex | Notes |
-| --- | --- | --- |
-| Mound, darkest rim | `#3a3a3a` | recolorable — becomes the colony's dark tone |
-| Mound, mid body | `#6a6a6a` | recolorable — the main mound fill |
-| Mound, raised ring | `#9a9a9a` | recolorable — the lighter raised highlight |
-| Accent ring | `#cccccc` | recolorable — the brightest rim around the entrance |
+| Role               | Hex       | Notes                                                    |
+| ------------------ | --------- | -------------------------------------------------------- |
+| Mound, darkest rim | `#3a3a3a` | recolorable — becomes the colony's dark tone             |
+| Mound, mid body    | `#6a6a6a` | recolorable — the main mound fill                        |
+| Mound, raised ring | `#9a9a9a` | recolorable — the lighter raised highlight               |
+| Accent ring        | `#cccccc` | recolorable — the brightest rim around the entrance      |
 | Entrance / outline | `#0a0806` | fixed dark; the entrance hole and outline, not recolored |
 
 The four `#3a3a3a`/`#6a6a6a`/`#9a9a9a`/`#cccccc` greys are the **recolorable

@@ -32,7 +32,10 @@ game holds in some other shape is reduced to one of the three inside the source.
 ```ts
 const game: Game<State, null> = {
   initialize(api) {
-    api.diagnostics.register("ship", (state) => `${state.ship.x}, ${state.ship.y}, ${state.ship.z}`);
+    api.diagnostics.register(
+      "ship",
+      (state) => `${state.ship.x}, ${state.ship.y}, ${state.ship.z}`,
+    );
     api.diagnostics.register("score", (state) => state.score);
     api.diagnostics.register("landed", (state) => state.landed);
     return [initialState(), null];
@@ -62,14 +65,14 @@ metrics(): FrameMetrics;
 draw(ctx: CanvasRenderingContext2D, width: number, height: number): void;
 ```
 
-| Member | Returns | Behavior |
-| --- | --- | --- |
-| `setEnabled(enabled)` | `void` | Shows the overlay when `true`, hides it when `false`. |
-| `enabled()` | `boolean` | Whether the overlay is currently drawn. |
-| `toggle()` | `void` | Inverts the enabled state. |
-| `read()` | `readonly DiagnosticReading[]` | Evaluates every registered source and returns what each one reports. |
-| `metrics()` | `FrameMetrics` | The frame metrics over the current window. |
-| `draw(ctx, width, height)` | `void` | Draws the overlay onto `ctx`. Called by the engine with the screen layer's context after the recorder has captured the frame. |
+| Member                     | Returns                        | Behavior                                                                                                                      |
+| -------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `setEnabled(enabled)`      | `void`                         | Shows the overlay when `true`, hides it when `false`.                                                                         |
+| `enabled()`                | `boolean`                      | Whether the overlay is currently drawn.                                                                                       |
+| `toggle()`                 | `void`                         | Inverts the enabled state.                                                                                                    |
+| `read()`                   | `readonly DiagnosticReading[]` | Evaluates every registered source and returns what each one reports.                                                          |
+| `metrics()`                | `FrameMetrics`                 | The frame metrics over the current window.                                                                                    |
+| `draw(ctx, width, height)` | `void`                         | Draws the overlay onto `ctx`. Called by the engine with the screen layer's context after the recorder has captured the frame. |
 
 The overlay is hidden when the engine is created.
 
@@ -119,14 +122,14 @@ interface FrameMetrics {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `samples` | How many frames the window holds. |
-| `meanMs` | The arithmetic mean of the window's samples, in milliseconds. |
-| `p95Ms` | The 95th percentile of the window's samples, in milliseconds. |
-| `p99Ms` | The 99th percentile of the window's samples, in milliseconds. |
+| Field       | Meaning                                                       |
+| ----------- | ------------------------------------------------------------- |
+| `samples`   | How many frames the window holds.                             |
+| `meanMs`    | The arithmetic mean of the window's samples, in milliseconds. |
+| `p95Ms`     | The 95th percentile of the window's samples, in milliseconds. |
+| `p99Ms`     | The 99th percentile of the window's samples, in milliseconds. |
 | `drawCalls` | The draw calls the renderer issued for the most recent frame. |
-| `triangles` | The triangles the renderer drew in the most recent frame. |
+| `triangles` | The triangles the renderer drew in the most recent frame.     |
 
 Percentiles are nearest-rank over the window's samples sorted ascending, so
 `p95Ms` is the sample at index `ceil(0.95 * samples) - 1`. An empty window
@@ -187,13 +190,13 @@ is `false`. The key is engine chrome rather than a registered
 
 One line per reading, formatted `` `${name}: ${value}` ``.
 
-| Reading | Displayed as |
-| --- | --- |
-| `string` value | The string itself. |
-| Integer `number` value | `String(value)`. |
-| Non-integer `number` value | `value.toFixed(3)`. |
-| `boolean` value | `"true"` or `"false"`. |
-| A source that threw | The `error` message, in the value's place. |
+| Reading                    | Displayed as                               |
+| -------------------------- | ------------------------------------------ |
+| `string` value             | The string itself.                         |
+| Integer `number` value     | `String(value)`.                           |
+| Non-integer `number` value | `value.toFixed(3)`.                        |
+| `boolean` value            | `"true"` or `"false"`.                     |
+| A source that threw        | The `error` message, in the value's place. |
 
 A number that is not finite displays as `NaN`, `Infinity`, or `-Infinity`.
 

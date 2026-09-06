@@ -78,11 +78,11 @@ for every crystal on the board.
 
 The two groups do different jobs, and neither does the other's.
 
-| Rules | How they are used |
-| --- | --- |
+| Rules              | How they are used                                                                                              |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- |
 | R1, R2, R3, R4, R5 | Checked on every move. A move that would break one is refused: the beam is unchanged and the trace stays live. |
-| R6, R7, R8 | Never used to refuse a move. They are the conditions R9 reads. |
-| R9 | Evaluated after every change. |
+| R6, R7, R8         | Never used to refuse a move. They are the conditions R9 reads.                                                 |
+| R9                 | Evaluated after every change.                                                                                  |
 
 A partial beam therefore breaks no rule. It has simply not met the completion
 conditions yet.

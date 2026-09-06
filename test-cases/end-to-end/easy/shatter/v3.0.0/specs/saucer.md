@@ -24,10 +24,10 @@ distinguishable from the next.
 
 At most one saucer is on the field at a time.
 
-| Event | Timing |
-| --- | --- |
-| The first arrival of a game | `SAUCER_FIRST_DELAY` (`18` seconds) of game time after the game begins |
-| Each later arrival | `SAUCER_GAP_MIN` to `SAUCER_GAP_MAX` (`25` to `35` seconds), drawn uniformly, after the previous saucer leaves |
+| Event                       | Timing                                                                                                         |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| The first arrival of a game | `SAUCER_FIRST_DELAY` (`18` seconds) of game time after the game begins                                         |
+| Each later arrival          | `SAUCER_GAP_MIN` to `SAUCER_GAP_MAX` (`25` to `35` seconds), drawn uniformly, after the previous saucer leaves |
 
 Arrivals happen while the ship is in play. A saucer already on the field is never
 joined by a second.

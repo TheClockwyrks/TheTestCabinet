@@ -1,84 +1,81 @@
 {
-	"name": "The Test Cabinet",
-	"dockerComposeFile": [
-		"docker-compose.yml",
-		"docker-compose.local.yml"
-	],
-	"service": "dev",
-	"workspaceFolder": "/workspaces/the-test-cabinet",
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"rust-lang.rust-analyzer",
-				"tamasfe.even-better-toml",
-				"DavidAnson.vscode-markdownlint",
-				"EditorConfig.EditorConfig",
-				"timonwong.shellcheck",
-				"yzhang.markdown-all-in-one",
-				"aaron-bond.better-comments"
-			]
-		}
-	},
-	"forwardPorts": [],
-	// The cargo-target named volume persists across rebuilds; if it was ever
-	// created root-owned (e.g. before the Dockerfile pre-created its mountpoint),
-	// reclaim it for the container user so CARGO_TARGET_DIR stays writable.
-	//
-	// gg's eleven program-language toolchains are BAKED INTO THE IMAGE — the last layer of
-	// ubuntu.dockerfile runs languages/gg/install.sh, which runs the same
-	// scripts/ci/install-gg-toolchains.sh named below. They used to be installed here
-	// instead, on the argument that they are pinned by the REPOSITORY (each arm's own
-	// packages/gg-sandbox-*/<lang>-version.sh) and the repository is only mounted from this
-	// point on. The pinning half of that is still true; the conclusion was wrong. An image
-	// build can read the repository perfectly well — its build context is now the repo root
-	// and a per-dockerfile allowlist narrows it to the ~230 kB slice the installers need —
-	// and the cost of getting it wrong was an hour of downloads on every first create of a
-	// thing that is not optional: `crates/gg/build.rs` reflects each arm's signature
-	// catalogue out of its own SDK with that arm's own documentation tool on every build,
-	// because the catalogues are generated rather than committed, so a container without
-	// them cannot `cargo build --workspace`, cannot `cargo clippy`, and fails the pre-commit
-	// hooks that run both. A prerequisite for working in the repository at all belongs in
-	// the image.
-	//
-	// So why is it still called here? Because the image and the pins move independently.
-	// Checking out a branch that bumps an arm's version file — which is exactly what the
-	// branch history of those eleven arms looks like — makes every existing container stale,
-	// and the symptom is not a helpful "rebuild your container": it is `rustc` refusing
-	// another release's .rlib with E0514, or a reflector emitting a catalogue against the
-	// wrong SDK, in the middle of a `cargo build`. This call is the RECONCILER for that. The
-	// installer is idempotent by construction — each per-arm installer compares what is
-	// there against its pin and touches the network only on a mismatch, so a container whose
-	// image is current spends about 0.2 s here — and when something has moved it
-	// re-downloads that one arm rather than costing a full image rebuild.
-	//
-	// It stays one script (scripts/ci/install-gg-toolchains.sh) rather than a line per arm,
-	// so that the image, this file, CI, the release workflow and the driver image's gg build
-	// stage all provision from one pinned list. It is ~1.9 GB installed — a Swift toolchain
-	// and its wasm SDK, a JDK and TeaVM's jars, wasi-sdk, .NET and Roslyn, `purs` and
-	// `esbuild`, the Kotlin compiler, the wasm32 standard library, uv and YARD — and it
-	// downloads a good deal more than that when it does have work to do, because several of
-	// those installers keep a pruned fraction of a much larger published archive.
-	//
-	// `npm ci` is the eleventh toolchain, and it is the one genuinely stuck here — the single
-	// prerequisite of a gg build that an image cannot satisfy. TWO of the arms — TypeScript
-	// and JavaScript — are reflected through the pinned `typescript` that lives in the npm
-	// workspaces, so a container whose workspaces were never installed cannot `cargo build`
-	// the Rust workspace at all; but those workspaces are part of the CHECKOUT, which is a
-	// bind mount that exists only once the container is running, and `npm ci` deletes and
-	// re-creates node_modules, which is a thing to do to a checkout on purpose rather than as
-	// a side effect of installing compilers. The installer above deliberately will not run it
-	// (it says so at the end of its own output instead), and every other surface that builds
-	// gg — the Azure rust job, ci.yml, the release workflow, the driver image's gg stage —
-	// pairs the two calls exactly like this. On a first create there is no node_modules to
-	// lose, which is what makes it safe here.
-	"postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually') && (bash scripts/ci/install-gg-toolchains.sh || echo 'install-gg-toolchains failed; building test-cabinet-gg needs them \u2014 run scripts/ci/install-gg-toolchains.sh manually') && (npm ci || echo 'npm ci failed; the workspaces hold the typescript that reflects two of gg\u2019s eleven arms \u2014 run npm ci manually')",
-	"postStartCommand": "bash .devcontainer/tools/docker-socket-access.sh || true; if [ -S /tmp/ssh-agent.sock ]; then rm -f /tmp/devcontainer-ssh-agent.sock && (sudo socat UNIX-LISTEN:/tmp/devcontainer-ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock >/tmp/ssh-agent-socat.log 2>&1 &); fi",
-	// Keep the container user's UID/GID exactly as the image built them. This reads like an
-	// incidental setting and is not one any more: the image now bakes ~1.9 GB of gg's
-	// toolchains under that user's $HOME (three of the eleven arms — uv, the YARD gem and the
-	// rustup wasm32 component — can only install there, see languages/gg/install.sh).
-	// Flipping this to `true` makes the Dev Containers extension rewrite the user's UID at
-	// START time to match the host's, which orphans every one of those files: the reflectors
-	// `crates/gg/build.rs` runs would find toolchains they cannot read, mid-`cargo build`.
-	"updateRemoteUserUID": false
+  "name": "The Test Cabinet",
+  "dockerComposeFile": ["docker-compose.yml", "docker-compose.local.yml"],
+  "service": "dev",
+  "workspaceFolder": "/workspaces/the-test-cabinet",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "DavidAnson.vscode-markdownlint",
+        "EditorConfig.EditorConfig",
+        "timonwong.shellcheck",
+        "yzhang.markdown-all-in-one",
+        "aaron-bond.better-comments"
+      ]
+    }
+  },
+  "forwardPorts": [],
+  // The cargo-target named volume persists across rebuilds; if it was ever
+  // created root-owned (e.g. before the Dockerfile pre-created its mountpoint),
+  // reclaim it for the container user so CARGO_TARGET_DIR stays writable.
+  //
+  // gg's eleven program-language toolchains are BAKED INTO THE IMAGE — the last layer of
+  // ubuntu.dockerfile runs languages/gg/install.sh, which runs the same
+  // scripts/ci/install-gg-toolchains.sh named below. They used to be installed here
+  // instead, on the argument that they are pinned by the REPOSITORY (each arm's own
+  // packages/gg-sandbox-*/<lang>-version.sh) and the repository is only mounted from this
+  // point on. The pinning half of that is still true; the conclusion was wrong. An image
+  // build can read the repository perfectly well — its build context is now the repo root
+  // and a per-dockerfile allowlist narrows it to the ~230 kB slice the installers need —
+  // and the cost of getting it wrong was an hour of downloads on every first create of a
+  // thing that is not optional: `crates/gg/build.rs` reflects each arm's signature
+  // catalogue out of its own SDK with that arm's own documentation tool on every build,
+  // because the catalogues are generated rather than committed, so a container without
+  // them cannot `cargo build --workspace`, cannot `cargo clippy`, and fails the pre-commit
+  // hooks that run both. A prerequisite for working in the repository at all belongs in
+  // the image.
+  //
+  // So why is it still called here? Because the image and the pins move independently.
+  // Checking out a branch that bumps an arm's version file — which is exactly what the
+  // branch history of those eleven arms looks like — makes every existing container stale,
+  // and the symptom is not a helpful "rebuild your container": it is `rustc` refusing
+  // another release's .rlib with E0514, or a reflector emitting a catalogue against the
+  // wrong SDK, in the middle of a `cargo build`. This call is the RECONCILER for that. The
+  // installer is idempotent by construction — each per-arm installer compares what is
+  // there against its pin and touches the network only on a mismatch, so a container whose
+  // image is current spends about 0.2 s here — and when something has moved it
+  // re-downloads that one arm rather than costing a full image rebuild.
+  //
+  // It stays one script (scripts/ci/install-gg-toolchains.sh) rather than a line per arm,
+  // so that the image, this file, CI, the release workflow and the driver image's gg build
+  // stage all provision from one pinned list. It is ~1.9 GB installed — a Swift toolchain
+  // and its wasm SDK, a JDK and TeaVM's jars, wasi-sdk, .NET and Roslyn, `purs` and
+  // `esbuild`, the Kotlin compiler, the wasm32 standard library, uv and YARD — and it
+  // downloads a good deal more than that when it does have work to do, because several of
+  // those installers keep a pruned fraction of a much larger published archive.
+  //
+  // `npm ci` is the eleventh toolchain, and it is the one genuinely stuck here — the single
+  // prerequisite of a gg build that an image cannot satisfy. TWO of the arms — TypeScript
+  // and JavaScript — are reflected through the pinned `typescript` that lives in the npm
+  // workspaces, so a container whose workspaces were never installed cannot `cargo build`
+  // the Rust workspace at all; but those workspaces are part of the CHECKOUT, which is a
+  // bind mount that exists only once the container is running, and `npm ci` deletes and
+  // re-creates node_modules, which is a thing to do to a checkout on purpose rather than as
+  // a side effect of installing compilers. The installer above deliberately will not run it
+  // (it says so at the end of its own output instead), and every other surface that builds
+  // gg — the Azure rust job, ci.yml, the release workflow, the driver image's gg stage —
+  // pairs the two calls exactly like this. On a first create there is no node_modules to
+  // lose, which is what makes it safe here.
+  "postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually') && (bash scripts/ci/install-gg-toolchains.sh || echo 'install-gg-toolchains failed; building test-cabinet-gg needs them \u2014 run scripts/ci/install-gg-toolchains.sh manually') && (npm ci || echo 'npm ci failed; the workspaces hold the typescript that reflects two of gg\u2019s eleven arms \u2014 run npm ci manually')",
+  "postStartCommand": "bash .devcontainer/tools/docker-socket-access.sh || true; if [ -S /tmp/ssh-agent.sock ]; then rm -f /tmp/devcontainer-ssh-agent.sock && (sudo socat UNIX-LISTEN:/tmp/devcontainer-ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock >/tmp/ssh-agent-socat.log 2>&1 &); fi",
+  // Keep the container user's UID/GID exactly as the image built them. This reads like an
+  // incidental setting and is not one any more: the image now bakes ~1.9 GB of gg's
+  // toolchains under that user's $HOME (three of the eleven arms — uv, the YARD gem and the
+  // rustup wasm32 component — can only install there, see languages/gg/install.sh).
+  // Flipping this to `true` makes the Dev Containers extension rewrite the user's UID at
+  // START time to match the host's, which orphans every one of those files: the reflectors
+  // `crates/gg/build.rs` runs would find toolchains they cannot read, mid-`cargo build`.
+  "updateRemoteUserUID": false
 }

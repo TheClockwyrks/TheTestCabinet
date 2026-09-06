@@ -46,7 +46,7 @@ A naive "balanced" strategy: it **statically** assigns one agent to patrol the
 border and chase the nearest visible intruder, and sends the other two in as
 `greedy-raider`-style foragers. It is the **strongest** baseline, but its role
 split **never adapts** — it does not reinforce a collapsing defense, recall a
-raider to bank before it is caught, ever eat jelly (to survive a run home *or* to
+raider to bank before it is caught, ever eat jelly (to survive a run home _or_ to
 kill a defender), contest or recall a large seed, or weigh load against the distance
 home. It rewards a controller that reads the match state and reallocates its three
 agents dynamically.
@@ -54,7 +54,7 @@ agents dynamically.
 **`border-soldier` is the canonical benchmark opponent.** The benchmark runs
 **one** match: your controller as Red against
 `border-soldier` as Blue, on the shipped `mirror-32x16` map. Beating
-`border-soldier` decisively is the bar to clear; the interesting margin is *how*
+`border-soldier` decisively is the bar to clear; the interesting margin is _how_
 you beat it.
 
 ## Why none of them is good

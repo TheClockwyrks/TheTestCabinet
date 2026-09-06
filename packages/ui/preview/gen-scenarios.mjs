@@ -15,7 +15,15 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-const src = (x, y, dir, item, lane = "both") => ({ type: "source", x, y, dir, item, lane, period: 1 });
+const src = (x, y, dir, item, lane = "both") => ({
+  type: "source",
+  x,
+  y,
+  dir,
+  item,
+  lane,
+  period: 1,
+});
 const belt = (x, y, dir) => ({ type: "belt", x, y, dir, tier: "fast" });
 const splitter = (x, y) => ({ type: "splitter", x, y, dir: "E" });
 const sink = (x, y) => ({ type: "sink", x, y, dir: "W" });
@@ -161,5 +169,8 @@ const PRESETS = [
   },
 ];
 
-writeFileSync(join(here, "scenarios.json"), JSON.stringify(PRESETS, null, 2) + "\n");
+writeFileSync(
+  join(here, "scenarios.json"),
+  JSON.stringify(PRESETS, null, 2) + "\n",
+);
 console.log(`wrote scenarios.json (${PRESETS.length} presets)`);

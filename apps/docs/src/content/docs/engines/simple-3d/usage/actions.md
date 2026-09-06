@@ -79,7 +79,10 @@ the game is written to use a partial magnitude.
 ```ts
 api.input.register("zoom-in", { keys: ["Equal"] });
 api.input.register("zoom-out", { keys: ["Minus"] });
-api.input.register("throttle", { keys: ["ShiftLeft", "ShiftRight"], kind: "analog" });
+api.input.register("throttle", {
+  keys: ["ShiftLeft", "ShiftRight"],
+  kind: "analog",
+});
 ```
 
 Every registration belongs in `initialize`, which the engine runs to completion

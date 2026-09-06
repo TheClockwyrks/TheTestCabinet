@@ -163,7 +163,11 @@ function SingleReview({
             // the reviewer's verdict overrides (if any) and their prose. The
             // full checklist is the validators' and lives on the Verdict tab.
             <>
-              <ValidatorOverrides review={review} run={run} items={model.items} />
+              <ValidatorOverrides
+                review={review}
+                run={run}
+                items={model.items}
+              />
               <Markdown breaks className={styles.writeupBody}>
                 {review.writeup}
               </Markdown>

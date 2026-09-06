@@ -164,7 +164,11 @@ import type { Game, InitApi, Model } from "@clockwyrks/simple-3d";
 interface State {
   readonly icon: ImageBitmap;
   readonly site: Blob;
-  readonly crane: { readonly x: number; readonly y: number; readonly z: number };
+  readonly crane: {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+  };
 }
 
 const templates = new Map<string, Model>();

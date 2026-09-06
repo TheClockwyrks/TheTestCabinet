@@ -16,14 +16,14 @@ instruction-following.
 
 ## Layout
 
-| File | Seeded? | Purpose |
-| --- | --- | --- |
-| `test-case.toml` | manifest | Metadata, `[audio]` (format + `packs = ["cinematic@0.1.0"]`), `[tool]` (`music`), `[output]`, domain. |
-| `specs/brief.md` | seeded | The self-contained brief: the mood, the build from tension to climax, length, the instrumentation (model's choice), and the stereo image. |
-| `variants/base.toml` | — | The single default variant. |
-| `prompt.hbs` | rendered | The instruction handed to the harness (points at the brief and the tool). |
-| `description.md` | — | Site-facing blurb. |
-| `README.md` | — | This overview. |
+| File                 | Seeded?  | Purpose                                                                                                                                   |
+| -------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `test-case.toml`     | manifest | Metadata, `[audio]` (format + `packs = ["cinematic@0.1.0"]`), `[tool]` (`music`), `[output]`, domain.                                     |
+| `specs/brief.md`     | seeded   | The self-contained brief: the mood, the build from tension to climax, length, the instrumentation (model's choice), and the stereo image. |
+| `variants/base.toml` | —        | The single default variant.                                                                                                               |
+| `prompt.hbs`         | rendered | The instruction handed to the harness (points at the brief and the tool).                                                                 |
+| `description.md`     | —        | Site-facing blurb.                                                                                                                        |
+| `README.md`          | —        | This overview.                                                                                                                            |
 
 ## The instrument bank
 

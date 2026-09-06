@@ -8,8 +8,8 @@ it all develop, keeping traffic flowing, demand met, and the budget solvent
 against congestion, pollution, and upkeep, or the city goes bankrupt.
 
 `junction` is the catalog slug for this lineage of city-builder cases, and the
-game's in-fiction title. The case is inspired by city sims, notably *SimCity*,
-and by the flow pressure of *Mini Metro*; its name, look, system set, and scope
+game's in-fiction title. The case is inspired by city sims, notably _SimCity_,
+and by the flow pressure of _Mini Metro_; its name, look, system set, and scope
 are original to The Test Cabinet.
 
 ## What "full-stack" means
@@ -55,13 +55,13 @@ simulate and produce well.
 
 ## Contents
 
-| Path                  | Seeded to run? | Purpose                                                |
-| --------------------- | -------------- | ------------------------------------------------------ |
-| `specs/`              | Yes            | The spec handed to the model, by concern.              |
-| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.          |
-| `workspaces/base/`    | Yes            | Starter project seeded to the run root.                |
-| `test-case.toml`      | No             | Manifest: type, specs, variants, review items.         |
-| `README.md`           | No             | This overview.                                         |
+| Path               | Seeded to run? | Purpose                                        |
+| ------------------ | -------------- | ---------------------------------------------- |
+| `specs/`           | Yes            | The spec handed to the model, by concern.      |
+| `prompt.hbs`       | No             | Rendered into the model's prompt; not seeded.  |
+| `workspaces/base/` | Yes            | Starter project seeded to the run root.        |
+| `test-case.toml`   | No             | Manifest: type, specs, variants, review items. |
+| `README.md`        | No             | This overview.                                 |
 
 The specification is split across `specs/` by concern: `overview.md`, `map.md`,
 `transit.md`, `utilities.md`, `economy.md`, `controls.md`, `flow.md`,

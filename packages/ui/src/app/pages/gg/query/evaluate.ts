@@ -246,7 +246,9 @@ function equals(observed: GgValue, literal: GgValue): boolean {
   if (a !== undefined && b !== undefined) return a === b;
   const pattern = asDisplay(literal).toLowerCase();
   const value = asDisplay(observed).toLowerCase();
-  return pattern.includes("*") ? globMatches(pattern, value) : pattern === value;
+  return pattern.includes("*")
+    ? globMatches(pattern, value)
+    : pattern === value;
 }
 
 /**
@@ -286,7 +288,8 @@ const RUST_FLOAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
  * would match on the console and not on the published site. Both answers look
  * plausible, which is what makes it the worst kind of parity break.
  */
-const WHITE_SPACE = "\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000";
+const WHITE_SPACE =
+  "\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000";
 const RUST_WHITESPACE = new RegExp(
   `^[${WHITE_SPACE}]+|[${WHITE_SPACE}]+$`,
   "g",
@@ -298,10 +301,7 @@ const RUST_WHITESPACE = new RegExp(
  * itself numeric, so a genuinely textual field never starts comparing numerically
  * because one of its values happened to look like a figure.
  */
-function coerceNumber(
-  observed: GgValue,
-  literal: GgValue,
-): number | undefined {
+function coerceNumber(observed: GgValue, literal: GgValue): number | undefined {
   if (asNumber(observed) === undefined) return undefined;
   if (typeof literal === "string") {
     const trimmed = literal.replace(RUST_WHITESPACE, "");
@@ -509,9 +509,17 @@ function fold(
     case "sum":
       return { name, value: sum(values), contributing };
     case "min":
-      return { name, value: values.reduce((a, b) => Math.min(a, b)), contributing };
+      return {
+        name,
+        value: values.reduce((a, b) => Math.min(a, b)),
+        contributing,
+      };
     case "max":
-      return { name, value: values.reduce((a, b) => Math.max(a, b)), contributing };
+      return {
+        name,
+        value: values.reduce((a, b) => Math.max(a, b)),
+        contributing,
+      };
     case "median":
     case "p90":
     case "p95": {
@@ -574,9 +582,7 @@ function sortBuckets(
   if (chronological) {
     buckets.sort((a, b) => compareKeys(keyOf(a), keyOf(b)));
   } else {
-    buckets.sort(
-      (a, b) => b.n - a.n || compareKeys(keyOf(a), keyOf(b)),
-    );
+    buckets.sort((a, b) => b.n - a.n || compareKeys(keyOf(a), keyOf(b)));
   }
 }
 
@@ -609,10 +615,7 @@ function bucketSort(
 
 /** The value a bucket sorts by for one sort key: a group key's value first, then an
  *  aggregation column's figure. */
-function bucketSortValue(
-  bucket: GgBucket,
-  field: string,
-): GgValue | undefined {
+function bucketSortValue(bucket: GgBucket, field: string): GgValue | undefined {
   const part = bucket.key.find((p) => p.field === field);
   if (part) return part.value;
   const column = bucket.values.find((value) => value.name === field);

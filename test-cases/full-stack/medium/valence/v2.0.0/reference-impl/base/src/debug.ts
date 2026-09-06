@@ -5,7 +5,12 @@
 // driven from code behaves identically to one played by hand. It only sets up situations and
 // steps the real systems forward; it never fabricates an outcome. See specs/instrumentation.md.
 
-import { FIXED_STEP, type Branch, type TargetingMode, type TowerKind } from "./constants";
+import {
+  FIXED_STEP,
+  type Branch,
+  type TargetingMode,
+  type TowerKind,
+} from "./constants";
 import { mapById } from "./board";
 import type { Game, ValenceSnapshot } from "./sim";
 
@@ -53,7 +58,11 @@ export interface ValenceDebugApi {
   /** Open a live round with no wave that does not end on its own — the scenario board. */
   startScenario(): boolean;
   spawnUnit(spec?: SpawnSpec): number;
-  placeTower(type: TowerKind, x: number, y: number): { ok: boolean; id: number | null; reason: string | null };
+  placeTower(
+    type: TowerKind,
+    x: number,
+    y: number,
+  ): { ok: boolean; id: number | null; reason: string | null };
   upgradeTower(id: number, branch?: Branch): boolean;
   sellTower(id: number): number;
   selectTower(id: number | null): void;
@@ -84,7 +93,9 @@ export function installDebugApi(game: Game, processInput: () => void): void {
     // Takes the clock (manual stepping) for the rest of the driven session.
     step(ticks) {
       if (!Number.isInteger(ticks) || ticks < 0) {
-        throw new Error(`step(ticks) expects a non-negative integer tick count, got ${ticks}`);
+        throw new Error(
+          `step(ticks) expects a non-negative integer tick count, got ${ticks}`,
+        );
       }
       game.autoStep = false;
       for (let i = 0; i < ticks; i++) game.fixedStep(FIXED_STEP);
@@ -163,12 +174,16 @@ export function installDebugApi(game: Game, processInput: () => void): void {
     // (a menu move, a confirm, a pause, a mute, a speed cycle, a tower/inspector hotkey) takes
     // effect immediately. This does not change autoStep.
     keyDown(code) {
-      window.dispatchEvent(new KeyboardEvent("keydown", { code, key: keyForCode(code) }));
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { code, key: keyForCode(code) }),
+      );
       processInput();
     },
 
     keyUp(code) {
-      window.dispatchEvent(new KeyboardEvent("keyup", { code, key: keyForCode(code) }));
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", { code, key: keyForCode(code) }),
+      );
     },
 
     press(code) {

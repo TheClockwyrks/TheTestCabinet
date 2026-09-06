@@ -31,7 +31,12 @@
 // two sets are disjoint, so a build that ignored rotation could not satisfy both.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertNotNull, assertNull } from "../assert";
+import {
+  assertEqual,
+  assertLength,
+  assertNotNull,
+  assertNull,
+} from "../assert";
 import { at, type Hex } from "../field";
 import { armPart, solution } from "../formats";
 import { BARE } from "../fixtures";
@@ -50,7 +55,10 @@ import {
 } from "../harness";
 
 /** The same triarm twice, differing in rotation alone. */
-const UNTURNED: { base: Hex; rotation: number } = { base: at(-2, 0), rotation: 0 };
+const UNTURNED: { base: Hex; rotation: number } = {
+  base: at(-2, 0),
+  rotation: 0,
+};
 const TURNED: { base: Hex; rotation: number } = { base: at(2, 0), rotation: 1 };
 const LENGTH = 1;
 
@@ -87,14 +95,9 @@ it("grips spokes 0, 2, 4 at rotation 0 and spokes 1, 3, 5 at rotation 1", async 
         LENGTH,
         ["grab"],
       ),
-      armPart(
-        "triarm",
-        TURNED.base.q,
-        TURNED.base.r,
-        TURNED.rotation,
-        LENGTH,
-        ["grab"],
-      ),
+      armPart("triarm", TURNED.base.q, TURNED.base.r, TURNED.rotation, LENGTH, [
+        "grab",
+      ]),
     ]),
   });
   const ids = await partIds(h);
@@ -116,7 +119,11 @@ it("grips spokes 0, 2, 4 at rotation 0 and spokes 1, 3, 5 at rotation 1", async 
   assertNotNull(sim, "the run is live through the cycle that grabbed");
   assertEqual(sim?.status, "running", "the grab cycle reaches its boundary");
   assertNull(sim?.fault ?? null, "no fault was raised by the grab");
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
 
   for (const [index, arm] of [UNTURNED, TURNED].entries()) {
     const part = ids[index] ?? -1;

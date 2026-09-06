@@ -36,19 +36,19 @@ point, so the board never drifts as boards change.
 
 Two radii govern a node:
 
-| Constant | Value | Governs |
-| --- | --- | --- |
-| `NODE_R` | `30` | A node's silhouette is drawn inside this radius of its cell center. The silhouette is the form that carries the node's kind and its channel. |
-| `NODE_HIT_R` | `44` | A node is targeted by the pointer when the pointer is within this radius of the node's cell center. |
+| Constant     | Value | Governs                                                                                                                                      |
+| ------------ | ----- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_R`     | `30`  | A node's silhouette is drawn inside this radius of its cell center. The silhouette is the form that carries the node's kind and its channel. |
+| `NODE_HIT_R` | `44`  | A node is targeted by the pointer when the pointer is within this radius of the node's cell center.                                          |
 
 ## Nodes
 
 There are three kinds of node.
 
-| Kind | Meaning | Drawn as |
-| --- | --- | --- |
-| `emitter` | An endpoint of one channel's beam. | The **outlined** silhouette of its channel, in that channel's hue. |
-| `lens` | A pass-through node belonging to one channel. | The **filled** silhouette of its channel, in that channel's hue. |
+| Kind      | Meaning                                                                          | Drawn as                                                                                                                                     |
+| --------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `emitter` | An endpoint of one channel's beam.                                               | The **outlined** silhouette of its channel, in that channel's hue.                                                                           |
+| `lens`    | A pass-through node belonging to one channel.                                    | The **filled** silhouette of its channel, in that channel's hue.                                                                             |
 | `crystal` | A channel-neutral node carrying 1 to 3 charges, any of which any beam may spend. | A form clearly distinct from all three channel silhouettes, showing both its charge count and how many of those charges are currently spent. |
 
 An emitter and a lens of the same channel share one silhouette and differ only by
@@ -64,11 +64,11 @@ charge.
 
 `CHANNELS` holds the three channel identifiers in this order:
 
-| Channel | Silhouette |
-| --- | --- |
-| `triangle` | A triangle. |
-| `square` | A square. |
-| `diamond` | A diamond, a square stood on a corner. |
+| Channel    | Silhouette                             |
+| ---------- | -------------------------------------- |
+| `triangle` | A triangle.                            |
+| `square`   | A square.                              |
+| `diamond`  | A diamond, a square stood on a corner. |
 
 Each channel carries one distinct hue, and the three are told apart at a glance.
 The silhouettes are pinned, so channel identity reads by form as well as by
@@ -103,18 +103,18 @@ to the bottom-right, one character per cell. Every row of a board carries the sa
 number of characters, and that count is the board's `cols`; the number of rows is
 its `rows`.
 
-| Character | Cell |
-| --- | --- |
-| `.` | Empty. |
-| `T` | Emitter of `triangle`. |
-| `S` | Emitter of `square`. |
-| `D` | Emitter of `diamond`. |
-| `t` | Lens of `triangle`. |
-| `s` | Lens of `square`. |
-| `d` | Lens of `diamond`. |
-| `1` | Crystal carrying 1 charge. |
-| `2` | Crystal carrying 2 charges. |
-| `3` | Crystal carrying 3 charges. |
+| Character | Cell                        |
+| --------- | --------------------------- |
+| `.`       | Empty.                      |
+| `T`       | Emitter of `triangle`.      |
+| `S`       | Emitter of `square`.        |
+| `D`       | Emitter of `diamond`.       |
+| `t`       | Lens of `triangle`.         |
+| `s`       | Lens of `square`.           |
+| `d`       | Lens of `diamond`.          |
+| `1`       | Crystal carrying 1 charge.  |
+| `2`       | Crystal carrying 2 charges. |
+| `3`       | Crystal carrying 3 charges. |
 
 For example, a board three cells wide and three tall, carrying the `triangle`
 and `square` channels and one crystal:

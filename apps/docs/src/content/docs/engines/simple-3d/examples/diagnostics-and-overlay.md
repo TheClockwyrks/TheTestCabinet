@@ -95,7 +95,10 @@ function serve(state: DeepReadonly<RallyState>, vx: number): RallyState {
 export const rally: Game<RallyState, null> = {
   initialize(api: InitApi<RallyState>): [RallyState, null] {
     api.diagnostics.register("phase", (s) => s.phase);
-    api.diagnostics.register("score", (s) => `${s.score.left} - ${s.score.right}`);
+    api.diagnostics.register(
+      "score",
+      (s) => `${s.score.left} - ${s.score.right}`,
+    );
     api.diagnostics.register(
       "ball",
       (s) => `${s.ball.x.toFixed(1)}, ${s.ball.z.toFixed(1)}`,
@@ -115,7 +118,11 @@ export const rally: Game<RallyState, null> = {
     ];
   },
 
-  update(state: DeepReadonly<RallyState>, api: UpdateApi, dt: number): RallyState {
+  update(
+    state: DeepReadonly<RallyState>,
+    api: UpdateApi,
+    dt: number,
+  ): RallyState {
     const fps = Math.round(1000 / Math.max(api.frame().lastDeltaMs, 1));
 
     if (state.phase === "serve") {

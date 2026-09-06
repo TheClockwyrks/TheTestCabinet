@@ -268,7 +268,10 @@ export interface Snapshot {
   level: string;
   phase: string;
   score: { p1: number; p2: number };
-  paddles: { left: { y: number; vy: number }; right: { y: number; vy: number } };
+  paddles: {
+    left: { y: number; vy: number };
+    right: { y: number; vy: number };
+  };
   ball: { position: Vec3; velocity: Vec3 };
 }
 
@@ -300,11 +303,11 @@ A suite imports the build, so a case fixes three module paths and what each one
 exports. That contract is stated in the case's specification and is what gives
 every build of the case the same shape to check.
 
-| Module | Supplied by | Holds |
-| --- | --- | --- |
-| `src/constants.ts` | The case | The design size, the palette, the level names, the actor tag vocabulary, the action names with the keys they bind, the cue names, the arena's dimensions in world units, and every tunable the specification fixes. |
-| `src/game.ts` | The build | The `GameDefinition` the engine drives, whose instance's `initialize` returns the debug surface to the instrumentation spec. |
-| `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it. |
+| Module             | Supplied by | Holds                                                                                                                                                                                                               |
+| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/constants.ts` | The case    | The design size, the palette, the level names, the actor tag vocabulary, the action names with the keys they bind, the cue names, the arena's dimensions in world units, and every tunable the specification fixes. |
+| `src/game.ts`      | The build   | The `GameDefinition` the engine drives, whose instance's `initialize` returns the debug surface to the instrumentation spec.                                                                                        |
+| `src/main.ts`      | The case    | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it.                                                                                                                    |
 
 The contract is small because the engine's own object model is what a check
 reads. A suite finds actors with `world.byTag`, reads the match through

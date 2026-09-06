@@ -36,6 +36,7 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
   [gg](/gg/overview/) run carries a capability set and is launched from a
   console. `--engine` selects the runtime the game is built on, defaulting to
   `none`, and `seed` and `validate` take the same flag.
+
 - `seed` runs only the [seeding](/components/core/execution/#seeding) step for a
   chosen variant and leaves the result on disk, so the exact inputs a harness
   would receive can be inspected without launching a container.
@@ -186,7 +187,7 @@ a CI step reads the status rather than the log. Anything that stopped a command
 from doing its job — an unresolvable case, an unreachable backend, a missing
 browser, a rejected login — exits non-zero with the reason on standard error.
 
-Two commands additionally carry a *verdict*: they ran to completion and the
+Two commands additionally carry a _verdict_: they ran to completion and the
 answer they arrived at is itself a pass or a fail. Both print a final line naming
 every fault, so the tail of a log says what went wrong.
 

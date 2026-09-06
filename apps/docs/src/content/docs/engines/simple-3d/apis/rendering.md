@@ -12,10 +12,10 @@ camera and composites the screen layer over it once per frame.
 Every frame the engine draws two things onto the canvas handed to
 `createEngine`.
 
-| Surface | Object | Populated by | Drawn by |
-| --- | --- | --- | --- |
-| The scene | A `THREE.Scene`, rendered through a `THREE.WebGLRenderer` over the canvas | The game, from `render` | The engine, through the camera |
-| The screen layer | A 2D canvas the engine owns, sized to the same backing store | The game, on its `CanvasRenderingContext2D` | The engine, composited over the scene |
+| Surface          | Object                                                                    | Populated by                                | Drawn by                              |
+| ---------------- | ------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------- |
+| The scene        | A `THREE.Scene`, rendered through a `THREE.WebGLRenderer` over the canvas | The game, from `render`                     | The engine, through the camera        |
+| The screen layer | A 2D canvas the engine owns, sized to the same backing store              | The game, on its `CanvasRenderingContext2D` | The engine, composited over the scene |
 
 The scene is the 3D picture. The screen layer carries HUD text, menus,
 readouts, and the diagnostics overlay, drawn through a 2D context that carries
@@ -249,11 +249,11 @@ destroying the engine still finds what the last frame left.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| The canvas yields no `webgl2` context | `Error` naming the canvas |
-| No `screen` canvas supplied and the stage canvas has no owning document | `Error` naming `screen` |
-| `projection` outside `"perspective"` / `"orthographic"` | `Error` naming both values |
+| Condition                                                               | Result                     |
+| ----------------------------------------------------------------------- | -------------------------- |
+| The canvas yields no `webgl2` context                                   | `Error` naming the canvas  |
+| No `screen` canvas supplied and the stage canvas has no owning document | `Error` naming `screen`    |
+| `projection` outside `"perspective"` / `"orthographic"`                 | `Error` naming both values |
 
 Each is raised by `createEngine`, so a build that would run and draw nothing is
 refused where the mistake is.

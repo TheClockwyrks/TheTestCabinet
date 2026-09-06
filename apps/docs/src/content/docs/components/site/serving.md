@@ -21,10 +21,11 @@ and runs on the plane described in [Public Gallery](/deployment/public-gallery/)
 
 ## Route resolution
 
-A path the route table addresses is answered with the application shell and a
-200. Any other path is answered with the shell and a 404, and the application's
-catch-all route renders the not-found page inside it. A path shaped like a run
-page is answered with a 404 unless its run id names a published run.
+A path the route table addresses is answered with the application shell and
+a 200. Any other path is answered with the shell and a 404, and the
+application's catch-all route renders the not-found page inside it. A path
+shaped like a run page is answered with a 404 unless its run id names a
+published run.
 
 Every route is served at the URL requested. A deep link such as `/runs/<id>`
 resolves directly, and the origin holds the whole route table, so the console-only

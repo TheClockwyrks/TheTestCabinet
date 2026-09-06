@@ -98,7 +98,9 @@ describe("timeline validation", () => {
   const ok = (timeline: Timeline) => timelineError(timeline);
 
   it("accepts a scored schedule", () => {
-    expect(ok({ ticks: 300000, snapshots: [1250, 2500, 75000, 150000, 300000] })).toBeNull();
+    expect(
+      ok({ ticks: 300000, snapshots: [1250, 2500, 75000, 150000, 300000] }),
+    ).toBeNull();
   });
 
   it("catches a snapshot past the end", () => {
@@ -118,6 +120,8 @@ describe("belt tier labels", () => {
   it("states each tier's speed and how long a tile takes", () => {
     expect(beltTierLabel("slow")).toBe("slow — 32 u/tick, 8 ticks/tile");
     expect(beltTierLabel("fast")).toBe("fast — 64 u/tick, 4 ticks/tile");
-    expect(beltTierLabel("express")).toBe("express — 96 u/tick, ~2.7 ticks/tile");
+    expect(beltTierLabel("express")).toBe(
+      "express — 96 u/tick, ~2.7 ticks/tile",
+    );
   });
 });

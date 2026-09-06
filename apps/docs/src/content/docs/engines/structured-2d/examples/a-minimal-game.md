@@ -17,7 +17,10 @@ and the mode that level runs under. It registers no action and loads no asset.
     <title>Drifter</title>
   </head>
   <body style="margin: 0; background: #05060a">
-    <canvas id="game" style="display: block; width: 100vw; height: 100vh"></canvas>
+    <canvas
+      id="game"
+      style="display: block; width: 100vw; height: 100vh"
+    ></canvas>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

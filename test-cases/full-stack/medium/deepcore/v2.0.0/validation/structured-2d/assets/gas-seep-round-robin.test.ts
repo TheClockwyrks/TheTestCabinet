@@ -25,11 +25,7 @@
 // cut, nothing detonates, and no other effect is playing over any of them.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  GAS_SEEP_PERIOD,
-  PLAYABLE_COL_MIN,
-  TILE,
-} from "../constants";
+import { GAS_SEEP_PERIOD, PLAYABLE_COL_MIN, TILE } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureReplay,

@@ -28,10 +28,10 @@ the state, advances the real systems forward, and reads the outcome back.
 
 ## Pages
 
-| Page | Covers |
-| --- | --- |
-| [The Suite](/engines/simple-2d/validators/the-suite/) | Where the files live, the vitest project that runs them, the headless harness, and the module contract a case fixes. |
-| [Simulation](/engines/simple-2d/validators/simulation/) | Stepping with a scripted clock, reading the state back, and asserting on outcomes that survive a change in step size. |
-| [Rendering](/engines/simple-2d/validators/rendering/) | Pixel readback through `getImageData` and the recording proxy over the 2D context. |
-| [Input and Audio](/engines/simple-2d/validators/input-and-audio/) | Driving named actions and asserting on the cues a build played. |
-| [Recording](/engines/simple-2d/validators/recording/) | Arming the engine's recorder around a scenario and emitting it as the review item's media. |
+| Page                                                              | Covers                                                                                                                |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| [The Suite](/engines/simple-2d/validators/the-suite/)             | Where the files live, the vitest project that runs them, the headless harness, and the module contract a case fixes.  |
+| [Simulation](/engines/simple-2d/validators/simulation/)           | Stepping with a scripted clock, reading the state back, and asserting on outcomes that survive a change in step size. |
+| [Rendering](/engines/simple-2d/validators/rendering/)             | Pixel readback through `getImageData` and the recording proxy over the 2D context.                                    |
+| [Input and Audio](/engines/simple-2d/validators/input-and-audio/) | Driving named actions and asserting on the cues a build played.                                                       |
+| [Recording](/engines/simple-2d/validators/recording/)             | Arming the engine's recorder around a scenario and emitting it as the review item's media.                            |

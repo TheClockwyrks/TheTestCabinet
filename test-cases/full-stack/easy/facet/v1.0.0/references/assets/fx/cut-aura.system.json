@@ -11,18 +11,10 @@
     {
       "name": "motes",
       "shape": "disc",
-      "position": [
-        48.0,
-        48.0,
-        0.0
-      ],
+      "position": [48.0, 48.0, 0.0],
       "extent": {
         "radius": 13.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "rate",
@@ -32,11 +24,7 @@
       "lifetimeSpread": 260.0,
       "speed": 16.0,
       "speedSpread": 9.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 62.0,
       "seed": 9701,
       "forces": {
@@ -77,18 +65,10 @@
     {
       "name": "glint",
       "shape": "disc",
-      "position": [
-        48.0,
-        48.0,
-        0.0
-      ],
+      "position": [48.0, 48.0, 0.0],
       "extent": {
         "radius": 6.0,
-        "size": [
-          1.0,
-          1.0,
-          0.0
-        ]
+        "size": [1.0, 1.0, 0.0]
       },
       "emission": {
         "mode": "rate",
@@ -98,11 +78,7 @@
       "lifetimeSpread": 140.0,
       "speed": 34.0,
       "speedSpread": 10.0,
-      "direction": [
-        0.0,
-        1.0,
-        0.0
-      ],
+      "direction": [0.0, 1.0, 0.0],
       "coneAngle": 180.0,
       "seed": 4813,
       "forces": {

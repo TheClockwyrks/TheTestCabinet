@@ -9,7 +9,7 @@ day/night clock.
 
 `holdfast` is the catalog slug for this lineage of colony-survival cases, and
 the game's in-fiction title. The case draws on colony survival sims, notably
-*RimWorld*, with a name, look, system set, and scope original to The Test
+_RimWorld_, with a name, look, system set, and scope original to The Test
 Cabinet.
 
 ## What "full-stack" means
@@ -50,13 +50,13 @@ run's overall rating the worst of the two.
 
 ## Contents
 
-| Path                  | Seeded to run? | Purpose                                                |
-| --------------------- | -------------- | ------------------------------------------------------ |
-| `specs/`              | Yes            | The spec handed to the model, by concern.              |
-| `prompt.hbs`          | No             | Rendered into the model's prompt; not seeded.          |
-| `workspaces/base/`    | Yes            | Starter project seeded to the run root.                |
-| `test-case.toml`      | No             | Manifest: type, specs, variants, review items.         |
-| `README.md`           | No             | This overview.                                         |
+| Path               | Seeded to run? | Purpose                                        |
+| ------------------ | -------------- | ---------------------------------------------- |
+| `specs/`           | Yes            | The spec handed to the model, by concern.      |
+| `prompt.hbs`       | No             | Rendered into the model's prompt; not seeded.  |
+| `workspaces/base/` | Yes            | Starter project seeded to the run root.        |
+| `test-case.toml`   | No             | Manifest: type, specs, variants, review items. |
+| `README.md`        | No             | This overview.                                 |
 
 The specification is split across `specs/` by concern: `overview.md`,
 `world.md`, `settlers.md`, `economy.md`, `combat.md`, `time.md`,

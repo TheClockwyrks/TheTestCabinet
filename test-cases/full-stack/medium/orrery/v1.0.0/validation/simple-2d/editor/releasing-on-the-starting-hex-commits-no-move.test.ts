@@ -57,7 +57,11 @@ it("leaves the part standing and pushes no second history entry", async () => {
 
   const placed = await h.snapshot();
   const ids = await partIds(h);
-  assertEqual(ids.length, 1, "the tray drag placed the one arm this check moves");
+  assertEqual(
+    ids.length,
+    1,
+    "the tray drag placed the one arm this check moves",
+  );
   const arm = ids[0] as number;
   const depth = placed.editor.undoDepth;
   assertEqual(

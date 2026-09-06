@@ -64,16 +64,30 @@ function parseArgs(argv) {
       return v;
     };
     switch (a) {
-      case "--rig": args.rig = take(); break;
-      case "--meshes": args.meshes = take(); break;
-      case "--out": args.out = take(); break;
-      case "--name": args.name = take(); break;
-      case "-h": case "--help": printHelp(); process.exit(0); break;
-      default: fail(`unknown argument \`${a}\``);
+      case "--rig":
+        args.rig = take();
+        break;
+      case "--meshes":
+        args.meshes = take();
+        break;
+      case "--out":
+        args.out = take();
+        break;
+      case "--name":
+        args.name = take();
+        break;
+      case "-h":
+      case "--help":
+        printHelp();
+        process.exit(0);
+        break;
+      default:
+        fail(`unknown argument \`${a}\``);
     }
   }
   if (!args.out) fail("--out is required");
-  if (!args.rig && !args.meshes) fail("pass --rig (rigged) or --meshes (static)");
+  if (!args.rig && !args.meshes)
+    fail("pass --rig (rigged) or --meshes (static)");
   return args;
 }
 
@@ -138,7 +152,9 @@ function readAccessor(accessors, bufferViews, bin, index, path) {
   } else if (acc.componentType === COMPONENT_U16) {
     for (let i = 0; i < n; i++) out[i] = bin.readUInt16LE(base + i * 2);
   } else {
-    fail(`${path}: accessor ${index} has unsupported componentType ${acc.componentType}`);
+    fail(
+      `${path}: accessor ${index} has unsupported componentType ${acc.componentType}`,
+    );
   }
   return out;
 }
@@ -148,7 +164,8 @@ function readAccessor(accessors, bufferViews, bin, index, path) {
 // all-empty arrays (the part becomes an attach socket).
 function decodeGlb(buffer, path) {
   if (buffer.length < 12) fail(`${path}: glb too short for a 12-byte header`);
-  if (buffer.readUInt32LE(0) !== GLB_MAGIC) fail(`${path}: not a glb (bad magic)`);
+  if (buffer.readUInt32LE(0) !== GLB_MAGIC)
+    fail(`${path}: not a glb (bad magic)`);
   const total = buffer.readUInt32LE(8);
 
   let off = 12;
@@ -186,13 +203,21 @@ function decodeGlb(buffer, path) {
   const attributes = primitive.attributes ?? {};
   const attr = (semantic) => {
     const i = attributes[semantic];
-    if (i === undefined) fail(`${path}: glb primitive has no ${semantic} attribute`);
+    if (i === undefined)
+      fail(`${path}: glb primitive has no ${semantic} attribute`);
     return i;
   };
-  if (primitive.indices === undefined) fail(`${path}: glb primitive has no indices accessor`);
+  if (primitive.indices === undefined)
+    fail(`${path}: glb primitive has no indices accessor`);
 
   return {
-    positions: readAccessor(accessors, bufferViews, bin, attr("POSITION"), path),
+    positions: readAccessor(
+      accessors,
+      bufferViews,
+      bin,
+      attr("POSITION"),
+      path,
+    ),
     normals: readAccessor(accessors, bufferViews, bin, attr("NORMAL"), path),
     colors: readAccessor(accessors, bufferViews, bin, attr("COLOR_0"), path),
     indices: readAccessor(accessors, bufferViews, bin, primitive.indices, path),
@@ -264,37 +289,149 @@ function rotation(axis, angle) {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   const m = identity();
-  if (axis === "x") { m[5] = c; m[6] = -s; m[9] = s; m[10] = c; }
-  else if (axis === "y") { m[0] = c; m[2] = -s; m[8] = s; m[10] = c; }
-  else { m[0] = c; m[1] = s; m[4] = -s; m[5] = c; }
+  if (axis === "x") {
+    m[5] = c;
+    m[6] = -s;
+    m[9] = s;
+    m[10] = c;
+  } else if (axis === "y") {
+    m[0] = c;
+    m[2] = -s;
+    m[8] = s;
+    m[10] = c;
+  } else {
+    m[0] = c;
+    m[1] = s;
+    m[4] = -s;
+    m[5] = c;
+  }
   return m;
 }
 
 // Intrinsic Euler [x,y,z] applied X→Y→Z, as Rz·Ry·Rx.
 function eulerRotation(e) {
-  return multiply(rotation("z", e[2]), multiply(rotation("y", e[1]), rotation("x", e[0])));
+  return multiply(
+    rotation("z", e[2]),
+    multiply(rotation("y", e[1]), rotation("x", e[0])),
+  );
 }
 
 // Invert a column-major 4x4 (general; falls back to identity if singular).
 function invert(m) {
   const inv = new Float64Array(16);
   const a = m;
-  inv[0] = a[5] * a[10] * a[15] - a[5] * a[11] * a[14] - a[9] * a[6] * a[15] + a[9] * a[7] * a[14] + a[13] * a[6] * a[11] - a[13] * a[7] * a[10];
-  inv[4] = -a[4] * a[10] * a[15] + a[4] * a[11] * a[14] + a[8] * a[6] * a[15] - a[8] * a[7] * a[14] - a[12] * a[6] * a[11] + a[12] * a[7] * a[10];
-  inv[8] = a[4] * a[9] * a[15] - a[4] * a[11] * a[13] - a[8] * a[5] * a[15] + a[8] * a[7] * a[13] + a[12] * a[5] * a[11] - a[12] * a[7] * a[9];
-  inv[12] = -a[4] * a[9] * a[14] + a[4] * a[10] * a[13] + a[8] * a[5] * a[14] - a[8] * a[6] * a[13] - a[12] * a[5] * a[10] + a[12] * a[6] * a[9];
-  inv[1] = -a[1] * a[10] * a[15] + a[1] * a[11] * a[14] + a[9] * a[2] * a[15] - a[9] * a[3] * a[14] - a[13] * a[2] * a[11] + a[13] * a[3] * a[10];
-  inv[5] = a[0] * a[10] * a[15] - a[0] * a[11] * a[14] - a[8] * a[2] * a[15] + a[8] * a[3] * a[14] + a[12] * a[2] * a[11] - a[12] * a[3] * a[10];
-  inv[9] = -a[0] * a[9] * a[15] + a[0] * a[11] * a[13] + a[8] * a[1] * a[15] - a[8] * a[3] * a[13] - a[12] * a[1] * a[11] + a[12] * a[3] * a[9];
-  inv[13] = a[0] * a[9] * a[14] - a[0] * a[10] * a[13] - a[8] * a[1] * a[14] + a[8] * a[2] * a[13] + a[12] * a[1] * a[10] - a[12] * a[2] * a[9];
-  inv[2] = a[1] * a[6] * a[15] - a[1] * a[7] * a[14] - a[5] * a[2] * a[15] + a[5] * a[3] * a[14] + a[13] * a[2] * a[7] - a[13] * a[3] * a[6];
-  inv[6] = -a[0] * a[6] * a[15] + a[0] * a[7] * a[14] + a[4] * a[2] * a[15] - a[4] * a[3] * a[14] - a[12] * a[2] * a[7] + a[12] * a[3] * a[6];
-  inv[10] = a[0] * a[5] * a[15] - a[0] * a[7] * a[13] - a[4] * a[1] * a[15] + a[4] * a[3] * a[13] + a[12] * a[1] * a[7] - a[12] * a[3] * a[5];
-  inv[14] = -a[0] * a[5] * a[14] + a[0] * a[6] * a[13] + a[4] * a[1] * a[14] - a[4] * a[2] * a[13] - a[12] * a[1] * a[6] + a[12] * a[2] * a[5];
-  inv[3] = -a[1] * a[6] * a[11] + a[1] * a[7] * a[10] + a[5] * a[2] * a[11] - a[5] * a[3] * a[10] - a[9] * a[2] * a[7] + a[9] * a[3] * a[6];
-  inv[7] = a[0] * a[6] * a[11] - a[0] * a[7] * a[10] - a[4] * a[2] * a[11] + a[4] * a[3] * a[10] + a[8] * a[2] * a[7] - a[8] * a[3] * a[6];
-  inv[11] = -a[0] * a[5] * a[11] + a[0] * a[7] * a[9] + a[4] * a[1] * a[11] - a[4] * a[3] * a[9] - a[8] * a[1] * a[7] + a[8] * a[3] * a[5];
-  inv[15] = a[0] * a[5] * a[10] - a[0] * a[6] * a[9] - a[4] * a[1] * a[10] + a[4] * a[2] * a[9] + a[8] * a[1] * a[6] - a[8] * a[2] * a[5];
+  inv[0] =
+    a[5] * a[10] * a[15] -
+    a[5] * a[11] * a[14] -
+    a[9] * a[6] * a[15] +
+    a[9] * a[7] * a[14] +
+    a[13] * a[6] * a[11] -
+    a[13] * a[7] * a[10];
+  inv[4] =
+    -a[4] * a[10] * a[15] +
+    a[4] * a[11] * a[14] +
+    a[8] * a[6] * a[15] -
+    a[8] * a[7] * a[14] -
+    a[12] * a[6] * a[11] +
+    a[12] * a[7] * a[10];
+  inv[8] =
+    a[4] * a[9] * a[15] -
+    a[4] * a[11] * a[13] -
+    a[8] * a[5] * a[15] +
+    a[8] * a[7] * a[13] +
+    a[12] * a[5] * a[11] -
+    a[12] * a[7] * a[9];
+  inv[12] =
+    -a[4] * a[9] * a[14] +
+    a[4] * a[10] * a[13] +
+    a[8] * a[5] * a[14] -
+    a[8] * a[6] * a[13] -
+    a[12] * a[5] * a[10] +
+    a[12] * a[6] * a[9];
+  inv[1] =
+    -a[1] * a[10] * a[15] +
+    a[1] * a[11] * a[14] +
+    a[9] * a[2] * a[15] -
+    a[9] * a[3] * a[14] -
+    a[13] * a[2] * a[11] +
+    a[13] * a[3] * a[10];
+  inv[5] =
+    a[0] * a[10] * a[15] -
+    a[0] * a[11] * a[14] -
+    a[8] * a[2] * a[15] +
+    a[8] * a[3] * a[14] +
+    a[12] * a[2] * a[11] -
+    a[12] * a[3] * a[10];
+  inv[9] =
+    -a[0] * a[9] * a[15] +
+    a[0] * a[11] * a[13] +
+    a[8] * a[1] * a[15] -
+    a[8] * a[3] * a[13] -
+    a[12] * a[1] * a[11] +
+    a[12] * a[3] * a[9];
+  inv[13] =
+    a[0] * a[9] * a[14] -
+    a[0] * a[10] * a[13] -
+    a[8] * a[1] * a[14] +
+    a[8] * a[2] * a[13] +
+    a[12] * a[1] * a[10] -
+    a[12] * a[2] * a[9];
+  inv[2] =
+    a[1] * a[6] * a[15] -
+    a[1] * a[7] * a[14] -
+    a[5] * a[2] * a[15] +
+    a[5] * a[3] * a[14] +
+    a[13] * a[2] * a[7] -
+    a[13] * a[3] * a[6];
+  inv[6] =
+    -a[0] * a[6] * a[15] +
+    a[0] * a[7] * a[14] +
+    a[4] * a[2] * a[15] -
+    a[4] * a[3] * a[14] -
+    a[12] * a[2] * a[7] +
+    a[12] * a[3] * a[6];
+  inv[10] =
+    a[0] * a[5] * a[15] -
+    a[0] * a[7] * a[13] -
+    a[4] * a[1] * a[15] +
+    a[4] * a[3] * a[13] +
+    a[12] * a[1] * a[7] -
+    a[12] * a[3] * a[5];
+  inv[14] =
+    -a[0] * a[5] * a[14] +
+    a[0] * a[6] * a[13] +
+    a[4] * a[1] * a[14] -
+    a[4] * a[2] * a[13] -
+    a[12] * a[1] * a[6] +
+    a[12] * a[2] * a[5];
+  inv[3] =
+    -a[1] * a[6] * a[11] +
+    a[1] * a[7] * a[10] +
+    a[5] * a[2] * a[11] -
+    a[5] * a[3] * a[10] -
+    a[9] * a[2] * a[7] +
+    a[9] * a[3] * a[6];
+  inv[7] =
+    a[0] * a[6] * a[11] -
+    a[0] * a[7] * a[10] -
+    a[4] * a[2] * a[11] +
+    a[4] * a[3] * a[10] +
+    a[8] * a[2] * a[7] -
+    a[8] * a[3] * a[6];
+  inv[11] =
+    -a[0] * a[5] * a[11] +
+    a[0] * a[7] * a[9] +
+    a[4] * a[1] * a[11] -
+    a[4] * a[3] * a[9] -
+    a[8] * a[1] * a[7] +
+    a[8] * a[3] * a[5];
+  inv[15] =
+    a[0] * a[5] * a[10] -
+    a[0] * a[6] * a[9] -
+    a[4] * a[1] * a[10] +
+    a[4] * a[2] * a[9] +
+    a[8] * a[1] * a[6] -
+    a[8] * a[2] * a[5];
   let det = a[0] * inv[0] + a[1] * inv[4] + a[2] * inv[8] + a[3] * inv[12];
   if (det === 0) return identity();
   det = 1 / det;
@@ -308,7 +445,9 @@ function invert(m) {
 function decompose(m) {
   const translation = [m[12], m[13], m[14]];
   const g = (r, c) => m[c * 4 + r];
-  const m00 = g(0, 0), m11 = g(1, 1), m22 = g(2, 2);
+  const m00 = g(0, 0),
+    m11 = g(1, 1),
+    m22 = g(2, 2);
   const trace = m00 + m11 + m22;
   let x, y, z, w;
   if (trace > 0) {
@@ -362,7 +501,8 @@ function applyDir(m, d) {
 // Rig posing — mirrors hierarchy.ts / clips.ts
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
-const isNonZero = (v) => Array.isArray(v) && (v[0] !== 0 || v[1] !== 0 || v[2] !== 0);
+const isNonZero = (v) =>
+  Array.isArray(v) && (v[0] !== 0 || v[1] !== 0 || v[2] !== 0);
 
 // Joints and animations arrive in the shared `ModelSpec`/`rig.json` shape (a joint's
 // `drive` is a bare `"caller"`/`"auto"`; animations ride in `rig.animations`), so
@@ -387,7 +527,9 @@ const EASE_PRESETS = {
 
 function cubic1d(p0, p1, p2, p3, s) {
   const u = 1 - s;
-  return u * u * u * p0 + 3 * u * u * s * p1 + 3 * u * s * s * p2 + s * s * s * p3;
+  return (
+    u * u * u * p0 + 3 * u * u * s * p1 + 3 * u * s * s * p2 + s * s * s * p3
+  );
 }
 
 // Value of a cubic Bézier (time, value) curve at a query time: solve x(s)=time by
@@ -405,12 +547,16 @@ function bezierValueAtTime(p0, p1, p2, p3, time) {
 }
 
 function autoOut(a, b, prev, dt) {
-  const slope = prev ? (b.value - prev.value) / (b.tMs - prev.tMs) : (b.value - a.value) / dt;
+  const slope = prev
+    ? (b.value - prev.value) / (b.tMs - prev.tMs)
+    : (b.value - a.value) / dt;
   const h = dt / 3;
   return [a.tMs + h, a.value + slope * h];
 }
 function autoIn(a, b, next, dt) {
-  const slope = next ? (next.value - a.value) / (next.tMs - a.tMs) : (b.value - a.value) / dt;
+  const slope = next
+    ? (next.value - a.value) / (next.tMs - a.tMs)
+    : (b.value - a.value) / dt;
   const h = dt / 3;
   return [b.tMs - h, b.value - slope * h];
 }
@@ -420,17 +566,26 @@ function evalSegment(a, b, prev, next, t) {
   if (dt <= 0) return b.value;
   const interp = a.interp ?? "linear";
   if (interp === "constant") return a.value;
-  if (interp === "linear") return a.value + (b.value - a.value) * ((t - a.tMs) / dt);
+  if (interp === "linear")
+    return a.value + (b.value - a.value) * ((t - a.tMs) / dt);
   const dv = b.value - a.value;
   let aOut;
   let bIn;
-  if (interp === "ease-in" || interp === "ease-out" || interp === "ease-in-out") {
+  if (
+    interp === "ease-in" ||
+    interp === "ease-out" ||
+    interp === "ease-in-out"
+  ) {
     const preset = EASE_PRESETS[interp];
     aOut = [a.tMs + preset.out[0] * dt, a.value + preset.out[1] * dv];
     bIn = [b.tMs + preset.in[0] * dt, b.value + preset.in[1] * dv];
   } else {
-    aOut = a.outHandle ? [a.tMs + a.outHandle[0], a.value + a.outHandle[1]] : autoOut(a, b, prev, dt);
-    bIn = b.inHandle ? [b.tMs + b.inHandle[0], b.value + b.inHandle[1]] : autoIn(a, b, next, dt);
+    aOut = a.outHandle
+      ? [a.tMs + a.outHandle[0], a.value + a.outHandle[1]]
+      : autoOut(a, b, prev, dt);
+    bIn = b.inHandle
+      ? [b.tMs + b.inHandle[0], b.value + b.inHandle[1]]
+      : autoIn(a, b, next, dt);
   }
   return bezierValueAtTime([a.tMs, a.value], aOut, bIn, [b.tMs, b.value], t);
 }
@@ -450,7 +605,13 @@ function sampleKeyframes(keyframes, timeMs, periodMs, looping) {
   if (t >= last.tMs) {
     if (looping && periodMs > last.tMs) {
       const wrap = { tMs: periodMs, value: first.value, interp: first.interp };
-      return evalSegment(last, wrap, keyframes[n - 2] ?? null, keyframes[1] ?? null, t);
+      return evalSegment(
+        last,
+        wrap,
+        keyframes[n - 2] ?? null,
+        keyframes[1] ?? null,
+        t,
+      );
     }
     return last.value;
   }
@@ -463,13 +624,21 @@ function sampleKeyframes(keyframes, timeMs, periodMs, looping) {
         i > 0
           ? keyframes[i - 1]
           : looping
-            ? { tMs: last.tMs - periodMs, value: last.value, interp: last.interp }
+            ? {
+                tMs: last.tMs - periodMs,
+                value: last.value,
+                interp: last.interp,
+              }
             : null;
       const next =
         i + 2 < n
           ? keyframes[i + 2]
           : looping
-            ? { tMs: first.tMs + periodMs, value: first.value, interp: first.interp }
+            ? {
+                tMs: first.tMs + periodMs,
+                value: first.value,
+                interp: first.interp,
+              }
             : null;
       return evalSegment(a, b, prev, next, t);
     }
@@ -487,14 +656,20 @@ function jointMatrix(joint, value) {
     t[AXIS_INDEX[joint.axis]] = value;
     driven = translation(t);
   } else {
-    driven = multiply(translation(p), multiply(rotation(joint.axis, value), translation(negP)));
+    driven = multiply(
+      translation(p),
+      multiply(rotation(joint.axis, value), translation(negP)),
+    );
   }
   const offset = joint.offset;
   const orient = joint.orient;
   if (!isNonZero(offset) && !isNonZero(orient)) return driven;
   let mount = identity();
   if (isNonZero(orient)) {
-    mount = multiply(translation(p), multiply(eulerRotation(orient), translation(negP)));
+    mount = multiply(
+      translation(p),
+      multiply(eulerRotation(orient), translation(negP)),
+    );
   }
   if (isNonZero(offset)) mount = multiply(translation(offset), mount);
   return multiply(mount, driven);
@@ -610,7 +785,8 @@ function vec3MinMax(positions) {
 // regular subdivision between them. Always includes 0 and periodMs.
 function denseTimeline(keyframeTimeSets, periodMs) {
   const set = new Set([0, periodMs]);
-  for (const times of keyframeTimeSets) for (const t of times) if (t >= 0 && t <= periodMs) set.add(t);
+  for (const times of keyframeTimeSets)
+    for (const t of times) if (t >= 0 && t <= periodMs) set.add(t);
   // ~30 samples/sec, clamped, to carry the curve between keys.
   const steps = Math.max(8, Math.min(240, Math.round((periodMs / 1000) * 30)));
   const dt = periodMs / steps;
@@ -622,15 +798,33 @@ function denseTimeline(keyframeTimeSets, periodMs) {
 // timeline breakpoint and emitting translation+rotation channels for the parts
 // those joints move. `poseAt(t)` returns the world-matrix map for time t. `extras`
 // carries the animation's `loop`/`autoPlay` intent (glTF has no native loop flag).
-function buildAnimation(builder, name, rig, drivenJoints, timelineMs, restWorld, nodeIndexByPart, poseAt, extras) {
-  const animatedParts = [...new Set(drivenJoints.map((j) => j.part))].filter((p) => nodeIndexByPart.has(p));
+function buildAnimation(
+  builder,
+  name,
+  rig,
+  drivenJoints,
+  timelineMs,
+  restWorld,
+  nodeIndexByPart,
+  poseAt,
+  extras,
+) {
+  const animatedParts = [...new Set(drivenJoints.map((j) => j.part))].filter(
+    (p) => nodeIndexByPart.has(p),
+  );
   if (animatedParts.length === 0 || timelineMs.length < 2) return null;
 
   const timesSec = Float32Array.from(timelineMs, (t) => t / 1000);
-  const inputAccessor = builder.addAccessor(timesSec, FLOAT, "SCALAR", timesSec.length, {
-    min: [timesSec[0]],
-    max: [timesSec[timesSec.length - 1]],
-  });
+  const inputAccessor = builder.addAccessor(
+    timesSec,
+    FLOAT,
+    "SCALAR",
+    timesSec.length,
+    {
+      min: [timesSec[0]],
+      max: [timesSec[timesSec.length - 1]],
+    },
+  );
 
   // parentWorld(t) for each animated part, to convert world → node-local TRS.
   const worldsPerTime = timelineMs.map((t) => poseAt(t));
@@ -644,19 +838,41 @@ function buildAnimation(builder, name, rig, drivenJoints, timelineMs, restWorld,
     for (let i = 0; i < timelineMs.length; i++) {
       const worlds = worldsPerTime[i];
       const world = worlds.get(partName);
-      const parentWorld = part.parent && worlds.has(part.parent) ? worlds.get(part.parent) : identity();
+      const parentWorld =
+        part.parent && worlds.has(part.parent)
+          ? worlds.get(part.parent)
+          : identity();
       const local = multiply(invert(parentWorld), world);
       const { translation: tr, rotation: q } = decompose(local);
       trans.set(tr, i * 3);
       rot.set(q, i * 4);
     }
-    const transAcc = builder.addAccessor(trans, FLOAT, "VEC3", timelineMs.length);
+    const transAcc = builder.addAccessor(
+      trans,
+      FLOAT,
+      "VEC3",
+      timelineMs.length,
+    );
     const rotAcc = builder.addAccessor(rot, FLOAT, "VEC4", timelineMs.length);
     const node = nodeIndexByPart.get(partName);
-    samplers.push({ input: inputAccessor, output: transAcc, interpolation: "LINEAR" });
-    channels.push({ sampler: samplers.length - 1, target: { node, path: "translation" } });
-    samplers.push({ input: inputAccessor, output: rotAcc, interpolation: "LINEAR" });
-    channels.push({ sampler: samplers.length - 1, target: { node, path: "rotation" } });
+    samplers.push({
+      input: inputAccessor,
+      output: transAcc,
+      interpolation: "LINEAR",
+    });
+    channels.push({
+      sampler: samplers.length - 1,
+      target: { node, path: "translation" },
+    });
+    samplers.push({
+      input: inputAccessor,
+      output: rotAcc,
+      interpolation: "LINEAR",
+    });
+    channels.push({
+      sampler: samplers.length - 1,
+      target: { node, path: "rotation" },
+    });
   }
   const anim = { name, samplers, channels };
   if (extras) anim.extras = extras;
@@ -674,7 +890,11 @@ function build({ rig, meshesByPart, name }) {
     materials: [
       {
         name: "voxel",
-        pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 1 },
+        pbrMetallicRoughness: {
+          baseColorFactor: [1, 1, 1, 1],
+          metallicFactor: 0,
+          roughnessFactor: 1,
+        },
       },
     ],
     accessors: builder.accessors,
@@ -699,7 +919,10 @@ function build({ rig, meshesByPart, name }) {
     const node = { name: part.name };
 
     // Node default local TRS = inv(parentRestWorld) · restWorld[part].
-    const parentRest = part.parent && restWorld.has(part.parent) ? restWorld.get(part.parent) : identity();
+    const parentRest =
+      part.parent && restWorld.has(part.parent)
+        ? restWorld.get(part.parent)
+        : identity();
     const restLocal = multiply(invert(parentRest), restWorld.get(part.name));
     const { translation: tr, rotation: q } = decompose(restLocal);
     if (tr[0] || tr[1] || tr[2]) node.translation = tr;
@@ -713,24 +936,56 @@ function build({ rig, meshesByPart, name }) {
       const positions = new Float32Array(mesh.positions.length);
       const normals = new Float32Array(mesh.normals.length);
       for (let v = 0; v < mesh.positions.length; v += 3) {
-        const p = applyPoint(invRest, [mesh.positions[v], mesh.positions[v + 1], mesh.positions[v + 2]]);
+        const p = applyPoint(invRest, [
+          mesh.positions[v],
+          mesh.positions[v + 1],
+          mesh.positions[v + 2],
+        ]);
         positions.set(p, v);
-        const n = applyDir(invRest, [mesh.normals[v], mesh.normals[v + 1], mesh.normals[v + 2]]);
+        const n = applyDir(invRest, [
+          mesh.normals[v],
+          mesh.normals[v + 1],
+          mesh.normals[v + 2],
+        ]);
         normals.set(n, v);
       }
       const colors = Float32Array.from(mesh.colors);
       const indices = Uint32Array.from(mesh.indices);
       const { min, max } = vec3MinMax(positions);
-      const posAcc = builder.addAccessor(positions, FLOAT, "VEC3", positions.length / 3, {
-        target: ARRAY_BUFFER,
-        min,
-        max,
-      });
-      const normAcc = builder.addAccessor(normals, FLOAT, "VEC3", normals.length / 3, { target: ARRAY_BUFFER });
-      const colAcc = builder.addAccessor(colors, FLOAT, "VEC3", colors.length / 3, { target: ARRAY_BUFFER });
-      const idxAcc = builder.addAccessor(indices, UINT, "SCALAR", indices.length, {
-        target: ELEMENT_ARRAY_BUFFER,
-      });
+      const posAcc = builder.addAccessor(
+        positions,
+        FLOAT,
+        "VEC3",
+        positions.length / 3,
+        {
+          target: ARRAY_BUFFER,
+          min,
+          max,
+        },
+      );
+      const normAcc = builder.addAccessor(
+        normals,
+        FLOAT,
+        "VEC3",
+        normals.length / 3,
+        { target: ARRAY_BUFFER },
+      );
+      const colAcc = builder.addAccessor(
+        colors,
+        FLOAT,
+        "VEC3",
+        colors.length / 3,
+        { target: ARRAY_BUFFER },
+      );
+      const idxAcc = builder.addAccessor(
+        indices,
+        UINT,
+        "SCALAR",
+        indices.length,
+        {
+          target: ELEMENT_ARRAY_BUFFER,
+        },
+      );
       gltf.meshes.push({
         name: `${part.name}:mesh`,
         primitives: [
@@ -770,16 +1025,34 @@ function build({ rig, meshesByPart, name }) {
     const tracks = anim.tracks ?? [];
     if (tracks.length === 0) continue; // a required declaration the model never authored
     const driven = tracks.map((t) => jointByName.get(t.joint)).filter(Boolean);
-    const timeline = denseTimeline(tracks.map((t) => t.keyframes.map((k) => k.tMs)), anim.periodMs);
+    const timeline = denseTimeline(
+      tracks.map((t) => t.keyframes.map((k) => k.tMs)),
+      anim.periodMs,
+    );
     const poseAt = (t) => {
       const caller = {};
       for (const track of tracks) {
-        caller[track.joint] = sampleKeyframes(track.keyframes, t, anim.periodMs, anim.looping);
+        caller[track.joint] = sampleKeyframes(
+          track.keyframes,
+          t,
+          anim.periodMs,
+          anim.looping,
+        );
       }
       return poseRig(rig, caller);
     };
     const extras = { loop: !!anim.looping, autoPlay: !!anim.autoPlay };
-    const built = buildAnimation(builder, anim.name, rig, driven, timeline, restWorld, nodeIndexByPart, poseAt, extras);
+    const built = buildAnimation(
+      builder,
+      anim.name,
+      rig,
+      driven,
+      timeline,
+      restWorld,
+      nodeIndexByPart,
+      poseAt,
+      extras,
+    );
     if (built) gltf.animations.push(built);
   }
 
@@ -836,7 +1109,10 @@ function writeGlb(outPath, gltf, bin) {
   binHeader.writeUInt32LE(binChunk.length, 0);
   binHeader.writeUInt32LE(0x004e4942, 4); // 'BIN\0'
 
-  writeFileSync(outPath, Buffer.concat([header, jsonHeader, jsonChunk, binHeader, binChunk]));
+  writeFileSync(
+    outPath,
+    Buffer.concat([header, jsonHeader, jsonChunk, binHeader, binChunk]),
+  );
 }
 
 function writeGltf(outPath, gltf, bin) {
@@ -858,13 +1134,16 @@ function main() {
 
   if (args.rig) {
     rig = normalizeRig(readJson(args.rig));
-    if (!Array.isArray(rig.parts)) fail(`${args.rig} is not a rig (no parts array)`);
+    if (!Array.isArray(rig.parts))
+      fail(`${args.rig} is not a rig (no parts array)`);
     const meshesDir = args.meshes ?? join(dirname(args.rig), "meshes");
     for (const part of rig.parts) {
       const path = join(meshesDir, `${part.name}.glb`);
       const mesh = readGlbIfPresent(path);
       if (mesh === null) {
-        process.stderr.write(`voxel-to-gltf: note: no mesh for part \`${part.name}\` at ${path}; exporting an attach socket\n`);
+        process.stderr.write(
+          `voxel-to-gltf: note: no mesh for part \`${part.name}\` at ${path}; exporting an attach socket\n`,
+        );
         continue;
       }
       meshesByPart[part.name] = mesh;
@@ -872,11 +1151,19 @@ function main() {
   } else {
     // Static single-mesh model: one implicit "model" part, no joints.
     const mesh = readGlb(args.meshes);
-    rig = { parts: [{ name: "model", pivot: [0, 0, 0] }], joints: [], animations: [] };
+    rig = {
+      parts: [{ name: "model", pivot: [0, 0, 0] }],
+      joints: [],
+      animations: [],
+    };
     meshesByPart.model = mesh;
   }
 
-  const { gltf, bin, jointInterface } = build({ rig, meshesByPart, name: modelName });
+  const { gltf, bin, jointInterface } = build({
+    rig,
+    meshesByPart,
+    name: modelName,
+  });
 
   const ext = extname(args.out).toLowerCase();
   if (ext === ".gltf") writeGltf(args.out, gltf, bin);
@@ -885,8 +1172,14 @@ function main() {
   // The joint-interface sidecar beside the model (only when there are caller joints).
   let sidecarPath = null;
   if (jointInterface.length > 0) {
-    sidecarPath = join(dirname(args.out), basename(args.out, extname(args.out)) + ".interface.json");
-    writeFileSync(sidecarPath, JSON.stringify({ name: modelName, joints: jointInterface }, null, 2));
+    sidecarPath = join(
+      dirname(args.out),
+      basename(args.out, extname(args.out)) + ".interface.json",
+    );
+    writeFileSync(
+      sidecarPath,
+      JSON.stringify({ name: modelName, joints: jointInterface }, null, 2),
+    );
   }
 
   const partCount = rig.parts.length;

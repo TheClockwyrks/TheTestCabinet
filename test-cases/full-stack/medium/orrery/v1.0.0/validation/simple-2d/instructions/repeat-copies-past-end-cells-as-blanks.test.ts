@@ -108,7 +108,10 @@ it("reads three blanks past the tape's end into a five-cell copy", async () => {
   );
 
   const cursor = written.editor.cursor;
-  assertNotNull(cursor, "the cursor is still pointing at a cell after the macro");
+  assertNotNull(
+    cursor,
+    "the cursor is still pointing at a cell after the macro",
+  );
   assertEqual(
     cursor?.part,
     arm,

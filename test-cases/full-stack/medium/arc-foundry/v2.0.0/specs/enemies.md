@@ -26,23 +26,23 @@ values.
 `LOAD_ROSTER` holds the six unit types. The health figures below are the base values the
 per-wave scaling multiplies.
 
-| Type | Base health | Speed | Flies | Bounty | Leak |
-| --- | --- | --- | --- | --- | --- |
-| Mote | `44` | `60` | No | `1` | `1` |
-| Spark | `27` | `120` | No | `1` | `1` |
-| Slug | `180` | `38` | No | `3` | `2` |
-| Cluster | `16` | `72` | No | `1` | `1` |
-| Filament | `74` | `85` | Yes | `2` | `1` |
-| Dynamo | `1500` | `30` | No | `40` | `5` |
+| Type     | Base health | Speed | Flies | Bounty | Leak |
+| -------- | ----------- | ----- | ----- | ------ | ---- |
+| Mote     | `44`        | `60`  | No    | `1`    | `1`  |
+| Spark    | `27`        | `120` | No    | `1`    | `1`  |
+| Slug     | `180`       | `38`  | No    | `3`    | `2`  |
+| Cluster  | `16`        | `72`  | No    | `1`    | `1`  |
+| Filament | `74`        | `85`  | Yes   | `2`    | `1`  |
+| Dynamo   | `1500`      | `30`  | No    | `40`   | `5`  |
 
-| Type | What it is |
-| --- | --- |
-| Mote | The baseline charge unit. |
-| Spark | Roughly half a Mote's health at double its speed. |
-| Slug | A slow unit with a large health pool that costs `2` Grid Integrity on a leak. |
-| Cluster | Very low health, released in tight packs. |
-| Filament | The flyer. It ignores the maze and flies the straight-line chain. |
-| Dynamo | The boss. It reads as an unstable overload core and anchors the milestone waves. |
+| Type     | What it is                                                                       |
+| -------- | -------------------------------------------------------------------------------- |
+| Mote     | The baseline charge unit.                                                        |
+| Spark    | Roughly half a Mote's health at double its speed.                                |
+| Slug     | A slow unit with a large health pool that costs `2` Grid Integrity on a leak.    |
+| Cluster  | Very low health, released in tight packs.                                        |
+| Filament | The flyer. It ignores the maze and flies the straight-line chain.                |
+| Dynamo   | The boss. It reads as an unstable overload core and anchors the milestone waves. |
 
 ## Status effects
 
@@ -127,13 +127,13 @@ at that moment and the wave releases exactly that sequence, so what the wave wil
 knowable from its first frame — which is what the next-wave preview of `specs/hud.md`
 draws and what `specs/instrumentation.md`'s `waveCount` reads.
 
-| Rule | Requirement |
-| --- | --- |
-| Air cadence | A wave whose number is a multiple of `4` carries Filaments. No other wave carries a Filament. |
-| Milestone bosses | Wave `round(N / 2)` and wave `N` each carry exactly one Dynamo. No other wave carries one. |
-| Opening waves | Waves `1` through `3` carry Motes and Sparks only. |
-| Cluster and Slug | Neither appears before wave `5`. |
-| Growth | A wave's total health pool is at least that of the wave before it. |
+| Rule             | Requirement                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| Air cadence      | A wave whose number is a multiple of `4` carries Filaments. No other wave carries a Filament. |
+| Milestone bosses | Wave `round(N / 2)` and wave `N` each carry exactly one Dynamo. No other wave carries one.    |
+| Opening waves    | Waves `1` through `3` carry Motes and Sparks only.                                            |
+| Cluster and Slug | Neither appears before wave `5`.                                                              |
+| Growth           | A wave's total health pool is at least that of the wave before it.                            |
 
 Beyond those rules, compose waves so that no single component type answers everything:
 Sparks reward coverage near the entry, Slugs reward concentrated single hits, Clusters

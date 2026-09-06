@@ -70,11 +70,11 @@ interface GameDefinition<D = unknown> {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `instance` | `GameInstance` | The class constructed once and kept across every level. Its `initialize` fixes `D`, the debug surface. |
-| `levels` | — | The level registry, keyed by level name. At least one entry. |
-| `startLevel` | — | The level `engine.initialize` opens. A key of `levels`. |
+| Field        | Default        | Meaning                                                                                                |
+| ------------ | -------------- | ------------------------------------------------------------------------------------------------------ |
+| `instance`   | `GameInstance` | The class constructed once and kept across every level. Its `initialize` fixes `D`, the debug surface. |
+| `levels`     | —              | The level registry, keyed by level name. At least one entry.                                           |
+| `startLevel` | —              | The level `engine.initialize` opens. A key of `levels`.                                                |
 
 A level is a description: the game mode that runs it, the actors placed in it,
 and the assets it loads. Opening a level builds a **world**, the live instance
@@ -134,18 +134,18 @@ interface EngineOptions<D = unknown> {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `canvas` | — | The canvas the engine sizes, clears, and renders through. |
-| `width` | — | The logical design width the camera projects into. Finite and positive. |
-| `height` | — | The logical design height the camera projects into. Finite and positive. |
-| `game` | — | The game definition, bound for the engine's lifetime. `D` is inferred from it. |
-| `background` | — | A CSS color cleared to before every frame. Absent, the frame clears to transparency. |
-| `imageSmoothing` | `true` | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See `rendering.md`. |
-| `layout` | — | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`. |
-| `clock` | `new WallClock()` | The clock supplying each frame's delta. See `frame.md`. |
-| `surface` | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its listeners. |
-| `assetRoot` | `"assets/"` | The root every asset path resolves under. See `assets.md`. |
+| Field            | Default              | Meaning                                                                                                                                     |
+| ---------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `canvas`         | —                    | The canvas the engine sizes, clears, and renders through.                                                                                   |
+| `width`          | —                    | The logical design width the camera projects into. Finite and positive.                                                                     |
+| `height`         | —                    | The logical design height the camera projects into. Finite and positive.                                                                    |
+| `game`           | —                    | The game definition, bound for the engine's lifetime. `D` is inferred from it.                                                              |
+| `background`     | —                    | A CSS color cleared to before every frame. Absent, the frame clears to transparency.                                                        |
+| `imageSmoothing` | `true`               | Whether an image the fit scales is resampled bilinearly. `false` samples nearest-neighbor, which keeps pixel art crisp. See `rendering.md`. |
+| `layout`         | —                    | A touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers. See `input.md`.                                              |
+| `clock`          | `new WallClock()`    | The clock supplying each frame's delta. See `frame.md`.                                                                                     |
+| `surface`        | Read from the canvas | Where the engine reads element size and device pixel ratio, and attaches its listeners.                                                     |
+| `assetRoot`      | `"assets/"`          | The root every asset path resolves under. See `assets.md`.                                                                                  |
 
 `width` and `height` are the logical design field the camera projects into, and
 they stay fixed for the life of the build. A world's camera starts centered on
@@ -181,24 +181,24 @@ interface Engine<D = unknown> {
 }
 ```
 
-| Member | Effect |
-| --- | --- |
-| `events` | Subscribe to engine events. Available from construction. |
-| `instance` | The game instance, live. |
-| `world` | The world currently open, live. It follows every transition. |
-| `renderer` | The rendering pipeline: its mode and its collision overlay. See `rendering.md`. |
-| `debug` | The debug surface the instance's `initialize` returned. See `debug.md`. |
-| `initialize` | Construct the game instance, run its `initialize`, open `startLevel`, and resolve to the instance. |
-| `run` | Drive frames off the host's frame callback until the signal aborts. |
-| `advance` | Tick the clock `frames` times, running a frame for each tick it accepts. |
-| `setClock` | Replace the clock. The next frame takes its delta from the new one. |
-| `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
-| `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `diagnostics` | Every registered diagnostic source and what it reports now, the instance registry's first and then the world's. See `diagnostics.md`. |
-| `recording` | Whether draw-command recording is currently capturing. See `recording.md`. |
-| `startRecording` | Arm the recorder. Capture begins at the next frame. |
-| `stopRecording` | Disarm and return everything captured since `startRecording`. |
-| `destroy` | Close the world, halt the loop, and drop every listener. |
+| Member           | Effect                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `events`         | Subscribe to engine events. Available from construction.                                                                              |
+| `instance`       | The game instance, live.                                                                                                              |
+| `world`          | The world currently open, live. It follows every transition.                                                                          |
+| `renderer`       | The rendering pipeline: its mode and its collision overlay. See `rendering.md`.                                                       |
+| `debug`          | The debug surface the instance's `initialize` returned. See `debug.md`.                                                               |
+| `initialize`     | Construct the game instance, run its `initialize`, open `startLevel`, and resolve to the instance.                                    |
+| `run`            | Drive frames off the host's frame callback until the signal aborts.                                                                   |
+| `advance`        | Tick the clock `frames` times, running a frame for each tick it accepts.                                                              |
+| `setClock`       | Replace the clock. The next frame takes its delta from the new one.                                                                   |
+| `frame`          | The frame counter, the accumulated simulated time, and the most recent delta.                                                         |
+| `viewport`       | The current logical-to-device fit, as a snapshot the caller owns.                                                                     |
+| `diagnostics`    | Every registered diagnostic source and what it reports now, the instance registry's first and then the world's. See `diagnostics.md`. |
+| `recording`      | Whether draw-command recording is currently capturing. See `recording.md`.                                                            |
+| `startRecording` | Arm the recorder. Capture begins at the next frame.                                                                                   |
+| `stopRecording`  | Disarm and return everything captured since `startRecording`.                                                                         |
+| `destroy`        | Close the world, halt the loop, and drop every listener.                                                                              |
 
 `initialize` resolving means the instance exists and has run its `initialize`,
 the start level's `load` has resolved, its actors are spawned and have begun
@@ -236,7 +236,12 @@ A complete game: one actor that drifts and reflects off the field's edges, one
 game mode with no rules of its own, one level placing the actor, and the boot.
 
 ```ts
-import { Actor, GameMode, ShapeComponent, createEngine } from "@clockwyrks/structured-2d";
+import {
+  Actor,
+  GameMode,
+  ShapeComponent,
+  createEngine,
+} from "@clockwyrks/structured-2d";
 import type { GameDefinition } from "@clockwyrks/structured-2d";
 
 const BOX = 48;
@@ -334,18 +339,18 @@ returned.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A `width` or `height` that is not finite and positive | `Error` naming the size |
-| A canvas that yields no 2D context | `Error` |
-| A `layout` outside `TOUCH_LAYOUTS` | `Error` naming every valid layout |
-| `levels` with no entries | `Error` |
-| `startLevel` naming no entry of `levels` | `Error` naming every registered level |
-| The instance's `initialize`, a level's `load`, or a `beginPlay` throws | `initialize` rejects with the cause |
-| The instance's `initialize` returns `undefined` | `initialize` rejects with an `Error` naming the debug surface |
-| `instance`, `world`, `debug`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
-| `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
-| `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
+| Condition                                                                              | Result                                                        |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| A `width` or `height` that is not finite and positive                                  | `Error` naming the size                                       |
+| A canvas that yields no 2D context                                                     | `Error`                                                       |
+| A `layout` outside `TOUCH_LAYOUTS`                                                     | `Error` naming every valid layout                             |
+| `levels` with no entries                                                               | `Error`                                                       |
+| `startLevel` naming no entry of `levels`                                               | `Error` naming every registered level                         |
+| The instance's `initialize`, a level's `load`, or a `beginPlay` throws                 | `initialize` rejects with the cause                           |
+| The instance's `initialize` returns `undefined`                                        | `initialize` rejects with an `Error` naming the debug surface |
+| `instance`, `world`, `debug`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering                                   |
+| `advance` with a count that is not a whole, non-negative number                        | `RangeError` naming the value                                 |
+| `startRecording` while already recording, or `stopRecording` while not                 | `Error` naming the unbalanced call                            |
 
 Each construction failure otherwise presents as a build that runs and draws
 nothing, which is the most expensive kind to trace, so each is refused where it
@@ -353,20 +358,20 @@ happens.
 
 ## The rest of these pages
 
-| Page | Covers |
-| --- | --- |
-| `frame.md` | The loop, the fixed frame order, the clocks, `run` and `advance`, and `FrameInfo`. |
-| `worlds.md` | Levels, opening a world, spawning, finding actors, timers, pausing, and the transition sequence. |
-| `game-modes.md` | Writing a mode's rules, phases, players and bots, and the game and player states. |
-| `actors.md` | Actors, transforms, tags, the lifecycle, the deferred destroy, and pawns. |
-| `components.md` | Components and the built-in render, sprite, shape, text, draw, and camera components. |
-| `controllers.md` | Controllers, possession, and driving the same pawn from a player or a bot. |
-| `rendering.md` | The pipeline, the layer sort, the render modes, and direct drawing. |
-| `camera.md` | The three coordinate spaces, the camera, following, bounds, and the viewport fit. |
-| `collision.md` | Colliders, channels and responses, the collision events, the manifold, and the queries. |
-| `input.md` | Actions, key bindings, edges, the pointer, and the touch layout catalogue. |
-| `audio.md` | Cue definition, file-backed cues, playback, looping, mute, and the unlock. |
-| `assets.md` | The asset root, the loaders, the path rules, and the load events. |
-| `diagnostics.md` | The two registries, reading them back, the overlay, and frame metrics. |
-| `debug.md` | Declaring a debug surface, returning it from `initialize`, and driving it through `engine.debug`. |
-| `recording.md` | Arming the recorder, the recording format, and replaying a frame. |
+| Page             | Covers                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| `frame.md`       | The loop, the fixed frame order, the clocks, `run` and `advance`, and `FrameInfo`.                |
+| `worlds.md`      | Levels, opening a world, spawning, finding actors, timers, pausing, and the transition sequence.  |
+| `game-modes.md`  | Writing a mode's rules, phases, players and bots, and the game and player states.                 |
+| `actors.md`      | Actors, transforms, tags, the lifecycle, the deferred destroy, and pawns.                         |
+| `components.md`  | Components and the built-in render, sprite, shape, text, draw, and camera components.             |
+| `controllers.md` | Controllers, possession, and driving the same pawn from a player or a bot.                        |
+| `rendering.md`   | The pipeline, the layer sort, the render modes, and direct drawing.                               |
+| `camera.md`      | The three coordinate spaces, the camera, following, bounds, and the viewport fit.                 |
+| `collision.md`   | Colliders, channels and responses, the collision events, the manifold, and the queries.           |
+| `input.md`       | Actions, key bindings, edges, the pointer, and the touch layout catalogue.                        |
+| `audio.md`       | Cue definition, file-backed cues, playback, looping, mute, and the unlock.                        |
+| `assets.md`      | The asset root, the loaders, the path rules, and the load events.                                 |
+| `diagnostics.md` | The two registries, reading them back, the overlay, and frame metrics.                            |
+| `debug.md`       | Declaring a debug surface, returning it from `initialize`, and driving it through `engine.debug`. |
+| `recording.md`   | Arming the recorder, the recording format, and replaying a frame.                                 |

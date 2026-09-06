@@ -9,7 +9,9 @@ visible render components are collected by the rendering pipeline every frame.
 ## `Component`
 
 ```ts
-type ComponentClass<C extends Component = Component> = new (...args: never[]) => C;
+type ComponentClass<C extends Component = Component> = new (
+  ...args: never[]
+) => C;
 
 class Component {
   readonly actor: Actor;
@@ -25,17 +27,17 @@ class Component {
 }
 ```
 
-| Member | Semantics |
-| --- | --- |
-| `actor` | The actor the component is attached to. Assigned by `attach`, before `beginPlay`. |
-| `world` | The world the owning actor belongs to. |
-| `offset` | The component's transform relative to its actor's. Defaults to the identity. Mutable in place. |
-| `enabled` | Defaults to `true`. A disabled component skips its tick, draws nothing, and takes no part in collision. |
-| `beginPlay` | Runs once, after `actor` is assigned. |
-| `tick` | Runs once per frame with the frame's delta in seconds, after the owning actor's tick. |
-| `endPlay` | Runs once, when the component is detached, when its actor is destroyed, or when the world closes. |
-| `worldTransform` | The actor's transform composed with `offset`, as a fresh `Transform` the caller owns. |
-| `worldMatrix` | The same composition as a column-major `Mat4`. |
+| Member           | Semantics                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| `actor`          | The actor the component is attached to. Assigned by `attach`, before `beginPlay`.                       |
+| `world`          | The world the owning actor belongs to.                                                                  |
+| `offset`         | The component's transform relative to its actor's. Defaults to the identity. Mutable in place.          |
+| `enabled`        | Defaults to `true`. A disabled component skips its tick, draws nothing, and takes no part in collision. |
+| `beginPlay`      | Runs once, after `actor` is assigned.                                                                   |
+| `tick`           | Runs once per frame with the frame's delta in seconds, after the owning actor's tick.                   |
+| `endPlay`        | Runs once, when the component is detached, when its actor is destroyed, or when the world closes.       |
+| `worldTransform` | The actor's transform composed with `offset`, as a fresh `Transform` the caller owns.                   |
+| `worldMatrix`    | The same composition as a column-major `Mat4`.                                                          |
 
 The identity offset is `position {0, 0, 0}`, `rotation {0, 0, 0, 1}`, and
 `scale {1, 1, 1}`, so a component drawn without touching `offset` sits exactly
@@ -86,19 +88,19 @@ class RenderComponent extends Component {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `layer` | `0` | Orders the component's pass. Lower layers draw first. |
-| `visible` | `true` | Whether the pipeline collects the component. |
-| `opacity` | `1` | Clamped to `0..1`. |
-| `space` | Fixed by the class | The pass the component draws in. |
+| Field     | Default            | Meaning                                               |
+| --------- | ------------------ | ----------------------------------------------------- |
+| `layer`   | `0`                | Orders the component's pass. Lower layers draw first. |
+| `visible` | `true`             | Whether the pipeline collects the component.          |
+| `opacity` | `1`                | Clamped to `0..1`.                                    |
+| `space`   | Fixed by the class | The pass the component draws in.                      |
 
 `space` is **read-only and fixed by the class**:
 
-| Space | Components |
-| --- | --- |
-| `world` | `MeshComponent`, `ModelComponent`, `LightComponent`, `Object3DComponent` |
-| `screen` | `SpriteComponent`, `ShapeComponent`, `TextComponent`, `DrawComponent` |
+| Space    | Components                                                               |
+| -------- | ------------------------------------------------------------------------ |
+| `world`  | `MeshComponent`, `ModelComponent`, `LightComponent`, `Object3DComponent` |
+| `screen` | `SpriteComponent`, `ShapeComponent`, `TextComponent`, `DrawComponent`    |
 
 A `world` component is drawn in the world pass, through the camera, as one three
 object the pipeline owns and places at the component's world transform. Its
@@ -132,14 +134,14 @@ type MeshGeometry =
   | { kind: "custom"; geometry: THREE.BufferGeometry };
 ```
 
-| Kind | Meaning |
-| --- | --- |
-| `box` | `width` along X, `height` along Y, `depth` along Z, centered on the transform. |
-| `sphere` | A sphere of `radius`, with `segments` subdivisions. `segments` defaults to `24`. |
+| Kind       | Meaning                                                                                |
+| ---------- | -------------------------------------------------------------------------------------- |
+| `box`      | `width` along X, `height` along Y, `depth` along Z, centered on the transform.         |
+| `sphere`   | A sphere of `radius`, with `segments` subdivisions. `segments` defaults to `24`.       |
 | `cylinder` | A cylinder along local Y with the two radii and `height`. `segments` defaults to `24`. |
-| `capsule` | A capsule of `radius` whose cylindrical part is `height` long along local Y. |
-| `plane` | A rectangle in the local XY plane, facing `+Z`. |
-| `custom` | The game's own `THREE.BufferGeometry`, drawn as given. |
+| `capsule`  | A capsule of `radius` whose cylindrical part is `height` long along local Y.           |
+| `plane`    | A rectangle in the local XY plane, facing `+Z`.                                        |
+| `custom`   | The game's own `THREE.BufferGeometry`, drawn as given.                                 |
 
 Every geometry is centered on the component's transform, and every dimension is
 in world units.
@@ -161,18 +163,18 @@ interface MaterialSpec {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `kind` | `"standard"` | The material model: physically based, Lambert diffuse, or unlit. |
-| `color` | `"#ffffff"` | The base color. |
-| `emissive` | `"#000000"` | The emissive color. |
-| `metalness` | `0` | The `standard` metalness. |
-| `roughness` | `1` | The `standard` roughness. |
-| `map` | Unset | A texture sampled as the base color. |
-| `opacity` | `1` | Multiplied by the component's `opacity`. |
-| `wireframe` | `false` | Whether the material draws as edges. |
-| `flatShading` | `false` | Whether faces are shaded flat. |
-| `side` | `"front"` | Which faces are drawn. |
+| Field         | Default      | Meaning                                                          |
+| ------------- | ------------ | ---------------------------------------------------------------- |
+| `kind`        | `"standard"` | The material model: physically based, Lambert diffuse, or unlit. |
+| `color`       | `"#ffffff"`  | The base color.                                                  |
+| `emissive`    | `"#000000"`  | The emissive color.                                              |
+| `metalness`   | `0`          | The `standard` metalness.                                        |
+| `roughness`   | `1`          | The `standard` roughness.                                        |
+| `map`         | Unset        | A texture sampled as the base color.                             |
+| `opacity`     | `1`          | Multiplied by the component's `opacity`.                         |
+| `wireframe`   | `false`      | Whether the material draws as edges.                             |
+| `flatShading` | `false`      | Whether faces are shaded flat.                                   |
+| `side`        | `"front"`    | Which faces are drawn.                                           |
 
 A `standard` or `lambert` material takes its shading from the scene's lights, so
 a level drawn with either also carries a `LightComponent`. A `basic` material
@@ -197,13 +199,13 @@ class MeshComponent extends RenderComponent {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `geometry` | — | The geometry drawn. |
-| `material` | Every `MaterialSpec` default | The material drawn with. |
-| `billboard` | `false` | `true` turns the mesh to face the camera each frame, keeping its position and scale. |
-| `castShadow` | `false` | Whether the mesh casts a shadow. |
-| `receiveShadow` | `false` | Whether the mesh receives shadows. |
+| Field           | Default                      | Meaning                                                                              |
+| --------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
+| `geometry`      | —                            | The geometry drawn.                                                                  |
+| `material`      | Every `MaterialSpec` default | The material drawn with.                                                             |
+| `billboard`     | `false`                      | `true` turns the mesh to face the camera each frame, keeping its position and scale. |
+| `castShadow`    | `false`                      | Whether the mesh casts a shadow.                                                     |
+| `receiveShadow` | `false`                      | Whether the mesh receives shadows.                                                   |
 
 The pipeline builds one three mesh from `geometry` and `material` and rebuilds
 it when either field is **assigned a new value**. Assignment is the change
@@ -256,7 +258,12 @@ its own. See `models-and-animation.md`.
 type LightSpec =
   | { kind: "ambient"; color?: string; intensity?: number }
   | { kind: "hemisphere"; sky?: string; ground?: string; intensity?: number }
-  | { kind: "directional"; color?: string; intensity?: number; castShadow?: boolean }
+  | {
+      kind: "directional";
+      color?: string;
+      intensity?: number;
+      castShadow?: boolean;
+    }
   | {
       kind: "point";
       color?: string;
@@ -281,17 +288,17 @@ class LightComponent extends RenderComponent {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `color` | `"#ffffff"` | The light's color. |
-| `intensity` | `1` | The light's intensity. |
-| `sky` | `"#ffffff"` | A hemisphere light's color from above. |
-| `ground` | `"#444444"` | A hemisphere light's color from below. |
-| `distance` | `0` | The range of a point or spot light, in world units. `0` is unbounded. |
-| `decay` | `2` | How a point or spot light falls off with distance. |
-| `angle` | `π / 3` | A spot light's cone half-angle, in radians. |
-| `penumbra` | `0` | The fraction of a spot light's cone that softens to its edge. |
-| `castShadow` | `false` | Whether a directional or spot light casts shadows. |
+| Field        | Default     | Meaning                                                               |
+| ------------ | ----------- | --------------------------------------------------------------------- |
+| `color`      | `"#ffffff"` | The light's color.                                                    |
+| `intensity`  | `1`         | The light's intensity.                                                |
+| `sky`        | `"#ffffff"` | A hemisphere light's color from above.                                |
+| `ground`     | `"#444444"` | A hemisphere light's color from below.                                |
+| `distance`   | `0`         | The range of a point or spot light, in world units. `0` is unbounded. |
+| `decay`      | `2`         | How a point or spot light falls off with distance.                    |
+| `angle`      | `π / 3`     | A spot light's cone half-angle, in radians.                           |
+| `penumbra`   | `0`         | The fraction of a spot light's cone that softens to its edge.         |
+| `castShadow` | `false`     | Whether a directional or spot light casts shadows.                    |
 
 An ambient and a hemisphere light have no position. A point light shines from
 the component's world position, and a directional or spot light shines from that
@@ -362,15 +369,15 @@ class SpriteComponent extends RenderComponent {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `image` | — | The decoded bitmap the component draws. |
-| `source` | `null` | A region of a sprite sheet, in the image's pixels. `null` selects the whole image. |
-| `width` | The source region's pixel width | The drawn width, in logical units. |
-| `height` | The source region's pixel height | The drawn height, in logical units. |
-| `anchorX` | `0.5` | The horizontal anchor, as a fraction of the drawn size. |
-| `anchorY` | `0.5` | The vertical anchor, as a fraction of the drawn size. |
-| `tint` | `null` | A CSS color the image is tinted with. |
+| Field     | Default                          | Meaning                                                                            |
+| --------- | -------------------------------- | ---------------------------------------------------------------------------------- |
+| `image`   | —                                | The decoded bitmap the component draws.                                            |
+| `source`  | `null`                           | A region of a sprite sheet, in the image's pixels. `null` selects the whole image. |
+| `width`   | The source region's pixel width  | The drawn width, in logical units.                                                 |
+| `height`  | The source region's pixel height | The drawn height, in logical units.                                                |
+| `anchorX` | `0.5`                            | The horizontal anchor, as a fraction of the drawn size.                            |
+| `anchorY` | `0.5`                            | The vertical anchor, as a fraction of the drawn size.                              |
+| `tint`    | `null`                           | A CSS color the image is tinted with.                                              |
 
 A sprite is a **screen** component: it draws on the screen layer in logical
 units, which is what a HUD icon and a 2D overlay want. The image is sampled as
@@ -411,12 +418,12 @@ class ShapeComponent extends RenderComponent {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `shape` | — | The geometry drawn, on the screen layer. |
-| `fill` | `null` | A CSS color filled inside the shape. |
-| `stroke` | `null` | A CSS color stroked around the outline. |
-| `strokeWidth` | `1` | The stroke width, in logical units. |
+| Field         | Default | Meaning                                  |
+| ------------- | ------- | ---------------------------------------- |
+| `shape`       | —       | The geometry drawn, on the screen layer. |
+| `fill`        | `null`  | A CSS color filled inside the shape.     |
+| `stroke`      | `null`  | A CSS color stroked around the outline.  |
+| `strokeWidth` | `1`     | The stroke width, in logical units.      |
 
 A rect and a polygon are centered on the component's transform, and a polygon's
 points are logical units relative to it. A component with neither a fill nor a
@@ -444,13 +451,13 @@ class TextComponent extends RenderComponent {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `text` | — | The string drawn. |
-| `font` | `"16px sans-serif"` | A CSS font shorthand. |
-| `fill` | `"#ffffff"` | The fill color. |
-| `align` | `"center"` | Horizontal alignment against the component's transform. |
-| `baseline` | `"middle"` | Vertical alignment against the component's transform. |
+| Field      | Default             | Meaning                                                 |
+| ---------- | ------------------- | ------------------------------------------------------- |
+| `text`     | —                   | The string drawn.                                       |
+| `font`     | `"16px sans-serif"` | A CSS font shorthand.                                   |
+| `fill`     | `"#ffffff"`         | The fill color.                                         |
+| `align`    | `"center"`          | Horizontal alignment against the component's transform. |
+| `baseline` | `"middle"`          | Vertical alignment against the component's transform.   |
 
 The font size is in logical units, so a readout keeps its size on the canvas
 whatever the camera does. A scoreboard that shows live figures writes `text`
@@ -527,9 +534,9 @@ class CameraComponent extends Component {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `fov` | `60` | The vertical field of view, in degrees, the camera takes while following. |
+| Field | Default | Meaning                                                                   |
+| ----- | ------- | ------------------------------------------------------------------------- |
+| `fov` | `60`    | The vertical field of view, in degrees, the camera takes while following. |
 
 An actor carrying a `CameraComponent` is a view target. The world's camera
 follows the first enabled one its target holds, at that component's world
@@ -546,9 +553,9 @@ runs against the collision world are specified in `collision.md`.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| A `beginPlay` throws while the start level is built | `engine.initialize` rejects with the cause |
-| A `tick` or a `draw` throws under `run` | The error propagates to the host, and the loop schedules the next frame |
-| A `tick` or a `draw` throws under `advance` | `advance` rejects with the cause, and the remaining frames do not run |
-| `ModelComponent.play` is given a name the model lacks | `Error` naming the animation |
+| Condition                                             | Result                                                                  |
+| ----------------------------------------------------- | ----------------------------------------------------------------------- |
+| A `beginPlay` throws while the start level is built   | `engine.initialize` rejects with the cause                              |
+| A `tick` or a `draw` throws under `run`               | The error propagates to the host, and the loop schedules the next frame |
+| A `tick` or a `draw` throws under `advance`           | `advance` rejects with the cause, and the remaining frames do not run   |
+| `ModelComponent.play` is given a name the model lacks | `Error` naming the animation                                            |

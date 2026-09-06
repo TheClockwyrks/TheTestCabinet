@@ -14,22 +14,22 @@ implementation untouched.
 
 ## Trait requirements
 
-| What it supplies | What it is |
-| --- | --- |
-| An id and a display name | The id is the config value, the telemetry value, and the stem every one of the arm's artifacts is filed under. The display name is what an operator reads in gg's own output. |
-| A member separator | The punctuation between an API object and one of its functions, `.` by default and `::` for a language whose objects are modules. Names come from the catalogue; this joins the two halves. |
-| Program preparation | Turning a model's reply into the source its guest evaluates, given the code modules already in that agent's scope. |
-| A checker name | What a program of this language is judged by, spelled as the language's own users spell it (`tsc`, `rustc`), or nothing for a prepare step that invokes no compiler. |
-| Module preparation | Turning a [code skill](/gg/skills/)'s or [code memory](/gg/memories/)'s file into the library this arm supplies to a program, the way it supplies gg's own SDK, compiled under the key it is bound at. |
-| Module file extensions | The extensions a skills directory spells `skill.<ext>` and `on-use.<ext>` with, most preferred first, never empty. |
-| A binding name rule | A skill's authored name mapped to an identifier this language parses. Non-empty, and stable for a given name. |
-| A `lib` access form | How a program reaches one export of a loaded module, stated in the documentation view of that export. A path by default; an arm that reaches a module by string supplies its own. The arm states the line a program writes to reach the module itself on the same terms, alongside the line that reaches gg's SDK. |
-| A guest component | The prebuilt `.wasm` that evaluates prepared source, or nothing for an arm that compiles the program itself into a component. |
-| A signature catalogue | Every module, signature, argument, type and type member the model reads, reflected out of the arm's own SDK by the language's own documentation tool. |
-| A prompt segment | The arm's gated segment of `system-code.hbs` and of `code-nothing-shown.hbs`, keyed by the arm's id. |
-| A file-view statement | The one statement that opens a view of a path, whole or windowed, terminated the way this language terminates a statement. |
-| A documentation-view program | A whole program that opens one documentation view per name, which is the on-use script of every built-in family skill. |
-| A bootstrap program | A whole program that lists the named modules in one search and opens the documentation of each named key, which gg runs to seed a fresh window. |
+| What it supplies             | What it is                                                                                                                                                                                                                                                                                                         |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| An id and a display name     | The id is the config value, the telemetry value, and the stem every one of the arm's artifacts is filed under. The display name is what an operator reads in gg's own output.                                                                                                                                      |
+| A member separator           | The punctuation between an API object and one of its functions, `.` by default and `::` for a language whose objects are modules. Names come from the catalogue; this joins the two halves.                                                                                                                        |
+| Program preparation          | Turning a model's reply into the source its guest evaluates, given the code modules already in that agent's scope.                                                                                                                                                                                                 |
+| A checker name               | What a program of this language is judged by, spelled as the language's own users spell it (`tsc`, `rustc`), or nothing for a prepare step that invokes no compiler.                                                                                                                                               |
+| Module preparation           | Turning a [code skill](/gg/skills/)'s or [code memory](/gg/memories/)'s file into the library this arm supplies to a program, the way it supplies gg's own SDK, compiled under the key it is bound at.                                                                                                             |
+| Module file extensions       | The extensions a skills directory spells `skill.<ext>` and `on-use.<ext>` with, most preferred first, never empty.                                                                                                                                                                                                 |
+| A binding name rule          | A skill's authored name mapped to an identifier this language parses. Non-empty, and stable for a given name.                                                                                                                                                                                                      |
+| A `lib` access form          | How a program reaches one export of a loaded module, stated in the documentation view of that export. A path by default; an arm that reaches a module by string supplies its own. The arm states the line a program writes to reach the module itself on the same terms, alongside the line that reaches gg's SDK. |
+| A guest component            | The prebuilt `.wasm` that evaluates prepared source, or nothing for an arm that compiles the program itself into a component.                                                                                                                                                                                      |
+| A signature catalogue        | Every module, signature, argument, type and type member the model reads, reflected out of the arm's own SDK by the language's own documentation tool.                                                                                                                                                              |
+| A prompt segment             | The arm's gated segment of `system-code.hbs` and of `code-nothing-shown.hbs`, keyed by the arm's id.                                                                                                                                                                                                               |
+| A file-view statement        | The one statement that opens a view of a path, whole or windowed, terminated the way this language terminates a statement.                                                                                                                                                                                         |
+| A documentation-view program | A whole program that opens one documentation view per name, which is the on-use script of every built-in family skill.                                                                                                                                                                                             |
+| A bootstrap program          | A whole program that lists the named modules in one search and opens the documentation of each named key, which gg runs to seed a fresh window.                                                                                                                                                                    |
 
 ### Program preparation
 
@@ -179,6 +179,7 @@ below.
    whole context and compile these packages, so a missing entry fails inside the
    arm's own build rather than at a `COPY`. `scripts/ci/build-context.sh` is the
    gate.
+
 6. Add the row to `scripts/gg-arms.sh`, which is the one list of gg's arms. A
    row names the id, the package, the label a person reads while it runs, the
    catalogue stems the reflector promises to write, and the artifact files

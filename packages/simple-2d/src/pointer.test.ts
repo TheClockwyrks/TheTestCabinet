@@ -120,7 +120,13 @@ describe("PointerInput", () => {
       // A 1280x720 stage letterboxed into the canvas: dpr 2, a 20-device-pixel
       // top bar, half a device pixel per logical unit, and the canvas 10 CSS
       // pixels from the client origin on each axis.
-      viewport = { width: 1280, height: 720, scale: 0.5, offsetX: 0, offsetY: 20 };
+      viewport = {
+        width: 1280,
+        height: 720,
+        scale: 0.5,
+        offsetX: 0,
+        offsetY: 20,
+      };
       input = new PointerInput(
         surfaceOver(target, { dpr: () => 2, origin: () => ({ x: 10, y: 10 }) }),
         () => viewport,
@@ -224,7 +230,11 @@ describe("PointerInput", () => {
         buttons: ["primary"],
       });
       // One contact, so `down` and `up` stay one contact apart.
-      expect(input.samples().map((s) => s.type)).toEqual(["down", "move", "move"]);
+      expect(input.samples().map((s) => s.type)).toEqual([
+        "down",
+        "move",
+        "move",
+      ]);
     });
 
     it("names the button on the sample that changed it", () => {
@@ -278,7 +288,10 @@ describe("PointerInput", () => {
 
   describe("contacts", () => {
     it("lists every pointer in contact, in contact order", () => {
-      pointer(target, "pointerdown", 5, 5, { pointerId: 1, pointerType: "touch" });
+      pointer(target, "pointerdown", 5, 5, {
+        pointerId: 1,
+        pointerType: "touch",
+      });
       pointer(target, "pointerdown", 9, 9, {
         pointerId: 2,
         pointerType: "touch",
@@ -377,7 +390,10 @@ describe("PointerInput", () => {
     });
 
     it("carries the pointer that produced each sample", () => {
-      pointer(target, "pointerdown", 1, 1, { pointerId: 7, pointerType: "touch" });
+      pointer(target, "pointerdown", 1, 1, {
+        pointerId: 7,
+        pointerType: "touch",
+      });
 
       expect(input.samples()[0]).toMatchObject({
         id: 7,
@@ -425,8 +441,17 @@ describe("PointerInput", () => {
     });
 
     it("maps travel through the ratio and the fit", () => {
-      viewport = { width: 1280, height: 720, scale: 0.5, offsetX: 0, offsetY: 0 };
-      input = new PointerInput(surfaceOver(target, { dpr: () => 2 }), () => viewport);
+      viewport = {
+        width: 1280,
+        height: 720,
+        scale: 0.5,
+        offsetX: 0,
+        offsetY: 0,
+      };
+      input = new PointerInput(
+        surfaceOver(target, { dpr: () => 2 }),
+        () => viewport,
+      );
 
       wheel(target, 0, 10);
 

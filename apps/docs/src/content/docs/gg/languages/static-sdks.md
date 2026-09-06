@@ -13,12 +13,12 @@ gg names every model-facing call an operation, under a `namespace.key` identity
 of its own rather than any arm's spelling, and states once what buys it. That is
 the operation's binding, and there are four kinds.
 
-| Binding | What buys the operation |
-| --- | --- |
-| Capability | The agent holds the named gg capability, and its [allowlist](/gg/configurations/#granting-calls) names this operation. |
-| Ending | The agent was dispatched in the named [ending role](/gg/ending-a-session/). |
-| Machine | The agent stands in a [machine](/gg/fsms/) state with somewhere to go. Its one member is `delegation.transition_state`, which a configuration cannot grant. |
-| Always | Every program has it. |
+| Binding    | What buys the operation                                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capability | The agent holds the named gg capability, and its [allowlist](/gg/configurations/#granting-calls) names this operation.                                      |
+| Ending     | The agent was dispatched in the named [ending role](/gg/ending-a-session/).                                                                                 |
+| Machine    | The agent stands in a [machine](/gg/fsms/) state with somewhere to go. Its one member is `delegation.transition_state`, which a configuration cannot grant. |
+| Always     | Every program has it.                                                                                                                                       |
 
 An agent's grant is the other half of the pair: the gg capability ids it was
 given, the operation ids its allowlist grants, the ending role it was dispatched
@@ -135,19 +135,19 @@ as `sandbox_trap`.
 
 What each arm files each of the five failure shapes as, today:
 
-| Arm | (a) uncaught failed call | (b) native fault | (c) failure value | (d) stack overflow | (e) explicit exit |
-| --- | --- | --- | --- | --- | --- |
-| TypeScript | `program_api_error` | `program_throw` | `program_throw` | `program_throw` | refused by `tsc` |
-| JavaScript | `program_api_error` | `program_throw` | `program_throw` | `program_throw` | `program_unknown_name` |
-| PureScript | `program_api_error` | `program_throw` | nothing to file | `program_throw` | `program_throw` |
-| Python | `program_api_error` | `program_throw` | `program_throw` | `program_throw` | `sandbox_trap` |
-| Ruby | `program_api_error` | `program_throw` | nothing to file | `program_throw` | `program_throw` |
-| C++ | `program_api_error` | `sandbox_trap` | `program_throw` | `sandbox_trap` | `sandbox_trap` |
-| C# | `program_api_error` | `program_throw` | `program_throw` | `sandbox_trap` | `sandbox_trap` |
-| Rust | `sandbox_trap` | `sandbox_trap` | `sandbox_trap` | `sandbox_trap` | `sandbox_trap` |
-| Swift | `sandbox_trap` | `sandbox_trap` | nothing to file | `sandbox_trap` | `sandbox_trap` |
-| Kotlin | `sandbox_trap` | `sandbox_trap` | refused by `kotlinc` | `sandbox_trap` | refused by `kotlinc` |
-| Java | `sandbox_trap` | `sandbox_trap` | refused by `javac` | `sandbox_trap` | refused by `javac` |
+| Arm        | (a) uncaught failed call | (b) native fault | (c) failure value    | (d) stack overflow | (e) explicit exit      |
+| ---------- | ------------------------ | ---------------- | -------------------- | ------------------ | ---------------------- |
+| TypeScript | `program_api_error`      | `program_throw`  | `program_throw`      | `program_throw`    | refused by `tsc`       |
+| JavaScript | `program_api_error`      | `program_throw`  | `program_throw`      | `program_throw`    | `program_unknown_name` |
+| PureScript | `program_api_error`      | `program_throw`  | nothing to file      | `program_throw`    | `program_throw`        |
+| Python     | `program_api_error`      | `program_throw`  | `program_throw`      | `program_throw`    | `sandbox_trap`         |
+| Ruby       | `program_api_error`      | `program_throw`  | nothing to file      | `program_throw`    | `program_throw`        |
+| C++        | `program_api_error`      | `sandbox_trap`   | `program_throw`      | `sandbox_trap`     | `sandbox_trap`         |
+| C#         | `program_api_error`      | `program_throw`  | `program_throw`      | `sandbox_trap`     | `sandbox_trap`         |
+| Rust       | `sandbox_trap`           | `sandbox_trap`   | `sandbox_trap`       | `sandbox_trap`     | `sandbox_trap`         |
+| Swift      | `sandbox_trap`           | `sandbox_trap`   | nothing to file      | `sandbox_trap`     | `sandbox_trap`         |
+| Kotlin     | `sandbox_trap`           | `sandbox_trap`   | refused by `kotlinc` | `sandbox_trap`     | refused by `kotlinc`   |
+| Java       | `sandbox_trap`           | `sandbox_trap`   | refused by `javac`   | `sandbox_trap`     | refused by `javac`     |
 
 `crates/gg/src/sandbox/language/g8.rs` is the gate behind the table: every cell
 is driven through the arm's own toolchain, and a cell that moves fails there.

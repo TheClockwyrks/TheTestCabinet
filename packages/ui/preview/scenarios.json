@@ -9,9 +9,7 @@
         "height": 10
       },
       "ticks": 100000,
-      "snapshots": [
-        100000
-      ],
+      "snapshots": [100000],
       "entities": [
         {
           "type": "splitter",
@@ -111,9 +109,7 @@
         "height": 10
       },
       "ticks": 100000,
-      "snapshots": [
-        100000
-      ],
+      "snapshots": [100000],
       "entities": [
         {
           "type": "splitter",
@@ -177,9 +173,7 @@
         "height": 10
       },
       "ticks": 100000,
-      "snapshots": [
-        100000
-      ],
+      "snapshots": [100000],
       "entities": [
         {
           "type": "splitter",
@@ -298,9 +292,7 @@
         "height": 10
       },
       "ticks": 100000,
-      "snapshots": [
-        100000
-      ],
+      "snapshots": [100000],
       "entities": [
         {
           "type": "splitter",
@@ -439,9 +431,7 @@
         "height": 10
       },
       "ticks": 100000,
-      "snapshots": [
-        100000
-      ],
+      "snapshots": [100000],
       "entities": [
         {
           "type": "splitter",
@@ -544,9 +534,7 @@
         "height": 10
       },
       "ticks": 100000,
-      "snapshots": [
-        100000
-      ],
+      "snapshots": [100000],
       "entities": [
         {
           "type": "splitter",
@@ -669,9 +657,7 @@
         "height": 9
       },
       "ticks": 100000,
-      "snapshots": [
-        100000
-      ],
+      "snapshots": [100000],
       "entities": [
         {
           "type": "source",

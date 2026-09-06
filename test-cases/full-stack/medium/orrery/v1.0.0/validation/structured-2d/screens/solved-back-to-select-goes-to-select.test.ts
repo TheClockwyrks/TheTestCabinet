@@ -100,11 +100,7 @@ it("goes to the current mode's select screen on confirm", async () => {
   await captureStill(h, "select");
 
   const left = await h.snapshot();
-  assertEqual(
-    left.screen,
-    "select",
-    "BACK TO SELECT goes to select",
-  );
+  assertEqual(left.screen, "select", "BACK TO SELECT goes to select");
   assertEqual(
     left.mode,
     "extras",

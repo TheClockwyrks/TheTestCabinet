@@ -12,7 +12,12 @@ import { GgFieldSidebar } from "./GgFieldSidebar";
 const CATALOG: GgFieldCatalog = {
   documents: 400,
   fields: [
-    { name: "case", kind: "string", documents: 400, topValues: [{ value: "carom", count: 400 }] },
+    {
+      name: "case",
+      kind: "string",
+      documents: 400,
+      topValues: [{ value: "carom", count: 400 }],
+    },
     {
       name: "cap.compaction",
       kind: "boolean",
@@ -46,20 +51,30 @@ describe("what it shows", () => {
     // 12 of 400 is the number that stops "never offered this tool" from looking like a
     // broken query.
     mount();
-    expect(within(fieldRow("tool.editFile")).getByText("12")).toBeInTheDocument();
-    expect(within(fieldRow("metric.cost")).getByText("380")).toBeInTheDocument();
+    expect(
+      within(fieldRow("tool.editFile")).getByText("12"),
+    ).toBeInTheDocument();
+    expect(
+      within(fieldRow("metric.cost")).getByText("380"),
+    ).toBeInTheDocument();
     expect(screen.getByText("400 runs")).toBeInTheDocument();
   });
 
   it("shows each field's kind, so a number is not mistaken for a label", () => {
     mount();
-    expect(within(fieldRow("metric.cost")).getByText("number")).toBeInTheDocument();
-    expect(within(fieldRow("cap.compaction")).getByText("boolean")).toBeInTheDocument();
+    expect(
+      within(fieldRow("metric.cost")).getByText("number"),
+    ).toBeInTheDocument();
+    expect(
+      within(fieldRow("cap.compaction")).getByText("boolean"),
+    ).toBeInTheDocument();
   });
 
   it("groups by namespace, run-level fields first", () => {
     mount();
-    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    const headings = screen
+      .getAllByRole("heading", { level: 3 })
+      .map((h) => h.textContent);
     expect(headings[0]).toBe("Run");
     expect(headings).toContain("Capabilities");
     expect(headings).toContain("Tools");
@@ -74,8 +89,12 @@ describe("finding a field", () => {
     fireEvent.change(screen.getByLabelText("Filter fields"), {
       target: { value: "headroom" },
     });
-    expect(screen.getByRole("button", { name: "cap.compaction.summaryHeadroom" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "metric.cost" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "cap.compaction.summaryHeadroom" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "metric.cost" }),
+    ).not.toBeInTheDocument();
   });
 
   it("says so when nothing matches", () => {
@@ -97,7 +116,9 @@ describe("click to insert", () => {
   it("inserts a whole predicate when an observed value is picked", () => {
     // A value is only ever interesting as a filter on the field it came from.
     const onInsert = mount();
-    fireEvent.click(screen.getByRole("button", { name: "Show values of cap.compaction" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show values of cap.compaction" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: /^false/ }));
     expect(onInsert).toHaveBeenCalledWith("cap.compaction:false");
   });
@@ -107,7 +128,9 @@ describe("click to insert", () => {
     // enable, which is what makes `avg(cap.compaction)` an honest enablement rate — and
     // what an operator has to be able to *see* to trust it.
     mount();
-    fireEvent.click(screen.getByRole("button", { name: "Show values of cap.compaction" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show values of cap.compaction" }),
+    );
     const values = screen
       .getAllByRole("button")
       .map((b) => b.textContent ?? "")

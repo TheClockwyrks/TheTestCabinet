@@ -123,13 +123,13 @@ The result is the frame's delta in milliseconds, or `null` when this tick is not
 a frame. A `null` leaves the simulation and the frame counter untouched, which
 is how a clock paces below the rate its ticks arrive at.
 
-| Clock | Constructor | Delta | Skips |
-| --- | --- | --- | --- |
-| `WallClock` | `new WallClock(maxDeltaMs?)` | Real elapsed time since the previous frame, floored at `0` and clamped to `maxDeltaMs` (default `100`). | Never. |
-| `PacedClock` | `new PacedClock(fps, options?)` | One frame interval. | Ticks arriving before the next grid slot. |
-| `ConstantClock` | `new ConstantClock(stepMs)` | `stepMs`, every frame. | Never. |
-| `SequenceClock` | `new SequenceClock(stepsMs)` | The next entry, cycling. | Never. |
-| `JitterClock` | `new JitterClock(minMs, maxMs, seed)` | A seeded draw from `[minMs, maxMs]`. | Never. |
+| Clock           | Constructor                           | Delta                                                                                                   | Skips                                     |
+| --------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| `WallClock`     | `new WallClock(maxDeltaMs?)`          | Real elapsed time since the previous frame, floored at `0` and clamped to `maxDeltaMs` (default `100`). | Never.                                    |
+| `PacedClock`    | `new PacedClock(fps, options?)`       | One frame interval.                                                                                     | Ticks arriving before the next grid slot. |
+| `ConstantClock` | `new ConstantClock(stepMs)`           | `stepMs`, every frame.                                                                                  | Never.                                    |
+| `SequenceClock` | `new SequenceClock(stepsMs)`          | The next entry, cycling.                                                                                | Never.                                    |
+| `JitterClock`   | `new JitterClock(minMs, maxMs, seed)` | A seeded draw from `[minMs, maxMs]`.                                                                    | Never.                                    |
 
 `WallClock` and `PacedClock` read the host timestamp. The other three ignore it,
 so they produce the same sequence of deltas under `run` and under `advance`.
@@ -169,11 +169,11 @@ interface FrameInfo {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `count` | Frames delivered since the loop started. |
-| `timeMs` | Accumulated simulated time, in milliseconds: the sum of the deltas delivered. |
-| `lastDeltaMs` | The delta the most recent frame was stepped by, in milliseconds. |
+| Field         | Meaning                                                                       |
+| ------------- | ----------------------------------------------------------------------------- |
+| `count`       | Frames delivered since the loop started.                                      |
+| `timeMs`      | Accumulated simulated time, in milliseconds: the sum of the deltas delivered. |
+| `lastDeltaMs` | The delta the most recent frame was stepped by, in milliseconds.              |
 
 `timeMs` is the sum of the deltas rather than elapsed wall time, so it means the
 same thing under `run` and under `advance`. `engine.frame()`, `world.frame()`,
@@ -216,12 +216,12 @@ delta, so a paused world holds every animated pose where it stood.
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `run` or `advance` reached before `initialize` resolves | `Error` naming the ordering |
-| `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
-| A tick or a `draw` throws under `run` | The error reaches the host, and the loop schedules the next frame |
-| A tick or a `draw` throws under `advance` | `advance` rejects with the cause, and the remaining frames do not run |
+| Condition                                                       | Result                                                                |
+| --------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `run` or `advance` reached before `initialize` resolves         | `Error` naming the ordering                                           |
+| `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value                                         |
+| A tick or a `draw` throws under `run`                           | The error reaches the host, and the loop schedules the next frame     |
+| A tick or a `draw` throws under `advance`                       | `advance` rejects with the cause, and the remaining frames do not run |
 
 A throw under `run` leaves the loop alive so one bad frame does not freeze the
 game permanently. A throw under `advance` stops immediately, because a caller

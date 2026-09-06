@@ -20,12 +20,12 @@ covering how an engine is declared, delivered, versioned, and recorded, see
 
 A run selects one of these engines.
 
-| Engine | Slug | What it provides |
-| --- | --- | --- |
-| [None](/engines/none/) | `none` | No runtime. The build supplies everything. The default. |
-| [Simple 2D](/engines/simple-2d/overview/) | `simple-2d` | Frame, input, audio, assets, and diagnostics for a 2D game that writes its own simulation and rendering. |
-| [Structured 2D](/engines/structured-2d/overview/) | `structured-2d` | A gameplay framework of worlds, levels, game modes, actors, and controllers, with engine-owned rendering and collision, around a 2D game written in TypeScript. |
-| [Simple 3D](/engines/simple-3d/overview/) | `simple-3d` | Frame, input, audio, assets, and diagnostics for a 3D game that writes its own simulation and builds its own scene, rendered through three.js. |
+| Engine                                            | Slug            | What it provides                                                                                                                                                              |
+| ------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [None](/engines/none/)                            | `none`          | No runtime. The build supplies everything. The default.                                                                                                                       |
+| [Simple 2D](/engines/simple-2d/overview/)         | `simple-2d`     | Frame, input, audio, assets, and diagnostics for a 2D game that writes its own simulation and rendering.                                                                      |
+| [Structured 2D](/engines/structured-2d/overview/) | `structured-2d` | A gameplay framework of worlds, levels, game modes, actors, and controllers, with engine-owned rendering and collision, around a 2D game written in TypeScript.               |
+| [Simple 3D](/engines/simple-3d/overview/)         | `simple-3d`     | Frame, input, audio, assets, and diagnostics for a 3D game that writes its own simulation and builds its own scene, rendered through three.js.                                |
 | [Structured 3D](/engines/structured-3d/overview/) | `structured-3d` | A gameplay framework of worlds, levels, game modes, actors, and controllers, with engine-owned rendering and collision, around a 3D game written in TypeScript over three.js. |
 
 The Decoupled engines are designed and awaiting implementation, so they
@@ -38,11 +38,11 @@ document their intent and stay outside the set a run selects from:
 Each engine belongs to a family, which fixes how much of a game the runtime
 owns.
 
-| Family | Gameplay framework | Simulation and rendering |
-| --- | --- | --- |
-| Simple | None | The game writes both, in TypeScript |
-| Structured | Worlds, levels, game modes, actors, pawns, controllers | The engine renders; the game's simulation is TypeScript beside it |
-| Decoupled | The same framework | The simulation is Rust compiled to WebAssembly; the engine's TypeScript renderer draws it |
+| Family     | Gameplay framework                                     | Simulation and rendering                                                                  |
+| ---------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Simple     | None                                                   | The game writes both, in TypeScript                                                       |
+| Structured | Worlds, levels, game modes, actors, pawns, controllers | The engine renders; the game's simulation is TypeScript beside it                         |
+| Decoupled  | The same framework                                     | The simulation is Rust compiled to WebAssembly; the engine's TypeScript renderer draws it |
 
 The Simple family provides the services a game needs around its own code and
 leaves the simulation and the drawing to the game. The Structured family provides

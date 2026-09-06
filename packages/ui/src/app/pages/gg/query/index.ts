@@ -33,7 +33,12 @@ export { completeQuery } from "./complete";
 export type { CompileOptions } from "./compile";
 export { compileQuery, literalValue } from "./compile";
 export { evaluate, fieldCatalog, globMatches, matches } from "./evaluate";
-export { formatField, formatIdentifier, formatLiteral, formatQuery } from "./format";
+export {
+  formatField,
+  formatIdentifier,
+  formatLiteral,
+  formatQuery,
+} from "./format";
 export type { Keyword, Span, Token, TokenKind } from "./lex";
 export { KEYWORDS, isKeyword, keywordOf, tokenize } from "./lex";
 export type { ParseResult } from "./parse";

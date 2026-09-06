@@ -85,11 +85,11 @@ most `1` strain in a step, however many of its neighbors the clear set holds.
 R8 reads the maximal runs that seeded the step under R5. A step seeded from a
 `prism` swap has none of those, and creates nothing.
 
-| Run or cell | Creates |
-| --- | --- |
-| A maximal run of exactly `4` | A `brilliant` |
-| A maximal run of `5` or more | A `prism` |
-| A cell lying in two intersecting maximal runs, one horizontal and one vertical | A `star` |
+| Run or cell                                                                    | Creates       |
+| ------------------------------------------------------------------------------ | ------------- |
+| A maximal run of exactly `4`                                                   | A `brilliant` |
+| A maximal run of `5` or more                                                   | A `prism`     |
+| A cell lying in two intersecting maximal runs, one horizontal and one vertical | A `star`      |
 
 Where more than one row applies to one cell, `prism` wins over `star`, and
 `star` wins over `brilliant`, and that cell takes one created gem. A created gem
@@ -115,11 +115,11 @@ seeded random source.
 Every gem the step leaves on the board carries `fell`, how far it traveled to
 reach the cell it now holds, as a whole number of rows:
 
-| Gem | `fell` |
-| --- | --- |
-| One R9 did not move | `0` |
-| A surviving gem R9 moved down | Its new row less its old row |
-| A gem the refill dealt into row `r` | At least `r + 1` |
+| Gem                                 | `fell`                       |
+| ----------------------------------- | ---------------------------- |
+| One R9 did not move                 | `0`                          |
+| A surviving gem R9 moved down       | Its new row less its old row |
+| A gem the refill dealt into row `r` | At least `r + 1`             |
 
 A refilled gem comes from above the board's top row, so `r + 1` rows is the
 least it can have traveled. Which figure at or above that each refilled gem
@@ -131,10 +131,10 @@ carries is the build's, and it is what decides the shape a column fills in.
 
 The two groups do different jobs, and neither does the other's.
 
-| Rules | How they are used |
-| --- | --- |
-| R1, R2, R3 | Checked when a swap is requested. A swap that breaks one is refused and the board is unchanged. |
-| R4, R5, R6, R7, R8, R9 | Evaluated during a chain step. They refuse nothing. |
+| Rules                  | How they are used                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| R1, R2, R3             | Checked when a swap is requested. A swap that breaks one is refused and the board is unchanged. |
+| R4, R5, R6, R7, R8, R9 | Evaluated during a chain step. They refuse nothing.                                             |
 
 ## A chain step
 
@@ -170,10 +170,10 @@ A step resolves in this order:
 The step then leaves two figures behind, and they are what its own timing runs
 off:
 
-| Figure | What it is |
-| --- | --- |
+| Figure      | What it is                                |
+| ----------- | ----------------------------------------- |
 | `lastWaves` | The `waves` R6 gave the step's clear set. |
-| `lastFall` | The `fall` R9 left on the board. |
+| `lastFall`  | The `fall` R9 left on the board.          |
 
 ### The step's timing
 
@@ -182,11 +182,11 @@ time while it is, counting from `0` at the moment a step resolves. Three spans
 run off it, with `WAVE_SECONDS` (`0.08`), `FALL_SECONDS_PER_ROW` (`0.05`), and
 `STEP_SECONDS` (`0.25`):
 
-| From | To | What runs |
-| --- | --- | --- |
-| `0` | `SHATTER_END = lastWaves * WAVE_SECONDS` | The clear set shatters, a cell at wave `w` shattering at `w * WAVE_SECONDS`. |
+| From          | To                                                        | What runs                                                                            |
+| ------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `0`           | `SHATTER_END = lastWaves * WAVE_SECONDS`                  | The clear set shatters, a cell at wave `w` shattering at `w * WAVE_SECONDS`.         |
 | `SHATTER_END` | `LAND_AT = SHATTER_END + lastFall * FALL_SECONDS_PER_ROW` | The gems fall, a gem that fell `n` rows taking `n * FALL_SECONDS_PER_ROW` to arrive. |
-| `LAND_AT` | `STEP_HOLD = LAND_AT + STEP_SECONDS` | The board rests. |
+| `LAND_AT`     | `STEP_HOLD = LAND_AT + STEP_SECONDS`                      | The board rests.                                                                     |
 
 When `stepTimer` reaches `STEP_HOLD` it returns to `0` and the board is read
 again. When that board seeds a non-empty clear set under R5, `chainStep` rises
@@ -200,10 +200,10 @@ A step's multiplier is `M = min(chainStep, MAX_MULTIPLIER)`, with
 `MAX_MULTIPLIER` (`8`). Each gem in the clear set scores by the strain it
 carried when the step scored it.
 
-| Cleared gem | Points |
-| --- | --- |
-| Strain `0` to `2` | `BASE_SCORE` (`10`) x `M` |
-| Strain `3` | `FLAWED_SCORE` (`20`) x `M` |
+| Cleared gem       | Points                      |
+| ----------------- | --------------------------- |
+| Strain `0` to `2` | `BASE_SCORE` (`10`) x `M`   |
+| Strain `3`        | `FLAWED_SCORE` (`20`) x `M` |
 
 A step's points are the sum over its clear set, and they are added to `score`,
 to `levelScore`, and to `moveScore`.
@@ -213,11 +213,11 @@ to `levelScore`, and to `moveScore`.
 A move is one accepted swap together with the whole chain it sets off. Three
 figures follow it:
 
-| Figure | What it holds |
-| --- | --- |
-| `moveScore` | The points every step of the move currently running has scored. It returns to `0` when a swap is accepted. |
-| `bestMove` | The most points one move has scored in the current level, and `0` until a move has scored. When `phase` returns to `idle`, `bestMove` becomes the greater of itself and `moveScore`. |
-| `bestChain` | The deepest `chainStep` any chain has reached in the current level, and `0` until a chain has run. Each step sets it to the greater of itself and `chainStep`. |
+| Figure      | What it holds                                                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `moveScore` | The points every step of the move currently running has scored. It returns to `0` when a swap is accepted.                                                                           |
+| `bestMove`  | The most points one move has scored in the current level, and `0` until a move has scored. When `phase` returns to `idle`, `bestMove` becomes the greater of itself and `moveScore`. |
+| `bestChain` | The deepest `chainStep` any chain has reached in the current level, and `0` until a chain has run. Each step sets it to the greater of itself and `chainStep`.                       |
 
 `bestMove` and `bestChain` return to `0` when a level is opened and when a round
 starts, so each level is measured on its own.

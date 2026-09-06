@@ -176,13 +176,16 @@ it("hands an arm node the tangential term, which reverses with the commanded dir
   );
   const brace = touching.find((m) => {
     const other = at(m.a) ? m.b : m.a;
-    return other.x === BRACE_END.x && other.y === BRACE_END.y && other.z === BRACE_END.z;
+    return (
+      other.x === BRACE_END.x &&
+      other.y === BRACE_END.y &&
+      other.z === BRACE_END.z
+    );
   });
   if (brace === undefined) {
     throw new Error("gantry: the rig has no sideways brace at (4, 6, 0)");
   }
-  const cosine =
-    (BRACE_END.z - NODE.z) / distance3(brace.a, brace.b);
+  const cosine = (BRACE_END.z - NODE.z) / distance3(brace.a, brace.b);
 
   /**
    * One reading: the brace's force on a tick that leaves the slew at `ANGLE`
@@ -199,7 +202,11 @@ it("hands an arm node the tangential term, which reverses with the commanded dir
         : {
             kind: "move",
             commands: [
-              { axis: "slew", target: rate > 0 ? 100000 : -100000, rate: Math.abs(rate) },
+              {
+                axis: "slew",
+                target: rate > 0 ? 100000 : -100000,
+                rate: Math.abs(rate),
+              },
             ],
           };
     await poseTape(h, [step]);
@@ -218,9 +225,13 @@ it("hands an arm node the tangential term, which reverses with the commanded dir
     const theta = (from * Math.PI) / 180;
     const origin = { x: 2, y: 6, z: 0 };
     await h.debug.setBob(
-      axis.x + (origin.x - axis.x) * Math.cos(theta) - (origin.z - axis.z) * Math.sin(theta),
+      axis.x +
+        (origin.x - axis.x) * Math.cos(theta) -
+        (origin.z - axis.z) * Math.sin(theta),
       origin.y - HOIST_START,
-      axis.z + (origin.x - axis.x) * Math.sin(theta) + (origin.z - axis.z) * Math.cos(theta),
+      axis.z +
+        (origin.x - axis.x) * Math.sin(theta) +
+        (origin.z - axis.z) * Math.cos(theta),
     );
     await h.debug.setBobVelocity(0, 0, 0);
 
@@ -229,11 +240,18 @@ it("hands an arm node the tangential term, which reverses with the commanded dir
       after.run.phase === "running",
       "the run still standing while the reading is taken",
     );
-    assertNear(after.run.axes.slew.value, ANGLE, 1e-9, "the slew value read at");
+    assertNear(
+      after.run.axes.slew.value,
+      ANGLE,
+      1e-9,
+      "the slew value read at",
+    );
     assertNear(after.run.axes.slew.rate, rate, 1e-9, "the slew rate read at");
     const force = after.run.forces.find((f) => f.id === brace.id);
     if (force === undefined) {
-      throw new Error("gantry: the run reported no force for the sideways brace");
+      throw new Error(
+        "gantry: the run reported no force for the sideways brace",
+      );
     }
     return force.force;
   };
@@ -249,7 +267,8 @@ it("hands an arm node the tangential term, which reverses with the commanded dir
       "scenario decides something",
   );
 
-  const forward = (await readAt(SLEW_MAX_RATE, true)) - (await readAt(SLEW_MAX_RATE, false));
+  const forward =
+    (await readAt(SLEW_MAX_RATE, true)) - (await readAt(SLEW_MAX_RATE, false));
   assertNear(
     forward,
     expected,
@@ -259,7 +278,9 @@ it("hands an arm node the tangential term, which reverses with the commanded dir
       "tick driving the slew at +SLEW_ACCEL (specs/statics.md, specs/program.md)",
   );
 
-  const backward = (await readAt(-SLEW_MAX_RATE, true)) - (await readAt(-SLEW_MAX_RATE, false));
+  const backward =
+    (await readAt(-SLEW_MAX_RATE, true)) -
+    (await readAt(-SLEW_MAX_RATE, false));
   await h.capture(
     "tangential",
     "The jib rig on the tick a slew move is driving the arm around",

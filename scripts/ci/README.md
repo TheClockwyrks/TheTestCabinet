@@ -28,23 +28,24 @@ and can be run from anywhere, including locally:
 
 ## Scripts
 
-| Script               | Checks                                              | Critical |
-| -------------------- | --------------------------------------------------- | -------- |
-| `rust-lint.sh`       | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc --document-private-items` | no |
-| `install-nextest.sh` | Install cargo-nextest pinned to `NEXTEST_VERSION`   | —        |
-| `install-gg-toolchains.sh` | Install every toolchain a gg **run** and gg's reflectors execute | — |
-| `install-gg-build-toolchains.sh` | Install the full .NET + wasi-sdk only the C# guest's **link** needs | — |
-| `rust-test.sh`       | `cargo build` + `cargo nextest run` + doctests (headless crates) | yes |
-| `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |
-| `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
-| `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
-| `web-test.sh`      | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace, `node --test` over `scripts/lib` | yes |
-| `desktop-build.sh` | `npm ci`, build the workspace runtime packages, type-check + `vite build` of the desktop UI, then clippy/rustdoc/build/test `crates/desktop` | yes |
-| `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
-| `contract-drift.sh`| regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff | yes |
-| `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
-| `validators-typecheck.sh` | `npm ci`, `tsc --noEmit` over every case's `validation/<engine>/` project | yes |
-| `build-context.sh` | every Dockerfile `COPY` source — and every gg guest package, every tree the workspace bakes in with `include_str!`, and every package `stage-tcab-packages.mjs` bakes into the host package store — survives every `.dockerignore` allowlist that can apply to it | yes |
+| Script                           | Checks                                                                                                                                                                                                                                                            | Critical |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `rust-lint.sh`                   | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc --document-private-items`                                                                                                                                                                             | no       |
+| `install-nextest.sh`             | Install cargo-nextest pinned to `NEXTEST_VERSION`                                                                                                                                                                                                                 | —        |
+| `install-gg-toolchains.sh`       | Install every toolchain a gg **run** and gg's reflectors execute                                                                                                                                                                                                  | —        |
+| `install-gg-build-toolchains.sh` | Install the full .NET + wasi-sdk only the C# guest's **link** needs                                                                                                                                                                                               | —        |
+| `rust-test.sh`                   | `cargo build` + `cargo nextest run` + doctests (headless crates)                                                                                                                                                                                                  | yes      |
+| `binary-smoke.sh`                | release-build, `cargo nextest run --release` + doctests, run binary                                                                                                                                                                                               | yes      |
+| `smoke-binary.sh`                | run a built binary (`--version`/`--help`/commands)                                                                                                                                                                                                                | yes      |
+| `web-build.sh`                   | `npm ci`, type-check + `vite build` of the front ends                                                                                                                                                                                                             | yes      |
+| `web-test.sh`                    | `npm ci`, build the workspace runtime packages, `vitest run` across every workspace, `node --test` over `scripts/lib`                                                                                                                                             | yes      |
+| `desktop-build.sh`               | `npm ci`, build the workspace runtime packages, type-check + `vite build` of the desktop UI, then clippy/rustdoc/build/test `crates/desktop`                                                                                                                      | yes      |
+| `specs-lint.sh`                  | markdownlint + cspell over `test-cases/**`                                                                                                                                                                                                                        | no       |
+| `format-check.sh`                | `prettier --check` over the whole checkout, frozen versions and `.prettierignore` aside                                                                                                                                                                           | no       |
+| `contract-drift.sh`              | regenerate TS bindings, JSON Schemas and gg's prompt templates, fail on diff                                                                                                                                                                                      | yes      |
+| `frozen-check.sh`                | `.frozen` test-case versions match their recorded digests                                                                                                                                                                                                         | yes      |
+| `validators-typecheck.sh`        | `npm ci`, `tsc --noEmit` over every case's `validation/<engine>/` project                                                                                                                                                                                         | yes      |
+| `build-context.sh`               | every Dockerfile `COPY` source — and every gg guest package, every tree the workspace bakes in with `include_str!`, and every package `stage-tcab-packages.mjs` bakes into the host package store — survives every `.dockerignore` allowlist that can apply to it | yes      |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
@@ -104,7 +105,7 @@ execute doctests, so the test scripts additionally run `cargo test --doc`.
 
 `install-gg-toolchains.sh` is the other provisioning helper, and it is a
 prerequisite rather than a convenience. gg drives a model in one of eleven
-program languages, and what a model is *told* each one's sandbox offers is a
+program languages, and what a model is _told_ each one's sandbox offers is a
 **signature catalogue** reflected out of that arm's own SDK by that arm's own
 documentation tool (`tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end,
 rustdoc, `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn).
@@ -122,7 +123,7 @@ reflect through the pinned `typescript`); it checks for both and says so.
 
 `install-gg-build-toolchains.sh` is its sibling and the second list, and the
 split is what keeps the first list's meaning. Building gg no longer only
-*reflects* each arm — it **runs every arm's artifact build**, because what a
+_reflects_ each arm — it **runs every arm's artifact build**, because what a
 model's program is compiled and evaluated against (the guest components, the
 compiled library sets, the SDK jars) stopped being committed for the same reason
 the catalogues did: each arm has a crate under `crates/gg-sandbox-artifacts/`
@@ -195,7 +196,7 @@ file against the length the server advertised, and keeps the partial file when i
 gives up, staged under `gg_fetch_dir` — `~/.cache/tcab/downloads`, which the
 service-image build already mounts a BuildKit cache over. That last part is what a
 1.05 GB Swift toolchain on a 1.5 MB/s link needs: a dropped connection costs the
-remainder of the transfer rather than all of it, and it costs the *next* run
+remainder of the transfer rather than all of it, and it costs the _next_ run
 nothing at all.
 
 ## Scope

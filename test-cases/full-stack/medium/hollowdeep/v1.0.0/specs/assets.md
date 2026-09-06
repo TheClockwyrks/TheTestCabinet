@@ -23,14 +23,14 @@ Exactly these six binaries are on your `PATH` — no others (there is no `ui`, `
 `texture`, voxel, or mesh tool in this image), so all UI/HUD chrome is drawn **in
 code** (below):
 
-| Tool | Produces | Used for |
-| --- | --- | --- |
-| `draw` | one sprite → a PNG | tiles, machines, resource items, HUD icons |
-| `draw-sheet` | a sprite sheet, **one PNG per frame** | the delvers' animations |
-| `particle-2d` | a particle system → a `system.json` | the gas overlays, dig dust, machine exhaust |
-| `sfx-synth` | a procedural sound → a `.wav` | dig / build / alarm cues from raw synthesis |
-| `sfx-sample` | a sampled sound over the sample pack → a `.wav` | richer dig / build / machine / alarm cues |
-| `music` | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the ambient underground bed |
+| Tool          | Produces                                                       | Used for                                    |
+| ------------- | -------------------------------------------------------------- | ------------------------------------------- |
+| `draw`        | one sprite → a PNG                                             | tiles, machines, resource items, HUD icons  |
+| `draw-sheet`  | a sprite sheet, **one PNG per frame**                          | the delvers' animations                     |
+| `particle-2d` | a particle system → a `system.json`                            | the gas overlays, dig dust, machine exhaust |
+| `sfx-synth`   | a procedural sound → a `.wav`                                  | dig / build / alarm cues from raw synthesis |
+| `sfx-sample`  | a sampled sound over the sample pack → a `.wav`                | richer dig / build / machine / alarm cues   |
+| `music`       | sequenced music over the instrument bank → a `.wav` (+ `.mid`) | the ambient underground bed                 |
 
 Each is a command-line tool. **Run `<tool> --help` to learn its operations** (and
 `<tool> <operation> --help` for one operation's flags) — the operation vocabulary is
@@ -67,8 +67,8 @@ path like `/runs/<id>/build/`). So:
 - **Reference assets relative to the document or module instead.** Prefer letting your
   bundler resolve them: import each PNG / `.wav` / JSON, or use a bundler directory
   glob (for example Vite's `import.meta.glob('../assets/**/*.png', { eager: true,
-  query: '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
-  import.meta.url)` also works if your bundler can statically resolve it.
+query: '?url' })`) and use the URLs it returns. A runtime `new URL('./assets/…',
+import.meta.url)` also works if your bundler can statically resolve it.
 - **Configure your bundler's base to be relative** (for Vite, `base: './'`) so the
   emitted JS, CSS, and asset URLs are all page-relative.
 
@@ -195,7 +195,7 @@ drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
 - **Selection and tool feedback** — dig designations, build ghosts, the hovered-tile
   cursor, priority indicators (`specs/controls.md`).
 - The **gas overlay's driving** — the logic that spawns and scales the produced haze
-  and plume systems from tile concentrations (the *systems* are produced; deciding
+  and plume systems from tile concentrations (the _systems_ are produced; deciding
   where and how strongly to play them is code).
 
 ## Genuinely produce the assets — this is the point here

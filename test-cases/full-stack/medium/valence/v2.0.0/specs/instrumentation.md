@@ -143,6 +143,7 @@ meant to produce; you arrange the situation, `step()` runs the real systems, and
   scenario needs the game's real round behavior over a board holding only what
   the scenario itself posed. Nothing a player does reaches a scenario round — it
   is opened only by this call.
+
 - `spawnUnit(spec)` puts one unit onto a path through the real spawn system, so
   it flows, is targeted, decomposes, leaks, and pays out like any other spawned
   unit. `spec` may set `type` (one of the matter types in `specs/matter.md`,

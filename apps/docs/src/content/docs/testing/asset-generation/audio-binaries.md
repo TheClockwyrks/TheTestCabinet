@@ -9,11 +9,11 @@ effects such as weapons firing, footsteps, engines, impacts, and explosions, and
 short music such as stingers, fanfares, and loops. There are three binaries, one
 per `asset_kind`, each measuring a different tier of audio-authoring skill.
 
-| Binary | `asset_kind` | What it measures |
-| --- | --- | --- |
-| `sfx-synth` | `sfx-synth` | procedural synthesis — a modular synth op graph: raw DSP and sound-design reasoning |
+| Binary       | `asset_kind` | What it measures                                                                                            |
+| ------------ | ------------ | ----------------------------------------------------------------------------------------------------------- |
+| `sfx-synth`  | `sfx-synth`  | procedural synthesis — a modular synth op graph: raw DSP and sound-design reasoning                         |
 | `sfx-sample` | `sfx-sample` | layered mixing over a sample library — selection, layering, timing, and processing: the game-audio-DAW tier |
-| `music` | `music` | a symbolic sequencer — notes on instrument tracks, rendered and emitted with a portable score |
+| `music`      | `music`      | a symbolic sequencer — notes on instrument tracks, rendered and emitted with a portable score               |
 
 `sfx-sample` is a capability superset of `sfx-synth`: it carries the same synth
 voices and adds a sample library to mix over. The library is what changes

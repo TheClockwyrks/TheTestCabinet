@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -105,9 +111,7 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     typeSlug("anthropic/claude-sonnet-4.5");
     fireEvent.click(fillButton());
 
-    await waitFor(() =>
-      expect(nameInput()).toHaveValue("Claude Sonnet 4.5"),
-    );
+    await waitFor(() => expect(nameInput()).toHaveValue("Claude Sonnet 4.5"));
     expect(lookup).toHaveBeenCalledWith("anthropic/claude-sonnet-4.5", "t");
     expect(providerInput()).toHaveValue("Anthropic");
     expect(descriptionInput()).toHaveValue(LISTING.description);

@@ -37,11 +37,11 @@ open against its profile, replacing whatever that profile had recorded before.
 The next instance re-opens them before its first turn, in order: file views,
 then text views, then documentation views.
 
-| View | Recorded as | Restored by |
-| --- | --- | --- |
-| File | the path and the line region the read covered | re-reading the file from the workspace |
-| Text | the label and the body | handing the body back verbatim |
-| Documentation | the key | rendering the key again for this instance's scope |
+| View          | Recorded as                                   | Restored by                                       |
+| ------------- | --------------------------------------------- | ------------------------------------------------- |
+| File          | the path and the line region the read covered | re-reading the file from the workspace            |
+| Text          | the label and the body                        | handing the body back verbatim                    |
+| Documentation | the key                                       | rendering the key again for this instance's scope |
 
 Text and documentation views are opened by
 [responses-as-code](/gg/responses-as-code/overview/) calls, so only a code-mode
@@ -166,15 +166,15 @@ The capability is per agent and takes no params:
       "id": "read-file",
       "enabled": true,
       "implementation": "default-cap",
-      "params": { "lineCap": 250 }
+      "params": { "lineCap": 250 },
     },
     {
       "id": "shell",
       "enabled": true,
       "implementation": "offload",
-      "params": { "maxLines": 250, "maxChars": 4096 }
-    }
-  ]
+      "params": { "maxLines": 250, "maxChars": 4096 },
+    },
+  ],
 }
 ```
 

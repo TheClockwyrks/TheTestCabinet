@@ -1,4 +1,4 @@
-**Thunderhead Theme** is the main-menu music for *Thunderhead*, a real-time,
+**Thunderhead Theme** is the main-menu music for _Thunderhead_, a real-time,
 combined-arms fleet-command game fought across a cloud sea.
 
 This asset-generation case asks a model to compose it as a long, grand,

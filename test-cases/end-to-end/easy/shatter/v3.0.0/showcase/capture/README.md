@@ -33,7 +33,7 @@ that has to curve around the star to reach its rock is found by that search
 exactly as a straight one is, which is why the clips show both.
 
 The trigger is pulled on the live world, never on a plan made earlier: on every
-frame the gun's gate is open, the round the ship would fire *right now* is flown
+frame the gun's gate is open, the round the ship would fire _right now_ is flown
 forward, and the key goes down only if that round lands.
 
 Two rules sit over the aim. A ship at rest is a dull ship, so the pilot holds a
@@ -74,16 +74,16 @@ staged `validation/` copy so the reference stays byte-clean.
 
 ## The knobs
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_VALIDATION_MEDIA_DIR` | unset | Where the media is written. Unset writes nothing, which is what makes an audition free. |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched by the `sed` above to read this. The game runs at 120 ticks a second, so a cap between half and all of a take's ticks thins it to exactly 60 frames a second; `2200` does that for any take from 18 to 36 seconds. |
-| `TCAB_SHOWCASE_SEEDS` | `1,2,3,4,5,6,7,8` | The seeds auditioned, each crossed with every phase. |
-| `TCAB_SHOWCASE_PHASES` | `0,1,2` | The roam-heading rotations auditioned, so takes differ beyond what the seed varies. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `26` | The earliest a take may end. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | `36` | The hard ceiling, past which a take ends wherever it stands. |
-| `TCAB_SHOWCASE_TAKE` | unset | `<seed>:<phase>` records that take and auditions nothing, which is how a committed clip is reproduced without paying for the audition. |
-| `TCAB_SHOWCASE_QA_STILLS` | unset | `1` writes a still every three seconds, for eyeballing a take. |
+| Variable                          | Default           | What it does                                                                                                                                                                                                                                         |
+| --------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_VALIDATION_MEDIA_DIR`       | unset             | Where the media is written. Unset writes nothing, which is what makes an audition free.                                                                                                                                                              |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`             | The harness's replay cap, patched by the `sed` above to read this. The game runs at 120 ticks a second, so a cap between half and all of a take's ticks thins it to exactly 60 frames a second; `2200` does that for any take from 18 to 36 seconds. |
+| `TCAB_SHOWCASE_SEEDS`             | `1,2,3,4,5,6,7,8` | The seeds auditioned, each crossed with every phase.                                                                                                                                                                                                 |
+| `TCAB_SHOWCASE_PHASES`            | `0,1,2`           | The roam-heading rotations auditioned, so takes differ beyond what the seed varies.                                                                                                                                                                  |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `26`              | The earliest a take may end.                                                                                                                                                                                                                         |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | `36`              | The hard ceiling, past which a take ends wherever it stands.                                                                                                                                                                                         |
+| `TCAB_SHOWCASE_TAKE`              | unset             | `<seed>:<phase>` records that take and auditions nothing, which is how a committed clip is reproduced without paying for the audition.                                                                                                               |
+| `TCAB_SHOWCASE_QA_STILLS`         | unset             | `1` writes a still every three seconds, for eyeballing a take.                                                                                                                                                                                       |
 
 ## How a take is judged
 
@@ -123,9 +123,9 @@ itself off the per-frame deltas.
 
 ## The committed media
 
-| Variant | Take | Cap | What it turned out to be |
-| --- | --- | --- | --- |
-| `base` | seed 5, phase 1 | 2200 | 29.9 s. Opens on the title; wave 1 cleared at 15.8 s and the `WAVE 2` banner run over an empty field; the saucer arriving at 18.0 s and hunting to the end. 61 rocks broken for 4 480 points, no ship lost. |
+| Variant   | Take            | Cap  | What it turned out to be                                                                                                                                                                                                                      |
+| --------- | --------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`    | seed 5, phase 1 | 2200 | 29.9 s. Opens on the title; wave 1 cleared at 15.8 s and the `WAVE 2` banner run over an empty field; the saucer arriving at 18.0 s and hunting to the end. 61 rocks broken for 4 480 points, no ship lost.                                   |
 | `warhead` | seed 2, phase 2 | 2200 | 31.6 s. Opens on the title; four torpedo runs launched and all four detonated; wave 1 cleared at 16.0 s with the banner; the saucer's whole visit, arriving at 18.0 s and leaving at 30.0 s. 48 rocks broken for 3 330 points, one ship lost. |
 
 Both were auditioned over the default seeds and phases and recorded at

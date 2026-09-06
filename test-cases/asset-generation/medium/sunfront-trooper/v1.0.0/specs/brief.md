@@ -76,16 +76,16 @@ the Sunfront Trooper and deforms convincingly.
 
 Use only these opaque colors:
 
-| Role | Hex |
-| --- | --- |
-| Armor plate — primary (bronze) | `#b07a35` |
-| Armor plate — bright edges (gold) | `#d9a94e` |
+| Role                                        | Hex       |
+| ------------------------------------------- | --------- |
+| Armor plate — primary (bronze)              | `#b07a35` |
+| Armor plate — bright edges (gold)           | `#d9a94e` |
 | Deep plate, underside, shadow (dark bronze) | `#6b4a22` |
-| Canvas wraps (sand-bleached) | `#d8c79a` |
-| Canvas shadow (dun) | `#a8946a` |
-| Rifle, boots, fittings (gunmetal) | `#565c64` |
-| Deep recesses, shadow (dark iron) | `#31353b` |
-| Visor glow (amber) | `#ff9d2e` |
+| Canvas wraps (sand-bleached)                | `#d8c79a` |
+| Canvas shadow (dun)                         | `#a8946a` |
+| Rifle, boots, fittings (gunmetal)           | `#565c64` |
+| Deep recesses, shadow (dark iron)           | `#31353b` |
+| Visor glow (amber)                          | `#ff9d2e` |
 
 Set a clear amber visor glow across the helmet so it reads from many angles.
 

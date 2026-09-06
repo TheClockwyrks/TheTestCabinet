@@ -31,11 +31,9 @@ const SPARE: PosedCore = [1000, "garnet", null];
 
 /** A segment of `charges`, head first, one spacing apart, starting at `head`. */
 function segment(head: number, charges: readonly string[]): PosedCore[] {
-  return charges.map((charge, i): PosedCore => [
-    head - i * SPACING,
-    charge,
-    null,
-  ]);
+  return charges.map(
+    (charge, i): PosedCore => [head - i * SPACING, charge, null],
+  );
 }
 
 describe("runs", () => {

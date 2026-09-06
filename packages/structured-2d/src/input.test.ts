@@ -169,7 +169,6 @@ function resting(): PointerSnapshot {
   return { x: 0, y: 0, down: false, device: "mouse", buttons: [] };
 }
 
-
 describe("InputSystem registration", () => {
   it("defaults kind to digital and resolves it on the registered action", () => {
     const { system } = systemWith();
@@ -693,7 +692,10 @@ describe("InputSystem pointer buttons", () => {
 
     expect(reader.pointerReleased("secondary")).toBe(true);
     expect(reader.pointerReleased()).toBe(false);
-    expect(reader.pointer()).toMatchObject({ down: true, buttons: ["primary"] });
+    expect(reader.pointer()).toMatchObject({
+      down: true,
+      buttons: ["primary"],
+    });
     expect(reader.pointerSamples().map((sample) => sample.type)).toEqual([
       "down",
       "move",
@@ -771,7 +773,10 @@ describe("InputSystem pointer devices and contacts", () => {
     });
 
     expect(reader.pointerPressed()).toBe(true);
-    expect(reader.pointer()).toMatchObject({ down: true, buttons: ["primary"] });
+    expect(reader.pointer()).toMatchObject({
+      down: true,
+      buttons: ["primary"],
+    });
   });
 
   it("lists every pointer in contact, in contact order", () => {
@@ -786,7 +791,14 @@ describe("InputSystem pointer devices and contacts", () => {
     });
 
     expect(reader.pointerContacts()).toEqual([
-      { id: 1, x: 5, y: 5, primary: true, device: "touch", buttons: ["primary"] },
+      {
+        id: 1,
+        x: 5,
+        y: 5,
+        primary: true,
+        device: "touch",
+        buttons: ["primary"],
+      },
       {
         id: 2,
         x: 9,

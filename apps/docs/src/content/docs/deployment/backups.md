@@ -13,15 +13,15 @@ The backend keeps several things on disk, and only one of them is
 irreplaceable. The rest are regenerated from a source you still have, or already
 stored durably elsewhere.
 
-| Data | Where it lives | Recoverable without a backup? |
-| ---- | -------------- | ----------------------------- |
-| Published run records, reviews, links | The backend's database (`TCAB_BACKEND_DATABASE_URL`) | No. This is the system of record |
-| User accounts (usernames, password hashes, display names) | The [auth service](/components/auth/overview/)'s own database (`TCAB_AUTH_DATABASE_URL`) | No. Accounts cannot be reconstructed |
-| Test-case definition store (`TCAB_BACKEND_STORE`) | On disk | Yes, re-ingested from the repository |
-| Ingest checkout (`TCAB_BACKEND_CHECKOUT`) | On disk | Yes, it is a git checkout |
-| The [public snapshot](/components/backend/snapshot/) | Cloudflare R2 | Yes, regenerated from the database |
-| Run outputs (produced code, playable builds) | Per-run GitHub repos and Cloudflare Pages | Yes, already hosted there |
-| Run media (proof images/videos, produced asset images and logs) | The artifact service volume, and once published the R2 snapshot under `media/runs/` | Yes, from the published copy in R2 |
+| Data                                                            | Where it lives                                                                           | Recoverable without a backup?        |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------ |
+| Published run records, reviews, links                           | The backend's database (`TCAB_BACKEND_DATABASE_URL`)                                     | No. This is the system of record     |
+| User accounts (usernames, password hashes, display names)       | The [auth service](/components/auth/overview/)'s own database (`TCAB_AUTH_DATABASE_URL`) | No. Accounts cannot be reconstructed |
+| Test-case definition store (`TCAB_BACKEND_STORE`)               | On disk                                                                                  | Yes, re-ingested from the repository |
+| Ingest checkout (`TCAB_BACKEND_CHECKOUT`)                       | On disk                                                                                  | Yes, it is a git checkout            |
+| The [public snapshot](/components/backend/snapshot/)            | Cloudflare R2                                                                            | Yes, regenerated from the database   |
+| Run outputs (produced code, playable builds)                    | Per-run GitHub repos and Cloudflare Pages                                                | Yes, already hosted there            |
+| Run media (proof images/videos, produced asset images and logs) | The artifact service volume, and once published the R2 snapshot under `media/runs/`      | Yes, from the published copy in R2   |
 
 Backing up the runs therefore reduces to continuously backing up two small
 databases: the backend's records and the auth service's accounts. Both take the
@@ -72,10 +72,10 @@ pointing at them until you recover.
 How the database is backed up depends on which store it runs, and that pairs with
 the two backend-hosting shapes.
 
-| Store | Backend host | Backup strategy |
-| ----- | ------------ | --------------- |
+| Store                | Backend host                                                  | Backup strategy                                                                                             |
+| -------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | SQLite (the default) | A single-replica `StatefulSet` with a `PersistentVolumeClaim` | [Litestream](#sqlite-litestream) streaming to object storage, or [scheduled dumps](#sqlite-scheduled-dumps) |
-| Managed PostgreSQL | A stateless `Deployment` | [Provider backups and point-in-time restore](#managed-postgresql) |
+| Managed PostgreSQL   | A stateless `Deployment`                                      | [Provider backups and point-in-time restore](#managed-postgresql)                                           |
 
 The backend defaults to a single embedded SQLite file, so the SQLite paths below
 apply as-is. PostgreSQL is selected by pointing `TCAB_BACKEND_DATABASE_URL` at a

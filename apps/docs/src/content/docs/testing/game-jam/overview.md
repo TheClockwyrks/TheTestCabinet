@@ -24,7 +24,7 @@ and the public gallery.
   the case's `max_runtime_hours`, and the container has `date` so the model can
   read the current time and pace itself.
 - The same fixed build interface a full-stack case uses. `npm ci && npm run
-  build` emits a self-contained static site into `dist/`, `build/`, or `out/`
+build` emits a self-contained static site into `dist/`, `build/`, or `out/`
   that works at any base path.
 
 Resolution rejects `[[spec]]`, `[[reference]]`, and `[[domain]]` tables on a

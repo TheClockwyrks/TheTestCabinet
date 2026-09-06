@@ -9,14 +9,14 @@ name this specification gives it.
 A field supply is bought with Credits and carried as a count per type. Using one
 consumes one.
 
-| Hotkey | Item | Id | Price | Effect |
-| --- | --- | --- | --- | --- |
-| `1` | Dynamite | `dynamite` | `300` | Clears the `3x3` block of cells centered on the miner's cell. |
-| `2` | Plastic Explosives | `plastic-explosives` | `1000` | Clears the `5x5` block of cells centered on the miner's cell. |
-| `3` | Quantum Teleporter | `quantum-teleporter` | `1500` | Places the miner above the camp at a random height and downward speed. |
-| `4` | Matter Transmitter | `matter-transmitter` | `8000` | Places the miner standing on the camp ground at zero velocity. |
-| `5` | Regenerative Nanobots | `nanobots` | `4000` | Repairs `NANOBOT_HULL` (`20`) hull, capped at the maximum. |
-| `6` | Emergency Fuel | `emergency-fuel` | `2000` | Adds `EMERGENCY_FUEL` (`30`) fuel, capped at the maximum. |
+| Hotkey | Item                  | Id                   | Price  | Effect                                                                 |
+| ------ | --------------------- | -------------------- | ------ | ---------------------------------------------------------------------- |
+| `1`    | Dynamite              | `dynamite`           | `300`  | Clears the `3x3` block of cells centered on the miner's cell.          |
+| `2`    | Plastic Explosives    | `plastic-explosives` | `1000` | Clears the `5x5` block of cells centered on the miner's cell.          |
+| `3`    | Quantum Teleporter    | `quantum-teleporter` | `1500` | Places the miner above the camp at a random height and downward speed. |
+| `4`    | Matter Transmitter    | `matter-transmitter` | `8000` | Places the miner standing on the camp ground at zero velocity.         |
+| `5`    | Regenerative Nanobots | `nanobots`           | `4000` | Repairs `NANOBOT_HULL` (`20`) hull, capped at the maximum.             |
+| `6`    | Emergency Fuel        | `emergency-fuel`     | `2000` | Adds `EMERGENCY_FUEL` (`30`) fuel, capped at the maximum.              |
 
 Using an item held zero of, or one that would change nothing, is a no-op: a note
 is shown and nothing is consumed.

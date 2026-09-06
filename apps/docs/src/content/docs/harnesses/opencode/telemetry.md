@@ -28,23 +28,23 @@ A run writes `/home/node/.config/opencode/opencode.json`:
 
 ## Exported signals
 
-| Signal | Exported |
-| ------ | -------- |
-| Traces | Yes |
-| Metrics | Yes |
-| Logs | Yes |
+| Signal  | Exported |
+| ------- | -------- |
+| Traces  | Yes      |
+| Metrics | Yes      |
+| Logs    | Yes      |
 
 ## Configuration
 
 Everything the plugin reads is vendor-prefixed, so a run sets these variables
 rather than the standard `OTEL_*` ones:
 
-| Variable | Value | Purpose |
-| -------- | ----- | --- |
-| `OPENCODE_ENABLE_TELEMETRY` | `1` | The master switch. |
-| `OPENCODE_OTLP_ENDPOINT` | the collector | A base URL, with the scheme included. The plugin appends `/v1/traces`, `/v1/metrics`, and `/v1/logs` itself. |
-| `OPENCODE_OTLP_PROTOCOL` | `http/protobuf` | The run's OTLP protocol, set explicitly because the plugin defaults to gRPC on `:4317`. |
-| `OPENCODE_TRACEPARENT` | the run's trace context | Joins the run's trace. Set only when a trace is in scope. |
+| Variable                    | Value                   | Purpose                                                                                                      |
+| --------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `OPENCODE_ENABLE_TELEMETRY` | `1`                     | The master switch.                                                                                           |
+| `OPENCODE_OTLP_ENDPOINT`    | the collector           | A base URL, with the scheme included. The plugin appends `/v1/traces`, `/v1/metrics`, and `/v1/logs` itself. |
+| `OPENCODE_OTLP_PROTOCOL`    | `http/protobuf`         | The run's OTLP protocol, set explicitly because the plugin defaults to gRPC on `:4317`.                      |
+| `OPENCODE_TRACEPARENT`      | the run's trace context | Joins the run's trace. Set only when a trace is in scope.                                                    |
 
 ## Trace linking
 

@@ -23,9 +23,9 @@ The build is a small state machine. Each state has a clear screen and controls.
    - **PLAY** — opens the **starting-wave** prompt (below), then starts the run.
    - **HOW TO PLAY** — opens a controls/how-to screen (below), which returns to the
      title.
-   This screen is **static on load** (it does not animate a live world behind it in a
-   way that changes what a screenshot shows), so it is the deterministic view the
-   harness checks.
+     This screen is **static on load** (it does not animate a live world behind it in a
+     way that changes what a screenshot shows), so it is the deterministic view the
+     harness checks.
 2. **Starting-wave prompt.** Reached from **PLAY**. Lets the player begin at **wave 1**
    or **skip ahead** to a later wave (`specs/waves.md`), with wave 1 the default and a
    short note that a later start drops straight into the tougher assault with a scaled
@@ -47,7 +47,7 @@ The build is a small state machine. Each state has a clear screen and controls.
    destroyed**, **time**, and **funds** earned, with options to **DEFEND AGAIN**
    (restart at the same starting wave) and **RETURN** (to the title).
 7. **Overrun (defeat).** Shown when the Core falls. Displays a defeat line (e.g. `THE
-   CORE IS LOST`), the **wave reached**, **Slag destroyed**, and **time**, with the
+CORE IS LOST`), the **wave reached**, **Slag destroyed**, and **time**, with the
    same two options. Both end screens share one layout, recolored by result.
 
 Every state must be reachable and behave as described.

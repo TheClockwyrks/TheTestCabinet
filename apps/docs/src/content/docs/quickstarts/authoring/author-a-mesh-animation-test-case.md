@@ -64,12 +64,12 @@ on `render`. The case declares no `[[reference]]` and carries no target model.
    `[output].actions` each carry the `{part}` token, as in `parts/{part}.png` and
    `parts/{part}.actions.json`.
 
-| Declared | Rejected |
-| --- | --- |
-| `type = "asset-generation"` and `asset_kind` (`mc-animation` / `sn-animation` / `dc-animation`) | `[canvas]`, replaced by `[voxel]` |
-| `changelog`; `[voxel]`; `[tool].binary` with a `{part}` `preview`; `[output].actions` with `{part}` | `[[reference]]`, since there is no target model |
-| `[model]` carrying `[[model.animation]]` entries (`name`, `loop`, `auto_play`) | `[build]` and `[[check]]`, since there is no served build |
-| `variants` as a root key, first entry the default; the single `overall` `[[domain]]` | `[[review_item]]`, since the rig is judged as a whole on one rating |
+| Declared                                                                                            | Rejected                                                            |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `type = "asset-generation"` and `asset_kind` (`mc-animation` / `sn-animation` / `dc-animation`)     | `[canvas]`, replaced by `[voxel]`                                   |
+| `changelog`; `[voxel]`; `[tool].binary` with a `{part}` `preview`; `[output].actions` with `{part}` | `[[reference]]`, since there is no target model                     |
+| `[model]` carrying `[[model.animation]]` entries (`name`, `loop`, `auto_play`)                      | `[build]` and `[[check]]`, since there is no served build           |
+| `variants` as a root key, first entry the default; the single `overall` `[[domain]]`                | `[[review_item]]`, since the rig is judged as a whole on one rating |
 
 The Aegis six-legged walking fortress is the worked example, rigged once per
 algorithm as `aegis-mc-anim`, `aegis-sn-anim`, and `aegis-dc-anim`. Read the one

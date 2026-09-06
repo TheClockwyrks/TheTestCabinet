@@ -120,29 +120,33 @@ backend's own stored copy is left intact; only this public export is rewritten.
       "pictureKey": "pfp/acct_7yq…",
       "ratings": [
         { "domain": "single-player", "rating": "great" },
-        { "domain": "versus", "rating": "scuffed" }
+        { "domain": "versus", "rating": "scuffed" },
       ],
       "writeup": "Plays well, but the AI paddle…",
       "checklist": [],
-      "reviewedAt": "2026-06-21T18:00:00Z"
+      "reviewedAt": "2026-06-21T18:00:00Z",
     },
     {
       "reviewerId": "acct_3kd…",
       "reviewer": "Bao",
       "aesthetic": "amazing",
       "checklist": [
-        { "id": "controls.ai", "status": "fail", "note": "Precondition unmet." }
+        {
+          "id": "controls.ai",
+          "status": "fail",
+          "note": "Precondition unmet.",
+        },
       ],
       "writeup": "Gorgeous art; overrode one point whose precondition was unmet.",
-      "reviewedAt": "2026-08-24T09:00:00Z"
-    }
+      "reviewedAt": "2026-08-24T09:00:00Z",
+    },
   ],
   "links": {
     "sourceRepo": "https://github.com/…",
-    "playableBuild": "https://abc123.test-cabinet-runs.pages.dev"
+    "playableBuild": "https://abc123.test-cabinet-runs.pages.dev",
   },
   // Optional: the normalized event stream, a JSON array of HarnessEvents.
-  "events": [{ "timestamp": "…", "type": "agent", "message": "…" }]
+  "events": [{ "timestamp": "…", "type": "agent", "message": "…" }],
 }
 ```
 

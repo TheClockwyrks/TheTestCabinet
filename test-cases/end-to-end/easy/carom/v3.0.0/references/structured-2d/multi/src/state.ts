@@ -31,7 +31,12 @@ export type Mode = "solo" | "versus";
 
 /** The top-level state machine (specs/ui.md). */
 export type Screen =
-  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
+  | "title"
+  | "howto"
+  | "countdown"
+  | "playing"
+  | "paused"
+  | "matchover";
 
 /** The two screens a pause can resume to. */
 export type ResumeScreen = "countdown" | "playing";

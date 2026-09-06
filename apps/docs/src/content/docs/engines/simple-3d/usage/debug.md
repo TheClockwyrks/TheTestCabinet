@@ -32,8 +32,18 @@ interface State {
 }
 
 interface Debug {
-  setHookPosition(state: DeepReadonly<State>, x: number, y: number, z: number): State;
-  setHookVelocity(state: DeepReadonly<State>, vx: number, vy: number, vz: number): State;
+  setHookPosition(
+    state: DeepReadonly<State>,
+    x: number,
+    y: number,
+    z: number,
+  ): State;
+  setHookVelocity(
+    state: DeepReadonly<State>,
+    vx: number,
+    vy: number,
+    vz: number,
+  ): State;
   setPhase(state: DeepReadonly<State>, phase: State["phase"]): State;
   phase(state: DeepReadonly<State>): State["phase"];
   progress(state: DeepReadonly<State>): { placed: number; budget: number };
@@ -50,7 +60,10 @@ const game: Game<State, Debug> = {
 
     const debug: Debug = {
       setHookPosition: (s, x, y, z) => ({ ...s, hook: { ...s.hook, x, y, z } }),
-      setHookVelocity: (s, vx, vy, vz) => ({ ...s, hook: { ...s.hook, vx, vy, vz } }),
+      setHookVelocity: (s, vx, vy, vz) => ({
+        ...s,
+        hook: { ...s.hook, vx, vy, vz },
+      }),
       setPhase: (s, phase) => ({ ...s, phase }),
       phase: (s) => s.phase,
       progress: (s) => ({ placed: s.placed, budget: s.budget }),

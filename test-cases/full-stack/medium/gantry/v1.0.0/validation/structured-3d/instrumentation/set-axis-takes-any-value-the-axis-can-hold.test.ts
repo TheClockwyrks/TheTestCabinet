@@ -86,6 +86,9 @@ it("takes a value outside the axis's step range and reads it back unchanged", as
   } finally {
     // In a `finally`, so a check that fails inside the sweep still leaves
     // the picture that shows why.
-    await h.capture("state", "the run carrying the three values that were posed");
+    await h.capture(
+      "state",
+      "the run carrying the three values that were posed",
+    );
   }
 });

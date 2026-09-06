@@ -42,16 +42,16 @@ test case.
 
 ## Controls
 
-| Action | Keys |
-| --- | --- |
-| Move (Solo, player one) | `W` / `S` or `↑` / `↓` |
-| Move player one (Versus) | `W` / `S` |
-| Move player two (Versus) | `↑` / `↓` |
-| Menu navigation | `↑` / `↓` (or `W` / `S`) |
-| Confirm | `Enter` or `Space` |
-| Back | `Esc` |
-| Pause (in match) | `Esc` or `P` |
-| Mute / unmute audio | `M` |
+| Action                   | Keys                     |
+| ------------------------ | ------------------------ |
+| Move (Solo, player one)  | `W` / `S` or `↑` / `↓`   |
+| Move player one (Versus) | `W` / `S`                |
+| Move player two (Versus) | `↑` / `↓`                |
+| Menu navigation          | `↑` / `↓` (or `W` / `S`) |
+| Confirm                  | `Enter` or `Space`       |
+| Back                     | `Esc`                    |
+| Pause (in match)         | `Esc` or `P`             |
+| Mute / unmute audio      | `M`                      |
 
 ## Requirements
 

@@ -83,10 +83,27 @@ export type DesireKey = "thrill" | "hunger" | "thirst" | "bladder" | "energy";
 export type StallServe = DesireKey | "souvenir";
 
 export const RIDE_ORDER: RideKind[] = ["carousel", "coaster", "drop_tower"];
-export const STALL_ORDER: StallKind[] = ["food", "drink", "souvenir", "restroom"];
-export const SCENERY_ORDER: SceneryKind[] = ["tree", "flowerbed", "bench", "lamp", "fountain"];
+export const STALL_ORDER: StallKind[] = [
+  "food",
+  "drink",
+  "souvenir",
+  "restroom",
+];
+export const SCENERY_ORDER: SceneryKind[] = [
+  "tree",
+  "flowerbed",
+  "bench",
+  "lamp",
+  "fountain",
+];
 export const STAFF_ORDER: StaffKind[] = ["janitor", "mechanic", "entertainer"];
-export const TOOL_ORDER: ToolKind[] = ["path", "build", "staff", "price", "demolish"];
+export const TOOL_ORDER: ToolKind[] = [
+  "path",
+  "build",
+  "staff",
+  "price",
+  "demolish",
+];
 
 // ---- Ride catalog (specs/rides.md; footprints from ASSETS.md) ------------------
 // Per-completed-run breakdown accrual (scaled by time-since-inspect in the sim). A ride
@@ -112,16 +129,52 @@ export interface RideDef {
 
 export const RIDES: Record<RideKind, RideDef> = {
   carousel: {
-    kind: "carousel", label: "CAROUSEL", sprite: "rides/carousel", anim: "ride/carousel", animFrames: 6,
-    w: 3, h: 3, cost: 800, upkeep: 30, price: 3, capacity: 8, rideDuration: 6, thrill: 20, breakdownRate: BREAKDOWN.low,
+    kind: "carousel",
+    label: "CAROUSEL",
+    sprite: "rides/carousel",
+    anim: "ride/carousel",
+    animFrames: 6,
+    w: 3,
+    h: 3,
+    cost: 800,
+    upkeep: 30,
+    price: 3,
+    capacity: 8,
+    rideDuration: 6,
+    thrill: 20,
+    breakdownRate: BREAKDOWN.low,
   },
   coaster: {
-    kind: "coaster", label: "COASTER", sprite: "rides/coaster", anim: "ride/coaster", animFrames: 4,
-    w: 4, h: 3, cost: 1500, upkeep: 45, price: 6, capacity: 4, rideDuration: 8, thrill: 55, breakdownRate: BREAKDOWN.high,
+    kind: "coaster",
+    label: "COASTER",
+    sprite: "rides/coaster",
+    anim: "ride/coaster",
+    animFrames: 4,
+    w: 4,
+    h: 3,
+    cost: 1500,
+    upkeep: 45,
+    price: 6,
+    capacity: 4,
+    rideDuration: 8,
+    thrill: 55,
+    breakdownRate: BREAKDOWN.high,
   },
   drop_tower: {
-    kind: "drop_tower", label: "DROP TOWER", sprite: "rides/drop_tower", anim: "ride/drop_tower", animFrames: 6,
-    w: 2, h: 2, cost: 1200, upkeep: 35, price: 5, capacity: 6, rideDuration: 5, thrill: 45, breakdownRate: BREAKDOWN.med,
+    kind: "drop_tower",
+    label: "DROP TOWER",
+    sprite: "rides/drop_tower",
+    anim: "ride/drop_tower",
+    animFrames: 6,
+    w: 2,
+    h: 2,
+    cost: 1200,
+    upkeep: 35,
+    price: 5,
+    capacity: 6,
+    rideDuration: 5,
+    thrill: 45,
+    breakdownRate: BREAKDOWN.med,
   },
 };
 
@@ -140,10 +193,54 @@ export interface StallDef {
 }
 
 export const STALLS: Record<StallKind, StallDef> = {
-  food: { kind: "food", label: "FOOD", sprite: "stalls/food", serves: "hunger", w: 2, h: 1, cost: 350, upkeep: 12, price: 5, steam: true },
-  drink: { kind: "drink", label: "DRINK", sprite: "stalls/drink", serves: "thirst", w: 2, h: 1, cost: 300, upkeep: 12, price: 3, steam: true },
-  souvenir: { kind: "souvenir", label: "SOUVENIR", sprite: "stalls/souvenir", serves: "souvenir", w: 2, h: 1, cost: 300, upkeep: 10, price: 8, steam: false },
-  restroom: { kind: "restroom", label: "RESTROOM", sprite: "stalls/restroom", serves: "bladder", w: 2, h: 1, cost: 250, upkeep: 8, price: 1, steam: false },
+  food: {
+    kind: "food",
+    label: "FOOD",
+    sprite: "stalls/food",
+    serves: "hunger",
+    w: 2,
+    h: 1,
+    cost: 350,
+    upkeep: 12,
+    price: 5,
+    steam: true,
+  },
+  drink: {
+    kind: "drink",
+    label: "DRINK",
+    sprite: "stalls/drink",
+    serves: "thirst",
+    w: 2,
+    h: 1,
+    cost: 300,
+    upkeep: 12,
+    price: 3,
+    steam: true,
+  },
+  souvenir: {
+    kind: "souvenir",
+    label: "SOUVENIR",
+    sprite: "stalls/souvenir",
+    serves: "souvenir",
+    w: 2,
+    h: 1,
+    cost: 300,
+    upkeep: 10,
+    price: 8,
+    steam: false,
+  },
+  restroom: {
+    kind: "restroom",
+    label: "RESTROOM",
+    sprite: "stalls/restroom",
+    serves: "bladder",
+    w: 2,
+    h: 1,
+    cost: 250,
+    upkeep: 8,
+    price: 1,
+    steam: false,
+  },
 };
 
 // ---- Scenery catalog (specs/park.md — raises nearby path appeal) ---------------
@@ -160,11 +257,61 @@ export interface SceneryDef {
 }
 
 export const SCENERY: Record<SceneryKind, SceneryDef> = {
-  tree: { kind: "tree", label: "TREE", sprite: "scenery/tree", w: 1, h: 1, cost: 40, appeal: 0.25, radius: 3, rest: false },
-  flowerbed: { kind: "flowerbed", label: "FLOWERBED", sprite: "scenery/flowerbed", w: 1, h: 1, cost: 30, appeal: 0.2, radius: 3, rest: false },
-  bench: { kind: "bench", label: "BENCH", sprite: "scenery/bench", w: 1, h: 1, cost: 60, appeal: 0.15, radius: 2, rest: true },
-  lamp: { kind: "lamp", label: "LAMP", sprite: "scenery/lamp", w: 1, h: 1, cost: 50, appeal: 0.15, radius: 3, rest: false },
-  fountain: { kind: "fountain", label: "FOUNTAIN", sprite: "scenery/fountain", w: 2, h: 2, cost: 200, appeal: 0.5, radius: 4, rest: false },
+  tree: {
+    kind: "tree",
+    label: "TREE",
+    sprite: "scenery/tree",
+    w: 1,
+    h: 1,
+    cost: 40,
+    appeal: 0.25,
+    radius: 3,
+    rest: false,
+  },
+  flowerbed: {
+    kind: "flowerbed",
+    label: "FLOWERBED",
+    sprite: "scenery/flowerbed",
+    w: 1,
+    h: 1,
+    cost: 30,
+    appeal: 0.2,
+    radius: 3,
+    rest: false,
+  },
+  bench: {
+    kind: "bench",
+    label: "BENCH",
+    sprite: "scenery/bench",
+    w: 1,
+    h: 1,
+    cost: 60,
+    appeal: 0.15,
+    radius: 2,
+    rest: true,
+  },
+  lamp: {
+    kind: "lamp",
+    label: "LAMP",
+    sprite: "scenery/lamp",
+    w: 1,
+    h: 1,
+    cost: 50,
+    appeal: 0.15,
+    radius: 3,
+    rest: false,
+  },
+  fountain: {
+    kind: "fountain",
+    label: "FOUNTAIN",
+    sprite: "scenery/fountain",
+    w: 2,
+    h: 2,
+    cost: 200,
+    appeal: 0.5,
+    radius: 4,
+    rest: false,
+  },
 };
 
 // ---- Staff catalog (specs/staff.md) --------------------------------------------
@@ -176,9 +323,24 @@ export interface StaffDef {
 }
 
 export const STAFF: Record<StaffKind, StaffDef> = {
-  janitor: { kind: "janitor", label: "JANITOR", sprite: "staff/janitor", wage: 40 },
-  mechanic: { kind: "mechanic", label: "MECHANIC", sprite: "staff/mechanic", wage: 60 },
-  entertainer: { kind: "entertainer", label: "ENTERTAINER", sprite: "staff/entertainer", wage: 45 },
+  janitor: {
+    kind: "janitor",
+    label: "JANITOR",
+    sprite: "staff/janitor",
+    wage: 40,
+  },
+  mechanic: {
+    kind: "mechanic",
+    label: "MECHANIC",
+    sprite: "staff/mechanic",
+    wage: 60,
+  },
+  entertainer: {
+    kind: "entertainer",
+    label: "ENTERTAINER",
+    sprite: "staff/entertainer",
+    wage: 45,
+  },
 };
 
 // ---- Tuning table (specs/§4 of DESIGN.md; each number the specs leave to the author) --
@@ -201,7 +363,10 @@ export const TUNE = {
     walletMin: 20, // starting wallet range (rng)
     walletMax: 40,
     // desire GROWTH per day (thrill/hunger/thirst/bladder rise; energy handled separately)
-    desireGrowth: { thrill: 9, hunger: 7, thirst: 8, bladder: 6 } as Record<Exclude<DesireKey, "energy">, number>,
+    desireGrowth: { thrill: 9, hunger: 7, thirst: 8, bladder: 6 } as Record<
+      Exclude<DesireKey, "energy">,
+      number
+    >,
     thirstAfterRide: { amount: 4, seconds: 20 }, // extra thirst for a while after a ride
     bladderAfterDrink: { amount: 6, seconds: 30 }, // extra bladder for a while after a drink
     energyPerTile: 1.5, // energy lost per tile walked

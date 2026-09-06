@@ -41,7 +41,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -75,14 +77,22 @@ it("refuses an extension onto a hex that is not adjacent to the live end", async
 
   // The geometry the check claims to be posing.
   for (const hex of [START, NEXT, AWAY_FROM_START, AWAY_FROM_NEXT]) {
-    assertEqual(onField(hex), true, `the hex (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the hex (${hex.q}, ${hex.r}) is on the field`,
+    );
   }
   assertEqual(
     adjacent(START, AWAY_FROM_START),
     false,
     "the first offer is not adjacent to the one-cell path's live end",
   );
-  assertEqual(adjacent(START, NEXT), true, "the first control offer is adjacent to it");
+  assertEqual(
+    adjacent(START, NEXT),
+    true,
+    "the first control offer is adjacent to it",
+  );
   assertEqual(
     adjacent(NEXT, AWAY_FROM_NEXT),
     false,
@@ -121,9 +131,21 @@ it("refuses an extension onto a hex that is not adjacent to the live end", async
     true,
     "extending two hexes past the live end is refused: consecutive cells are adjacent",
   );
-  assertEqual(afterJump, pathOf([START]), "the refused extension left the path as it was");
-  assertEqual(stepFromStart, false, "extending one hex from the live end is taken");
-  assertEqual(afterStep, pathOf([START, NEXT]), "the taken extension is the path's second cell");
+  assertEqual(
+    afterJump,
+    pathOf([START]),
+    "the refused extension left the path as it was",
+  );
+  assertEqual(
+    stepFromStart,
+    false,
+    "extending one hex from the live end is taken",
+  );
+  assertEqual(
+    afterStep,
+    pathOf([START, NEXT]),
+    "the taken extension is the path's second cell",
+  );
   assertEqual(
     jumpFromNext,
     true,
@@ -134,7 +156,11 @@ it("refuses an extension onto a hex that is not adjacent to the live end", async
     pathOf([START, NEXT]),
     "that refusal left the two-cell path as it was",
   );
-  assertEqual(stepFromNext, false, "an extension adjacent to the new live end is taken");
+  assertEqual(
+    stepFromNext,
+    false,
+    "an extension adjacent to the new live end is taken",
+  );
   assertEqual(
     afterSecondStep,
     pathOf([START, NEXT, AWAY_FROM_START]),

@@ -23,10 +23,10 @@ Depot.
 
 The six five-tier tracks share one price ladder, held in `UPGRADE_PRICES`:
 
-| Step | Price |
-| --- | --- |
-| tier 1 to 2 | `300` |
-| tier 2 to 3 | `750` |
+| Step        | Price  |
+| ----------- | ------ |
+| tier 1 to 2 | `300`  |
+| tier 2 to 3 | `750`  |
 | tier 3 to 4 | `1900` |
 | tier 4 to 5 | `4100` |
 
@@ -38,12 +38,12 @@ The six five-tier tracks share one price ladder, held in `UPGRADE_PRICES`:
 Sets the maximum fuel.
 
 | Tier | Max fuel |
-| --- | --- |
-| 1 | `100` |
-| 2 | `175` |
-| 3 | `275` |
-| 4 | `400` |
-| 5 | `550` |
+| ---- | -------- |
+| 1    | `100`    |
+| 2    | `175`    |
+| 3    | `275`    |
+| 4    | `400`    |
+| 5    | `550`    |
 
 ## Drill
 
@@ -52,12 +52,12 @@ fractional. `specs/character.md` states the drill's cadence, what each hit costs
 and how the hits below follow from that damage against each band's `BAND_HEALTH`.
 
 | Tier | Damage per hit | Topsoil hits | Rockbed hits | Deepstone hits | Coreshell hits |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `1` | `4` | `8` | `12` | `16` |
-| 2 | `1.5` | `3` | `6` | `8` | `11` |
-| 3 | `2.5` | `2` | `4` | `5` | `7` |
-| 4 | `3.5` | `2` | `3` | `4` | `5` |
-| 5 | `5` | `1` | `2` | `3` | `4` |
+| ---- | -------------- | ------------ | ------------ | -------------- | -------------- |
+| 1    | `1`            | `4`          | `8`          | `12`           | `16`           |
+| 2    | `1.5`          | `3`          | `6`          | `8`            | `11`           |
+| 3    | `2.5`          | `2`          | `4`          | `5`            | `7`            |
+| 4    | `3.5`          | `2`          | `3`          | `4`            | `5`            |
+| 5    | `5`            | `1`          | `2`          | `3`            | `4`            |
 
 The shop shows the drill's tier as a power rating from `1` to `5` rather than the
 raw damage number.
@@ -68,24 +68,24 @@ Sets the cargo capacity in ore slots. Weight is a separate limit, set by the
 jetpack.
 
 | Tier | Capacity |
-| --- | --- |
-| 1 | `15` |
-| 2 | `25` |
-| 3 | `40` |
-| 4 | `70` |
-| 5 | `120` |
+| ---- | -------- |
+| 1    | `15`     |
+| 2    | `25`     |
+| 3    | `40`     |
+| 4    | `70`     |
+| 5    | `120`    |
 
 ## Hull
 
 Sets the maximum hull.
 
 | Tier | Max hull |
-| --- | --- |
-| 1 | `100` |
-| 2 | `150` |
-| 3 | `220` |
-| 4 | `320` |
-| 5 | `450` |
+| ---- | -------- |
+| 1    | `100`    |
+| 2    | `150`    |
+| 3    | `220`    |
+| 4    | `320`    |
+| 5    | `450`    |
 
 ## Jetpack
 
@@ -94,12 +94,12 @@ empty-load climb speed cap, and the empty-load climb acceleration.
 `specs/character.md` states how a load scales the last two.
 
 | Tier | `liftLimitKg` | `emptyClimb` | `emptyAccel` |
-| --- | --- | --- | --- |
-| 1 | `350` | `950` | `1200` |
-| 2 | `1100` | `1010` | `1270` |
-| 3 | `2850` | `1080` | `1350` |
-| 4 | `7400` | `1150` | `1440` |
-| 5 | `12700` | `1230` | `1540` |
+| ---- | ------------- | ------------ | ------------ |
+| 1    | `350`         | `950`        | `1200`       |
+| 2    | `1100`        | `1010`       | `1270`       |
+| 3    | `2850`        | `1080`       | `1350`       |
+| 4    | `7400`        | `1150`       | `1440`       |
+| 5    | `12700`       | `1230`       | `1540`       |
 
 ## Radiator
 
@@ -107,23 +107,23 @@ Sets the fraction by which lava damage is reduced, both the contact drain and th
 lump for drilling through a lava cell. It does not reduce gas damage.
 
 | Tier | Effectiveness |
-| --- | --- |
-| 1 | `0` |
-| 2 | `0.25` |
-| 3 | `0.45` |
-| 4 | `0.65` |
-| 5 | `0.8` |
+| ---- | ------------- |
+| 1    | `0`           |
+| 2    | `0.25`        |
+| 3    | `0.45`        |
+| 4    | `0.65`        |
+| 5    | `0.8`         |
 
 ## Scanner
 
 Sets the range at which the scanner locks onto a needed material node, in tiles.
 Tier `1` is no scanner at all.
 
-| Tier | Range |
-| --- | --- |
-| 1 | none |
-| 2 | `10` tiles |
-| 3 | `32` tiles |
+| Tier | Range      |
+| ---- | ---------- |
+| 1    | none       |
+| 2    | `10` tiles |
+| 3    | `32` tiles |
 
 Tier `2` reaches past the edge of the viewport, which is about `16` tiles wide.
 Tier `3` covers the full width of the world, so the band's node locks from

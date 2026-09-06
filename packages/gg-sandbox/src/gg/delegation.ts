@@ -104,9 +104,15 @@ type BriefInput = { prompt: string } | { issueId: string };
  */
 function brief(fn: string, request: BriefInput): SubagentBrief {
   const candidate = request as { prompt?: unknown; issueId?: unknown };
-  if (typeof candidate.prompt === "string") return { tag: "prompt", val: candidate.prompt };
-  if (typeof candidate.issueId === "string") return { tag: "issue", val: candidate.issueId };
-  throw new ApiError(fn, "invalid-argument", "expected exactly one of `prompt` or `issueId`");
+  if (typeof candidate.prompt === "string")
+    return { tag: "prompt", val: candidate.prompt };
+  if (typeof candidate.issueId === "string")
+    return { tag: "issue", val: candidate.issueId };
+  throw new ApiError(
+    fn,
+    "invalid-argument",
+    "expected exactly one of `prompt` or `issueId`",
+  );
 }
 
 /**
@@ -161,7 +167,12 @@ export function spawnSubagent(
   request: { agent: string } & ({ prompt: string } | { issueId: string }),
 ): SubagentHandle {
   return handle(
-    call(() => raw.spawnSubagent({ agent: request.agent, task: brief("spawnSubagent", request) })),
+    call(() =>
+      raw.spawnSubagent({
+        agent: request.agent,
+        task: brief("spawnSubagent", request),
+      }),
+    ),
   );
 }
 

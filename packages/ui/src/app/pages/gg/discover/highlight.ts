@@ -88,7 +88,8 @@ export function highlightSpans(
       (token.kind === "string" && token.unterminated === true) ||
       diagnostics.some(
         (diagnostic) =>
-          diagnostic.span.start < token.end && diagnostic.span.end > token.start,
+          diagnostic.span.start < token.end &&
+          diagnostic.span.end > token.start,
       );
     const span: HighlightSpan = {
       text: text.slice(token.start, token.end),

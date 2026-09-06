@@ -14,10 +14,10 @@ run executes rather than where it is launched. The full contract is in
 
 Each harness reads one provider variable:
 
-| Harness | Variable |
-| --- | --- |
-| `claude` | `ANTHROPIC_API_KEY` |
-| `codex` | `OPENAI_API_KEY` |
+| Harness                                          | Variable             |
+| ------------------------------------------------ | -------------------- |
+| `claude`                                         | `ANTHROPIC_API_KEY`  |
+| `codex`                                          | `OPENAI_API_KEY`     |
 | `cline`, `goose`, `kilo`, `opencode`, `pi`, `gg` | `OPENROUTER_API_KEY` |
 
 Billing is charged against the key, so the run records an attributable cost.
@@ -42,10 +42,10 @@ Sign in with the harness's own CLI on a trusted machine so it writes its
 credential files. The Test Cabinet copies those files into the run container; it
 performs no login and mints no tokens.
 
-| Harness | Sign in with | Credential it writes |
-| --- | --- | --- |
-| `claude` | the `claude` CLI | `~/.claude/.credentials.json`, `~/.claude.json` |
-| `codex` | `codex login` | `~/.codex/auth.json` (`$CODEX_HOME` relocates it) |
+| Harness       | Sign in with                   | Credential it writes                                |
+| ------------- | ------------------------------ | --------------------------------------------------- |
+| `claude`      | the `claude` CLI               | `~/.claude/.credentials.json`, `~/.claude.json`     |
+| `codex`       | `codex login`                  | `~/.codex/auth.json` (`$CODEX_HOME` relocates it)   |
 | `antigravity` | the `agy` CLI (Google account) | `~/.gemini/antigravity-cli/antigravity-oauth-token` |
 
 [Antigravity](/harnesses/antigravity/overview/) authenticates by subscription

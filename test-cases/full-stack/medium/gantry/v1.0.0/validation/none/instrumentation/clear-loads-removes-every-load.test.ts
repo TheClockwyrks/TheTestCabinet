@@ -19,11 +19,7 @@
 // emptied the yard of loads rather than emptying the yard.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertDeepEqual,
-  assertGreaterThan,
-  assertLength,
-} from "../assert";
+import { assertDeepEqual, assertGreaterThan, assertLength } from "../assert";
 import { SITES } from "../constants";
 import { createHarness, openSite, type Harness } from "../harness";
 

@@ -6,11 +6,11 @@ A gg turn is three operations, and they drag for different reasons. gg emits one
 `turn_timing` per turn, splitting the turn's wall-clock into the phase it was
 spent in.
 
-| Phase | What it covers |
-| --- | --- |
-| `promptMs` | Prompt construction: draining the agent's inbox, refreshing the pinned blocks, running any triggered [compaction](/gg/compaction/), resolving the offered toolset. From the turn's start to the moment the request was dispatched. |
-| `requestMs` | The model call itself, including any vision-recovery retry. The same figure the turn's `prompt` event carries as `durationMs`, so the two never disagree. |
-| `responseMs` | Response processing: dispatching and answering every tool call or running the turn's [program](/gg/responses-as-code/programs/), applying the state transitions the turn asked for, and closing the turn. |
+| Phase        | What it covers                                                                                                                                                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `promptMs`   | Prompt construction: draining the agent's inbox, refreshing the pinned blocks, running any triggered [compaction](/gg/compaction/), resolving the offered toolset. From the turn's start to the moment the request was dispatched. |
+| `requestMs`  | The model call itself, including any vision-recovery retry. The same figure the turn's `prompt` event carries as `durationMs`, so the two never disagree.                                                                          |
+| `responseMs` | Response processing: dispatching and answering every tool call or running the turn's [program](/gg/responses-as-code/programs/), applying the state transitions the turn asked for, and closing the turn.                          |
 
 The three are a partition of the turn rather than three independent stopwatches.
 gg derives the response phase as the remainder, so they always sum to exactly the

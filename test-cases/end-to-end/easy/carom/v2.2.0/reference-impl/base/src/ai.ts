@@ -50,10 +50,6 @@ export class AI {
       const speed = Math.min(AI_SPEED, Math.abs(diff) / dt);
       paddle.vy = dir * speed;
     }
-    paddle.cy = clamp(
-      paddle.cy + paddle.vy * dt,
-      PADDLE_MIN_CY,
-      PADDLE_MAX_CY,
-    );
+    paddle.cy = clamp(paddle.cy + paddle.vy * dt, PADDLE_MIN_CY, PADDLE_MAX_CY);
   }
 }

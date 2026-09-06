@@ -12,9 +12,9 @@ frame's delta and the player's input, and `render` copies it onto the camera.
 ```ts
 import type { Game, Vec3 } from "@clockwyrks/simple-3d";
 
-const ORBIT_RATE = 1.6;        // radians per second
-const ZOOM_PER_UNIT = 0.002;   // fraction of the distance per logical unit of wheel travel
-const PITCH_MIN = 0.15;        // radians above the ground plane
+const ORBIT_RATE = 1.6; // radians per second
+const ZOOM_PER_UNIT = 0.002; // fraction of the distance per logical unit of wheel travel
+const PITCH_MIN = 0.15; // radians above the ground plane
 const PITCH_MAX = 1.4;
 
 interface Orbit {
@@ -48,7 +48,14 @@ export const game: Game<State, null> = {
     api.input.register("up", { keys: ["ArrowUp", "KeyW"] });
     api.input.register("down", { keys: ["ArrowDown", "KeyS"] });
     return [
-      { orbit: { yaw: 0.6, pitch: 0.5, distance: 12, target: { x: 0, y: 0, z: 0 } } },
+      {
+        orbit: {
+          yaw: 0.6,
+          pitch: 0.5,
+          distance: 12,
+          target: { x: 0, y: 0, z: 0 },
+        },
+      },
       null,
     ];
   },
@@ -63,7 +70,11 @@ export const game: Game<State, null> = {
       orbit: {
         ...orbit,
         yaw: orbit.yaw + turn * ORBIT_RATE * dt,
-        pitch: clamp(orbit.pitch + tilt * ORBIT_RATE * dt, PITCH_MIN, PITCH_MAX),
+        pitch: clamp(
+          orbit.pitch + tilt * ORBIT_RATE * dt,
+          PITCH_MIN,
+          PITCH_MAX,
+        ),
         distance: clamp(orbit.distance * (1 + zoom), 4, 40),
       },
     };

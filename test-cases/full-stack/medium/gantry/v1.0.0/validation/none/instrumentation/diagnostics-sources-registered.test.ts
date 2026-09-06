@@ -27,12 +27,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
-import {
-  clearAll,
-  createHarness,
-  openSite,
-  type Harness,
-} from "../harness";
+import { clearAll, createHarness, openSite, type Harness } from "../harness";
 
 /** The key the overlay is shown by (`specs/instrumentation.md`). */
 const TOGGLE = "Backquote";

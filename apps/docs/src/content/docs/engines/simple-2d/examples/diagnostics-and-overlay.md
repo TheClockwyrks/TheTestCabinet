@@ -99,7 +99,10 @@ export const rally: Game<RallyState, null> = {
     const { width, height } = api.viewport();
 
     api.diagnostics.register("phase", (s) => s.phase);
-    api.diagnostics.register("score", (s) => `${s.score.left} - ${s.score.right}`);
+    api.diagnostics.register(
+      "score",
+      (s) => `${s.score.left} - ${s.score.right}`,
+    );
     api.diagnostics.register(
       "ball",
       (s) => `${s.ball.x.toFixed(0)}, ${s.ball.y.toFixed(0)}`,
@@ -119,7 +122,11 @@ export const rally: Game<RallyState, null> = {
     ];
   },
 
-  update(state: DeepReadonly<RallyState>, api: UpdateApi, dt: number): RallyState {
+  update(
+    state: DeepReadonly<RallyState>,
+    api: UpdateApi,
+    dt: number,
+  ): RallyState {
     const { width, height } = api.viewport();
     const fps = Math.round(1000 / Math.max(api.frame().lastDeltaMs, 1));
 

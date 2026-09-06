@@ -34,13 +34,13 @@ interface CueSpec {
 }
 ```
 
-| Field | Unit | Default | Meaning |
-| --- | --- | --- | --- |
-| `wave` | — | `"sine"` | The oscillator waveform. |
-| `freq` | hertz | required | The starting frequency. A loop holds it. |
-| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. A loop ignores it. |
-| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. A loop holds it. |
-| `durationMs` | milliseconds | required | How long the cue sounds. A loop ignores it. |
+| Field        | Unit         | Default  | Meaning                                                                 |
+| ------------ | ------------ | -------- | ----------------------------------------------------------------------- |
+| `wave`       | —            | `"sine"` | The oscillator waveform.                                                |
+| `freq`       | hertz        | required | The starting frequency. A loop holds it.                                |
+| `freqTo`     | hertz        | `freq`   | The frequency swept to linearly across the duration. A loop ignores it. |
+| `gain`       | `0`–`1`      | `0.2`    | The peak gain the envelope decays from. A loop holds it.                |
+| `durationMs` | milliseconds | required | How long the cue sounds. A loop ignores it.                             |
 
 ```ts
 override initialize(api: InitApi): null {
@@ -186,11 +186,11 @@ initialization.
 "audio:unlocked": Record<string, never>;
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `cue` | The name that was played, started looping, or stopped. |
-| `t` | The frame loop's accumulated simulated time in milliseconds at that moment. |
-| `gain` | The gain it played or started looping at. |
+| Field  | Meaning                                                                     |
+| ------ | --------------------------------------------------------------------------- |
+| `cue`  | The name that was played, started looping, or stopped.                      |
+| `t`    | The frame loop's accumulated simulated time in milliseconds at that moment. |
+| `gain` | The gain it played or started looping at.                                   |
 
 A play or a loop on a muted bus reports `gain: 0`. On an unmuted bus it reports
 the spec's `gain` for a synthesized cue and `1` for a file-backed cue.
@@ -209,14 +209,14 @@ const off = engine.events.on("cue:played", (event) => played.push(event.cue));
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `play`, `loop`, or `stop` names a cue that was never declared | Throws, naming the cue |
-| `looping` names a cue that was never declared | Returns `false` |
-| `load` is given a path the asset loader refuses | Rejects with the `resolve` error, and the cue stays undeclared |
-| `load` cannot fetch or decode the audio | Rejects with the cause, and the cue stays undeclared |
-| `load` rejects inside the instance's `initialize` or the start level's `load` | `engine.initialize` rejects with the cause |
-| No audio context is available | `play` and `loop` emit their events and nothing sounds |
+| Condition                                                                     | Result                                                         |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `play`, `loop`, or `stop` names a cue that was never declared                 | Throws, naming the cue                                         |
+| `looping` names a cue that was never declared                                 | Returns `false`                                                |
+| `load` is given a path the asset loader refuses                               | Rejects with the `resolve` error, and the cue stays undeclared |
+| `load` cannot fetch or decode the audio                                       | Rejects with the cause, and the cue stays undeclared           |
+| `load` rejects inside the instance's `initialize` or the start level's `load` | `engine.initialize` rejects with the cause                     |
+| No audio context is available                                                 | `play` and `loop` emit their events and nothing sounds         |
 
 Playing, looping, or stopping an undeclared cue throws because silence is the
 expected outcome of a muted or still-locked bus, so a typo'd name would

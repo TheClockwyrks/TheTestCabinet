@@ -19,8 +19,8 @@ that a too-fast or too-sprawling city drains into the red. Left unbalanced the c
 gridlocks, stops growing, or goes **bankrupt**. So the game is a balancing act across
 layered systems — a self-developing zoned map, a transit network with real flow
 pressure, power and water networks, an RCI demand economy, and a budget — that all
-interact. It is a small-scale city simulation in the spirit of *SimCity* and the
-flow-pressure of *Mini Metro*, entirely its own.
+interact. It is a small-scale city simulation in the spirit of _SimCity_ and the
+flow-pressure of _Mini Metro_, entirely its own.
 
 **You also produce the game's art, effects, and audio yourself.** Junction ships with
 **no** pre-made sprites, effects, or sounds. The run image puts six asset-generation
@@ -171,29 +171,29 @@ industry, grey roads, a bright transit line, glowing power, cool water — over 
 Legibility is everything: a player must read the state of the city at a glance. The
 canonical palette and type are below; match them.
 
-| Element | Color |
-| --- | --- |
-| Ground / undeveloped land (background) | `#12161c` |
-| Terrain — bare earth / dirt | `#2a2f26` |
-| Terrain — grass / park | `#33502f` |
-| Terrain — water | `#245a73` |
+| Element                                  | Color     |
+| ---------------------------------------- | --------- |
+| Ground / undeveloped land (background)   | `#12161c` |
+| Terrain — bare earth / dirt              | `#2a2f26` |
+| Terrain — grass / park                   | `#33502f` |
+| Terrain — water                          | `#245a73` |
 | Terrain — hill / rock (unbuildable rise) | `#3a3630` |
-| Residential zone | `#4caf6d` |
-| Commercial zone | `#4a90d9` |
-| Industrial zone | `#e0a63c` |
-| Road | `#3c434d` |
-| Rail / metro line | `#b061e6` |
-| Station / stop | `#ece6db` |
-| Power / energy | `#ffcb52` |
-| Water supply (pipe) | `#47c8e0` |
-| Congestion / gridlock | `#ff7a3c` |
-| Pollution | `#8a7d5a` |
-| Money / positive balance | `#7cd45a` |
-| Alert / deficit / danger | `#ff5a52` |
-| Panels / overlays | `#161b22` |
-| Primary text | `#e6ebf0` |
-| Secondary text | `#9aa4af` |
-| Tertiary text / hints | `#5b6570` |
+| Residential zone                         | `#4caf6d` |
+| Commercial zone                          | `#4a90d9` |
+| Industrial zone                          | `#e0a63c` |
+| Road                                     | `#3c434d` |
+| Rail / metro line                        | `#b061e6` |
+| Station / stop                           | `#ece6db` |
+| Power / energy                           | `#ffcb52` |
+| Water supply (pipe)                      | `#47c8e0` |
+| Congestion / gridlock                    | `#ff7a3c` |
+| Pollution                                | `#8a7d5a` |
+| Money / positive balance                 | `#7cd45a` |
+| Alert / deficit / danger                 | `#ff5a52` |
+| Panels / overlays                        | `#161b22` |
+| Primary text                             | `#e6ebf0` |
+| Secondary text                           | `#9aa4af` |
+| Tertiary text / hints                    | `#5b6570` |
 
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do not
   depend on a web font that must be downloaded; a system monospace stack is required so

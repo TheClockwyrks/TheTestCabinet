@@ -102,7 +102,7 @@ Engine behavior corrected from playback review (oracles regenerated):
 
 - **Splitters are item-agnostic.** A splitter no longer tracks an alternation cursor
   per item type; it keeps one cursor **per lane** and routes every item the same,
-  balancing each input lane across the *corresponding* lane of the available output
+  balancing each input lane across the _corresponding_ lane of the available output
   belts — never a belt's two lanes against each other. `out_pref` is now a per-lane,
   item-agnostic bitfield (only its two low bits are used; the `u16` byte layout is
   unchanged). `rules.md`, `canonical-state.md`, `contract.md`, and the state schema
@@ -113,8 +113,8 @@ Engine behavior corrected from playback review (oracles regenerated):
 - **Inserter closer-item priority: already correct, no change.** A review flagged
   inserters seeming to grab the far lane, but the engine already takes the physically
   closer lane first and reaches across only when it is empty. The confusion is in the
-  naming: `near_far_lanes` labels lanes by the inserter's *facing*, and an inserter
-  picks from *behind* itself, so the lane it calls `far` is the one physically closer —
+  naming: `near_far_lanes` labels lanes by the inserter's _facing_, and an inserter
+  picks from _behind_ itself, so the lane it calls `far` is the one physically closer —
   which the pickup already tries first. The `rules.md`/docs wording now spells this out;
   the behavior (and the oracle) is unchanged.
 - **Sink playback fix (no engine/oracle change).** Items consumed at a sink now glide
@@ -133,7 +133,7 @@ Machines, tiered belt speeds, and a main-bus redesign (everything regenerated):
   from another machine) — and nine machine item ids appended to the item table
   (indices 7–15: a belt, an assembler, and an inserter, each in three tiers), fixing
   the renderer's item-sheet indices as the higher tiers gain recipes. Every craft cost
-  divides `LCM(32, 64, 96) = 192`. Appending items does not change any *existing*
+  divides `LCM(32, 64, 96) = 192`. Appending items does not change any _existing_
   checksum (the seven original items keep indices 0–6).
 - **Belt tiers now move at different speeds.** `slow`/`fast`/`express` resolve to
   `32`/`64`/`96` units/tick (the 1×/2×/3× progression), and speed is **per tile**, so a
@@ -169,7 +169,7 @@ Factory configurations and real splitter use (medium/large regenerated):
   **2-in/2-out balancers** and **2-in/1-out merges**. The earlier layout's splitters
   were all inert 1-in/1-out no-ops; there are now **zero** of those (a test
   enforces it).
-- **A configuration set is exercised.** The scored factories now contain, as *working*
+- **A configuration set is exercised.** The scored factories now contain, as _working_
   gadgets carrying real intermediates (never raw ore): belt **T-intersections**
   (side-loads), **double side-loads** (two belts onto one), **"+" intersections** (two
   feeders onto a through belt that continues), **two inserters sharing a starved belt**
@@ -197,7 +197,7 @@ Coal-fired furnaces replace assembler smelting (engine, scenarios, and renderer)
   new `kind` tag `6`, and cannot craft until coal is in its buffer. The change is
   **additive** — coal is appended last and the furnace tag is new — so every furnace-free
   scenario keeps a bit-identical checksum (the whole training set re-solved unchanged).
-- **The scored factories now smelt in furnaces fed ore *and* coal.** `medium` (seed
+- **The scored factories now smelt in furnaces fed ore _and_ coal.** `medium` (seed
   `0x2A01`, 48×32) carries **23 furnaces**, `large` (`0x7E44`, 72×40) **36**. Each bank
   merges its ore with coal through a real **2-in/1-out merge** into a 1:1 alternating
   backbone a single inserter pulls pair by pair. A **single coal source is split between

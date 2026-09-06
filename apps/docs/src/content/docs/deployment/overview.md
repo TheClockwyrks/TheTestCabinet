@@ -17,19 +17,19 @@ playable builds are static and are covered by
 
 ## Deployed components
 
-| Thing | Deployed as |
-| ----- | ----------- |
-| [Backend](/components/backend/overview/) (`tcab-backend`) | `StatefulSet` (1 replica) + `ClusterIP` `Service` + `PersistentVolumeClaim`; owns the run queue |
-| [Auth service](/components/auth/overview/) (`tcab-auth`) | `StatefulSet` (1 replica) + `Service` + its own `PersistentVolumeClaim` |
-| [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`) | `Deployment` (1 replica), no `Service`; creates one driver `Job` per claimed run |
-| [Driver](/components/driver/overview/) (`tcab-driver`) | One `Job` per run, created by the dispatcher; each creates a sandbox pod through the API and exits |
-| Publisher (`tcab-publisher`) | One `Job` per publish, created by the dispatcher |
-| [Artifact service](/components/artifacts/overview/) (`tcab-artifacts`) | `StatefulSet` (1 replica) + `Service` + `PersistentVolumeClaim`; serves produced run trees |
-| [Arena](/components/arena/overview/) (`tcab-arena`) | `Deployment` (1 replica) + `Service`; runs adversarial matches and tournaments |
-| [Web console](/components/web/overview/) (`tcab-web`) | `Deployment` + `Service` serving a static bundle, reached over the VPN through the internal `Ingress` |
-| [Gallery](/components/site/serving/) (`tcab-gallery`) | A Container App on the public plane; see [Public Gallery](/deployment/public-gallery/) |
-| Docs, per-run builds | Static Cloudflare Pages sites; see [Releasing](/development/releasing/) |
-| [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs; see [Building](/development/building/) |
+| Thing                                                                               | Deployed as                                                                                           |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [Backend](/components/backend/overview/) (`tcab-backend`)                           | `StatefulSet` (1 replica) + `ClusterIP` `Service` + `PersistentVolumeClaim`; owns the run queue       |
+| [Auth service](/components/auth/overview/) (`tcab-auth`)                            | `StatefulSet` (1 replica) + `Service` + its own `PersistentVolumeClaim`                               |
+| [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`)                  | `Deployment` (1 replica), no `Service`; creates one driver `Job` per claimed run                      |
+| [Driver](/components/driver/overview/) (`tcab-driver`)                              | One `Job` per run, created by the dispatcher; each creates a sandbox pod through the API and exits    |
+| Publisher (`tcab-publisher`)                                                        | One `Job` per publish, created by the dispatcher                                                      |
+| [Artifact service](/components/artifacts/overview/) (`tcab-artifacts`)              | `StatefulSet` (1 replica) + `Service` + `PersistentVolumeClaim`; serves produced run trees            |
+| [Arena](/components/arena/overview/) (`tcab-arena`)                                 | `Deployment` (1 replica) + `Service`; runs adversarial matches and tournaments                        |
+| [Web console](/components/web/overview/) (`tcab-web`)                               | `Deployment` + `Service` serving a static bundle, reached over the VPN through the internal `Ingress` |
+| [Gallery](/components/site/serving/) (`tcab-gallery`)                               | A Container App on the public plane; see [Public Gallery](/deployment/public-gallery/)                |
+| Docs, per-run builds                                                                | Static Cloudflare Pages sites; see [Releasing](/development/releasing/)                               |
+| [CLI](/components/cli/overview/) (`tcab`), [Tauri app](/components/tauri/overview/) | Local tools an operator installs; see [Building](/development/building/)                              |
 
 ## The control plane and the run plane
 
@@ -69,15 +69,15 @@ exists for the duration of one run.
   calls the service over its own in-cluster `TCAB_ARTIFACTS_URL` to prune a
   deleted run's tree and to sweep the trees no run row references.
 
-| Service | Kubernetes shape | Persistent storage | External egress |
-| ------- | ---------------- | ------------------ | --------------- |
-| Backend | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external PostgreSQL | Database, definition store, ingest checkout | Cloudflare R2 uploads and the public projection |
-| Auth service | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external database | Its own accounts database | None |
-| Dispatcher | `Deployment` (1), no `Service` | None | None |
-| Driver | One `Job` per run | Scratch only | Model APIs and package registries, from inside the sandbox pod |
-| Publisher | One `Job` per publish | Scratch only | GitHub and Cloudflare Pages |
-| Artifact service | `StatefulSet` (1) + `Service` + `PVC` | The produced run trees | None |
-| Arena | `Deployment` (1) + `Service` | None | None |
+| Service          | Kubernetes shape                                                             | Persistent storage                          | External egress                                                |
+| ---------------- | ---------------------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------- |
+| Backend          | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external PostgreSQL | Database, definition store, ingest checkout | Cloudflare R2 uploads and the public projection                |
+| Auth service     | `StatefulSet` (1) + `Service` + `PVC`, or `Deployment` + external database   | Its own accounts database                   | None                                                           |
+| Dispatcher       | `Deployment` (1), no `Service`                                               | None                                        | None                                                           |
+| Driver           | One `Job` per run                                                            | Scratch only                                | Model APIs and package registries, from inside the sandbox pod |
+| Publisher        | One `Job` per publish                                                        | Scratch only                                | GitHub and Cloudflare Pages                                    |
+| Artifact service | `StatefulSet` (1) + `Service` + `PVC`                                        | The produced run trees                      | None                                                           |
+| Arena            | `Deployment` (1) + `Service`                                                 | None                                        | None                                                           |
 
 ## From a queued run to a Job
 
@@ -117,11 +117,11 @@ in, what they talk to, and their `TCAB_ENV` tag (`local`, `staging`, `prod`), so
 Each service binds its own port: backend `8787`, auth service `8789`, artifact
 service `8790`, arena `8791`. In-cluster each is reached by its `Service` name.
 
-| Environment | Purpose | Control plane | Runs |
-| ----------- | ------- | ------------- | ---- |
-| Local | Exercise the whole flow on one machine | the services on a local k3d cluster | Per-run `Job`s in the local cluster |
-| Staging | A production-shaped environment to validate changes | the services in `tcab-staging` | Per-run `Job`s in `tcab-staging` |
-| Prod | The environment operators use | the services in `tcab-prod` | Per-run `Job`s in `tcab-prod` |
+| Environment | Purpose                                             | Control plane                       | Runs                                |
+| ----------- | --------------------------------------------------- | ----------------------------------- | ----------------------------------- |
+| Local       | Exercise the whole flow on one machine              | the services on a local k3d cluster | Per-run `Job`s in the local cluster |
+| Staging     | A production-shaped environment to validate changes | the services in `tcab-staging`      | Per-run `Job`s in `tcab-staging`    |
+| Prod        | The environment operators use                       | the services in `tcab-prod`         | Per-run `Job`s in `tcab-prod`       |
 
 The local environment is documented under [Running](/development/running/). This
 section is about the two remote environments. Staging and prod apply the same

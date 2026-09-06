@@ -22,5 +22,5 @@ own assets during the run with the six asset-generation tools on the run
 image's `PATH`, then builds the game around them. Those assets are the settler
 and raider sprite sheets, the terrain and structure sprites, the muzzle-flash,
 blood, and fire particle effects, and the sound and music. The case draws on
-colony survival sims such as *RimWorld*, with an original name, look, system
+colony survival sims such as _RimWorld_, with an original name, look, system
 set, and scope.

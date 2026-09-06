@@ -68,7 +68,7 @@ simulation tick (`specs/controls.md`):
 
 ## Congestion — the flow pressure
 
-This is the heart of the system, and where the *Mini Metro* flow-pressure lives:
+This is the heart of the system, and where the _Mini Metro_ flow-pressure lives:
 
 - **Load vs. capacity.** Each tick, sum the traffic assigned to each link. A link
   whose load is **within** capacity flows at full speed. A link whose load **exceeds**

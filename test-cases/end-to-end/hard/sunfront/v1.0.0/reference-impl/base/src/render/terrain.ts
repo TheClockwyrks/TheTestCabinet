@@ -22,18 +22,26 @@ import type { Team } from "../types";
 import type { MaterialRegistry } from "./materials";
 
 /** World-space centre of build-grid cell `[col,row]` for a team (specs/playfield.md). */
-export function gridCellCenter(team: Team, col: number, row: number): { x: number; z: number } {
+export function gridCellCenter(
+  team: Team,
+  col: number,
+  row: number,
+): { x: number; z: number } {
   const x = PLAYER_GRID_ORIGIN.x + col * BUILD_CELL_SIZE;
   const z = PLAYER_GRID_ORIGIN.z + row * BUILD_CELL_SIZE;
-  return team === "player" ? { x, z } : { x: ARENA_SIZE - x, z: ARENA_SIZE - z };
+  return team === "player"
+    ? { x, z }
+    : { x: ARENA_SIZE - x, z: ARENA_SIZE - z };
 }
 
 /** The player yard's covering rectangle (a little larger than the 8×3 grid). */
 function playerYardRect(): { cx: number; cz: number; w: number; d: number } {
   const w = BUILD_GRID_COLS * BUILD_CELL_SIZE + 24;
   const d = BUILD_GRID_ROWS * BUILD_CELL_SIZE + 24;
-  const cx = PLAYER_GRID_ORIGIN.x + ((BUILD_GRID_COLS - 1) * BUILD_CELL_SIZE) / 2;
-  const cz = PLAYER_GRID_ORIGIN.z + ((BUILD_GRID_ROWS - 1) * BUILD_CELL_SIZE) / 2;
+  const cx =
+    PLAYER_GRID_ORIGIN.x + ((BUILD_GRID_COLS - 1) * BUILD_CELL_SIZE) / 2;
+  const cz =
+    PLAYER_GRID_ORIGIN.z + ((BUILD_GRID_ROWS - 1) * BUILD_CELL_SIZE) / 2;
   return { cx, cz, w, d };
 }
 
@@ -68,7 +76,11 @@ function bandingTexture(): THREE.CanvasTexture {
 }
 
 /** A flat, ground-lying plane at height `y`. */
-function groundPlane(w: number, d: number, material: THREE.Material): THREE.Mesh {
+function groundPlane(
+  w: number,
+  d: number,
+  material: THREE.Material,
+): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), material);
   mesh.rotation.x = -Math.PI / 2;
   return mesh;
@@ -79,14 +91,22 @@ export interface Terrain {
 }
 
 /** Build the terrain group and add it to the scene. */
-export function buildTerrain(scene: THREE.Scene, registry: MaterialRegistry): Terrain {
+export function buildTerrain(
+  scene: THREE.Scene,
+  registry: MaterialRegistry,
+): Terrain {
   const group = new THREE.Group();
 
   // A large plain-sand underlay so the world reads beyond the arena edges.
   const underlay = groundPlane(
     ARENA_SIZE * 2.4,
     ARENA_SIZE * 2.4,
-    registry.add(new THREE.MeshStandardMaterial({ color: new THREE.Color(PALETTE.sand), roughness: 1 })),
+    registry.add(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color(PALETTE.sand),
+        roughness: 1,
+      }),
+    ),
   );
   underlay.position.set(ARENA_SIZE / 2, -0.5, ARENA_SIZE / 2);
   group.add(underlay);
@@ -95,14 +115,19 @@ export function buildTerrain(scene: THREE.Scene, registry: MaterialRegistry): Te
   const arena = groundPlane(
     ARENA_SIZE,
     ARENA_SIZE,
-    registry.add(new THREE.MeshStandardMaterial({ map: bandingTexture(), roughness: 1 })),
+    registry.add(
+      new THREE.MeshStandardMaterial({ map: bandingTexture(), roughness: 1 }),
+    ),
   );
   arena.position.set(ARENA_SIZE / 2, 0, ARENA_SIZE / 2);
   group.add(arena);
 
   // The two staging-yard panels (the enemy's is under permanent fog in a later phase).
   const yardMat = registry.add(
-    new THREE.MeshStandardMaterial({ color: new THREE.Color(PALETTE.yardPanel), roughness: 1 }),
+    new THREE.MeshStandardMaterial({
+      color: new THREE.Color(PALETTE.yardPanel),
+      roughness: 1,
+    }),
   );
   for (const team of ["player", "enemy"] as Team[]) {
     const r = playerYardRect();
@@ -139,7 +164,11 @@ function buildGridLines(registry: MaterialRegistry): THREE.LineSegments {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
   const mat = registry.add(
-    new THREE.LineBasicMaterial({ color: new THREE.Color(PALETTE.textFaint), transparent: true, opacity: 0.7 }),
+    new THREE.LineBasicMaterial({
+      color: new THREE.Color(PALETTE.textFaint),
+      transparent: true,
+      opacity: 0.7,
+    }),
   );
   return new THREE.LineSegments(geom, mat);
 }

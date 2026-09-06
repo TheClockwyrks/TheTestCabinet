@@ -81,7 +81,10 @@ describe("EventBus.on", () => {
     bus.on("asset:loaded", loaded);
     bus.on("asset:failed", failed);
 
-    bus.emit("asset:loaded", { path: "models/ship.glb", url: "assets/models/ship.glb" });
+    bus.emit("asset:loaded", {
+      path: "models/ship.glb",
+      url: "assets/models/ship.glb",
+    });
 
     expect(loaded).toHaveBeenCalledTimes(1);
     expect(failed).not.toHaveBeenCalled();
@@ -131,17 +134,33 @@ describe("the documented event map", () => {
     bus.on("cue:stopped", (p) => seen.push(["cue:stopped", p]));
     bus.on("audio:unlocked", (p) => seen.push(["audio:unlocked", p]));
 
-    bus.emit("asset:loaded", { path: "models/ship.glb", url: "assets/models/ship.glb" });
-    bus.emit("asset:failed", { path: "../secrets.txt", url: "", reason: "a .. segment" });
+    bus.emit("asset:loaded", {
+      path: "models/ship.glb",
+      url: "assets/models/ship.glb",
+    });
+    bus.emit("asset:failed", {
+      path: "../secrets.txt",
+      url: "",
+      reason: "a .. segment",
+    });
     bus.emit("cue:played", cue("clank", 100, 0.2, { x: 1, y: 2, z: 3 }));
     bus.emit("cue:looped", { cue: "motor", t: 200, gain: 1, at: null });
     bus.emit("cue:stopped", { cue: "motor", t: 300 });
     bus.emit("audio:unlocked", {});
 
     expect(seen).toEqual([
-      ["asset:loaded", { path: "models/ship.glb", url: "assets/models/ship.glb" }],
-      ["asset:failed", { path: "../secrets.txt", url: "", reason: "a .. segment" }],
-      ["cue:played", { cue: "clank", t: 100, gain: 0.2, at: { x: 1, y: 2, z: 3 } }],
+      [
+        "asset:loaded",
+        { path: "models/ship.glb", url: "assets/models/ship.glb" },
+      ],
+      [
+        "asset:failed",
+        { path: "../secrets.txt", url: "", reason: "a .. segment" },
+      ],
+      [
+        "cue:played",
+        { cue: "clank", t: 100, gain: 0.2, at: { x: 1, y: 2, z: 3 } },
+      ],
       ["cue:looped", { cue: "motor", t: 200, gain: 1, at: null }],
       ["cue:stopped", { cue: "motor", t: 300 }],
       ["audio:unlocked", {}],
@@ -199,7 +218,11 @@ describe("the documented event map", () => {
     bus.on("asset:failed", (p) => seen.push(p));
     bus.on("asset:failed", (p) => seen.push(p));
 
-    bus.emit("asset:failed", { path: "a.glb", url: "assets/a.glb", reason: "404" });
+    bus.emit("asset:failed", {
+      path: "a.glb",
+      url: "assets/a.glb",
+      reason: "404",
+    });
 
     expect(seen[0]).toBe(seen[1]);
   });
@@ -355,7 +378,11 @@ describe("a handler that throws", () => {
       throw new Error("subscriber bug");
     });
 
-    bus.emit("asset:failed", { path: "a.glb", url: "assets/a.glb", reason: "404" });
+    bus.emit("asset:failed", {
+      path: "a.glb",
+      url: "assets/a.glb",
+      reason: "404",
+    });
 
     // A build runs several packages' code in one console; the prefix is how a
     // reader knows which one reported.
@@ -531,7 +558,11 @@ describe("mutating the bus from inside a handler", () => {
     });
     bus.on("cue:played", ({ cue: name }) => order.push(`played:${name}`));
 
-    bus.emit("asset:failed", { path: "a.glb", url: "assets/a.glb", reason: "404" });
+    bus.emit("asset:failed", {
+      path: "a.glb",
+      url: "assets/a.glb",
+      reason: "404",
+    });
 
     expect(order).toEqual(["failed", "played:alarm", "failed-done"]);
   });

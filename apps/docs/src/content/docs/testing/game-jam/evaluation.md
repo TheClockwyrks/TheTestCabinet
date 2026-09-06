@@ -18,13 +18,13 @@ pass/fail checklist.
 The reviewer plays the entry and picks one of five tiers for each review
 category.
 
-| Tier | Emoji | Points |
-| --- | --- | --- |
-| Broken | 💩 | 0 |
-| Not great | 🙁 | 2 |
-| Neutral | 😐 | 5 |
-| Great | 😀 | 8 |
-| Incredible | 💎 | 10 |
+| Tier       | Emoji | Points |
+| ---------- | ----- | ------ |
+| Broken     | 💩    | 0      |
+| Not great  | 🙁    | 2      |
+| Neutral    | 😐    | 5      |
+| Great      | 😀    | 8      |
+| Incredible | 💎    | 10     |
 
 The scale is centred rather than punitive: a neutral category earns half its
 available points and a great one four fifths, so a jam's percentage reads

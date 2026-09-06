@@ -55,7 +55,12 @@ export type Facing = "left" | "right";
 
 /** The six kinds of zone (specs/state.md, ZoneState). */
 export type ZoneKind =
-  "puddle" | "lantern" | "aura" | "slash" | "strike" | "burst";
+  | "puddle"
+  | "lantern"
+  | "aura"
+  | "slash"
+  | "strike"
+  | "burst";
 
 /** What the open chest overlay reports (specs/state.md, ChestResult). */
 export type ChestResult =

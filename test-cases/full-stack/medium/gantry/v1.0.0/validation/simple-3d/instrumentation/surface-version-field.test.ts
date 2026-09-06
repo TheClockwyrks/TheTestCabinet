@@ -38,7 +38,10 @@ it("carries version as the plain number GANTRY_DEBUG_VERSION", async () => {
   const { version } = h.probe([]);
 
   await h.advance(1);
-  await h.capture("surface-version", "The build the surface version was read from");
+  await h.capture(
+    "surface-version",
+    "The build the surface version was read from",
+  );
 
   assertEqual(typeof version, "number", "the type of engine.debug.version");
   assertEqual(

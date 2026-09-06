@@ -51,11 +51,11 @@ The outputs land under `$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.t
 three files per take, and the last line of the log names the winner. Copy that
 take's three files into `showcase/<variant>/`:
 
-| Take file | Committed as (`base`) | Committed as (`maze`) |
-| --- | --- | --- |
-| `take-NN.json.gz` | `gameplay.json.gz` | `gameplay.json.gz` |
-| `take-NN-peak.png` | `combo-peak.png` | `combo-peak.png` |
-| `take-NN-early.png` | `open-board.png` | `threading-the-course.png` |
+| Take file           | Committed as (`base`) | Committed as (`maze`)      |
+| ------------------- | --------------------- | -------------------------- |
+| `take-NN.json.gz`   | `gameplay.json.gz`    | `gameplay.json.gz`         |
+| `take-NN-peak.png`  | `combo-peak.png`      | `combo-peak.png`           |
+| `take-NN-early.png` | `open-board.png`      | `threading-the-course.png` |
 
 ## Why every take is recorded
 
@@ -99,13 +99,13 @@ carry a `$opaque` argument.
 
 ## The knobs
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched above to read it. At `1900` a take of this length is kept whole, at 64 fps, with no thinning. |
-| `TCAB_SHOWCASE_TAKES` | `8` | How many seeds to play and judge. |
-| `TCAB_SHOWCASE_FIRST_SEED` | `1` | The first seed of that run of takes. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `22` | The clip ends at the first eat past this. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | `28` | The take is abandoned here, wherever it had got to. |
+| Variable                          | Default | What it does                                                                                                                    |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`   | The harness's replay cap, patched above to read it. At `1900` a take of this length is kept whole, at 64 fps, with no thinning. |
+| `TCAB_SHOWCASE_TAKES`             | `8`     | How many seeds to play and judge.                                                                                               |
+| `TCAB_SHOWCASE_FIRST_SEED`        | `1`     | The first seed of that run of takes.                                                                                            |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `22`    | The clip ends at the first eat past this.                                                                                       |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | `28`    | The take is abandoned here, wherever it had got to.                                                                             |
 
 A take is judged on what makes a watchable clip of this game: pellets eaten, the
 multiplier's peak, how many eats landed at that peak, whether the window was ever
@@ -118,7 +118,7 @@ half the mechanic.
 Both takes ran at `TCAB_SHOWCASE_TAKES=24` from seed `1`, at the default bounds
 and a `1900`-frame cap, so both replays are whole and unthinned.
 
-| Variant | Winning seed | What it plays |
-| --- | --- | --- |
-| `base` | 12 | 26.3 s, 13 pellets, 510 points, chain of 16, `x5` held over 8 eats, one window lost and rebuilt |
-| `maze` | 23 | 26.3 s, 14 pellets, 560 points, chain of 17, `x5` held over 9 eats, one window lost and rebuilt |
+| Variant | Winning seed | What it plays                                                                                   |
+| ------- | ------------ | ----------------------------------------------------------------------------------------------- |
+| `base`  | 12           | 26.3 s, 13 pellets, 510 points, chain of 16, `x5` held over 8 eats, one window lost and rebuilt |
+| `maze`  | 23           | 26.3 s, 14 pellets, 560 points, chain of 17, `x5` held over 9 eats, one window lost and rebuilt |

@@ -13,8 +13,18 @@ The clock catalogue, the touch layout catalogue, `cloneModel`, and every type
 the engine names come from the same specifier.
 
 ```ts
-import { cloneModel, createEngine, PacedClock, TOUCH_LAYOUTS } from "@clockwyrks/simple-3d";
-import type { CueSpec, Engine, EngineOptions, Game } from "@clockwyrks/simple-3d";
+import {
+  cloneModel,
+  createEngine,
+  PacedClock,
+  TOUCH_LAYOUTS,
+} from "@clockwyrks/simple-3d";
+import type {
+  CueSpec,
+  Engine,
+  EngineOptions,
+  Game,
+} from "@clockwyrks/simple-3d";
 ```
 
 ## `three` is the build's own
@@ -92,15 +102,15 @@ const opening = await engine.initialize();
 
 ## The remaining options
 
-| Option | Effect |
-| --- | --- |
+| Option       | Effect                                                                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `background` | A CSS color the whole canvas is cleared to before every frame, letterbox bars included. Left out, the canvas clears to transparency and the page shows through behind the game. |
-| `layout` | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions. |
-| `assetRoot` | The root every asset path resolves under. Defaults to `assets/`. |
-| `surface` | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document. |
-| `screen` | The canvas the screen layer draws on. Defaults to one created from the stage canvas's owning document. |
-| `projection` | `"perspective"`, the default, or `"orthographic"`: which camera the engine creates and renders through. |
-| `shadows` | `true` enables PCF soft shadow maps on the renderer. Defaults to `false`. |
+| `layout`     | Selects a touch layout from `TOUCH_LAYOUTS`, whose vocabulary the game then registers as actions.                                                                               |
+| `assetRoot`  | The root every asset path resolves under. Defaults to `assets/`.                                                                                                                |
+| `surface`    | Where the engine reads element size and device pixel ratio and attaches its listeners. Defaults to the canvas and its owning document.                                          |
+| `screen`     | The canvas the screen layer draws on. Defaults to one created from the stage canvas's owning document.                                                                          |
+| `projection` | `"perspective"`, the default, or `"orthographic"`: which camera the engine creates and renders through.                                                                         |
+| `shadows`    | `true` enables PCF soft shadow maps on the renderer. Defaults to `false`.                                                                                                       |
 
 ```ts
 const engine = createEngine({

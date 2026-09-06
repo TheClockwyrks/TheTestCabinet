@@ -186,22 +186,22 @@ emits a contract-invalid action forfeits the match.
 The shipped values, which are part of the game definition rather than levers a
 model may change:
 
-| Quantity | Value |
-| --- | --- |
-| Board | `32 × 16`, border between columns 15 and 16 (`border_x = 16`) |
-| Agents per side | 3 (ids 0–2) |
-| Ordinary seed caches per half | 14, worth 1 each |
-| Large seeds per half | 2, worth and weighing 3 each |
-| Total value per half | 20 |
-| Royal jelly nodes per half | 2 |
-| Movement resolution | 8 charge per tile |
-| Soldier speed | 7 charge per tick, just under one tile per tick |
-| Light raider speed | 8 charge per tick, for loads 0–3 |
-| Carry penalty | −1 charge per tick per unit of load past 3, floored at 1 |
-| Jelly immunity | 40 ticks |
-| Jelly respawn | 1,200 ticks, at the same tile |
-| Large seed drift | 1 tile per 300 ticks, toward the border |
-| Large seed recall | 150 consecutive ticks standing on it |
-| Large seed recall guard | at least 3 tiles drifted from spawn |
-| Timestep | 16 ms, fixed and faked |
-| Max ticks | 37,500, which is 10 minutes of game time |
+| Quantity                      | Value                                                         |
+| ----------------------------- | ------------------------------------------------------------- |
+| Board                         | `32 × 16`, border between columns 15 and 16 (`border_x = 16`) |
+| Agents per side               | 3 (ids 0–2)                                                   |
+| Ordinary seed caches per half | 14, worth 1 each                                              |
+| Large seeds per half          | 2, worth and weighing 3 each                                  |
+| Total value per half          | 20                                                            |
+| Royal jelly nodes per half    | 2                                                             |
+| Movement resolution           | 8 charge per tile                                             |
+| Soldier speed                 | 7 charge per tick, just under one tile per tick               |
+| Light raider speed            | 8 charge per tick, for loads 0–3                              |
+| Carry penalty                 | −1 charge per tick per unit of load past 3, floored at 1      |
+| Jelly immunity                | 40 ticks                                                      |
+| Jelly respawn                 | 1,200 ticks, at the same tile                                 |
+| Large seed drift              | 1 tile per 300 ticks, toward the border                       |
+| Large seed recall             | 150 consecutive ticks standing on it                          |
+| Large seed recall guard       | at least 3 tiles drifted from spawn                           |
+| Timestep                      | 16 ms, fixed and faked                                        |
+| Max ticks                     | 37,500, which is 10 minutes of game time                      |

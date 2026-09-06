@@ -4,7 +4,7 @@ You are drawing the **Gloamfin**, a **sprite sheet** for a deep-sea maze-chase
 game. In that game the Gloamfin is **the Listener**: a **non-playable
 pursuer**, an eyeless predator that hunts the player by **sound** — it homes
 in on sonar and emits its own sonar pulses. Everything below describes the
-*enemy* — never the player character.
+_enemy_ — never the player character.
 
 You are drawing the **creature** here: its eyeless body swimming in four
 directions. The sonar pulse it emits — a wavefront that floods outward through
@@ -28,12 +28,12 @@ here; just the creature, with a faint sonar cue at its head.
 The sheet holds **four-direction movement**, two frames per direction (a small
 swim cycle):
 
-| Frames | Contents |
-| --- | --- |
-| 0, 1 | **swim down** — two frames (the tail flicks between them) |
-| 2, 3 | **swim up** — two frames |
-| 4, 5 | **swim left** — two frames |
-| 6, 7 | **swim right** — two frames |
+| Frames | Contents                                                  |
+| ------ | --------------------------------------------------------- |
+| 0, 1   | **swim down** — two frames (the tail flicks between them) |
+| 2, 3   | **swim up** — two frames                                  |
+| 4, 5   | **swim left** — two frames                                |
+| 6, 7   | **swim right** — two frames                               |
 
 In each **movement** frame the creature faces its direction of travel: the
 **blunt head leads** (points the way it swims) and a **forked tail trails**
@@ -61,12 +61,12 @@ The Gloamfin reads, at a glance, as an **eyeless predator that hunts blind**:
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Body | `#c46bff` |
+| Role                      | Hex       |
+| ------------------------- | --------- |
+| Body                      | `#c46bff` |
 | Belly / lighter underside | `#e0b3ff` |
 | Outline / mouth (darkest) | `#3a1a55` |
-| Sonar accent (pale) | `#5ef2ff` |
+| Sonar accent (pale)       | `#5ef2ff` |
 
 ## Working the tool
 

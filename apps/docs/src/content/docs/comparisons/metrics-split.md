@@ -14,13 +14,13 @@ console and the public site group runs identically.
 Four client-side aggregators use the pair as their fold key. The fold happens
 entirely in the client.
 
-| Location | What it groups |
-| --- | --- |
-| `packages/ui/src/primitives/MetricChartWidget.tsx` — `meanBars()` / `runBars()` | the points, token and cost bars |
-| `packages/ui/src/app/pages/testcases/[slug]/TestCaseMetricsPage.tsx` — `ratingModels` | the ratings chart |
-| `packages/ui/src/app/pages/testcases/[slug]/TestCaseMetricsPage.tsx` — `points` | the mean points per bar, and the order tie-break |
-| `packages/ui/src/app/pages/testcases/[slug]/TestCaseLeaderboardPage.tsx` — `accs` | the leaderboard |
-| `packages/ui/src/app/pages/gamejams/[slug]/JamMetricsPage.tsx` | reuses `MetricsContent` and the same widgets |
+| Location                                                                              | What it groups                                   |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `packages/ui/src/primitives/MetricChartWidget.tsx` — `meanBars()` / `runBars()`       | the points, token and cost bars                  |
+| `packages/ui/src/app/pages/testcases/[slug]/TestCaseMetricsPage.tsx` — `ratingModels` | the ratings chart                                |
+| `packages/ui/src/app/pages/testcases/[slug]/TestCaseMetricsPage.tsx` — `points`       | the mean points per bar, and the order tie-break |
+| `packages/ui/src/app/pages/testcases/[slug]/TestCaseLeaderboardPage.tsx` — `accs`     | the leaderboard                                  |
+| `packages/ui/src/app/pages/gamejams/[slug]/JamMetricsPage.tsx`                        | reuses `MetricsContent` and the same widgets     |
 
 The key is the harness slug and the canonicalized model id, joined by a NUL
 separator, which neither part can contain. Groups are folded in first-seen order
@@ -51,13 +51,13 @@ single `ChartSort` held by the page, so moving any one of them moves the rest.
 That is the point — four charts describing one roster are only comparable while
 they agree on where each bar sits.
 
-| Order | What it means |
-| --- | --- |
-| `alphabetical` | By bar label. The default, and what Plot does on its own with an ordinal domain it infers. |
-| `best` | Best-first on each chart's own metric: lowest cost, fewest tokens, highest average rating, most points. |
+| Order          | What it means                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------- |
+| `alphabetical` | By bar label. The default, and what Plot does on its own with an ordinal domain it infers.              |
+| `best`         | Best-first on each chart's own metric: lowest cost, fewest tokens, highest average rating, most points. |
 
 `best` is per-chart by design — every chart sorts on the metric it draws, so the
-four are deliberately *not* in the same order under it. Ties are split the same
+four are deliberately _not_ in the same order under it. Ties are split the same
 way everywhere: by the pair's mean points, highest first, then by label so the
 result never depends on the input order. A bar whose metric is unknown sorts
 last rather than being read as a zero (which under a lowest-first metric would
@@ -67,7 +67,7 @@ The comparator is `orderBars()` in `packages/ui/src/primitives/chartSort.ts`,
 and each chart states its resulting order as an explicit `xDomain` — Plot sorts
 a domain it infers itself, which would otherwise silently override the choice.
 
-None of this makes a chart a ranking. The board that *is* a ranking is the
+None of this makes a chart a ranking. The board that _is_ a ranking is the
 [Leaderboard](/components/web/overview/) tab; the order control only decides
 where the bars sit.
 

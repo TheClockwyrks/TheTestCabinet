@@ -121,7 +121,11 @@ it("advances an arm that was placed off a track and then moved onto one", async 
     sim?.fault ?? null,
     "no unmounted fault: mounting was re-derived from the arm's new position",
   );
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
   assertEqual(
     `${poseOf(snapshot, arm)?.cell.q},${poseOf(snapshot, arm)?.cell.r}`,
     `${NEXT.q},${NEXT.r}`,

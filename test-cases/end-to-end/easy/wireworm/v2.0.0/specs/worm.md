@@ -11,22 +11,22 @@ what happens when its segments are removed. The tile grid it steps over is in
 A worm is a chain of segments, each occupying one tile. The segments are ordered
 from the head:
 
-| Segment | Position in the chain |
-| --- | --- |
-| Head | The first segment, which leads. |
-| Body | Every segment between the head and the tail. |
-| Tail | The last segment. |
+| Segment | Position in the chain                        |
+| ------- | -------------------------------------------- |
+| Head    | The first segment, which leads.              |
+| Body    | Every segment between the head and the tail. |
+| Tail    | The last segment.                            |
 
 A worm of one segment is a head alone. Consecutive segments always occupy
 orthogonally adjacent tiles, because the chain follows the head's own path.
 
 A worm carries two headings and a diving flag:
 
-| Field | Values |
-| --- | --- |
-| `dh`, the horizontal heading | `+1` for right, `-1` for left |
-| `dv`, the vertical heading | `+1` for down, `-1` for up |
-| `diving` | Whether the worm is driving straight down its column |
+| Field                        | Values                                               |
+| ---------------------------- | ---------------------------------------------------- |
+| `dh`, the horizontal heading | `+1` for right, `-1` for left                        |
+| `dv`, the vertical heading   | `+1` for down, `-1` for up                           |
+| `diving`                     | Whether the worm is driving straight down its column |
 
 ## The step clock
 

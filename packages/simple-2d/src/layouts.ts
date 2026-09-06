@@ -58,17 +58,24 @@ const LAYOUT_VOCABULARIES: Readonly<Record<string, readonly string[]>> = {
  * other reader sees. {@link touchLayout} exists for callers that want a vocabulary
  * they can extend.
  */
-export const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>> = Object.freeze(
-  Object.fromEntries(
-    Object.entries(LAYOUT_VOCABULARIES).map(
-      ([name, vocabulary]) => [name, frozenLayout(name, vocabulary)] as const,
+export const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>> =
+  Object.freeze(
+    Object.fromEntries(
+      Object.entries(LAYOUT_VOCABULARIES).map(
+        ([name, vocabulary]) => [name, frozenLayout(name, vocabulary)] as const,
+      ),
     ),
-  ),
-);
+  );
 
 /** One catalogue entry: its own vocabulary then the menu actions, frozen in place. */
-function frozenLayout(name: string, vocabulary: readonly string[]): TouchLayout {
-  const layout: TouchLayout = { name, actions: [...vocabulary, ...MENU_ACTIONS] };
+function frozenLayout(
+  name: string,
+  vocabulary: readonly string[],
+): TouchLayout {
+  const layout: TouchLayout = {
+    name,
+    actions: [...vocabulary, ...MENU_ACTIONS],
+  };
   Object.freeze(layout.actions);
   return Object.freeze(layout);
 }

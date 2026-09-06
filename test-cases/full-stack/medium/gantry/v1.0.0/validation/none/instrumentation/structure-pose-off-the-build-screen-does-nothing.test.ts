@@ -92,7 +92,10 @@ it("changes nothing when a structure pose is made off the build screen", async (
   await h.debug.setScreen("build");
   await h.debug.clearStructure();
   const emptied = await h.snapshot();
-  await h.capture("state", "the structure the build screen's own clear emptied");
+  await h.capture(
+    "state",
+    "the structure the build screen's own clear emptied",
+  );
   assertLength(
     emptied.structure.members,
     0,

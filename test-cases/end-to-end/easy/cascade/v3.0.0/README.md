@@ -34,10 +34,10 @@ build that is nearly right in many places is told apart from one that is right.
 The case supports three engines and seeds a different project for each, which is
 what the manifest's `[workspaces]` table is for:
 
-| Engine | What the seeded project supplies |
-| --- | --- |
-| `none` | The toolchain configuration and `index.html`. There is no `src/`: the build writes the game and the runtime under it, meaning the frame loop and its delta time, the canvas fit, pointer input, audio, the overlay and the `window.__cascade` surface. The surface additionally carries the clock, as `setAutoStep` and `advance`, because nothing outside the build owns it. |
-| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: `CascadeState`, the debug surface `specs/instrumentation.md` specifies, `BACKGROUND`, and the three functions. Its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value, so a pose on the surface takes the state and returns the next, driven through `engine.apply`. |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`          | The toolchain configuration and `index.html`. There is no `src/`: the build writes the game and the runtime under it, meaning the frame loop and its delta time, the canvas fit, pointer input, audio, the overlay and the `window.__cascade` surface. The surface additionally carries the clock, as `setAutoStep` and `advance`, because nothing outside the build owns it.                                                                                                                                                                                                                               |
+| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: `CascadeState`, the debug surface `specs/instrumentation.md` specifies, `BACKGROUND`, and the three functions. Its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value, so a pose on the surface takes the state and returns the next, driven through `engine.apply`.                                                                                   |
 | `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored the same way, plus `src/constants.ts` and `src/main.ts`. Its constants also name the level and the actor tags. The build writes `src/game.ts`, which is deliberately absent from the seed: the `GameDefinition`, the game instance whose `initialize` defines the cues and returns the debug surface, the game mode whose `gameStateClass` is the live `CascadeState`, the actors and components the table is drawn by, and `BACKGROUND`. The world is live, so the surface's poses take only their own arguments and act on it at the call. |
 
 Cascade runs in **one** world for the whole session under `structured-2d`: every
@@ -71,42 +71,42 @@ common `stock` category: six on Draw One and ten on Draw Three.
 
 ## Contents
 
-| Path | Seeded to a run? | Purpose |
-| --- | --- | --- |
-| `specs/` | **Yes** | The specification handed to the model, by concern. |
-| `workspaces/none/` | **Yes** | The engineless starter project, shared by both variants. |
-| `workspaces/<variant>/<engine>/` | **Yes** | The per-engine starter project for that variant. |
-| `prompt.hbs` | No | Rendered into the model's prompt; not seeded. |
-| `references/<engine>/<variant>/` | No | The authored, correct playable builds, six of them. |
-| `showcase/<variant>/` | No | Curated demo media and description for the catalog. |
-| `validation/<engine>/` | No | The Vitest validator suite for that engine. |
-| `validation-baseline/<engine>/<variant>/` | No | The baseline half of the validation media. |
-| `test-case.toml` | No | The manifest: engines, workspaces, specs, domains, review. |
-| `variants/` | No | The two variant files. |
-| `description.md` | No | The site-facing introduction on the case's detail page. |
-| `changelog.md` | No | This version's entry in the case's changelog. |
-| `README.md` | No | This overview. |
+| Path                                      | Seeded to a run? | Purpose                                                    |
+| ----------------------------------------- | ---------------- | ---------------------------------------------------------- |
+| `specs/`                                  | **Yes**          | The specification handed to the model, by concern.         |
+| `workspaces/none/`                        | **Yes**          | The engineless starter project, shared by both variants.   |
+| `workspaces/<variant>/<engine>/`          | **Yes**          | The per-engine starter project for that variant.           |
+| `prompt.hbs`                              | No               | Rendered into the model's prompt; not seeded.              |
+| `references/<engine>/<variant>/`          | No               | The authored, correct playable builds, six of them.        |
+| `showcase/<variant>/`                     | No               | Curated demo media and description for the catalog.        |
+| `validation/<engine>/`                    | No               | The Vitest validator suite for that engine.                |
+| `validation-baseline/<engine>/<variant>/` | No               | The baseline half of the validation media.                 |
+| `test-case.toml`                          | No               | The manifest: engines, workspaces, specs, domains, review. |
+| `variants/`                               | No               | The two variant files.                                     |
+| `description.md`                          | No               | The site-facing introduction on the case's detail page.    |
+| `changelog.md`                            | No               | This version's entry in the case's changelog.              |
+| `README.md`                               | No               | This overview.                                             |
 
 ## The specification
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run. Each rule lives in exactly one file.
 
-| Spec | Covers |
-| --- | --- |
-| `overview.md` | What is built, which files stay as they are, the stage and the top-left convention, the code quality, the commands run over the finished repository, and the legibility table that is the whole of what the look is held to. |
-| `table.md` | The card footprint, the seven column anchors, the top row's stock, waste and foundation anchors, the two overlap offsets, long-column compression, the HUD strip, and sole ownership of every pile's drop rectangle. |
-| `deal.md` | The fifty-two-card deck, the shuffle, the seven columns of one to seven cards, the twenty-four-card stock, and what a fresh deal clears. |
-| `foundations.md` | What a foundation accepts: an Ace onto an empty slot and the next-higher card of the same suit thereafter, one card at a time, and the pull back onto a legal column. |
-| `tableau.md` | What a column accepts: building down in rank and alternating in color, a King onto an empty column, what a grab takes, and the newly exposed card that turns face-up. |
-| `stock.md` | The stock, the waste, this build's turn count and deal-mode label, the waste's set memory and the rule it follows, and the recycle. |
-| `controls.md` | The pointer: press, drag threshold, drop, the double click, every on-screen control's rectangle, and the overlay key. |
-| `victory.md` | The win, the launch cadence and order, the per-frame integration, the floor bounce, the painted trail, and the way out of the win screen. |
-| `screens.md` | The four screens, their literal copy, the HUD's three controls, and the deal-mode label. |
-| `audio.md` | The ten cues, what each sounds on, and the mute that silences them all. |
-| `state.md` | What the game's state carries, in the shape the selected engine holds it in. |
-| `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the four faculty gates, the snapshot shape, the identity rules, and the debug overlay. |
-| `showcase.md` | The player-facing description and captured carousel the finished game ships beside its source. |
+| Spec                 | Covers                                                                                                                                                                                                                       |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overview.md`        | What is built, which files stay as they are, the stage and the top-left convention, the code quality, the commands run over the finished repository, and the legibility table that is the whole of what the look is held to. |
+| `table.md`           | The card footprint, the seven column anchors, the top row's stock, waste and foundation anchors, the two overlap offsets, long-column compression, the HUD strip, and sole ownership of every pile's drop rectangle.         |
+| `deal.md`            | The fifty-two-card deck, the shuffle, the seven columns of one to seven cards, the twenty-four-card stock, and what a fresh deal clears.                                                                                     |
+| `foundations.md`     | What a foundation accepts: an Ace onto an empty slot and the next-higher card of the same suit thereafter, one card at a time, and the pull back onto a legal column.                                                        |
+| `tableau.md`         | What a column accepts: building down in rank and alternating in color, a King onto an empty column, what a grab takes, and the newly exposed card that turns face-up.                                                        |
+| `stock.md`           | The stock, the waste, this build's turn count and deal-mode label, the waste's set memory and the rule it follows, and the recycle.                                                                                          |
+| `controls.md`        | The pointer: press, drag threshold, drop, the double click, every on-screen control's rectangle, and the overlay key.                                                                                                        |
+| `victory.md`         | The win, the launch cadence and order, the per-frame integration, the floor bounce, the painted trail, and the way out of the win screen.                                                                                    |
+| `screens.md`         | The four screens, their literal copy, the HUD's three controls, and the deal-mode label.                                                                                                                                     |
+| `audio.md`           | The ten cues, what each sounds on, and the mute that silences them all.                                                                                                                                                      |
+| `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                                                 |
+| `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the four faculty gates, the snapshot shape, the identity rules, and the debug overlay.                                                          |
+| `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                                                               |
 
 `deal.md`, `foundations.md`, `tableau.md`, `screens.md` and `victory.md` are
 plain Markdown, identical under every engine. `overview.md.hbs`, `table.md.hbs`,

@@ -1,4 +1,4 @@
-**Spectra Flux** is the oscillating-band drone from *Spectra*, a two-band
+**Spectra Flux** is the oscillating-band drone from _Spectra_, a two-band
 formation shooter: an enemy that flickers between cyan and magenta on a steady
 rhythm.
 

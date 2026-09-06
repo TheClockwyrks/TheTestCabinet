@@ -59,12 +59,23 @@ export const BACKGROUND: string = COLOR.bg;
 // ---- The state contract (specs/state.md) ---------------------------------
 
 export type GemKind =
-  "ruby" | "amber" | "citrine" | "jade" | "beryl" | "sapphire" | "amethyst";
+  | "ruby"
+  | "amber"
+  | "citrine"
+  | "jade"
+  | "beryl"
+  | "sapphire"
+  | "amethyst";
 
 export type Cut = "plain" | "brilliant" | "star" | "prism";
 
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "levelclear" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "levelclear"
+  | "gameover";
 
 export type Phase = "idle" | "swapping" | "resolving";
 

@@ -44,11 +44,21 @@ export function openFile(
   path: string,
   options?: { offset?: number; limit?: number; maxLineChars?: number },
 ): FileRead {
-  const o = opts<{ offset?: number; limit?: number; maxLineChars?: number }>("openFile", options);
+  const o = opts<{ offset?: number; limit?: number; maxLineChars?: number }>(
+    "openFile",
+    options,
+  );
   const offset = uint("openFile", "offset", o?.offset, U32_MAX);
   const limit = uint("openFile", "limit", o?.limit, U32_MAX);
-  const maxLineChars = uint("openFile", "maxLineChars", o?.maxLineChars, U32_MAX);
-  return asFileRead(call(() => raw.openFileView(path, offset, limit, maxLineChars)));
+  const maxLineChars = uint(
+    "openFile",
+    "maxLineChars",
+    o?.maxLineChars,
+    U32_MAX,
+  );
+  return asFileRead(
+    call(() => raw.openFileView(path, offset, limit, maxLineChars)),
+  );
 }
 
 /**

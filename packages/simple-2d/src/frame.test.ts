@@ -74,7 +74,11 @@ function stamping(stamps: number[], stepMs = 10): Clock {
 }
 
 /** Callbacks that record the deltas they were handed and the order of the frame. */
-function recorder(): { deltas: number[]; order: string[]; callbacks: FrameCallbacks } {
+function recorder(): {
+  deltas: number[];
+  order: string[];
+  callbacks: FrameCallbacks;
+} {
   const deltas: number[] = [];
   const order: string[] = [];
   return {
@@ -97,7 +101,12 @@ describe("FrameLoop under run", () => {
     const loop = new FrameLoop({ clock: constant(10) });
 
     expect(loop.info()).toEqual({ count: 0, timeMs: 0, lastDeltaMs: 0 });
-    expect(loop.metrics()).toEqual({ samples: 0, meanMs: 0, p95Ms: 0, p99Ms: 0 });
+    expect(loop.metrics()).toEqual({
+      samples: 0,
+      meanMs: 0,
+      p95Ms: 0,
+      p99Ms: 0,
+    });
   });
 
   it("runs one frame per host callback, stepped by exactly what the clock said", () => {
@@ -121,7 +130,11 @@ describe("FrameLoop under run", () => {
 
   it("keeps exactly one frame armed at a time", () => {
     const raf = fakeRaf();
-    const loop = new FrameLoop({ clock: constant(10), raf: raf.raf, cancel: raf.cancel });
+    const loop = new FrameLoop({
+      clock: constant(10),
+      raf: raf.raf,
+      cancel: raf.cancel,
+    });
 
     void loop.run();
     expect(raf.pending()).toBe(1);
@@ -230,12 +243,19 @@ describe("FrameLoop under run", () => {
     expect(raf.pending()).toBe(1);
 
     controller.abort();
-    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   it("halt resolves a run started without a signal, and can be called again", async () => {
     const raf = fakeRaf();
-    const loop = new FrameLoop({ clock: constant(10), raf: raf.raf, cancel: raf.cancel });
+    const loop = new FrameLoop({
+      clock: constant(10),
+      raf: raf.raf,
+      cancel: raf.cancel,
+    });
 
     const finished = loop.run();
     loop.halt();
@@ -326,7 +346,9 @@ describe("FrameLoop.advance", () => {
 
     loop.advance(5);
 
-    expect(game.deltas.map((dt) => Math.round(dt * 1000))).toEqual([10, 20, 30, 10, 20]);
+    expect(game.deltas.map((dt) => Math.round(dt * 1000))).toEqual([
+      10, 20, 30, 10, 20,
+    ]);
     expect(loop.info()).toEqual({ count: 5, timeMs: 90, lastDeltaMs: 20 });
     expect(raf.scheduled()).toBe(0);
   });
@@ -362,7 +384,13 @@ describe("FrameLoop.advance", () => {
   it("rejects a frame count that is not a whole non-negative number, naming it", () => {
     const loop = new FrameLoop({ clock: constant(10), raf: fakeRaf().raf });
 
-    for (const frames of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, -0.5]) {
+    for (const frames of [
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -0.5,
+    ]) {
       expect(() => loop.advance(frames)).toThrow(RangeError);
       expect(() => loop.advance(frames)).toThrow(String(frames));
     }
@@ -430,7 +458,9 @@ describe("FrameLoop frame composition", () => {
   });
 
   it("renders into the context the engine supplies", () => {
-    const surface = { id: "engine-context" } as unknown as CanvasRenderingContext2D;
+    const surface = {
+      id: "engine-context",
+    } as unknown as CanvasRenderingContext2D;
     const seen: CanvasRenderingContext2D[] = [];
     const loop = new FrameLoop({
       clock: constant(10),
@@ -458,7 +488,10 @@ describe("FrameLoop metrics", () => {
    * the frame's own cost and nothing else — which is what makes every percentile
    * below an exact number rather than a tolerance around the machine's mood.
    */
-  function timed(costsMs: number[], stepMs = 10): { loop: FrameLoop; frames: () => number } {
+  function timed(
+    costsMs: number[],
+    stepMs = 10,
+  ): { loop: FrameLoop; frames: () => number } {
     let wall = 0;
     let frames = 0;
     const loop = new FrameLoop({
@@ -496,7 +529,12 @@ describe("FrameLoop metrics", () => {
 
     loop.advance(1);
 
-    expect(loop.metrics()).toEqual({ samples: 1, meanMs: 7, p95Ms: 7, p99Ms: 7 });
+    expect(loop.metrics()).toEqual({
+      samples: 1,
+      meanMs: 7,
+      p95Ms: 7,
+      p99Ms: 7,
+    });
   });
 
   it("evicts by age, holding the last ten seconds of simulated time", () => {
@@ -541,6 +579,11 @@ describe("FrameLoop metrics", () => {
 
     loop.advance(50);
 
-    expect(loop.metrics()).toEqual({ samples: 0, meanMs: 0, p95Ms: 0, p99Ms: 0 });
+    expect(loop.metrics()).toEqual({
+      samples: 0,
+      meanMs: 0,
+      p95Ms: 0,
+      p99Ms: 0,
+    });
   });
 });

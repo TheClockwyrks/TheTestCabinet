@@ -13,11 +13,11 @@ The emitted glTF is the authoritative, judged output. There is no operation log:
 kinds reuse `[voxel]` as a bounding box and differ in what they emit and whether
 they animate.
 
-| `asset_kind` | Rig | `[model]` | Emitted glTF |
-| --- | --- | --- | --- |
-| `blender-character` | skinned (armature + weights) | required | `character.glb` |
-| `blender-mechanism` | rigid (parented node clips) | required | `model.glb` |
-| `blender-prop` | none (static) | forbidden | `model.glb` |
+| `asset_kind`        | Rig                          | `[model]` | Emitted glTF    |
+| ------------------- | ---------------------------- | --------- | --------------- |
+| `blender-character` | skinned (armature + weights) | required  | `character.glb` |
+| `blender-mechanism` | rigid (parented node clips)  | required  | `model.glb`     |
+| `blender-prop`      | none (static)                | forbidden | `model.glb`     |
 
 Everything on the
 [Manifests overview](/testing/asset-generation/manifests/overview/) applies

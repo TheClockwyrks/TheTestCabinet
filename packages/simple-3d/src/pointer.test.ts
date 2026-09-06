@@ -126,7 +126,13 @@ describe("PointerInput", () => {
       // A 1280x720 stage letterboxed into the canvas: dpr 2, a 20-device-pixel
       // top bar, half a device pixel per logical unit, and the canvas 10 CSS
       // pixels from the client origin on each axis.
-      viewport = { width: 1280, height: 720, scale: 0.5, offsetX: 0, offsetY: 20 };
+      viewport = {
+        width: 1280,
+        height: 720,
+        scale: 0.5,
+        offsetX: 0,
+        offsetY: 20,
+      };
       input = new PointerInput(
         surfaceOver(target, { dpr: () => 2, origin: () => ({ x: 10, y: 10 }) }),
         () => viewport,
@@ -153,7 +159,10 @@ describe("PointerInput", () => {
     });
 
     it("reads a nonsensical device pixel ratio as 1", () => {
-      input = new PointerInput(surfaceOver(target, { dpr: () => 0 }), () => viewport);
+      input = new PointerInput(
+        surfaceOver(target, { dpr: () => 0 }),
+        () => viewport,
+      );
 
       pointer(target, "pointermove", 40, 20);
 
@@ -166,7 +175,13 @@ describe("PointerInput", () => {
       // and the position says so with a negative x rather than being clamped —
       // a ray through it would be a ray outside the picture, which the game
       // decides about.
-      viewport = { width: 640, height: 360, scale: 1, offsetX: 100, offsetY: 0 };
+      viewport = {
+        width: 640,
+        height: 360,
+        scale: 1,
+        offsetX: 100,
+        offsetY: 0,
+      };
 
       pointer(target, "pointermove", 40, 180);
       expect(input.snapshot()).toMatchObject({ x: -60, y: 180 });
@@ -181,8 +196,17 @@ describe("PointerInput", () => {
     it("maps the samples and the contacts onto the same field as the snapshot", () => {
       // What the view is handed must be one position, whichever read produced
       // it: a HUD hit test off the snapshot and a pick off a sample must agree.
-      viewport = { width: 640, height: 360, scale: 0.5, offsetX: 20, offsetY: 10 };
-      input = new PointerInput(surfaceOver(target, { dpr: () => 2 }), () => viewport);
+      viewport = {
+        width: 640,
+        height: 360,
+        scale: 0.5,
+        offsetX: 20,
+        offsetY: 10,
+      };
+      input = new PointerInput(
+        surfaceOver(target, { dpr: () => 2 }),
+        () => viewport,
+      );
 
       pointer(target, "pointerdown", 60, 55);
 
@@ -285,7 +309,11 @@ describe("PointerInput", () => {
         buttons: ["primary"],
       });
       // One contact, so `down` and `up` stay one contact apart.
-      expect(input.samples().map((s) => s.type)).toEqual(["down", "move", "move"]);
+      expect(input.samples().map((s) => s.type)).toEqual([
+        "down",
+        "move",
+        "move",
+      ]);
     });
 
     it("names the button on the sample that changed it", () => {
@@ -384,7 +412,10 @@ describe("PointerInput", () => {
 
   describe("contacts", () => {
     it("lists every pointer in contact, in contact order", () => {
-      pointer(target, "pointerdown", 5, 5, { pointerId: 1, pointerType: "touch" });
+      pointer(target, "pointerdown", 5, 5, {
+        pointerId: 1,
+        pointerType: "touch",
+      });
       pointer(target, "pointerdown", 9, 9, {
         pointerId: 2,
         pointerType: "touch",
@@ -414,7 +445,10 @@ describe("PointerInput", () => {
     it("moves a second contact without disturbing the first", () => {
       // What a pinch or a two-finger orbit reads: two positions on the field,
       // each tracked on its own.
-      pointer(target, "pointerdown", 10, 10, { pointerId: 1, pointerType: "touch" });
+      pointer(target, "pointerdown", 10, 10, {
+        pointerId: 1,
+        pointerType: "touch",
+      });
       pointer(target, "pointerdown", 90, 90, {
         pointerId: 2,
         pointerType: "touch",
@@ -426,7 +460,9 @@ describe("PointerInput", () => {
         isPrimary: false,
       });
 
-      expect(input.contacts().map((c) => ({ id: c.id, x: c.x, y: c.y }))).toEqual([
+      expect(
+        input.contacts().map((c) => ({ id: c.id, x: c.x, y: c.y })),
+      ).toEqual([
         { id: 1, x: 10, y: 10 },
         { id: 2, x: 120, y: 80 },
       ]);
@@ -513,7 +549,10 @@ describe("PointerInput", () => {
     });
 
     it("carries the pointer that produced each sample", () => {
-      pointer(target, "pointerdown", 1, 1, { pointerId: 7, pointerType: "touch" });
+      pointer(target, "pointerdown", 1, 1, {
+        pointerId: 7,
+        pointerType: "touch",
+      });
 
       expect(input.samples()[0]).toMatchObject({
         id: 7,
@@ -529,12 +568,14 @@ describe("PointerInput", () => {
       pointer(target, "pointermove", 3, 3, { pointerId: 1 });
       pointer(target, "pointermove", 4, 4, { pointerId: 2, isPrimary: false });
 
-      expect(input.samples().map((sample) => [sample.id, sample.type])).toEqual([
-        [1, "down"],
-        [2, "down"],
-        [1, "move"],
-        [2, "move"],
-      ]);
+      expect(input.samples().map((sample) => [sample.id, sample.type])).toEqual(
+        [
+          [1, "down"],
+          [2, "down"],
+          [1, "move"],
+          [2, "move"],
+        ],
+      );
     });
 
     it("does not consume on read, and empties when the frame closes", () => {
@@ -566,7 +607,8 @@ describe("PointerInput", () => {
     });
 
     it("keeps the contacts and the edges past the cap, and lists again next frame", () => {
-      for (let i = 0; i < POINTER_SAMPLE_CAP; i++) pointer(target, "pointermove", i, i);
+      for (let i = 0; i < POINTER_SAMPLE_CAP; i++)
+        pointer(target, "pointermove", i, i);
       pointer(target, "pointerdown", 500, 500, { pointerId: 3 });
 
       expect(input.samples()).toHaveLength(POINTER_SAMPLE_CAP);
@@ -589,8 +631,17 @@ describe("PointerInput", () => {
     });
 
     it("maps travel through the ratio and the fit", () => {
-      viewport = { width: 1280, height: 720, scale: 0.5, offsetX: 0, offsetY: 0 };
-      input = new PointerInput(surfaceOver(target, { dpr: () => 2 }), () => viewport);
+      viewport = {
+        width: 1280,
+        height: 720,
+        scale: 0.5,
+        offsetX: 0,
+        offsetY: 0,
+      };
+      input = new PointerInput(
+        surfaceOver(target, { dpr: () => 2 }),
+        () => viewport,
+      );
 
       wheel(target, 0, 10);
 
@@ -608,7 +659,10 @@ describe("PointerInput", () => {
     });
 
     it("falls back to a line's worth for a page over a surface with no height", () => {
-      input = new PointerInput(surfaceOver(target, { cssHeight: () => 0 }), () => viewport);
+      input = new PointerInput(
+        surfaceOver(target, { cssHeight: () => 0 }),
+        () => viewport,
+      );
 
       wheel(target, 0, 1, 2);
 
@@ -670,9 +724,21 @@ describe("PointerInput", () => {
       const stub = createSurface({ cssWidth: 640, cssHeight: 360, dpr: 1 });
       const attached = new PointerInput(stub.surface, () => viewport);
 
-      pointer(stub.target, "pointerdown", 5, 5, { pointerId: 2, button: 0, buttons: 1 });
-      pointer(stub.target, "pointerdown", 5, 5, { pointerId: 2, button: 2, buttons: 3 });
-      pointer(stub.target, "pointerup", 5, 5, { pointerId: 2, button: 2, buttons: 1 });
+      pointer(stub.target, "pointerdown", 5, 5, {
+        pointerId: 2,
+        button: 0,
+        buttons: 1,
+      });
+      pointer(stub.target, "pointerdown", 5, 5, {
+        pointerId: 2,
+        button: 2,
+        buttons: 3,
+      });
+      pointer(stub.target, "pointerup", 5, 5, {
+        pointerId: 2,
+        button: 2,
+        buttons: 1,
+      });
 
       expect(stub.captured()).toEqual([2]);
       expect(stub.releasedCaptures()).toEqual([]);

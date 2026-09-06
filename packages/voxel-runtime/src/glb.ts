@@ -66,7 +66,12 @@ interface GltfJson {
   skins?: GltfSkin[];
 }
 
-const EMPTY_MESH: PartMesh = { positions: [], normals: [], colors: [], indices: [] };
+const EMPTY_MESH: PartMesh = {
+  positions: [],
+  normals: [],
+  colors: [],
+  indices: [],
+};
 
 /** The parsed glb container: its JSON chunk plus where the BIN chunk sits in `data`. */
 interface GlbContainer {
@@ -116,11 +121,20 @@ function readContainer(data: ArrayBuffer): GlbContainer {
 }
 
 /** The byte offset within `data` where an accessor's elements begin. */
-function accessorByteOffset(container: GlbContainer, accessor: GltfAccessor): number {
+function accessorByteOffset(
+  container: GlbContainer,
+  accessor: GltfAccessor,
+): number {
   const bufferView = (container.json.bufferViews ?? [])[accessor.bufferView];
-  if (!bufferView) throw new Error(`parseGlb: missing bufferView ${accessor.bufferView}`);
-  if (container.binOffset < 0) throw new Error("parseGlb: mesh present but no BIN chunk");
-  return container.binOffset + (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  if (!bufferView)
+    throw new Error(`parseGlb: missing bufferView ${accessor.bufferView}`);
+  if (container.binOffset < 0)
+    throw new Error("parseGlb: mesh present but no BIN chunk");
+  return (
+    container.binOffset +
+    (bufferView.byteOffset ?? 0) +
+    (accessor.byteOffset ?? 0)
+  );
 }
 
 /** Read an F32 accessor of `components`-wide elements into a flat `Float32Array`.
@@ -134,12 +148,20 @@ function readFloat(
   if (accessorIndex === undefined) return new Float32Array(0);
   const accessor = (container.json.accessors ?? [])[accessorIndex];
   if (!accessor) throw new Error(`parseGlb: missing accessor ${accessorIndex}`);
-  if (accessor.componentType !== COMPONENT_TYPE_FLOAT32 || accessor.type !== type) {
-    throw new Error(`parseGlb: accessor ${accessorIndex} is not an F32 ${type}`);
+  if (
+    accessor.componentType !== COMPONENT_TYPE_FLOAT32 ||
+    accessor.type !== type
+  ) {
+    throw new Error(
+      `parseGlb: accessor ${accessorIndex} is not an F32 ${type}`,
+    );
   }
   const byteOffset = accessorByteOffset(container, accessor);
   return new Float32Array(
-    container.data.slice(byteOffset, byteOffset + accessor.count * components * 4),
+    container.data.slice(
+      byteOffset,
+      byteOffset + accessor.count * components * 4,
+    ),
   );
 }
 
@@ -163,13 +185,17 @@ function readUint(
       for (let i = 0; i < n; i++) out[i] = dv.getUint8(byteOffset + i);
       break;
     case COMPONENT_TYPE_UINT16:
-      for (let i = 0; i < n; i++) out[i] = dv.getUint16(byteOffset + i * 2, true);
+      for (let i = 0; i < n; i++)
+        out[i] = dv.getUint16(byteOffset + i * 2, true);
       break;
     case COMPONENT_TYPE_UINT32:
-      for (let i = 0; i < n; i++) out[i] = dv.getUint32(byteOffset + i * 4, true);
+      for (let i = 0; i < n; i++)
+        out[i] = dv.getUint32(byteOffset + i * 4, true);
       break;
     default:
-      throw new Error(`parseGlb: accessor ${accessorIndex} is not an unsigned integer`);
+      throw new Error(
+        `parseGlb: accessor ${accessorIndex} is not an unsigned integer`,
+      );
   }
   return out;
 }
@@ -192,7 +218,12 @@ export function parseGlb(data: ArrayBuffer): PartMesh {
     return EMPTY_MESH;
   }
 
-  const positions = readFloat(container, primitive.attributes.POSITION, "VEC3", 3);
+  const positions = readFloat(
+    container,
+    primitive.attributes.POSITION,
+    "VEC3",
+    3,
+  );
   const normals = readFloat(container, primitive.attributes.NORMAL, "VEC3", 3);
   const colors = readFloat(container, primitive.attributes.COLOR_0, "VEC3", 3);
   const indices = readIndices(container, primitive);
@@ -200,11 +231,16 @@ export function parseGlb(data: ArrayBuffer): PartMesh {
 }
 
 /** Read a primitive's U32 SCALAR index accessor, or an empty array if unindexed. */
-function readIndices(container: GlbContainer, primitive: GltfPrimitive): Uint32Array {
+function readIndices(
+  container: GlbContainer,
+  primitive: GltfPrimitive,
+): Uint32Array {
   if (primitive.indices === undefined) return new Uint32Array(0);
   const accessor = (container.json.accessors ?? [])[primitive.indices];
-  if (!accessor) throw new Error(`parseGlb: missing index accessor ${primitive.indices}`);
-  if (accessor.type !== "SCALAR") throw new Error("parseGlb: index accessor is not a SCALAR");
+  if (!accessor)
+    throw new Error(`parseGlb: missing index accessor ${primitive.indices}`);
+  if (accessor.type !== "SCALAR")
+    throw new Error("parseGlb: index accessor is not a SCALAR");
   return readUint(container, primitive.indices, 1);
 }
 
@@ -241,12 +277,19 @@ export function parseSkinnedGlb(data: ArrayBuffer): SkinnedMesh {
     return EMPTY_SKINNED;
   }
 
-  const positions = readFloat(container, primitive.attributes.POSITION, "VEC3", 3);
+  const positions = readFloat(
+    container,
+    primitive.attributes.POSITION,
+    "VEC3",
+    3,
+  );
   const normals = readFloat(container, primitive.attributes.NORMAL, "VEC3", 3);
   const colors = readFloat(container, primitive.attributes.COLOR_0, "VEC3", 3);
   const indices = readIndices(container, primitive);
   const joints = readUint(container, primitive.attributes.JOINTS_0, 4);
-  const weights = normalizeWeights(readFloat(container, primitive.attributes.WEIGHTS_0, "VEC4", 4));
+  const weights = normalizeWeights(
+    readFloat(container, primitive.attributes.WEIGHTS_0, "VEC4", 4),
+  );
 
   const skin = json.skins?.[0];
   const bones = skin ? readBones(container, skin) : [];
@@ -259,7 +302,8 @@ export function parseSkinnedGlb(data: ArrayBuffer): SkinnedMesh {
  * already emit normalized weights, but a consumer relies on the invariant. */
 function normalizeWeights(weights: Float32Array): Float32Array {
   for (let v = 0; v < weights.length; v += 4) {
-    const sum = weights[v]! + weights[v + 1]! + weights[v + 2]! + weights[v + 3]!;
+    const sum =
+      weights[v]! + weights[v + 1]! + weights[v + 2]! + weights[v + 3]!;
     if (sum > 0 && sum !== 1) {
       weights[v] = weights[v]! / sum;
       weights[v + 1] = weights[v + 1]! / sum;

@@ -82,12 +82,7 @@ it("writes the wrapping run when it is the shorter way round a closed track", as
     h,
     solution([
       trackPart(RING, true),
-      armPart("arm", 1, 0, 0, 1, [
-        "advance",
-        "advance",
-        "advance",
-        "advance",
-      ]),
+      armPart("arm", 1, 0, 0, 1, ["advance", "advance", "advance", "advance"]),
     ]),
   );
   const arm = (await partIds(h))[1] ?? -1;

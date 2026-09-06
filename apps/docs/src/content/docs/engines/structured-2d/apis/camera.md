@@ -9,11 +9,11 @@ the two into the transform each render component draws through.
 
 ## The three spaces
 
-| Space | Unit | Set by |
-| --- | --- | --- |
-| World | World units | The game, on every transform |
-| Logical | The design size handed to `createEngine` | The camera |
-| Device | Device pixels | The viewport |
+| Space   | Unit                                     | Set by                       |
+| ------- | ---------------------------------------- | ---------------------------- |
+| World   | World units                              | The game, on every transform |
+| Logical | The design size handed to `createEngine` | The camera                   |
+| Device  | Device pixels                            | The viewport                 |
 
 The camera carries the first mapping and the viewport the second, with `width`
 and `height` the logical design size:
@@ -86,21 +86,21 @@ interface Camera {
 }
 ```
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `x` | `width / 2` | The world x the center of the logical field shows. |
-| `y` | `height / 2` | The world y the center of the logical field shows. |
-| `zoom` | `1` | Logical units per world unit. |
-| `rotation` | `0` | Radians, turning the projected region about the camera's position. |
-| `bounds` | `null` | A rectangle in world units the visible region is kept inside. |
-| `target` | `null` | The actor the camera follows. |
+| Field      | Default      | Meaning                                                            |
+| ---------- | ------------ | ------------------------------------------------------------------ |
+| `x`        | `width / 2`  | The world x the center of the logical field shows.                 |
+| `y`        | `height / 2` | The world y the center of the logical field shows.                 |
+| `zoom`     | `1`          | Logical units per world unit.                                      |
+| `rotation` | `0`          | Radians, turning the projected region about the camera's position. |
+| `bounds`   | `null`       | A rectangle in world units the visible region is kept inside.      |
+| `target`   | `null`       | The actor the camera follows.                                      |
 
-| Method | Result |
-| --- | --- |
-| `follow` | Sets `target`. `null` clears it and returns the projection to the game. |
-| `snapshot` | The projection as a value the caller owns. |
+| Method           | Result                                                                      |
+| ---------------- | --------------------------------------------------------------------------- |
+| `follow`         | Sets `target`. `null` clears it and returns the projection to the game.     |
+| `snapshot`       | The projection as a value the caller owns.                                  |
 | `worldToLogical` | A world point in logical coordinates, through position, zoom, and rotation. |
-| `logicalToWorld` | The inverse of `worldToLogical`. |
+| `logicalToWorld` | The inverse of `worldToLogical`.                                            |
 
 A world's camera starts at `x = width / 2`, `y = height / 2`, `zoom = 1`,
 `rotation = 0`, and `bounds = null`, so world coordinates and logical
@@ -141,13 +141,13 @@ interface Viewport {
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `width` | The logical design width. |
-| `height` | The logical design height. |
-| `scale` | Device pixels per logical unit, with the device pixel ratio folded in. |
-| `offsetX` | The left letterbox bar, in device pixels. |
-| `offsetY` | The top letterbox bar, in device pixels. |
+| Field     | Meaning                                                                |
+| --------- | ---------------------------------------------------------------------- |
+| `width`   | The logical design width.                                              |
+| `height`  | The logical design height.                                             |
+| `scale`   | Device pixels per logical unit, with the device pixel ratio folded in. |
+| `offsetX` | The left letterbox bar, in device pixels.                              |
+| `offsetY` | The top letterbox bar, in device pixels.                               |
 
 `scale` and both offsets are device pixels. The CSS-pixel figure is `scale`
 divided by the device pixel ratio.
@@ -223,10 +223,10 @@ each correct themselves within one frame.
 The engine pins a pixel CSS size onto the canvas only while the reported size
 still matches the backing-store attributes.
 
-| Measurement | The engine writes |
-| --- | --- |
+| Measurement                                                              | The engine writes                                                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | The reported CSS size equals the size the backing-store attributes imply | `style.width` and `style.height` in pixels, equal to the measurement, alongside the backing store |
-| The page sized the element, inline or through a stylesheet | The backing store alone |
+| The page sized the element, inline or through a stylesheet               | The backing store alone                                                                           |
 
 An element the page has not sized takes its CSS size from the `width` and
 `height` attributes, which are exactly what the backing store writes. Writing

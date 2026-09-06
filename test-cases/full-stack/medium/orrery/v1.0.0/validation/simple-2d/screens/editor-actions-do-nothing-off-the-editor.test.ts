@@ -145,7 +145,11 @@ it("changes nothing the snapshot reports on title, howto or select", async () =>
   await openHowto(h);
   await h.debug.setHowtoPage(MIDDLE_PAGE);
   const beforeHowto = await h.snapshot();
-  assertEqual(beforeHowto.screen, "howto", "the second round runs on the how-to");
+  assertEqual(
+    beforeHowto.screen,
+    "howto",
+    "the second round runs on the how-to",
+  );
   assertEqual(
     beforeHowto.howtoPage,
     MIDDLE_PAGE,

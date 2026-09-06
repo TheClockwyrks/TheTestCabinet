@@ -17,10 +17,7 @@ import type {
 export type { AssetKind };
 import type { PartMesh } from "@clockwyrks/voxel-runtime";
 import type { HarnessEvent } from "@clockwyrks/run-record/event";
-import type {
-  RunScoreOut,
-  RunSummary,
-} from "@clockwyrks/run-record/snapshot";
+import type { RunScoreOut, RunSummary } from "@clockwyrks/run-record/snapshot";
 import type {
   AestheticRating,
   DomainAesthetic,

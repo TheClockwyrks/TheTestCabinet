@@ -11,10 +11,10 @@ rather than zero.
 
 | Normalized class | Antigravity source |
 | ---------------- | ------------------ |
-| Uncached input | (not reported) |
-| Cached input | (not reported) |
-| Output | (not reported) |
-| Reasoning | (not reported) |
+| Uncached input   | (not reported)     |
+| Cached input     | (not reported)     |
+| Output           | (not reported)     |
+| Reasoning        | (not reported)     |
 
 ## Cost
 

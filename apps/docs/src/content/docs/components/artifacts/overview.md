@@ -38,16 +38,16 @@ store as an internal detail without touching the backend or the console.
 Each run's tree lives at `<root>/<run-id>/`, and the path `{id}` on every route
 is the run record's id.
 
-| Route | Caller |
-| --- | --- |
-| `POST /runs/{id}/artifacts` | The driver, uploading a finished run's tree as a tar |
-| `DELETE /runs/{id}/artifacts` | The backend, pruning a deleted run's tree |
-| `GET /runs` | The backend, listing every stored tree for its reclamation sweep |
-| `GET /runs/{id}/tree.tar` | The publisher Job, pulling the source tree to release |
-| `GET /runs/{id}/build[/{path}]` | A console, loading the playable build |
+| Route                                                                                    | Caller                                                                                          |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `POST /runs/{id}/artifacts`                                                              | The driver, uploading a finished run's tree as a tar                                            |
+| `DELETE /runs/{id}/artifacts`                                                            | The backend, pruning a deleted run's tree                                                       |
+| `GET /runs`                                                                              | The backend, listing every stored tree for its reclamation sweep                                |
+| `GET /runs/{id}/tree.tar`                                                                | The publisher Job, pulling the source tree to release                                           |
+| `GET /runs/{id}/build[/{path}]`                                                          | A console, loading the playable build                                                           |
 | `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media; the backend, baking a published run's media into the snapshot |
-| `GET /runs/{id}/events.jsonl`, `/raw.jsonl` | A console, reading the recorded logs |
-| `GET /runs/{id}/archive.tar.gz` | A reviewer, downloading the whole run |
+| `GET /runs/{id}/events.jsonl`, `/raw.jsonl`                                              | A console, reading the recorded logs                                                            |
+| `GET /runs/{id}/archive.tar.gz`                                                          | A reviewer, downloading the whole run                                                           |
 
 Both `/runs/{id}/build` and `/runs/{id}/build/` serve the build's `index.html`,
 because the build link the driver emits carries a trailing slash and doubles as
@@ -80,6 +80,7 @@ The artifact service has no Kubernetes API access. It only talks HTTP.
   tree's last-modified time, which is when the driver uploaded it. An upload in
   flight is spooled to an unnamed scratch file, so it is listed only once it has
   been unpacked into a run directory.
+
 - The publisher's `tree.tar` pull presents its per-publish-job token, verified
   the same way against the backend's publish-job endpoint, with the publish job
   id in the `x-tcab-publish-job-id` header. This is the one gated read. It is a

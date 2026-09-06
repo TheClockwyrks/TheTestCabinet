@@ -21,7 +21,8 @@
 
 /** The drawing surface shared by the frame's canvas and the painted layer. */
 export type Ctx2D =
-  CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  | CanvasRenderingContext2D
+  | OffscreenCanvasRenderingContext2D;
 
 /** The persistent surface the cascade paints onto. */
 export interface TrailLayer {

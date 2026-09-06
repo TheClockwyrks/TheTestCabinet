@@ -21,7 +21,10 @@ export interface HarnessConfigApi {
   /** Set a harness's maximum parallelism (`null` = no limit), or `null` when the
    * session is logged out and cannot mutate. Resolves to the refreshed list. */
   setMaxParallelism:
-    | ((slug: string, maxParallelism: number | null) => Promise<HarnessConfigEntry[]>)
+    | ((
+        slug: string,
+        maxParallelism: number | null,
+      ) => Promise<HarnessConfigEntry[]>)
     | null;
 }
 

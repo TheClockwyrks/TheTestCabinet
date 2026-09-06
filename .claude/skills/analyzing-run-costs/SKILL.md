@@ -15,12 +15,12 @@ turn count, not the token total.
 `GET /runs/{id}/events` is the normalized stream. What it contains differs by
 harness, and the difference decides what you can measure:
 
-| Harness | Per-request usage | Turn count | Notes |
-| --- | --- | --- | --- |
-| gg | `event.type == "usage"` (nested under `event`) | exact | also `turn_started`, `context_breakdown`, `turn_timing`, `tool_call`, `session_summary` |
-| pi | top-level `type == "usage"` | exact | |
-| opencode | top-level `type == "usage"` | exact | |
-| codex | **none** | **must be inferred** | see below |
+| Harness  | Per-request usage                              | Turn count           | Notes                                                                                   |
+| -------- | ---------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------- |
+| gg       | `event.type == "usage"` (nested under `event`) | exact                | also `turn_started`, `context_breakdown`, `turn_timing`, `tool_call`, `session_summary` |
+| pi       | top-level `type == "usage"`                    | exact                |                                                                                         |
+| opencode | top-level `type == "usage"`                    | exact                |                                                                                         |
+| codex    | **none**                                       | **must be inferred** | see below                                                                               |
 
 Codex's `--json` output emits one session-level `turn.completed` carrying
 aggregate usage and no per-request breakdown. Its **cost is exact**; its turn
@@ -107,7 +107,7 @@ Two numbers separate any two harnesses:
 Attribute the gap before proposing a fix. A harness losing on turns needs fewer
 round-trips; a harness losing on context needs a smaller prompt. They are
 different problems and the wrong one is easy to guess: a harness can carry a
-*smaller* context than its competitor and still cost twice as much.
+_smaller_ context than its competitor and still cost twice as much.
 
 Then split the cost by token class. Cache-read input is the direct price of
 re-sending context once per turn, so a large cache-read line is the signature of
@@ -123,7 +123,7 @@ a turn-count problem.
   undercount.
   - **Images are the bigger term, and gg's estimate is ~8x low.** A 1280x720 PNG
     bills around 1,130 tokens; gg's per-message `tokens` field put the same file
-    at 122-426 and scaled it with *file size*, which is not what images are
+    at 122-426 and scaled it with _file size_, which is not what images are
     billed on. Any image in context rides on every subsequent request.
   - **To size the schemas, difference two configurations** rather than reading the
     remainder directly. The images cancel, so the subtraction is exact: two

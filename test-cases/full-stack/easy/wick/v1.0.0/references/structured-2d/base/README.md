@@ -57,14 +57,14 @@ The night is played from the keyboard, and every menu answers the mouse as
 well. Keys are bound by physical position (`KeyboardEvent.code`), so they hold
 on any layout.
 
-| Action | Keys | Does |
-| --- | --- | --- |
-| Move | `ArrowUp` / `KeyW`, `ArrowDown` / `KeyS`, `ArrowLeft` / `KeyA`, `ArrowRight` / `KeyD` (held) | Moves the lamplighter; up and down also move a menu highlight, and left and right the almanac's tab |
-| Confirm | `Enter` / `Space` | Accepts the highlighted item; closes the chest overlay |
-| Back | `Escape` | Leaves the how-to screen and the almanac; pauses the night and resumes it; returns to the title from an end screen |
-| Pause | `KeyP` | Pauses the night; resumes it |
-| Mute | `KeyM` | Toggles sound, on every screen |
-| Diagnostics | `` ` `` (backquote) | Shows and hides the engine's debug overlay, which lists the values the game registers: the screen, the clock, the loadout, the switches, and the mute bit |
+| Action      | Keys                                                                                         | Does                                                                                                                                                      |
+| ----------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Move        | `ArrowUp` / `KeyW`, `ArrowDown` / `KeyS`, `ArrowLeft` / `KeyA`, `ArrowRight` / `KeyD` (held) | Moves the lamplighter; up and down also move a menu highlight, and left and right the almanac's tab                                                       |
+| Confirm     | `Enter` / `Space`                                                                            | Accepts the highlighted item; closes the chest overlay                                                                                                    |
+| Back        | `Escape`                                                                                     | Leaves the how-to screen and the almanac; pauses the night and resumes it; returns to the title from an end screen                                        |
+| Pause       | `KeyP`                                                                                       | Pauses the night; resumes it                                                                                                                              |
+| Mute        | `KeyM`                                                                                       | Toggles sound, on every screen                                                                                                                            |
+| Diagnostics | `` ` `` (backquote)                                                                          | Shows and hides the engine's debug overlay, which lists the values the game registers: the screen, the clock, the loadout, the switches, and the mute bit |
 
 The pointer moves the highlight to whatever item it rests on, a click takes
 that item, and the wheel scrolls the almanac's list.

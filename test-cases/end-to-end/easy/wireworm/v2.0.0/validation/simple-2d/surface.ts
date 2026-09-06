@@ -47,7 +47,12 @@ export const DEFAULT_SEED = 1;
 
 /** The six screens the game moves between. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
 
 /** The three sub-phases of the `playing` screen. */
 export type Phase = "banner" | "active" | "respawn";

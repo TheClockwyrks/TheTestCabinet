@@ -144,13 +144,13 @@ outcome against the run's ceilings.
 When the sandbox could not run the program to a result, the failure is split by
 owner:
 
-| Failure | What the model reads | Session |
-| --- | --- | --- |
-| The prebuilt artifact could not be run, or gg's own plumbing failed | nothing | the run ends |
-| gg accepted the program and could not prepare it | nothing | the run ends |
-| The language's compiler could not finish | nothing | the run ends |
-| The language read the program and rejected it | the language's diagnostic verbatim, under `Compiler error` | continues |
-| A sandbox ceiling stopped the program | the ceiling's own words, under `Runtime error` | continues |
+| Failure                                                             | What the model reads                                       | Session      |
+| ------------------------------------------------------------------- | ---------------------------------------------------------- | ------------ |
+| The prebuilt artifact could not be run, or gg's own plumbing failed | nothing                                                    | the run ends |
+| gg accepted the program and could not prepare it                    | nothing                                                    | the run ends |
+| The language's compiler could not finish                            | nothing                                                    | the run ends |
+| The language read the program and rejected it                       | the language's diagnostic verbatim, under `Compiler error` | continues    |
+| A sandbox ceiling stopped the program                               | the ceiling's own words, under `Runtime error`             | continues    |
 
 A program that ran and then failed on its own account is a result rather than a
 failure of the sandbox. gg reports what the language emitted, with the location

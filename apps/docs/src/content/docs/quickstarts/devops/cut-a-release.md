@@ -4,7 +4,7 @@ title: Cut a Release
 
 Ship `vX.Y.Z`: prepare the release branch, rehearse on staging, publish the
 binaries and desktop app from GitHub, then land the catalog and the services in
-production. The full walkthrough and the *why* behind each step are in
+production. The full walkthrough and the _why_ behind each step are in
 [Cutting a Release](/guides/devops/cutting-a-release/).
 
 Four things ship on four separate paths, and the tag governs only the first:
@@ -137,7 +137,7 @@ move.
 
 - The GitHub release is **Latest**, not a prerelease, with every archive, both
   installers, and `SHA256SUMS`.
-- `docs.testcabinet.ai` serves the changelog *and* links it in the sidebar.
+- `docs.testcabinet.ai` serves the changelog _and_ links it in the sidebar.
 - `testcabinet.ai` shows the graduated cases, each with a working **Reference**
   tab.
 - The console can enqueue a run of a graduated case.

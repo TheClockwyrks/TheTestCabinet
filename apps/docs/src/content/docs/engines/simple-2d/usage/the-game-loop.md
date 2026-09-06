@@ -11,8 +11,8 @@ each function only the part of itself that function may use.
 ```ts
 import type { Game } from "@clockwyrks/simple-2d";
 
-const TURN_RATE = 260;   // logical pixels per second squared
-const THRUST = 420;      // logical pixels per second squared
+const TURN_RATE = 260; // logical pixels per second squared
+const THRUST = 420; // logical pixels per second squared
 const DRAG_PER_SECOND = 0.6;
 
 interface State {
@@ -174,11 +174,11 @@ engine is built. Every rate a build writes down is therefore per second, and
 every use of it is multiplied by `dt`, which is what gives the same behavior at
 every frame rate.
 
-| Quantity | Unit | Applied as |
-| --- | --- | --- |
-| Velocity | Per second | `position + velocity * dt` |
-| Acceleration | Per second squared | `velocity + accel * dt` |
-| Decay | A per-second factor | `value * Math.pow(factor, dt)` |
+| Quantity     | Unit                | Applied as                     |
+| ------------ | ------------------- | ------------------------------ |
+| Velocity     | Per second          | `position + velocity * dt`     |
+| Acceleration | Per second squared  | `velocity + accel * dt`        |
+| Decay        | A per-second factor | `value * Math.pow(factor, dt)` |
 
 Timers, cooldowns, and animation clocks count in seconds the same way.
 

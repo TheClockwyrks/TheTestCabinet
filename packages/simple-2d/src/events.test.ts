@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus } from "./events";
 
 /** A `cue:played` payload, so a test can name one without restating the shape. */
-function cue(name: string, t = 0, gain = 1): { cue: string; t: number; gain: number } {
+function cue(
+  name: string,
+  t = 0,
+  gain = 1,
+): { cue: string; t: number; gain: number } {
   return { cue: name, t, gain };
 }
 
@@ -69,7 +73,10 @@ describe("EventBus.on", () => {
     bus.on("asset:loaded", loaded);
     bus.on("asset:failed", failed);
 
-    bus.emit("asset:loaded", { path: "sprites/ship.png", url: "assets/sprites/ship.png" });
+    bus.emit("asset:loaded", {
+      path: "sprites/ship.png",
+      url: "assets/sprites/ship.png",
+    });
 
     expect(loaded).toHaveBeenCalledTimes(1);
     expect(failed).not.toHaveBeenCalled();

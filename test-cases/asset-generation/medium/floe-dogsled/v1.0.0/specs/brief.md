@@ -53,14 +53,14 @@ and from the soft lone critter.
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Husky fur — light | `#d8dde0` |
+| Role                                | Hex       |
+| ----------------------------------- | --------- |
+| Husky fur — light                   | `#d8dde0` |
 | Husky — dark (back, legs, markings) | `#3a4249` |
-| Sled / runners (dark) | `#2a2f34` |
-| Harness / gangline (rope) | `#c08a3a` |
-| Musher parka (warm) | `#e0562f` |
-| Snow spray | `#eef6fa` |
+| Sled / runners (dark)               | `#2a2f34` |
+| Harness / gangline (rope)           | `#c08a3a` |
+| Musher parka (warm)                 | `#e0562f` |
+| Snow spray                          | `#eef6fa` |
 
 ## Working the tool
 

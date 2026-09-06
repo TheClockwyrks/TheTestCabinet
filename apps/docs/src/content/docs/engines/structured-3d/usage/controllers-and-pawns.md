@@ -63,8 +63,14 @@ export const ROVER = { speed: 6, turnRate: 2.5, pitchLimit: Math.PI / 4 };
 export const AI_DEADZONE = 0.25;
 
 export const STICK_ACTIONS: ReadonlySet<string> = new Set([
-  "move-up", "move-down", "move-left", "move-right",
-  "look-up", "look-down", "look-left", "look-right",
+  "move-up",
+  "move-down",
+  "move-left",
+  "move-right",
+  "look-up",
+  "look-down",
+  "look-left",
+  "look-right",
 ]);
 
 export const KEYS: Record<string, string[]> = {
@@ -138,7 +144,10 @@ export class Rover extends Pawn {
     this.transform.rotation = quatMultiply(yaw, this.transform.rotation);
 
     this.pitch += this.look.y * ROVER.turnRate * dt;
-    this.pitch = Math.max(-ROVER.pitchLimit, Math.min(ROVER.pitchLimit, this.pitch));
+    this.pitch = Math.max(
+      -ROVER.pitchLimit,
+      Math.min(ROVER.pitchLimit, this.pitch),
+    );
     this.eye.offset.rotation = quatFromAxisAngle(RIGHT, this.pitch);
 
     const forward = quatRotate(this.transform.rotation, FORWARD);
@@ -245,7 +254,9 @@ export class AIRoverController extends AIController {
     }
 
     const toBall = sub(ball.transform.position, pawn.transform.position);
-    const local = normalize(quatRotate(quatInverse(pawn.transform.rotation), toBall));
+    const local = normalize(
+      quatRotate(quatInverse(pawn.transform.rotation), toBall),
+    );
     const turn = Math.abs(local.x) < AI_DEADZONE ? 0 : Math.sign(local.x);
     pawn.drive({ x: 0, y: -local.z }, { x: turn, y: 0 });
   }

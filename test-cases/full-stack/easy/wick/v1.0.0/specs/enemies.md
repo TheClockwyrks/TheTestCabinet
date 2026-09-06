@@ -19,29 +19,29 @@ a behavior, `chase`, `drift`, or `weave`.
 
 ### Common enemies
 
-| Enemy | Id | HP | Speed | Damage | Radius | Gem | Behavior |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Moth | `moth` | 5 | 100 | 5 | 10 | small | chase |
-| Bat | `bat` | 8 | 140 | 5 | 10 | small | chase |
-| Rat | `rat` | 15 | 120 | 8 | 12 | small | chase |
-| Gnat | `gnat` | 2 | 160 | 3 | 8 | small | drift |
-| Beetle | `beetle` | 25 | 60 | 10 | 14 | medium | chase |
-| Wisp | `wisp` | 12 | 90 | 6 | 10 | medium | weave |
-| Spider | `spider` | 40 | 80 | 12 | 14 | medium | chase |
-| Crow | `crow` | 30 | 150 | 10 | 12 | medium | chase |
-| Shade | `shade` | 60 | 70 | 15 | 16 | medium | chase |
-| Hound | `hound` | 120 | 110 | 20 | 18 | large | chase |
+| Enemy  | Id       | HP  | Speed | Damage | Radius | Gem    | Behavior |
+| ------ | -------- | --- | ----- | ------ | ------ | ------ | -------- |
+| Moth   | `moth`   | 5   | 100   | 5      | 10     | small  | chase    |
+| Bat    | `bat`    | 8   | 140   | 5      | 10     | small  | chase    |
+| Rat    | `rat`    | 15  | 120   | 8      | 12     | small  | chase    |
+| Gnat   | `gnat`   | 2   | 160   | 3      | 8      | small  | drift    |
+| Beetle | `beetle` | 25  | 60    | 10     | 14     | medium | chase    |
+| Wisp   | `wisp`   | 12  | 90    | 6      | 10     | medium | weave    |
+| Spider | `spider` | 40  | 80    | 12     | 14     | medium | chase    |
+| Crow   | `crow`   | 30  | 150   | 10     | 12     | medium | chase    |
+| Shade  | `shade`  | 60  | 70    | 15     | 16     | medium | chase    |
+| Hound  | `hound`  | 120 | 110   | 20     | 18     | large  | chase    |
 
 All ten are rank `common`. The HP column is the base the scaling below
 multiplies at spawn.
 
 ### Elites and the Dark
 
-| Enemy | Id | Rank | HP | Speed | Damage | Radius | Drops | Behavior |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Mothwing | `mothwing` | `elite` | 600 | 90 | 20 | 28 | chest | chase |
-| Owl | `owl` | `elite` | 2000 | 100 | 30 | 36 | chest | chase |
-| The Dark | `dark` | `dark` | 10000 | 170 | 50 | 40 | nothing | chase |
+| Enemy    | Id         | Rank    | HP    | Speed | Damage | Radius | Drops   | Behavior |
+| -------- | ---------- | ------- | ----- | ----- | ------ | ------ | ------- | -------- |
+| Mothwing | `mothwing` | `elite` | 600   | 90    | 20     | 28     | chest   | chase    |
+| Owl      | `owl`      | `elite` | 2000  | 100   | 30     | 36     | chest   | chase    |
+| The Dark | `dark`     | `dark`  | 10000 | 170   | 50     | 40     | nothing | chase    |
 
 The three share the rules that set them apart from the commons: each spawns
 with exactly the HP in its row, each stands outside the spawn cap, and each
@@ -141,11 +141,11 @@ the Dark spawn with their table HP as `maxHp`, unscaled.
 
 A death leaves its drop at the enemy's center on the tick it dies.
 
-| Rank | Drop |
-| --- | --- |
+| Rank     | Drop                                                           |
+| -------- | -------------------------------------------------------------- |
 | `common` | One gem of the tier in its row: `small`, `medium`, or `large`. |
-| `elite` | One chest. |
-| `dark` | Nothing. |
+| `elite`  | One chest.                                                     |
+| `dark`   | Nothing.                                                       |
 
 The experience each gem tier carries, how a gem is attracted and collected,
 and how a chest opens are in `specs/world.md`. A common kill also draws for
@@ -189,28 +189,28 @@ current window's index is `min(19, floor(time / SPAWN_WINDOW))`, from `0` to
 spawn chooses from, the seconds between spawns, and the most common enemies
 that may be alive for the director to add another.
 
-| Window | Starts | Types | Interval | Cap |
-| --- | --- | --- | --- | --- |
-| 0 | 0:00 | moth | 1.00 | 20 |
-| 1 | 0:30 | moth, bat | 0.80 | 30 |
-| 2 | 1:00 | moth, bat, rat | 0.60 | 40 |
-| 3 | 1:30 | bat, rat, beetle | 0.50 | 50 |
-| 4 | 2:00 | bat, rat, beetle | 0.50 | 60 |
-| 5 | 2:30 | rat, beetle, wisp | 0.40 | 70 |
-| 6 | 3:00 | beetle, wisp, spider | 0.40 | 80 |
-| 7 | 3:30 | wisp, spider, crow | 0.35 | 90 |
-| 8 | 4:00 | spider, crow, shade | 0.30 | 100 |
-| 9 | 4:30 | crow, shade, moth | 0.30 | 110 |
-| 10 | 5:00 | shade, crow, hound | 0.25 | 120 |
-| 11 | 5:30 | bat, shade, hound | 0.25 | 130 |
-| 12 | 6:00 | rat, spider, hound | 0.20 | 140 |
-| 13 | 6:30 | beetle, crow, hound | 0.20 | 150 |
-| 14 | 7:00 | wisp, shade, hound | 0.20 | 160 |
-| 15 | 7:30 | spider, crow, hound | 0.15 | 170 |
-| 16 | 8:00 | crow, shade, hound | 0.15 | 180 |
-| 17 | 8:30 | shade, hound, bat | 0.15 | 190 |
-| 18 | 9:00 | shade, hound, crow | 0.10 | 200 |
-| 19 | 9:30 | hound, shade, spider | 0.10 | 200 |
+| Window | Starts | Types                | Interval | Cap |
+| ------ | ------ | -------------------- | -------- | --- |
+| 0      | 0:00   | moth                 | 1.00     | 20  |
+| 1      | 0:30   | moth, bat            | 0.80     | 30  |
+| 2      | 1:00   | moth, bat, rat       | 0.60     | 40  |
+| 3      | 1:30   | bat, rat, beetle     | 0.50     | 50  |
+| 4      | 2:00   | bat, rat, beetle     | 0.50     | 60  |
+| 5      | 2:30   | rat, beetle, wisp    | 0.40     | 70  |
+| 6      | 3:00   | beetle, wisp, spider | 0.40     | 80  |
+| 7      | 3:30   | wisp, spider, crow   | 0.35     | 90  |
+| 8      | 4:00   | spider, crow, shade  | 0.30     | 100 |
+| 9      | 4:30   | crow, shade, moth    | 0.30     | 110 |
+| 10     | 5:00   | shade, crow, hound   | 0.25     | 120 |
+| 11     | 5:30   | bat, shade, hound    | 0.25     | 130 |
+| 12     | 6:00   | rat, spider, hound   | 0.20     | 140 |
+| 13     | 6:30   | beetle, crow, hound  | 0.20     | 150 |
+| 14     | 7:00   | wisp, shade, hound   | 0.20     | 160 |
+| 15     | 7:30   | spider, crow, hound  | 0.15     | 170 |
+| 16     | 8:00   | crow, shade, hound   | 0.15     | 180 |
+| 17     | 8:30   | shade, hound, bat    | 0.15     | 190 |
+| 18     | 9:00   | shade, hound, crow   | 0.10     | 200 |
+| 19     | 9:30   | hound, shade, spider | 0.10     | 200 |
 
 A window's row applies from its start until the next window starts; window
 `19` is the last and runs until dawn.
@@ -254,15 +254,15 @@ event whose tick passes while `events` is off, or which the debug surface's
 `setTick` skips over, never fires. `firedEvents` lists the times that have
 fired, in ascending order whatever order they fired in.
 
-| Time | Seconds | Event |
-| --- | --- | --- |
-| 1:00 | 60 | Gnat swarm |
-| 2:00 | 120 | Mothwing spawns at a spawn point |
-| 4:00 | 240 | Gnat swarm |
-| 5:00 | 300 | Mothwing spawns at a spawn point |
-| 7:00 | 420 | Gnat swarm |
-| 7:30 | 450 | Owl spawns at a spawn point |
-| 9:00 | 540 | The Dark spawns at a spawn point |
+| Time | Seconds | Event                            |
+| ---- | ------- | -------------------------------- |
+| 1:00 | 60      | Gnat swarm                       |
+| 2:00 | 120     | Mothwing spawns at a spawn point |
+| 4:00 | 240     | Gnat swarm                       |
+| 5:00 | 300     | Mothwing spawns at a spawn point |
+| 7:00 | 420     | Gnat swarm                       |
+| 7:30 | 450     | Owl spawns at a spawn point      |
+| 9:00 | 540     | The Dark spawns at a spawn point |
 
 A gnat swarm spawns `SWARM_SIZE` (`24`) gnats on the same tick along a line
 perpendicular to a direction `d`, a unit vector at an angle drawn uniformly from

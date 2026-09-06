@@ -73,6 +73,9 @@ it("leaves the site select's highlight where it stands under left and right", as
     // In a `finally`, so a check that fails inside the sweep still leaves
     // the picture that shows why.
     await h.advance(1);
-    await h.capture("state", "the site select's highlight after left and right");
+    await h.capture(
+      "state",
+      "the site select's highlight after left and right",
+    );
   }
 });

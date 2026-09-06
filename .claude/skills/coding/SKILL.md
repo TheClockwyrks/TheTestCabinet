@@ -59,7 +59,7 @@ count of non-test source files by splitting them into `foo.parsing.rs` and
 `foo.validation.rs`. This should generally be done for functions only, grouping
 them separately to keep each individual file reasonably sized.
 
-This policy *only* applies to tests in the `src/` folder. It does not apply to
+This policy _only_ applies to tests in the `src/` folder. It does not apply to
 integration/e2e tests in the `tests/` folder.
 
 ## Running Tests

@@ -7,7 +7,7 @@ look **down** on a fenced plot of ground and grow it into a park: you lay the
 **paths** guests walk, build the **rides** they queue for and the **stalls** they
 buy from, price everything, hire the **staff** who keep it running, and try to
 keep the guests happy and the park in the black. It is a small-scale tycoon game
-in the spirit of *RollerCoaster Tycoon*, entirely its own, with layered systems —
+in the spirit of _RollerCoaster Tycoon_, entirely its own, with layered systems —
 a path-and-placement park grid, desire-driven guest AI, a queue-and-ride
 simulation, a pricing-and-upkeep economy, staff, and a reputation feedback loop —
 that interact.
@@ -143,27 +143,27 @@ colored ride and stall roofs, and a warm crowd of guests moving along the paths,
 all under a dusk-blue letterbox. The park should feel inviting and busy — the
 opposite of a spreadsheet. The canonical palette and type are below; match them.
 
-| Element | Color |
-| --- | --- |
-| Grass / open ground | `#4f8f4a` |
-| Paved path | `#cdae7d` |
-| Water / pond | `#37a0c4` |
+| Element                | Color     |
+| ---------------------- | --------- |
+| Grass / open ground    | `#4f8f4a` |
+| Paved path             | `#cdae7d` |
+| Water / pond           | `#37a0c4` |
 | Ride structure / track | `#8b93a7` |
-| Stall / building roof | `#e0603c` |
-| Scenery / foliage | `#2f7d3a` |
-| Cash / money | `#5fce6e` |
-| Reputation / stars | `#ffcb52` |
-| Happiness / mood | `#ffd24a` |
-| Thrill | `#c46bff` |
-| Hunger / food | `#f59042` |
-| Thirst / drink | `#45c6f0` |
-| Guest | `#ff8fb0` |
-| Alert / danger | `#ff5a52` |
-| Background / void | `#0f1626` |
-| Panels / overlays | `#16202f` |
-| Primary text | `#f2efe8` |
-| Secondary text | `#aeb6c6` |
-| Tertiary text / hints | `#6d7789` |
+| Stall / building roof  | `#e0603c` |
+| Scenery / foliage      | `#2f7d3a` |
+| Cash / money           | `#5fce6e` |
+| Reputation / stars     | `#ffcb52` |
+| Happiness / mood       | `#ffd24a` |
+| Thrill                 | `#c46bff` |
+| Hunger / food          | `#f59042` |
+| Thirst / drink         | `#45c6f0` |
+| Guest                  | `#ff8fb0` |
+| Alert / danger         | `#ff5a52` |
+| Background / void      | `#0f1626` |
+| Panels / overlays      | `#16202f` |
+| Primary text           | `#f2efe8` |
+| Secondary text         | `#aeb6c6` |
+| Tertiary text / hints  | `#6d7789` |
 
 - Use a **monospace** type family for all text (title, menus, HUD, labels). Do not
   depend on a web font that must be downloaded; a system monospace stack is required

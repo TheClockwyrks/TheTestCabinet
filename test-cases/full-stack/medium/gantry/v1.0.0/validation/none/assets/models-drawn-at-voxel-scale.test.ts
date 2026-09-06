@@ -65,7 +65,10 @@ it("draws a produced model at one unit per VOXELS_PER_UNIT of its sculpt", async
 
   await h.capture("scale", "The load's model, drawn at voxel scale");
 
-  assertTrue(models.length > 0, `a \`${CLASS}\` model among what the frame drew`);
+  assertTrue(
+    models.length > 0,
+    `a \`${CLASS}\` model among what the frame drew`,
+  );
 
   const sculpted = meshExtent(
     join(WORKSPACE, "assets", "models", `${CLASS}.glb`),

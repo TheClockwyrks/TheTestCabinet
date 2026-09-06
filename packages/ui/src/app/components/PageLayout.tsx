@@ -159,13 +159,11 @@ export function PageLayout({
   // hides a tab it has nothing to list under (see `OtherPage`).
   // A mode's chrome replaces the section nav wholesale (its own tabs); otherwise
   // the standard links apply.
-  const navLinks =
-    chrome?.links ??
-    [
-      ...NAV_LINKS,
-      { label: "Other", to: routes.other() },
-      ...(canExecute ? [] : [{ label: "About", to: routes.about() }]),
-    ];
+  const navLinks = chrome?.links ?? [
+    ...NAV_LINKS,
+    { label: "Other", to: routes.other() },
+    ...(canExecute ? [] : [{ label: "About", to: routes.about() }]),
+  ];
 
   // The mobile section nav collapses behind a hamburger toggle. CSS owns which
   // presentation (inline row vs. dropdown sheet) is visible at a given width, so
@@ -232,7 +230,11 @@ export function PageLayout({
                   whole of its analysis surface. */}
               {(canExecute || hasGgData) && (
                 <NavLink
-                  to={canExecute ? routes.ggAnalysis() : routes.ggAnalysisDiscover()}
+                  to={
+                    canExecute
+                      ? routes.ggAnalysis()
+                      : routes.ggAnalysisDiscover()
+                  }
                   className={exec.gear}
                   aria-label="Analyze gg runs"
                   title="Analyze gg runs"

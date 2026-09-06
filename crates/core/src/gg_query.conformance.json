@@ -478,14 +478,7 @@
       "query": {},
       "expect": {
         "totalRuns": 6,
-        "documentIds": [
-          "r5",
-          "r4",
-          "r3",
-          "r1",
-          "r2",
-          "r6"
-        ]
+        "documentIds": ["r5", "r4", "r3", "r1", "r2", "r6"]
       }
     },
     {
@@ -501,11 +494,7 @@
       },
       "expect": {
         "totalRuns": 3,
-        "documentIds": [
-          "r4",
-          "r3",
-          "r2"
-        ]
+        "documentIds": ["r4", "r3", "r2"]
       }
     },
     {
@@ -524,13 +513,7 @@
       },
       "expect": {
         "totalRuns": 5,
-        "documentIds": [
-          "r5",
-          "r4",
-          "r3",
-          "r2",
-          "r6"
-        ]
+        "documentIds": ["r5", "r4", "r3", "r2", "r6"]
       }
     },
     {
@@ -544,12 +527,7 @@
       },
       "expect": {
         "totalRuns": 4,
-        "documentIds": [
-          "r4",
-          "r3",
-          "r1",
-          "r2"
-        ]
+        "documentIds": ["r4", "r3", "r1", "r2"]
       }
     },
     {
@@ -565,11 +543,7 @@
       },
       "expect": {
         "totalRuns": 3,
-        "documentIds": [
-          "r5",
-          "r1",
-          "r2"
-        ]
+        "documentIds": ["r5", "r1", "r2"]
       }
     },
     {
@@ -584,11 +558,7 @@
       },
       "expect": {
         "totalRuns": 3,
-        "documentIds": [
-          "r4",
-          "r3",
-          "r2"
-        ]
+        "documentIds": ["r4", "r3", "r2"]
       }
     },
     {
@@ -603,10 +573,7 @@
       },
       "expect": {
         "totalRuns": 2,
-        "documentIds": [
-          "r1",
-          "r2"
-        ]
+        "documentIds": ["r1", "r2"]
       }
     },
     {
@@ -633,10 +600,7 @@
       },
       "expect": {
         "totalRuns": 2,
-        "documentIds": [
-          "r4",
-          "r3"
-        ]
+        "documentIds": ["r4", "r3"]
       }
     },
     {
@@ -648,10 +612,7 @@
       "expect": {
         "totalRuns": 6,
         "truncated": true,
-        "documentIds": [
-          "r5",
-          "r4"
-        ]
+        "documentIds": ["r5", "r4"]
       }
     },
     {
@@ -756,12 +717,7 @@
       },
       "expect": {
         "totalRuns": 4,
-        "documentIds": [
-          "r5",
-          "r4",
-          "r2",
-          "r6"
-        ]
+        "documentIds": ["r5", "r4", "r2", "r6"]
       }
     },
     {
@@ -923,10 +879,7 @@
         "filter": {
           "kind": "oneOf",
           "field": "id",
-          "values": [
-            "r1",
-            "r2"
-          ]
+          "values": ["r1", "r2"]
         },
         "stats": {
           "aggs": [
@@ -987,11 +940,7 @@
         "filter": {
           "kind": "oneOf",
           "field": "id",
-          "values": [
-            "r1",
-            "r2",
-            "r3"
-          ]
+          "values": ["r1", "r2", "r3"]
         },
         "stats": {
           "aggs": [
@@ -1052,12 +1001,7 @@
         "filter": {
           "kind": "oneOf",
           "field": "id",
-          "values": [
-            "r1",
-            "r2",
-            "r3",
-            "r4"
-          ]
+          "values": ["r1", "r2", "r3", "r4"]
         },
         "stats": {
           "aggs": [
@@ -1527,14 +1471,7 @@
       },
       "expect": {
         "totalRuns": 6,
-        "documentIds": [
-          "r2",
-          "r4",
-          "r5",
-          "r3",
-          "r1",
-          "r6"
-        ]
+        "documentIds": ["r2", "r4", "r5", "r3", "r1", "r6"]
       }
     },
     {
@@ -1548,11 +1485,7 @@
       },
       "expect": {
         "totalRuns": 3,
-        "documentIds": [
-          "r5",
-          "r1",
-          "r2"
-        ]
+        "documentIds": ["r5", "r1", "r2"]
       }
     },
     {
@@ -1568,9 +1501,7 @@
       },
       "expect": {
         "totalRuns": 1,
-        "documentIds": [
-          "r3"
-        ]
+        "documentIds": ["r3"]
       }
     },
     {
@@ -1678,10 +1609,7 @@
       },
       "expect": {
         "totalRuns": 2,
-        "documentIds": [
-          "r5",
-          "r1"
-        ]
+        "documentIds": ["r5", "r1"]
       }
     },
     {
@@ -1857,9 +1785,7 @@
       },
       "expect": {
         "totalRuns": 1,
-        "documentIds": [
-          "r4"
-        ]
+        "documentIds": ["r4"]
       }
     },
     {
@@ -1875,13 +1801,7 @@
       },
       "expect": {
         "totalRuns": 5,
-        "documentIds": [
-          "r4",
-          "r3",
-          "r1",
-          "r2",
-          "r6"
-        ]
+        "documentIds": ["r4", "r3", "r1", "r2", "r6"]
       }
     },
     {
@@ -2618,10 +2538,7 @@
       },
       "expect": {
         "totalRuns": 2,
-        "documentIds": [
-          "r3",
-          "r6"
-        ]
+        "documentIds": ["r3", "r6"]
       }
     },
     {
@@ -2834,11 +2751,7 @@
       },
       "expect": {
         "totalRuns": 3,
-        "documentIds": [
-          "c1",
-          "c3",
-          "c4"
-        ]
+        "documentIds": ["c1", "c3", "c4"]
       }
     },
     {

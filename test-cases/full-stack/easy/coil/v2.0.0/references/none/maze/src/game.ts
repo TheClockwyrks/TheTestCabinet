@@ -23,7 +23,12 @@ import { Sim } from "./sim";
 
 /** The screen the game is on. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "gameover" | "cleared";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "gameover"
+  | "cleared";
 
 /** Every screen, in the order `specs/ui.md` lists them. */
 export const SCREENS: readonly Screen[] = [
@@ -37,7 +42,14 @@ export const SCREENS: readonly Screen[] = [
 
 /** The one action a press raises, as `specs/controls.md` names them. */
 export type Action =
-  "up" | "down" | "left" | "right" | "confirm" | "back" | "pause" | "mute";
+  | "up"
+  | "down"
+  | "left"
+  | "right"
+  | "confirm"
+  | "back"
+  | "pause"
+  | "mute";
 
 /**
  * What the game asks of the audio layer.

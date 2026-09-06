@@ -49,6 +49,7 @@ export const CATEGORICAL_COLORS: readonly string[] = [
  * {@link CATEGORICAL_COLORS}`.length` and says how many entities it left out. */
 export function categoricalColor(index: number): string {
   return (
-    CATEGORICAL_COLORS[index] ?? CATEGORICAL_COLORS[CATEGORICAL_COLORS.length - 1]!
+    CATEGORICAL_COLORS[index] ??
+    CATEGORICAL_COLORS[CATEGORICAL_COLORS.length - 1]!
   );
 }

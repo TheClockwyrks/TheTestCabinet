@@ -10,7 +10,7 @@ above you see the belts feeding in and out at the edges and that closed housing 
 the middle. To show the machine at work, the housing carries **some visible moving
 part that suggests items being sorted and split** between the lanes, and its
 **output end is drawn as an arrow** so it is obvious which way the splitter feeds.
-Everything below describes that *device seen from above*.
+Everything below describes that _device seen from above_.
 
 The splitter is **not** a pair of belts. It is a distinct component that belts
 **plug into** — think of a belt running up to the splitter's input mouth, and a
@@ -75,13 +75,13 @@ full 32 px height (both tile cells):
 - **Housing (centre, `x` ≈ 8–24), on the `mechanism` layer:** a solid **grey-blue
   metal housing** that spans the full height and **covers both cells**. This is the
   machine body, drawn on the `mechanism` layer over the continuous belt bed (see
-  *Layers*). The belt bed runs whole *underneath* it, so items ride that belt and
+  _Layers_). The belt bed runs whole _underneath_ it, so items ride that belt and
   pass **under** the housing, reappearing at the outputs — the housing occludes them,
   it does not sit on a gap in the belt. The housing is the **dominant mass** of the
   sprite and is what makes the device read as a machine rather than a belt. It
   carries **some visible moving part suggesting the sort/split at work**, and its
-  **East (output) end is shaped as an East-pointing arrow** — both detailed in *The
-  form* below, all on the `mechanism` layer.
+  **East (output) end is shaped as an East-pointing arrow** — both detailed in _The
+  form_ below, all on the `mechanism` layer.
 - **Outputs (East, `x` ≈ 24–32):** two short **belt mouths**, one in the top cell
   and one in the bottom cell, mirroring the inputs — a single transport belt
   connects to each, **exactly one belt wide** (one 32 px cell). Each reaches the
@@ -96,7 +96,7 @@ two tiles.
 
 Every frame shows the **same splitter** in the **same place**. What changes frame
 to frame is the **scrolling belt bed** — the continuous base surface, which runs
-the full width and is only *seen* at the four mouths because the `mechanism` layer
+the full width and is only _seen_ at the four mouths because the `mechanism` layer
 occludes its middle — and the mechanism's **moving sort/split part**:
 
 - Each belt mouth carries a **single central row** of **amber chevrons pointing
@@ -115,7 +115,7 @@ occludes its middle — and the mechanism's **moving sort/split part**:
   machine sorting and splitting the flow between the two lanes — and it must
   actually move, cycling smoothly so **frame 7 hands back to frame 0 with no
   jump**, at a distinct state each frame rather than jittering between two spots.
-  What that moving part *is* is your choice (see *The form*); what matters is that
+  What that moving part _is_ is your choice (see _The form_); what matters is that
   a viewer reads it as the splitter working, not as static decoration.
 - The **housing shell, the output arrow, and the divider are static** — they sit
   in the same place in every frame. The only moving things are the **belt chevrons
@@ -176,18 +176,18 @@ parts.
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Dark outline / shadow | `#1b1d21` |
-| Belt metal — base | `#34383d` |
-| Belt metal — mid | `#4a4f55` |
-| Belt rail / edge highlight | `#6b7178` |
-| Chevron (amber) — base | `#e6b329` |
+| Role                        | Hex       |
+| --------------------------- | --------- |
+| Dark outline / shadow       | `#1b1d21` |
+| Belt metal — base           | `#34383d` |
+| Belt metal — mid            | `#4a4f55` |
+| Belt rail / edge highlight  | `#6b7178` |
+| Chevron (amber) — base      | `#e6b329` |
 | Chevron (amber) — highlight | `#f6d96b` |
-| Chevron (amber) — shadow | `#b88410` |
+| Chevron (amber) — shadow    | `#b88410` |
 | Housing (grey-blue) — light | `#6a7884` |
-| Housing (grey-blue) — mid | `#4d5a64` |
-| Housing (grey-blue) — dark | `#36424b` |
+| Housing (grey-blue) — mid   | `#4d5a64` |
+| Housing (grey-blue) — dark  | `#36424b` |
 
 The **sort/split moving part** uses the housing tones — housing-light `#6a7884`
 for its body with an amber `#e6b329` accent against the dark outline `#1b1d21`, and

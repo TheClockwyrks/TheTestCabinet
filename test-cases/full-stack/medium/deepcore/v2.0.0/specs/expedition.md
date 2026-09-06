@@ -21,13 +21,13 @@ what a death costs; the size governs only how deep the mine goes.
 
 Credits are the currency. There is one source and four sinks.
 
-| Direction | Where | What |
-| --- | --- | --- |
-| Source | Ore Market | Selling the cargo at each ore's value, which empties the bay. |
-| Sink | Fuel Depot | Buying fuel and hull repair. |
-| Sink | Upgrade Shop | Buying the next tier on an upgrade track. |
-| Sink | Supply Depot | Buying a single-use field supply. |
-| Sink | Launch Pad | Fabricating a rocket component. |
+| Direction | Where        | What                                                          |
+| --------- | ------------ | ------------------------------------------------------------- |
+| Source    | Ore Market   | Selling the cargo at each ore's value, which empties the bay. |
+| Sink      | Fuel Depot   | Buying fuel and hull repair.                                  |
+| Sink      | Upgrade Shop | Buying the next tier on an upgrade track.                     |
+| Sink      | Supply Depot | Buying a single-use field supply.                             |
+| Sink      | Launch Pad   | Fabricating a rocket component.                               |
 
 Credits never go negative, and an action that cannot be afforded is disabled.
 Credits are banked: once earned they survive a death in either mode.

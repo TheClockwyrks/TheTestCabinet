@@ -122,7 +122,9 @@ function epicEdit(value: string | null | undefined): EpicAssignment {
  *
  * @internal
  */
-function witStatus(status: IssueStatus | undefined): IssueStatusRaw | undefined {
+function witStatus(
+  status: IssueStatus | undefined,
+): IssueStatusRaw | undefined {
   if (status === undefined) return undefined;
   return status === "in_progress" ? "in-progress" : status;
 }
@@ -143,7 +145,11 @@ function witStatus(status: IssueStatus | undefined): IssueStatusRaw | undefined 
  * @throws `ApiError` with `invalid-argument` when the prefix is not 3 to 6 letters, and `conflict`
  * when another epic already holds it.
  */
-export function createEpic(epic: { prefix: string; title: string; description: string }): EpicCreated {
+export function createEpic(epic: {
+  prefix: string;
+  title: string;
+  description: string;
+}): EpicCreated {
   return call(() => raw.createEpic(epic));
 }
 
@@ -259,7 +265,12 @@ export function updateIssue(
  * cycle.
  */
 export function setIssueBlockedBy(id: string, blockedBy: string[]): void {
-  call(() => raw.setIssueBlockedBy(id, arrayArg("setIssueBlockedBy", "blockedBy", blockedBy)));
+  call(() =>
+    raw.setIssueBlockedBy(
+      id,
+      arrayArg("setIssueBlockedBy", "blockedBy", blockedBy),
+    ),
+  );
 }
 
 /**

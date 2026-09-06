@@ -15,12 +15,12 @@ The [normalized classes](/components/core/metrics/#tokens) are derived from
 these keys within `part.tokens`, where the cache counts are nested one level
 deeper in a `cache` object:
 
-| Normalized class | Kilo JSON key |
-| --- | --- |
-| Uncached input | `input` (plus `cache.write`) |
-| Cached input | `cache.read` |
-| Output | `output` |
-| Reasoning | `reasoning` |
+| Normalized class | Kilo JSON key                |
+| ---------------- | ---------------------------- |
+| Uncached input   | `input` (plus `cache.write`) |
+| Cached input     | `cache.read`                 |
+| Output           | `output`                     |
+| Reasoning        | `reasoning`                  |
 
 Kilo Code's `input` excludes cached reads, so it is taken as uncached input
 directly and `cache.read` is recorded as the cached class. Cached reads are the

@@ -23,11 +23,11 @@ The seeder computes the exact seed commit and records it on the run record. The
 authored set resolves by a ladder, and the rung that answered is recorded on the
 result:
 
-| Basis | Condition | Claim |
-| --- | --- | --- |
-| Seed commit | The record carries a seed commit and it is present in the tree | Exact |
-| Root commit | Exactly one root commit, and its message is the seeding message | Inferred |
-| All files | Neither check passed | Degraded: seeded scaffolding is included |
+| Basis       | Condition                                                       | Claim                                    |
+| ----------- | --------------------------------------------------------------- | ---------------------------------------- |
+| Seed commit | The record carries a seed commit and it is present in the tree  | Exact                                    |
+| Root commit | Exactly one root commit, and its message is the seeding message | Inferred                                 |
+| All files   | Neither check passed                                            | Degraded: seeded scaffolding is included |
 
 The message check on the middle rung is what distinguishes a seed root from a
 model-created one. Taking the root commit unconditionally would fail in the
@@ -263,13 +263,13 @@ host would yield two different figure sets under the same analyzer version.
 Every bound is therefore content-derived, and files are visited in sorted order
 so that which files a cap drops is a function of the tree:
 
-| Bound | Value |
-| --- | --- |
-| Files visited | 20 000 |
-| Bytes parsed per file | 128 KiB |
-| Bytes parsed across the tree | 64 MiB |
-| Functions scored | 200 000 |
-| Bracket nesting a front end will parse | 200 |
+| Bound                                  | Value   |
+| -------------------------------------- | ------- |
+| Files visited                          | 20 000  |
+| Bytes parsed per file                  | 128 KiB |
+| Bytes parsed across the tree           | 64 MiB  |
+| Functions scored                       | 200 000 |
+| Bracket nesting a front end will parse | 200     |
 
 The first, third and fourth are tree-wide, and hitting one marks the result
 truncated and records which cap fired. Aggregation excludes a truncated result

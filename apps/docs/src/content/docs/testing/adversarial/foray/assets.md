@@ -48,24 +48,27 @@ maps it selects board tiles from:
 {
   "cell": 16,
   "frames": {
-    "soldier_s_0": { "x": 0,  "y": 0,  "w": 16, "h": 16 },
-    "raider_e_2":  { "x": 96, "y": 16, "w": 16, "h": 16 },
-    "seed":        { "x": 16, "y": 48, "w": 16, "h": 16 },
-    "wall_5":      { "x": 0,  "y": 80, "w": 16, "h": 16 },
-    "floor":       { "x": 48, "y": 80, "w": 16, "h": 16 }
+    "soldier_s_0": { "x": 0, "y": 0, "w": 16, "h": 16 },
+    "raider_e_2": { "x": 96, "y": 16, "w": 16, "h": 16 },
+    "seed": { "x": 16, "y": 48, "w": 16, "h": 16 },
+    "wall_5": { "x": 0, "y": 80, "w": 16, "h": 16 },
+    "floor": { "x": 48, "y": 80, "w": 16, "h": 16 },
   },
   "anims": {
     // One ordered walk cycle per role and facing. The renderer ties the phase to
     // motion and falls back to `fps` when free-running.
     "soldier_walk_s": {
       "frames": ["soldier_s_0", "soldier_s_1", "soldier_s_2", "soldier_s_3"],
-      "fps": 8
+      "fps": 8,
     },
-    "raider_laden_walk_s": { "frames": ["raider_laden_s_0"], "fps": 6 }
+    "raider_laden_walk_s": { "frames": ["raider_laden_s_0"], "fps": 6 },
   },
-  "wall_tiles":   { "0": "wall_0", "5": "wall_5", "15": "wall_15" },
-  "border_tiles": { "cap_top": "border_cap_top", "mid": "border_mid",
-                    "cap_bottom": "border_cap_bottom" }
+  "wall_tiles": { "0": "wall_0", "5": "wall_5", "15": "wall_15" },
+  "border_tiles": {
+    "cap_top": "border_cap_top",
+    "mid": "border_mid",
+    "cap_bottom": "border_cap_bottom",
+  },
 }
 ```
 
@@ -77,18 +80,18 @@ are walk cycles: four frames per facing, named `<role>_<facing>_<step>` and
 grouped into the atlas's `anims`, which the renderer cycles as the agent crosses
 a tile.
 
-| Group | Frames | Notes |
-| --- | --- | --- |
-| Soldier | `soldier_{s,n,w,e}_{0..3}` (16) | Mandibled, angular silhouette; a 4-step walk cycle per facing, grouped as `anims.soldier_walk_{s,n,w,e}`. |
-| Raider, empty | `raider_{s,n,w,e}_{0..3}` (16) | Lighter, leaner silhouette; 4-step walk cycle per facing, grouped as `anims.raider_walk_*`. |
-| Raider, laden | `raider_laden_{s,n,w,e}_{0..3}` (16) | The same cycles carrying a seed, the carry-weight tell, grouped as `anims.raider_laden_walk_*`. |
-| Seed cache | `seed` | The ordinary scorable resource, worth 1. |
-| Large seed | `large_seed` | Worth and weighing three ordinary seeds. It is the only fixture that moves, so it is drawn per frame from the snapshot's `large_seeds`. Its drift step is a discrete hop, so it is drawn unsmoothed. |
-| Royal jelly | `jelly_active`, `jelly_spent` | Active is a glowing node; spent is the dimmed husk after it is eaten. A node regrows at the same tile, and the renderer derives "spent" as any jelly tile absent from the frame's active `jelly` list. |
-| Maze walls | `wall_{0..15}` | A 4-neighbour autotile set. The frame index is the N=1, E=2, S=4, W=8 connection bitmask, mapped in `wall_tiles`, so walls render as a connected maze. |
-| Boundary seam | `border_{cap_top,mid,cap_bottom}` | The no-man's-land divider down the middle, in `border_tiles`, capped top and bottom with a tileable middle. |
-| Floor | `floor` | Dug-tunnel ground the maze sits on. |
-| Nest | `nest` | One frame, tinted per team, marking each spawn. |
+| Group         | Frames                               | Notes                                                                                                                                                                                                  |
+| ------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Soldier       | `soldier_{s,n,w,e}_{0..3}` (16)      | Mandibled, angular silhouette; a 4-step walk cycle per facing, grouped as `anims.soldier_walk_{s,n,w,e}`.                                                                                              |
+| Raider, empty | `raider_{s,n,w,e}_{0..3}` (16)       | Lighter, leaner silhouette; 4-step walk cycle per facing, grouped as `anims.raider_walk_*`.                                                                                                            |
+| Raider, laden | `raider_laden_{s,n,w,e}_{0..3}` (16) | The same cycles carrying a seed, the carry-weight tell, grouped as `anims.raider_laden_walk_*`.                                                                                                        |
+| Seed cache    | `seed`                               | The ordinary scorable resource, worth 1.                                                                                                                                                               |
+| Large seed    | `large_seed`                         | Worth and weighing three ordinary seeds. It is the only fixture that moves, so it is drawn per frame from the snapshot's `large_seeds`. Its drift step is a discrete hop, so it is drawn unsmoothed.   |
+| Royal jelly   | `jelly_active`, `jelly_spent`        | Active is a glowing node; spent is the dimmed husk after it is eaten. A node regrows at the same tile, and the renderer derives "spent" as any jelly tile absent from the frame's active `jelly` list. |
+| Maze walls    | `wall_{0..15}`                       | A 4-neighbour autotile set. The frame index is the N=1, E=2, S=4, W=8 connection bitmask, mapped in `wall_tiles`, so walls render as a connected maze.                                                 |
+| Boundary seam | `border_{cap_top,mid,cap_bottom}`    | The no-man's-land divider down the middle, in `border_tiles`, capped top and bottom with a tileable middle.                                                                                            |
+| Floor         | `floor`                              | Dug-tunnel ground the maze sits on.                                                                                                                                                                    |
+| Nest          | `nest`                               | One frame, tinted per team, marking each spawn.                                                                                                                                                        |
 
 Immunity has no sheet frame. The renderer draws a breathing additive cyan aura
 procedurally over any agent with `immune_ticks > 0`, pulsed by the tick clock. An
@@ -108,16 +111,29 @@ so the two colonies are one art set rendered twice:
 {
   "slots": ["body_dark", "body_mid", "body_light", "accent", "carried_seed"],
   "shared": {
-    "soil_dark": "#241a12", "soil_mid": "#3a2a1c", "floor": "#1b1410",
-    "border": "#4a3f2a", "seed": "#e8c14a", "jelly": "#7be0a0",
-    "jelly_spent": "#3c5a47", "carried_seed": "#ffd964"
+    "soil_dark": "#241a12",
+    "soil_mid": "#3a2a1c",
+    "floor": "#1b1410",
+    "border": "#4a3f2a",
+    "seed": "#e8c14a",
+    "jelly": "#7be0a0",
+    "jelly_spent": "#3c5a47",
+    "carried_seed": "#ffd964",
   },
   "teams": {
-    "red":  { "body_dark": "#5a1410", "body_mid": "#a83228",
-              "body_light": "#e8635a", "accent": "#ffb0a0" },
-    "blue": { "body_dark": "#0f2a5a", "body_mid": "#2a5aa8",
-              "body_light": "#5a8fe8", "accent": "#a0c8ff" }
-  }
+    "red": {
+      "body_dark": "#5a1410",
+      "body_mid": "#a83228",
+      "body_light": "#e8635a",
+      "accent": "#ffb0a0",
+    },
+    "blue": {
+      "body_dark": "#0f2a5a",
+      "body_mid": "#2a5aa8",
+      "body_light": "#5a8fe8",
+      "accent": "#a0c8ff",
+    },
+  },
 }
 ```
 
@@ -135,15 +151,15 @@ Every frame is the output of an
 [asset-generation](/testing/asset-generation/overview/) case drawn against its
 own brief:
 
-| Asset | Case |
-| --- | --- |
-| Nest | `foray-nest` (single sprite) |
-| Seed cache | `foray-seed` (single sprite) |
-| Large seed | `foray-large-seed` (single sprite) |
-| Royal jelly, active and spent | `foray-jelly` (2-frame sheet) |
-| Soldier walk cycles | `foray-soldier` (16-frame sheet) |
-| Raider walk cycles, empty and laden | `foray-raider` (32-frame sheet) |
-| Maze wall autotile, boundary, and floor | `foray-walls` (20-frame sheet) |
+| Asset                                   | Case                               |
+| --------------------------------------- | ---------------------------------- |
+| Nest                                    | `foray-nest` (single sprite)       |
+| Seed cache                              | `foray-seed` (single sprite)       |
+| Large seed                              | `foray-large-seed` (single sprite) |
+| Royal jelly, active and spent           | `foray-jelly` (2-frame sheet)      |
+| Soldier walk cycles                     | `foray-soldier` (16-frame sheet)   |
+| Raider walk cycles, empty and laden     | `foray-raider` (32-frame sheet)    |
+| Maze wall autotile, boundary, and floor | `foray-walls` (20-frame sheet)     |
 
 A run's regenerated frames are committed under `replay/assets/source/`, named for
 the atlas frame they fill, with the frame-index mapping recorded in

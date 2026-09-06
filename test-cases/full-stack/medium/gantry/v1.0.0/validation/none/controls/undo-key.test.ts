@@ -107,6 +107,9 @@ it("undoes an edit under KeyZ on the build screen and not on the program screen"
     // shows why.
     await h.debug.setScreen("build");
     await h.advance(1);
-    await h.capture("state", "the strut the program screen's undo left standing");
+    await h.capture(
+      "state",
+      "the strut the program screen's undo left standing",
+    );
   }
 });

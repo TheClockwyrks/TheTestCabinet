@@ -37,8 +37,7 @@ export async function serveDist(root) {
     try {
       const body = await readFile(file);
       res.writeHead(200, {
-        "content-type":
-          TYPES[path.extname(file)] ?? "application/octet-stream",
+        "content-type": TYPES[path.extname(file)] ?? "application/octet-stream",
         "cache-control": "no-store",
       });
       res.end(body);

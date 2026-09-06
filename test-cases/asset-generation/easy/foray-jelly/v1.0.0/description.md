@@ -1,4 +1,4 @@
-**Foray Royal Jelly** is a bonus resource in *Foray*, a top-down ant-colony
+**Foray Royal Jelly** is a bonus resource in _Foray_, a top-down ant-colony
 raiding game. It is a glowing node that colonies race to eat, leaving a dimmed
 husk behind. It belongs to neither colony, so it uses a fixed shared palette and
 is never recolored.

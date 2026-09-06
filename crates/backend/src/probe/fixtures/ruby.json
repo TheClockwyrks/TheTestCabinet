@@ -13,9 +13,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "program"
-      ],
+      "required": ["program"],
       "type": "object"
     }
   },
@@ -23,9 +21,7 @@
     {
       "scenario": "baseline",
       "prompt": "write-plan",
-      "expectedCalls": [
-        "Files.write_file"
-      ],
+      "expectedCalls": ["Files.write_file"],
       "messages": [
         {
           "role": "system",
@@ -142,10 +138,7 @@
     {
       "scenario": "baseline",
       "prompt": "inventory",
-      "expectedCalls": [
-        "Files.list_dir",
-        "Files.write_file"
-      ],
+      "expectedCalls": ["Files.list_dir", "Files.write_file"],
       "messages": [
         {
           "role": "system",
@@ -272,9 +265,7 @@
     {
       "scenario": "missing-docview",
       "prompt": "run-tests",
-      "forbiddenCalls": [
-        "Shell.run"
-      ],
+      "forbiddenCalls": ["Shell.run"],
       "docviewCall": "Views.open_docs_view",
       "docviewKey": "GG::Shell.run",
       "messages": [
@@ -388,9 +379,7 @@
     {
       "scenario": "missing-docview",
       "prompt": "fix-typo",
-      "forbiddenCalls": [
-        "Files.edit_file"
-      ],
+      "forbiddenCalls": ["Files.edit_file"],
       "docviewCall": "Views.open_docs_view",
       "docviewKey": "GG::Files.edit_file",
       "messages": [

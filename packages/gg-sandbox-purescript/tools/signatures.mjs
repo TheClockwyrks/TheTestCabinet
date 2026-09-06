@@ -553,7 +553,14 @@ function references(names) {
  * reflectors that read a subset of what their authors wrote, and both times the only thing that
  * caught it was somebody counting tags against catalogue lines by hand.
  */
-const HEADINGS = ["Operation", "Alias", "Arguments", "Fields", "Returns", "Throws"];
+const HEADINGS = [
+  "Operation",
+  "Alias",
+  "Arguments",
+  "Fields",
+  "Returns",
+  "Throws",
+];
 
 /**
  * One doc comment, split into the prose a model reads and the `#` sections this convention carries.

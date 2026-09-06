@@ -2,7 +2,7 @@
 
 These images are the **canonical visual reference** for the Carom test case.
 Each is a `1280x720` screenshot captured from the case's own **playable
-reference-impl builds** (the authored, *correct* games under
+reference-impl builds** (the authored, _correct_ games under
 [`../reference-impl/`](../reference-impl/)) — not from a hand-authored mockup.
 They serve two purposes: they are seeded into a run as visual targets, and they
 are the baselines for any validation check (declared in `../test-case.toml`) that
@@ -12,7 +12,7 @@ names the view.
 
 Carom's reference screenshots are **derived from the real games**. There is no
 separate HTML/CSS mockup to keep in sync (the former `*.html` + `theme.css`
-mockups were removed): the reference-impl builds *are* the ground truth, and the
+mockups were removed): the reference-impl builds _are_ the ground truth, and the
 screenshots are captured straight from them. The captured images are committed
 here and referenced from the manifest as `media` (served as-is), because there is
 no longer a mockup for the harness to render at seed time. The palette and type
@@ -76,7 +76,7 @@ a build's look changes:
    canvas. Each build exposes its live game instance as `window.__carom` for
    exactly this headless capture (see `../specs/instrumentation.md`); it is inert
    during normal play. Note that `reset()` and `step()` take the clock off the
-   animation loop (`autoStep = false`) — the loop keeps *rendering* every frame,
+   animation loop (`autoStep = false`) — the loop keeps _rendering_ every frame,
    so the posed state is on screen, but nothing advances unless the script asks.
 3. Drive each view:
    - **title** — capture on load, once per variant; the menu is the default
@@ -87,7 +87,7 @@ a build's look changes:
      (`setPaddle("left", { cy: 300 })`, `setPaddle("right", { cy: 430 })`), put
      the ball into the open field with spin
      (`setBall(0, { x: 300, y: 250, vx: 560, vy: 180, spin: 2.2 })`), and
-     `step(0.55)` so the *real* physics carries it across the field and builds up
+     `step(0.55)` so the _real_ physics carries it across the field and builds up
      its motion trail before capturing.
    - **game-over** — from the `base` build: `reset()`, `startMatch("versus")`,
      `serve()`, `setScore(10, 9)`, park both paddles clear of the mid-field lane,

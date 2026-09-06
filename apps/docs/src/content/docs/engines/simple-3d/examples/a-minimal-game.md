@@ -63,7 +63,12 @@ camera at the [camera defaults](/engines/simple-3d/apis/view/).
 
 ```ts
 import * as THREE from "three";
-import type { Game, InitApi, RenderApi, UpdateApi } from "@clockwyrks/simple-3d";
+import type {
+  Game,
+  InitApi,
+  RenderApi,
+  UpdateApi,
+} from "@clockwyrks/simple-3d";
 import type { DeepReadonly } from "ts-essentials";
 
 const LIMIT = 8;

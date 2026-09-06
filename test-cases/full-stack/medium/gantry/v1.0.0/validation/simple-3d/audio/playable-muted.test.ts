@@ -113,7 +113,10 @@ it("clears a site muted exactly as it clears it sounding", async () => {
     await h.press(BINDINGS.mute[0]!);
     // The mute bit is the audio bus's, which the state mirrors on the next update.
     await h.advance(1);
-    assertTrue((await h.snapshot()).muted, "the mute the `mute` action toggled");
+    assertTrue(
+      (await h.snapshot()).muted,
+      "the mute the `mute` action toggled",
+    );
 
     const muted = await playthrough(h);
     assertTrue(

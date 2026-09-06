@@ -677,7 +677,13 @@ export const REPAIR_BUY_INCREMENT = 25;
 /* -------------------------------------------------------------------------- */
 
 export type UpgradeTrack =
-  "fuel" | "drill" | "cargo" | "hull" | "jetpack" | "radiator" | "scanner";
+  | "fuel"
+  | "drill"
+  | "cargo"
+  | "hull"
+  | "jetpack"
+  | "radiator"
+  | "scanner";
 
 export const UPGRADE_TRACKS: readonly UpgradeTrack[] = [
   "fuel",
@@ -782,7 +788,11 @@ export const QUANTUM_VEL_MAX = 700;
 /* -------------------------------------------------------------------------- */
 
 export type RocketComponentId =
-  "hull-frame" | "fuel-cells" | "guidance" | "thruster" | "ignition";
+  | "hull-frame"
+  | "fuel-cells"
+  | "guidance"
+  | "thruster"
+  | "ignition";
 
 export interface RocketComponentDef {
   id: RocketComponentId;

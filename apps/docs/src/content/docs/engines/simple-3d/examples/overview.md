@@ -36,11 +36,11 @@ await engine.run();
 
 ## Pages
 
-| Page | Shows |
-| --- | --- |
-| [A Minimal Game](/engines/simple-3d/examples/a-minimal-game/) | The smallest complete build: a page, a boot module, and a game that moves a mesh by the frame's delta and draws a readout on the screen layer. |
-| [Input and Actions](/engines/simple-3d/examples/input-and-actions/) | Registering a dual-stick layout's vocabulary, driving a mesh and the camera from held analog actions, reading a digital edge, and driving the same code from a key and from a test. |
-| [Audio and Assets](/engines/simple-3d/examples/audio-and-assets/) | Loading a model and a produced audio file during initialization, placing the model's clone in the scene, playing a synthesized cue and a positioned file-backed cue, and surfacing a failed load. |
-| [Diagnostics and Overlay](/engines/simple-3d/examples/diagnostics-and-overlay/) | Registering overlay sources during initialization and reading them back while the game runs. |
-| [Validating a Game](/engines/simple-3d/examples/validating-a-game/) | A vitest suite that imports the build's own game, steps it in the page under vitest's browser mode with `engine.advance`, and checks the scene, the projection, and the screen layer's draw calls. |
-| [Scripted Clocks](/engines/simple-3d/examples/scripted-clocks/) | One scenario stepped under a constant, a repeating sequence, and a seeded jitter clock. |
+| Page                                                                            | Shows                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [A Minimal Game](/engines/simple-3d/examples/a-minimal-game/)                   | The smallest complete build: a page, a boot module, and a game that moves a mesh by the frame's delta and draws a readout on the screen layer.                                                     |
+| [Input and Actions](/engines/simple-3d/examples/input-and-actions/)             | Registering a dual-stick layout's vocabulary, driving a mesh and the camera from held analog actions, reading a digital edge, and driving the same code from a key and from a test.                |
+| [Audio and Assets](/engines/simple-3d/examples/audio-and-assets/)               | Loading a model and a produced audio file during initialization, placing the model's clone in the scene, playing a synthesized cue and a positioned file-backed cue, and surfacing a failed load.  |
+| [Diagnostics and Overlay](/engines/simple-3d/examples/diagnostics-and-overlay/) | Registering overlay sources during initialization and reading them back while the game runs.                                                                                                       |
+| [Validating a Game](/engines/simple-3d/examples/validating-a-game/)             | A vitest suite that imports the build's own game, steps it in the page under vitest's browser mode with `engine.advance`, and checks the scene, the projection, and the screen layer's draw calls. |
+| [Scripted Clocks](/engines/simple-3d/examples/scripted-clocks/)                 | One scenario stepped under a constant, a repeating sequence, and a seeded jitter clock.                                                                                                            |

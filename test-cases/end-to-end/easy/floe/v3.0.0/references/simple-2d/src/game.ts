@@ -75,7 +75,12 @@ export const BACKGROUND: string = STAGE_BACKGROUND;
 // ---- The declared state (specs/state.md) ---------------------------------
 
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
 
 export type Phase = "crossing" | "dying" | "clearing";
 

@@ -30,15 +30,15 @@ and bold outline in every frame, drawn in a fixed palette on transparency.
 
 ## Layout
 
-| Path | Seeded to run? | Purpose |
-| --- | --- | --- |
-| `specs/brief.md` | Yes | The self-contained drawing brief. |
-| `prompt.hbs` | No | Rendered into the model's prompt; not seeded. |
-| `test-case.toml` | No | Manifest: canvas, sheet frames/sequence, tool, output, reviews. |
-| `variants/` | No | One TOML file per variant (listed in `variants`). |
-| `description.md` | No | Site blurb. |
-| `changelog.md` | No | This version's changelog entry. |
-| `README.md` | No | This overview. |
+| Path             | Seeded to run? | Purpose                                                         |
+| ---------------- | -------------- | --------------------------------------------------------------- |
+| `specs/brief.md` | Yes            | The self-contained drawing brief.                               |
+| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                   |
+| `test-case.toml` | No             | Manifest: canvas, sheet frames/sequence, tool, output, reviews. |
+| `variants/`      | No             | One TOML file per variant (listed in `variants`).               |
+| `description.md` | No             | Site blurb.                                                     |
+| `changelog.md`   | No             | This version's changelog entry.                                 |
+| `README.md`      | No             | This overview.                                                  |
 
 A run receives the seeded brief, the `draw-sheet` binary, and pre-seeded blank
 frames with empty per-frame action logs, one 48×48 transparent frame per index.

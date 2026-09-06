@@ -93,7 +93,10 @@ declare module "@vitest/browser/context" {
   }
 }
 
-export async function emitReplay(output: string, recording: Recording): Promise<void> {
+export async function emitReplay(
+  output: string,
+  recording: Recording,
+): Promise<void> {
   if (recording.frames.length === 0) return;
   await commands.emitReplay(output, toBase64(recording.video));
 }

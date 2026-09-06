@@ -41,7 +41,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -75,7 +77,11 @@ afterEach(async () => {
 it("refuses a second rise for a reagent already on the field", async () => {
   await openChallengeDocument(h, TWO_REAGENTS);
   for (const hex of [FIRST, FAR, FARTHER]) {
-    assertEqual(onField(hex), true, `the hex (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the hex (${hex.q}, ${hex.r}) is on the field`,
+    );
   }
 
   const rise = await placeRise(h, 0, FIRST, 0);
@@ -116,8 +122,16 @@ it("refuses a second rise for a reagent already on the field", async () => {
   );
 
   const snapshot = await h.snapshot();
-  assertEqual(partById(snapshot, rise)?.index, 0, "the standing rise is reagent 0's");
-  assertEqual(partById(snapshot, other)?.index, 1, "the second rise is reagent 1's");
+  assertEqual(
+    partById(snapshot, rise)?.index,
+    0,
+    "the standing rise is reagent 0's",
+  );
+  assertEqual(
+    partById(snapshot, other)?.index,
+    1,
+    "the second rise is reagent 1's",
+  );
   assertEqual(
     (await partIds(h)).length,
     2,

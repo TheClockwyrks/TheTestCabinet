@@ -78,12 +78,19 @@ quaternion and its negation are one rotation and compare unequal field by
 field.
 
 ```ts
-import { FORWARD, distance, quatRotate, quatToEuler } from "@clockwyrks/structured-3d";
+import {
+  FORWARD,
+  distance,
+  quatRotate,
+  quatToEuler,
+} from "@clockwyrks/structured-3d";
 
 const ship = world.byTag(TAGS.ship)[0];
 const goal = world.byTag(TAGS.goal)[0];
 
-expect(distance(ship.transform.position, goal.transform.position)).toBeLessThan(2);
+expect(distance(ship.transform.position, goal.transform.position)).toBeLessThan(
+  2,
+);
 
 const facing = quatRotate(ship.transform.rotation, FORWARD);
 expect(facing.x).toBeCloseTo(1, 3);
@@ -155,7 +162,10 @@ its own, and `possess` then hands it the pawn the check wants driven.
 
 ```ts
 const paddle = world.byTag(TAGS.paddleP2)[0] as Pawn;
-const bot = world.mode.addBot(Scripted, { name: "check", pawn: null }) as Scripted;
+const bot = world.mode.addBot(Scripted, {
+  name: "check",
+  pawn: null,
+}) as Scripted;
 
 bot.possess(paddle);
 bot.drive = vec3(0, -1, 0);

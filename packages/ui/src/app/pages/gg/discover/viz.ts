@@ -55,7 +55,12 @@ import type {
 } from "@clockwyrks/ui";
 import { CATEGORICAL_COLORS, categoricalColor } from "@clockwyrks/ui";
 import { compareCodePoints } from "../query";
-import { ABSENT, formatAggValue, formatBucketKey, formatTimestamp } from "./cells";
+import {
+  ABSENT,
+  formatAggValue,
+  formatBucketKey,
+  formatTimestamp,
+} from "./cells";
 
 /**
  * The most bars one chart draws.
@@ -494,10 +499,7 @@ function seriesRoster(
 }
 
 /** The whole composite key as one axis label. */
-function bucketLabel(
-  bucket: GgBucket,
-  groupBy: readonly GgGroupKey[],
-): string {
+function bucketLabel(bucket: GgBucket, groupBy: readonly GgGroupKey[]): string {
   return bucket.key
     .map((part, index) =>
       formatBucketKey(part.field, part.value, isHistogram(groupBy, index)),
@@ -547,9 +549,6 @@ function valueOf(
 
 /** Whether the group key at this position is a date histogram — the one thing that
  *  tells a bucket start from an ordinary number once both are just numbers. */
-function isHistogram(
-  groupBy: readonly GgGroupKey[],
-  index: number,
-): boolean {
+function isHistogram(groupBy: readonly GgGroupKey[], index: number): boolean {
   return groupBy[index]?.kind === "bucket";
 }

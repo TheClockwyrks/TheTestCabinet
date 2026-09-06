@@ -55,7 +55,9 @@ export default function item() {
         hit.ball.spin,
         -400,
       );
-      assertCurved(check, curve, { who: "the shot off player one's swung paddle" });
+      assertCurved(check, curve, {
+        who: "the shot off player one's swung paddle",
+      });
     },
   };
 }

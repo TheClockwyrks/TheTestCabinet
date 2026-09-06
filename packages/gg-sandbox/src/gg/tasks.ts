@@ -117,7 +117,9 @@ export function updateTask(
  * cycle.
  */
 export function setBlockedBy(id: string, blockedBy: string[]): void {
-  call(() => raw.setBlockedBy(id, arrayArg("setBlockedBy", "blockedBy", blockedBy)));
+  call(() =>
+    raw.setBlockedBy(id, arrayArg("setBlockedBy", "blockedBy", blockedBy)),
+  );
 }
 
 /**

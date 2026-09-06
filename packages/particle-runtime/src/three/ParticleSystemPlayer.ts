@@ -79,7 +79,12 @@ export class ParticleSystemPlayer {
     this.simulator = new ParticleSimulator(system, { seed: opts.seed });
     this.capacity = Math.max(opts.capacity ?? 4096, 1);
 
-    const extent = Math.max(system.field.width, system.field.height, system.field.depth ?? 0, 1);
+    const extent = Math.max(
+      system.field.width,
+      system.field.height,
+      system.field.depth ?? 0,
+      1,
+    );
     const pixelScale = opts.pixelScale ?? extent * 6;
 
     this.material = new THREE.ShaderMaterial({
@@ -121,19 +126,27 @@ export class ParticleSystemPlayer {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute(
       "position",
-      new THREE.BufferAttribute(new Float32Array(capacity * 3), 3).setUsage(THREE.DynamicDrawUsage),
+      new THREE.BufferAttribute(new Float32Array(capacity * 3), 3).setUsage(
+        THREE.DynamicDrawUsage,
+      ),
     );
     geometry.setAttribute(
       "aColor",
-      new THREE.BufferAttribute(new Float32Array(capacity * 3), 3).setUsage(THREE.DynamicDrawUsage),
+      new THREE.BufferAttribute(new Float32Array(capacity * 3), 3).setUsage(
+        THREE.DynamicDrawUsage,
+      ),
     );
     geometry.setAttribute(
       "aSize",
-      new THREE.BufferAttribute(new Float32Array(capacity), 1).setUsage(THREE.DynamicDrawUsage),
+      new THREE.BufferAttribute(new Float32Array(capacity), 1).setUsage(
+        THREE.DynamicDrawUsage,
+      ),
     );
     geometry.setAttribute(
       "aOpacity",
-      new THREE.BufferAttribute(new Float32Array(capacity), 1).setUsage(THREE.DynamicDrawUsage),
+      new THREE.BufferAttribute(new Float32Array(capacity), 1).setUsage(
+        THREE.DynamicDrawUsage,
+      ),
     );
     return geometry;
   }
@@ -153,7 +166,9 @@ export class ParticleSystemPlayer {
     const pos = this.geometry.getAttribute("position") as THREE.BufferAttribute;
     const col = this.geometry.getAttribute("aColor") as THREE.BufferAttribute;
     const size = this.geometry.getAttribute("aSize") as THREE.BufferAttribute;
-    const opacity = this.geometry.getAttribute("aOpacity") as THREE.BufferAttribute;
+    const opacity = this.geometry.getAttribute(
+      "aOpacity",
+    ) as THREE.BufferAttribute;
     const posArr = pos.array as Float32Array;
     const colArr = col.array as Float32Array;
     const sizeArr = size.array as Float32Array;

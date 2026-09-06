@@ -9,16 +9,16 @@ content and the navigation are fixed; the layout is yours.
 
 The game is a small state machine, and the state it is in has one of these names.
 
-| Screen | Shows |
-| --- | --- |
-| `title` | The title `TITLE_TEXT` (`DEEPCORE`), a tagline, and the main menu. |
-| `mode-select` | The choice of mode, with each mode's death rule. |
-| `size-select` | The choice of world size, with each size's Core depth. |
-| `how-to-play` | How the game is played. |
-| `in-mine` | The live game: the world through the camera, the miner, and the status bar. |
-| `paused` | The pause menu over the frozen, dimmed world. |
-| `victory` | The expedition summary, after the rocket launches. |
-| `game-over` | The expedition summary, after a death. |
+| Screen        | Shows                                                                       |
+| ------------- | --------------------------------------------------------------------------- |
+| `title`       | The title `TITLE_TEXT` (`DEEPCORE`), a tagline, and the main menu.          |
+| `mode-select` | The choice of mode, with each mode's death rule.                            |
+| `size-select` | The choice of world size, with each size's Core depth.                      |
+| `how-to-play` | How the game is played.                                                     |
+| `in-mine`     | The live game: the world through the camera, the miner, and the status bar. |
+| `paused`      | The pause menu over the frozen, dimmed world.                               |
+| `victory`     | The expedition summary, after the rocket launches.                          |
+| `game-over`   | The expedition summary, after a death.                                      |
 
 `in-mine` covers the surface and the whole descent; what changes between them is
 the camera and whichever panel is open.
@@ -28,15 +28,15 @@ the camera and whichever panel is open.
 The highlighted item is drawn distinctly from the others. `menuIndex` names it,
 counted from `0` over the items the screen shows.
 
-| Screen | Items |
-| --- | --- |
-| `title` | `TITLE_ITEMS`: `CONTINUE` (present only while a save exists, and first when present), `NEW EXPEDITION`, `HOW TO PLAY` |
-| `mode-select` | `MODE_ITEMS`: `STANDARD`, `HARDCORE`, `BACK` |
-| `size-select` | `SIZE_ITEMS`: `QUICK`, `STANDARD`, `MARATHON`, `BACK` |
-| `how-to-play` | `HOW_TO_PLAY_ITEMS`: `BACK` |
-| `paused` | `PAUSE_ITEMS`: `RESUME`, `RESTART`, `QUIT TO MENU` |
-| `victory` | `VICTORY_ITEMS`: `PLAY AGAIN`, `MENU` |
-| `game-over` | `GAME_OVER_SAVE_ITEMS`: `CONTINUE FROM SAVE`, `MENU` in Standard while a save exists; otherwise `GAME_OVER_ITEMS`: `PLAY AGAIN`, `MENU` |
+| Screen        | Items                                                                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`       | `TITLE_ITEMS`: `CONTINUE` (present only while a save exists, and first when present), `NEW EXPEDITION`, `HOW TO PLAY`                   |
+| `mode-select` | `MODE_ITEMS`: `STANDARD`, `HARDCORE`, `BACK`                                                                                            |
+| `size-select` | `SIZE_ITEMS`: `QUICK`, `STANDARD`, `MARATHON`, `BACK`                                                                                   |
+| `how-to-play` | `HOW_TO_PLAY_ITEMS`: `BACK`                                                                                                             |
+| `paused`      | `PAUSE_ITEMS`: `RESUME`, `RESTART`, `QUIT TO MENU`                                                                                      |
+| `victory`     | `VICTORY_ITEMS`: `PLAY AGAIN`, `MENU`                                                                                                   |
+| `game-over`   | `GAME_OVER_SAVE_ITEMS`: `CONTINUE FROM SAVE`, `MENU` in Standard while a save exists; otherwise `GAME_OVER_ITEMS`: `PLAY AGAIN`, `MENU` |
 
 `specs/controls.md` states the keyboard, pointer, and touch input that moves the
 highlight over these items and confirms one, and the hit region each item
@@ -56,27 +56,27 @@ Every move between screens is one of these. Confirming an item means the
 `activate` action on the highlighted item, or a pointer or touch confirm on that
 item, which `specs/controls.md` states.
 
-| From | Input | To |
-| --- | --- | --- |
-| `title` | `CONTINUE` | `in-mine`, resuming the save |
-| `title` | `NEW EXPEDITION` | `mode-select` |
-| `title` | `HOW TO PLAY` | `how-to-play` |
-| `mode-select` | `STANDARD` or `HARDCORE` | `size-select`, with the expedition's mode set to the one chosen |
-| `mode-select` | `BACK`, or the `pause` action | `title` |
-| `size-select` | `QUICK`, `STANDARD`, or `MARATHON` | `in-mine`, beginning the expedition at that size in the mode chosen at `mode-select` |
-| `size-select` | `BACK`, or the `pause` action | `mode-select` |
-| `how-to-play` | `BACK`, or the `pause` action | `title` |
-| `in-mine` | The `pause` action, with no panel open | `paused` |
-| `paused` | `RESUME`, or the `pause` action | `in-mine`, carrying on where the freeze stopped |
-| `paused` | `RESTART` | `in-mine`, on a fresh expedition in the same mode and size |
-| `paused` | `QUIT TO MENU` | `title` |
-| `victory` | `PLAY AGAIN` | `in-mine`, on a fresh expedition in the same mode and size |
-| `victory` | `MENU` | `title` |
-| `game-over` | `CONTINUE FROM SAVE` | `in-mine`, restoring the save |
-| `game-over` | `PLAY AGAIN` | `in-mine`, on a fresh expedition in the same mode and size |
-| `game-over` | `MENU` | `title` |
-| `in-mine` | The rocket launches | `victory` |
-| `in-mine` | A death | `game-over` |
+| From          | Input                                  | To                                                                                   |
+| ------------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `title`       | `CONTINUE`                             | `in-mine`, resuming the save                                                         |
+| `title`       | `NEW EXPEDITION`                       | `mode-select`                                                                        |
+| `title`       | `HOW TO PLAY`                          | `how-to-play`                                                                        |
+| `mode-select` | `STANDARD` or `HARDCORE`               | `size-select`, with the expedition's mode set to the one chosen                      |
+| `mode-select` | `BACK`, or the `pause` action          | `title`                                                                              |
+| `size-select` | `QUICK`, `STANDARD`, or `MARATHON`     | `in-mine`, beginning the expedition at that size in the mode chosen at `mode-select` |
+| `size-select` | `BACK`, or the `pause` action          | `mode-select`                                                                        |
+| `how-to-play` | `BACK`, or the `pause` action          | `title`                                                                              |
+| `in-mine`     | The `pause` action, with no panel open | `paused`                                                                             |
+| `paused`      | `RESUME`, or the `pause` action        | `in-mine`, carrying on where the freeze stopped                                      |
+| `paused`      | `RESTART`                              | `in-mine`, on a fresh expedition in the same mode and size                           |
+| `paused`      | `QUIT TO MENU`                         | `title`                                                                              |
+| `victory`     | `PLAY AGAIN`                           | `in-mine`, on a fresh expedition in the same mode and size                           |
+| `victory`     | `MENU`                                 | `title`                                                                              |
+| `game-over`   | `CONTINUE FROM SAVE`                   | `in-mine`, restoring the save                                                        |
+| `game-over`   | `PLAY AGAIN`                           | `in-mine`, on a fresh expedition in the same mode and size                           |
+| `game-over`   | `MENU`                                 | `title`                                                                              |
+| `in-mine`     | The rocket launches                    | `victory`                                                                            |
+| `in-mine`     | A death                                | `game-over`                                                                          |
 
 The `pause` action is raised by `Escape` and by `KeyP` alike, so either key opens
 the pause menu from `in-mine` and either resumes the expedition from `paused`.
@@ -87,12 +87,12 @@ as `specs/controls.md` states.
 
 Arriving at a menu by going back selects the entry that led away from it.
 
-| Arriving at | From | Selected |
-| --- | --- | --- |
-| `title` | `how-to-play` | `HOW TO PLAY` |
-| `title` | `mode-select`, by `BACK` or `pause` | `NEW EXPEDITION` |
-| `title` | `paused` by `QUIT TO MENU`, or `victory` or `game-over` by `MENU` | `NEW EXPEDITION` |
-| `mode-select` | `size-select`, by `BACK` or `pause` | the entry of the mode the expedition is set to, `STANDARD` or `HARDCORE` |
+| Arriving at   | From                                                              | Selected                                                                 |
+| ------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `title`       | `how-to-play`                                                     | `HOW TO PLAY`                                                            |
+| `title`       | `mode-select`, by `BACK` or `pause`                               | `NEW EXPEDITION`                                                         |
+| `title`       | `paused` by `QUIT TO MENU`, or `victory` or `game-over` by `MENU` | `NEW EXPEDITION`                                                         |
+| `mode-select` | `size-select`, by `BACK` or `pause`                               | the entry of the mode the expedition is set to, `STANDARD` or `HARDCORE` |
 
 The entries are named rather than numbered, because `CONTINUE` is present on
 `title` only while a save exists and shifts the ones below it when it is.
@@ -106,14 +106,14 @@ is `0` on `mode-select` reached from `title`, on `size-select`, on
 Each panel opens when the miner activates its building and closes back to the
 mine. The Save Pad has no panel; activating it saves directly.
 
-| Panel | Contents |
-| --- | --- |
-| `fuel-depot` | Buying fuel and hull repair, by the fixed increment and to full. |
-| `ore-market` | The cargo broken down by ore with counts and total, and `SELL`. |
-| `upgrade-shop` | The seven tracks, each with its current tier, the next tier's effect, and its price. |
-| `supply-depot` | The six field supplies, each with its icon, price, and held count, and a buy control. |
-| `launch-pad` | The five-component rocket checklist, and `FABRICATE` or `LAUNCH`. |
-| `inventory` | The contents `specs/mining.md` states for the inventory overlay, each ore row with its drop control and each held field supply with a `USE` control, plus `JETTISON` while a Core Sample is carried. |
+| Panel          | Contents                                                                                                                                                                                             |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fuel-depot`   | Buying fuel and hull repair, by the fixed increment and to full.                                                                                                                                     |
+| `ore-market`   | The cargo broken down by ore with counts and total, and `SELL`.                                                                                                                                      |
+| `upgrade-shop` | The seven tracks, each with its current tier, the next tier's effect, and its price.                                                                                                                 |
+| `supply-depot` | The six field supplies, each with its icon, price, and held count, and a buy control.                                                                                                                |
+| `launch-pad`   | The five-component rocket checklist, and `FABRICATE` or `LAUNCH`.                                                                                                                                    |
+| `inventory`    | The contents `specs/mining.md` states for the inventory overlay, each ore row with its drop control and each held field supply with a `USE` control, plus `JETTISON` while a Core Sample is carried. |
 
 `inventory` opens anywhere; the other five open only at their buildings. Every
 panel and menu is fully operable with the pointer and with touch as well as with

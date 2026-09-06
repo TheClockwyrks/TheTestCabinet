@@ -19,7 +19,11 @@ describe("TOUCH_LAYOUTS", () => {
       "p2-down",
       ...MENU_ACTIONS,
     ]);
-    expect(touchLayout("single-vertical").actions).toEqual(["up", "down", ...MENU_ACTIONS]);
+    expect(touchLayout("single-vertical").actions).toEqual([
+      "up",
+      "down",
+      ...MENU_ACTIONS,
+    ]);
     expect(touchLayout("dpad-4").actions).toEqual([
       "up",
       "down",
@@ -73,7 +77,9 @@ describe("touchLayout", () => {
   });
 
   it("throws on an unknown layout rather than falling back to a default", () => {
-    expect(() => touchLayout("dpad-8")).toThrow(/Unknown touch layout "dpad-8"/);
+    expect(() => touchLayout("dpad-8")).toThrow(
+      /Unknown touch layout "dpad-8"/,
+    );
   });
 
   it("names every valid layout in the failure, since the cause is usually a typo", () => {

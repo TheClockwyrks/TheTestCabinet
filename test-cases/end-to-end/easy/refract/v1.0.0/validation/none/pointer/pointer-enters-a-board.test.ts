@@ -32,7 +32,11 @@ it("enters the first board from a press and release on its grid cell", async () 
   await h.debug.reset({ seed: 1 });
   await h.advance(1);
   await startCampaign(h);
-  assertEqual((await h.snapshot()).screen, "select", "the campaign opens on the grid");
+  assertEqual(
+    (await h.snapshot()).screen,
+    "select",
+    "the campaign opens on the grid",
+  );
 
   const cell = targetCenter(targetById(await h.snapshot(), "board-1"));
   await pressRelease(h, cell);

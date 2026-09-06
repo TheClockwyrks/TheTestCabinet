@@ -41,7 +41,9 @@ import {
  * the placement rules of `specs/parts.md` alone, and throws an `Error` naming
  * the first rule it breaks" (`specs/instrumentation.md`, The machine).
  */
-async function refusesPlacement(place: () => Promise<unknown>): Promise<boolean> {
+async function refusesPlacement(
+  place: () => Promise<unknown>,
+): Promise<boolean> {
   try {
     await place();
     return false;
@@ -76,7 +78,11 @@ it("refuses a track cell on a hex another track already holds", async () => {
 
   // The geometry the check claims to be posing.
   for (const hex of [...FIRST, SECOND_START, FREE]) {
-    assertEqual(onField(hex), true, `the hex (${hex.q}, ${hex.r}) is on the field`);
+    assertEqual(
+      onField(hex),
+      true,
+      `the hex (${hex.q}, ${hex.r}) is on the field`,
+    );
   }
   assertEqual(
     adjacent(SECOND_START, CONTESTED),
@@ -124,7 +130,11 @@ it("refuses a track cell on a hex another track already holds", async () => {
     true,
     "a fresh one-cell track on a hex another track holds is refused",
   );
-  assertEqual(afterFresh, 1, "that refusal added no part: the first track stands alone");
+  assertEqual(
+    afterFresh,
+    1,
+    "that refusal added no part: the first track stands alone",
+  );
   assertEqual(
     extendOntoCell,
     true,

@@ -109,12 +109,9 @@ describe("findCodeNode and codeBreadcrumb", () => {
   });
 
   it("walks the trail from the root down to the selection", () => {
-    expect(codeBreadcrumb(tree, "src/game/loop.ts").map((n) => n.path)).toEqual([
-      "",
-      "src",
-      "src/game",
-      "src/game/loop.ts",
-    ]);
+    expect(codeBreadcrumb(tree, "src/game/loop.ts").map((n) => n.path)).toEqual(
+      ["", "src", "src/game", "src/game/loop.ts"],
+    );
     expect(codeBreadcrumb(tree, "")).toHaveLength(1);
   });
 });

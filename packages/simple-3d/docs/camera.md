@@ -9,11 +9,11 @@ world point draws at, and the camera's pose as a plain value.
 
 ## The three spaces
 
-| Space | Unit | Set by |
-| --- | --- | --- |
-| World | World units | The game, on every scene object |
+| Space   | Unit                                     | Set by                                              |
+| ------- | ---------------------------------------- | --------------------------------------------------- |
+| World   | World units                              | The game, on every scene object                     |
 | Logical | The design size handed to `createEngine` | The camera's projection, at aspect `width / height` |
-| Device | Device pixels | The viewport |
+| Device  | Device pixels                            | The viewport                                        |
 
 The camera carries the first mapping and the viewport the second. A world point
 goes through the camera's view and projection matrices into clip space, is
@@ -43,11 +43,26 @@ radians, and `fov` is degrees, which is three's convention as well.
 ## The plain math types
 
 ```ts
-interface Vec2 { x: number; y: number }
-interface Vec3 { x: number; y: number; z: number }
-interface Quat { x: number; y: number; z: number; w: number }
+interface Vec2 {
+  x: number;
+  y: number;
+}
+interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+interface Quat {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+}
 type Mat4 = readonly number[];
-interface Box3 { min: Vec3; max: Vec3 }
+interface Box3 {
+  min: Vec3;
+  max: Vec3;
+}
 ```
 
 `Vec2` is a point on the logical field, `Vec3` a point or direction in the
@@ -72,16 +87,16 @@ mesh.quaternion.set(body.spin.x, body.spin.y, body.spin.z, body.spin.w);
 `EngineOptions.projection` selects the camera's class at construction, and the
 class holds for the engine's life.
 
-| Field | Perspective (the default) | Orthographic |
-| --- | --- | --- |
-| `position` | `(0, 0, 10)` | `(0, 0, 10)` |
-| `rotation` | Identity, looking along `-Z` with `+Y` up | Identity, looking along `-Z` with `+Y` up |
-| `fov` | `60` | `0` |
-| `near` | `0.1` | `0.1` |
-| `far` | `1000` | `1000` |
-| `zoom` | `1` | `1` |
-| `left`, `right` | `0`, `0` | `-width / 2`, `width / 2` |
-| `top`, `bottom` | `0`, `0` | `height / 2`, `-height / 2` |
+| Field           | Perspective (the default)                 | Orthographic                              |
+| --------------- | ----------------------------------------- | ----------------------------------------- |
+| `position`      | `(0, 0, 10)`                              | `(0, 0, 10)`                              |
+| `rotation`      | Identity, looking along `-Z` with `+Y` up | Identity, looking along `-Z` with `+Y` up |
+| `fov`           | `60`                                      | `0`                                       |
+| `near`          | `0.1`                                     | `0.1`                                     |
+| `far`           | `1000`                                    | `1000`                                    |
+| `zoom`          | `1`                                       | `1`                                       |
+| `left`, `right` | `0`, `0`                                  | `-width / 2`, `width / 2`                 |
+| `top`, `bottom` | `0`, `0`                                  | `height / 2`, `-height / 2`               |
 
 Perspective suits any game that shows depth: an orbit around a structure, a
 chase view, a first-person walk. Orthographic suits a board, an isometric field,
@@ -98,7 +113,7 @@ copies it onto the camera. An orbit is three numbers and a point.
 ```ts
 import type { Game, Vec3 } from "@clockwyrks/simple-3d";
 
-const ORBIT_RATE = 1.6;      // radians per second
+const ORBIT_RATE = 1.6; // radians per second
 const ZOOM_PER_UNIT = 0.002; // fraction of the distance per logical unit of wheel
 const PITCH_MIN = 0.15;
 const PITCH_MAX = 1.4;
@@ -134,7 +149,14 @@ export const game: Game<State, null> = {
     api.input.register("up", { keys: ["ArrowUp", "KeyW"] });
     api.input.register("down", { keys: ["ArrowDown", "KeyS"] });
     return [
-      { orbit: { yaw: 0.6, pitch: 0.5, distance: 12, target: { x: 0, y: 0, z: 0 } } },
+      {
+        orbit: {
+          yaw: 0.6,
+          pitch: 0.5,
+          distance: 12,
+          target: { x: 0, y: 0, z: 0 },
+        },
+      },
       null,
     ];
   },
@@ -148,7 +170,11 @@ export const game: Game<State, null> = {
       orbit: {
         ...orbit,
         yaw: orbit.yaw + turn * ORBIT_RATE * dt,
-        pitch: clamp(orbit.pitch + tilt * ORBIT_RATE * dt, PITCH_MIN, PITCH_MAX),
+        pitch: clamp(
+          orbit.pitch + tilt * ORBIT_RATE * dt,
+          PITCH_MIN,
+          PITCH_MAX,
+        ),
         distance: clamp(orbit.distance * (1 + zoom), 4, 40),
       },
     };
@@ -254,10 +280,10 @@ interface Projected {
 }
 ```
 
-| Method | Result |
-| --- | --- |
-| `camera()` | The camera's pose and projection as a value the caller owns. |
-| `ray(x, y)` | A world-space ray through the logical stage point `(x, y)`. |
+| Method           | Result                                                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| `camera()`       | The camera's pose and projection as a value the caller owns.                              |
+| `ray(x, y)`      | A world-space ray through the logical stage point `(x, y)`.                               |
 | `project(point)` | The logical stage point a world point draws at, with its depth and whether it is in view. |
 
 `ray.direction` is unit length. Through a perspective camera the ray starts at

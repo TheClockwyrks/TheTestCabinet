@@ -26,9 +26,7 @@ describe("useEngineChoice", () => {
   });
 
   it("starts on the engineless run, the one every case supports", () => {
-    const { result } = renderHook(() =>
-      useEngineChoice(["none", "simple-2d"]),
-    );
+    const { result } = renderHook(() => useEngineChoice(["none", "simple-2d"]));
     expect(result.current.engine).toBe("none");
   });
 
@@ -49,9 +47,7 @@ describe("useEngineChoice", () => {
   });
 
   it("keeps the operator's pick", () => {
-    const { result } = renderHook(() =>
-      useEngineChoice(["none", "simple-2d"]),
-    );
+    const { result } = renderHook(() => useEngineChoice(["none", "simple-2d"]));
     act(() => result.current.setEngine("simple-2d"));
     expect(result.current.engine).toBe("simple-2d");
   });

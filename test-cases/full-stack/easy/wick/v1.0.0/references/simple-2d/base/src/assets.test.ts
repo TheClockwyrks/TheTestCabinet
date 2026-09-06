@@ -58,7 +58,7 @@ async function readWav(path: string): Promise<Wav> {
   let bits = 0;
   let dataAt = 0;
   let dataSize = 0;
-  for (let at = 12; at + 8 <= bytes.length;) {
+  for (let at = 12; at + 8 <= bytes.length; ) {
     const id = tag(at);
     const size = view.getUint32(at + 4, true);
     if (id === "fmt ") {

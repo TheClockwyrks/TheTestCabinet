@@ -821,7 +821,10 @@ type Reading<F> = F extends (...args: infer A) => infer R
 
 /** The four operations that read rather than pose. */
 type ReadingName =
-  "snapshot" | "menuItemRect" | "readSolution" | "referenceSolution";
+  | "snapshot"
+  | "menuItemRect"
+  | "readSolution"
+  | "referenceSolution";
 
 /**
  * The surface `initialize` returns beside the state, and `engine.debug` hands

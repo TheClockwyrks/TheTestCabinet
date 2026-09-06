@@ -27,7 +27,12 @@
 // on `base + 1 * DIRS[d]`: no spoke is missing and none holds a neighbor's mote.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertNotNull, assertNull } from "../assert";
+import {
+  assertEqual,
+  assertLength,
+  assertNotNull,
+  assertNull,
+} from "../assert";
 import { DIRS } from "../constants";
 import { armPart, solution } from "../formats";
 import { BARE, ORIGIN } from "../fixtures";
@@ -88,7 +93,11 @@ it("closes a gripper on each of the six spokes, one per DIRS entry", async () =>
   assertNotNull(sim, "the run is live through the cycle that grabbed");
   assertEqual(sim?.status, "running", "the grab cycle reaches its boundary");
   assertNull(sim?.fault ?? null, "no fault was raised by the grab");
-  assertEqual(sim?.cycle, 1, "the cycle ran to its boundary rather than freezing");
+  assertEqual(
+    sim?.cycle,
+    1,
+    "the cycle ran to its boundary rather than freezing",
+  );
   assertEqual(
     poseOf(snapshot, hexarm)?.rotation,
     ROTATION,

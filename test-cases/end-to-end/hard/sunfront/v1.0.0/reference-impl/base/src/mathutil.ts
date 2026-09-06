@@ -68,7 +68,10 @@ export function inCorridor(p: Vec2): boolean {
 
 /** Clamp a point back into the corridor band (keeps units off the sand edges). */
 export function clampToCorridor(p: Vec2): Vec2 {
-  const off = Math.max(-CORRIDOR_HALF_WIDTH, Math.min(CORRIDOR_HALF_WIDTH, offDiagonal(p)));
+  const off = Math.max(
+    -CORRIDOR_HALF_WIDTH,
+    Math.min(CORRIDOR_HALF_WIDTH, offDiagonal(p)),
+  );
   return fromDiagonal(alongDiagonal(p), off);
 }
 

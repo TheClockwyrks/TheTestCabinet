@@ -117,12 +117,12 @@ The outputs land under `$TCAB_VALIDATION_MEDIA_DIR/validation/base.showcase-capt
 four files per take, and the last line of the log names the winner. Copy that
 take's four files into `showcase/base/`:
 
-| Take file | Committed as | What it shows |
-| --- | --- | --- |
-| `take-NN.json.gz` | `gameplay.json.gz` | The run. |
-| `take-NN-field.png` | `full-rings.png` | The board at the top of the run: three intact rings, the planet, the deflector, the ball outbound. |
-| `take-NN-breakout.png` | `mid-demolition.png` | The rings gutted, six balls in the sky, pods falling, the shield up and two timed effects running. |
-| `take-NN-salvage.png` | `salvage-inbound.png` | A salvage pod on the last of its fall, inside the deflector's span. |
+| Take file              | Committed as          | What it shows                                                                                      |
+| ---------------------- | --------------------- | -------------------------------------------------------------------------------------------------- |
+| `take-NN.json.gz`      | `gameplay.json.gz`    | The run.                                                                                           |
+| `take-NN-field.png`    | `full-rings.png`      | The board at the top of the run: three intact rings, the planet, the deflector, the ball outbound. |
+| `take-NN-breakout.png` | `mid-demolition.png`  | The rings gutted, six balls in the sky, pods falling, the shield up and two timed effects running. |
+| `take-NN-salvage.png`  | `salvage-inbound.png` | A salvage pod on the last of its fall, inside the deflector's span.                                |
 
 Nothing is left behind under `references/`: the whole stage lives in `tmp/`,
 which is gitignored, and `rm -rf "$REPO/tmp/stage"` disposes of it. Confirm it
@@ -151,14 +151,14 @@ which is the one thing a preview stage cannot afford.
 
 ## The knobs
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_VALIDATION_MEDIA_DIR` | unset | Where the media is written. Nothing is written without it, and the driver still plays every take. |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's written-replay cap, patched above to read it. At `1000` a take of this length is thinned by exactly two, to 30 fps; see the weight note below. |
-| `TCAB_SHOWCASE_TAKES` | `8` | How many seeds to play and judge. |
-| `TCAB_SHOWCASE_FIRST_SEED` | `1` | The first seed of that run of takes. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `23` | The clip ends at the first settled beat past this. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | `29` | The take is abandoned here, wherever it had got to. |
+| Variable                          | Default | What it does                                                                                                                                                 |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TCAB_VALIDATION_MEDIA_DIR`       | unset   | Where the media is written. Nothing is written without it, and the driver still plays every take.                                                            |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`   | The harness's written-replay cap, patched above to read it. At `1000` a take of this length is thinned by exactly two, to 30 fps; see the weight note below. |
+| `TCAB_SHOWCASE_TAKES`             | `8`     | How many seeds to play and judge.                                                                                                                            |
+| `TCAB_SHOWCASE_FIRST_SEED`        | `1`     | The first seed of that run of takes.                                                                                                                         |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `23`    | The clip ends at the first settled beat past this.                                                                                                           |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | `29`    | The take is abandoned here, wherever it had got to.                                                                                                          |
 
 ## What shipped
 
@@ -166,17 +166,17 @@ Twenty-four takes were played and judged, from seed `1`, at the default bounds
 and a `1000`-frame cap. The committed take is **seed 22**, the clear winner at
 1042 against a field whose next best scored 823:
 
-| | |
-| --- | --- |
-| Length | 24.4 s, 732 frames at 30 fps |
-| Play | 1 ball served, 26 deflector bounces, 50 target hits |
-| Demolition | 40 of the wave's 48 derelicts broken |
-| Salvage | 16 pods shed, 10 caught, 6 burned up |
-| Effects seen | `multiball`, `widen`, `pierce` and `shield`, all four caught |
-| Traffic | up to 6 balls in the sky at once |
-| Score | 9,350 points, wave 1, all 3 lives intact |
-| Pace | longest stretch with nothing happening: 1.1 s |
-| Ending | settled, on the beat after a break, with 8 derelicts standing |
+|              |                                                               |
+| ------------ | ------------------------------------------------------------- |
+| Length       | 24.4 s, 732 frames at 30 fps                                  |
+| Play         | 1 ball served, 26 deflector bounces, 50 target hits           |
+| Demolition   | 40 of the wave's 48 derelicts broken                          |
+| Salvage      | 16 pods shed, 10 caught, 6 burned up                          |
+| Effects seen | `multiball`, `widen`, `pierce` and `shield`, all four caught  |
+| Traffic      | up to 6 balls in the sky at once                              |
+| Score        | 9,350 points, wave 1, all 3 lives intact                      |
+| Pace         | longest stretch with nothing happening: 1.1 s                 |
+| Ending       | settled, on the beat after a break, with 8 derelicts standing |
 
 NO TAKE CLEARED A WAVE, and none was expected to. A wave is 48 derelicts and
 64 hits, and the driver lands 50 in the twenty-four seconds a preview can

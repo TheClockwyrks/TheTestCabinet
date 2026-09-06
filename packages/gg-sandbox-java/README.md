@@ -2,19 +2,19 @@
 
 The **Java** program language's toolchain pin and its hand-written SDK.
 
-| | |
-| --- | --- |
-| [`java-version.sh`](java-version.sh) | the JDK and TeaVM releases this arm is pinned to |
-| [`src/gg/`](src/gg/) | the **SDK** a model's program is compiled against, and the doc comments every word a model reads is reflected out of |
-| [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/) | the canonical ABI and the wire encoding, which the Kotlin arm compiles too |
-| [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the catalogue renders them |
-| [`build.sh`](build.sh) | compiles the SDK to `$GG_ARTIFACTS_OUT_DIR/java.sdk.jar`; `crates/gg-sandbox-artifacts/java` runs it on every build |
-| [`signatures.sh`](signatures.sh) | reflects `java.signatures.json` out of the SDK's Javadoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
-| [`tools/`](tools/) | the doclet `signatures.sh` runs, and the module table it reads |
+|                                            |                                                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| [`java-version.sh`](java-version.sh)       | the JDK and TeaVM releases this arm is pinned to                                                                                     |
+| [`src/gg/`](src/gg/)                       | the **SDK** a model's program is compiled against, and the doc comments every word a model reads is reflected out of                 |
+| [`../gg-sandbox-jvm/`](../gg-sandbox-jvm/) | the canonical ABI and the wire encoding, which the Kotlin arm compiles too                                                           |
+| [`libraries.txt`](libraries.txt)           | the packages this arm says a program may reach, grouped as the catalogue renders them                                                |
+| [`build.sh`](build.sh)                     | compiles the SDK to `$GG_ARTIFACTS_OUT_DIR/java.sdk.jar`; `crates/gg-sandbox-artifacts/java` runs it on every build                  |
+| [`signatures.sh`](signatures.sh)           | reflects `java.signatures.json` out of the SDK's Javadoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
+| [`tools/`](tools/)                         | the doclet `signatures.sh` runs, and the module table it reads                                                                       |
 
 ## What the surface is shaped like
 
-One **package per capability module**, and in each of them one class that *is* the module:
+One **package per capability module**, and in each of them one class that _is_ the module:
 `gg.files.Files`, `gg.views.Views`, `gg.board.Board`. Java has no free functions, so an
 operation every other arm spells as one is a `static` method here — `Files.readFile(path)`
 — and the types a module hands back are nested in it, so `Files.FileRead` and

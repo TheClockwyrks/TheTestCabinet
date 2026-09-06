@@ -80,7 +80,13 @@ export function DonutChartWidget({
     // already laid down.
     const offset = -startFraction * CIRCUMFERENCE;
     startFraction += fraction;
-    return { ...segment, key: `${index}-${segment.label}`, fraction, dash, offset };
+    return {
+      ...segment,
+      key: `${index}-${segment.label}`,
+      fraction,
+      dash,
+      offset,
+    };
   });
 
   const content = (

@@ -25,15 +25,15 @@ result against it.
 
 ## Layout
 
-| File | Seeded? | Purpose |
-| --- | --- | --- |
-| `test-case.toml` | — | Manifest: metadata, `[canvas]`/`[tool]`/`[output]`, domain. |
-| `prompt.hbs` | — | The instruction rendered per run, pointing at the brief, the tool, and the grid. |
-| `specs/brief.md` | yes | The self-contained brief: grid layout, the nine tile assignments, seamless-tiling rules, palette. |
-| `variants/base.toml` | — | The single default variant (`base`). |
-| `description.md` | — | Site-facing blurb. |
-| `README.md` | — | This overview. |
-| `changelog.md` | — | Per-version changelog entry. |
+| File                 | Seeded? | Purpose                                                                                           |
+| -------------------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `test-case.toml`     | —       | Manifest: metadata, `[canvas]`/`[tool]`/`[output]`, domain.                                       |
+| `prompt.hbs`         | —       | The instruction rendered per run, pointing at the brief, the tool, and the grid.                  |
+| `specs/brief.md`     | yes     | The self-contained brief: grid layout, the nine tile assignments, seamless-tiling rules, palette. |
+| `variants/base.toml` | —       | The single default variant (`base`).                                                              |
+| `description.md`     | —       | Site-facing blurb.                                                                                |
+| `README.md`          | —       | This overview.                                                                                    |
+| `changelog.md`       | —       | Per-version changelog entry.                                                                      |
 
 A run receives `specs/brief.md`, plus the pre-seeded blank canvas and empty
 action log the binary writes into. Everything else is authoring- or site-side

@@ -49,17 +49,17 @@ answer, given by the module's import line: an arm whose SDK is reached module by
 module writes the name with the module's binding at its head. The table below
 gives the fully-qualified names, which are what everything gg prints uses:
 
-| Function | Returns |
-| --- | --- |
-| `gg.shell.shell(command: string, options?: { timeoutSecs?: number })` | `ShellOutput` |
-| `gg.files.readFile(path: string, options?: { offset?: number; limit?: number })` | `FileRead` |
-| `gg.files.writeFile(path: string, contents: string)` | `number` (bytes written) |
-| `gg.files.editFile(path: string, oldString: string, newString: string)` | `void` |
-| `gg.files.listDir(path?: string)` | `DirEntry[]` |
-| `gg.files.tree(options?: { path?: string; depth?: number })` | `string` |
-| `gg.files.search(query: string, options?: { path?: string; limit?: number })` | `SearchMatch[]` |
-| `gg.views.openText(label: string, body: string)` | `void` |
-| `gg.delegation.spawnSubagent(request: { agent: string } & ({ prompt: string } \| { issueId: string }))` | `SubagentHandle` |
+| Function                                                                                                | Returns                  |
+| ------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `gg.shell.shell(command: string, options?: { timeoutSecs?: number })`                                   | `ShellOutput`            |
+| `gg.files.readFile(path: string, options?: { offset?: number; limit?: number })`                        | `FileRead`               |
+| `gg.files.writeFile(path: string, contents: string)`                                                    | `number` (bytes written) |
+| `gg.files.editFile(path: string, oldString: string, newString: string)`                                 | `void`                   |
+| `gg.files.listDir(path?: string)`                                                                       | `DirEntry[]`             |
+| `gg.files.tree(options?: { path?: string; depth?: number })`                                            | `string`                 |
+| `gg.files.search(query: string, options?: { path?: string; limit?: number })`                           | `SearchMatch[]`          |
+| `gg.views.openText(label: string, body: string)`                                                        | `void`                   |
+| `gg.delegation.spawnSubagent(request: { agent: string } & ({ prompt: string } \| { issueId: string }))` | `SubagentHandle`         |
 
 Two names belong to the surface without being a capability. `ApiError` is the
 failure type every failed call raises, documented under `core` and reached the
@@ -169,7 +169,7 @@ is which statement threw, at the coordinates of its own program.
   wrote. The guest re-tags a binding-level `TypeError` as an `ApiError` on the
   call it came out of, and that one carries the SDK's spelling, so
   `gg.tasks.addTask({ title: "x" })` reports as `` `addTask` failed
-  (invalid-argument) `` with the bindings' own complaint after it.
+(invalid-argument) `` with the bindings' own complaint after it.
 - `ApiError` serialises. It carries an explicit `toJSON`, because a plain
   `Error`'s `message` is non-enumerable and a failure a program put in a view
   would otherwise arrive as `{}`.

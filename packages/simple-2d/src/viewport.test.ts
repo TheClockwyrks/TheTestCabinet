@@ -24,8 +24,14 @@ function fixedSurface(
 /** A canvas laid out at a known CSS size — jsdom performs no layout, so we say so. */
 function laidOutCanvas(cssW: number, cssH: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
-  Object.defineProperty(canvas, "clientWidth", { value: cssW, configurable: true });
-  Object.defineProperty(canvas, "clientHeight", { value: cssH, configurable: true });
+  Object.defineProperty(canvas, "clientWidth", {
+    value: cssW,
+    configurable: true,
+  });
+  Object.defineProperty(canvas, "clientHeight", {
+    value: cssH,
+    configurable: true,
+  });
   return canvas;
 }
 
@@ -36,7 +42,14 @@ function recordingContext(): {
 } {
   const calls: number[][] = [];
   const ctx = {
-    setTransform(a: number, b: number, c: number, d: number, e: number, f: number) {
+    setTransform(
+      a: number,
+      b: number,
+      c: number,
+      d: number,
+      e: number,
+      f: number,
+    ) {
       calls.push([a, b, c, d, e, f]);
     },
   } as unknown as CanvasRenderingContext2D;

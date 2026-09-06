@@ -223,9 +223,11 @@ in the same way.
     "repeatThreshold": 32,
     "minOffenders": 2,
     "minSaturatedRun": 3000,
-    "maxResponseChars": 250000
+    "maxResponseChars": 250000,
   },
-  "capabilities": [ /* … */ ]
+  "capabilities": [
+    /* … */
+  ],
 }
 ```
 
@@ -234,14 +236,14 @@ five-way relationship between a window, a threshold, a breadth, a run length and
 a backstop, so a detector armed on figures nobody chose measures gg rather than
 the model.
 
-| Key | What it does |
-| --- | --- |
-| `enabled` | Whether the detector runs, and whether the agent streams. |
-| `windowWords` | `N`, the lookback the frequency rule is measured over. |
-| `repeatThreshold` | `P`, occurrences in the window above which a word offends. |
-| `minOffenders` | `M`, distinct offenders that make the window saturated. |
-| `minSaturatedRun` | `R`, consecutive words that must arrive while saturated. |
-| `maxResponseChars` | A hard ceiling on reply length. `0` turns it off. |
+| Key                | What it does                                               |
+| ------------------ | ---------------------------------------------------------- |
+| `enabled`          | Whether the detector runs, and whether the agent streams.  |
+| `windowWords`      | `N`, the lookback the frequency rule is measured over.     |
+| `repeatThreshold`  | `P`, occurrences in the window above which a word offends. |
+| `minOffenders`     | `M`, distinct offenders that make the window saturated.    |
+| `minSaturatedRun`  | `R`, consecutive words that must arrive while saturated.   |
+| `maxResponseChars` | A hard ceiling on reply length. `0` turns it off.          |
 
 The figures in the snippet above are what the console seeds a freshly armed
 detector with, and they are the figures the rest of this page reasons about. An
@@ -273,15 +275,15 @@ the same terms the [execution
 ceilings](/gg/execution-limits/#configuring-them) are resolved under. A knob is
 judged as written whether or not the detector is armed.
 
-| Declaration | Result |
-| --- | --- |
-| `loopDetection` absent, or `enabled: false` | detector off, transport buffered |
-| `enabled: true` missing any of the five knobs | refused |
-| `minSaturatedRun: 0` | `0`, the plain frequency rule |
-| `maxResponseChars: 0` | the backstop is off |
-| `minOffenders` > `windowWords` | armed as declared, warned that only the length backstop can fire |
-| `windowWords: 0`, `repeatThreshold: 0` or `minOffenders: 0` | refused |
-| a knob gg cannot read as the number it is | refused |
+| Declaration                                                 | Result                                                           |
+| ----------------------------------------------------------- | ---------------------------------------------------------------- |
+| `loopDetection` absent, or `enabled: false`                 | detector off, transport buffered                                 |
+| `enabled: true` missing any of the five knobs               | refused                                                          |
+| `minSaturatedRun: 0`                                        | `0`, the plain frequency rule                                    |
+| `maxResponseChars: 0`                                       | the backstop is off                                              |
+| `minOffenders` > `windowWords`                              | armed as declared, warned that only the length backstop can fire |
+| `windowWords: 0`, `repeatThreshold: 0` or `minOffenders: 0` | refused                                                          |
+| a knob gg cannot read as the number it is                   | refused                                                          |
 
 The two zeroes in the table are the two that mean something. The cross-knob row
 is armed rather than refused, on the same terms `errorRateWindow` ≥ `maxTurns`
@@ -311,11 +313,15 @@ durable data whether or not anything was ever discarded.
 Per turn, on the [`turn_outcome`](/gg/telemetry/turn-outcomes/) event:
 
 ```jsonc
-{ "type": "turn_outcome", "outcome": "progressed",
-  "consecutiveErrors": 0, "turns": 14,
-  "loopAborts": 2,                     // omitted when zero
+{
+  "type": "turn_outcome",
+  "outcome": "progressed",
+  "consecutiveErrors": 0,
+  "turns": 14,
+  "loopAborts": 2, // omitted when zero
   "loopAbortWords": 6130,
-  "loopAbortChars": 38900 }
+  "loopAbortChars": 38900,
+}
 ```
 
 This is the one place discarded attempts are published. A discarded attempt is

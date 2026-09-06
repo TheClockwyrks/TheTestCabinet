@@ -28,11 +28,11 @@ depth**.
 Author the effect in only these cool, wintry colors. A viewer judges the effect
 against this list, so keep every emitter, gradient, and flake inside it:
 
-| Role | Hex |
-| --- | --- |
+| Role                   | Hex       |
+| ---------------------- | --------- |
 | Flake core / brightest | `#ffffff` |
-| Cool white | `#eaf3ff` |
-| Pale blue | `#bcd6f2` |
+| Cool white             | `#eaf3ff` |
+| Pale blue              | `#bcd6f2` |
 
 The snow reads as **soft white with a faint cool-blue tint** — the flakes are not
 pure paper-white flat; a hint of pale blue in the shadows and edges keeps them
@@ -89,7 +89,7 @@ is authored. Shape it, conceptually, as:
 with forces that read as gentle weather: a light **downward pull** (a soft gravity,
 much weaker than rain would need) and a gentle **side-to-side sway** — for example a
 subtle horizontal wander or turbulence — so the flakes wander as they fall rather
-than dropping straight. Keep the motion **slow and soft**. Author these as *intent*:
+than dropping straight. Keep the motion **slow and soft**. Author these as _intent_:
 read `particle-2d --help` for the exact emitter, force, and curve flags.
 
 ## Color, opacity, and size curves
@@ -127,7 +127,7 @@ already seeded alongside the workspace — no operation needs those flags.
 
 Because the effect is **simulated live** and **loops**, it **varies slightly from
 one play to the next** — the flakes fall in a slightly different arrangement each
-time. That is correct for ambient snow: author it so the *character* — a calm,
+time. That is correct for ambient snow: author it so the _character_ — a calm,
 continuous field of soft varied flakes drifting and swaying downward, in the cool
 white-and-pale-blue palette — **reads the same across every replay** and **loops
 seamlessly**, rather than depending on any one frozen arrangement of flakes.

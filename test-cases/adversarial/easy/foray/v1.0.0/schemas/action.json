@@ -44,10 +44,7 @@
           "description": "The direction to move it (or `Stop`)."
         }
       },
-      "required": [
-        "agent",
-        "dir"
-      ],
+      "required": ["agent", "dir"],
       "type": "object"
     }
   },
@@ -62,9 +59,7 @@
       "type": "array"
     }
   },
-  "required": [
-    "moves"
-  ],
+  "required": ["moves"],
   "title": "Action",
   "type": "object"
 }

@@ -11,8 +11,8 @@ above you see the one belt feeding in and the two belts leaving at the edges, an
 that closed housing in the middle. To show the machine at work, the housing carries a
 raised **splitting ridge down its centre** and **two moving spreader heads that ride
 outward** toward the two outputs, and its **output end is drawn as an arrow** so it is
-obvious which way the lane splitter feeds. Everything below describes that *device
-seen from above*.
+obvious which way the lane splitter feeds. Everything below describes that _device
+seen from above_.
 
 The lane splitter is **not** a pair of belts. It is a distinct component that belts
 **plug into** — one belt running up to its single input mouth, and two belts leaving
@@ -75,17 +75,17 @@ Read the frame left to right as three bands across the flow. All three span the 
   **flush, edge to edge**, neither wider nor narrower — a short run of belt surface
   (dark belt metal, a single central row of amber chevrons pointing East, side rails)
   reaching the **left edge**. **The bottom cell's West is closed off by the housing**
-  (see *The form*): there is no second input, so the bottom-left of the frame is the
+  (see _The form_): there is no second input, so the bottom-left of the frame is the
   machine body, and only the **one** input belt shows on the West edge.
 - **Housing (centre, `x` ≈ 8–24), on the `mechanism` layer:** a solid **grey-blue
   metal housing** that spans the full height and **covers both cells**. This is the
-  machine body, drawn on the `mechanism` layer over the belt bed (see *Layers*). The
-  belt runs *underneath* it, so items ride it and pass **under** the housing — the
+  machine body, drawn on the `mechanism` layer over the belt bed (see _Layers_). The
+  belt runs _underneath_ it, so items ride it and pass **under** the housing — the
   housing occludes them, it does not sit on a gap. The housing is the **dominant
   mass** of the sprite and is what makes the device read as a machine rather than a
   belt. It carries a **central splitting ridge** and **two moving spreader heads that
   route the two lanes outward**, and its **East (output) end is shaped as an
-  East-pointing arrow** — all detailed in *The form* below, all on the `mechanism`
+  East-pointing arrow** — all detailed in _The form_ below, all on the `mechanism`
   layer.
 - **Outputs (East, `x` ≈ 24–32): TWO belt mouths, one in the top cell and one in the
   bottom cell** — a single transport belt connects to each, **exactly one belt wide**
@@ -121,7 +121,7 @@ mechanism's **two moving spreader heads**:
   pulling the single input's two lanes apart and routing each out to its outer lane —
   and they must actually move, cycling smoothly so **frame 7 hands back to frame 0 with
   no jump**, at a distinct state each frame rather than jittering between two spots.
-  How they move is detailed in *The form*; what matters is that a viewer reads them as
+  How they move is detailed in _The form_; what matters is that a viewer reads them as
   the lane splitter **unzipping** the one input outward, not as static decoration.
 - The **housing shell (including the closed bottom input), the output arrow, and the
   central splitting ridge are static** — they sit in the same place in every frame. The
@@ -196,18 +196,18 @@ parts.
 
 Use only these colors:
 
-| Role | Hex |
-| --- | --- |
-| Dark outline / shadow | `#1b1d21` |
-| Belt metal — base | `#34383d` |
-| Belt metal — mid | `#4a4f55` |
-| Belt rail / edge highlight | `#6b7178` |
-| Chevron (amber) — base | `#e6b329` |
+| Role                        | Hex       |
+| --------------------------- | --------- |
+| Dark outline / shadow       | `#1b1d21` |
+| Belt metal — base           | `#34383d` |
+| Belt metal — mid            | `#4a4f55` |
+| Belt rail / edge highlight  | `#6b7178` |
+| Chevron (amber) — base      | `#e6b329` |
 | Chevron (amber) — highlight | `#f6d96b` |
-| Chevron (amber) — shadow | `#b88410` |
+| Chevron (amber) — shadow    | `#b88410` |
 | Housing (grey-blue) — light | `#6a7884` |
-| Housing (grey-blue) — mid | `#4d5a64` |
-| Housing (grey-blue) — dark | `#36424b` |
+| Housing (grey-blue) — mid   | `#4d5a64` |
+| Housing (grey-blue) — dark  | `#36424b` |
 
 The **spreader heads** use the housing tones — housing-light `#6a7884` for their body
 with an amber `#e6b329` accent against the dark outline `#1b1d21`, and housing-dark

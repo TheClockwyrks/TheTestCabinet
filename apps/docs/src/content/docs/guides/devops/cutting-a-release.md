@@ -19,26 +19,26 @@ for the answer keys.
 
 ## What ships, and by what path
 
-| What | Reaches users by | Triggered by |
-| --- | --- | --- |
-| `tcab`, the services, the desktop app | a GitHub release at `vX.Y.Z` | the **Release** + **Release (promote)** workflows, by hand |
-| The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip** | merging to `master`, then `scripts/reingest-cluster.sh --env prod` |
-| The running services | a **git-sha** pinned in the prod overlay | re-pinning `overlays/azure-prod` and applying it |
-| The gallery and the docs | a Cloudflare Pages build | a push to `master` (docs) and the backend's snapshot deploy hook (gallery) |
+| What                                               | Reaches users by                         | Triggered by                                                               |
+| -------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| `tcab`, the services, the desktop app              | a GitHub release at `vX.Y.Z`             | the **Release** + **Release (promote)** workflows, by hand                 |
+| The catalog (test cases, jams, references, errata) | the backend ingesting a **branch tip**   | merging to `master`, then `scripts/reingest-cluster.sh --env prod`         |
+| The running services                               | a **git-sha** pinned in the prod overlay | re-pinning `overlays/azure-prod` and applying it                           |
+| The gallery and the docs                           | a Cloudflare Pages build                 | a push to `master` (docs) and the backend's snapshot deploy hook (gallery) |
 
 The important consequence: **the version tag governs only the downloadable
 artifacts.** Nothing else in the system knows about `v0.6.1`. The catalog ships
 because a branch moved; the services ship because a sha was pinned. A release is
 "these four are at the same commit", not "the tag was pushed".
 
-## What is *not* a release step
+## What is _not_ a release step
 
 - **There is no version to bump.** The Cargo workspace stays at `version =
-  "0.0.0"` and `tauri.conf.json` at `"0.0.0"`; the Release workflow stamps the
+"0.0.0"` and `tauri.conf.json` at `"0.0.0"`; the Release workflow stamps the
   desktop app's version from its `version` input, and the tag itself is the
   version. Nothing in the repository names the release except the changelog.
 - **There is no tag to push.** The Release workflow's `gh release create
-  --target <sha>` creates the tag at the commit it was dispatched on.
+--target <sha>` creates the tag at the commit it was dispatched on.
 - **The model catalog is not a release artifact.** Models are curated in the app
   and served from the backend; see
   [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/).
@@ -155,7 +155,7 @@ case, which overwrites the objects in place.
 
 ### Errata
 
-If this release *acknowledges* a known issue in a version that has already shipped
+If this release _acknowledges_ a known issue in a version that has already shipped
 rather than fixing it in a new version, that is an
 [erratum](/guides/devops/authoring-errata/), authored beside the version's
 manifest. Errata ride the catalog, so they land with the same re-ingest as
@@ -182,7 +182,7 @@ its tip is what gets promoted in Phase 3.
 1. **Let CI build the images.** Both `build-service-images.yml` and
    `build-containers.yml` run on **every** push to `staging`, unfiltered, each
    tagging `:latest` and `:<git-sha>`. So every rc sha carries a complete set —
-   services *and* run containers — and the sha you rehearse on is one you can pin
+   services _and_ run containers — and the sha you rehearse on is one you can pin
    everything to. (`build-containers` is the slow one; it recompiles Rust and wasm
    uncached, so give it time before re-pinning.)
 2. **Re-pin `overlays/azure-staging`** to the new sha (the `images:` block plus
@@ -287,7 +287,7 @@ previous catalog until you move it.
 ## After the release
 
 - **Freeze each version as its first run lands.** `scripts/freeze.sh
-  test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you trigger that
+test-cases/<type>/<difficulty>/<slug>/vX.Y.Z` — at the moment you trigger that
   first run, not later. See [Frozen Versions](/development/frozen-versions/).
 - **A problem found in a shipped version is an erratum, not an edit.** Editing a
   version with runs against it invalidates them silently, which is exactly what
@@ -299,14 +299,14 @@ previous catalog until you move it.
 
 ## Gotchas
 
-| Symptom | Cause |
-| --- | --- |
-| The changelog is live but nothing links to it | Not added to the `Changelogs` sidebar group in `apps/docs/astro.config.mjs`. |
+| Symptom                                                                    | Cause                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The changelog is live but nothing links to it                              | Not added to the `Changelogs` sidebar group in `apps/docs/astro.config.mjs`.                                                                                                                                                                             |
 | The Release workflow fails at `Verify service images exist at this commit` | Dispatched before `build-service-images` finished at that sha, or that run failed. Wait for it (or fix and re-run it), then re-dispatch — never work around the gate; it is the only thing between a bad sha and an installer that dies at first launch. |
-| A graduated case is missing its **Reference** tab | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one. |
-| The gallery still shows the old catalog | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook. |
-| Reviewers see baselines that disagree with the current scripts | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case. |
-| Prod runs behave like the old code | Images rolled but not re-ingested, or re-ingested but not rolled — the two are separate steps by design. |
+| A graduated case is missing its **Reference** tab                          | The lockfile has no `prod` entry for that variant, or prod has not re-ingested since it gained one.                                                                                                                                                      |
+| The gallery still shows the old catalog                                    | The re-ingest was a no-op (nothing changed), so no snapshot refresh and no deploy hook.                                                                                                                                                                  |
+| Reviewers see baselines that disagree with the current scripts             | Scripts changed without a `publish-reference` / `tcab capture-baselines` pass on that case.                                                                                                                                                              |
+| Prod runs behave like the old code                                         | Images rolled but not re-ingested, or re-ingested but not rolled — the two are separate steps by design.                                                                                                                                                 |
 
 ## Next steps
 

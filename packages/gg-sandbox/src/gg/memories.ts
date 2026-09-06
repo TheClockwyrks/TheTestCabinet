@@ -221,7 +221,11 @@ export function readMemory(name: string): string {
  * more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when
  * the edit would leave the memory empty.
  */
-export function editMemory(edit: { name: string; search: string; replace: string }): MemoryUsage {
+export function editMemory(edit: {
+  name: string;
+  search: string;
+  replace: string;
+}): MemoryUsage {
   return call(() => raw.editMemory(edit));
 }
 

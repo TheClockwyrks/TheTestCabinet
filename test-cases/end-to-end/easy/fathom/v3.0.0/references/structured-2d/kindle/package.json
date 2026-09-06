@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Fathom (Kindle) \u2014 a bioluminescent deep-sea maze chase seen through a vision circle that grows as you eat, built on the Structured 2D engine.",
+  "description": "Fathom (Kindle) — a bioluminescent deep-sea maze chase seen through a vision circle that grows as you eat, built on the Structured 2D engine.",
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",

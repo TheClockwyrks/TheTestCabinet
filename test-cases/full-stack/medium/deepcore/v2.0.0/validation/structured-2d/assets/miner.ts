@@ -58,10 +58,7 @@ const AIR_TILES = 6;
  * the snapshot itself, and a check that is about the produced FILES only wants the
  * miner on screen doing the thing.
  */
-export async function showMiner(
-  h: Harness,
-  state: MinerState,
-): Promise<void> {
+export async function showMiner(h: Harness, state: MinerState): Promise<void> {
   h.releaseAll();
   openScene(h);
 

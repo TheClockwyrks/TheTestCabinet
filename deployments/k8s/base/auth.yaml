@@ -38,7 +38,7 @@ spec:
         - name: auth
           image: REPLACE_REGISTRY/tcab-auth-service:latest # CI publishes ghcr.io/<owner>/tcab-auth-service; pin a :<git-sha> tag
           resources:
-          # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
+            # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an
             # unbounded container is worse still, because it makes the sum of a node's
             # limits unknowable and so removes the only guarantee that a run pod cannot

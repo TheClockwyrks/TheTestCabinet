@@ -539,7 +539,8 @@ export function timelineError(timeline: Timeline): string | null {
   if (snapshots.length === 0) return "needs at least one snapshot tick";
   let previous = 0;
   for (const t of snapshots) {
-    if (!Number.isInteger(t) || t < 1) return `snapshot ${t} must be at least 1`;
+    if (!Number.isInteger(t) || t < 1)
+      return `snapshot ${t} must be at least 1`;
     if (t > ticks) return `snapshot ${t} is past the run's ${ticks} ticks`;
     if (t <= previous) return `snapshots must ascend (${previous} then ${t})`;
     previous = t;
@@ -596,7 +597,8 @@ export function fromScenario(value: unknown): {
   });
 
   const rawSnapshots = root.snapshots;
-  if (!Array.isArray(rawSnapshots)) throw new Error("snapshots must be an array");
+  if (!Array.isArray(rawSnapshots))
+    throw new Error("snapshots must be an array");
   const timeline: Timeline = {
     ticks: asNumber(root.ticks, "ticks"),
     snapshots: rawSnapshots.map((t, i) => asNumber(t, `snapshots[${i}]`)),
@@ -621,9 +623,19 @@ function parseEntity(value: unknown): DesignEntity {
     case "sink":
       return { type, x, y, dir: asDir(e.dir) };
     case "assembler":
-      return { type, x, y, recipe: asMember(e.recipe, ASSEMBLER_RECIPES, "recipe") };
+      return {
+        type,
+        x,
+        y,
+        recipe: asMember(e.recipe, ASSEMBLER_RECIPES, "recipe"),
+      };
     case "furnace":
-      return { type, x, y, recipe: asMember(e.recipe, FURNACE_RECIPES, "recipe") };
+      return {
+        type,
+        x,
+        y,
+        recipe: asMember(e.recipe, FURNACE_RECIPES, "recipe"),
+      };
     case "source":
       return {
         type,
@@ -675,7 +687,9 @@ function asMember<T extends string>(
   const text = asString(value, what);
   const found = allowed.find((option) => option === text);
   if (found === undefined) {
-    throw new Error(`${what} ${JSON.stringify(text)} is not one of ${allowed.join(", ")}`);
+    throw new Error(
+      `${what} ${JSON.stringify(text)} is not one of ${allowed.join(", ")}`,
+    );
   }
   return found;
 }

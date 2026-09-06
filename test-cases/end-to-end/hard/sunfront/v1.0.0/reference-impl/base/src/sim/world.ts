@@ -207,7 +207,9 @@ export function upgradeCost(kind: UnitType | "solar-extractor"): number {
 
 /** The sol cost to build a structure of `kind`. */
 export function buildCost(kind: UnitType | "solar-extractor"): number {
-  return kind === "solar-extractor" ? SOLAR_EXTRACTOR_COST : UNIT_STATS[kind].cost;
+  return kind === "solar-extractor"
+    ? SOLAR_EXTRACTOR_COST
+    : UNIT_STATS[kind].cost;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +231,10 @@ export class World {
   /** Current sol balance per team. */
   readonly sol: Record<Team, number> = { player: START_SOL, enemy: START_SOL };
   /** Whether a side has already been granted its one Aegis (specs/waves.md). */
-  private readonly aegisGranted: Record<Team, boolean> = { player: false, enemy: false };
+  private readonly aegisGranted: Record<Team, boolean> = {
+    player: false,
+    enemy: false,
+  };
 
   /** The current wave number (0 before the first wave fires). */
   waveNumber = 0;
@@ -260,16 +265,35 @@ export class World {
 
   private makeBase(team: Team, at: Vec2): SimBase {
     return {
-      id: this.nextId++, team, kind: "base", x: at.x, z: at.z, altitude: 0,
-      armor: STRUCTURE_ARMOR, hp: BASE_HP, maxHp: BASE_HP, dead: false, deathMs: 0,
+      id: this.nextId++,
+      team,
+      kind: "base",
+      x: at.x,
+      z: at.z,
+      altitude: 0,
+      armor: STRUCTURE_ARMOR,
+      hp: BASE_HP,
+      maxHp: BASE_HP,
+      dead: false,
+      deathMs: 0,
     };
   }
 
   private makeReliquary(team: Team, at: Vec2): SimReliquary {
     return {
-      id: this.nextId++, team, kind: "reliquary", x: at.x, z: at.z, altitude: 0,
-      armor: STRUCTURE_ARMOR, hp: RELIQUARY_HP, maxHp: RELIQUARY_HP, dead: false, deathMs: 0,
-      sinceDamageS: RELIQUARY_REGEN_DELAY_S, handled: false,
+      id: this.nextId++,
+      team,
+      kind: "reliquary",
+      x: at.x,
+      z: at.z,
+      altitude: 0,
+      armor: STRUCTURE_ARMOR,
+      hp: RELIQUARY_HP,
+      maxHp: RELIQUARY_HP,
+      dead: false,
+      deathMs: 0,
+      sinceDamageS: RELIQUARY_REGEN_DELAY_S,
+      handled: false,
     };
   }
 
@@ -288,26 +312,43 @@ export class World {
 
   /** Is a grid cell free for `team`? */
   cellFree(team: Team, col: number, row: number): boolean {
-    return !this.structures.some((s) => s.team === team && s.col === col && s.row === row);
+    return !this.structures.some(
+      (s) => s.team === team && s.col === col && s.row === row,
+    );
   }
 
   /** The structure occupying a cell, or null. */
   structureAt(team: Team, col: number, row: number): BuildStructure | null {
-    return this.structures.find((s) => s.team === team && s.col === col && s.row === row) ?? null;
+    return (
+      this.structures.find(
+        (s) => s.team === team && s.col === col && s.row === row,
+      ) ?? null
+    );
   }
 
   /**
    * Place a build structure on an empty, affordable cell (specs/economy.md). Returns
    * the new structure, or null if the cell is taken or the team cannot afford it.
    */
-  place(team: Team, kind: UnitType | "solar-extractor", col: number, row: number): BuildStructure | null {
+  place(
+    team: Team,
+    kind: UnitType | "solar-extractor",
+    col: number,
+    row: number,
+  ): BuildStructure | null {
     if (this.result) return null;
     if (!this.cellFree(team, col, row)) return null;
     const cost = buildCost(kind);
     if (this.sol[team] < cost) return null;
     this.sol[team] -= cost;
     const s: BuildStructure = {
-      id: this.nextId++, team, kind, col, row, level: 1, investedSol: cost,
+      id: this.nextId++,
+      team,
+      kind,
+      col,
+      row,
+      level: 1,
+      investedSol: cost,
     };
     this.structures.push(s);
     return s;
@@ -355,14 +396,35 @@ export class World {
   }
 
   /** Emit one unit onto the field at a muster slot (specs/waves.md). */
-  spawnUnit(team: Team, type: UnitType, level: number, at: Vec2, yaw: number): SimUnit {
+  spawnUnit(
+    team: Team,
+    type: UnitType,
+    level: number,
+    at: Vec2,
+    yaw: number,
+  ): SimUnit {
     const stats = UNIT_STATS[type];
     const maxHp = stats.hp * levelBonus(level);
     const u: SimUnit = {
-      id: this.nextId++, team, kind: "unit", type, level,
-      x: at.x, z: at.z, altitude: type === "sunhawk" ? SUNHAWK_ALTITUDE : 0,
-      armor: stats.armor, hp: maxHp, maxHp, dead: false, deathMs: 0,
-      yaw, targetId: null, fireTimer: 0, healTimer: 0, animMs: 0, role: "move",
+      id: this.nextId++,
+      team,
+      kind: "unit",
+      type,
+      level,
+      x: at.x,
+      z: at.z,
+      altitude: type === "sunhawk" ? SUNHAWK_ALTITUDE : 0,
+      armor: stats.armor,
+      hp: maxHp,
+      maxHp,
+      dead: false,
+      deathMs: 0,
+      yaw,
+      targetId: null,
+      fireTimer: 0,
+      healTimer: 0,
+      animMs: 0,
+      role: "move",
     };
     this.units.push(u);
     return u;
@@ -378,14 +440,31 @@ export class World {
     const base = this.bases[team];
     const yaw = facingYaw(advanceDir(team));
     const t = (kind: AegisTurret["kind"]): AegisTurret => ({
-      kind, targetId: null, fireTimer: 0, yaw: 0, pitch: 0, firedThisStep: false,
+      kind,
+      targetId: null,
+      fireTimer: 0,
+      yaw: 0,
+      pitch: 0,
+      firedThisStep: false,
     });
     this.aegis.push({
-      id: this.nextId++, team, kind: "aegis",
-      x: base.x, z: base.z, altitude: 0,
-      armor: AEGIS.armor, hp: AEGIS.hp, maxHp: AEGIS.hp, dead: false, deathMs: 0,
-      yaw, animMs: 0, firing: false,
-      main: t("main"), left: t("left"), right: t("right"),
+      id: this.nextId++,
+      team,
+      kind: "aegis",
+      x: base.x,
+      z: base.z,
+      altitude: 0,
+      armor: AEGIS.armor,
+      hp: AEGIS.hp,
+      maxHp: AEGIS.hp,
+      dead: false,
+      deathMs: 0,
+      yaw,
+      animMs: 0,
+      firing: false,
+      main: t("main"),
+      left: t("left"),
+      right: t("right"),
     });
   }
 
@@ -460,7 +539,11 @@ export class World {
       rel.sinceDamageS += dt;
       // Regenerate only a still-standing, undamaged Reliquary — never revive one that
       // has hit 0 before its destruction (bounty + Aegis) resolves this step.
-      if (rel.hp > 0 && rel.sinceDamageS >= RELIQUARY_REGEN_DELAY_S && rel.hp < rel.maxHp) {
+      if (
+        rel.hp > 0 &&
+        rel.sinceDamageS >= RELIQUARY_REGEN_DELAY_S &&
+        rel.hp < rel.maxHp
+      ) {
         rel.hp = Math.min(rel.maxHp, rel.hp + RELIQUARY_REGEN_HP_PER_S * dt);
       }
     }
@@ -502,7 +585,12 @@ export class World {
 
     // Hold the current target until it dies or leaves the acquisition range.
     let target = this.combatantById(u.targetId);
-    if (target && (target.dead || !this.canDamage(u, target) || distance(u, target) > this.acquireRange(target, acqRange))) {
+    if (
+      target &&
+      (target.dead ||
+        !this.canDamage(u, target) ||
+        distance(u, target) > this.acquireRange(target, acqRange))
+    ) {
       target = null;
       u.targetId = null;
     }
@@ -591,7 +679,9 @@ export class World {
 
   /** The acquisition-hold range for a held target (its effective range + buffer). */
   private acquireRange(c: Combatant, fallback: number): number {
-    return c.kind === "base" ? Math.max(fallback, BASE_PROXIMITY + ACQUISITION_BUFFER) : fallback;
+    return c.kind === "base"
+      ? Math.max(fallback, BASE_PROXIMITY + ACQUISITION_BUFFER)
+      : fallback;
   }
 
   /**
@@ -604,7 +694,9 @@ export class World {
     // Flakhound hunts Air first: if any Air is in reach, restrict the search to Air.
     let pool = mobiles.filter((c) => this.canDamage(u, c));
     if (u.type === "flakhound") {
-      const air = pool.filter((c) => c.armor === "Air" && distance(u, c) <= acqRange);
+      const air = pool.filter(
+        (c) => c.armor === "Air" && distance(u, c) <= acqRange,
+      );
       if (air.length > 0) pool = air;
     }
 
@@ -613,7 +705,10 @@ export class World {
     for (const c of pool) {
       const d2 = dist2(u, c);
       if (d2 > acqRange * acqRange) continue;
-      if (d2 < bestD2) { bestD2 = d2; best = c; }
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = c;
+      }
     }
     if (best) return best;
 
@@ -622,7 +717,10 @@ export class World {
       if (!this.canDamage(u, c)) continue;
       const reach = this.rangeFor(u, c) + ACQUISITION_BUFFER;
       const d = distance(u, c);
-      if (d <= reach && d * d < bestD2) { bestD2 = d * d; best = c; }
+      if (d <= reach && d * d < bestD2) {
+        bestD2 = d * d;
+        best = c;
+      }
     }
     return best;
   }
@@ -639,7 +737,14 @@ export class World {
   }
 
   /** Apply splash: the same base damage to every OTHER enemy within the radius. */
-  private splash(team: Team, impact: Vec2, sourceId: number, base: number, attack: AttackType, radius: number): void {
+  private splash(
+    team: Team,
+    impact: Vec2,
+    sourceId: number,
+    base: number,
+    attack: AttackType,
+    radius: number,
+  ): void {
     const r2 = radius * radius;
     const victims = [...this.enemyMobiles(team), ...this.enemyStructures(team)];
     for (const c of victims) {
@@ -753,14 +858,25 @@ export class World {
     let groundD = Infinity;
     for (const c of mobiles) {
       const d = dist2(a, c);
-      if (c.armor === "Heavy" && d < heavyD) { heavyD = d; heavy = c; }
-      if (d < groundD) { groundD = d; ground = c; }
+      if (c.armor === "Heavy" && d < heavyD) {
+        heavyD = d;
+        heavy = c;
+      }
+      if (d < groundD) {
+        groundD = d;
+        ground = c;
+      }
     }
     return heavy ?? ground;
   }
 
   /** Run one side turret; returns whether it fired/holds a target this step. */
-  private stepSideTurret(a: SimAegis, turret: AegisTurret, dt: number, side: number): boolean {
+  private stepSideTurret(
+    a: SimAegis,
+    turret: AegisTurret,
+    dt: number,
+    side: number,
+  ): boolean {
     const target = this.aegisSideTarget(a, side);
     turret.targetId = target ? target.id : null;
     if (!target) return false;
@@ -772,8 +888,18 @@ export class World {
         turret.fireTimer = 0;
         turret.firedThisStep = true;
         this.damage(target, AEGIS.side.damage, AEGIS.side.attack);
-        this.splash(a.team, target, a.id, AEGIS.side.damage, AEGIS.side.attack, AEGIS.side.splashRadius);
-        this.shots.push({ attackerId: a.id, turret: turret.kind === "left" ? "left" : "right" });
+        this.splash(
+          a.team,
+          target,
+          a.id,
+          AEGIS.side.damage,
+          AEGIS.side.attack,
+          AEGIS.side.splashRadius,
+        );
+        this.shots.push({
+          attackerId: a.id,
+          turret: turret.kind === "left" ? "left" : "right",
+        });
       }
       return true;
     }
@@ -792,8 +918,14 @@ export class World {
       const rel = wrapAngle(this.bearingTo(a, c) - a.yaw);
       if (Math.sign(rel) !== side) continue; // only this turret's flank arc
       const d = dist2(a, c);
-      if (c.armor === "Light" && d < lightD) { lightD = d; light = c; }
-      if (d < anyD) { anyD = d; any = c; }
+      if (c.armor === "Light" && d < lightD) {
+        lightD = d;
+        light = c;
+      }
+      if (d < anyD) {
+        anyD = d;
+        any = c;
+      }
     }
     return light ?? any;
   }
@@ -805,14 +937,19 @@ export class World {
     for (const c of this.enemyMobiles(a.team)) {
       if (!this.onOwnHalf(a.team, c)) continue;
       const d = dist2(a, c);
-      if (d < bestD) { bestD = d; best = c; }
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
     }
     return best;
   }
 
   /** Is a point on `team`'s own half (player: x+z<1200, enemy: x+z>1200)? */
   private onOwnHalf(team: Team, p: Vec2): boolean {
-    return team === "player" ? midlineSum(p) < MIDLINE_SUM : midlineSum(p) > MIDLINE_SUM;
+    return team === "player"
+      ? midlineSum(p) < MIDLINE_SUM
+      : midlineSum(p) > MIDLINE_SUM;
   }
 
   /** Move the Aegis toward a point, never crossing its own midline. */
@@ -831,7 +968,8 @@ export class World {
   private aegisHoldFront(a: SimAegis, dist: number): void {
     // A hold point on the diagonal a little back from the midline, on our side.
     const margin = 120;
-    const holdSum = a.team === "player" ? MIDLINE_SUM - margin : MIDLINE_SUM + margin;
+    const holdSum =
+      a.team === "player" ? MIDLINE_SUM - margin : MIDLINE_SUM + margin;
     const holdX = holdSum / 2;
     const holdZ = holdSum / 2;
     const dx = holdX - a.x;
@@ -850,10 +988,12 @@ export class World {
     const limit = MIDLINE_SUM - 1; // stay strictly on our side
     if (a.team === "player" && sum > limit) {
       const push = (sum - limit) / 2;
-      a.x -= push; a.z -= push;
+      a.x -= push;
+      a.z -= push;
     } else if (a.team === "enemy" && sum < MIDLINE_SUM + 1) {
       const push = (MIDLINE_SUM + 1 - sum) / 2;
-      a.x += push; a.z += push;
+      a.x += push;
+      a.z += push;
     }
     a.x = clamp(a.x, 0, ARENA_SIZE);
     a.z = clamp(a.z, 0, ARENA_SIZE);
@@ -888,11 +1028,17 @@ export class World {
 
     // Flag newly-dead mobile combatants and advance their white-flash timers.
     for (const u of this.units) {
-      if (!u.dead && u.hp <= 0) { u.dead = true; u.deathMs = 0; }
+      if (!u.dead && u.hp <= 0) {
+        u.dead = true;
+        u.deathMs = 0;
+      }
       if (u.dead) u.deathMs += dt * 1000;
     }
     for (const a of this.aegis) {
-      if (!a.dead && a.hp <= 0) { a.dead = true; a.deathMs = 0; }
+      if (!a.dead && a.hp <= 0) {
+        a.dead = true;
+        a.deathMs = 0;
+      }
       if (a.dead) a.deathMs += dt * 1000;
     }
 

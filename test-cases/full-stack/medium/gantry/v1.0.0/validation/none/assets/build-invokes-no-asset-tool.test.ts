@@ -156,170 +156,170 @@ afterEach(async () => {
   scratch = null;
 });
 
-it(
-  "installs and builds with the four asset tools unreachable",
-  async () => {
-    const manifestPath = join(WORKSPACE, "package.json");
-    assertTrue(
-      existsSync(manifestPath),
-      "a `package.json` at the repository root, whose `npm ci` and " +
-        "`npm run build` are the build interface (specs/overview.md)",
-    );
-    const manifest = readFileSync(manifestPath, "utf8");
-    const linked = fileDependencies(manifest);
+it("installs and builds with the four asset tools unreachable", async () => {
+  const manifestPath = join(WORKSPACE, "package.json");
+  assertTrue(
+    existsSync(manifestPath),
+    "a `package.json` at the repository root, whose `npm ci` and " +
+      "`npm run build` are the build interface (specs/overview.md)",
+  );
+  const manifest = readFileSync(manifestPath, "utf8");
+  const linked = fileDependencies(manifest);
 
-    // Deep enough for every `..` in a relative `file:` specifier to land inside
-    // the scratch root rather than above it.
-    const ups = linked.reduce((deepest, one) => {
-      const climbs = one.spec.split("/").filter((part) => part === "..").length;
-      return Math.max(deepest, climbs);
-    }, 0);
+  // Deep enough for every `..` in a relative `file:` specifier to land inside
+  // the scratch root rather than above it.
+  const ups = linked.reduce((deepest, one) => {
+    const climbs = one.spec.split("/").filter((part) => part === "..").length;
+    return Math.max(deepest, climbs);
+  }, 0);
 
-    scratch = mkdtempSync(join(tmpdir(), "gantry-build-"));
-    const copy = join(scratch, ...Array.from({ length: ups }, (_, i) => `d${i}`), "workspace");
-    mkdirSync(copy, { recursive: true });
+  scratch = mkdtempSync(join(tmpdir(), "gantry-build-"));
+  const copy = join(
+    scratch,
+    ...Array.from({ length: ups }, (_, i) => `d${i}`),
+    "workspace",
+  );
+  mkdirSync(copy, { recursive: true });
 
-    for (const entry of readdirSync(WORKSPACE, { withFileTypes: true })) {
-      if (NOT_COPIED.has(entry.name)) continue;
-      cpSync(join(WORKSPACE, entry.name), join(copy, entry.name), {
-        recursive: true,
-        dereference: false,
-      });
-    }
+  for (const entry of readdirSync(WORKSPACE, { withFileTypes: true })) {
+    if (NOT_COPIED.has(entry.name)) continue;
+    cpSync(join(WORKSPACE, entry.name), join(copy, entry.name), {
+      recursive: true,
+      dereference: false,
+    });
+  }
 
-    // Each relative `file:` dependency, linked from the copy to the directory it
-    // names from the real workspace.
-    for (const one of linked) {
-      const target = linkedDirectory(WORKSPACE, one);
-      const at = resolve(copy, one.spec);
-      if (target === null) {
-        fail(
-          `the \`file:\` dependency \`${one.name}\` to name a directory this ` +
-            "point can link into the copy it installs, so `npm ci` runs there " +
-            "as it runs in the workspace",
-          `\`${one.spec}\` names nothing, and nothing is installed under ` +
-            `\`node_modules/${one.name}\``,
-        );
-      }
-      if (existsSync(at)) continue;
-      mkdirSync(dirname(at), { recursive: true });
-      symlinkSync(target, at);
-    }
-
-    // The shims, and the record they leave.
-    const shimDir = join(scratch, "shims");
-    const record = join(scratch, "invoked.log");
-    mkdirSync(shimDir, { recursive: true });
-    for (const tool of TOOLS) {
-      const shim = join(shimDir, tool);
-      writeFileSync(
-        shim,
-        `#!/bin/sh\nprintf '%s\\n' "${tool} $*" >> ${JSON.stringify(record)}\nexit 1\n`,
-      );
-      chmodSync(shim, 0o755);
-    }
-
-    // `PATH` with the shims first and every directory carrying a real tool of
-    // one of those names taken out, so a shim is the only resolution.
-    const carriesTool = (directory: string): boolean => {
-      try {
-        const names = new Set(readdirSync(directory));
-        return TOOLS.some((tool) => names.has(tool));
-      } catch {
-        return false;
-      }
-    };
-    const path = [
-      shimDir,
-      ...(process.env.PATH ?? "")
-        .split(delimiter)
-        .filter((one) => one !== "" && one !== shimDir && !carriesTool(one)),
-    ].join(delimiter);
-
-    const run = (
-      command: string,
-      args: readonly string[],
-    ): { code: number | null; output: string } => {
-      const done = spawnSync(command, [...args], {
-        cwd: copy,
-        env: { ...process.env, PATH: path, CI: "1" },
-        encoding: "utf8",
-        timeout: BUDGET_MS,
-        maxBuffer: 64 * 1024 * 1024,
-      });
-      const output = `${done.stdout ?? ""}${done.stderr ?? ""}`;
-      return { code: done.status, output: output.slice(-2000) };
-    };
-
-    const installed = run("npm", ["ci", "--no-audit", "--no-fund"]);
-    await h.capture("build", "The build run with the asset tools withheld");
-
-    if (installed.code !== 0) {
+  // Each relative `file:` dependency, linked from the copy to the directory it
+  // names from the real workspace.
+  for (const one of linked) {
+    const target = linkedDirectory(WORKSPACE, one);
+    const at = resolve(copy, one.spec);
+    if (target === null) {
       fail(
-        "`npm ci` to exit 0 with `voxel`, `sfx-synth`, `sfx-sample` and " +
-          "`music` unreachable, since it invokes no tool (specs/assets.md, " +
-          "specs/overview.md)",
-        `it exited ${String(installed.code)}:\n${installed.output}`,
+        `the \`file:\` dependency \`${one.name}\` to name a directory this ` +
+          "point can link into the copy it installs, so `npm ci` runs there " +
+          "as it runs in the workspace",
+        `\`${one.spec}\` names nothing, and nothing is installed under ` +
+          `\`node_modules/${one.name}\``,
       );
     }
+    if (existsSync(at)) continue;
+    mkdirSync(dirname(at), { recursive: true });
+    symlinkSync(target, at);
+  }
 
-    const built = run("npm", ["run", "build"]);
-    if (built.code !== 0) {
-      fail(
-        "`npm run build` to exit 0 with `voxel`, `sfx-synth`, `sfx-sample` " +
-          "and `music` unreachable, since the committed files are the assets " +
-          "and the build only bundles them (specs/assets.md)",
-        `it exited ${String(built.code)}:\n${built.output}`,
-      );
+  // The shims, and the record they leave.
+  const shimDir = join(scratch, "shims");
+  const record = join(scratch, "invoked.log");
+  mkdirSync(shimDir, { recursive: true });
+  for (const tool of TOOLS) {
+    const shim = join(shimDir, tool);
+    writeFileSync(
+      shim,
+      `#!/bin/sh\nprintf '%s\\n' "${tool} $*" >> ${JSON.stringify(record)}\nexit 1\n`,
+    );
+    chmodSync(shim, 0o755);
+  }
+
+  // `PATH` with the shims first and every directory carrying a real tool of
+  // one of those names taken out, so a shim is the only resolution.
+  const carriesTool = (directory: string): boolean => {
+    try {
+      const names = new Set(readdirSync(directory));
+      return TOOLS.some((tool) => names.has(tool));
+    } catch {
+      return false;
     }
+  };
+  const path = [
+    shimDir,
+    ...(process.env.PATH ?? "")
+      .split(delimiter)
+      .filter((one) => one !== "" && one !== shimDir && !carriesTool(one)),
+  ].join(delimiter);
 
-    const invoked = existsSync(record)
-      ? readFileSync(record, "utf8").trim().split("\n").filter(Boolean)
-      : [];
-    assertEqual(
-      invoked.join(", "),
-      "",
-      "neither `npm ci` nor `npm run build` to invoke `voxel`, `sfx-synth`, " +
-        "`sfx-sample` or `music` (specs/assets.md) — these were invoked",
-    );
+  const run = (
+    command: string,
+    args: readonly string[],
+  ): { code: number | null; output: string } => {
+    const done = spawnSync(command, [...args], {
+      cwd: copy,
+      env: { ...process.env, PATH: path, CI: "1" },
+      encoding: "utf8",
+      timeout: BUDGET_MS,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    const output = `${done.stdout ?? ""}${done.stderr ?? ""}`;
+    return { code: done.status, output: output.slice(-2000) };
+  };
 
-    const dist = join(copy, "dist");
-    assertTrue(
-      existsSync(join(dist, "index.html")),
-      "the build to produce `dist/index.html` at the root of the output " +
-        "directory, which is the entry point of the complete static site " +
-        "(specs/overview.md)",
-    );
+  const installed = run("npm", ["ci", "--no-audit", "--no-fund"]);
+  await h.capture("build", "The build run with the asset tools withheld");
 
-    // And the produced files came through the bundle rather than out of a tool:
-    // whatever the workspace's own `dist/` carries under a produced extension,
-    // this one carries too, by the same name with the bundler's hash taken off.
-    const wanted = new Set(
-      filesUnder(join(WORKSPACE, "dist"))
-        .filter((path) => PRODUCED.test(path))
-        .map(stem),
+  if (installed.code !== 0) {
+    fail(
+      "`npm ci` to exit 0 with `voxel`, `sfx-synth`, `sfx-sample` and " +
+        "`music` unreachable, since it invokes no tool (specs/assets.md, " +
+        "specs/overview.md)",
+      `it exited ${String(installed.code)}:\n${installed.output}`,
     );
-    const rebuilt = new Set(
-      filesUnder(dist)
-        .filter((path) => PRODUCED.test(path))
-        .map(stem),
-    );
-    const missing = [...wanted].filter((one) => !rebuilt.has(one)).sort();
-    assertEqual(
-      missing.join(", "),
-      "",
-      "the build run with the tools withheld to emit every produced file the " +
-        "site loads, since the committed files are the assets " +
-        "(specs/assets.md) — these are missing from its output",
-    );
+  }
 
-    console.log(
-      "gantry: the build run with the asset tools withheld —\n" +
-        `  npm ci exited ${String(installed.code)}\n` +
-        `  npm run build exited ${String(built.code)}\n` +
-        `  shims invoked: none\n` +
-        `  produced files emitted: ${[...rebuilt].sort().join(", ")}`,
+  const built = run("npm", ["run", "build"]);
+  if (built.code !== 0) {
+    fail(
+      "`npm run build` to exit 0 with `voxel`, `sfx-synth`, `sfx-sample` " +
+        "and `music` unreachable, since the committed files are the assets " +
+        "and the build only bundles them (specs/assets.md)",
+      `it exited ${String(built.code)}:\n${built.output}`,
     );
-  },
-  600_000,
-);
+  }
+
+  const invoked = existsSync(record)
+    ? readFileSync(record, "utf8").trim().split("\n").filter(Boolean)
+    : [];
+  assertEqual(
+    invoked.join(", "),
+    "",
+    "neither `npm ci` nor `npm run build` to invoke `voxel`, `sfx-synth`, " +
+      "`sfx-sample` or `music` (specs/assets.md) — these were invoked",
+  );
+
+  const dist = join(copy, "dist");
+  assertTrue(
+    existsSync(join(dist, "index.html")),
+    "the build to produce `dist/index.html` at the root of the output " +
+      "directory, which is the entry point of the complete static site " +
+      "(specs/overview.md)",
+  );
+
+  // And the produced files came through the bundle rather than out of a tool:
+  // whatever the workspace's own `dist/` carries under a produced extension,
+  // this one carries too, by the same name with the bundler's hash taken off.
+  const wanted = new Set(
+    filesUnder(join(WORKSPACE, "dist"))
+      .filter((path) => PRODUCED.test(path))
+      .map(stem),
+  );
+  const rebuilt = new Set(
+    filesUnder(dist)
+      .filter((path) => PRODUCED.test(path))
+      .map(stem),
+  );
+  const missing = [...wanted].filter((one) => !rebuilt.has(one)).sort();
+  assertEqual(
+    missing.join(", "),
+    "",
+    "the build run with the tools withheld to emit every produced file the " +
+      "site loads, since the committed files are the assets " +
+      "(specs/assets.md) — these are missing from its output",
+  );
+
+  console.log(
+    "gantry: the build run with the asset tools withheld —\n" +
+      `  npm ci exited ${String(installed.code)}\n` +
+      `  npm run build exited ${String(built.code)}\n` +
+      `  shims invoked: none\n` +
+      `  produced files emitted: ${[...rebuilt].sort().join(", ")}`,
+  );
+}, 600_000);

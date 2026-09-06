@@ -23,11 +23,11 @@ identical in both places.
 
 ## The three spaces
 
-| Space | Unit | Set by |
-| --- | --- | --- |
-| World | World units | The game, on every scene object |
+| Space   | Unit                                     | Set by                                              |
+| ------- | ---------------------------------------- | --------------------------------------------------- |
+| World   | World units                              | The game, on every scene object                     |
 | Logical | The design size handed to `createEngine` | The camera's projection, at aspect `width / height` |
-| Device | Device pixels | The viewport |
+| Device  | Device pixels                            | The viewport                                        |
 
 The camera carries the first mapping and the viewport the second. A world point
 goes through the camera's view and projection matrices into normalized device

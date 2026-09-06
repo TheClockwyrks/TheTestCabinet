@@ -53,7 +53,12 @@ const game: Game<State, null> = {
     api.scene.add(ground);
 
     return [
-      { crates: [{ id: 1, x: -2, y: 0.5, z: 0 }, { id: 2, x: 2, y: 0.5, z: 0 }] },
+      {
+        crates: [
+          { id: 1, x: -2, y: 0.5, z: 0 },
+          { id: 2, x: 2, y: 0.5, z: 0 },
+        ],
+      },
       null,
     ];
   },

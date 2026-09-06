@@ -38,6 +38,7 @@ are tested before they reach users.
 
    It publishes everything, with a `SHA256SUMS`, to a GitHub prerelease at
    that tag. Re-running for the same tag refreshes its assets.
+
 2. Download the prerelease artifacts and exercise them.
 3. Run the Release (promote) workflow
    (`.github/workflows/release-promote.yml`) with the same tag to flip the
@@ -161,11 +162,11 @@ The project deploys three static sites, all on Cloudflare Pages. Each is its own
 Pages project under its own domain, built elsewhere and pushed with `wrangler`
 as a Direct Upload project.
 
-| Site | Project | Address | Built by |
-| ---- | ------- | ------- | -------- |
-| [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
-| Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | `tcab publish` → `wrangler` |
-| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler` |
+| Site                                                                             | Project                   | Address                         | Built by                                        |
+| -------------------------------------------------------------------------------- | ------------------------- | ------------------------------- | ----------------------------------------------- |
+| [Docs](/components/docs/overview/) (`apps/docs`)                                 | `test-cabinet-docs`       | `docs.testcabinet.ai`           | GitHub Actions → `wrangler` (`deploy-docs.yml`) |
+| Per-run playable builds                                                          | `test-cabinet-runs`       | a per-run `*.pages.dev` URL     | `tcab publish` → `wrangler`                     |
+| [Reference implementations](/components/core/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` → `wrangler`           |
 
 The [gallery](/components/site/overview/) is served by an origin rather than
 built as a static site; see [Public Gallery](/deployment/public-gallery/).

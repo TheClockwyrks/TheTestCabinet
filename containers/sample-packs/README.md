@@ -100,8 +100,16 @@ loudness normalization.
 
 ```json
 {
-  "sources/77193cc9…": { "bucket": "test-cabinet-audio", "sha256": "77193cc9…", "bytes": 12345 },
-  "normalized/77193cc9…/3f1a20c8b4d95e07.wav": { "bucket": "test-cabinet-audio", "sha256": "9be1…", "bytes": 6789 }
+  "sources/77193cc9…": {
+    "bucket": "test-cabinet-audio",
+    "sha256": "77193cc9…",
+    "bytes": 12345
+  },
+  "normalized/77193cc9…/3f1a20c8b4d95e07.wav": {
+    "bucket": "test-cabinet-audio",
+    "sha256": "9be1…",
+    "bytes": 6789
+  }
 }
 ```
 
@@ -163,7 +171,7 @@ repo-root `.env`.
 1. Ingest each new clip. `scripts/curate-instrument-bank.mjs` searches Freesound for a
    bank, detects each melodic clip's `root_note`, uploads `sources/<clip-id>`, and appends
    to `clips.toml` and `objects.lock.json`. `node scripts/curate-instrument-bank.mjs --ingest
-   <source-url>` does the same for one clip, printing the id to reference from a pack.
+<source-url>` does the same for one clip, printing the id to reference from a pack.
 2. Author or update the pack manifest here, referencing clip ids. Any content change is a
    new `version`; packs are immutable.
 3. Publish the normalized objects: `node scripts/build-sample-pack.mjs <pack> --publish`
@@ -202,13 +210,13 @@ credential pairs separate the roles: a developer's write pair publishes, and a r
 pair presigns the downloads that stage the audio store. The container-build workflow needs
 only the presign pair, and only for the `audio-store` image.
 
-| Variable | Role | Where |
-| --- | --- | --- |
-| `CLOUDFLARE_AUDIO_R2_S3_URL` | the S3 endpoint | publish + presign |
-| `CLOUDFLARE_ACCOUNT_ID` | derives that endpoint when the URL is unset | publish + presign |
-| `CLOUDFLARE_AUDIO_R2_BUCKET` | the private bucket | publish + presign |
-| `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | write | local ingest + publish only |
-| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | read | local + CI audio-store staging |
+| Variable                                                           | Role                                        | Where                          |
+| ------------------------------------------------------------------ | ------------------------------------------- | ------------------------------ |
+| `CLOUDFLARE_AUDIO_R2_S3_URL`                                       | the S3 endpoint                             | publish + presign              |
+| `CLOUDFLARE_ACCOUNT_ID`                                            | derives that endpoint when the URL is unset | publish + presign              |
+| `CLOUDFLARE_AUDIO_R2_BUCKET`                                       | the private bucket                          | publish + presign              |
+| `CLOUDFLARE_AUDIO_R2_PUBLISH_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | write                                       | local ingest + publish only    |
+| `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` | read                                        | local + CI audio-store staging |
 
 ## On-disk layout the loader expects
 

@@ -18,12 +18,12 @@ lays out satisfies every rule in this file.
 Each tile is one of four kinds, reported in the layout `specs/state.md` defines
 under the characters below.
 
-| Character | The tile is | Entered by |
-| --- | --- | --- |
-| `#` | Rock, solid trench wall. | Nothing. |
-| `.` | Corridor, flooded open water. | The forager and the predators. |
-| `d` | Den interior. | The predators. |
-| `g` | The den gate. | The predators. |
+| Character | The tile is                   | Entered by                     |
+| --------- | ----------------------------- | ------------------------------ |
+| `#`       | Rock, solid trench wall.      | Nothing.                       |
+| `.`       | Corridor, flooded open water. | The forager and the predators. |
+| `d`       | Den interior.                 | The predators.                 |
+| `g`       | The den gate.                 | The predators.                 |
 
 Two tiles are neighbors when they are orthogonally adjacent. The wrap tunnel adds
 one further pair, the two mouths of its pierced row. A corridor neighbor of a
@@ -58,11 +58,11 @@ Three measures fix how the maze reads. Each is computed over the corridor tiles
 alone, with the den interior and the den gate excluded from both the tiles
 measured and the neighbors counted. Both bounds of each are inclusive.
 
-| Measure | Lower bound | Upper bound |
-| --- | --- | --- |
-| Openness | `MAZE_OPENNESS_MIN` (`2.0`) | `MAZE_OPENNESS_MAX` (`2.8`) |
-| Corridor run | `MAZE_MAZING_MIN` (`2.0`) | `MAZE_MAZING_MAX` (`8.0`) |
-| Density | `MAZE_DENSITY_MIN` (`0.40`) | `MAZE_DENSITY_MAX` (`1.0`) |
+| Measure      | Lower bound                 | Upper bound                 |
+| ------------ | --------------------------- | --------------------------- |
+| Openness     | `MAZE_OPENNESS_MIN` (`2.0`) | `MAZE_OPENNESS_MAX` (`2.8`) |
+| Corridor run | `MAZE_MAZING_MIN` (`2.0`)   | `MAZE_MAZING_MAX` (`8.0`)   |
+| Density      | `MAZE_DENSITY_MIN` (`0.40`) | `MAZE_DENSITY_MAX` (`1.0`)  |
 
 Openness is the mean number of corridor neighbors per corridor tile: the total
 corridor-neighbor count over every corridor tile, divided by the number of

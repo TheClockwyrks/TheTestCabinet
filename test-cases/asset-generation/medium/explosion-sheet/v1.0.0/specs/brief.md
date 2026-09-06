@@ -33,15 +33,15 @@ Every frame is drawn on a fully **transparent** background.
 One blast, told across seven stages. It should grow from tiny to big and then thin
 out, with the color temperature dropping steadily frame to frame:
 
-| Frame | Stage | What it looks like |
-| --- | --- | --- |
-| 0 | **Ignition spark** | Small and tight — a bright pinpoint flash with a few short radiating spark lines at the center. Mostly flash and hot yellow. |
-| 1 | **White-hot flash core** | A bright, round white-hot core at full intensity, ringed by hot yellow — the peak of the flash, still fairly compact. |
-| 2 | **Expanding fireball** | The core blooms into a bigger fireball: a white-hot center, a hot-yellow body, and an orange rim with a few **jagged flame tongues** licking outward. |
-| 3 | **Fireball peak** | The fireball at its largest and most ragged — orange and deep-orange body, more and longer jagged tongues, the white core shrinking, the first dark debris flecks appearing. |
-| 4 | **Smoke-and-debris peak** | Fire past its peak: an ember-and-deep-orange heart wrapped in billowing grey smoke, with a scatter of dark debris flecks. Roughly the widest frame. |
-| 5 | **Dissipating smoke** | Mostly grey smoke, spreading and breaking up, with only a small ember glow left at the heart. Softer, more gaps than solid. |
-| 6 | **Nearly empty** | Almost clear — just a faint wisp or two of light-grey smoke thinning away. No fire left. |
+| Frame | Stage                     | What it looks like                                                                                                                                                           |
+| ----- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | **Ignition spark**        | Small and tight — a bright pinpoint flash with a few short radiating spark lines at the center. Mostly flash and hot yellow.                                                 |
+| 1     | **White-hot flash core**  | A bright, round white-hot core at full intensity, ringed by hot yellow — the peak of the flash, still fairly compact.                                                        |
+| 2     | **Expanding fireball**    | The core blooms into a bigger fireball: a white-hot center, a hot-yellow body, and an orange rim with a few **jagged flame tongues** licking outward.                        |
+| 3     | **Fireball peak**         | The fireball at its largest and most ragged — orange and deep-orange body, more and longer jagged tongues, the white core shrinking, the first dark debris flecks appearing. |
+| 4     | **Smoke-and-debris peak** | Fire past its peak: an ember-and-deep-orange heart wrapped in billowing grey smoke, with a scatter of dark debris flecks. Roughly the widest frame.                          |
+| 5     | **Dissipating smoke**     | Mostly grey smoke, spreading and breaking up, with only a small ember glow left at the heart. Softer, more gaps than solid.                                                  |
+| 6     | **Nearly empty**          | Almost clear — just a faint wisp or two of light-grey smoke thinning away. No fire left.                                                                                     |
 
 Make it read as **one explosion**:
 
@@ -62,15 +62,15 @@ Make it read as **one explosion**:
 Use only these colors (the drawing is regenerated pixel-for-pixel, so stray or
 off-palette colors and anti-aliased fringes count against you):
 
-| Role | Hex |
-| --- | --- |
-| Flash — white-hot | `#fffdf2` |
-| Hot yellow | `#ffe14a` |
-| Orange | `#ff9c1a` |
-| Deep orange | `#e5541a` |
-| Ember (deep red) | `#8f2414` |
+| Role               | Hex       |
+| ------------------ | --------- |
+| Flash — white-hot  | `#fffdf2` |
+| Hot yellow         | `#ffe14a` |
+| Orange             | `#ff9c1a` |
+| Deep orange        | `#e5541a` |
+| Ember (deep red)   | `#8f2414` |
 | Smoke — light grey | `#a2a2a8` |
-| Smoke — dark grey | `#4c4c52` |
+| Smoke — dark grey  | `#4c4c52` |
 
 ## Working the tool
 
