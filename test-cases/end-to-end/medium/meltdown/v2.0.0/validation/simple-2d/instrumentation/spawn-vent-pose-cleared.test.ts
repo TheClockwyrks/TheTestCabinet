@@ -92,7 +92,6 @@ it("draws each unit's vent again once the pose is cleared", async () => {
   for (
     let done = 0;
     done < frames && vents.length < DRAWN_UNITS && h.snapshot().wavePending > 0;
-
   ) {
     const step = Math.min(POLL, frames - done);
     await h.advance(step);

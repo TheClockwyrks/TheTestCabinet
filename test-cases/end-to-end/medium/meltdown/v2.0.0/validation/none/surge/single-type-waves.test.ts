@@ -77,8 +77,11 @@ afterEach(async () => {
 });
 
 it("fields one type across the front of a Mote wave and of a Swarm wave", async () => {
-  const read: { wave: number; expected: string; arrivals: { type: string }[] }[] =
-    [];
+  const read: {
+    wave: number;
+    expected: string;
+    arrivals: { type: string }[];
+  }[] = [];
   for (const wave of WAVES) {
     await openWave(h, wave);
     const arrivals = await watchRelease(
