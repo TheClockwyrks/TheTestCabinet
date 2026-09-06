@@ -27,7 +27,6 @@
 
 import {
   CHARGE_MAX,
-  DEFAULT_SEED,
   TOTAL_LEVELS,
   WIREWORM_DEBUG_VERSION,
   inBounds,
@@ -47,7 +46,7 @@ import {
   type MutWorm,
   type Sim,
 } from "./sim";
-import type { FoeKind, Phase, Screen, WirewormState } from "./game";
+import type { Edge, FoeKind, Phase, Screen, WirewormState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The plain, JSON-serializable view `snapshot` returns. */
@@ -64,6 +63,13 @@ export interface WirewormSnapshot {
   muted: boolean;
   foeSpawning: boolean;
   wormEntry: boolean;
+  glitchTimer: number;
+  dropperTimer: number;
+  corruptorTimer: number;
+  nextWormEntry: Edge | null;
+  nextGlitchEntry: { c: number; r: number } | null;
+  nextDropperEntry: { c: number; r: number } | null;
+  nextCorruptorEntry: { c: number; r: number } | null;
   wormStepInterval: number;
   wormLength: number;
   cursor: {
@@ -106,10 +112,7 @@ type Pose = (state: DeepReadonly<WirewormState>) => WirewormState;
 export interface WirewormDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<WirewormState>,
-    options?: { seed?: number },
-  ): WirewormState;
+  reset(state: DeepReadonly<WirewormState>): WirewormState;
   snapshot(state: DeepReadonly<WirewormState>): WirewormSnapshot;
 
   setScreen(state: DeepReadonly<WirewormState>, screen: Screen): WirewormState;
@@ -139,6 +142,22 @@ export interface WirewormDebugApi {
   setCursorContact(
     state: DeepReadonly<WirewormState>,
     enabled: boolean,
+  ): WirewormState;
+
+  setSpawnTimer(
+    state: DeepReadonly<WirewormState>,
+    kind: FoeKind,
+    seconds: number,
+  ): WirewormState;
+  setNextFoeEntry(
+    state: DeepReadonly<WirewormState>,
+    kind: FoeKind,
+    c: number,
+    r: number,
+  ): WirewormState;
+  setNextWormEntry(
+    state: DeepReadonly<WirewormState>,
+    edge: Edge,
   ): WirewormState;
 
   setCursor(
@@ -267,14 +286,21 @@ function whole(value: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, Math.round(value)));
 }
 
+/** A posed tile as the snapshot reports it: a copy, or `null` for none posed. */
+function readTile(
+  tile: DeepReadonly<{ c: number; r: number }> | null,
+): { c: number; r: number } | null {
+  return tile === null ? null : { c: tile.c, r: tile.r };
+}
+
 /** The surface. Every member is one pose or one reading. */
 export function createDebugApi(): WirewormDebugApi {
   return {
     version: WIREWORM_DEBUG_VERSION,
 
-    reset: (state, options) =>
+    reset: (state) =>
       pose((sim) => {
-        resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
+        resetToTitle(sim);
       })(state),
 
     snapshot: (state) => ({
@@ -290,6 +316,13 @@ export function createDebugApi(): WirewormDebugApi {
       muted: state.muted,
       foeSpawning: state.foeSpawning,
       wormEntry: state.wormEntry,
+      glitchTimer: state.glitchTimer,
+      dropperTimer: state.dropperTimer,
+      corruptorTimer: state.corruptorTimer,
+      nextWormEntry: state.nextWormEntry,
+      nextGlitchEntry: readTile(state.nextGlitchEntry),
+      nextDropperEntry: readTile(state.nextDropperEntry),
+      nextCorruptorEntry: readTile(state.nextCorruptorEntry),
       wormStepInterval: wormStepInterval(state.level),
       wormLength: wormLength(state.level),
       cursor: {
@@ -412,6 +445,32 @@ export function createDebugApi(): WirewormDebugApi {
     setCursorContact: (state, enabled) =>
       pose((sim) => {
         sim.cursor.contact = enabled;
+      })(state),
+
+    // ---- The level's draws ------------------------------------------------
+
+    // The clock then runs exactly as specs/foes.md states, so a clock posed at
+    // 0 is drawn afresh on the next update of active play.
+    setSpawnTimer: (state, kind, seconds) =>
+      pose((sim) => {
+        const value = Math.max(0, seconds);
+        if (kind === "glitch") sim.glitchTimer = value;
+        else if (kind === "dropper") sim.dropperTimer = value;
+        else sim.corruptorTimer = value;
+      })(state),
+
+    // The entry consumes the pose; every entry after it is drawn at random.
+    setNextFoeEntry: (state, kind, c, r) =>
+      pose((sim) => {
+        const tile = { c: Math.round(c), r: Math.round(r) };
+        if (kind === "glitch") sim.nextGlitchEntry = tile;
+        else if (kind === "dropper") sim.nextDropperEntry = tile;
+        else sim.nextCorruptorEntry = tile;
+      })(state),
+
+    setNextWormEntry: (state, edge) =>
+      pose((sim) => {
+        sim.nextWormEntry = edge === "left" ? "left" : "right";
       })(state),
 
     // ---- The cursor and its bolts -----------------------------------------

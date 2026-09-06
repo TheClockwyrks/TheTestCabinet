@@ -54,12 +54,15 @@ export function addWormTo(
  * Bring in the level's worm along the entry row (`specs/worm.md`, Length and
  * entry): `wormLength(level)` segments laid on row `0`, entering from the left
  * edge or the right, the head furthest from that edge and the tail nearest it,
- * heading inward and descending. Which edge is a draw from the run's own
- * generator.
+ * heading inward and descending. Which edge is a coin flip, unless the debug
+ * surface posed it, in which case the pose decides this one entry and is
+ * consumed by it.
  */
 export function enterLevelWorm(state: WirewormState): WormState {
   const length = wormLength(state.level);
-  const fromLeft = random(state) < 0.5;
+  const posed = state.nextWormEntry;
+  state.nextWormEntry = null;
+  const fromLeft = posed === null ? random() < 0.5 : posed === "left";
   const segments: Tile[] = [];
   for (let index = 0; index < length; index += 1) {
     // `index` counts from the head, which is the segment furthest from the edge.

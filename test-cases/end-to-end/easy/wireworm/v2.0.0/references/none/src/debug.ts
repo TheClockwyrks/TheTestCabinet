@@ -26,7 +26,6 @@
 
 import {
   CHARGE_MAX,
-  DEFAULT_SEED,
   TOTAL_LEVELS,
   WIREWORM_DEBUG_VERSION,
   wormLength,
@@ -38,7 +37,16 @@ import { makeFoe } from "./foes";
 import { resetState } from "./game";
 import { itemRect, menuFor, type MenuRect } from "./menus";
 import { poseScore } from "./scoring";
-import type { Foe, FoeKind, Phase, Screen, WirewormState, Worm } from "./types";
+import type {
+  Edge,
+  Foe,
+  FoeKind,
+  Phase,
+  Screen,
+  Tile,
+  WirewormState,
+  Worm,
+} from "./types";
 
 /** The `window` property the surface is installed on. */
 export const WIREWORM_HANDLE = "__wireworm";
@@ -114,6 +122,13 @@ export interface WirewormSnapshot {
   muted: boolean;
   foeSpawning: boolean;
   wormEntry: boolean;
+  glitchTimer: number;
+  dropperTimer: number;
+  corruptorTimer: number;
+  nextWormEntry: Edge | null;
+  nextGlitchEntry: Tile | null;
+  nextDropperEntry: Tile | null;
+  nextCorruptorEntry: Tile | null;
   wormStepInterval: number;
   wormLength: number;
   cursor: { x: number; y: number; invulnerable: number; contact: boolean };
@@ -135,7 +150,7 @@ export interface WirewormDebugApi {
   advance(seconds: number, frames?: number): void;
 
   // The core.
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): WirewormSnapshot;
 
   // The screen and the run.
@@ -153,6 +168,11 @@ export interface WirewormDebugApi {
   setFoeSpawning(enabled: boolean): void;
   setWormEntry(enabled: boolean): void;
   setCursorContact(enabled: boolean): void;
+
+  // The level's draws.
+  setSpawnTimer(kind: FoeKind, seconds: number): void;
+  setNextFoeEntry(kind: FoeKind, c: number, r: number): void;
+  setNextWormEntry(edge: Edge): void;
 
   // The cursor and its bolts.
   setCursor(x: number, y: number): void;
@@ -188,6 +208,11 @@ export interface WirewormDebugApi {
   clearFoes(): void;
 }
 
+/** A posed tile as the snapshot reports it: a copy, or `null` for none posed. */
+function copyTile(tile: Tile | null): Tile | null {
+  return tile === null ? null : { c: tile.c, r: tile.r };
+}
+
 /** A pure read of the whole state, exactly as `specs/instrumentation.md` shapes it. */
 export function snapshotOf(state: WirewormState): WirewormSnapshot {
   return {
@@ -203,6 +228,13 @@ export function snapshotOf(state: WirewormState): WirewormSnapshot {
     muted: state.muted,
     foeSpawning: state.foeSpawning,
     wormEntry: state.wormEntry,
+    glitchTimer: state.glitchTimer,
+    dropperTimer: state.dropperTimer,
+    corruptorTimer: state.corruptorTimer,
+    nextWormEntry: state.nextWormEntry,
+    nextGlitchEntry: copyTile(state.nextGlitchEntry),
+    nextDropperEntry: copyTile(state.nextDropperEntry),
+    nextCorruptorEntry: copyTile(state.nextCorruptorEntry),
     // Derived from the level rather than stored, as `specs/worm.md` states.
     wormStepInterval: wormStepInterval(state.level),
     wormLength: wormLength(state.level),
@@ -289,13 +321,12 @@ export function createDebugApi(
     },
 
     /**
-     * Restore every declared field to its title-screen value and reseed the
-     * game's randomness.
+     * Restore every declared field to its title-screen value.
      *
      * It does not touch the clock, and it leaves `muted` exactly as it stands.
      */
-    reset(options) {
-      resetState(state, options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(state);
     },
 
     snapshot() {
@@ -371,6 +402,35 @@ export function createDebugApi(
 
     setCursorContact(enabled) {
       state.cursor.contact = Boolean(enabled);
+    },
+
+    /**
+     * Set the seconds left on the level's clock for one foe kind.
+     *
+     * The clock then runs exactly as `specs/foes.md` states, so a clock posed at
+     * `0` is drawn afresh on the next update of active play.
+     */
+    setSpawnTimer(kind, seconds) {
+      const value = Math.max(0, seconds);
+      if (kind === "glitch") state.glitchTimer = value;
+      else if (kind === "dropper") state.dropperTimer = value;
+      else state.corruptorTimer = value;
+    },
+
+    /**
+     * Pose the tile the next foe of `kind` the level brings in enters on. The
+     * entry consumes the pose; every entry after it is drawn at random again.
+     */
+    setNextFoeEntry(kind, c, r) {
+      const tile = { c: Math.round(c), r: Math.round(r) };
+      if (kind === "glitch") state.nextGlitchEntry = tile;
+      else if (kind === "dropper") state.nextDropperEntry = tile;
+      else state.nextCorruptorEntry = tile;
+    },
+
+    /** Pose the edge the next worm the level or the respawn brings in enters at. */
+    setNextWormEntry(edge) {
+      state.nextWormEntry = edge === "left" ? "left" : "right";
     },
 
     /** Place the cursor's center; the band's real clamp still applies. */

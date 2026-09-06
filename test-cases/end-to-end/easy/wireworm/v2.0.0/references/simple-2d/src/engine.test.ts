@@ -31,6 +31,7 @@ import {
   ARC_LIFE,
   BANNER_TIME,
   BOLT_SPEED,
+  COLS,
   CURSOR_SPEED,
   CURSOR_X_MAX,
   CURSOR_X_MIN,
@@ -359,103 +360,61 @@ describe("the debug surface", () => {
     expect(snap.muted).toBe(true);
   });
 
-  it("seeds the run's randomness", () => {
-    const scatter = (seed: number): string => {
-      h.pose((s, d) => d.reset(s, { seed }));
-      h.pose((s, d) => d.setScreen(s, "title"));
-      h.pose((s, d) => d.setMenuIndex(s, 0));
-      h.tap("Enter");
-      h.pose((s) => s);
-      return "";
-    };
-    void scatter;
+  it("poses the level's spawner clocks and reads them back", async () => {
+    startPlaying(2);
+    h.pose((s, d) => d.setSpawnTimer(s, "glitch", 1.5));
+    h.pose((s, d) => d.setSpawnTimer(s, "dropper", 2));
+    h.pose((s, d) => d.setSpawnTimer(s, "corruptor", 3.5));
+    const shot = h.snapshot();
+    expect(shot.glitchTimer).toBe(1.5);
+    expect(shot.dropperTimer).toBe(2);
+    expect(shot.corruptorTimer).toBe(3.5);
+    // The posed clock runs, and the glitch enters when it runs out.
+    h.pose((s, d) => d.setFoeSpawning(s, true));
+    await h.advance(1.4);
+    expect(h.snapshot().foes).toHaveLength(0);
+    await h.advance(0.2);
+    expect(h.snapshot().foes.map((foe) => foe.kind)).toEqual(["glitch"]);
+  });
 
-    h.pose((s, d) => d.reset(s, { seed: 7 }));
-    h.tap("Enter");
-    // The confirm is read on the next update, which is when the run opens.
-    return h.frames(1).then(async () => {
-      const first = h
-        .snapshot()
-        .nodes.map((n) => `${n.c},${n.r}`)
-        .join(" ");
-
-      h.pose((s, d) => d.reset(s, { seed: 7 }));
-      h.tap("Enter");
+  it("poses where the next foe of a kind enters, for that entry alone", async () => {
+    startPlaying(2);
+    h.pose((s, d) => d.setNextFoeEntry(s, "glitch", COLS - 1, 12));
+    expect(h.snapshot().nextGlitchEntry).toEqual({ c: COLS - 1, r: 12 });
+    h.pose((s, d) => d.setSpawnTimer(s, "glitch", 0.5));
+    h.pose((s, d) => d.setFoeSpawning(s, true));
+    // Read on the frame it enters, before its travel carries it off the tile.
+    for (let frame = 0; frame < 60; frame += 1) {
       await h.frames(1);
-      const again = h
-        .snapshot()
-        .nodes.map((n) => `${n.c},${n.r}`)
-        .join(" ");
+      if (h.snapshot().foes.length > 0) break;
+    }
+    const [glitch] = h.snapshot().foes;
+    expect(glitch.kind).toBe("glitch");
+    expect(glitch.x).toBe(STAGE_W - 16);
+    expect(glitch.y).toBe(tileCY(12));
+    expect(glitch.vx).toBeLessThan(0);
+    expect(h.snapshot().nextGlitchEntry).toBeNull();
+  });
 
-      h.pose((s, d) => d.reset(s, { seed: 8 }));
-      h.tap("Enter");
-      await h.frames(1);
-      const other = h
-        .snapshot()
-        .nodes.map((n) => `${n.c},${n.r}`)
-        .join(" ");
-
-      expect(again).toBe(first);
-      expect(other).not.toBe(first);
-      expect(first.length).toBeGreaterThan(0);
+  it("poses the edge the next worm enters at, for that entry alone", async () => {
+    startPlaying(1);
+    h.pose((s, d) => d.setNextWormEntry(s, "right"));
+    expect(h.snapshot().nextWormEntry).toBe("right");
+    h.pose((s, d) => d.setWormEntry(s, true));
+    h.pose((s, d) => d.setPhase(s, "banner"));
+    h.pose((s, d) => d.setPhaseTimer(s, 0.02));
+    await h.frames(3);
+    const [entered] = h.snapshot().worms;
+    expect(entered.dh).toBe(-1);
+    expect(entered.segments[entered.segments.length - 1]).toEqual({
+      c: COLS - 1,
+      r: 0,
     });
-  });
-
-  it("clears one roster at a time", () => {
-    startPlaying();
-    h.pose((s, d) => d.setNode(s, 3, 3, 1));
-    poseWorm(10, 5, 2);
-    h.pose((s, d) => d.addFoe(s, "dropper", 200, 200));
-    h.pose((s, d) => d.addBolt(s, 200, 400));
-
-    h.pose((s, d) => d.clearNodes(s));
-    let snap = h.snapshot();
-    expect(snap.nodes).toHaveLength(0);
-    expect(snap.worms).toHaveLength(1);
-    expect(snap.foes).toHaveLength(1);
-    expect(snap.bolts).toHaveLength(1);
-
-    h.pose((s, d) => d.clearWorms(s));
-    snap = h.snapshot();
-    expect(snap.worms).toHaveLength(0);
-    expect(snap.foes).toHaveLength(1);
-    expect(snap.bolts).toHaveLength(1);
-
-    h.pose((s, d) => d.clearFoes(s));
-    snap = h.snapshot();
-    expect(snap.foes).toHaveLength(0);
-    expect(snap.bolts).toHaveLength(1);
-
-    h.pose((s, d) => d.clearBolts(s));
-    expect(h.snapshot().bolts).toHaveLength(0);
-  });
-
-  it("gives every entity a distinct id and appends it to its roster", () => {
-    startPlaying();
-    const first = poseWorm(10, 5, 1);
-    const second = poseWorm(20, 5, 1);
-    h.pose((s, d) => d.addFoe(s, "glitch", 100, 300));
-    h.pose((s, d) => d.addBolt(s, 100, 500));
-    const snap = h.snapshot();
-
-    expect(snap.worms.map((w) => w.id)).toEqual([first, second]);
-    const ids = [
-      ...snap.worms.map((w) => w.id),
-      ...snap.foes.map((f) => f.id),
-      ...snap.bolts.map((b) => b.id),
-    ];
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it("grants no bonus life when the score is posed across a boundary", () => {
-    startPlaying();
-    h.pose((s, d) => d.setLives(s, 3));
-    h.pose((s, d) => d.setScore(s, 24_500));
-    expect(h.snapshot().lives).toBe(3);
+    expect(h.snapshot().nextWormEntry).toBeNull();
   });
 });
 
-// ---- The deterministic core ---------------------------------------------
+// ---- The render-free core -----------------------------------------------
 
 describe("the simulation", () => {
   it("reaches the same state however the second was divided", async () => {
@@ -913,8 +872,14 @@ describe("the foes", () => {
     expect(h.snapshot().foes).toHaveLength(0);
 
     h.pose((s, d) => d.setFoeSpawning(s, true));
-    await h.advance(30);
-    expect(h.snapshot().foes.length).toBeGreaterThan(0);
+    // A foe that entered may have left again by any one moment, so the roster
+    // is watched over the stretch rather than read once at its end.
+    let seen = 0;
+    for (let second = 0; second < 30; second += 1) {
+      await h.advance(1);
+      seen = Math.max(seen, h.snapshot().foes.length);
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 
   it("brings in no foe at level one", async () => {

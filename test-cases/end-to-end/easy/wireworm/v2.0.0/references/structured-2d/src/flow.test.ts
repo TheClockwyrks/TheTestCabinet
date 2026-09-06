@@ -74,18 +74,14 @@ describe("starting a run", () => {
     expect(tilesSeen.size).toBe(state.nodes.length);
   });
 
-  it("lays the same field from one seed and a different one from another", () => {
+  it("lays a different field each time", () => {
     const first = new WirewormState();
-    resetState(first, 7);
+    resetState(first);
     scatterField(first);
     const second = new WirewormState();
-    resetState(second, 7);
+    resetState(second);
     scatterField(second);
-    const third = new WirewormState();
-    resetState(third, 8);
-    scatterField(third);
-    expect(second.nodes).toEqual(first.nodes);
-    expect(third.nodes).not.toEqual(first.nodes);
+    expect(second.nodes).not.toEqual(first.nodes);
   });
 });
 
@@ -267,7 +263,9 @@ describe("reset", () => {
     poseFoe(state, "dropper", 4, 4);
     addBoltTo(state, 100, 200);
 
-    resetState(state, 5);
+    state.nextWormEntry = "right";
+    state.nextGlitchEntry = { c: 0, r: 9 };
+    resetState(state);
     expect(state.screen).toBe("title");
     expect(state.phase).toBe("banner");
     expect(state.phaseTimer).toBe(0);
@@ -291,7 +289,8 @@ describe("reset", () => {
     expect(state.foeSpawning).toBe(true);
     expect(state.wormEntry).toBe(true);
     expect(state.simTime).toBe(0);
-    expect(state.rngState).toBe(5);
+    expect(state.nextWormEntry).toBeNull();
+    expect(state.nextGlitchEntry).toBeNull();
     expect(state.muted).toBe(true);
   });
 });

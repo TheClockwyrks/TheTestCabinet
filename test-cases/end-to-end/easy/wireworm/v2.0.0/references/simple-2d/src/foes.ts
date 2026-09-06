@@ -30,7 +30,6 @@ import {
   GLITCH_MAX_ON_BOARD,
   GLITCH_MIN_INTERVAL,
   GLITCH_V_SPEED,
-  FOE_HALF,
   SCATTER_BOTTOM_ROW,
   SCATTER_TOP_ROW,
   STAGE_H,
@@ -40,8 +39,14 @@ import {
   tileCY,
 } from "./constants";
 import { dropNode, hasNode, nodeAt, putNode, slamNode, tileOf } from "./field";
-import { nextInt, nextRange, nextSign } from "./rng";
-import { takeId, type FrameEvents, type MutFoe, type Sim } from "./sim";
+import { randomInt, randomRange, randomSign } from "./rng";
+import {
+  takeId,
+  type FrameEvents,
+  type MutFoe,
+  type MutTile,
+  type Sim,
+} from "./sim";
 import type { FoeKind } from "./game";
 
 /** The row the dropper's sparse-field check counts nodes from. */
@@ -161,56 +166,51 @@ export function advanceFoes(sim: Sim, dt: number, ev: FrameEvents): void {
   }
 }
 
-/** A fresh interval in `[lo, hi]` seconds, drawn from the run's own generator. */
-function drawInterval(sim: Sim, lo: number, hi: number): number {
-  const [seconds, next] = nextRange(sim.rngState, lo, hi);
-  sim.rngState = next;
-  return seconds;
+/** A fresh interval in `[lo, hi)` seconds. */
+function drawInterval(lo: number, hi: number): number {
+  return randomRange(lo, hi);
+}
+
+/**
+ * The tile an edge-entering foe comes in on: the posed one where the debug
+ * surface posed it, and otherwise a side edge by coin flip and a row drawn
+ * uniformly from `rows`. A posed tile decides that one entry and is consumed.
+ */
+function edgeEntry(
+  posed: MutTile | null,
+  rows: readonly [number, number],
+): MutTile {
+  if (posed !== null) return posed;
+  return { c: randomSign() > 0 ? 0 : COLS - 1, r: randomInt(rows[0], rows[1]) };
+}
+
+/** An edge-entering foe of `kind`, heading inward from the edge it stands against. */
+function enterFromEdge(sim: Sim, kind: FoeKind, tile: MutTile): void {
+  const fromLeft = tile.c === 0;
+  addFoe(sim, kind, tileCX(tile.c), tileCY(tile.r), fromLeft ? 1 : -1);
 }
 
 /** A glitch entering from one edge, on a row in its entry band. */
 function enterGlitch(sim: Sim): void {
-  const [sign, afterSign] = nextSign(sim.rngState);
-  const [row, afterRow] = nextInt(
-    afterSign,
-    GLITCH_ENTRY_ROWS[0],
-    GLITCH_ENTRY_ROWS[1],
-  );
-  sim.rngState = afterRow;
-  const fromLeft = sign > 0;
-  addFoe(
-    sim,
-    "glitch",
-    fromLeft ? FOE_HALF : STAGE_W - FOE_HALF,
-    tileCY(row),
-    fromLeft ? 1 : -1,
-  );
+  const tile = edgeEntry(sim.nextGlitchEntry, GLITCH_ENTRY_ROWS);
+  sim.nextGlitchEntry = null;
+  enterFromEdge(sim, "glitch", tile);
 }
 
 /** A corruptor entering from one edge, on a row in its entry band. */
 function enterCorruptor(sim: Sim): void {
-  const [sign, afterSign] = nextSign(sim.rngState);
-  const [row, afterRow] = nextInt(
-    afterSign,
-    CORRUPTOR_ENTRY_ROWS[0],
-    CORRUPTOR_ENTRY_ROWS[1],
-  );
-  sim.rngState = afterRow;
-  const fromLeft = sign > 0;
-  addFoe(
-    sim,
-    "corruptor",
-    fromLeft ? FOE_HALF : STAGE_W - FOE_HALF,
-    tileCY(row),
-    fromLeft ? 1 : -1,
-  );
+  const tile = edgeEntry(sim.nextCorruptorEntry, CORRUPTOR_ENTRY_ROWS);
+  sim.nextCorruptorEntry = null;
+  enterFromEdge(sim, "corruptor", tile);
 }
 
-/** A dropper entering at the entry row, down a column drawn from the generator. */
+/** A dropper entering at the entry row, down a column drawn uniformly. */
 function enterDropper(sim: Sim): void {
-  const [column, next] = nextInt(sim.rngState, 0, COLS - 1);
-  sim.rngState = next;
-  addFoe(sim, "dropper", tileCX(column), tileCY(0));
+  const posed = sim.nextDropperEntry;
+  sim.nextDropperEntry = null;
+  const column = posed === null ? randomInt(0, COLS - 1) : posed.c;
+  const row = posed === null ? 0 : posed.r;
+  addFoe(sim, "dropper", tileCX(column), tileCY(row));
 }
 
 /** How many nodes stand in the rows the dropper's sparse-field check reads. */
@@ -230,13 +230,13 @@ export function runSpawners(sim: Sim, dt: number): void {
   if (sim.level >= GLITCH_FROM_LEVEL) {
     let clock = sim.glitchTimer;
     if (clock <= 0) {
-      clock = drawInterval(sim, GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
+      clock = drawInterval(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
     }
     clock -= dt;
     if (clock <= 0) {
       const onBoard = sim.foes.filter((foe) => foe.kind === "glitch").length;
       if (onBoard < GLITCH_MAX_ON_BOARD) enterGlitch(sim);
-      clock = drawInterval(sim, GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
+      clock = drawInterval(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
     }
     sim.glitchTimer = clock;
   }
@@ -244,12 +244,12 @@ export function runSpawners(sim: Sim, dt: number): void {
   if (sim.level >= CORRUPTOR_FROM_LEVEL) {
     let clock = sim.corruptorTimer;
     if (clock <= 0) {
-      clock = drawInterval(sim, CORRUPTOR_MIN_INTERVAL, CORRUPTOR_MAX_INTERVAL);
+      clock = drawInterval(CORRUPTOR_MIN_INTERVAL, CORRUPTOR_MAX_INTERVAL);
     }
     clock -= dt;
     if (clock <= 0) {
       enterCorruptor(sim);
-      clock = drawInterval(sim, CORRUPTOR_MIN_INTERVAL, CORRUPTOR_MAX_INTERVAL);
+      clock = drawInterval(CORRUPTOR_MIN_INTERVAL, CORRUPTOR_MAX_INTERVAL);
     }
     sim.corruptorTimer = clock;
   }

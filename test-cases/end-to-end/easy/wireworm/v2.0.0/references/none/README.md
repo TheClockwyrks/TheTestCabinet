@@ -150,9 +150,10 @@ keyboard is driven by dispatching real key events at the page), none for the
 overlay (the runtime owns the backtick key), and none for muting (`M` is how a
 player reaches it, and the snapshot reports the result).
 
-The surface is inert during normal play. All randomness runs off the seeded
-generator state the game carries in one field, so a given seed replays the same
-scatter, the same arrivals, and the same lightning exactly.
+The surface is inert during normal play. Every draw the game makes runs off a
+private random source, and the surface poses the outcome of a draw a scenario
+needs: the level's spawner clocks, where its next foe of each kind enters, and
+the edge its next worm enters at.
 
 ## Requirements
 

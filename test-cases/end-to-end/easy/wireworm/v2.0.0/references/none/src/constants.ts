@@ -330,6 +330,3 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 
 /** The version the debug surface reports as `version`. */
 export const WIREWORM_DEBUG_VERSION = 1;
-
-/** The seed a run uses when `reset()` is called without one. */
-export const DEFAULT_SEED = 1;

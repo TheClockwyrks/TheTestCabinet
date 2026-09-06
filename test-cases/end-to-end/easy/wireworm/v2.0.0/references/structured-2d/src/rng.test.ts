@@ -1,59 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { random, randomInt, randomRange, randomSign, seedRandom } from "./rng";
+import { random, randomInt, randomRange, randomSign } from "./rng";
 
-describe("the seeded generator", () => {
-  it("reproduces a sequence exactly from one seed", () => {
-    const a = { rngState: 0 };
-    const b = { rngState: 0 };
-    seedRandom(a, 7);
-    seedRandom(b, 7);
-    const first = Array.from({ length: 16 }, () => random(a));
-    const second = Array.from({ length: 16 }, () => random(b));
-    expect(second).toEqual(first);
-  });
+const DRAWS = 2000;
 
-  it("gives different seeds different sequences", () => {
-    const a = { rngState: 0 };
-    const b = { rngState: 0 };
-    seedRandom(a, 7);
-    seedRandom(b, 8);
-    const first = Array.from({ length: 16 }, () => random(a));
-    const second = Array.from({ length: 16 }, () => random(b));
-    expect(second).not.toEqual(first);
-  });
-
-  it("keeps the whole generator in the state field", () => {
-    const source = { rngState: 0 };
-    seedRandom(source, 3);
-    random(source);
-    const carried = source.rngState;
-    const expected = Array.from({ length: 8 }, () => random(source));
-    const resumed = { rngState: carried };
-    expect(Array.from({ length: 8 }, () => random(resumed))).toEqual(expected);
-  });
-
-  it("draws inside the range it is given", () => {
-    const source = { rngState: 0 };
-    seedRandom(source, 11);
-    for (let draw = 0; draw < 500; draw += 1) {
-      const value = random(source);
+describe("the random source", () => {
+  it("keeps every draw inside its bounds", () => {
+    for (let draw = 0; draw < DRAWS; draw += 1) {
+      const value = random();
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThan(1);
-      expect(randomRange(source, 7, 12)).toBeGreaterThanOrEqual(7);
-      expect(randomRange(source, 7, 12)).toBeLessThan(12);
-      const whole = randomInt(source, 8, 15);
+      expect(randomRange(7, 12)).toBeGreaterThanOrEqual(7);
+      expect(randomRange(7, 12)).toBeLessThan(12);
+      const whole = randomInt(8, 15);
       expect(Number.isInteger(whole)).toBe(true);
       expect(whole).toBeGreaterThanOrEqual(8);
       expect(whole).toBeLessThanOrEqual(15);
-      expect(Math.abs(randomSign(source))).toBe(1);
+      expect(Math.abs(randomSign())).toBe(1);
     }
   });
 
-  it("reaches both ends of a whole range", () => {
-    const source = { rngState: 0 };
-    seedRandom(source, 5);
+  it("covers every value of a small whole range and both signs", () => {
     const seen = new Set<number>();
-    for (let draw = 0; draw < 400; draw += 1) seen.add(randomInt(source, 0, 3));
-    expect([...seen].sort()).toEqual([0, 1, 2, 3]);
+    const signs = new Set<number>();
+    for (let draw = 0; draw < DRAWS; draw += 1) {
+      seen.add(randomInt(0, 3));
+      signs.add(randomSign());
+    }
+    expect(seen).toEqual(new Set([0, 1, 2, 3]));
+    expect(signs).toEqual(new Set([-1, 1]));
   });
 });

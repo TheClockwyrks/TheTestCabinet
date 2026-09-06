@@ -16,7 +16,6 @@ import {
   CURSOR_Y_MAX,
   CURSOR_Y_MIN,
   COLS,
-  DEFAULT_SEED,
   RESPAWN_INVULN,
   RESPAWN_TIME,
   SCATTER_BOTTOM_ROW,
@@ -32,7 +31,7 @@ import type { FrameCues } from "./audio";
 import { resetSpawnClocks } from "./foes";
 import type { WirewormState } from "./game";
 import { putNode } from "./grid";
-import { randomInt, randomRange, seedRandom } from "./rng";
+import { randomInt, randomRange } from "./rng";
 import { addScore } from "./scoring";
 import { enterLevelWorm } from "./worm";
 
@@ -52,22 +51,21 @@ export function clearBoard(state: WirewormState): void {
 /**
  * Lay a new run's starting field: a scattering of inert nodes across the scatter
  * rows, between `SCATTER_MIN_FRACTION` and `SCATTER_MAX_FRACTION` of the tiles
- * those rows hold, drawn from the run's own generator so two runs from different
- * seeds lay different fields (`specs/nodes.md`).
+ * those rows hold, each tile drawn at random so two runs lay different fields
+ * (`specs/nodes.md`).
  */
 export function scatterField(state: WirewormState): void {
   const rows = SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1;
   const tiles = rows * COLS;
   const wanted = Math.round(
-    randomRange(state, SCATTER_MIN_FRACTION, SCATTER_MAX_FRACTION) * tiles,
+    randomRange(SCATTER_MIN_FRACTION, SCATTER_MAX_FRACTION) * tiles,
   );
   let laid = 0;
   // Rejection sampling: the field is at most 15% of the rows, so a draw lands on
-  // an empty tile almost every time, and the bound keeps a pathological
-  // generator from spinning here.
+  // an empty tile almost every time, and the bound keeps the loop from spinning.
   for (let draw = 0; laid < wanted && draw < tiles * 20; draw += 1) {
-    const c = randomInt(state, 0, COLS - 1);
-    const r = randomInt(state, SCATTER_TOP_ROW, SCATTER_BOTTOM_ROW);
+    const c = randomInt(0, COLS - 1);
+    const r = randomInt(SCATTER_TOP_ROW, SCATTER_BOTTOM_ROW);
     const existing = state.nodes.some((node) => node.c === c && node.r === r);
     if (existing) continue;
     putNode(state, c, r, 0);
@@ -182,12 +180,12 @@ export function toTitle(state: WirewormState, index = 0): void {
 }
 
 /**
- * Every declared field back at its title-screen value, with the generator seeded
+ * Every declared field back at its title-screen value
  * (`specs/instrumentation.md`, The core). `muted` is deliberately untouched:
  * muting is a player preference the runtime owns, and a reset is not a reason to
  * start making noise again.
  */
-export function resetState(state: WirewormState, seed = DEFAULT_SEED): void {
+export function resetState(state: WirewormState): void {
   state.screen = "title";
   state.phase = "banner";
   state.phaseTimer = 0;
@@ -206,8 +204,11 @@ export function resetState(state: WirewormState, seed = DEFAULT_SEED): void {
   state.glitchTimer = 0;
   state.corruptorTimer = 0;
   state.dropperTimer = 0;
+  state.nextWormEntry = null;
+  state.nextGlitchEntry = null;
+  state.nextDropperEntry = null;
+  state.nextCorruptorEntry = null;
   state.nextId = 1;
   state.simTime = 0;
   state.presses = [];
-  seedRandom(state, seed);
 }

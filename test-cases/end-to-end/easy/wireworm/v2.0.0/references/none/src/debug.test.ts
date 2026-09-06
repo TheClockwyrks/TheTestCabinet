@@ -11,7 +11,7 @@ import {
   ARC_LIFE,
   BONUS_LIFE_EVERY,
   CHARGE_MAX,
-  DEFAULT_SEED,
+  COLS,
   START_LIVES,
   TOTAL_LEVELS,
   WIREWORM_DEBUG_VERSION,
@@ -448,28 +448,64 @@ describe("reset", () => {
     rig.dispose();
   });
 
-  test("it seeds the game's randomness", () => {
-    const rig = posed();
-    const scatter = (seed: number): string => {
-      rig.debug.reset({ seed });
-      rig.debug.setScreen("title");
-      rig.debug.setMenuIndex(0);
-      rig.press("Enter");
-      rig.runtime.advance(0.02, 1);
-      return JSON.stringify(rig.debug.snapshot().nodes);
-    };
-    const first = scatter(7);
-    expect(scatter(7)).toBe(first);
-    expect(scatter(8)).not.toBe(first);
+  test("it poses the level's spawner clocks and reads them back", () => {
+    const rig = posed(2);
+    rig.debug.setSpawnTimer("glitch", 1.5);
+    rig.debug.setSpawnTimer("dropper", 2);
+    rig.debug.setSpawnTimer("corruptor", 3.5);
+    const shot = rig.debug.snapshot();
+    expect(shot.glitchTimer).toBe(1.5);
+    expect(shot.dropperTimer).toBe(2);
+    expect(shot.corruptorTimer).toBe(3.5);
+    // The posed clock runs, and the glitch enters when it runs out.
+    rig.debug.setFoeSpawning(true);
+    rig.runtime.advance(1.4, 70);
+    expect(rig.debug.snapshot().foes).toHaveLength(0);
+    rig.runtime.advance(0.2, 10);
+    expect(rig.debug.snapshot().foes.map((foe) => foe.kind)).toEqual([
+      "glitch",
+    ]);
     rig.dispose();
   });
 
-  test("its default seed is the one the specification names", () => {
-    const rig = posed();
-    rig.debug.reset({ seed: DEFAULT_SEED });
-    const state = rig.state.rngState;
-    rig.debug.reset();
-    expect(rig.state.rngState).toBe(state);
+  test("it poses where the next foe of a kind enters, for that entry alone", () => {
+    const rig = posed(2);
+    rig.debug.setNextFoeEntry("glitch", COLS - 1, 12);
+    expect(rig.debug.snapshot().nextGlitchEntry).toEqual({
+      c: COLS - 1,
+      r: 12,
+    });
+    rig.debug.setSpawnTimer("glitch", 0.5);
+    rig.debug.setFoeSpawning(true);
+    // Read on the frame it enters, before its travel carries it off the tile.
+    for (let frame = 0; frame < 30; frame += 1) {
+      rig.runtime.advance(0.02, 1);
+      if (rig.debug.snapshot().foes.length > 0) break;
+    }
+    const [glitch] = rig.debug.snapshot().foes;
+    expect(glitch.kind).toBe("glitch");
+    expect(glitch.x).toBe(tileCX(COLS - 1));
+    expect(glitch.y).toBe(tileCY(12));
+    expect(glitch.vx).toBeLessThan(0);
+    expect(rig.debug.snapshot().nextGlitchEntry).toBeNull();
+    rig.dispose();
+  });
+
+  test("it poses the edge the next worm enters at, for that entry alone", () => {
+    const rig = posed(1);
+    rig.debug.setNextWormEntry("right");
+    expect(rig.debug.snapshot().nextWormEntry).toBe("right");
+    rig.debug.setWormEntry(true);
+    rig.debug.setPhase("banner");
+    rig.debug.setPhaseTimer(0.02);
+    rig.runtime.advance(0.04, 2);
+    const [worm] = rig.debug.snapshot().worms;
+    expect(worm.dh).toBe(-1);
+    expect(worm.segments[worm.segments.length - 1]).toEqual({
+      c: COLS - 1,
+      r: 0,
+    });
+    expect(rig.debug.snapshot().nextWormEntry).toBeNull();
     rig.dispose();
   });
 
@@ -549,8 +585,14 @@ describe("the gates", () => {
     rig.runtime.advance(60, 600);
     expect(rig.debug.snapshot().foes).toEqual([]);
     rig.debug.setFoeSpawning(true);
-    rig.runtime.advance(60, 600);
-    expect(rig.debug.snapshot().foes.length).toBeGreaterThan(0);
+    // A foe that entered may have left again by any one moment, so the roster
+    // is watched over the minute rather than read once at its end.
+    let seen = 0;
+    for (let second = 0; second < 60; second += 1) {
+      rig.runtime.advance(1, 10);
+      seen = Math.max(seen, rig.debug.snapshot().foes.length);
+    }
+    expect(seen).toBeGreaterThan(0);
     rig.dispose();
   });
 

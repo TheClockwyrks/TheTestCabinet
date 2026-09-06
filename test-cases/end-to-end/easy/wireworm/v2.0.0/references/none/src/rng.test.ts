@@ -1,67 +1,52 @@
-// Wireworm — the seeded generator (specs/instrumentation.md).
+// Wireworm — the game's private random source.
 //
-// The whole point of it is reproducibility: the same seed and the same sequence
-// of calls reach the same numbers, and the whole generator state lives in one
-// field so that a reset can restore it.
+// The draws are held to their bounds and to covering their range, which is all
+// the game asks of them: which value comes next is the source's own business.
 
 import { describe, expect, test } from "vitest";
-import { nextChance, nextFloat, nextInt, nextRange } from "./rng";
+import { randomChance, randomFloat, randomInt, randomRange } from "./rng";
 
-describe("the seeded generator", () => {
-  test("the same seed replays the same stream", () => {
-    const a = { rngState: 7 };
-    const b = { rngState: 7 };
-    const first = Array.from({ length: 20 }, () => nextFloat(a));
-    const second = Array.from({ length: 20 }, () => nextFloat(b));
-    expect(second).toEqual(first);
-  });
+const DRAWS = 2000;
 
-  test("a different seed draws a different stream", () => {
-    const a = { rngState: 7 };
-    const b = { rngState: 8 };
-    const first = Array.from({ length: 20 }, () => nextFloat(a));
-    const second = Array.from({ length: 20 }, () => nextFloat(b));
-    expect(second).not.toEqual(first);
-  });
-
-  test("the whole of the state is the one field", () => {
-    const holder = { rngState: 3 };
-    nextFloat(holder);
-    const carried = holder.rngState;
-    const next = nextFloat(holder);
-    // Restoring the field alone restores the stream.
-    const restored = { rngState: carried };
-    expect(nextFloat(restored)).toBe(next);
-  });
-
-  test("every draw lands inside its range", () => {
-    const holder = { rngState: 11 };
-    for (let i = 0; i < 500; i += 1) {
-      const float = nextFloat(holder);
-      expect(float).toBeGreaterThanOrEqual(0);
-      expect(float).toBeLessThan(1);
-      const ranged = nextRange(holder, 7, 12);
-      expect(ranged).toBeGreaterThanOrEqual(7);
-      expect(ranged).toBeLessThan(12);
-      const whole = nextInt(holder, 3, 6);
-      expect(Number.isInteger(whole)).toBe(true);
-      expect(whole).toBeGreaterThanOrEqual(3);
-      expect(whole).toBeLessThanOrEqual(6);
+describe("the random source", () => {
+  test("a float lies in the unit interval", () => {
+    for (let i = 0; i < DRAWS; i += 1) {
+      const value = randomFloat();
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
     }
   });
 
-  test("a chance of one is always taken and a chance of none never is", () => {
-    const holder = { rngState: 5 };
-    for (let i = 0; i < 100; i += 1) {
-      expect(nextChance(holder, 1)).toBe(true);
-      expect(nextChance(holder, 0)).toBe(false);
+  test("a range draw lies inside its bounds", () => {
+    for (let i = 0; i < DRAWS; i += 1) {
+      const value = randomRange(7, 12);
+      expect(value).toBeGreaterThanOrEqual(7);
+      expect(value).toBeLessThan(12);
     }
   });
 
-  test("an integer draw covers both ends of its range", () => {
-    const holder = { rngState: 2 };
+  test("an integer draw is whole, inside its bounds, and covers them", () => {
     const seen = new Set<number>();
-    for (let i = 0; i < 400; i += 1) seen.add(nextInt(holder, 0, 3));
-    expect([...seen].sort()).toEqual([0, 1, 2, 3]);
+    for (let i = 0; i < DRAWS; i += 1) {
+      const value = randomInt(8, 15);
+      expect(Number.isInteger(value)).toBe(true);
+      expect(value).toBeGreaterThanOrEqual(8);
+      expect(value).toBeLessThanOrEqual(15);
+      seen.add(value);
+    }
+    expect(seen.size).toBe(8);
+  });
+
+  test("a chance draw lands on both sides", () => {
+    const seen = new Set<boolean>();
+    for (let i = 0; i < DRAWS; i += 1) seen.add(randomChance(0.5));
+    expect(seen).toEqual(new Set([true, false]));
+  });
+
+  test("a certain chance always lands and an impossible one never does", () => {
+    for (let i = 0; i < DRAWS; i += 1) {
+      expect(randomChance(1)).toBe(true);
+      expect(randomChance(0)).toBe(false);
+    }
   });
 });

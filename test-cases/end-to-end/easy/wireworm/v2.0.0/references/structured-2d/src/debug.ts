@@ -30,7 +30,6 @@ import type { World } from "@clockwyrks/structured-2d";
 import { addBoltTo } from "./bolts";
 import {
   CHARGE_MAX,
-  DEFAULT_SEED,
   TOTAL_LEVELS,
   WIREWORM_DEBUG_VERSION,
   inBounds,
@@ -42,9 +41,11 @@ import { addFoeTo } from "./foes";
 import { resetState } from "./flow";
 import {
   wirewormState,
+  type Edge,
   type FoeKind,
   type Phase,
   type Screen,
+  type Tile,
   type WirewormState,
   type WormState,
 } from "./game";
@@ -118,6 +119,15 @@ export interface WirewormSnapshot {
   muted: boolean;
   foeSpawning: boolean;
   wormEntry: boolean;
+  /** The level's spawner clocks, in seconds left (specs/foes.md). */
+  glitchTimer: number;
+  dropperTimer: number;
+  corruptorTimer: number;
+  /** The posed draws, each `null` until posed and once consumed. */
+  nextWormEntry: Edge | null;
+  nextGlitchEntry: SnapshotTile | null;
+  nextDropperEntry: SnapshotTile | null;
+  nextCorruptorEntry: SnapshotTile | null;
   /** Derived from `level` by the formulas in specs/worm.md, not stored. */
   wormStepInterval: number;
   wormLength: number;
@@ -131,6 +141,11 @@ export interface WirewormSnapshot {
   simTime: number;
 }
 
+/** A posed tile as the snapshot reports it: a copy, or `null` for none posed. */
+function copyTile(tile: Tile | null): SnapshotTile | null {
+  return tile === null ? null : { c: tile.c, r: tile.r };
+}
+
 // ---- The surface ---------------------------------------------------------
 
 /**
@@ -140,7 +155,7 @@ export interface WirewormSnapshot {
 export interface WirewormDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): WirewormSnapshot;
 
   setScreen(screen: Screen): void;
@@ -156,6 +171,10 @@ export interface WirewormDebugApi {
   setFoeSpawning(enabled: boolean): void;
   setWormEntry(enabled: boolean): void;
   setCursorContact(enabled: boolean): void;
+
+  setSpawnTimer(kind: FoeKind, seconds: number): void;
+  setNextFoeEntry(kind: FoeKind, c: number, r: number): void;
+  setNextWormEntry(edge: Edge): void;
 
   setCursor(x: number, y: number): void;
   setCursorInvulnerable(seconds: number): void;
@@ -208,8 +227,8 @@ export function createDebugApi(world: () => World): WirewormDebugApi {
   return {
     version: WIREWORM_DEBUG_VERSION,
 
-    reset(options) {
-      resetState(read(), options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(read());
     },
 
     snapshot() {
@@ -228,6 +247,13 @@ export function createDebugApi(world: () => World): WirewormDebugApi {
         muted: world().audio.muted(),
         foeSpawning: state.foeSpawning,
         wormEntry: state.wormEntry,
+        glitchTimer: state.glitchTimer,
+        dropperTimer: state.dropperTimer,
+        corruptorTimer: state.corruptorTimer,
+        nextWormEntry: state.nextWormEntry,
+        nextGlitchEntry: copyTile(state.nextGlitchEntry),
+        nextDropperEntry: copyTile(state.nextDropperEntry),
+        nextCorruptorEntry: copyTile(state.nextCorruptorEntry),
         wormStepInterval: wormStepInterval(state.level),
         wormLength: wormLength(state.level),
         cursor: {
@@ -337,6 +363,29 @@ export function createDebugApi(world: () => World): WirewormDebugApi {
 
     setWormEntry(enabled) {
       read().wormEntry = enabled;
+    },
+
+    // The clock then runs exactly as specs/foes.md states, so a clock posed at
+    // 0 is drawn afresh on the next update of active play.
+    setSpawnTimer(kind, seconds) {
+      const state = read();
+      const value = Math.max(0, seconds);
+      if (kind === "glitch") state.glitchTimer = value;
+      else if (kind === "dropper") state.dropperTimer = value;
+      else state.corruptorTimer = value;
+    },
+
+    // The entry consumes the pose; every entry after it is drawn at random.
+    setNextFoeEntry(kind, c, r) {
+      const state = read();
+      const tile = { c: Math.round(c), r: Math.round(r) };
+      if (kind === "glitch") state.nextGlitchEntry = tile;
+      else if (kind === "dropper") state.nextDropperEntry = tile;
+      else state.nextCorruptorEntry = tile;
+    },
+
+    setNextWormEntry(edge) {
+      read().nextWormEntry = edge === "left" ? "left" : "right";
     },
 
     setCursorContact(enabled) {

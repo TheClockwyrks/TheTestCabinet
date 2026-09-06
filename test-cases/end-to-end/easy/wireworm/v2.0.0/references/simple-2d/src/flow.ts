@@ -15,7 +15,6 @@
 import {
   BANNER_TIME,
   CUES,
-  DEFAULT_SEED,
   ENDING_ITEMS,
   PAUSE_ITEMS,
   RESPAWN_INVULN,
@@ -70,11 +69,14 @@ export function openingState(sprites: Sprites): WirewormState {
     glitchTimer: 0,
     corruptorTimer: 0,
     dropperTimer: 0,
+    nextWormEntry: null,
+    nextGlitchEntry: null,
+    nextDropperEntry: null,
+    nextCorruptorEntry: null,
 
     nextId: 1,
     simTime: 0,
     muted: false,
-    rngState: DEFAULT_SEED,
 
     presses: [],
 
@@ -92,7 +94,7 @@ export function blankState(): WirewormState {
  * `reset`). `muted` is a player preference the runtime owns and is left exactly
  * as it stands, and the loaded art is left with it.
  */
-export function resetToTitle(sim: Sim, seed = DEFAULT_SEED): void {
+export function resetToTitle(sim: Sim): void {
   const fresh = openingState(sim.sprites);
   sim.screen = fresh.screen;
   sim.phase = fresh.phase;
@@ -119,9 +121,12 @@ export function resetToTitle(sim: Sim, seed = DEFAULT_SEED): void {
   sim.glitchTimer = 0;
   sim.corruptorTimer = 0;
   sim.dropperTimer = 0;
+  sim.nextWormEntry = null;
+  sim.nextGlitchEntry = null;
+  sim.nextDropperEntry = null;
+  sim.nextCorruptorEntry = null;
   sim.nextId = fresh.nextId;
   sim.simTime = 0;
-  sim.rngState = seed;
   sim.presses = [];
 }
 

@@ -21,6 +21,9 @@ export type Phase = "banner" | "active" | "respawn";
 /** The three support foes (specs/foes.md). */
 export type FoeKind = "glitch" | "dropper" | "corruptor";
 
+/** The two side edges the level's worm and its foes enter from. */
+export type Edge = "left" | "right";
+
 /**
  * Where a rule announces a cue.
  *
@@ -97,9 +100,8 @@ export interface Point {
  * One conducted link of a live discharge: the two tiles it joins, the seconds of
  * its `ARC_LIFE` that remain, and the lightning it is drawn as.
  *
- * `shape` is the polyline joining the two tile centers, drawn from the run's
- * seeded generator when the arc is created and unchanged for its whole life, as
- * `specs/discharge.md` requires. It is drawn data rather than a rule, so the
+ * `shape` is the polyline joining the two tile centers, fixed when the arc is
+ * created and unchanged for its whole life, as `specs/discharge.md` requires. It is drawn data rather than a rule, so the
  * debug surface leaves it out of what it reports.
  */
 export interface Arc {
@@ -159,10 +161,19 @@ export interface WirewormState {
   foeSpawning: boolean;
   /** Whether the level's and the respawn's entry of a worm runs. */
   wormEntry: boolean;
-  /** The level's spawner clocks, in seconds. A clock at `0` is not yet armed. */
+  /** The level's spawner clocks, in seconds. A clock at `0` is not yet drawn. */
   glitchTimer: number;
   corruptorTimer: number;
   dropperTimer: number;
+  /**
+   * The outcomes the debug surface posed for the level's draws, each `null`
+   * until posed and `null` again once the entry it decided has consumed it
+   * (`specs/instrumentation.md`, The level's draws).
+   */
+  nextWormEntry: Edge | null;
+  nextGlitchEntry: Tile | null;
+  nextDropperEntry: Tile | null;
+  nextCorruptorEntry: Tile | null;
 
   /** The id the next worm, foe, or bolt takes. */
   nextId: number;
@@ -170,6 +181,4 @@ export interface WirewormState {
   simTime: number;
   /** The game's readable copy of the runtime's mute bit, refreshed every update. */
   muted: boolean;
-  /** The state of the seeded generator every draw of randomness runs off. */
-  rngState: number;
 }

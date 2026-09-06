@@ -119,7 +119,7 @@ await engine.advance(20);
 const { nodes, worms, arcs, score } = engine.debug.snapshot(engine.state);
 ```
 
-Beside the core (`reset`, seedable, and `snapshot`) it carries the screen and run
+Beside the core (`reset` and `snapshot`) it carries the screen and run
 poses, the three **world gates** — `setFoeSpawning`, `setWormEntry` and
 `setCursorContact`, each gating one faculty of the level itself so a posed
 scenario is not invaded by entities its requirement never asked for — the cursor

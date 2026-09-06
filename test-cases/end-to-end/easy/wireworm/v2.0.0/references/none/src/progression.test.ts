@@ -98,10 +98,9 @@ describe("the phases", () => {
   });
 
   test("the worm enters along the entry row, heading inward and down", () => {
-    for (const seed of [1, 2, 3, 4, 5, 6]) {
+    for (let draw = 0; draw < 6; draw += 1) {
       const state = posedState(1);
       state.wormEntry = true;
-      state.rngState = seed;
       enterLevelWorm(state);
       const worm = state.worms[0];
       expect(worm.segments.every((segment) => segment.r === 0)).toBe(true);
@@ -114,6 +113,20 @@ describe("the phases", () => {
       expect(
         worm.segments.every((segment) => segment.c >= 0 && segment.c < 40),
       ).toBe(true);
+    }
+  });
+
+  test("a posed edge decides the next entry and is consumed by it", () => {
+    for (const edge of ["left", "right"] as const) {
+      const state = posedState(1);
+      state.wormEntry = true;
+      state.nextWormEntry = edge;
+      enterLevelWorm(state);
+      const worm = state.worms[0];
+      const tail = worm.segments[worm.segments.length - 1];
+      expect(worm.dh).toBe(edge === "left" ? 1 : -1);
+      expect(tail.c).toBe(edge === "left" ? 0 : 39);
+      expect(state.nextWormEntry).toBeNull();
     }
   });
 

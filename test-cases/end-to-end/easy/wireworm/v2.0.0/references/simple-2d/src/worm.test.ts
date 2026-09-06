@@ -20,14 +20,8 @@ function lay(s: Sim, c: number, r: number, length: number): number {
 
 describe("entry", () => {
   it("lays the level's length along the entry row, heading inward", () => {
-    for (const [seed, level] of [
-      [1, 1],
-      [2, 1],
-      [3, 6],
-      [4, 12],
-    ] as const) {
+    for (const level of [1, 1, 6, 12] as const) {
       const s = sim();
-      s.rngState = seed;
       s.level = level;
       const worm = enterWorm(s);
       expect(worm.segments).toHaveLength(wormLength(level));
@@ -48,14 +42,25 @@ describe("entry", () => {
     }
   });
 
-  it("enters from both edges across seeds", () => {
+  it("enters from both edges across draws", () => {
     const headings = new Set<number>();
-    for (let seed = 1; seed <= 40; seed++) {
+    for (let draw = 1; draw <= 60; draw++) {
       const s = sim();
-      s.rngState = seed;
       headings.add(enterWorm(s).dh);
     }
     expect(headings).toEqual(new Set([-1, 1]));
+  });
+
+  it("enters at a posed edge, which that entry consumes", () => {
+    for (const edge of ["left", "right"] as const) {
+      const s = sim();
+      s.nextWormEntry = edge;
+      const worm = enterWorm(s);
+      const tail = worm.segments[worm.segments.length - 1];
+      expect(worm.dh).toBe(edge === "left" ? 1 : -1);
+      expect(tail?.c).toBe(edge === "left" ? 0 : COLS - 1);
+      expect(s.nextWormEntry).toBeNull();
+    }
   });
 });
 

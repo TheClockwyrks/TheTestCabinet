@@ -13,9 +13,11 @@
 //
 // Arrival is the LEVEL's, not the foe's: it is gated by `foeSpawning` and paced
 // by the three clocks the state carries. A clock resting at zero is one that has
-// not been armed yet — which is what a fresh level, a respawn, and the debug
-// surface's `reset` all leave behind — so the first active update arms it rather
-// than firing it.
+// not been drawn yet — which is what a fresh level, a respawn, and the debug
+// surface's `reset` all leave behind — so the first active update draws it
+// rather than firing it (`specs/foes.md`, The spawner clocks). Where a foe
+// enters is a draw of its own, and the debug surface may pose it for one entry:
+// a posed tile decides that entry and is consumed by it.
 
 import {
   CHARGE_MAX,
@@ -53,8 +55,8 @@ import {
   tileCY,
 } from "./constants";
 import { chargeAt, countNodes, hasNode, removeNode, setCharge } from "./field";
-import { nextChance, nextInt, nextRange } from "./rng";
-import type { CueSink, Foe, FoeKind, WirewormState } from "./types";
+import { randomChance, randomInt, randomRange } from "./rng";
+import type { CueSink, Foe, FoeKind, Tile, WirewormState } from "./types";
 
 /** The velocity a foe of each kind rests at, travelling rightward or falling. */
 export function restingVelocity(kind: FoeKind): { vx: number; vy: number } {
@@ -206,16 +208,11 @@ function advanceCorruptor(
 function runSpawners(state: WirewormState, dt: number): void {
   if (state.level >= GLITCH_FROM_LEVEL) {
     if (state.glitchTimer <= 0) {
-      state.glitchTimer = nextRange(
-        state,
-        GLITCH_MIN_INTERVAL,
-        GLITCH_MAX_INTERVAL,
-      );
+      state.glitchTimer = randomRange(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
     }
     state.glitchTimer -= dt;
     while (state.glitchTimer <= 0) {
-      state.glitchTimer += nextRange(
-        state,
+      state.glitchTimer += randomRange(
         GLITCH_MIN_INTERVAL,
         GLITCH_MAX_INTERVAL,
       );
@@ -241,16 +238,14 @@ function runSpawners(state: WirewormState, dt: number): void {
 
   if (state.level >= CORRUPTOR_FROM_LEVEL) {
     if (state.corruptorTimer <= 0) {
-      state.corruptorTimer = nextRange(
-        state,
+      state.corruptorTimer = randomRange(
         CORRUPTOR_MIN_INTERVAL,
         CORRUPTOR_MAX_INTERVAL,
       );
     }
     state.corruptorTimer -= dt;
     while (state.corruptorTimer <= 0) {
-      state.corruptorTimer += nextRange(
-        state,
+      state.corruptorTimer += randomRange(
         CORRUPTOR_MIN_INTERVAL,
         CORRUPTOR_MAX_INTERVAL,
       );
@@ -259,40 +254,62 @@ function runSpawners(state: WirewormState, dt: number): void {
   }
 }
 
-/** A glitch entering at a side edge, on a row between 8 and 15, heading inward. */
-function enterGlitch(state: WirewormState): Foe {
-  const fromLeft = nextChance(state, 0.5);
-  const row = nextInt(state, GLITCH_ENTRY_TOP_ROW, GLITCH_ENTRY_BOTTOM_ROW);
-  const foe = makeFoe(
-    state,
-    "glitch",
-    fromLeft ? tileCX(0) : tileCX(COLS - 1),
-    tileCY(row),
-  );
-  foe.vx = fromLeft ? GLITCH_H_SPEED : -GLITCH_H_SPEED;
+/**
+ * The tile an edge-entering foe comes in on: the posed one where the debug
+ * surface posed it, and otherwise a side edge by coin flip and a row drawn
+ * uniformly from `topRow..bottomRow`. A posed tile is consumed by the entry.
+ */
+function edgeEntry(
+  posed: Tile | null,
+  topRow: number,
+  bottomRow: number,
+): Tile {
+  if (posed !== null) return posed;
+  return {
+    c: randomChance(0.5) ? 0 : COLS - 1,
+    r: randomInt(topRow, bottomRow),
+  };
+}
+
+/** An edge-entering foe of `kind`, heading inward from the edge column it stands on. */
+function enterFromEdge(
+  state: WirewormState,
+  kind: FoeKind,
+  tile: Tile,
+  speed: number,
+): Foe {
+  const foe = makeFoe(state, kind, tileCX(tile.c), tileCY(tile.r));
+  foe.vx = tile.c === 0 ? speed : -speed;
   return foe;
 }
 
-/** A dropper entering at row 0, on the center of a column the generator picks. */
+/** A glitch entering at a side edge, on a row between 8 and 15, heading inward. */
+function enterGlitch(state: WirewormState): Foe {
+  const tile = edgeEntry(
+    state.nextGlitchEntry,
+    GLITCH_ENTRY_TOP_ROW,
+    GLITCH_ENTRY_BOTTOM_ROW,
+  );
+  state.nextGlitchEntry = null;
+  return enterFromEdge(state, "glitch", tile, GLITCH_H_SPEED);
+}
+
+/** A dropper entering at row 0, on the center of a column drawn uniformly. */
 function enterDropper(state: WirewormState): Foe {
-  const column = nextInt(state, 0, COLS - 1);
-  return makeFoe(state, "dropper", tileCX(column), tileCY(ENTRY_ROW));
+  const posed = state.nextDropperEntry;
+  state.nextDropperEntry = null;
+  const column = posed === null ? randomInt(0, COLS - 1) : posed.c;
+  const row = posed === null ? ENTRY_ROW : posed.r;
+  return makeFoe(state, "dropper", tileCX(column), tileCY(row));
 }
 
 /** A corruptor entering at a side edge, on a row between 1 and 6, heading inward. */
 function enterCorruptor(state: WirewormState): Foe {
-  const fromLeft = nextChance(state, 0.5);
-  const row = nextInt(
-    state,
+  const tile = edgeEntry(
+    state.nextCorruptorEntry,
     CORRUPTOR_ENTRY_TOP_ROW,
     CORRUPTOR_ENTRY_BOTTOM_ROW,
   );
-  const foe = makeFoe(
-    state,
-    "corruptor",
-    fromLeft ? tileCX(0) : tileCX(COLS - 1),
-    tileCY(row),
-  );
-  foe.vx = fromLeft ? CORRUPTOR_SPEED : -CORRUPTOR_SPEED;
-  return foe;
+  state.nextCorruptorEntry = null;
+  return enterFromEdge(state, "corruptor", tile, CORRUPTOR_SPEED);
 }

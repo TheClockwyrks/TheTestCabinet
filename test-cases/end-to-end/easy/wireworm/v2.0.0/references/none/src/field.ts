@@ -22,7 +22,7 @@ import {
   SCATTER_TOP_ROW,
   inBounds,
 } from "./constants";
-import { nextFloat, type RngHolder } from "./rng";
+import { randomFloat, randomInt } from "./rng";
 
 /** The value a tile holding no node carries. */
 export const EMPTY = -1;
@@ -75,25 +75,24 @@ export function clearNodes(field: Int8Array): void {
  * Lay the starting scatter: inert nodes on between `SCATTER_MIN_FRACTION` and
  * `SCATTER_MAX_FRACTION` of the tiles of rows `SCATTER_TOP_ROW..SCATTER_BOTTOM_ROW`.
  *
- * Every tile is drawn from the run's seeded generator, so two runs of one seed
- * lay the same field and two runs of different seeds do not. A tile already
- * carrying a node is re-drawn rather than counted twice, and the guard bounds
- * that retry loop: the target is at most 15% of the rows' tiles, so it is
- * reached long before the guard, and a guard that ran out would leave a slightly
- * sparser field rather than spinning.
+ * Every tile is drawn at random, so a run's field is a fresh scatter rather than
+ * one fixed layout. A tile already carrying a node is re-drawn rather than
+ * counted twice, and the guard bounds that retry loop: the target is at most 15%
+ * of the rows' tiles, so it is reached long before the guard, and a guard that
+ * ran out would leave a slightly sparser field rather than spinning.
  */
-export function scatterField(field: Int8Array, rng: RngHolder): void {
+export function scatterField(field: Int8Array): void {
   const rows = SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1;
   const tiles = rows * COLS;
   const fraction =
     SCATTER_MIN_FRACTION +
-    nextFloat(rng) * (SCATTER_MAX_FRACTION - SCATTER_MIN_FRACTION);
+    randomFloat() * (SCATTER_MAX_FRACTION - SCATTER_MIN_FRACTION);
   let remaining = Math.round(tiles * fraction);
   let guard = tiles * 8;
   while (remaining > 0 && guard > 0) {
     guard -= 1;
-    const c = Math.floor(nextFloat(rng) * COLS);
-    const r = SCATTER_TOP_ROW + Math.floor(nextFloat(rng) * rows);
+    const c = randomInt(0, COLS - 1);
+    const r = randomInt(SCATTER_TOP_ROW, SCATTER_BOTTOM_ROW);
     if (hasNode(field, c, r)) continue;
     setCharge(field, c, r, 0);
     remaining -= 1;

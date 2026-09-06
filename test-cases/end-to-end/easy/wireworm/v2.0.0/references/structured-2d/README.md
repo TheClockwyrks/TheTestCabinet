@@ -240,7 +240,7 @@ src/
   cursor.ts           Movement in the band, firing, and the contact test
   flow.ts             The run: starting one, losing a life, clearing a level
   scoring.ts          Every figure the run is paid, and the bonus life
-  rng.ts              The seeded generator, over the state's own field
+  rng.ts              The game's private random source
   input.ts            The registered actions and the layout check
   audio.ts            The ten engine cues, played once per event per frame
   debug.ts            The debug surface: poses and readings over the live world

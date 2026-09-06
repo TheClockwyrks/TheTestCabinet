@@ -48,7 +48,7 @@ function tap(rig: Rig, code: string): void {
 /** A rig on the title screen, off the wall clock. */
 function onTitle(): Rig {
   const rig = createRig(sprites);
-  rig.debug.reset({ seed: 3 });
+  rig.debug.reset();
   return rig;
 }
 
@@ -83,7 +83,7 @@ describe("the title screen", () => {
     const rig = onTitle();
     rig.press("Space");
     frame(rig);
-    rig.debug.reset({ seed: 3 });
+    rig.debug.reset();
     rig.audio.reset();
     tap(rig, "ArrowDown");
     expect(rig.audio.started()).toBe(1);
@@ -482,7 +482,7 @@ describe("the run on the build's own clock", () => {
 
   test("a long run with every faculty on raises nothing", () => {
     const rig = createRig(sprites);
-    rig.debug.reset({ seed: 11 });
+    rig.debug.reset();
     rig.debug.setScreen("title");
     rig.press("Enter");
     rig.debug.setLevel(6);

@@ -25,7 +25,6 @@
 import {
   BONUS_LIFE_EVERY,
   CUES,
-  DEFAULT_SEED,
   ENDING_ITEMS,
   PAUSE_ITEMS,
   START_LIVES,
@@ -96,26 +95,28 @@ export function createInitialState(): WirewormState {
     glitchTimer: 0,
     corruptorTimer: 0,
     dropperTimer: 0,
+    nextWormEntry: null,
+    nextGlitchEntry: null,
+    nextDropperEntry: null,
+    nextCorruptorEntry: null,
 
     nextId: 1,
     simTime: 0,
     muted: false,
-    rngState: DEFAULT_SEED,
   };
 }
 
 /**
- * Restore every declared field to its title-screen value and reseed the
- * generator (specs/instrumentation.md).
+ * Restore every declared field to its title-screen value
+ * (specs/instrumentation.md).
  *
  * `muted` is deliberately untouched: muting is a player preference the runtime
  * owns, and a reset is not a reason to start making noise again. The clock is
  * untouched for the same kind of reason — whether the game is stepping itself is
  * said with `setAutoStep`, not with a reset.
  */
-export function resetState(state: WirewormState, seed: number): void {
+export function resetState(state: WirewormState): void {
   const fresh = createInitialState();
-  fresh.rngState = seed;
   fresh.muted = state.muted;
   Object.assign(state, fresh);
 }

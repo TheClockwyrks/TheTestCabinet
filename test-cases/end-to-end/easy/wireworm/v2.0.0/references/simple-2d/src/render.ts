@@ -50,7 +50,6 @@ import {
   itemBaseline,
   type MenuLayout,
 } from "./menus";
-import { nextRandom } from "./rng";
 import { COLOR, font } from "./theme";
 import type { WirewormState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
@@ -259,7 +258,7 @@ function drawArcs(
     const points: [number, number][] = [[x0, y0]];
     for (let i = 1; i < steps; i++) {
       const t = i / steps;
-      const [draw, next] = nextRandom(seed);
+      const [draw, next] = hashStep(seed);
       seed = next;
       const offset = (draw - 0.5) * 12;
       points.push([x0 + dx * t + nx * offset, y0 + dy * t + ny * offset]);
@@ -538,4 +537,18 @@ export function renderGame(
       if (state.phase === "banner") drawBanner(ctx, state, width, height);
       return;
   }
+}
+
+/**
+ * One step of a small integer mixer, used for the arc's jitter alone: the
+ * draw in `[0, 1)` for `seed`, and the seed the next step takes. An arc's shape
+ * is a function of the two tiles it joins, so it holds for the arc's whole life
+ * without being stored (`specs/discharge.md`).
+ */
+function hashStep(seed: number): readonly [number, number] {
+  const next = (seed + 0x6d2b79f5) | 0;
+  let t = next;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return [((t ^ (t >>> 14)) >>> 0) / 4294967296, next];
 }
