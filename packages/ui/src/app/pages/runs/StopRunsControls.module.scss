@@ -3,8 +3,9 @@
 @use "../../styles/breakpoints" as bp;
 
 // The global stop cluster, sat on the trailing edge of a runs-section page header's
-// comment line. Wraps rather than overflows when the labels and a result line together
-// outgrow the space left beside the comment.
+// comment line. Wraps rather than overflows when the labels outgrow the space left
+// beside the comment. It holds the three buttons alone: a sweep reports its count in
+// a toast, so nothing here grows a row when one is pressed.
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -56,25 +57,4 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-}
-
-// What the last sweep actually cancelled. Reported inline beside the buttons
-// instead of in a transient toast: the count is the whole point of pressing one.
-.status {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  @include h.halo;
-
-  // The region is mounted before it has anything to say (so a screen reader is
-  // already watching it); take it out of the flex flow until it does, or its
-  // gap would open a hole beside the buttons.
-  &:empty {
-    display: none;
-  }
-}
-
-.error {
-  font-size: t.$font-sm;
-  color: t.$color-negative;
-  @include h.halo;
 }

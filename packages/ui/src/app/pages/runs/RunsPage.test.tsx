@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter } from "react-router";
+import { ToastContainer } from "react-toastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../../../client/auth";
 import type { WorkerClient } from "../../../client/clients";
@@ -18,6 +19,7 @@ import {
   GalleryDataProvider,
   type GalleryDataInput,
 } from "../../data/galleryContext";
+import { formatTimestamp } from "../../format";
 import type { RunQuery, RunQueryResult } from "../../data/runQuery";
 import { runSummaryPage } from "../../data/runQuery";
 import {
@@ -422,7 +424,9 @@ function stopWorkers() {
 }
 
 // The console as the controls require it: a cancel-capable worker, a signed-in
-// account (seeded the way a reload restores one), and a seeded in-flight list.
+// account (seeded the way a reload restores one), a seeded in-flight list, and the
+// toast container the console mounts once for the whole app, which is where a
+// sweep's report lands.
 function renderConsole(runs: InProgressRun[]) {
   localStorage.setItem(
     "tcab.auth",
@@ -437,6 +441,7 @@ function renderConsole(runs: InProgressRun[]) {
             <SeedActive runs={runs} />
             <GalleryDataProvider value={galleryValue([])}>
               <RunsPage />
+              <ToastContainer />
             </GalleryDataProvider>
           </RunsRuntimeProvider>
         </AuthProvider>
@@ -506,7 +511,7 @@ describe("RunsPage global stop controls", () => {
     fireEvent.click(clear);
 
     // Cheap enough to need no confirmation — it discards no work — and the count
-    // comes back in the bar rather than the press simply succeeding quietly.
+    // comes back as a toast rather than the press simply succeeding quietly.
     await waitFor(() => expect(cancelWaitingRuns).toHaveBeenCalledWith("tok"));
     await screen.findByText("Canceled 2 waiting runs.");
   });
@@ -629,5 +634,98 @@ describe("RunsPage with a filter applied", () => {
     await waitFor(() => expect(rowLinks()).toContain("/runs/r-alpha-live"));
     expect(rowLinks()).not.toContain("/runs/j-alpha/live");
     expect(queries.at(-1)).toMatchObject({ state: "any", testCase: "alpha" });
+  });
+});
+
+// --- The pinned in-progress rows ---
+
+// When the seeded live run reports it started. Everything the row shows about it —
+// its start, its ticking duration — is measured from this and from nothing else.
+const LIVE_STARTED_AT = "2026-01-05T00:00:00Z";
+
+// A run already executing, carrying the whole identity a job knows at launch.
+const LIVE_ACTIVE = [
+  {
+    ...active("j-live", "running"),
+    testCaseSlug: "alpha",
+    engine: "simple-2d",
+    startedAt: LIVE_STARTED_AT,
+  },
+];
+
+// The same run before it started: waiting behind the queue, with no start to show.
+const WAITING_ACTIVE = [
+  { ...active("j-waiting", "queued"), testCaseSlug: "alpha" },
+];
+
+// One labelled cell of the pinned live row, by the caption its phone card shows.
+function liveCell(container: HTMLElement, label: string): string {
+  const row = container.querySelector("[data-active]");
+  return row?.querySelector(`[data-label="${label}"]`)?.textContent ?? "";
+}
+
+// The runs page around a seeded in-flight list, with the two columns that start
+// hidden turned on — the picker writes exactly this override, and the live start
+// and duration are the point of the test.
+function renderLive(runs: InProgressRun[]) {
+  localStorage.setItem(
+    "ttc:runlog:global:visible",
+    JSON.stringify({ timestamp: true, duration: true }),
+  );
+  return render(
+    <MemoryRouter>
+      <RunsRuntimeProvider>
+        <SeedActive runs={runs} />
+        <GalleryDataProvider value={liveGalleryValue([], [])}>
+          <RunsPage />
+        </GalleryDataProvider>
+      </RunsRuntimeProvider>
+    </MemoryRouter>,
+  );
+}
+
+describe("RunsPage in-progress rows", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse(LIVE_STARTED_AT) + 60_000);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("fills every field the run already knows, and ticks its duration", async () => {
+    const { container } = renderLive(LIVE_ACTIVE);
+    await act(async () => {});
+
+    // The engine rides the job's own lifted column, so a live row names it exactly
+    // as the finished row will.
+    expect(liveCell(container, "Engine")).toBe("simple-2d");
+    expect(liveCell(container, "Started")).toBe(
+      formatTimestamp(LIVE_STARTED_AT),
+    );
+    expect(liveCell(container, "Duration")).toBe("1m 0s");
+
+    // A second of wall clock is a second on the row: the shared clock ticks and the
+    // cell follows it, without the page being navigated or re-queried.
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(liveCell(container, "Duration")).toBe("1m 1s");
+  });
+
+  it("shows a run that has not started as not started, never as queue time", async () => {
+    // The run was enqueued a full hour ago and has still not begun. Neither cell may
+    // invent a figure out of that wait — the dash is the true answer — while the
+    // engine, fixed at launch, is known and resolves to the engineless run.
+    const { container } = renderLive(WAITING_ACTIVE);
+    await act(async () => {});
+
+    expect(liveCell(container, "Started")).toBe("—");
+    expect(liveCell(container, "Duration")).toBe("—");
+    expect(liveCell(container, "Engine")).toBe("none");
+
+    await act(async () => {
+      vi.advanceTimersByTime(3_600_000);
+    });
+    expect(liveCell(container, "Duration")).toBe("—");
   });
 });

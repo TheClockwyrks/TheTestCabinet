@@ -1,12 +1,13 @@
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
 } from "../data/galleryContext";
 import type { TestCaseSummary } from "../data/testCases";
+import type { InProgressRun } from "../../client/types";
 import { RunLog, sortStateToQuery, useRunTable } from "./RunLog";
 
 // A run summary carrying only the fields the run log reads.
@@ -517,6 +518,87 @@ describe("RunLog code cell", () => {
     expect(title).toContain("seeded files included");
     expect(title).toContain("after validation");
     expect(title).toContain("truncated");
+  });
+});
+
+// The shared clock behind the live DURATION cell. It exists to move one figure, so
+// it must run exactly when that figure is on screen and moving: every tick
+// re-renders the whole log, and DURATION starts hidden, so a log left ticking for a
+// column nobody is showing pays a render a second for identical DOM. Counted as
+// intervals installed, the clock being the only thing in the log that installs one.
+describe("RunLog live clock", () => {
+  let intervals: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    intervals = vi.spyOn(globalThis, "setInterval");
+  });
+  afterEach(() => {
+    intervals.mockRestore();
+    vi.useRealTimers();
+  });
+
+  // One pinned in-flight row, carrying only what the log reads off it.
+  function inFlight(state: InProgressRun["state"], startedAt?: string) {
+    return {
+      runId: "j-live",
+      testCaseSlug: "alpha",
+      testCaseVersion: "1.0.0",
+      variant: "base",
+      harnessSlug: "claude",
+      modelId: "anthropic/claude",
+      state,
+      ...(startedAt ? { startedAt } : {}),
+    } as InProgressRun;
+  }
+
+  // The log with the two hidden-by-default columns turned on or left alone, which is
+  // exactly the override the column picker writes.
+  function renderActive(runs: InProgressRun[], showDuration: boolean) {
+    if (showDuration) {
+      localStorage.setItem(
+        "ttc:runlog:global:visible",
+        JSON.stringify({ timestamp: true, duration: true }),
+      );
+    }
+    function ActiveHarness() {
+      const table = useRunTable({
+        runs: RUNS,
+        localIds: new Set(),
+        localWriteups: {},
+        externalOrder: true,
+      });
+      return (
+        <RunLog rows={table.rows} controls={table.controls} active={runs} />
+      );
+    }
+    return render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <ActiveHarness />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("ticks while a started run's duration is on screen", () => {
+    renderActive([inFlight("running", "2026-01-01T00:00:00Z")], true);
+    expect(intervals).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates no interval for a duration column nobody is showing", () => {
+    // The default configuration: a run is executing, and its duration is being read
+    // by nobody because the column is hidden.
+    renderActive([inFlight("running", "2026-01-01T00:00:00Z")], false);
+    expect(intervals).not.toHaveBeenCalled();
+  });
+
+  it("creates no interval for a run that has not started", () => {
+    // A run held behind a parallelism cap can sit here for an hour. Its cell is a
+    // dash for all of it, so a tick would re-render the log to no effect.
+    renderActive([inFlight("queued")], true);
+    expect(intervals).not.toHaveBeenCalled();
   });
 });
 

@@ -40,6 +40,11 @@ once setup finishes and the harness session is about to begin, and posts its
 terminal status once. It waits for the relay to drain first, so every streamed
 event has reached the backend before any terminal status is sent.
 
+The run's own start is taken immediately after the `starting` report. That is what
+lets the backend stamp [`startedAt`](/components/backend/api/#topics) from that
+transition and have it name the same instant the produced record does, so a console
+counting a live duration measures the run the finished figure describes.
+
 ## Sandbox container runtime
 
 `TCAB_DRIVER_RUNTIME` selects how the run's sandbox container is started.

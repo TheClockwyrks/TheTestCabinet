@@ -8,6 +8,7 @@ import {
 function run(
   runId: string,
   state: InProgressRun["state"] = "running",
+  startedAt?: string,
 ): InProgressRun {
   return {
     runId,
@@ -16,6 +17,9 @@ function run(
     variant: "base",
     harnessSlug: "claude",
     modelId: "claude-opus-4-8",
+    // Omitted rather than nulled when unnamed, which is how the wire reports a run
+    // that has not started and how an older backend reports every run.
+    ...(startedAt ? { startedAt } : {}),
     state,
   };
 }
@@ -105,10 +109,44 @@ describe("reconcileActiveRuns", () => {
     ]);
   });
 
-  it("emits no update when the reported phase is unchanged", () => {
+  it("picks up a start the tracked copy never saw", () => {
+    // A row tracked optimistically at launch, or seeded from an event raised before
+    // the run started, has no start of its own — and a duration cannot tick from a
+    // dash. The active list is authoritative, so its start flows through even though
+    // the phase it reports is the one already shown.
     const { toUpdate } = reconcileActiveRuns(
-      [run("a", "starting")],
-      [ok(run("a", "starting"))],
+      [run("a", "running")],
+      [ok(run("a", "running", "2026-09-06T00:02:00Z"))],
+    );
+    expect(toUpdate).toEqual([
+      { runId: "a", state: "running", startedAt: "2026-09-06T00:02:00Z" },
+    ]);
+  });
+
+  it("repairs the phase and the start in one patch", () => {
+    const { toUpdate } = reconcileActiveRuns(
+      [run("a", "queued")],
+      [ok(run("a", "running", "2026-09-06T00:02:00Z"))],
+    );
+    expect(toUpdate).toEqual([
+      { runId: "a", state: "running", startedAt: "2026-09-06T00:02:00Z" },
+    ]);
+  });
+
+  it("never blanks a start the active list simply omits", () => {
+    // An older backend reports no start on any row. Treating that as "the run has
+    // not started" would erase, once per poll, the start the event stream delivered.
+    const { toUpdate } = reconcileActiveRuns(
+      [run("a", "running", "2026-09-06T00:02:00Z")],
+      [ok(run("a", "running"))],
+    );
+    expect(toUpdate).toEqual([]);
+  });
+
+  it("emits no update when the reported phase and start are unchanged", () => {
+    const { toUpdate } = reconcileActiveRuns(
+      [run("a", "starting", "2026-09-06T00:02:00Z")],
+      [ok(run("a", "starting", "2026-09-06T00:02:00Z"))],
     );
     expect(toUpdate).toEqual([]);
   });

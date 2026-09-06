@@ -20,7 +20,7 @@ use axum::routing::{delete, post};
 use tower::ServiceExt;
 
 use super::*;
-use crate::db::tests::{links, record};
+use crate::db::tests::{links, new_job, record};
 
 /// The shared control-plane service token, as a deployment sets it.
 const SERVICE_TOKEN: &str = "service-secret";
@@ -280,4 +280,50 @@ async fn the_unreadable_listing_outranks_the_run_id_route() {
     let (status, body) = call(&harness.router, request).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["record"]["id"], "r1");
+}
+
+#[tokio::test]
+async fn the_active_run_list_reports_when_a_started_run_started() {
+    // The one place the whole chain is observable: the state transition stamps the
+    // anchor, `job_summary` lifts it off the stored row, and the wire spells it
+    // `startedAt`. Each link is trivial alone, and a console that ticks a live duration
+    // shows nothing at all if any one of them drops the field.
+    let harness = harness().await;
+    harness
+        .db
+        .enqueue_job(new_job("j1", "2026-09-06T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let request = Request::builder()
+        .uri("/jobs/active")
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body[0]["runId"], "j1");
+    assert_eq!(body[0]["state"], "queued");
+    // A queued run has not started, and the absence is an omitted field rather than a
+    // null — the console renders a dash for it. Asked by key, because a JSON null and
+    // a missing key both read as null through the index.
+    assert!(
+        body[0].get("startedAt").is_none(),
+        "a queued run must omit the field entirely: {body}",
+    );
+
+    harness
+        .db
+        .set_job_state("j1", "starting", "2026-09-06T00:02:00Z", None, None)
+        .await
+        .unwrap()
+        .expect("the job exists");
+
+    let request = Request::builder()
+        .uri("/jobs/active")
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = call(&harness.router, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body[0]["state"], "starting");
+    assert_eq!(body[0]["startedAt"], "2026-09-06T00:02:00Z", "{body}");
 }

@@ -278,6 +278,28 @@ export type JobSummary = {
    */
   engine?: string;
   /**
+   * RFC 3339 of when the run itself began: the moment the driver reported
+   * `starting`, which it does immediately before taking the `started_at` the
+   * produced record's `startedAt` is measured from, so the two name the same moment.
+   *
+   * It is the anchor because it is the closest any state transition sits to the
+   * start the record itself reports. A console ticking a duration from the enqueue
+   * time would bill a run for every minute it waited behind a parallelism cap;
+   * anchoring on `dispatched` would bill it for pod scheduling and the image pull,
+   * and on `running` would drop the setup that `run_time_seconds` counts.
+   *
+   * A duration ticked from here is elapsed wall clock and reads higher than the
+   * `run_time_seconds` the finished run reports. That figure is the run's measured
+   * time, frozen when its container is torn down and with the container's
+   * `scheduling_wait` subtracted. The job holds at `running` through the post-run
+   * stages and the validation pass that follow teardown, so a live figure carries
+   * those as well and steps down by their total once the run lands.
+   *
+   * `None` means the run has not started — it is still queued, pending, or
+   * dispatched — and is what a console renders as a dash rather than a zero.
+   */
+  startedAt?: string;
+  /**
    * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
    * was launched from, lifted out of its stored capability set. A gg run has no
    * single harness model — [`model_id`](Self::model_id) is only its representative
@@ -335,6 +357,28 @@ export type ActiveJobOut = {
    * will never join.
    */
   engine?: string;
+  /**
+   * RFC 3339 of when the run itself began: the moment the driver reported
+   * `starting`, which it does immediately before taking the `started_at` the
+   * produced record's `startedAt` is measured from, so the two name the same moment.
+   *
+   * It is the anchor because it is the closest any state transition sits to the
+   * start the record itself reports. A console ticking a duration from the enqueue
+   * time would bill a run for every minute it waited behind a parallelism cap;
+   * anchoring on `dispatched` would bill it for pod scheduling and the image pull,
+   * and on `running` would drop the setup that `run_time_seconds` counts.
+   *
+   * A duration ticked from here is elapsed wall clock and reads higher than the
+   * `run_time_seconds` the finished run reports. That figure is the run's measured
+   * time, frozen when its container is torn down and with the container's
+   * `scheduling_wait` subtracted. The job holds at `running` through the post-run
+   * stages and the validation pass that follow teardown, so a live figure carries
+   * those as well and steps down by their total once the run lands.
+   *
+   * `None` means the run has not started — it is still queued, pending, or
+   * dispatched — and is what a console renders as a dash rather than a zero.
+   */
+  startedAt?: string;
   /**
    * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
    * was launched from, lifted out of its stored capability set. A gg run has no
@@ -538,6 +582,28 @@ export type Notification = {
    */
   engine?: string;
   /**
+   * RFC 3339 of when the run itself began: the moment the driver reported
+   * `starting`, which it does immediately before taking the `started_at` the
+   * produced record's `startedAt` is measured from, so the two name the same moment.
+   *
+   * It is the anchor because it is the closest any state transition sits to the
+   * start the record itself reports. A console ticking a duration from the enqueue
+   * time would bill a run for every minute it waited behind a parallelism cap;
+   * anchoring on `dispatched` would bill it for pod scheduling and the image pull,
+   * and on `running` would drop the setup that `run_time_seconds` counts.
+   *
+   * A duration ticked from here is elapsed wall clock and reads higher than the
+   * `run_time_seconds` the finished run reports. That figure is the run's measured
+   * time, frozen when its container is torn down and with the container's
+   * `scheduling_wait` subtracted. The job holds at `running` through the post-run
+   * stages and the validation pass that follow teardown, so a live figure carries
+   * those as well and steps down by their total once the run lands.
+   *
+   * `None` means the run has not started — it is still queued, pending, or
+   * dispatched — and is what a console renders as a dash rather than a zero.
+   */
+  startedAt?: string;
+  /**
    * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
    * was launched from, lifted out of its stored capability set. A gg run has no
    * single harness model — [`model_id`](Self::model_id) is only its representative
@@ -637,6 +703,28 @@ export type RunEvent = {
    * will never join.
    */
   engine?: string;
+  /**
+   * RFC 3339 of when the run itself began: the moment the driver reported
+   * `starting`, which it does immediately before taking the `started_at` the
+   * produced record's `startedAt` is measured from, so the two name the same moment.
+   *
+   * It is the anchor because it is the closest any state transition sits to the
+   * start the record itself reports. A console ticking a duration from the enqueue
+   * time would bill a run for every minute it waited behind a parallelism cap;
+   * anchoring on `dispatched` would bill it for pod scheduling and the image pull,
+   * and on `running` would drop the setup that `run_time_seconds` counts.
+   *
+   * A duration ticked from here is elapsed wall clock and reads higher than the
+   * `run_time_seconds` the finished run reports. That figure is the run's measured
+   * time, frozen when its container is torn down and with the container's
+   * `scheduling_wait` subtracted. The job holds at `running` through the post-run
+   * stages and the validation pass that follow teardown, so a live figure carries
+   * those as well and steps down by their total once the run lands.
+   *
+   * `None` means the run has not started — it is still queued, pending, or
+   * dispatched — and is what a console renders as a dash rather than a zero.
+   */
+  startedAt?: string;
   /**
    * The name of the gg [configuration](crate::gg::GgCapabilitySet::preset) the job
    * was launched from, lifted out of its stored capability set. A gg run has no

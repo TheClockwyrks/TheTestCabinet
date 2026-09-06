@@ -88,7 +88,8 @@ carrying the version facet and the toggle.
 Those listings draw from the [`state=any`](/components/backend/api/#get-runs)
 slice, so a produced run, unpublished and therefore unreviewed, sorts and pages
 among the published ones rather than being pinned ahead of them. Only
-in-progress runs, which have no record to list yet, still lead the first page.
+[in-progress runs](/components/ui/overview/#the-run-log), which have no record to
+list yet, still lead the first page.
 
 A listing re-queries whenever a run finishes, is published, is killed, or is
 deleted, so a run that completes moves from the in-progress rows into the listing
@@ -289,9 +290,9 @@ keeps the tallies and verdicts moving as runs finish under it.
 Every page of the runs section carries the global counterparts to a plan's halt
 on the trailing edge of its page header: Clear pending, Kill active, and Stop
 all. These are scoped to nothing, stopping the cabinet rather than one plan, so
-the two that discard work in progress confirm first, and all three report how
-many runs they actually cancelled. The section's tab bar holds its tabs alone,
-which is what keeps it on one row as tabs are added.
+the two that discard work in progress confirm first. All three raise a toast
+reporting how many runs they actually cancelled. The section's tab bar holds its
+tabs alone, which is what keeps it on one row as tabs are added.
 
 ## Deployment
 

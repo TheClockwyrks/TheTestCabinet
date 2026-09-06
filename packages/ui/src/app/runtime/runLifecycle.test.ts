@@ -2,10 +2,18 @@ import { describe, expect, it } from "vitest";
 import type { InProgressRun, RunLifecycleEvent } from "../../client/types";
 import { runListAction } from "./runLifecycle";
 
+// The identity fields an event names and the row it seeds must agree on, so both
+// helpers take them and default them the way a run with none of them reads.
+interface Identity {
+  engine?: string | null;
+  ggPreset?: string | null;
+  startedAt?: string | null;
+}
+
 function tracked(
   runId: string,
   state: InProgressRun["state"] = "running",
-  engine: string | null = null,
+  identity: Identity = {},
 ): InProgressRun {
   return {
     runId,
@@ -14,7 +22,9 @@ function tracked(
     variant: "base",
     harnessSlug: "claude",
     modelId: "claude-opus-4-8",
-    engine,
+    engine: identity.engine ?? null,
+    ggPreset: identity.ggPreset ?? null,
+    startedAt: identity.startedAt ?? null,
     state,
   };
 }
@@ -23,7 +33,7 @@ function event(
   kind: RunLifecycleEvent["kind"],
   state: RunLifecycleEvent["state"],
   runId = "a",
-  engine?: string,
+  identity: Identity = {},
 ): RunLifecycleEvent {
   return {
     kind,
@@ -33,7 +43,9 @@ function event(
     variant: "base",
     harnessSlug: "claude",
     modelId: "claude-opus-4-8",
-    ...(engine ? { engine } : {}),
+    // Spread only what the caller named: the wire omits these fields rather than
+    // sending nulls, and a row must be seeded correctly from an event that does.
+    ...identity,
     state,
   };
 }
@@ -51,11 +63,39 @@ describe("runListAction", () => {
     // event is filtered by the same identity as one seeded from the active list —
     // a rung listing its own live runs drops a row whose engine it cannot see.
     expect(
-      runListAction(event("enqueued", "queued", "a", "simple-2d"), []),
+      runListAction(
+        event("enqueued", "queued", "a", { engine: "simple-2d" }),
+        [],
+      ),
     ).toEqual({
       kind: "track",
-      run: tracked("a", "queued", "simple-2d"),
+      run: tracked("a", "queued", { engine: "simple-2d" }),
     });
+  });
+
+  it("names a gg row by the configuration the event reported", () => {
+    // A gg run has no single harness model — `modelId` is only its representative
+    // primary-slot binding — so a row that loses the configuration name is displayed
+    // as a bare model id until the reconcile happens to re-seed it from the active
+    // list, and then silently renames itself.
+    expect(
+      runListAction(
+        event("enqueued", "queued", "a", { ggPreset: "deep-research" }),
+        [],
+      ),
+    ).toEqual({
+      kind: "track",
+      run: tracked("a", "queued", { ggPreset: "deep-research" }),
+    });
+  });
+
+  it("seeds a run that has not started with no start at all", () => {
+    // An enqueued run has been running for no time; the row shows a dash, and there
+    // is no synthetic start for a duration to begin ticking from.
+    const { run } = runListAction(event("enqueued", "queued"), []) as {
+      run: InProgressRun;
+    };
+    expect(run.startedAt).toBeNull();
   });
 
   it("patches a tracked run in place as it advances", () => {
@@ -67,6 +107,36 @@ describe("runListAction", () => {
         tracked("b"),
       ]),
     ).toEqual({ kind: "update", runId: "a", state: "running" });
+  });
+
+  it("patches the start onto a row that was already in the list when it began", () => {
+    // The transition into `starting` is the first event that has a start to report,
+    // and by then the row has usually been tracked since it was enqueued. Patching
+    // the phase alone would leave it permanently unable to say when its run began —
+    // and it must stay an `update`, because re-tracking would jump it to the head.
+    expect(
+      runListAction(
+        event("state-changed", "starting", "a", {
+          startedAt: "2026-09-06T00:02:00Z",
+        }),
+        [tracked("a", "queued")],
+      ),
+    ).toEqual({
+      kind: "update",
+      runId: "a",
+      state: "starting",
+      startedAt: "2026-09-06T00:02:00Z",
+    });
+  });
+
+  it("leaves a known start alone when an event reports none", () => {
+    // Every event up to `dispatched` omits the field. Patching an absent start in
+    // would blank a row that already knows when its run began.
+    expect(
+      runListAction(event("state-changed", "pending"), [
+        tracked("a", "queued", { startedAt: "2026-09-06T00:02:00Z" }),
+      ]),
+    ).toEqual({ kind: "update", runId: "a", state: "pending" });
   });
 
   it("maps a dispatched run onto the spinning-up phase", () => {

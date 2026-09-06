@@ -1280,6 +1280,16 @@ export interface InProgressRun {
   // cell's runs — a ladder rung, a plan's cell — has to keep another engine's live
   // rows out, and an in-flight run has no record to read the engine from.
   engine?: string | null;
+  // RFC 3339 of when the run itself began: the moment the job reached `starting`,
+  // which is when the driver takes the `startedAt` the produced record is measured
+  // from. Absent while the run is queued, pending, or dispatched, because it has not
+  // started; that is a dash, not a zero.
+  //
+  // It is here because it is the only anchor a live duration may count from. The
+  // enqueue time is not it: a run held behind a parallelism cap has not been running
+  // for the hour it waited, and counting from there would bill it for that wait on
+  // top of the time it has actually spent running.
+  startedAt?: string | null;
   // The gg configuration the run was launched from, off the job's stored capability
   // set. A gg run has no single harness model — `modelId` is only its representative
   // primary-slot binding — so the run log names a live gg row by its configuration
@@ -1365,6 +1375,16 @@ export interface RunLifecycleEvent {
   // seeds a row for a run this console has never seen, so it names the whole identity
   // that row is filtered by.
   engine?: string | null;
+  // The gg configuration the run was launched from, as `InProgressRun.ggPreset`
+  // carries it. The backend event has flattened it all along — a row seeded from an
+  // event that drops it names a gg run by its representative primary-slot model
+  // instead of the configuration it was actually launched from.
+  ggPreset?: string | null;
+  // When the run started, as `InProgressRun.startedAt` carries it. Absent on every
+  // event up to and including `dispatched`: the transition into `starting` is
+  // precisely the one that first has a start to report, which is why a row already
+  // in the list learns its start from a patch rather than from being re-seeded.
+  startedAt?: string | null;
   state:
     | "queued"
     | "pending"

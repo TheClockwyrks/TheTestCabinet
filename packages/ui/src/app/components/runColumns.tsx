@@ -8,6 +8,7 @@ import {
   canonicalModelId,
 } from "@clockwyrks/ui";
 import type { InProgressRun } from "../../client/types";
+import { resolveEngineSlug } from "../data/engines";
 import {
   asGrade,
   type AestheticRating,
@@ -98,6 +99,12 @@ export interface RunRenderContext {
    * bound to this controller instead of the hover caret. Absent on non-selectable
    * logs, where the gutter keeps its plain caret / spinner. */
   selection?: RunSelectionContext;
+  /** The clock every live cell on this pass measures against, in epoch
+   * milliseconds. One value for the whole log (see {@link useNow}), so two runs
+   * started in the same second show the same elapsed time instead of ticking a
+   * second apart on their own timers. Finished cells ignore it — their figures
+   * come off the record. */
+  now: number;
 }
 
 /**
@@ -149,9 +156,10 @@ const ACTIVE_STATE_LABEL: Readonly<Record<InProgressRun["state"], string>> = {
   failed: "failed",
 };
 
-// A muted em-dash placeholder for a cell an in-progress run can't fill yet (it
-// has no metrics or timestamps until it finishes). `numeric` right-aligns it to
-// match the finished figure it stands in for.
+// A muted em-dash placeholder for a cell an in-progress run can't fill yet —
+// either a figure that only the finished run carries (its metrics, its rating) or
+// a fact the run has not reached yet (its start, before it has started).
+// `numeric` right-aligns it to match the finished figure it stands in for.
 function activeDash(label: string, numeric: boolean): ReactNode {
   return (
     <span
@@ -378,10 +386,13 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
   // across every engine that case supports, which is precisely where telling them
   // apart matters most.
   //
-  // An in-flight run cannot fill it: the engine selection lives inside the launch
-  // request rather than in a lifted job column, so `GET /jobs/active` does not
-  // report it. The dash says "not yet", which is what every other unfillable cell
-  // says, rather than guessing at `none`.
+  // An in-flight run fills it exactly as a finished one does: the engine is fixed
+  // at launch and lifted onto the job's own `engine_slug` column, so it rides
+  // `JobSummary` onto both `GET /jobs/active` and the run event stream. It is
+  // resolved rather than printed raw, because an absent (or empty) engine IS the
+  // `none` engine — the engineless run every case supports, and what a launch that
+  // named no engine asked for — and spelling the same engine two ways would split
+  // one column's rows in half.
   {
     id: "engine",
     label: "ENGINE",
@@ -394,7 +405,11 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         {row.summary.subject.engineSlug}
       </span>
     ),
-    renderActive: () => activeDash("Engine", false),
+    renderActive: (run) => (
+      <span className={styles.variant} data-label="Engine">
+        {resolveEngineSlug(run.engine)}
+      </span>
+    ),
   },
   // What identifies a run at a glance differs by harness, so this one cell carries
   // both — hence the two-part header, and the per-row `data-label` that names which
@@ -436,7 +451,20 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         {formatTimestamp(row.summary.startedAt)}
       </span>
     ),
-    renderActive: () => activeDash("Started", false),
+    // A run reports its start the moment it has one — the job stamps `started_at`
+    // when the driver announces `starting`, which is the same instant the produced
+    // record's own `startedAt` is taken from, so the live cell and the recorded one
+    // name the same moment. The dash survives only for a run that has not started
+    // at all (queued, pending, dispatched), where it is not a missing value but the
+    // true answer: this run has not begun, and its enqueue time is not its start.
+    renderActive: (run) =>
+      run.startedAt ? (
+        <span className={styles.when} data-label="Started">
+          {formatTimestamp(run.startedAt)}
+        </span>
+      ) : (
+        activeDash("Started", false)
+      ),
   },
   {
     id: "duration",
@@ -452,7 +480,33 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
         {formatRunTime(row.summary.metrics.runTimeSeconds)}
       </span>
     ),
-    renderActive: () => activeDash("Duration", true),
+    // A live run counts up from its start, formatted by the same helper the
+    // finished figure uses so the number does not change shape the moment the run
+    // lands. It is measured from `startedAt` and nothing else: time the run spent
+    // queued behind a parallelism cap is not time it ran, and billing it for that
+    // would make two runs of identical work read minutes apart.
+    //
+    // Truncated to whole seconds so the count reads 59s → 1m 0s rather than
+    // rounding its way through a "60s". Clamped at zero because the stamp is the
+    // backend's clock and the tick is the browser's: a skewed pair can put the
+    // start in the future, and a negative duration is never a thing to print.
+    // An unparseable stamp dashes rather than printing NaN.
+    //
+    // This is elapsed wall clock, and reads higher than the `metrics.runTimeSeconds`
+    // that replaces it when the run lands. That figure is the run's measured time:
+    // frozen the instant its container is torn down, with the wait for cluster
+    // capacity subtracted. The job holds at `running` through the post-run analysis
+    // and the validation pass that follow teardown, so this cell counts those too and
+    // steps down by their total on the row that replaces it.
+    renderActive: (run, ctx) => {
+      const started = run.startedAt ? Date.parse(run.startedAt) : Number.NaN;
+      if (Number.isNaN(started)) return activeDash("Duration", true);
+      return (
+        <span className={styles.num} data-label="Duration">
+          {formatRunTime(Math.floor(Math.max(0, ctx.now - started) / 1000))}
+        </span>
+      );
+    },
   },
   {
     id: "tokens",

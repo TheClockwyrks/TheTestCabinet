@@ -71,6 +71,10 @@
       "description": "The persisted run record's id the console links the alert to: the produced\nrecord's id for a `completed` run, the job id for a `failed` one, and the\nrun that could not be released for a `publish-failed` one.",
       "type": ["string", "null"]
     },
+    "startedAt": {
+      "description": "RFC 3339 of when the run itself began: the moment the driver reported\n`starting`, which it does immediately before taking the `started_at` the\nproduced record's `startedAt` is measured from, so the two name the same moment.\n\nIt is the anchor because it is the closest any state transition sits to the\nstart the record itself reports. A console ticking a duration from the enqueue\ntime would bill a run for every minute it waited behind a parallelism cap;\nanchoring on `dispatched` would bill it for pod scheduling and the image pull,\nand on `running` would drop the setup that `run_time_seconds` counts.\n\nA duration ticked from here is elapsed wall clock and reads higher than the\n`run_time_seconds` the finished run reports. That figure is the run's measured\ntime, frozen when its container is torn down and with the container's\n`scheduling_wait` subtracted. The job holds at `running` through the post-run\nstages and the validation pass that follow teardown, so a live figure carries\nthose as well and steps down by their total once the run lands.\n\n`None` means the run has not started — it is still queued, pending, or\ndispatched — and is what a console renders as a dash rather than a zero.",
+      "type": ["string", "null"]
+    },
     "testCaseSlug": {
       "description": "The test-case slug being run (e.g. `carom`).",
       "type": "string"

@@ -301,6 +301,10 @@ fn run_summary(run: &run::Model) -> JobSummary {
         harness_slug: run.harness_slug.clone(),
         model_id: run.model_id.clone(),
         engine: run.engine_slug.clone(),
+        // The run row's own `started_at`, which is the record's `startedAt` — the same
+        // instant a live job's anchor approximates, so a publish notification and the
+        // in-flight row it succeeds name the same moment.
+        started_at: Some(run.started_at.clone()),
         gg_preset: run.gg_preset.clone(),
     }
 }
