@@ -21,7 +21,6 @@ import type { Cell } from "./grid";
 import { cellIndex } from "./grid";
 import { TRENCH, TRENCH_START } from "./layout";
 import { restAt } from "./movement";
-import { Rng } from "./rng";
 import type { FathomState, Screen } from "./game";
 
 /**
@@ -225,13 +224,11 @@ export function descend(state: FathomState): void {
 }
 
 /**
- * Every declared field back at its title-screen value, with the generator
- * reseeded (`specs/state.md`). `muted` is deliberately left as it stands:
- * muting is a player preference the runtime owns rather than a value a dive
- * opens with.
+ * Every declared field back at its title-screen value (`specs/state.md`).
+ * `muted` is deliberately left as it stands: muting is a player preference the
+ * runtime owns rather than a value a dive opens with.
  */
-export function resetState(state: FathomState, seed: number): void {
-  state.rng = new Rng(seed);
+export function resetState(state: FathomState): void {
   state.simTime = 0;
   state.accumulator = 0;
   state.countdown = 0;

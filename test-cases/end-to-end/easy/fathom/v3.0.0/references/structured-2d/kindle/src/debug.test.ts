@@ -8,7 +8,6 @@
 import { describe, expect, it } from "vitest";
 import {
   BRIGHT_HOLD,
-  DEFAULT_SEED,
   DEN_RELEASE_GAP,
   DRIFTER_MAX,
   GLOAMFIN_CHASE_SPEED,
@@ -210,7 +209,7 @@ describe("the snapshot", () => {
 });
 
 describe("reset", () => {
-  it("restores the title-screen values and reseeds the generator", async () => {
+  it("restores the title-screen values", async () => {
     const harness = await playing();
     harness.debug.setBrightness(1);
     harness.debug.setBrightHold(BRIGHT_HOLD);
@@ -256,26 +255,6 @@ describe("reset", () => {
     // Muting is a player preference rather than a value a dive opens with.
     expect(snapshot.muted).toBe(true);
     harness.dispose();
-  });
-
-  it("replays the same result from the same seed and the same calls", async () => {
-    const run = async (seed: number): Promise<number[]> => {
-      const harness = await createHarness();
-      harness.debug.reset(seed);
-      harness.debug.setScreen("playing");
-      // Six seconds of simulation, in frames of ten ticks each: the run is a
-      // wait for the generator to have been drawn from, not for a picture.
-      harness.pace(10);
-      await harness.engine.advance(ticks(6) / 10);
-      const drawn = harness.debug
-        .snapshot()
-        .predators.flatMap((p) => [p.x, p.y]);
-      harness.dispose();
-      return drawn;
-    };
-
-    expect(await run(DEFAULT_SEED)).toEqual(await run(DEFAULT_SEED));
-    expect(await run(7)).not.toEqual(await run(DEFAULT_SEED));
   });
 });
 

@@ -37,7 +37,6 @@
 
 import {
   CUES,
-  DEFAULT_SEED,
   GAMEOVER_ITEMS,
   INK_COOLDOWN,
   PAUSE_ITEMS,
@@ -423,7 +422,7 @@ export const game: Game<FathomState, FathomDebugApi> = {
     const sheets = await loadSheets(api.assets);
     // A session opens with sound on, and every frame mirrors the engine's bit
     // back into the state from there (`specs/progression.md`).
-    return [openingState(sheets, DEFAULT_SEED, false), createDebugApi()];
+    return [openingState(sheets, false), createDebugApi()];
   },
 
   /**

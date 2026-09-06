@@ -21,7 +21,6 @@
 
 import {
   BRIGHT_HOLD,
-  DEFAULT_SEED,
   DRIFTER_INTERVAL,
   DRIFTER_SPEED,
   FATHOM_DEBUG_VERSION,
@@ -79,7 +78,7 @@ export interface FathomDebugApi {
   version: number;
   setAutoStep(enabled: boolean): void;
   advance(ticks: number): void;
-  reset(seed?: number): void;
+  reset(): void;
   snapshot(): FathomSnapshot;
   menuItemRect(index: number): Rect | null;
   setScreen(s: Screen): void;
@@ -217,7 +216,7 @@ export function createDebugApi(
      * Every one is a real tick, the same one the frame loop runs, so the game's
      * own sensing, pathfinding and contact rules produce the result. Advancing
      * while the game is still stepping automatically ADDS to what the wall clock
-     * is already doing, so a reproducible scenario calls `setAutoStep(false)`
+     * is already doing, so a scenario driven from code calls `setAutoStep(false)`
      * first.
      */
     advance(ticks) {
@@ -225,15 +224,13 @@ export function createDebugApi(
     },
 
     /**
-     * Return the game to its title-screen values and reseed its randomness.
+     * Return the game to its title-screen values.
      *
      * `muted` is deliberately untouched: muting is a player preference the
      * runtime owns, and a reset is not a reason to start making noise again.
      * Manual stepping is re-armed, so the game comes back off the wall clock.
      */
-    reset(seed = DEFAULT_SEED) {
-      if (!Number.isFinite(seed)) invalid(`a seed must be finite, got ${seed}`);
-      state.rng.reseed(seed);
+    reset() {
       // The remembered title selection is a field of the declared state like any
       // other, so a reset puts it back to `0` and the title comes up on `DIVE`.
       state.titleIndex = 0;

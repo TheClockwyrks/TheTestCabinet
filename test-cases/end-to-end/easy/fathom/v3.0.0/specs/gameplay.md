@@ -34,9 +34,9 @@ cadence of `DRIFTER_INTERVAL` (`25 s`). The cadence tops the maze up to
 
 A drifter travels the corridor center lines at `DRIFTER_SPEED` (`64` logical
 units per second), half the forager's speed, and changes direction at tile
-centers. At each tile center it takes a direction drawn at random from the open
-directions there, preferring one other than the one it came from, and it turns
-back the way it came where the tile offers no other open direction. It passes
+centers. At each tile center it takes a direction drawn uniformly at random from
+the open directions there other than the one it came from, and it turns back the
+way it came where the tile offers no other open direction. It passes
 through the wrap tunnel like the forager.
 
 A drifter stays in the maze until it is eaten, holding its glow and its pace for

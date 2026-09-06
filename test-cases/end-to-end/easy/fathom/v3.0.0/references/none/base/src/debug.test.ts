@@ -176,26 +176,6 @@ describe("the debug surface", () => {
       expect(p.mind).toBe(true);
       expect(p.travel).toBe(true);
     });
-
-    it("reseeds the game's randomness, so a run repeats exactly", () => {
-      const run = (): number[] => {
-        api.reset(7);
-        api.setScreen("playing");
-        api.advance(TICK_HZ * 6);
-        return api.snapshot().predators.flatMap((p) => [p.tx, p.ty]);
-      };
-      expect(run()).toEqual(run());
-    });
-
-    it("takes a different seed to a different run", () => {
-      const run = (seed: number): number[] => {
-        api.reset(seed);
-        api.setScreen("playing");
-        api.advance(TICK_HZ * 8);
-        return api.snapshot().predators.flatMap((p) => [p.tx, p.ty]);
-      };
-      expect(run(1)).not.toEqual(run(99));
-    });
   });
 
   describe("setScreen", () => {

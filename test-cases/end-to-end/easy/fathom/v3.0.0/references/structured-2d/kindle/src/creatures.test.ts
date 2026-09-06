@@ -145,7 +145,7 @@ describe("the wander a creature with no fix travels", () => {
     const maze = new Maze(board.rows);
     const drifter = new Drifter(anchor(board, "S"));
     drifter.heading = "right";
-    const rng = new Rng(11);
+    const rng = new Rng();
     for (let draw = 0; draw < 200; draw++) {
       expect(wanderIntent(drifter, maze, rng, maze.openToForager)).not.toBe(
         "left",
@@ -158,7 +158,7 @@ describe("the wander a creature with no fix travels", () => {
     const maze = new Maze(board.rows);
     const drifter = new Drifter(anchor(board, "S"));
     drifter.heading = "left";
-    expect(wanderIntent(drifter, maze, new Rng(3), maze.openToForager)).toBe(
+    expect(wanderIntent(drifter, maze, new Rng(), maze.openToForager)).toBe(
       "right",
     );
   });
@@ -168,7 +168,7 @@ describe("the wander a creature with no fix travels", () => {
     const maze = new Maze(board.rows);
     const drifter = new Drifter(anchor(board, "S"));
     expect(
-      wanderIntent(drifter, maze, new Rng(3), maze.openToForager),
+      wanderIntent(drifter, maze, new Rng(), maze.openToForager),
     ).toBeNull();
   });
 

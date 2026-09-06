@@ -1,44 +1,55 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_SEED } from "./constants";
 import { Rng } from "./rng";
 
-describe("the seeded generator", () => {
-  it("draws inside [0, 1)", () => {
-    const rng = new Rng(DEFAULT_SEED);
-    for (let draw = 0; draw < 5000; draw++) {
-      const value = rng.next();
-      expect(value).toBeGreaterThanOrEqual(0);
-      expect(value).toBeLessThan(1);
+describe("Rng", () => {
+  it("returns values in [0, 1)", () => {
+    const rng = new Rng();
+    for (let i = 0; i < 1000; i++) {
+      const v = rng.next();
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(1);
     }
   });
 
-  it("replays the same sequence from the same seed", () => {
-    const first = new Rng(7);
-    const second = new Rng(7);
-    const drawn = Array.from({ length: 64 }, () => first.next());
-    expect(drawn).toEqual(Array.from({ length: 64 }, () => second.next()));
+  it("reads the source it is opened over", () => {
+    const values = [0.25, 0.5, 0.75];
+    const rng = new Rng(() => values.shift() ?? 0);
+    expect(rng.next()).toBe(0.25);
+    expect(rng.next()).toBe(0.5);
+    expect(rng.next()).toBe(0.75);
   });
 
-  it("puts a run back where it started when it is reseeded", () => {
-    const rng = new Rng(DEFAULT_SEED);
-    const opening = Array.from({ length: 32 }, () => rng.next());
-    rng.reseed(DEFAULT_SEED);
-    expect(Array.from({ length: 32 }, () => rng.next())).toEqual(opening);
+  it("draws whole numbers inside the count", () => {
+    const rng = new Rng();
+    const seen = new Set<number>();
+    for (let i = 0; i < 500; i++) {
+      const v = rng.int(4);
+      expect(Number.isInteger(v)).toBe(true);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(4);
+      seen.add(v);
+    }
+    expect(seen.size).toBe(4);
   });
 
-  it("separates seeds", () => {
-    const one = new Rng(1);
-    const two = new Rng(2);
-    const drawn = Array.from({ length: 16 }, () => one.next());
-    expect(drawn).not.toEqual(Array.from({ length: 16 }, () => two.next()));
+  it("maps a draw onto the item at its share of the list", () => {
+    const items = ["a", "b", "c", "d"] as const;
+    expect(new Rng(() => 0).pick(items)).toBe("a");
+    expect(new Rng(() => 0.26).pick(items)).toBe("b");
+    expect(new Rng(() => 0.999).pick(items)).toBe("d");
   });
 
-  it("picks inside the list it is given", () => {
-    const rng = new Rng(DEFAULT_SEED);
-    const items = ["up", "down", "left", "right"] as const;
-    const seen = new Set<string>();
-    for (let draw = 0; draw < 200; draw++) seen.add(rng.pick(items));
-    expect([...seen].sort()).toEqual([...items].sort());
+  it("picks every item of a list often enough to be uniform", () => {
+    const rng = new Rng();
+    const items = ["a", "b", "c"] as const;
+    const counts = new Map<string, number>(items.map((i) => [i, 0]));
+    for (let i = 0; i < 3000; i++) {
+      const item = rng.pick(items);
+      counts.set(item, (counts.get(item) as number) + 1);
+    }
+    for (const item of items) {
+      expect(counts.get(item)).toBeGreaterThan(800);
+    }
   });
 });

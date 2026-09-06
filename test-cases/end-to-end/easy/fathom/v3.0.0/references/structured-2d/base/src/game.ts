@@ -29,7 +29,7 @@
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { defineCues, noCues, playCues } from "./audio";
-import { DEFAULT_SEED, START_LIVES, TICK_DT } from "./constants";
+import { START_LIVES, TICK_DT } from "./constants";
 import { FathomController } from "./controller";
 import { Forager } from "./creatures";
 import type { Drifter, Predator } from "./creatures";
@@ -129,7 +129,7 @@ export class FathomState extends GameState {
   heldDirs: Dir[] = [];
 
   /** The one generator every random draw the game makes runs off. */
-  rng = new Rng(DEFAULT_SEED);
+  rng = new Rng();
   /** What is left of the frame's delta, carried into the next frame. */
   accumulator = 0;
   simTime = 0;

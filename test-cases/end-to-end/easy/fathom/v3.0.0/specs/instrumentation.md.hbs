@@ -64,25 +64,15 @@ its type, `FathomDebugApi`.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
 The surface rests on the fixed-step core `specs/movement.md` fixes: the
 simulation advances in whole `TICK_DT` ticks at `TICK_HZ` (`120`) of them a
-second, so a tick is the unit the operations below count in. Two more properties
-make the game driveable from code:
-
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer.
-- Seeded randomness. Every draw the game makes, for predator and drifter wander,
-  for the bonus-drifter cadence, and for the maze it lays out, runs off a
-  generator the surface's `reset` seeds, and the game keeps that generator's whole
-  state, so reseeding and replaying the same calls reproduces the same result
-  exactly.
-
-Given the same seed and the same sequence of calls and elapsed game time, the game
-reaches the same state every time.
+second, so a tick is the unit the operations below count in. Game state advances
+from the elapsed simulation time the game is handed, independent of a canvas, of
+the frame loop that measured it, and of wall-clock time, so a step means the same
+thing whatever the frame rate. The dependency runs one way: the simulation reads
+nothing from the renderer.
 
 ## What the runtime provides instead
 
@@ -155,14 +145,14 @@ contact rules produce the result, and the canvas is redrawn to reflect it.
 `ticks` is a non-negative whole number, and `advance(0)` runs nothing.
 
 Advancing while the game is still stepping automatically adds to what the wall
-clock is already doing, so a reproducible scenario calls `setAutoStep(false)`
+clock is already doing, so a scenario driven from code calls `setAutoStep(false)`
 first.
 
 {{/if}}
 {{#if (eq engine.slug "simple-2d")}}
-### `reset(state, seed)`
+### `reset(state)`
 {{else}}
-### `reset(seed)`
+### `reset()`
 {{/if}}
 
 Restores every field of the observable state defined in `specs/state.md` to its
@@ -174,8 +164,6 @@ drifters and the drifter cadence armed at `DRIFTER_INTERVAL`, the roster depth
 `1` gives with every predator on a den tile and unreleased, every creature's mind
 and travel running, both cooldowns ready, no pulses and no ink clouds in flight,
 and `simTime` at `0`.
-`seed` seeds the game's random generator. It is optional, and an omitted `seed`
-takes `DEFAULT_SEED` (`1`).
 {{#if (eq engine.slug "none")}}
 A reset also re-arms manual stepping, leaving the game off the wall clock.
 {{/if}}

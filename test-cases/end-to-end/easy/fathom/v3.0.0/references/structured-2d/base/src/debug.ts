@@ -27,7 +27,6 @@ import type { World } from "@clockwyrks/structured-2d";
 import { noCues } from "./audio";
 import {
   BRIGHT_HOLD,
-  DEFAULT_SEED,
   DRIFTER_INTERVAL,
   FATHOM_DEBUG_VERSION,
   GLOAMFIN_HEAR,
@@ -165,7 +164,7 @@ export interface FathomSnapshot {
  */
 export interface FathomDebugApi {
   version: number;
-  reset(seed?: number): void;
+  reset(): void;
   snapshot(): FathomSnapshot;
   menuItemRect(index: number): Rect | null;
   setScreen(s: Screen): void;
@@ -348,12 +347,12 @@ export function createDebugApi(world: () => World): FathomDebugApi {
     version: FATHOM_DEBUG_VERSION,
 
     /**
-     * Every declared field back at its title-screen value, with the generator
-     * seeded. `muted` is deliberately untouched: muting is a player preference
-     * the runtime owns, and a reset is not a reason to start making noise.
+     * Every declared field back at its title-screen value. `muted` is
+     * deliberately untouched: muting is a player preference the runtime owns,
+     * and a reset is not a reason to start making noise.
      */
-    reset(seed = DEFAULT_SEED) {
-      resetState(read(), seed);
+    reset() {
+      resetState(read());
     },
 
     /** A pure read. It never changes anything. */

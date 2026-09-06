@@ -215,7 +215,7 @@ describe("the wrap tunnel", () => {
 describe("the wander", () => {
   it("prefers a direction other than the way it came", () => {
     const maze = posed(["....", "....", "...."], 4, 4);
-    const rng = new Rng(5);
+    const rng = new Rng();
     const drifter = new Drifter(5, 5, 64);
     drifter.dir = "right";
     const picks = new Set<Heading>();
@@ -227,7 +227,7 @@ describe("the wander", () => {
 
   it("turns back where the tile offers nothing else", () => {
     const maze = posed(["..."], 5, 4);
-    const rng = new Rng(5);
+    const rng = new Rng();
     const drifter = new Drifter(6, 5, 64);
     drifter.dir = "right";
     // (6, 5) is the far end: only the way back is open.
@@ -236,14 +236,14 @@ describe("the wander", () => {
 
   it("stands still on a tile with no open neighbor", () => {
     const maze = posed(["."], 5, 4);
-    const rng = new Rng(5);
+    const rng = new Rng();
     const drifter = new Drifter(4, 5, 64);
     expect(wanderDir(drifter, maze, rng, corridorOf(maze))).toBeNull();
   });
 
   it("takes every open direction over enough draws", () => {
     const maze = posed(["...", "...", "..."], 4, 4);
-    const rng = new Rng(9);
+    const rng = new Rng();
     const drifter = new Drifter(5, 5, 64);
     const seen = new Set<Dir>();
     for (let i = 0; i < 400; i++) {

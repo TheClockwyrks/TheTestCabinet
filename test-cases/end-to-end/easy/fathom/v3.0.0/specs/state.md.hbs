@@ -358,7 +358,6 @@ game rendering every frame and advancing only when the debugging surface says so
 - Anything the build keeps beyond the fields above is refreshed by every
   operation that could invalidate it, so a single-field pose leaves the game
   consistent.
-- A `reset` restores the fields above to their title-screen values and reseeds
-  the game's random generator, leaving the game indistinguishable from one
-  freshly started, so anything else the build keeps across frames follows from
-  what a reset restores.
+- A `reset` restores the fields above to their title-screen values, leaving the
+  game indistinguishable from one freshly started, so anything else the build
+  keeps across frames follows from what a reset restores.

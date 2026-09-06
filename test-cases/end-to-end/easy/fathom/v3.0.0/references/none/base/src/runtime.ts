@@ -25,8 +25,8 @@
 // THE CLOCK CAN BE TAKEN AWAY. `setAutoStep(false)` stops the loop advancing the
 // simulation from the wall clock and `advance(ticks)` runs an exact number of
 // whole ticks, which is what `specs/instrumentation.md` exposes on
-// `window.__fathom` and what makes a driven scenario reproducible on any
-// machine. Drawing is unaffected either way: the loop keeps presenting, so the
+// `window.__fathom` and what lets a driven scenario step the game by exact
+// ticks on any machine. Drawing is unaffected either way: the loop keeps presenting, so the
 // canvas always shows the state the most recent tick left.
 
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";

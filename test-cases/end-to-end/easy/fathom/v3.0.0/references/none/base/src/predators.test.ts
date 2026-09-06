@@ -94,7 +94,7 @@ function scene(
   const cues: CueName[] = [];
   const world: PredatorWorld = {
     maze,
-    rng: new Rng(4),
+    rng: new Rng(),
     forager,
     predators,
     drifters: [] as Drifter[],

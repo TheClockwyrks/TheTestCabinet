@@ -140,11 +140,9 @@ export function openMaze(
   });
 }
 
-/** A maze laid out afresh off the seeded generator, and opened. */
+/** A maze laid out afresh, and opened. */
 export function layFreshMaze(state: FathomState, depth: number): FathomState {
-  const draws = createDraws(state.rngState);
-  const maze = generateMaze(draws);
-  return openMaze({ ...state, rngState: draws.state }, maze, depth);
+  return openMaze(state, generateMaze(createDraws()), depth);
 }
 
 // ---- The screens ---------------------------------------------------------
@@ -256,7 +254,7 @@ export function descend(state: FathomState): FathomState {
 // ---- The opening state ---------------------------------------------------
 
 /**
- * Every field of the state at its title-screen value, off `seed`.
+ * Every field of the state at its title-screen value.
  *
  * This is what `initialize` builds and what the debug surface's `reset` restores,
  * so a reset leaves the game indistinguishable from one freshly started. The art
@@ -264,13 +262,8 @@ export function descend(state: FathomState): FathomState {
  * a value a dive opens with, and muting is a player preference
  * (`specs/instrumentation.md`).
  */
-export function openingState(
-  sheets: Sheets,
-  seed: number,
-  muted: boolean,
-): FathomState {
-  const draws = createDraws(seed >>> 0);
-  const maze = generateMaze(draws);
+export function openingState(sheets: Sheets, muted: boolean): FathomState {
+  const maze = generateMaze(createDraws());
   const { plankton, planktonRemaining } = plantPlankton(maze);
   return {
     screen: "title",
@@ -280,7 +273,6 @@ export function openingState(
     muted,
     simTime: 0,
     carry: 0,
-    rngState: draws.state,
     menuIndex: 0,
     titleIndex: 0,
     pressedItem: null,

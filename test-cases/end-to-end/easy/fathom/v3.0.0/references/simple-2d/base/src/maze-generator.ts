@@ -1,10 +1,9 @@
 // Fathom — laying out a maze.
 //
-// Every maze the game plays on is laid out here, off the seeded generator, so a
-// dive replayed from the same seed meets the same trench
-// (`specs/instrumentation.md`). What comes out satisfies every rule in
-// `specs/maze.md`, and `src/maze-rules.ts` is what says so: a candidate that
-// breaks a rule is thrown away and another is drawn.
+// Every maze the game plays on is laid out here, off the draws it is handed. What
+// comes out satisfies every rule in `specs/maze.md`, and `src/maze-rules.ts` is
+// what says so: a candidate that breaks a rule is thrown away and another is
+// drawn.
 //
 // The construction is a maze on a lattice, which is what makes conformance cheap
 // to guarantee rather than expensive to search for. Corridor cells sit on the odd

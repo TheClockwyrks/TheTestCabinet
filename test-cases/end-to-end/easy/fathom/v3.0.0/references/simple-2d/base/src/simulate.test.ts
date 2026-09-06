@@ -28,7 +28,7 @@ const NO_ART: Sheets = {
  * measure is the fixed step itself.
  */
 function live(): FathomState {
-  const dive = beginDive(openingState(NO_ART, 1, false));
+  const dive = beginDive(openingState(NO_ART, false));
   return {
     ...dive,
     screen: "playing",
@@ -76,7 +76,7 @@ describe("the fixed-step core", () => {
   });
 
   it("accumulates simTime on every screen and advances nothing else on a menu", () => {
-    const title = openingState(NO_ART, 1, false);
+    const title = openingState(NO_ART, false);
     const later = advanceFrame({ ...title, sonarCooldown: 1 }, 1).state;
     expect(later.simTime).toBeCloseTo(1, 6);
     expect(later.sonarCooldown).toBe(1);
@@ -103,7 +103,7 @@ describe("the fixed-step core", () => {
   });
 
   it("leaves a screen with nothing to advance exactly as it was", () => {
-    const title = openingState(NO_ART, 1, false);
+    const title = openingState(NO_ART, false);
     const stepped = tick(title, TICK_DT);
     expect(stepped.cues).toEqual([]);
     expect({ ...stepped.state, simTime: 0 }).toEqual(title);

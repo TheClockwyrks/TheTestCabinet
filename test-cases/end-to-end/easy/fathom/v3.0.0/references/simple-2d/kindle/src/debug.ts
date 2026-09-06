@@ -37,7 +37,6 @@
 
 import {
   BRIGHT_HOLD,
-  DEFAULT_SEED,
   DRIFTER_INTERVAL,
   FATHOM_DEBUG_VERSION,
   LINGER_TIME,
@@ -80,7 +79,7 @@ export type PosedPredatorMode = "den" | "wander" | "chase";
  */
 export interface FathomDebugApi {
   version: number;
-  reset(state: DeepReadonly<FathomState>, seed?: number): FathomState;
+  reset(state: DeepReadonly<FathomState>): FathomState;
   snapshot(state: DeepReadonly<FathomState>): FathomSnapshot;
   menuItemRect(state: DeepReadonly<FathomState>, index: number): Rect | null;
   setScreen(state: DeepReadonly<FathomState>, s: Screen): FathomState;
@@ -273,15 +272,14 @@ export function createDebugApi(): FathomDebugApi {
     version: FATHOM_DEBUG_VERSION,
 
     /**
-     * Every field of the observable state back at its title-screen value, with
-     * the game's randomness reseeded.
+     * Every field of the observable state back at its title-screen value.
      *
      * `muted` is deliberately untouched, because muting is a player preference
      * rather than a value a dive opens with, and the art is carried through
      * because it is the project's rather than the dive's.
      */
-    reset(state, seed = DEFAULT_SEED) {
-      return openingState(state.sheets, seed, state.muted);
+    reset(state) {
+      return openingState(state.sheets, state.muted);
     },
 
     /** A pure read. It poses nothing, so it returns no state. */

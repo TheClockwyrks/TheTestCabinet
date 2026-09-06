@@ -215,8 +215,6 @@ export interface FathomState {
    * `TICK_DT` tick, carried into the next frame (`specs/movement.md`).
    */
   readonly carry: number;
-  /** The generator's whole state (`src/rng.ts`). */
-  readonly rngState: number;
 
   // ---- The screens ------------------------------------------------------
   /** The selected item of the menu the current screen carries. */

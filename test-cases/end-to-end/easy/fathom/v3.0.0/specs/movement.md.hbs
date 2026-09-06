@@ -27,8 +27,8 @@ interval of game time is the same however that interval was divided into frames.
 {{/if}}
 
 The tick is the game's whole clock. Movement, cooldowns, timers and the creatures'
-decisions all advance inside it, so the same starting state driven by the same
-inputs over the same elapsed game time reaches the same state every time.
+decisions all advance inside it, and nothing in the simulation reads the wall
+clock or the frame that carried a tick.
 
 ## Where a body may travel
 
