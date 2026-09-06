@@ -12,8 +12,8 @@
 // timer, every position, every burst. Nothing is integrated once per frame outside
 // it. That is the whole reason `advance(1, 1)`, `advance(1, 60)` and `advance(1,
 // 120)` all run exactly a hundred and twenty sub-steps of a hundred-and-twentieth
-// of a second and reach the IDENTICAL state, which is what
-// `specs/instrumentation.md` means by a deterministic core.
+// of a second and resolve the same rules, which is what
+// `specs/instrumentation.md` means by a render-free core.
 //
 // INTENT IS READ ONCE PER FRAME and handed to the loop: a hold applies in every
 // sub-step, and an edge is cleared by the first sub-step that acts on it, so one

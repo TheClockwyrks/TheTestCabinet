@@ -2,7 +2,7 @@
 //
 // `src/assets.ts` bakes each band-state through a browser canvas. A test has no
 // document, so this file does the same derivation through `@napi-rs/canvas` — the
-// same pure pixel functions over the same seeded files, which is the point: what a
+// same pure pixel functions over the files the case seeded, which is the point: what a
 // test measures is the art the game actually draws, not a stand-in for it.
 
 import { createCanvas, loadImage } from "@napi-rs/canvas";

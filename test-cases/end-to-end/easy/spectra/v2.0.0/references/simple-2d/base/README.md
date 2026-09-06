@@ -256,7 +256,7 @@ src/
   game.ts             The SpectraState contract, BACKGROUND, and the three
                       functions the engine drives
   sim.ts              The mutable mirror a frame is built in, and FrameEvents
-  rng.ts              The one seeded generator, whose state is one number
+  random.ts           The game's random draws, off the host's own generator
   bands.ts            Effective band: the stored band taken as its opposite once
                       per swap that holds, and the shimmer and inversion tests
   ship.ts             The lane clamp, the three fire gates, and the flip
