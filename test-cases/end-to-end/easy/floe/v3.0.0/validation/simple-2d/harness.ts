@@ -446,8 +446,6 @@ export interface FloeModel {
   ): Promise<SkipResult>;
   /** Put `ticksPerFrame` whole ticks in each frame from here on. */
   pace(ticksPerFrame: number): void;
-  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 
   /**
    * Where a logical point lands in CSS pixels: the device point the fit puts it
@@ -661,14 +659,6 @@ const kit = createEngineCaseHarness<
           if (predicate(snapshot)) return { hit: true, elapsed, snapshot };
         }
         return { hit: false, elapsed, snapshot };
-      },
-
-      async runFor(ms: number) {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((resolve) => setTimeout(resolve, ms));
-        controller.abort();
-        await running;
       },
 
       css: (x: number, y: number) => {

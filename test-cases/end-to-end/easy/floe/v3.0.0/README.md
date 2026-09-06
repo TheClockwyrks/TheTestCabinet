@@ -157,7 +157,7 @@ reference build to produce the baseline it is shown beside.
 
 ## Validation
 
-This case is validator-rated: every one of the `257` points on the checklist
+This case is validator-rated: every one of the `256` points on the checklist
 carries a Vitest suite, and the validators decide the functional rating through
 each point's failure cap. A reviewer rates the run's aesthetics separately and
 may override a verdict.
@@ -207,7 +207,7 @@ reference's side by side.
 A run is rated on four domains — `hunter` (the bear), `crossing` (the hop, the
 two bands and the bays), `run` (the lives, the timer, the levels, the score and
 the screens) and `presentation` (the art, the HUD, the legibility and the audio)
-— and its overall functional rating is the worst of the four. The `257` checklist
+— and its overall functional rating is the worst of the four. The `256` checklist
 points are grouped into sixteen categories, and each point names the domains its
 failure lowers and how far it lowers them.
 

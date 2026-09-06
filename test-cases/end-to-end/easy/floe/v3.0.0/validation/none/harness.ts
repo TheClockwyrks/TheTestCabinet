@@ -63,9 +63,7 @@
 // takes the game off real time and `advance(ticks)` runs whole `TICK_DT` ticks.
 // Every harness opens by taking the game off the clock, so a check asks for a
 // number of ticks and gets exactly that number — no polling, no waiting, and no
-// measurement of the machine it ran on. The one check that is ABOUT the loop
-// running itself (`instrumentation/advances-in-real-time`) hands it back with
-// `Harness.runFor`.
+// measurement of the machine it ran on.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`

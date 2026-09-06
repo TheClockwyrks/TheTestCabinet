@@ -26,8 +26,9 @@
 // and travels two more, so nothing about where a lane wraps — which the
 // specification leaves to the build — can reach this reading.
 //
-// WHAT THIS DOES NOT DECIDE. Not that the game advances itself at all, which
-// is `instrumentation/advances-in-real-time`'s.
+// WHAT THIS DOES NOT DECIDE. Not that a frame whose elapsed time is not a whole
+// number of ticks leaves its leftover for the next, which is
+// `instrumentation/carries-the-remainder`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TICK_DT, TICK_HZ, TILE } from "../constants";
