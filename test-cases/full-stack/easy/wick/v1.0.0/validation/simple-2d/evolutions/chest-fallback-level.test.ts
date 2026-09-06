@@ -4,9 +4,9 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/evolutions.md` ("Opening a chest"), rule 2: "One held item below
 //     its max level, a base weapon below `MAX_WEAPON_LEVEL` or a passive below
-//     its own max, is chosen uniformly at random and rises by `1`, exactly as accepting a `+1 level` offer does.
-//     The result is `{ kind: "level", item, level }`, with `level` the level it
-//     became."
+//     its own max, is chosen uniformly at random and rises by `1`, exactly as
+//     accepting a `+1 level` offer does. The result is
+//     `{ kind: "level", item, level }`, with `level` the level it became."
 //   - `specs/evolutions.md` ("The recipe"): an evolution needs a base at
 //     `MAX_WEAPON_LEVEL` beside its recipe passive; Taper at level 3 with no
 //     Wick held meets neither, so rule 1 does not apply and rule 2 decides.

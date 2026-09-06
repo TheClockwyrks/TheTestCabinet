@@ -4,7 +4,7 @@
 // at 0.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
-// `reset(options)`: "Restores every declared field of the game's state to its
+// `reset()`: "Restores every declared field of the game's state to its
 // title-screen value: the `title` screen with `menuIndex`, `almanacTab`, and
 // `almanacScroll` all `0`, the idle run of `specs/state.md`, the accumulator
 // and `simTime` at `0`". `specs/state.md`, "The idle run", is the table

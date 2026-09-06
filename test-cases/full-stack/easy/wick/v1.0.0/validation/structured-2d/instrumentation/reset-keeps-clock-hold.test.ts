@@ -7,7 +7,7 @@
 // milliseconds with `engine.advance`" — under this engine the hold IS the
 // harness's scripted clock, which `reset` cannot touch, so the item's engine
 // reading is "the harness clock keeps driving frame by frame, so `run.tick`
-// stays 0 until the scenario advances it". `reset(options)` restores "the
+// stays 0 until the scenario advances it". `reset()` restores "the
 // `title` screen", and `specs/ui.md`: on `title` "Nothing" advances.
 //
 // THE DRIVE. A run posed and ticked, then reset. `run.tick` reads 0 at the

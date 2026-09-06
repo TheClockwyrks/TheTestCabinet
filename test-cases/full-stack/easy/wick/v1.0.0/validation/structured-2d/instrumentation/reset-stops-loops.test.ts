@@ -2,7 +2,7 @@
 // looping, `reset()` followed by one frame leaves neither looping.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
-// `reset(options)`: "Any looping cue stops on the next tick of the game mode,
+// `reset()`: "Any looping cue stops on the next tick of the game mode,
 // since the state it restores holds no run." `specs/ui.md`, "The loops":
 // "`music` is looping on every frame exactly when `screen` is `playing`,
 // `levelup`, `chest`, or `paused`" and "`hum` is looping on every frame

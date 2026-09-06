@@ -432,8 +432,9 @@ random. Each operation applies on a run screen.
 
 Sets `nextSpawnAngle` to `degrees`, a real number of at least `0` and below
 `360`, measured from `+x` toward `+y`; any other value is invalid. The next
-spawn point the director draws, for a window spawn or a scripted elite, is at
-that angle as `specs/enemies.md` states, and that spawn consumes it.
+spawn point the director draws, for a window spawn or for a scripted event
+that spawns an enemy at a spawn point, is at that angle as `specs/enemies.md`
+states, and that spawn consumes it.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setNextSwarmAngle(state, degrees)`
@@ -628,8 +629,8 @@ zones it produced stay. Applies on a run screen.
 {{/if}}
 
 Puts passive `id`, a `PassiveId`, at `level` in `slot`. `slot` is `0` to
-`passives.length`, at most `PASSIVE_SLOTS − 1`; `level` is `1` to the passive's
-`maxLevel` in `PASSIVES`. An `id` held in another slot is invalid. `hp` is
+`passives.length`, at most `PASSIVE_SLOTS − 1`; `level` is `1` to the
+passive's `maxLevel` in `PASSIVES`. An `id` held in another slot is invalid. `hp` is
 untouched; `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, and every multiplier
 follow from the next read. Applies on a run screen.
 
@@ -1081,7 +1082,7 @@ export interface WickDebugApi {
   almanacTab: <number>,            // the tab the almanac is showing
   almanacScroll: <number>,         // the almanac list's first visible row
 {{#if (eq engine.slug "none")}}
-  autoStep: <boolean>,             // whether the frame loop advances the simulation
+  autoStep: <boolean>,             // the frame loop advances the simulation
 {{/if}}
   spawning: <boolean>,             // the nine driver switches
   events: <boolean>,

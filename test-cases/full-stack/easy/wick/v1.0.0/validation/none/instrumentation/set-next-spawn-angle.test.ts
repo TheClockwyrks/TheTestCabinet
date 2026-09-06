@@ -6,7 +6,8 @@
 // outcomes", `setNextSpawnAngle(degrees)`): "Sets `nextSpawnAngle` to
 // `degrees`, a real number of at least `0` and below `360`, measured from `+x`
 // toward `+y` ... The next spawn point the director draws, for a window spawn
-// or a scripted elite, is at that angle as `specs/enemies.md` states".
+// or for a scripted event that spawns an enemy at a spawn point, is at that
+// angle as `specs/enemies.md` states".
 // specs/enemies.md ("The spawn ring"): "`x = player.x + cos(angle) *
 // SPAWN_DISTANCE`, `y = player.y + sin(angle) * SPAWN_DISTANCE`".
 //

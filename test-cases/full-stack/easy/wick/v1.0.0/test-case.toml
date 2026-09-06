@@ -6364,7 +6364,7 @@ title = "Bread drops"
 description = "A moth killed by a weapon with drops on and setNextDrop('bread') posed leaves exactly one gem and exactly one pickup, a bread, both at the moth's center."
 domains = ["progression"]
 failure_cap = "scuffed"
-validation = { script = "pickups/bread-drops.test.ts", outputs = [ { id = "bread", name = "The bread the sweep dropped", kind = "image" } ] }
+validation = { script = "pickups/bread-drops.test.ts", outputs = [ { id = "bread", name = "The bread the posed kill dropped", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "drafts-drop"
@@ -6372,7 +6372,7 @@ title = "Drafts drop"
 description = "A moth killed by a weapon with drops on and setNextDrop('draft') posed leaves exactly one gem and exactly one pickup, a draft, both at the moth's center."
 domains = ["progression"]
 failure_cap = "scuffed"
-validation = { script = "pickups/drafts-drop.test.ts", outputs = [ { id = "drafts", name = "The drafts the sweep dropped", kind = "image" } ] }
+validation = { script = "pickups/drafts-drop.test.ts", outputs = [ { id = "drafts", name = "The draft the posed kill dropped", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "bread-rate"

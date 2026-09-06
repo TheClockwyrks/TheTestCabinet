@@ -44,8 +44,8 @@ that applies:
    `{ kind: "evolve", weapon }`.
 2. Level. One held item below its max level, a base weapon below
    `MAX_WEAPON_LEVEL` or a passive below its own max, is chosen uniformly at
-   random and rises by `1`, exactly as accepting a `+1 level` offer does. The result is
-   `{ kind: "level", item, level }`, with `level` the level it became.
+   random and rises by `1`, exactly as accepting a `+1 level` offer does. The
+   result is `{ kind: "level", item, level }`, with `level` the level it became.
 3. Heal. `hp` rises by `CHEST_HEAL` (`30`), capped at `maxHp`. The result is
    `{ kind: "heal" }`.
 

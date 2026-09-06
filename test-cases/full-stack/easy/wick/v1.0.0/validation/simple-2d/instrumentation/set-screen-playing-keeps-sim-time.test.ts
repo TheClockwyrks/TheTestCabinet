@@ -4,8 +4,7 @@
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setScreen`: "Nothing
 // else changes: the run, the loadout, `offers`, `nextOffers`, `chestResult`,
 // `pendingLevelUps`, every posed outcome, `simTime`, and the driver switches
-// all stand exactly as they were". The run across the same call is
-// `instrumentation/set-screen-playing-keeps-rng`'s.
+// all stand exactly as they were".
 //
 // THE POSE. A reset and three title frames, so simTime is above 0 and would
 // show a pose that zeroed it. Then the pose, read without a frame: a build that

@@ -3,7 +3,7 @@
 // reset issued while it was `false`, and the run's clock stays at `0` while
 // real time passes.
 //
-// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `reset(options)`):
+// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `reset()`):
 // "`autoStep` stays as it is: it belongs to the caller driving the game rather
 // than to the session being played, so a `reset` inside a stepped scenario
 // leaves the game off the wall clock." And `setAutoStep(auto)`:

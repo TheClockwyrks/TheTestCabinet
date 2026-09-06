@@ -38,7 +38,7 @@ it("leaves one draft beside the gem of a kill posed to drop a draft", async () =
   await isolate(h, { on: ["drops"] });
   await h.debug.setNextDrop("draft");
   const kill = await killCommon(h, "moth", killPoint(0));
-  await captureStill(h, "draft");
+  await captureStill(h, "drafts");
 
   assertLength(kill.gems, 1, "the gems the kill dropped");
   assertLength(kill.pickups, 1, "the pickups the kill dropped");
