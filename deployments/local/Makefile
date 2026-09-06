@@ -600,7 +600,8 @@ images: audio-store
 # (these Dockerfiles also pull only public base images).
 #
 # `build_import_run_images` is the shared body every run-image target uses: build the
-# named images with build.sh (which (re)builds the FROM base as needed), then hand them
+# named images with build.sh (which (re)builds the FROM base when it is missing OR older
+# than its own Dockerfile, cascading down the layers), then hand them
 # to `save_and_import` above, which saves the whole selection into ONE archive and imports
 # it. $(1) is the space-separated list of image NAMES to pass to build.sh; $(2) is the
 # matching list of fully-qualified refs to save + import (normally

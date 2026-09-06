@@ -66,9 +66,12 @@
 #                             #   `./build.sh adversarial performance`). Names are the short
 #                             #   image names (the IMAGE_NAME_PREFIX suffix / the containers/<name>
 #                             #   directory). The FROM-base invariant is upheld either way: `base`
-#                             #   is (re)built when it is named, and auto-built when a non-base
-#                             #   image is named but no base image is present locally yet. This is
-#                             #   how deployments/local/Makefile rebuilds one test type — or one
+#                             #   is (re)built when it is named, when a non-base image is named and
+#                             #   no base is present, and when the base that IS present is older
+#                             #   than containers/base/Dockerfile — being present is not the same as
+#                             #   being current, and a stale parent is inherited in silence. The
+#                             #   rebuild cascades down the layers. This is how
+#                             #   deployments/local/Makefile rebuilds one test type — or one
 #                             #   asset-generation kind — without paying for the whole set.
 #   ./build.sh audio-store    # build the data-only AUDIO STORE image: every published audio
 #                             #   pack, which a run's declared packs are staged out of. Not a run
@@ -1132,6 +1135,31 @@ readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-j
 # the FROM base has to be built before a selected non-base image).
 image_present() { "$DOCKER" image inspect "$1" >/dev/null 2>&1; }
 
+# Whether an existing parent image was built BEFORE the Dockerfile that defines it
+# was last changed.
+#
+# Being present is not the same as being current, and the difference is silent: a
+# base built last month still satisfies every `FROM`, so a change at that layer
+# reaches nothing until someone happens to name `base` by hand. Every image built in
+# between resolves, runs, and is missing whatever the change added — which is exactly
+# how run images shipped without the `/opt/audio` staging root the base creates,
+# failing every full-stack run that stages an audio palette while the leaf images
+# themselves were rebuilt daily.
+#
+# The two base layers COPY nothing, so their Dockerfile is the whole of their input
+# and its mtime is an exact signal. A leaf that also bakes binaries out of the tools
+# builder has more inputs than this sees, so the check is a lower bound there: it
+# never holds back a rebuild that is due, it can only miss one. A fresh checkout
+# stamps every file with the checkout time and so rebuilds once, which is the safe
+# direction to be wrong in.
+parent_is_stale() {
+	local image="$1" dockerfile="$2" built changed
+	built="$("$DOCKER" image inspect --format '{{.Created}}' "$image" 2>/dev/null)" || return 1
+	built="$(date -d "${built}" +%s 2>/dev/null)" || return 1
+	changed="$(stat -c %Y "${dockerfile}" 2>/dev/null)" || return 1
+	(( changed > built ))
+}
+
 # Resolve the selection: no args → everything; otherwise exactly the named images.
 # `BUILD_EVERYTHING` records which of the two it was, for the one rule below that turns on
 # the absence of a selection rather than on a name in it (the audio store).
@@ -1201,10 +1229,10 @@ if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
 fi
 
 # Uphold the FROM-base and FROM-base-wasm invariants. Rebuild base (then base-wasm)
-# first if selected; otherwise, if any dependent image was selected but its parent
-# image does not exist yet, build the parent so the `FROM ${BASE_IMAGE}` in those
-# Dockerfiles resolves. An existing parent is reused untouched — select `base` /
-# `base-wasm` explicitly to rebuild it after a change at that layer.
+# first if selected; otherwise, if any dependent image was selected but its parent is
+# missing or out of date, build the parent so the `FROM ${BASE_IMAGE}` in those
+# Dockerfiles resolves to something current. A parent that is present AND current is
+# reused untouched.
 select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
 
 # What the layered rules below actually have to reason about, which is not quite the
@@ -1336,30 +1364,53 @@ fi
 # Layer 1 — the base. `select_needs_base` is true whenever base-wasm or any of its
 # dependents is selected (none of them is `base`/`blender`), so this also covers the
 # base that base-wasm is `FROM`.
+#
+# A parent is rebuilt when it is selected, when it is absent, and when it is out of
+# date with its own Dockerfile — see `parent_is_stale` for why the last of those is
+# not a convenience. Staleness also CASCADES: a base-wasm that is current against its
+# own Dockerfile is still wrong the moment the base underneath it has been rebuilt,
+# because everything the new base carries is missing from it.
+base_rebuilt=""
+base_wasm_rebuilt=""
 if select_has base; then
 	build_base
+	base_rebuilt=1
 elif select_needs_base && ! image_present "${BASE_IMAGE}"; then
 	echo "==> base image ${BASE_IMAGE} not present; building it first (every image but blender is FROM it, directly or via base-wasm)"
 	build_base
+	base_rebuilt=1
+elif select_needs_base && parent_is_stale "${BASE_IMAGE}" "${SCRIPT_DIR}/base/Dockerfile"; then
+	echo "==> base image ${BASE_IMAGE} is older than containers/base/Dockerfile; rebuilding it (every image FROM it would inherit the stale layer)"
+	build_base
+	base_rebuilt=1
 fi
 
 # Layer 2 — base-wasm (now that base is present if it was needed).
 if select_has base-wasm; then
 	build_base_wasm
+	base_wasm_rebuilt=1
 elif select_needs_base_wasm && ! image_present "${BASE_WASM_IMAGE}"; then
 	echo "==> base-wasm image ${BASE_WASM_IMAGE} not present; building it first (full-stack-2d/full-stack-3d/adversarial/performance are FROM it)"
 	build_base_wasm
+	base_wasm_rebuilt=1
+elif select_needs_base_wasm \
+	&& { [[ -n "${base_rebuilt}" ]] || parent_is_stale "${BASE_WASM_IMAGE}" "${SCRIPT_DIR}/base-wasm/Dockerfile"; }; then
+	echo "==> base-wasm image ${BASE_WASM_IMAGE} is out of date with the layer below it; rebuilding it"
+	build_base_wasm
+	base_wasm_rebuilt=1
 fi
 
 # Layer 3 — full-stack-2d (the parent of game-jam). When full-stack-2d itself is
 # selected it is built in the main loop below; but when only game-jam is selected we
 # must build its parent first so the `FROM ${FULL_STACK_2D_IMAGE}` resolves. An
-# existing full-stack-2d is reused untouched — select `full-stack-2d` explicitly to
-# rebuild it.
+# existing full-stack-2d is reused when it is current with the layers it is built on
+# and with its own Dockerfile, and rebuilt when it is not.
 if ! select_has full-stack-2d \
 	&& select_needs_full_stack_2d \
-	&& ! image_present "${FULL_STACK_2D_IMAGE}"; then
-	echo "==> full-stack-2d image ${FULL_STACK_2D_IMAGE} not present; building it first (game-jam is FROM it)"
+	&& { ! image_present "${FULL_STACK_2D_IMAGE}" \
+		|| [[ -n "${base_wasm_rebuilt}" ]] \
+		|| parent_is_stale "${FULL_STACK_2D_IMAGE}" "${SCRIPT_DIR}/full-stack-2d/Dockerfile"; }; then
+	echo "==> full-stack-2d image ${FULL_STACK_2D_IMAGE} is absent or out of date; building it first (game-jam is FROM it)"
 	# full-stack-2d bakes six binaries out of the tooling builder. A game-jam-only
 	# selection did not trigger the layer-0 rule (game-jam inherits its binaries and
 	# needs no tooling of its own), so build the tooling here before its parent.
@@ -1367,15 +1418,26 @@ if ! select_has full-stack-2d \
 	build_full_stack 2d
 fi
 
-# Layer 4 — the parent of every selected `-gg` variant that is still missing. Selecting
-# only a variant must not silently build it `FROM` an image that is not there; an
-# existing parent is reused untouched, exactly as full-stack-2d is above. The
+# Layer 4 — the parent of every selected `-gg` variant that is missing or out of date.
+# Selecting only a variant must not silently build it `FROM` an image that is not
+# there, nor onto one built before the layers under it changed — a variant is one COPY
+# onto its parent, so whatever the parent is missing, the variant is missing too. An
+# existing, current parent is reused untouched, exactly as full-stack-2d is above. The
 # `image_present` re-check is because the layers above may have just built it.
 for name in "${gg_parents[@]}"; do
-	image_present "${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}" && continue
-	echo "==> ${name} image not present; building it first (${name}-gg is FROM it)"
+	parent_ref="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	if ! image_present "${parent_ref}"; then
+		echo "==> ${name} image not present; building it first (${name}-gg is FROM it)"
+	elif [[ -n "${base_rebuilt}" || -n "${base_wasm_rebuilt}" ]]; then
+		echo "==> ${name} image is older than the base layers just rebuilt; rebuilding it (${name}-gg is FROM it)"
+	elif parent_is_stale "${parent_ref}" "${SCRIPT_DIR}/${name}/Dockerfile"; then
+		echo "==> ${name} image is older than containers/${name}/Dockerfile; rebuilding it (${name}-gg is FROM it)"
+	else
+		continue
+	fi
 	build_one "${name}"
 done
+unset parent_ref
 
 # Build each selected image. The base layers and the tooling builder are already
 # handled above. The canonical order in image-names.sh places full-stack-2d before
