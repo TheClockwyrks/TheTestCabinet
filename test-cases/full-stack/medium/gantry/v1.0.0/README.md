@@ -35,10 +35,7 @@ simulation carried across a large surface rather than of any single hard idea.
   against textbook values.
 - **The one dynamic element is specified to the tick.** The hanging load is a
   constraint-projected pendulum with an exact per-tick update
-  (`specs/rigging.md`), so anti-sway is real gameplay and runs replay
-  identically.
-- **No randomness anywhere.** The same structure and the same tape give the same
-  run, tick for tick.
+  (`specs/rigging.md`), so anti-sway is real gameplay.
 - **Speed is bought with steel.** Faster slew means centrifugal load and wider
   swing, and a score is a cost and a time — cost first, time the tie-break — so
   a build that gets the statics right and the choreography wrong is visibly
@@ -139,13 +136,13 @@ for every one. `experimental` is off.
 What is committed: all thirteen specs (the five that branch three ways included),
 all three starter workspaces, the prompt, `asset_dimension = "3d"` so a run
 schedules onto the 3D full-stack image, the four scoring domains, a checklist of
-820 validator-rated points across 14 categories, a validator suite per engine, a
+818 validator-rated points across 14 categories, a validator suite per engine, a
 reference implementation per engine, the produced asset set with the scripts
 that made it, baseline media per engine, and a showcase.
 
 ### The validator suites, and where they differ
 
-The three harnesses export **one async API**, so 734 of the 820 suite files are
+The three harnesses export **one async API**, so 732 of the 818 suite files are
 byte-identical across the three engine directories and the same point is decided
 by the same file whichever runtime a run selected. The 80 forks are where the
 scene is genuinely read differently, plus four that are per-engine by the
@@ -178,7 +175,7 @@ and the six it carries alone are decided there only.
 ### What a suite run costs
 
 The `none` project is the largest validator suite in the repository and the only
-one that pays a browser crossing per tick: 820 suites, each loading the built
+one that pays a browser crossing per tick: 818 suites, each loading the built
 site into its own page. It is configured at eight workers rather than the shared
 default's four because the whole run must fit inside the platform's
 twenty-minute cap on a validator suite (`VITEST_TIMEOUT` in

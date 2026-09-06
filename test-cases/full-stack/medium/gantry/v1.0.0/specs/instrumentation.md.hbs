@@ -80,13 +80,14 @@ The surface is inert during normal play, doing nothing until something calls
 it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic. Gantry uses no
-randomness anywhere, and a run advances only on its fixed tick, so the same
-structure and the same tape produce the same run, tick for tick, every time.
-Two more properties make it driveable from code:
+The simulation advances on its fixed tick, apart from its drawing, which is
+what lets the surface drive it from code. Three properties make it driveable:
 
+- Fixed timestep. Game state advances from the elapsed simulation time it is
+  handed, a tick at a time, so a tick means the same thing whatever the frame
+  rate and whatever the watch speed.
 - Render-free core. Game state advances from ticks and input alone,
   independent of the canvas, of the renderer, and of wall-clock time. The
   dependency runs one way: the simulation reads nothing from the renderer, and
@@ -186,7 +187,7 @@ the input delivered since the last frame is read, the camera moves against that
 elapsed time, and the scene is drawn.
 
 Advancing while the game is still stepping automatically adds to what the wall
-clock is already doing, so a scenario that must be reproducible calls
+clock is already doing, so a scenario that counts ticks calls
 `setAutoStep(false)` first.
 
 {{/if}}

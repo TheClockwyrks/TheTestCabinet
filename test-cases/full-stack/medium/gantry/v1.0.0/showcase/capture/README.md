@@ -114,9 +114,9 @@ every swing, every member color and the clear at the end are the simulation's.
 
 ## The two passes
 
-The simulation is deterministic: the same crane and the same tape replay
-identically, tick for tick, at any frame rate. So the take is played twice, and
-both playings are the same take.
+The take is the crane and the tape, and the run advances on its fixed tick at
+any frame rate. So the take is played twice, once on the wall clock and once
+off it, and the stills are taken at the ticks the video's camera track marks.
 
 - **Pass 1, the video.** Wall-clock play with Playwright's recorder on. The
   camera pose is sampled as the run goes, so a still can be framed exactly as

@@ -59,9 +59,9 @@
 //
 // ─── THE TWO PASSES ─────────────────────────────────────────────────────────
 //
-// The run is deterministic — the same crane and the same tape replay identically
-// tick for tick — so the take is played twice and both playings are the same
-// take:
+// The take is the crane and the tape, and the run advances on its fixed tick at
+// any frame rate, so the take is played twice, once on the wall clock and once
+// off it:
 //
 //   Pass 1 (video)  Wall-clock play with Playwright's recorder on. The camera
 //                   pose is sampled as it goes, so a still can be framed exactly
@@ -802,8 +802,8 @@ async function stillsPass(browser, url, d, track) {
 
   if (QA) await contactSheet(page, rows.length);
 
-  // One replay, walked forward through the wanted ticks in order: the run is
-  // deterministic, so tick `n` of this playing is tick `n` of the video's.
+  // One playing off the wall clock, walked forward through the wanted ticks in
+  // order, each still taken at the tick the video's camera track marks.
   await restartRun(page);
   for (const [name, tick] of wanted) {
     await advanceTo(page, tick);
