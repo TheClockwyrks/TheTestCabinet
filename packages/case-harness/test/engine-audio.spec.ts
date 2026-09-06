@@ -18,6 +18,9 @@ import {
   inertAudioNode,
   installAudioContext,
   silentAudioBuffer,
+  tolerantAudioBuffer,
+  UNREADABLE_DURATION_S,
+  UNREADABLE_SAMPLE_RATE,
   wavAudioBuffer,
   type AudioBufferLike,
 } from "../src/engine/audio";
@@ -464,4 +467,61 @@ it("leaves a host that really has Web Audio alone, unless told to replace it", (
   expect(bag.AudioContext).not.toBe(real);
   replaced();
   expect(bag.AudioContext).toBe(real);
+});
+
+/* ---- the decode that never throws ------------------------------------------ */
+
+/**
+ * WHY THIS HALF EXISTS, AND WHY IT IS PINNED HERE.
+ *
+ * `wavAudioBuffer` and `silentAudioBuffer` throw on a file they cannot read.
+ * Under an engine that is not one lost point: `specs/assets.md` has a build bind
+ * its cues from `initialize`, so a rejected decode leaves the cue undeclared and
+ * the build's own `play` throws from inside `update` — one malformed produced
+ * file and the project falls over entirely. Two cases adopted the throwing half
+ * during their migration and had to put the lenient reading back.
+ *
+ * No reference carries a malformed file, so no verdict digest can show this. The
+ * only place the difference is visible is here.
+ */
+it("the tolerant buffer answers silence for a file nothing could read", () => {
+  const notAWave = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  expect(() => silentAudioBuffer(notAWave)).toThrow(/not a RIFF\/WAVE file/);
+
+  const buffer = tolerantAudioBuffer(notAWave);
+  expect(buffer.duration).toBe(UNREADABLE_DURATION_S);
+  expect(buffer.sampleRate).toBe(UNREADABLE_SAMPLE_RATE);
+  expect(buffer.numberOfChannels).toBe(1);
+  expect(buffer.length).toBe(UNREADABLE_SAMPLE_RATE * UNREADABLE_DURATION_S);
+  // Silence, so nothing can hear what was not read.
+  expect(buffer.getChannelData(0).some((sample) => sample !== 0)).toBe(false);
+});
+
+it("the tolerant buffer reads a file it CAN read exactly as the strict one does", () => {
+  const lenient = tolerantAudioBuffer(TONE);
+  const strict = silentAudioBuffer(TONE);
+  expect(lenient.sampleRate).toBe(strict.sampleRate);
+  expect(lenient.numberOfChannels).toBe(strict.numberOfChannels);
+  expect(lenient.length).toBe(strict.length);
+  expect(lenient.duration).toBe(strict.duration);
+});
+
+it('`samples: "decoded"` hands back the real samples, and still never throws', () => {
+  const decoded = tolerantAudioBuffer(TONE, { samples: "decoded" });
+  expect(decoded.getChannelData(0)).toEqual(
+    wavAudioBuffer(TONE).getChannelData(0),
+  );
+  // The same option on a file that cannot be read still answers silence.
+  const unreadable = tolerantAudioBuffer(new Uint8Array([9, 9, 9, 9]), {
+    samples: "decoded",
+  });
+  expect(unreadable.duration).toBe(UNREADABLE_DURATION_S);
+});
+
+it("a case's own fallback figures are what an unreadable file reports", () => {
+  const buffer = tolerantAudioBuffer(new Uint8Array([0]), {
+    defaults: { sampleRate: 22050, channels: 2, bitsPerSample: 16 },
+  });
+  expect(buffer.sampleRate).toBe(22050);
+  expect(buffer.numberOfChannels).toBe(2);
 });

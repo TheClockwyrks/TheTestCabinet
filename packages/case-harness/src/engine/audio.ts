@@ -353,7 +353,21 @@ function copiers(
   };
 }
 
-/** A decoded `.wav` as the buffer an engine's loader is handed, WITH its samples. */
+/**
+ * A decoded `.wav` as the buffer an engine's loader is handed, WITH its samples.
+ *
+ * THIS THROWS ON A FILE IT CANNOT READ, AND UNDER AN ENGINE THAT COSTS A BUILD
+ * EVERY POINT IN THE PROJECT. `specs/assets.md` has a build bind its cues from
+ * `initialize`, so a decode that rejects leaves the cue undeclared and the
+ * build's own `play` throws from inside `update` — one malformed produced file
+ * and the whole project falls over rather than the one point that file belongs
+ * to. Every stub this was extracted from returned silence instead, and two cases
+ * had to put that back after adopting this. A REFERENCE CANNOT SHOW YOU THIS:
+ * nothing in a committed reference is malformed, so the verdicts do not move.
+ *
+ * Bind this only where a build that ships an unreadable cue SHOULD lose the
+ * project. Otherwise bind {@link tolerantAudioBuffer}.
+ */
 export function wavAudioBuffer(
   bytes: Uint8Array,
   options: WavDecodeOptions = {},
@@ -378,6 +392,10 @@ export function wavAudioBuffer(
  * One shared array behind every channel, because nothing may hear it and nothing
  * may write to it: an engine that read two channels and compared them would find
  * them identical, which is true of silence.
+ *
+ * THIS THROWS ON A FILE IT CANNOT READ, with the consequence
+ * {@link wavAudioBuffer} states in full. Bind {@link tolerantAudioBuffer} where a
+ * malformed produced file should cost the point it belongs to and nothing else.
  */
 export function silentAudioBuffer(
   bytes: Uint8Array,
@@ -660,4 +678,67 @@ export function installAudioContext(options: AudioHostOptions): () => void {
       installed.restore();
     }
   };
+}
+
+/**
+ * The duration a file nothing could read is reported as, in seconds.
+ *
+ * A figure rather than zero, because a zero-length buffer is a shape some
+ * engines refuse outright, and refusing is the failure this exists to avoid. One
+ * second is what the stubs this replaces answered.
+ */
+export const UNREADABLE_DURATION_S = 1;
+
+/**
+ * The rate an unreadable file is reported at, when the case named none.
+ *
+ * The figure orrery and volute fell back on, rather than the 48 kHz the context
+ * stub reports: this is what a FILE is said to carry, and those two are the
+ * harnesses that had a reading for it.
+ */
+export const UNREADABLE_SAMPLE_RATE = 44100;
+
+/**
+ * A buffer for a produced `.wav`, WHICH NEVER THROWS.
+ *
+ * The half of the decode disagreement that keeps a malformed file costing the
+ * point it belongs to rather than the project. A file this cannot parse comes
+ * back as one second of silence at the fallback rate, exactly as the hand-rolled
+ * stubs in orrery, volute, facet and gantry all did, so the build's `initialize`
+ * completes, its cue binds, its `play` does nothing audible, and the case's own
+ * asset point is what decides whether the file was acceptable.
+ *
+ * WHICH HALF A CASE BINDS IS A REAL CHOICE, not a default this package may make.
+ * A case whose specification says an unreadable cue is a failed build wants
+ * {@link wavAudioBuffer} or {@link silentAudioBuffer} and their exception; a case
+ * that grades the file through a validator of its own wants this. The two were
+ * measured to disagree only on files no reference carries, which is why the
+ * disagreement went unnoticed until a migration adopted the throwing half.
+ *
+ * `samples` chooses what a READABLE file answers: `"silence"` reads its header
+ * and hands back silence of the right length ({@link silentAudioBuffer}), and
+ * `"decoded"` hands back its real samples ({@link wavAudioBuffer}).
+ */
+export function tolerantAudioBuffer(
+  bytes: Uint8Array,
+  options: WavDecodeOptions & { readonly samples?: "silence" | "decoded" } = {},
+): AudioBufferLike {
+  const build =
+    options.samples === "decoded" ? wavAudioBuffer : silentAudioBuffer;
+  try {
+    return build(bytes, options);
+  } catch {
+    const sampleRate = options.defaults?.sampleRate ?? UNREADABLE_SAMPLE_RATE;
+    const length = Math.round(sampleRate * UNREADABLE_DURATION_S);
+    const silence = new Float32Array(length);
+    const getChannelData = (): Float32Array => silence;
+    return {
+      sampleRate,
+      numberOfChannels: options.defaults?.channels ?? 1,
+      length,
+      duration: UNREADABLE_DURATION_S,
+      getChannelData,
+      ...copiers(getChannelData),
+    };
+  }
 }

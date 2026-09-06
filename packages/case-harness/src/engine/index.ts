@@ -78,6 +78,9 @@ export * from "./driver";
 /* The canvas the engine draws through, and the recorder over it. */
 export * from "./canvas";
 
+/* A bound on that recorder's log, for a case whose sweeps outrun its readings. */
+export * from "./draw-log";
+
 /* Serving the build's own produced files to the engine's loader. */
 export * from "./assets";
 
