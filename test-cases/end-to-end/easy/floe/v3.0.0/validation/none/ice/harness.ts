@@ -70,19 +70,6 @@ export async function layOutLevel(
   return laid;
 }
 
-/**
- * Lay the strait out for `level` once more, on a fresh draw of the sixteen
- * phases, and hand back the level exactly as it was laid.
- *
- * `setLevel` re-lays every lane (`specs/instrumentation.md`), and where each
- * lane's pattern sits is drawn when a level is laid out, so each call is one
- * more draw of the band. Nothing else is touched, and no frame runs.
- */
-export async function relayLevel(h: Harness, level = 1): Promise<FloeSnapshot> {
-  await h.debug.setLevel(level);
-  return h.snapshot();
-}
-
 /** Every vehicle on an ice row, ordered along the row by its left edge. */
 export function vehiclesAlong(snapshot: FloeSnapshot, row: number): ItemView[] {
   return snapshot.vehicles

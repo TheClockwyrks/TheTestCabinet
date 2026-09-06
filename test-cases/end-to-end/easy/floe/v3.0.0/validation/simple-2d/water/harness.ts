@@ -79,19 +79,6 @@ export async function layOutLevel(
 }
 
 /**
- * Lay the strait out for `level` once more, on a fresh draw of the sixteen
- * phases, and hand back the level exactly as it was laid.
- *
- * `setLevel` re-lays every lane (specs/instrumentation.md), and where each
- * lane's pattern sits is drawn when a level is laid out, so each call is one
- * more draw of the band. Nothing else is touched, and no frame runs.
- */
-export function relayLevel(h: Harness, level = 1): FloeSnapshot {
-  h.debug.setLevel(level);
-  return h.snapshot();
-}
-
-/**
  * The floe on a row whose left edge sits nearest the middle of the strait.
  *
  * The one a check follows when it means to measure a lane's own motion over a

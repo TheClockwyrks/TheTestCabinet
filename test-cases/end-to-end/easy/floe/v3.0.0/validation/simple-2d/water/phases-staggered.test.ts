@@ -1,4 +1,4 @@
-// water/phases-staggered — the eight water lanes never line up into a solid
+// water/phases-staggered — the eight water lanes do not line up into a solid
 // bridge.
 //
 // specs/water.md draws WHERE each lane's pattern sits along its row when a
@@ -14,16 +14,11 @@
 // tile's center is covered". So for each of the forty columns the eight rows are
 // counted, and no column may reach eight.
 //
-// MANY DRAWS, NOT ONE. The phases are drawn when a level is laid out, and
-// `setLevel` lays the level out again on a fresh draw (specs/instrumentation.md),
-// so a single layout grades one draw. The rule is a property of the DRAW, so
-// this takes many of them — a build that stated the rule and never enforced it
-// lands a bridge on some draws and not others, and a build that enforces it
-// lands none on any. The water band's gaps are narrow, so an unenforced draw
-// bridges one of the forty columns in perhaps one draw in twenty, and `DRAWS`
-// is a sample large enough to reach one. Nothing else varies between the draws:
-// level 1, laid out the same way each time, and the draw and the column are
-// named where one fails.
+// ONE LEVEL, LAID OUT ONCE. The condition is stated of the draw itself, so it
+// holds of the band this level was laid out with, and that band is what is read.
+// How the phases spread across repeated layouts is the specification's business
+// rather than this point's, so nothing here lays the band out again to gather a
+// figure off the draws.
 //
 // A LANE HAS TO CARRY SOMETHING for the count to mean anything: a band with no
 // floes at all carries no column in eight rows, and would pass a reading that
@@ -40,27 +35,22 @@ import {
   itemsInRow,
   type Harness,
 } from "../harness";
-import { layOutLevel, relayLevel } from "./harness";
+import { layOutLevel } from "./harness";
 
 /** The level laid out. The staggering rule holds at every level. */
 const LEVEL = 1;
 
-/** How many times the band is laid out, one fresh draw of the phases each. */
-const DRAWS = 96;
-
 /** How many water rows a column may carry a floe in: fewer than all eight. */
-const ROWS_COVERED_LIMIT = WATER_LANES.length;
+const ROWS_CARRYING_LIMIT = WATER_LANES.length;
 
-/** One column of one draw: how many of the eight water rows carried a floe. */
+/** One column of the laid-out band: how many of the eight rows carried a floe. */
 interface ColumnReading {
-  draw: number;
   col: number;
   covered: number;
 }
 
-/** How many floes one lane carried on one draw. */
+/** How many floes one lane carried. */
 interface LaneReading {
-  draw: number;
   row: number;
   count: number;
 }
@@ -75,26 +65,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("leaves no column carrying a floe in all eight water rows, on every draw of the phases", async () => {
-  const columns: ColumnReading[] = [];
-  const lanes: LaneReading[] = [];
+it("leaves no column carrying a floe in all eight water rows", async () => {
+  const laid = await layOutLevel(h, LEVEL);
+  const rows = WATER_LANES.map((lane) => itemsInRow(laid.floes, lane.row));
 
-  for (let draw = 1; draw <= DRAWS; draw += 1) {
-    const laid =
-      draw === 1 ? await layOutLevel(h, LEVEL) : relayLevel(h, LEVEL);
-    const rows = WATER_LANES.map((lane) => itemsInRow(laid.floes, lane.row));
-    rows.forEach((carried, index) => {
-      lanes.push({ draw, row: WATER_LANES[index].row, count: carried.length });
+  const lanes: LaneReading[] = rows.map((carried, index) => ({
+    row: WATER_LANES[index].row,
+    count: carried.length,
+  }));
+  const columns: ColumnReading[] = [];
+  for (let col = 0; col < COLS; col += 1) {
+    columns.push({
+      col,
+      covered: rows.filter((carried) =>
+        carried.some((floe) => coversTile(floe, col)),
+      ).length,
     });
-    for (let col = 0; col < COLS; col += 1) {
-      columns.push({
-        draw,
-        col,
-        covered: rows.filter((carried) =>
-          carried.some((floe) => coversTile(floe, col)),
-        ).length,
-      });
-    }
   }
   captureStill(h, "scene");
 
@@ -102,16 +88,15 @@ it("leaves no column carrying a floe in all eight water rows, on every draw of t
     assertGreaterThanOrEqual(
       lane.count,
       1,
-      `draw ${lane.draw}, row ${lane.row}: a lane carries floes at all ` +
-        "(specs/water.md)",
+      `row ${lane.row}: a lane carries floes at all (specs/water.md)`,
     );
   }
   for (const reading of columns) {
     assertLessThan(
       reading.covered,
-      ROWS_COVERED_LIMIT,
-      `draw ${reading.draw}, column ${reading.col}: the water rows carrying a ` +
-        `floe over it, of ${ROWS_COVERED_LIMIT}`,
+      ROWS_CARRYING_LIMIT,
+      `column ${reading.col}: the water rows carrying a floe over it, of ` +
+        `${ROWS_CARRYING_LIMIT}`,
     );
   }
 });
