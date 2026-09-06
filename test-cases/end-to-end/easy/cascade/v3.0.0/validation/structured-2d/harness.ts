@@ -515,8 +515,6 @@ interface WorldModel {
    * the frame the pose produced and by nothing before it.
    */
   drawFrame(): Promise<DrawCall[]>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 }
 
 /**
@@ -614,13 +612,6 @@ const kit = createEngineCaseHarness<
       base.calls.length = 0;
       await base.advance(1);
       return [...base.calls];
-    },
-    async runFor(ms: number) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
     },
   }),
 });

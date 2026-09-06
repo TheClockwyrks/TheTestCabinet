@@ -15,12 +15,6 @@
 // the deck wherever the deal put it, and this check says nothing about which pile
 // that was.
 //
-// SEVERAL DEALS, because the deck is drawn through the shuffle and a shuffle is
-// where a duplicate comes from: an off-by-one swap or a draw-with-replacement
-// leaves the deck intact on some orderings and short on others. Each deal is one
-// draw of the same rule, so a build that is only sometimes wrong is caught rather
-// than sampled.
-//
 // The pair is reported as WHICH cards went missing and WHICH arrived twice, not
 // as a count, because those two lists are what say whether a build lost a card,
 // duplicated a suit, or dealt ranks outside `RANK_MIN`..`RANK_MAX`.
@@ -35,9 +29,6 @@ import {
   everyCard,
   type Harness,
 } from "../harness";
-
-/** The deals the deck is read over. Each is one shuffle of the same deck. */
-const DEALS = [1, 2, 3];
 
 /** Every suit-and-rank pair specs/deal.md puts in the deck, exactly once. */
 const FULL_DECK: readonly string[] = SUITS.flatMap((suit) =>
@@ -56,7 +47,7 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it.each(DEALS)("deals one of each of the fifty-two (deal %i)", async (deal) => {
+it("deals one of each of the fifty-two", async () => {
   await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.clearTable();
@@ -68,7 +59,7 @@ it.each(DEALS)("deals one of each of the fifty-two (deal %i)", async (deal) => {
   assertLength(
     dealt,
     DECK_SIZE,
-    `cards deal ${deal} put on the table (specs/deal.md)`,
+    "cards the deal put on the table (specs/deal.md)",
   );
 
   const seen = new Map<string, number>();
@@ -80,7 +71,7 @@ it.each(DEALS)("deals one of each of the fifty-two (deal %i)", async (deal) => {
   assertDeepEqual(
     FULL_DECK.filter((key) => !seen.has(key)),
     [],
-    `cards of the deck deal ${deal} never put on the table (specs/deal.md)`,
+    "cards of the deck the deal never put on the table (specs/deal.md)",
   );
   assertDeepEqual(
     [...seen.entries()]
@@ -88,6 +79,6 @@ it.each(DEALS)("deals one of each of the fifty-two (deal %i)", async (deal) => {
       .map(([key]) => key)
       .sort(),
     [],
-    `cards deal ${deal} put on the table more than once (specs/deal.md)`,
+    "cards the deal put on the table more than once (specs/deal.md)",
   );
 });

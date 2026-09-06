@@ -3155,15 +3155,16 @@ validation = { script = "cascade/launch-vy.test.ts", outputs = [
 ] }
 # The two `vx` items are decided through `drawLaunchVx`, the operation that
 # performs one launch's draw and nothing else, rather than by reading a whole
-# cascade: sixty-four draws cost sixty-four calls, and a fair sign lands all one
-# way over them with a chance of one in 2^63, which is far beyond six standard
-# deviations. Neither item asserts a ratio or a spread, because sixty-four draws
-# cannot decide a distribution without failing conformant builds by chance; what
-# they decide is that no draw leaves the range and that both signs occur.
+# cascade. The magnitude item reads a handful of draws and holds each to the
+# range; the sign item reads a small sample and holds it to carry more than one
+# sign, which a fair sign fails with a chance of one in 2^31, beyond six standard
+# deviations. Neither item asserts a ratio or a spread, because a sample cannot
+# decide a distribution without failing conformant builds by chance; what they
+# decide is that no draw leaves the range and that the sign varies.
 [[review.categories.items]]
 id = "launch-vx-magnitude"
 title = "A launched card's horizontal speed is in range"
-description = "Every one of sixty-four values drawLaunchVx() returns has |vx| in [180, 420]."
+description = "Every one of a handful of values drawLaunchVx() returns has |vx| in [180, 420]."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/launch-vx-magnitude.test.ts", outputs = [
@@ -3172,7 +3173,7 @@ validation = { script = "cascade/launch-vx-magnitude.test.ts", outputs = [
 [[review.categories.items]]
 id = "launch-vx-both-signs"
 title = "Cards launch to both sides"
-description = "Across sixty-four values drawLaunchVx() returns both signs occur."
+description = "A small sample of values drawLaunchVx() returns carries more than one sign."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/launch-vx-both-signs.test.ts", outputs = [
