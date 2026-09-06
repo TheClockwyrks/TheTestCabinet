@@ -9,9 +9,9 @@
 // THE RULE IS A REQUIREMENT RATHER THAN A CONVENIENCE. A player pressing two
 // directions inside one tick is a rare thing to do on purpose, which is why this
 // item's cap is the softest one — the standard flow of play is untouched by the
-// ordering. What the rule buys is a build that resolves the tie the same way
-// every time instead of by whichever branch its input read happens to run last,
-// and that is a property a validator can decide and a reviewer cannot.
+// ordering. What the rule buys is a stated order for the tie instead of
+// whichever branch its input read happens to run last, and that is a property a
+// validator can decide and a reviewer cannot.
 //
 // THE START IS THE MIDDLE ENTRY, so both readings are available: up reaches the
 // first entry and down would reach the last, and neither is a wrap. A build that

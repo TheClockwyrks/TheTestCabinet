@@ -2545,8 +2545,8 @@ failure_cap = "great"
 # before confirm". A tick is 1/120 s, so a player driving a menu never puts two
 # edges inside one, which is why this and `movement-beats-confirm` cap at `great`:
 # the standard flow of play is untouched by the ordering, and what the rule buys
-# is a build that resolves the tie the same way every time instead of by whichever
-# branch its input read happens to run last.
+# is a stated order for the tie instead of whichever branch its input read
+# happens to run last.
 validation = { script = "controls/up-beats-down.test.ts", outputs = [
   { id = "menu", name = "The pause menu after an up edge and a down edge in one tick", kind = "image" },
 ] }

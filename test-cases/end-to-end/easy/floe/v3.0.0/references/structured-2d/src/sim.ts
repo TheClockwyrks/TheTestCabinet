@@ -3,9 +3,8 @@
 // One tick is the whole clock (specs/overview.md), so everything that happens in
 // Floe happens in `stepTick` below, in the order this file fixes: the screen and
 // its menu first, then the strait, then the crossing on it. Nothing here draws
-// and nothing here reads the wall clock, which is what lets the same starting
-// state driven by the same inputs over the same elapsed game time reach the same
-// state every time.
+// and nothing here reads the wall clock: the core is render-free, and a tick
+// means the same thing whatever the frame rate.
 //
 // The authoritative game is the world the engine owns (`specs/state.md`): the
 // run's figures on `FloeState`, the strait's bodies as tagged actors. This file

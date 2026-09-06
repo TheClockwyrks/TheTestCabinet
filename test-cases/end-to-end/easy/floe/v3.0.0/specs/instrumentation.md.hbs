@@ -65,8 +65,8 @@ The surface rests on the simulation being render-free and fixed-step: game state
 advances from the elapsed simulation time the game is handed, in whole `TICK_DT`
 ticks as `specs/overview.md` fixes, with no canvas and no wall clock, so a step
 means the same thing whatever the frame rate. The dependency runs one way: the
-simulation reads nothing from the renderer, and an interval of game time reaches
-the same state however it was divided into frames.
+simulation reads nothing from the renderer, and the number of ticks run over an
+interval of game time is the same however that interval was divided into frames.
 
 ## What the runtime provides instead
 

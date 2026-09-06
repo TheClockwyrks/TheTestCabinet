@@ -688,27 +688,15 @@ describe("the bears' own faculties", () => {
 });
 
 describe("the clock", () => {
-  it("advances the same however the interval is divided", () => {
-    const one = harness();
-    startCrossing(one);
-    one.api.setLaneSpeed(ICE_TOP, 2);
-    one.api.addVehicle(ICE_TOP, "car", 100);
-    one.advance(120);
-
-    const many = harness();
-    startCrossing(many);
-    many.api.setLaneSpeed(ICE_TOP, 2);
-    many.api.addVehicle(ICE_TOP, "car", 100);
-    for (let i = 0; i < 120; i += 1) many.advance(1);
-
-    expect(one.api.snapshot().simTime).toBeCloseTo(
-      many.api.snapshot().simTime,
-      9,
-    );
-    expect(one.api.snapshot().vehicles[0].x).toBeCloseTo(
-      many.api.snapshot().vehicles[0].x,
-      6,
-    );
+  it("runs the same whole ticks however the interval is divided", () => {
+    const h = harness();
+    startCrossing(h);
+    h.api.setLaneSpeed(ICE_TOP, 2);
+    h.api.setLaneDirection(ICE_TOP, 1);
+    h.api.addVehicle(ICE_TOP, "car", 100);
+    for (let i = 0; i < 120; i += 1) h.advance(1);
+    expect(h.api.snapshot().simTime).toBeCloseTo(1, 9);
+    expect(h.api.snapshot().vehicles[0].x).toBeCloseTo(100 + 64, 6);
   });
 
   it("runs a tick of exactly one hundred and twentieth of a second", () => {

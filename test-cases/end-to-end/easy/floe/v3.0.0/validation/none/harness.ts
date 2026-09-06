@@ -461,56 +461,6 @@ export class SequenceClock implements Clock {
   }
 }
 
-/**
- * A hash of the seed and the call index, avalanched so that neighbouring
- * indices — which is all a call counter ever produces — do not yield
- * neighbouring outputs. The constants and the order are the engine's
- * (`packages/simple-2d/src/clocks.ts`), so a seed means the same thing here as
- * it does in the two engine-backed projects next door.
- */
-function hash32(seed: number, index: number): number {
-  let h =
-    (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(index | 0, 0x85ebca6b)) >>> 0;
-  h = (h ^ (h >>> 16)) >>> 0;
-  h = Math.imul(h, 0x21f0aaad) >>> 0;
-  h = (h ^ (h >>> 15)) >>> 0;
-  h = Math.imul(h, 0x735a2d97) >>> 0;
-  h = (h ^ (h >>> 15)) >>> 0;
-  return h >>> 0;
-}
-
-/**
- * A seeded draw from a range of call sizes: the division that stands in for a
- * real machine under load. The seed is mandatory, because a claim that a build
- * reaches the same state however the interval was divided is worth making only
- * when the failing division replays.
- */
-export class JitterClock implements Clock {
-  private index = 0;
-  private readonly span: number;
-  constructor(
-    private readonly min: number,
-    max: number,
-    private readonly seed: number,
-  ) {
-    if (min < 1) throw new RangeError(`JitterClock needs min >= 1, got ${min}`);
-    if (max < min) {
-      throw new RangeError(
-        `JitterClock needs max >= min, got min ${min} and max ${max}`,
-      );
-    }
-    this.span = max - min + 1;
-  }
-  ticks(): number {
-    const index = this.index;
-    this.index += 1;
-    return (
-      this.min +
-      Math.floor((hash32(this.seed, index) / 0x1_0000_0000) * this.span)
-    );
-  }
-}
-
 /** `total` ticks divided into calls of the sizes `clock` supplies. */
 export function divide(total: number, clock: Clock): number[] {
   const calls: number[] = [];

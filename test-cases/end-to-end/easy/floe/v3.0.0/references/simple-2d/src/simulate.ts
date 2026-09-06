@@ -23,9 +23,8 @@
 //      hazards, and the crossing timer. Every one of those but the timer is the
 //      critter's own, so all of them wait on a critter that is in play.
 //
-// NOTHING HERE READS THE RENDERER OR THE WALL CLOCK, which is what makes the same
-// starting state driven by the same calls over the same elapsed game time reach the
-// same state every time.
+// NOTHING HERE READS THE RENDERER OR THE WALL CLOCK: the core is render-free, and
+// a tick means the same thing whatever the frame rate.
 
 import { CUES, TICK_DT, ROW_BAYS, SCORE_ROW } from "./constants";
 import { carryCritter, critterRow, footingOf, hop, sweptOff } from "./critter";

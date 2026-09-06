@@ -64,9 +64,9 @@ const RUN_SECONDS = 10;
 /**
  * Ticks per frame while those seconds run.
  *
- * The simulation advances by the whole `TICK_DT` ticks a frame's delta completes
- * and reaches the same state however an interval was divided into frames
- * (specs/overview.md), so four ticks a frame runs exactly the same ten seconds
+ * The simulation advances by the whole `TICK_DT` ticks a frame's delta completes,
+ * and the number of ticks run over an interval is the same however it was
+ * divided into frames (specs/overview.md), so four ticks a frame runs the same ten seconds
  * as one tick a frame. It is four rather than one so the whole ten seconds fits
  * a recording at its full frame rate, and it still samples the footing every
  * thirtieth of a second.

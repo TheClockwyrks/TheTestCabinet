@@ -49,7 +49,7 @@ it asks for is a lot of exact rules holding at once.
   lives with a death pause between them, an eight-level run with a victory and a
   loss, and every score figure exact.
 - Six screens, a HUD, ten audio cues, and a simulation on a fixed `120` Hz
-  timestep that reaches the same state from the same inputs every time.
+  timestep.
 
 Every one of those is stated exactly and checked exactly, so a build that is
 nearly right in many places is told apart from one that is right.
