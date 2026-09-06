@@ -19,7 +19,7 @@
 // this decides is the readout, not the round.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLessThan } from "../assert";
+import { assertEqual, assertLessThan } from "../assert";
 import {
   HOME_HEAD,
   captureStill,
@@ -28,7 +28,8 @@ import {
   poseScene,
   type Harness,
 } from "../harness";
-import { bandBottom, runsOf } from "./band";
+import { drewText } from "../case-harness/text";
+import { bandBottom, linesOf } from "./band";
 
 /** `MODE_LABEL` for this mode, as specs/mode.md tables it. */
 const LABEL = "CLASSIC";
@@ -54,9 +55,8 @@ it("draws the mode's label in the HUD band of a live round", async () => {
   const calls = await h.frameCalls();
   captureStill(h, "mode");
 
-  const runs = runsOf(calls, LABEL);
-  assertGreaterThan(runs.length, 0, `the HUD drawing ${LABEL}`);
-  for (const run of runs) {
+  assertEqual(drewText(calls, LABEL), true, `the HUD drawing ${LABEL}`);
+  for (const run of linesOf(calls, LABEL)) {
     assertLessThan(
       run.y,
       bandBottom(h),

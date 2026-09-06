@@ -111,12 +111,7 @@ import {
   type Matrix,
 } from "./case-harness/matrix";
 import type { Point } from "./case-harness/point";
-import {
-  drawnText,
-  drewText,
-  textDraws,
-  type TextDraw,
-} from "./case-harness/text";
+import { drawnText, textDraws, type TextDraw } from "./case-harness/text";
 import {
   BOARD_X,
   BOARD_Y,
@@ -146,7 +141,7 @@ export type { Cell, CoilSnapshot, Dir, Screen };
 
 /* The readings this project takes straight off the package, under its names. */
 export type { DrawCall, Point, Rgb, TextDraw };
-export { callsTo, colorDistance, drawnText, drewText, setsOf, textDraws };
+export { callsTo, colorDistance, drawnText, setsOf, textDraws };
 
 /** The case's surface, exactly as `surface.ts` specifies it. */
 export type CoilSurface = CoilDebugApi;

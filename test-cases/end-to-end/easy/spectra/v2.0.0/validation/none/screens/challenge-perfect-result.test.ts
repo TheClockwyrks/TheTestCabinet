@@ -31,10 +31,10 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   startPosed,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 
 /** The stage posed: the first challenge stage (specs/stages.md). */
 const CHALLENGE_STAGE = 3;

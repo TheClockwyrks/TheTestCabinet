@@ -34,12 +34,8 @@ import {
   isChallengeStage,
 } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  drewText,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewText } from "../case-harness/text";
 import { drawFrame } from "./reading";
 
 /** A stage `specs/stages.md` makes a challenge stage, and one it does not. */

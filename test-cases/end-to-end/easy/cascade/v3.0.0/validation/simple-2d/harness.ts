@@ -106,7 +106,6 @@ import {
   drawnText as rawDrawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText as spelledText,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -158,8 +157,12 @@ import {
 } from "./surface";
 
 // The logical runs a frame spells, for the suites that join a frame's text
-// themselves rather than asking {@link drewText}; see that reader for why copy is
-// never read off the `fillText` split.
+// themselves. Copy is READ OFF THE RUNS, never off the `fillText` split: a
+// build that letter-spaces a heading draws one glyph per call, and the
+// specification fixes the words while leaving their spacing to the build. A
+// suite that asks whether a frame spelled some copy imports the package's
+// `drewText` from `../case-harness/text` directly; this project keeps no reader
+// of its own for that question.
 export { drawnTextLines } from "./case-harness/text";
 
 export type {
@@ -1612,36 +1615,14 @@ export function boxAt(
 export const drawnText = rawDrawnText;
 
 /**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the case's
- * own, but how a build presents it is the build's, and a label is commonly drawn
- * with padding or a marker around it. Requiring the exact run would fail a screen
- * that shows precisely the right words.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and the specification
- * fixes the copy a screen shows while leaving its spacing to the build. The
- * recorder measures every text call, so the shared harness's merge rule
- * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
- * into the string they spell. Every raw string is a substring of the run it
- * belongs to, so coalescing can only add a match and never take one away.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
-
-/**
  * Whether the frame drew `token` as a whole word, ignoring case.
  *
  * What the how-to copy's four standalone tokens are matched with: `ACE` inside
  * `PLACE` is not the word the specification asked for, and a substring match would
  * take it.
  *
- * Read off the logical runs the frame spells, for the reason {@link drewText}
- * gives: `S T O C K` drawn a glyph per call is the word, and a match against the
+ * Read off the logical runs the frame spells, as the package's `drewText` does:
+ * `S T O C K` drawn a glyph per call is the word, and a match against the
  * `fillText` split would find five one-letter runs and no word among them.
  */
 export function drewToken(calls: readonly DrawCall[], token: string): boolean {

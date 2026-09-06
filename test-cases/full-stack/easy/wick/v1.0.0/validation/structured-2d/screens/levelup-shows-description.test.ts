@@ -57,12 +57,12 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   isolate,
   openLevelUp,
   placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY, fillEverySlot, lowestAnchorY } from "./stage";
 
 /** Three candidates of the pool over an empty loadout, the weapon first. */

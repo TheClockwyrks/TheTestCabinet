@@ -20,8 +20,9 @@
 // WHY THE READING IS IN TWO HALVES, AND HOW CLOSE THAT GETS. Read exactly as
 // `appearance/pause-control-drawn` reads its control, and for the same reasons.
 //
-//   The copy — `BACK_LABEL` is looked for among the strings the frame drew, in
-//   whatever pieces the build drew them, which `showsText` reads.
+//   The copy — `BACK_LABEL` is looked for among the text the frame put on
+//   screen, in whatever pieces the build drew them, which `frameShows` reads —
+//   the calls through the shared harness's `drewTextAnywhere`.
 //
 //   The rectangle — the pixels inside the `back` target the same screen reports
 //   are read off the canvas and asked to carry more than one color.
@@ -47,8 +48,9 @@ import { BACK_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
+  frameShows,
   openHowTo,
-  showsText,
+  shownText,
   targetById,
   type Harness,
   type Viewport,
@@ -147,16 +149,16 @@ it("draws the BACK label and puts something inside the back target it reports", 
   );
   await h.settle(ART_SETTLE_MS);
 
-  // One frame, and the strings it drew.
-  const drawn = await h.frameText();
+  // One frame, and everything it put on screen.
+  const frame = await h.frameText();
 
   // Evidence, and no part of the verdict: the control on the how-to screen.
   await captureStill(h, "control");
 
   assertTrue(
-    showsText(drawn, BACK_LABEL),
+    frameShows(frame, BACK_LABEL),
     `the ${JSON.stringify(BACK_LABEL)} control drawn on the how-to screen, ` +
-      `among ${JSON.stringify(drawn)}`,
+      `among ${JSON.stringify(shownText(frame))}`,
   );
 
   const target = targetById(await h.snapshot(), TARGET_ID);

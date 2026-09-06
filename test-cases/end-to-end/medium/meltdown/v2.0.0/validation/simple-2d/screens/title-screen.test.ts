@@ -47,10 +47,10 @@ import {
   colorDistance,
   createHarness,
   drawFrame,
-  drewText,
   type Harness,
   type Rgb,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { bandAcross, pixelsAt, poseMenu, rowSpan } from "./menu";
 
 /** The row the mark is read on: the first of the two, `PLAY`. */

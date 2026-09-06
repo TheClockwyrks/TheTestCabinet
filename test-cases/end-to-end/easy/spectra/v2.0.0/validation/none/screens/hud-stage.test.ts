@@ -31,11 +31,11 @@ import { HUD_STAGE_LABEL, HUD_TOP_H, isChallengeStage } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   startPosed,
   drawnTextRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { TOP_STRIP, insideBand, numberRuns } from "./reading";
 
 /** The two stages the run is posed at, in the order they are posed. */

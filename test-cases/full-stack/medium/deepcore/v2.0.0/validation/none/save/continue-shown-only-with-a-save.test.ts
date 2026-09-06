@@ -21,12 +21,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { TITLE_ITEMS, TITLE_ITEMS_NO_SAVE } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  drewText,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewText } from "../case-harness/index";
 import {
   bankSave,
   continueFromTitle,

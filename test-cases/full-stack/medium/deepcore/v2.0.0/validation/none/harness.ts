@@ -533,7 +533,6 @@ export {
   drawnTextLines,
   drawnTextRuns,
   drawOps,
-  drewText,
   imageDraws,
   imageRef,
   luminance,

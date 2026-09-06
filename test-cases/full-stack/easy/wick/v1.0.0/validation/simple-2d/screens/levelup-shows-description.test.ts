@@ -27,9 +27,10 @@
 // empty loadout's pool; the third scene fills every slot at its max level,
 // which empties the pool, so lamp oil is offered on its own with nothing posed.
 //
-// THE TOLERANCE. Each line is matched as its words in order through
-// `drewPhrase`, case ignored, which admits any font, spacing, and line wrap a
-// build draws it under and refuses a build that shows other words. Nothing
+// THE TOLERANCE. Each line is matched as a substring of the frame's text
+// through the shared harness's `drewTextAnywhere`, ignoring case and whitespace
+// across every run the frame drew, which admits any font, spacing, and line
+// wrap a build draws it under and refuses a build that shows other words. Nothing
 // about where the line sits is read, since specs/ui.md fixes no layout.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -51,13 +52,13 @@ import {
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   holdPassive,
   holdWeapon,
   isolate,
   openLevelUp,
   type Harness,
 } from "../harness";
+import { drewTextAnywhere } from "../case-harness/text";
 
 let h: Harness;
 
@@ -94,7 +95,7 @@ it("draws the weapon's, the passive's, and lamp oil's lines", async () => {
   const { calls: weaponCalls } = await h.frameDraw();
   captureStill(h, "description");
   assertEqual(
-    drewPhrase(weaponCalls, WEAPON_DESCRIPTIONS.ember),
+    drewTextAnywhere(weaponCalls, WEAPON_DESCRIPTIONS.ember),
     true,
     "the line WEAPON_DESCRIPTIONS gives the highlighted weapon",
   );
@@ -106,7 +107,7 @@ it("draws the weapon's, the passive's, and lamp oil's lines", async () => {
 
   const { calls: passiveCalls } = await h.frameDraw();
   assertEqual(
-    drewPhrase(passiveCalls, PASSIVE_DESCRIPTIONS.glass),
+    drewTextAnywhere(passiveCalls, PASSIVE_DESCRIPTIONS.glass),
     true,
     "the line PASSIVE_DESCRIPTIONS gives the highlighted passive",
   );
@@ -123,7 +124,7 @@ it("draws the weapon's, the passive's, and lamp oil's lines", async () => {
 
   const { calls: oilCalls } = await h.frameDraw();
   assertEqual(
-    drewPhrase(oilCalls, LAMP_OIL_DESCRIPTION),
+    drewTextAnywhere(oilCalls, LAMP_OIL_DESCRIPTION),
     true,
     "the line LAMP_OIL_DESCRIPTION gives the lamp-oil offer",
   );

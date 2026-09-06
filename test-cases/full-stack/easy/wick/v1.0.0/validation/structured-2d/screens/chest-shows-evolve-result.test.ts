@@ -36,13 +36,13 @@ import {
   blitsFrom,
   captureStill,
   createHarness,
-  drewText,
   holdPassive,
   holdWeapon,
   isolate,
   openChest,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The evolution Taper at its top level beside Wick produces. */
 const EVOLVED = "pyre";

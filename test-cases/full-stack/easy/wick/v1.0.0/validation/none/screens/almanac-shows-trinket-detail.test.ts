@@ -18,10 +18,10 @@
 // detail shows is the first of `PASSIVE_IDS`, which is Wick. Both the tab and
 // the highlight are read back before the frame is.
 //
-// THE TOLERANCE. The name, the label and the line are matched folded —
-// lower-cased, with spaces, dashes and underscores removed, across consecutive
-// runs of text — so a build that letter-spaces a heading or wraps `MAX LEVEL`
-// passes. The max level is read as a whole number standing alone, bounded by
+// THE TOLERANCE. The name, the label and the line are matched ignoring case
+// and whitespace, across the runs of text the frame drew joined in reading
+// order (the shared harness's `drewTextAnywhere`) — so a build that
+// letter-spaces a heading or wraps `MAX LEVEL` passes. The max level is read as a whole number standing alone, bounded by
 // non-digits.
 
 import { afterEach, beforeEach, it } from "vitest";

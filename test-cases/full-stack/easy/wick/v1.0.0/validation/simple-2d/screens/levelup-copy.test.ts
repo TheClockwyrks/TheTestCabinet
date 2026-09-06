@@ -17,9 +17,10 @@
 // path a gain takes; no menu is walked and no offer is chosen. One frame is
 // then drawn and its runs of text are read.
 //
-// THE TOLERANCE. The heading is matched as words in order through
-// `drewPhrase`, so a build that wraps it over two lines or draws a shadow under
-// it passes, while one showing other words fails. Nothing about the heading's
+// THE TOLERANCE. The heading is matched as a substring of the frame's text
+// through the shared harness's `drewTextAnywhere`, ignoring case and whitespace
+// across every run the frame drew, so a build that wraps it over two lines or
+// draws a shadow under it passes, while one showing other words fails. Nothing about the heading's
 // colour, font, size, or place is read: specs/ui.md "fixes no palette, no font,
 // no layout, and no styling for any screen".
 
@@ -29,11 +30,11 @@ import { LEVEL_UP_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   isolate,
   openLevelUp,
   type Harness,
 } from "../harness";
+import { drewTextAnywhere } from "../case-harness/text";
 
 let h: Harness;
 
@@ -58,7 +59,7 @@ it("draws THE LAMP BURNS BRIGHTER over the held world", async () => {
   captureStill(h, "overlay");
 
   assertEqual(
-    drewPhrase(calls, LEVEL_UP_TEXT),
+    drewTextAnywhere(calls, LEVEL_UP_TEXT),
     true,
     `the overlay's frame draws ${LEVEL_UP_TEXT}`,
   );

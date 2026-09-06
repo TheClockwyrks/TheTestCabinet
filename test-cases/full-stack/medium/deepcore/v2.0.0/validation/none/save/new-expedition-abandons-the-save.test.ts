@@ -28,9 +28,9 @@ import {
   ACTION_KEY,
   captureStill,
   createHarness,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { bankSave, menuLength, openAtCamp } from "./expedition";
 
 /** Where each choice sits on its own menu, as specs/ui.md lists them. */

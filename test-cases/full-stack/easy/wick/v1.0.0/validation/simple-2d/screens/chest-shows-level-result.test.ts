@@ -27,8 +27,11 @@
 // else" (specs/instrumentation.md), over the same loadout.
 // The overlay must paint the icon more times than the world beneath it does.
 //
-// THE TOLERANCE. The name and the label are matched as words in order through
-// `drewPhrase`, which admits two runs or a marker between them. The run's own
+// THE TOLERANCE. The name is matched as a substring of a run of drawn text
+// through the shared harness's `drewText`, ignoring case and whitespace; the
+// level is matched as `LEVEL_LABEL` followed by the level it became with any
+// run of spaces between them, which is the form specs/ui.md spells, the
+// digits standing as their own token. The run's own
 // level is posed to `RUN_LEVEL`, far from the tag's number, so the HUD's level
 // cannot supply the reading.
 
@@ -39,12 +42,13 @@ import {
   blitsOfFile,
   captureStill,
   createHarness,
-  drewPhrase,
   holdWeapon,
   isolate,
   openChest,
+  textReadings,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 
@@ -85,12 +89,16 @@ it("shows the leveled item's icon, name, and new level", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "level");
   assertEqual(
-    drewPhrase(calls, WEAPON_NAMES[ITEM]),
+    drewText(calls, WEAPON_NAMES[ITEM]),
     true,
     `the level result draws ${WEAPON_NAMES[ITEM]}, its name in WEAPON_NAMES`,
   );
+  const tag = new RegExp(`${LEVEL_LABEL}\\s*${BECAME}(?![\\w])`, "i");
   assertEqual(
-    drewPhrase(calls, `${LEVEL_LABEL} ${BECAME}`),
+    // Both readings, so the tag is found whether the level was drawn a glyph
+    // at a time (the run) or a plain call the run rule merged into its
+    // neighbour (the raw call).
+    textReadings(calls).some((line) => tag.test(line)),
     true,
     `the level result draws ${LEVEL_LABEL} ${BECAME}, the level it became`,
   );

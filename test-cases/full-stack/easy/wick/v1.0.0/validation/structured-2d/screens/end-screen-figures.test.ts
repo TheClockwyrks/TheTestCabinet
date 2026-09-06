@@ -31,12 +31,12 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
-  drewText,
   hasToken,
   isolate,
   textReadings,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The run that ends: its clock, its level, its kills. */
 const END_TICK = 7260;

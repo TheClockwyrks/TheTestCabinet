@@ -26,7 +26,8 @@ import {
   poseScene,
   type Harness,
 } from "../harness";
-import { numberRuns, runsOf } from "./band";
+import { drewText } from "../case-harness/text";
+import { linesOf, numberRuns } from "./band";
 
 /** A best no fresh session carries, above a live score it cannot be confused with. */
 const SCORE = 12;
@@ -57,9 +58,13 @@ it("draws the posed best with the BEST label above it", async () => {
   captureStill(h, "best");
 
   const figures = numberRuns(calls, BEST);
-  const labels = runsOf(calls, BEST_LABEL);
+  assertEqual(
+    drewText(calls, BEST_LABEL),
+    true,
+    `the HUD drawing ${BEST_LABEL}`,
+  );
+  const labels = linesOf(calls, BEST_LABEL);
   assertGreaterThan(figures.length, 0, `the HUD drawing the best ${BEST}`);
-  assertGreaterThan(labels.length, 0, `the HUD drawing ${BEST_LABEL}`);
   assertLessThanOrEqual(
     Math.min(...labels.map((run) => run.y)),
     Math.min(...figures.map((run) => run.y)),

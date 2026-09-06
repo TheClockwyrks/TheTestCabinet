@@ -23,11 +23,11 @@
 // HOW THE TEXT IS READ. `specs/assets.md` puts every word on the stage on the
 // frame as drawn text and fixes no more — "Which typeface carries them is yours" —
 // and letter spacing is not portable, so a build is free to draw one run of copy as
-// one call, as a call per word, or as a call per glyph. What all of those share is
-// the baseline: one line of copy is drawn at one `y`. So the frame's text runs are
-// gathered by the `y` their anchor maps to and joined in `x` order, and the match is
-// by substring, so a build is free to draw a marker or padding around an item's
-// words. `screens/title-draws-menu-items` reads the title frame the same way.
+// one call, as a call per word, or as a call per glyph. So each item is read with
+// the shared harness's `drewText` — the frame's logical runs gathered onto the
+// baselines they share, matched by substring, ignoring case and whitespace — so a
+// build is free to draw a marker or padding around an item's words.
+// `screens/title-draws-menu-items` reads the title frame the same way.
 //
 // THE VERDICT. The screen is `title` and the highlight is back on the first item,
 // and the title really is what is being drawn: the frame after the call puts up the
@@ -36,7 +36,8 @@
 // `state.mode` to `campaign` and goes to `select`" (`specs/ui.md`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertNotNull } from "../assert";
+import { assertEqual, assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import { TITLE_ITEMS } from "../constants";
 import {
   captureStill,
@@ -44,39 +45,8 @@ import {
   openHowto,
   openTitle,
   pressAction,
-  textDraws,
   type Harness,
-  type TextDraw,
 } from "../harness";
-
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/** The frame's text runs, gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), draw]);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
-
-/** The line the frame drew `text` on, or `null` when it drew it on none. */
-function lineWith(lines: readonly Line[], text: string): Line | null {
-  const wanted = text.trim().toLowerCase();
-  return lines.find((line) => line.text.toLowerCase().includes(wanted)) ?? null;
-}
 
 let h: Harness;
 
@@ -124,10 +94,10 @@ it("shows the title menu with its first item highlighted", async () => {
     "arriving at the title puts the highlight on the remembered selection",
   );
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const calls = await h.lastCalls();
   for (const item of TITLE_ITEMS) {
-    assertNotNull(
-      lineWith(lines, item),
+    assertTrue(
+      drewText(calls, item),
       `the title menu's own items are what the frame put up, not the how-to's: ${item}`,
     );
   }

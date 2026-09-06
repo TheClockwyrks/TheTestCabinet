@@ -38,10 +38,10 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   drawnTextRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { numberRuns } from "./reading";
 
 /** The stage the intro is posed at: not `1`, not a challenge stage. */

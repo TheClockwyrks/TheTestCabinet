@@ -19,10 +19,11 @@
 //
 // HOW THE FIGURE IS READ. `specs/ui.md` fixes no font, no layout and no copy, so
 // a build may draw "SCORE 50" in one call or lay the readout down a glyph at a
-// time, and both are the same picture to a player. `drewFigure` groups the runs
-// of text a frame drew into the lines and words their spacing makes and reads the
-// digits of each word, so a readout of "50", "SCORE 50" and one drawn glyph by
-// glyph all answer the same, while "504" does not.
+// time, and both are the same picture to a player. `drewFigure` reads the digits
+// of each logical run the frame spells — the package's merge of side-by-side
+// glyphs on one baseline back into the string they spell — so a readout of "50",
+// "SCORE 50" and one drawn glyph by glyph all answer the same, while "504" does
+// not.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { extractionScore } from "../constants";

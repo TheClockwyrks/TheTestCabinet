@@ -23,12 +23,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import { TAGLINE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
   drawFrame,
-  drewText,
   type Harness,
 } from "../harness";
 

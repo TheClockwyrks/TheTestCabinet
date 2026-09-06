@@ -421,7 +421,6 @@ export {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText,
   mouseGlide,
   mousePress,
   mouseRelease,

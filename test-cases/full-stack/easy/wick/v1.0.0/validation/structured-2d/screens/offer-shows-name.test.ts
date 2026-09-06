@@ -38,11 +38,11 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   isolate,
   openLevelUp,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { fillEverySlot } from "./stage";
 
 /** A weapon and a passive, both candidates of the pool over an empty loadout. */

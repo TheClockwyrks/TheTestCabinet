@@ -40,9 +40,9 @@ import {
   createHarness,
   drawFrame,
   drawnTextSpans,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { numberRuns } from "./reading";
 
 /** The stage the intro is posed at: not `1`, not a challenge stage. */

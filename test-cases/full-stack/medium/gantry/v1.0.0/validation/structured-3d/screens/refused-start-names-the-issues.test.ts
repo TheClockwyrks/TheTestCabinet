@@ -14,28 +14,21 @@
 // list. The start is asked for with the `run` action itself (specs/controls.md
 // binds it to `KeyG`), because a refused start is what this point is about.
 //
-// The identifiers are what is looked for, with case, spacing and punctuation
-// ignored: how a build sets an issue's name is its own, and what
+// The identifiers are what is looked for, spelled as specs/structure.md spells
+// them, off the text the last frame drew on the screen layer — which
+// `h.screenCalls()` answers with every text call measured — with the shared
+// harness's `drewTextAnywhere`: the frame's logical runs joined in reading order
+// with the whitespace folded out, matched as a substring ignoring case. How a
+// build sets the line around an issue's name is its own, and what
 // specs/structure.md fixes is the name.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { assertContains, fail } from "../assert";
 import { clearAll, createHarness, openSite, type Harness } from "../harness";
 
 /** The two issues this structure's start is refused on. */
 const ISSUES = ["no-ring", "no-rail"] as const;
-
-/** Every run of text the last closed frame drew, in draw order. */
-async function frameText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
-}
-
-/** Letters and digits alone, lowercased. */
-function bare(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
 
 let h: Harness;
 
@@ -57,7 +50,7 @@ it("names the issues that refused the start", async () => {
   await h.press("KeyG");
   await h.advance(1);
 
-  const runs = await frameText(h);
+  const calls = await h.screenCalls();
   await h.capture("refused-issues", "The named refusing issues");
 
   for (const issue of ISSUES) {
@@ -69,11 +62,11 @@ it("names the issues that refused the start", async () => {
     );
   }
   for (const issue of ISSUES) {
-    if (!bare(runs.join(" ")).includes(bare(issue))) {
+    if (!drewTextAnywhere(calls, issue)) {
       fail(
         `the refused start to name the issue "${issue}" that refused it ` +
           "(specs/ui.md § Build)",
-        `the build screen drew ${JSON.stringify(runs)}`,
+        `the build screen drew ${JSON.stringify(drawnTextLines(calls))}`,
       );
     }
   }

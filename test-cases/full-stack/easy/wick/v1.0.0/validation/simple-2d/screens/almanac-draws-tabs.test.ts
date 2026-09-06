@@ -17,9 +17,10 @@
 // build with a broken title menu fails its own point and not this one, then one
 // frame. No key is pressed, so the tab the screen opens on is the one drawn.
 //
-// THE TOLERANCE. The copy is compared as words in order through `drewPhrase`,
-// so a build that wraps a heading, draws a shadow under it, or marks the tab at
-// `almanacTab` passes while a build showing other words fails. Where across the
+// THE TOLERANCE. Each tab's name is matched as a substring of a run of drawn
+// text through the shared harness's `drewText`, ignoring case and whitespace,
+// so a build that draws a shadow under it or marks the tab at `almanacTab`
+// passes while a build showing other words fails. Where across the
 // top the bar runs, and in which direction, is not read: `ALMANAC_TABS` names
 // the order the constant holds its tabs in, and specs/ui.md places no tab
 // relative to another.
@@ -32,10 +33,10 @@ import { ALMANAC_TABS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   poseScene,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 
@@ -55,7 +56,7 @@ it("draws all four tab names", async () => {
   captureStill(h, "tabs");
 
   assertDeepEqual(
-    ALMANAC_TABS.filter((text) => !drewPhrase(calls, text)),
+    ALMANAC_TABS.filter((text) => !drewText(calls, text)),
     [],
     "the tab names specs/ui.md gives the almanac, missing from its frame",
   );

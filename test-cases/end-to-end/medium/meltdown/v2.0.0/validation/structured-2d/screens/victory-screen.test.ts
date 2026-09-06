@@ -38,8 +38,9 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import { ENDING_ITEMS } from "../constants";
+import { drewText } from "../case-harness/text";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
-import { readScreen, readsNumber, requireRun, textOf } from "./menu";
+import { readScreen, readsNumber, textOf } from "./menu";
 
 /** The score the won run is left carrying: a figure nothing else on screen is. */
 const SCORE = 875;
@@ -100,6 +101,10 @@ it("draws the final score, the waves survived, the lives left and both rows", as
     `the victory screen draws the lives remaining, ${LIVES}; it drew ${drawn}`,
   );
   for (const item of ENDING_ITEMS) {
-    requireRun(runs, item, "the victory screen's menu");
+    assertTrue(
+      drewText(h.calls, item),
+      `the ${JSON.stringify(item)} row of ENDING_ITEMS drawn on the victory ` +
+        `screen (specs/screens.md); it drew ${drawn}`,
+    );
   }
 });

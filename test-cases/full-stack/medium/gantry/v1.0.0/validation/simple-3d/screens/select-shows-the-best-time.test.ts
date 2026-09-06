@@ -26,9 +26,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue, fail } from "../assert";
-import { drawnTextRuns, type TextDraw } from "../case-harness/index";
+import { drawnTextRuns, type TextDraw } from "../case-harness/text";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
+import { runStarting } from "./reading";
+
 /* -------------------------------------------------------------------------- */
 /* Reading the frame's text                                                   */
 /* -------------------------------------------------------------------------- */
@@ -41,37 +43,9 @@ import { createHarness, type Harness } from "../harness";
 // the specification fixes what a row shows and not how it is set, so the row is
 // read off the logical runs it spells and never off the call split. Every raw
 // string is a substring of its run, so coalescing can only add a match.
-
-/** Two runs are on one line when their anchors sit this close in `y`. */
-const LINE_TOL = 4;
-
-/** The frame's runs of text in reading order: down the stage, then across. */
-function readingOrder(draws: readonly TextDraw[]): TextDraw[] {
-  return [...draws].sort((a, b) =>
-    Math.abs(a.y - b.y) > LINE_TOL ? a.y - b.y : a.x - b.x,
-  );
-}
-
-/**
- * Where `wanted` starts among the frame's runs, or `null` when it was not
- * drawn.
- *
- * The frame's text is joined in reading order with every space removed, so copy
- * split across calls, letter-spaced, or padded matches the same as copy drawn
- * in one call; the answer is the index of the run the match starts in, which is
- * what puts two pieces of copy in order. */
-function findText(order: readonly TextDraw[], wanted: string): number | null {
-  const needle = wanted.replace(/\s+/g, "").toLowerCase();
-  let joined = "";
-  const owner: number[] = [];
-  order.forEach((draw, index) => {
-    const bare = draw.text.replace(/\s+/g, "").toLowerCase();
-    joined += bare;
-    for (let k = 0; k < bare.length; k += 1) owner.push(index);
-  });
-  const found = joined.indexOf(needle);
-  return found < 0 ? null : owner[found]!;
-}
+//
+// The runs arrive in reading order — down the stage, then across it — and a
+// row is found by the run its name starts in (`./reading`).
 
 /* ---- The six rows of the site list ---------------------------------------- */
 
@@ -93,7 +67,7 @@ interface Row {
  * heading and footer outside every band. */
 function siteRows(order: readonly TextDraw[]): Row[] {
   const anchors = SITE_NAMES.map((name, index) => {
-    const found = findText(order, name);
+    const found = runStarting(order, name);
     if (found === null) {
       fail(
         `site ${index + 1}'s name, "${name}", drawn on the select screen ` +
@@ -196,7 +170,7 @@ it("shows a cleared site's best time on its row", async () => {
     `site ${SITE + 1} standing cleared, which is what puts a score on its row`,
   );
 
-  const order = readingOrder(drawnTextRuns(await h.screenCalls()));
+  const order = drawnTextRuns(await h.screenCalls());
   await h.capture("state", "The best time beside a cleared site");
 
   assertTrue(

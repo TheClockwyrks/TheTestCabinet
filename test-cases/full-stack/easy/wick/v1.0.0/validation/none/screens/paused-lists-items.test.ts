@@ -16,10 +16,10 @@
 // one frame is read for what it draws. Nothing else is posed: the two names are
 // fixed copy that no state changes.
 //
-// THE TOLERANCE. The copy is matched folded — lower-cased, with spaces, dashes
-// and underscores removed, across consecutive runs of text — so a build that
-// letter-spaces an item, wraps the highlighted one in marks of its own, or
-// draws a line word by word passes. The stacking is a strict inequality between
+// THE TOLERANCE. The copy is matched ignoring case and whitespace, across the
+// runs of text the frame drew joined in reading order (the shared harness's
+// `drewTextAnywhere`) — so a build that letter-spaces an item, wraps the
+// highlighted one in marks of its own, or draws a line word by word passes. The stacking is a strict inequality between
 // two drawn rows, which no tolerance can soften.
 
 import { afterEach, beforeEach, it } from "vitest";

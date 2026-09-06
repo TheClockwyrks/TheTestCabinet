@@ -9,6 +9,12 @@
 // not — which is exactly what makes "the score is drawn inside the HUD bar"
 // decidable without knowing a build's arrangement.
 //
+// THE ONE WORD THE SPECIFICATION FIXES IS READ BY THE SHARED HARNESS. The level
+// readout's label is copy, and copy is matched the way every case matches it:
+// `drewText` (`case-harness/text.ts`), a substring along a baseline, ignoring
+// case, with the whitespace folded out of both sides. What this file adds to
+// that reading is only WHERE — the bar's runs go back to it through `hudText`.
+//
 // A FIGURE IS READ AS A NUMBER, NOT AS A STRING. `specs/ui.md` leaves the HUD's
 // "arrangement and styling" to the build, so a build may zero-pad its timer
 // (`07`), group its score (`1,240`), set the timer as a clock (`0:22`) or write
@@ -38,12 +44,22 @@ export function hudRuns(calls: readonly DrawCall[]): TextDraw[] {
   return drawnTextRuns(calls).filter((draw) => draw.y >= 0 && draw.y <= HUD_H);
 }
 
-/** {@link hudRuns}, joined and folded, as one string a check matches against. */
-export function hudCopy(calls: readonly DrawCall[]): string {
-  return hudRuns(calls)
-    .map((draw) => draw.text)
-    .join("  ")
-    .toUpperCase();
+/**
+ * The frame's text inside the HUD bar, as the calls the shared harness's copy
+ * readers read.
+ *
+ * The mirror of `screens/screens.ts`'s `screenText`: {@link hudRuns} go back to
+ * `drewText` as one `fillText` each, at the anchor the run landed on, so the
+ * comparison is the package's own rather than a fold of this file's. A run
+ * already spells what its glyphs spell, and the reader joins a baseline's runs
+ * again before it compares, so nothing it answers changes.
+ */
+export function hudText(calls: readonly DrawCall[]): DrawCall[] {
+  return hudRuns(calls).map((run) => ({
+    kind: "call",
+    method: "fillText",
+    args: [run.text, run.x, run.y],
+  }));
 }
 
 /**

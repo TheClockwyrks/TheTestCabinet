@@ -1,6 +1,9 @@
 // Shatter — how the `screens/*` points READ a screen: where a menu's entries
-// were drawn, whether a row's drawing changed between two frames, and whether a
-// number reached the canvas at all.
+// were drawn, whether a row's drawing changed between two frames, whether a
+// number reached the canvas at all, and whether a key was named as a standalone
+// word. Whether a PHRASE of copy was drawn — the title, a menu entry — is the
+// shared harness's own `drewText` (`case-harness/text.ts`), which the points
+// that want it import directly; nothing here re-reads it.
 //
 // `specs/ui.md` leaves "the palette, the type, and the layout of each screen" to
 // the build and fixes only the COPY and the ORDER. So every reading here is
@@ -171,13 +174,14 @@ function spelledRuns(h: Harness): string[] {
 /**
  * Every run of text the frame spelled, lower-cased and joined by ` | `.
  *
- * The container a presence check runs against, and the value its failure prints
- * — so a build that drew the wrong copy is reported as the copy it DID draw
- * rather than as the word `false`. The separator is one no piece of screen copy
- * carries, so a match can never straddle two runs, and the case is dropped
- * because `specs/ui.md` fixes the words a screen shows and leaves how they are
- * set to the build. The runs are {@link spelledRuns}: the logical runs, with the
- * calls of any run drawn a call at a time laid out after them.
+ * The container a standalone-WORD check runs against, and the value a figure
+ * check's failure prints — so a build that drew the wrong copy is reported as
+ * the copy it DID draw rather than as the word `false`. The separator is one no
+ * piece of screen copy carries, so a match can never straddle two runs, and the
+ * case is dropped because `specs/ui.md` fixes the words a screen shows and
+ * leaves how they are set to the build. The runs are {@link spelledRuns}: the
+ * logical runs, with the calls of any run drawn a call at a time laid out after
+ * them.
  */
 export function drawnRuns(h: Harness): string {
   return spelledRuns(h).join(" | ").toLowerCase();

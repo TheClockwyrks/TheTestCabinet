@@ -7,8 +7,10 @@
 // menu entries, the subjects the how-to screen covers, the depths the size choice
 // quotes — and deliberately fixes no copy beyond that and no layout at all: "The
 // content and the navigation are fixed; the layout is yours." So a screen check
-// reads the words the specification names, by substring and case-insensitively,
-// and reads everything else about the screen as a shape rather than as text.
+// reads the entries the specification names through the package's `drewText`, a
+// substring ignoring case, reads a SUBJECT the specification fixes only the
+// vocabulary of through {@link drawnCopy} and a word-boundaried expression, and
+// reads everything else about the screen as a shape rather than as text.
 //
 // The one reading that is not about words is the highlight. specs/ui.md says only
 // that "the highlighted item is drawn distinctly from the others", which cannot
@@ -19,12 +21,8 @@
 // frames taken at the SAME highlight: the change the highlight makes has to be
 // bigger than the change a frame makes on its own.
 
-import {
-  drawnText,
-  drawnTextLines,
-  type DrawCall,
-  type Harness,
-} from "../harness";
+import type { DrawCall, Harness } from "../harness";
+import { drawnText, drawnTextLines } from "../case-harness/text";
 
 /** One frame's operations, each flattened to a comparable string. */
 export function signature(calls: readonly DrawCall[]): string[] {
@@ -50,8 +48,18 @@ export function frameDistance(
 }
 
 /**
- * Every string of text the frame drew, upper-cased and joined, for a copy
- * reading: the raw `fillText` split AND the logical runs it spells.
+ * Every string of text the frame drew, upper-cased and joined, for a VOCABULARY
+ * reading: the package's raw `fillText` split AND the logical runs it spells.
+ *
+ * THIS IS NOT A COPY READER. Copy the specification fixes the words of is read
+ * through the package's `drewText`, and nothing here re-spells that. What the
+ * package cannot answer is a subject the specification fixes only the TERMS of
+ * — `screens/how-to-play-subjects` names several words for each, any of which
+ * covers it, and a figure may carry a build's own thousands separator — which
+ * is a regular expression over the frame's text, with word boundaries, and the
+ * package's readers take a substring. So this hands the whole frame back as one
+ * string for such an expression to run over, and folds nothing but case: no
+ * whitespace comes out, because the boundaries depend on it.
  *
  * The runs (`drawnTextLines`) are there because a build that letter-spaces a
  * heading draws one glyph per call, and a word the copy readings look for has

@@ -25,9 +25,10 @@
 // and all `PASSIVE_SLOTS` at each passive's own max, which empties the pool, so
 // the overlay draws lamp oil on its own with nothing posed.
 //
-// THE TOLERANCE. Each name is matched as its words in order through
-// `drewPhrase`, case ignored, which admits any font, spacing, and marker a
-// build draws around it and refuses a build that shows an id or another name.
+// THE TOLERANCE. Each name is matched as a substring of a run of drawn text
+// through the shared harness's `drewText`, ignoring case and whitespace, which
+// admits any font, spacing, and marker a build draws around it and refuses a
+// build that shows an id or another name.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
@@ -47,13 +48,13 @@ import {
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   holdPassive,
   holdWeapon,
   isolate,
   openLevelUp,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 
@@ -97,7 +98,7 @@ it("draws the weapon's, the passive's, and lamp oil's names", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "names");
   assertDeepEqual(
-    NAMES.filter((name) => !drewPhrase(calls, name)),
+    NAMES.filter((name) => !drewText(calls, name)),
     [],
     "the names specs/ui.md gives the offered items, missing from the overlay",
   );
@@ -119,7 +120,7 @@ it("draws the weapon's, the passive's, and lamp oil's names", async () => {
 
   const { calls: oilCalls } = await h.frameDraw();
   assertEqual(
-    drewPhrase(oilCalls, LAMP_OIL_NAME),
+    drewText(oilCalls, LAMP_OIL_NAME),
     true,
     `the lamp-oil offer draws ${LAMP_OIL_NAME}`,
   );

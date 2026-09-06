@@ -109,6 +109,7 @@ import {
   createCaseHarness,
   drawnText,
   drawnTextLines,
+  drewTextAnywhere,
   mediaDestination as mediaPath,
   setsOf,
   type Clock,
@@ -512,24 +513,22 @@ export interface Harness {
   /** Run exactly one frame and hand back every operation its render issued. */
   frameCalls(): Promise<DrawCall[]>;
   /**
-   * Run one frame and hand back every string that frame put on screen.
+   * Run one frame and hand back what that frame put on screen: its draw calls,
+   * and the page's own RENDERED DOM text beside them.
    *
-   * The union of the frame's canvas text and the page's own RENDERED DOM text,
-   * because `specs/assets.md` says the chrome is "drawn in code (canvas or DOM)"
-   * and an engineless build is entitled to either. The canvas strings come first,
-   * in the order the frame drew them, and the DOM strings after. A DOM string
-   * counts only where it is on screen: an element hidden by `display`,
+   * Both halves, because `specs/assets.md` says the chrome is "drawn in code
+   * (canvas or DOM)" and an engineless build is entitled to either. A DOM
+   * string counts only where it is on screen: an element hidden by `display`,
    * `visibility`, a zero `opacity` or a zero-sized box has drawn nothing, so a
    * check that reads an ABSENCE reads the frame rather than the document.
    *
-   * The canvas pieces are as the build drew them, which is not always a word: a
-   * build that letter-spaces a title issues one `fillText` per GLYPH, and the
-   * array then holds `"F", "A", "C", "E", "T"` — followed by the logical runs
-   * those calls spell once the measured glyphs are coalesced, `"FACET"`, as
-   * {@link copyPieces} lists them. So a check asks {@link showsText} whether the
-   * copy is on screen rather than looking for it in the array itself.
+   * A check asks {@link frameShows} whether the copy is on screen rather than
+   * looking for it in either half itself: a build that letter-spaces a title
+   * issues one `fillText` per GLYPH, and only the shared harness's reading over
+   * the logical runs those measured glyphs coalesce into spells `"FACET"` out of
+   * `"F", "A", "C", "E", "T"`.
    */
-  frameText(): Promise<string[]>;
+  frameText(): Promise<FrameText>;
   /**
    * Reflect the surface WITHOUT invoking it: the `typeof` of each name.
    *
@@ -680,8 +679,8 @@ const kit = createCaseHarness<FacetSnapshot, FacetSurface>({
   // Measure every text call a frame made, in the page and under the build's own
   // loaded fonts, so the shared harness's readers over LOGICAL RUNS of text can
   // coalesce a heading drawn a glyph at a time back into the word it spells;
-  // without a width every draw is a point and nothing merges. `copyPieces` reads
-  // those runs after the raw strings.
+  // without a width every draw is a point and nothing merges. `frameShows`
+  // reads those runs.
   measureText: true,
   // A GENUINE browser gesture, so the build's audio context can open: a build is
   // free to open its audio from a real DOM event alone, so a gesture delivered
@@ -1099,7 +1098,7 @@ export async function createHarness(
     frameCalls,
 
     async frameText() {
-      const drawn = await frameCalls();
+      const calls = await frameCalls();
       const dom = await base.page.evaluate(() => {
         const found: string[] = [];
         const skip = new Set([
@@ -1149,7 +1148,7 @@ export async function createHarness(
         }
         return found;
       });
-      return [...copyPieces(drawn), ...dom];
+      return { calls, dom };
     },
 
     probe: async (names) => (await base.probe(names)).ops,
@@ -1276,91 +1275,83 @@ export { callsTo, setsOf };
 export { drawnText };
 
 /**
- * Whether `wanted` is among the words a frame put on screen.
+ * What one frame put on screen, as {@link Harness.frameText} hands it back.
  *
- * FACET'S OWN, kept beside the shared harness's `drewText` rather than replaced
- * by it. Both read the LOGICAL runs a frame's text calls spell — the pieces
- * {@link copyPieces} lists carry those runs after the raw strings — but that one
- * matches a substring along one baseline, where this reads four ways, from the
- * most local to the most permissive, over every piece of the frame. Every match
- * of the shared reading is a match here, and this project's items, which read
- * `frameText` through this, were written against the wider one.
- *
- * `specs/ui.md` fixes the COPY — `FACET`, `PRESSURE FINDS THE FLAW`, `SCORE`,
- * `PLAY AGAIN` — and fixes nothing about how many draw calls a build spends on
- * it. All four of these are conformant renderings of the same screen, and this
- * reads all four the same way:
- *
- *   one call per line     `"FACET"`
- *   one call per word     `"HOW"`, `"TO"`, `"PLAY"`
- *   one call per glyph    `"F"`, `"A"`, `"C"`, `"E"`, `"T"`
- *   a decorated entry     `"> PLAY <"`, or `"SCORE 120"` for a check about
- *                         the label alone
- *
- * and a fifth is read the same way through the pieces {@link copyPieces}
- * appends — a glyph at a time with a shadow apiece, `"F", "F", "A", "A", ...`,
- * whose fill channel spells nothing on its own but whose two baselines each
- * coalesce into `"FACET"`.
- *
- * Four readings, tried from the most local to the most permissive, so a build
- * that drew the copy in ONE call is decided by that call alone: a piece that IS
- * the copy; a piece that CONTAINS it; the frame's whole run of text; and that
- * run with all whitespace taken out of both sides, which is the only reading
- * that finds a line a build drew one word at a time.
- *
- * What the last two readings buy is bounded, and the bound is the rule for
- * using this: a search over the joined run can find a phrase that spans two
- * adjacent draws — or the seam where the coalesced runs follow the raw
- * pieces — so this decides that copy IS on screen and NEVER that two pieces of
- * copy are separate. An item about two readouts asks about each of them; an
- * item that asserts copy is ABSENT asserts the absence of that one string and
- * pairs it with a frame that does show it, so an accidental join shows up as
- * the two frames agreeing rather than as a verdict.
+ * TWO HALVES, because `specs/assets.md` says the chrome is "drawn in code
+ * (canvas or DOM)" and an engineless build is entitled to either: the
+ * operations the frame's render issued, and the strings the page's own RENDERED
+ * document shows beside the canvas. They are kept apart rather than folded into
+ * one list because they are read differently — the calls by the shared
+ * harness's readers over the logical runs they spell, the document by the same
+ * comparison over its strings — and a check reads them together through
+ * {@link frameShows}.
  */
-export function showsText(pieces: readonly string[], wanted: string): boolean {
-  const needle = wanted.trim().toLowerCase();
-  if (needle === "") return true;
-  const lower = pieces.map((piece) => piece.toLowerCase());
-  if (lower.some((piece) => piece.trim() === needle)) return true;
-  if (lower.some((piece) => piece.includes(needle))) return true;
-  const joined = lower.join("");
-  if (joined.includes(needle)) return true;
-  const bare = (value: string): string => value.replace(/\s+/gu, "");
-  return bare(joined).includes(bare(needle));
+export interface FrameText {
+  /** Every operation the frame's render issued, as {@link Harness.frameCalls}. */
+  calls: DrawCall[];
+  /**
+   * Every text node the document shows, trimmed, in document order.
+   *
+   * WHAT IS RENDERED, NOT WHAT IS IN THE DOCUMENT: a text node whose nearest
+   * rendered ancestor is hidden — by `display`, by `visibility`, by a zero
+   * `opacity`, or by carrying no box at all — has drawn nothing and is not here,
+   * so a check that reads an ABSENCE reads the frame rather than the document.
+   */
+  dom: string[];
 }
 
 /**
- * Every piece a copy check reads off a frame's draw calls: the raw strings by
- * channel ({@link drawnText}), then the logical runs those calls spell
- * (`drawnTextLines`, from the shared harness's `case-harness/text.ts`).
+ * Whether `wanted` is on screen: spelled by the frame's draw calls, or shown by
+ * the rendered document.
  *
- * THE RAW PIECES FIRST, so every reading this project's items were written
- * against survives untouched; THEN THE RUNS, so a build that letter-spaces a
- * heading — one `fillText` per glyph, which is the only portable way to
- * letter-space canvas text — spells `"FACET"` in the list as well as
- * `"F", "A", "C", "E", "T"`. The shared merge folds an outlined glyph's
- * restrike into its run and writes a space where a build advanced the pen over
- * one, so a title outlined a glyph at a time and a line tracked past its skipped
- * spaces both come back as the words they show, and a title letter-spaced under
- * a DROP SHADOW — a second, offset `fillText` per glyph — comes back as the word
- * on each of its two baselines where its fill channel alone reads
- * `F F A A C C E E T T`. Every raw string is a substring of the run it belongs
- * to, so listing the runs after the raw pieces can only add a match and never
- * take one away.
+ * THE CANVAS HALF IS THE SHARED HARNESS'S `drewTextAnywhere`, and it is what
+ * decides every build that draws its chrome on the canvas. `specs/ui.md` fixes
+ * the COPY — `FACET`, `PRESSURE FINDS THE FLAW`, `SCORE`, `PLAY AGAIN` — and
+ * fixes nothing about how many draw calls a build spends on it, and that reading
+ * finds one call per line, one per word, one per glyph, an entry decorated with
+ * a marker, and a title letter-spaced under a drop shadow alike: the measured
+ * glyphs are coalesced into the logical runs they spell, every run of the frame
+ * is joined, and `wanted` is matched as a substring of that, ignoring case and
+ * whitespace.
  *
- * The runs are only as good as the measurement. The shared harness measures
- * every text call the frames it reads for this project made, in the page and
- * under the build's own loaded fonts, because the kit's config asks for it with
- * `measureText: true`; a list that was never measured merges nothing, and its
- * runs are its calls over again.
+ * THE DOCUMENT HALF IS THE SAME COMPARISON over the strings the rendered page
+ * shows, so a build that keeps its HUD in the DOM is read by the rule the canvas
+ * is. It is the one thing Facet reads that the shared harness does not, and it
+ * is the whole reason this reader exists beside the package's.
+ *
+ * BOUNDED THE WAY ANY READING OVER A JOINED FRAME IS: a search over the joined
+ * text can find a phrase that spans two adjacent runs, so this decides that copy
+ * IS on screen and NEVER that two pieces of copy are separate. An item about two
+ * readouts asks about each of them; an item that asserts copy is ABSENT asserts
+ * the absence of that one string and pairs it with a frame that does show it, so
+ * an accidental join shows up as the two frames agreeing rather than as a
+ * verdict.
  */
-export function copyPieces(calls: readonly DrawCall[]): string[] {
-  return [...drawnText(calls), ...drawnTextLines(calls)];
+export function frameShows(frame: FrameText, wanted: string): boolean {
+  return (
+    drewTextAnywhere(frame.calls, wanted) || documentShows(frame.dom, wanted)
+  );
 }
 
-/** Whether the frame's own draw calls put `wanted` on screen. */
-export function drewText(calls: readonly DrawCall[], wanted: string): boolean {
-  return showsText(copyPieces(calls), wanted);
+/**
+ * Whether the rendered document shows `wanted`: the comparison
+ * `drewTextAnywhere` makes, over the document's strings rather than a frame's
+ * runs — joined, whitespace folded out of both sides, matched ignoring case.
+ */
+function documentShows(dom: readonly string[], wanted: string): boolean {
+  const fold = (value: string): string =>
+    value.replace(/\s+/gu, "").toLowerCase();
+  return fold(dom.join(" ")).includes(fold(wanted));
+}
+
+/**
+ * The text a frame shows, as the strings a failure is worded with: the logical
+ * runs its calls spell (the shared harness's `drawnTextLines`), then the
+ * document's. For reading a frame's copy, {@link frameShows} is the reader;
+ * this is what a check prints beside the copy the screen owed.
+ */
+export function shownText(frame: FrameText): string[] {
+  return [...drawnTextLines(frame.calls), ...frame.dom];
 }
 
 /**

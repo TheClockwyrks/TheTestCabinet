@@ -10,10 +10,12 @@
 //
 // THE HEADING IS WHERE THE EDITOR NAMES IT (`specs/editor.md`, Layout):
 // "Heading — `x` `0` to `STAGE_W` (`1280`), `y` `0` to `HEADING_H` (`48`) — The
-// challenge's name, the machine's current cost, and the editor's messages." The
-// name is read off the logical runs drawn there (`textRunsIn`), never off the
-// `fillText` split: a build that letter-spaces its heading draws one glyph per
-// call, and the name is still the name.
+// challenge's name, the machine's current cost, and the editor's messages." That
+// the frame wrote the name is the shared harness's `drewText`, and that it wrote
+// it in the heading is `drawing.ts`'s `textLines` over that region, the line
+// found by the rule `drewText` matched it by — never the `fillText` split: a
+// build that letter-spaces its heading draws one glyph per call, and the name is
+// still the name.
 //
 // WHICH CHALLENGE IS "AT `index`" IS DECIDED WITHOUT A FIXED LIST. Both courses
 // carry distinct names — `specs/modes/campaign.md` requires each course challenge
@@ -39,15 +41,18 @@ import {
   assertMatches,
   assertNotEqual,
   assertNotNull,
+  assertTrue,
 } from "../assert";
+import { drewText } from "../case-harness/text";
 import { NAME_MAX } from "../constants";
 import { HEADING_REGION } from "../field";
 import {
   captureStill,
   createHarness,
+  lineWith,
   openChallenge,
   openTitle,
-  textRunsIn,
+  textLines,
   type Harness,
 } from "../harness";
 
@@ -104,14 +109,15 @@ it("opens that mode's challenge at that index, in the editor, under its name", a
     name,
     "index 6 opens the same challenge every time, rather than the one opened last",
   );
-  const heading = textRunsIn(calls, HEADING_REGION)
-    .map((draw) => draw.text)
-    .join(" ")
-    .toLowerCase();
-  assertMatches(
-    heading,
-    name.toLowerCase(),
-    "the editor's heading shows the open challenge's name",
+  assertTrue(
+    drewText(calls, name),
+    "the editor's frame writes the open challenge's name",
+  );
+  const heading = textLines(calls, HEADING_REGION);
+  assertNotNull(
+    lineWith(heading, name),
+    "and writes it in the heading; the lines drawn there are " +
+      JSON.stringify(heading.map((line) => line.text)),
   );
 
   await openChallenge(h, "campaign", 2);

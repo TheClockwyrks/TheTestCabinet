@@ -65,11 +65,20 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  apply,
   createCaseHarness,
   type DrawCall,
+  drawnTextRuns,
   type Harness as BaseHarness,
   type HarnessOptions as BaseHarnessOptions,
+  IDENTITY,
+  type Matrix,
+  numbers,
   type Pixel,
+  RUN_BASELINE_SLACK,
+  textDraws as placedText,
+  type TextDraw as PlacedText,
+  transformed,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
 import { assertTruthy, fail } from "./assert";
@@ -307,7 +316,6 @@ export {
   ConstantClock,
   distance,
   drawnText,
-  drewText,
   JitterClock,
   luminance,
   meanColor,
@@ -1252,120 +1260,60 @@ export function inRegion(region: Region, x: number, y: number): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
-/* The transform in force                                                     */
-/* -------------------------------------------------------------------------- */
-
-type Matrix = [number, number, number, number, number, number];
-
-const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
-
-function multiply(m: Matrix, n: Matrix): Matrix {
-  return [
-    m[0] * n[0] + m[2] * n[1],
-    m[1] * n[0] + m[3] * n[1],
-    m[0] * n[2] + m[2] * n[3],
-    m[1] * n[2] + m[3] * n[3],
-    m[0] * n[4] + m[2] * n[5] + m[4],
-    m[1] * n[4] + m[3] * n[5] + m[5],
-  ];
-}
-
-function at(m: Matrix, x: number, y: number): { x: number; y: number } {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
-
-/** `count` numbers from `args`, starting at `from`, or `null`. */
-function numbers(
-  args: readonly unknown[],
-  from: number,
-  count: number,
-): number[] | null {
-  const taken: number[] = [];
-  for (let i = from; i < from + count; i += 1) {
-    const value = args[i];
-    if (typeof value !== "number" || !Number.isFinite(value)) return null;
-    taken.push(value);
-  }
-  return taken;
-}
-
-/* -------------------------------------------------------------------------- */
 /* Text                                                                       */
 /* -------------------------------------------------------------------------- */
+//
+// COPY IS READ THROUGH THE SHARED HARNESS. What a frame spelled is the package's
+// reading (`case-harness/text.ts`): `drawnTextRuns` places every draw through
+// the transform in force and folds a letter-spaced word back into the string it
+// spells, and `drewText` / `drewTextAnywhere` compare copy ignoring case and
+// whitespace. What this file adds is the two facts `specs/overview.md` makes Arc
+// Foundry's own: WHERE on the stage a run sits — the bar, the panel, the yard, an
+// overlay — and, for the one check that decides an ORDER, where a draw sat in
+// the frame's operations. Nothing here re-reads the raw calls for copy, and
+// nothing here compares copy by a rule of its own.
 
-/** One `fillText` or `strokeText`, with its anchor mapped onto the stage. */
-export interface TextDraw {
-  text: string;
-  x: number;
-  y: number;
-  /** Where it sat in the frame's operations, so two draws can be ordered. */
-  index: number;
-}
-
-/** One operation of a frame, with the transform that was in force at it. */
-interface Placed {
-  call: { method: string; args: unknown[] };
-  matrix: Matrix;
+/**
+ * One `fillText` or `strokeText`, placed as the package places it, with where it
+ * sat in the frame's operations.
+ */
+export interface TextDraw extends PlacedText {
+  /**
+   * The operation's place in the WHOLE call list, property sets included, so a
+   * draw compares directly against the index {@link imageDraws} answers.
+   */
   index: number;
 }
 
 /**
- * Every call of a frame, each paired with the transform in force when it ran.
+ * Every text draw of a frame, each anchored where it actually landed, in the
+ * order the frame issued them.
  *
- * The transform is tracked rather than assumed, because a build is free to draw
- * its yard, its bar, and its panel from any origin it likes and the
- * specification fixes only where the result lands.
+ * The placement is the package's `textDraws` — one entry per call, the anchor
+ * mapped through the transform in force — and the package answers no index, so
+ * the index is taken here by walking the calls it walks: it places every
+ * `fillText` or `strokeText` whose text is a string and whose anchor is two
+ * numbers, in order, and nothing else. The two walks are held to the same count.
  */
-function placedCalls(calls: readonly DrawCall[]): Placed[] {
-  const placed: Placed[] = [];
-  const stack: Matrix[] = [];
-  let m: Matrix = IDENTITY;
+export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
+  const placed = placedText(calls);
+  const indexes: number[] = [];
   calls.forEach((call, index) => {
     if (call.kind !== "call") return;
     const { method, args } = call;
-    if (method === "save") {
-      stack.push(m);
-    } else if (method === "restore") {
-      m = stack.pop() ?? IDENTITY;
-    } else if (method === "translate") {
-      const v = numbers(args, 0, 2);
-      if (v) m = multiply(m, [1, 0, 0, 1, v[0]!, v[1]!]);
-    } else if (method === "scale") {
-      const v = numbers(args, 0, 2);
-      if (v) m = multiply(m, [v[0]!, 0, 0, v[1]!, 0, 0]);
-    } else if (method === "rotate") {
-      const v = numbers(args, 0, 1);
-      if (v) {
-        const c = Math.cos(v[0]!);
-        const s = Math.sin(v[0]!);
-        m = multiply(m, [c, s, -s, c, 0, 0]);
-      }
-    } else if (method === "transform") {
-      const v = numbers(args, 0, 6);
-      if (v) m = multiply(m, v as Matrix);
-    } else if (method === "setTransform") {
-      const v = numbers(args, 0, 6);
-      m = v ? (v as Matrix) : IDENTITY;
-    } else if (method === "resetTransform") {
-      m = IDENTITY;
+    if (method !== "fillText" && method !== "strokeText") return;
+    if (typeof args[0] !== "string" || numbers(args.slice(1), 2) === null) {
+      return;
     }
-    placed.push({ call: { method, args }, matrix: m, index });
+    indexes.push(index);
   });
-  return placed;
-}
-
-/** Every text draw of a frame, each anchored where it actually landed. */
-export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
-  const draws: TextDraw[] = [];
-  for (const { call, matrix, index } of placedCalls(calls)) {
-    if (call.method !== "fillText" && call.method !== "strokeText") continue;
-    const text = call.args[0];
-    const v = numbers(call.args, 1, 2);
-    if (typeof text !== "string" || !v) continue;
-    const point = at(matrix, v[0]!, v[1]!);
-    draws.push({ text, x: point.x, y: point.y, index });
+  if (indexes.length !== placed.length) {
+    throw new Error(
+      `textDraws: the package placed ${placed.length} text draws where the ` +
+        `index walk found ${indexes.length}`,
+    );
   }
-  return draws;
+  return placed.map((draw, i) => ({ ...draw, index: indexes[i]! }));
 }
 
 /** One `drawImage`, with the destination it blitted to mapped onto the stage. */
@@ -1382,6 +1330,46 @@ export interface ImageDraw {
   index: number;
 }
 
+/** One operation of a frame, with the transform that was in force at it. */
+interface Placed {
+  call: { method: string; args: unknown[] };
+  matrix: Matrix;
+  index: number;
+}
+
+/**
+ * Every call of a frame, each paired with the transform in force when it ran.
+ *
+ * What {@link imageDraws} reads a blit's landing through. The transform is
+ * tracked rather than assumed, because a build is free to draw its yard, its
+ * bar, and its panel from any origin it likes and the specification fixes only
+ * where the result lands. The walk itself is the package's `transformed`, so
+ * this file cannot drift from the package's own text placement on what a
+ * transform operation does.
+ *
+ * `index` is the operation's place in the WHOLE call list, property sets
+ * included, so it compares directly against the index {@link textDraws} answers.
+ */
+function placedCalls(calls: readonly DrawCall[]): Placed[] {
+  const placed: Placed[] = [];
+  const stack: Matrix[] = [];
+  let m: Matrix = IDENTITY;
+  calls.forEach((call, index) => {
+    if (call.kind !== "call") return;
+    const { method, args } = call;
+    if (method === "save") {
+      stack.push(m);
+    } else if (method === "restore") {
+      m = stack.pop() ?? IDENTITY;
+    } else {
+      const moved = transformed(m, method, args);
+      if (moved !== null) m = moved;
+    }
+    placed.push({ call: { method, args }, matrix: m, index });
+  });
+  return placed;
+}
+
 /**
  * Every image a frame blitted, mapped onto the stage.
  *
@@ -1396,24 +1384,31 @@ export function imageDraws(calls: readonly DrawCall[]): ImageDraw[] {
     const args = call.args;
     const box =
       args.length >= 9
-        ? numbers(args, 5, 4)
+        ? numbers(args.slice(5), 4)
         : args.length >= 5
-          ? numbers(args, 1, 4)
+          ? numbers(args.slice(1), 4)
           : (() => {
-              const point = numbers(args, 1, 2);
-              return point === null ? null : [point[0]!, point[1]!, 0, 0];
+              const point = numbers(args.slice(1), 2);
+              return point === null
+                ? null
+                : ([point[0], point[1], 0, 0] as [
+                    number,
+                    number,
+                    number,
+                    number,
+                  ]);
             })();
     if (box === null) continue;
-    const [dx, dy, dw, dh] = box as [number, number, number, number];
+    const [dx, dy, dw, dh] = box;
     const corners = [
-      at(matrix, dx, dy),
-      at(matrix, dx + dw, dy),
-      at(matrix, dx, dy + dh),
-      at(matrix, dx + dw, dy + dh),
+      apply(matrix, dx, dy),
+      apply(matrix, dx + dw, dy),
+      apply(matrix, dx, dy + dh),
+      apply(matrix, dx + dw, dy + dh),
     ];
     const xs = corners.map((c) => c.x);
     const ys = corners.map((c) => c.y);
-    const center = at(matrix, dx + dw / 2, dy + dh / 2);
+    const center = apply(matrix, dx + dw / 2, dy + dh / 2);
     draws.push({
       x: Math.min(...xs),
       y: Math.min(...ys),
@@ -1427,85 +1422,67 @@ export function imageDraws(calls: readonly DrawCall[]): ImageDraw[] {
   return draws;
 }
 
-/** How far apart two draws may sit and still read as one letter-spaced word. */
-const LETTER_GAP = 24;
-
-/** How far apart two baselines may sit and still read as one line. */
-const LINE_GAP = 3;
-
 /**
  * The lines a region's text reads as, top to bottom.
  *
- * Draws sharing a baseline are one line, ordered left to right, and two of them
- * are run together only when both are single characters set close enough to be
- * letter spacing. Everything else is separated by a space, so `473` beside `17`
- * never reads as `47317`.
+ * The package's logical runs (`drawnTextRuns`) — a letter-spaced word already
+ * folded back into the string it spells, in reading order — kept to those
+ * anchored inside the region and joined a baseline at a time: the runs sharing
+ * one, within the package's own `RUN_BASELINE_SLACK`, make one line, separated
+ * by a space so `473` beside `17` never reads as `47317`. The region is the one
+ * fact added here; the placement, the merge, and the order are the package's.
  */
 export function textLines(
   calls: readonly DrawCall[],
   region: Region,
 ): string[] {
-  const draws = textDraws(calls)
-    .filter((d) => inRegion(region, d.x, d.y))
-    .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
   const lines: string[] = [];
-  let baseline: number | null = null;
-  let row: TextDraw[] = [];
-  const close = (): void => {
-    if (row.length === 0) return;
-    const ordered = [...row].sort((a, b) => a.x - b.x);
-    let line = "";
-    let previous: TextDraw | null = null;
-    for (const draw of ordered) {
-      if (previous !== null) {
-        const spaced =
-          previous.text.length <= 1 &&
-          draw.text.length <= 1 &&
-          draw.x - previous.x < LETTER_GAP;
-        if (!spaced) line += " ";
-      }
-      line += draw.text;
-      previous = draw;
+  let baseline: number | undefined;
+  for (const run of drawnTextRuns(calls)) {
+    if (!inRegion(region, run.x, run.y)) continue;
+    if (
+      baseline !== undefined &&
+      Math.abs(run.y - baseline) <= RUN_BASELINE_SLACK
+    ) {
+      lines[lines.length - 1] += ` ${run.text}`;
+      continue;
     }
-    lines.push(line);
-    row = [];
-  };
-  for (const draw of draws) {
-    if (baseline === null || Math.abs(draw.y - baseline) > LINE_GAP) {
-      close();
-      baseline = draw.y;
-    }
-    row.push(draw);
+    lines.push(run.text);
+    baseline = run.y;
   }
-  close();
   return lines;
 }
 
-/** Every line of a region, joined, as one reading. */
-export function textIn(calls: readonly DrawCall[], region: Region): string {
-  return textLines(calls, region).join("\n");
+/**
+ * Whether `text` spells `needle`, compared the way the package's `drewText`
+ * compares copy: as a substring, ignoring case, with the whitespace folded out
+ * of both sides.
+ *
+ * Case and spacing come off because a build is free to letter-space a label
+ * and to wrap a long line; nothing else does. What the specification fixes is
+ * the words, as `../constants` spells them, and a build that draws `Arc-Node`
+ * as `ARC NODE` has drawn different words.
+ */
+export function reads(text: string, needle: string): boolean {
+  return foldWhitespace(text).includes(foldWhitespace(needle));
+}
+
+/** `text` in lower case with every run of whitespace removed. */
+function foldWhitespace(text: string): string {
+  return text.replace(/\s+/g, "").toLowerCase();
 }
 
 /**
- * One reading of a piece of text: its letters and its digits, and nothing else.
- *
- * Case, spacing, and punctuation all come off, on both sides of a comparison,
- * because a build is free to letter-space a label, to wrap a long line, and to
- * set `Arc-Node` as `ARC NODE`. What the specification fixes is the words.
+ * A region's text carries `needle`, read across every line of the region joined
+ * — the package's `drewTextAnywhere` reading, confined to the region — so copy
+ * a narrow panel wraps is still found.
  */
-function normalize(text: string): string {
-  return text.toUpperCase().replace(/[^A-Z0-9]+/g, "");
-}
-
-/** A region's text carries `needle`, read that way. */
 export function drew(
   calls: readonly DrawCall[],
   region: Region,
   needle: string,
 ): boolean {
-  return normalize(textLines(calls, region).join(" ")).includes(
-    normalize(needle),
-  );
+  return reads(textLines(calls, region).join(" "), needle);
 }
 
 /**
@@ -1519,9 +1496,10 @@ export function drew(
  * `1234` and one that draws `1,234` are read the same.
  *
  * The ASCII space is deliberately absent from the class. {@link textLines} joins
- * the separate draws of a row with one, so accepting it would read the two
- * figures of `40 130` as the single `40130`. `.` is absent for a related reason:
- * it is the decimal point, and a build drawing `1.5` means one and a half.
+ * the runs of a baseline with one, and the package's merge writes one at a word
+ * gap a run crossed, so accepting it would read the two figures of `40 130` as
+ * the single `40130`. `.` is absent for a related reason: it is the decimal
+ * point, and a build drawing `1.5` means one and a half.
  */
 const GROUP = "[,'\\u00A0\\u202F\\u2009]";
 

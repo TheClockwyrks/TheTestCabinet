@@ -19,10 +19,10 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue } from "../assert";
+import { drewText } from "../case-harness/index";
 import {
   captureStill,
   createHarness,
-  drewText,
   openTable,
   type Harness,
 } from "../harness";

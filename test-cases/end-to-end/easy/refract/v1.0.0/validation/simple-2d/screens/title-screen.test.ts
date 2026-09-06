@@ -18,12 +18,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  drewText,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 

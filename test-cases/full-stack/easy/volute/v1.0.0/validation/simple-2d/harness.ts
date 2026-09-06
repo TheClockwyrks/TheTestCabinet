@@ -116,12 +116,7 @@ import {
   DRAW_METHODS,
   type DrawCall,
 } from "./case-harness/draw-calls";
-import {
-  drawnText,
-  drewText as spelledText,
-  textDraws,
-  type TextDraw,
-} from "./case-harness/text";
+import { drawnText, textDraws, type TextDraw } from "./case-harness/text";
 import { differingPoints, pixelsDiffering } from "./case-harness/color";
 import { apply, IDENTITY, numbers, transformed } from "./case-harness/matrix";
 import type { Matrix } from "./case-harness/matrix";
@@ -915,31 +910,6 @@ export function imageDraws(calls: readonly DrawCall[]): ImageDraw[] {
   return draws;
 }
 
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the value a check asserts is the
- * case's own — a score of 50, a level of 4 — but how a build presents it is the
- * build's, and a readout is commonly drawn with a label or padding around it.
- * Requiring the exact run would fail a HUD that shows precisely the right figure.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and `specs/ui.md` fixes
- * the copy a screen shows while leaving its spacing to the build. The kit's
- * recorder measures every text call (`recorder: { measureText: true }`, below),
- * so the package's merge rule (`case-harness/text.ts`) can coalesce side-by-side
- * glyphs on one baseline back into the string they spell, and this delegates to
- * the package's `drewText` over those runs. Every raw string is a substring of
- * the run it belongs to, so coalescing can only add a match and never take one
- * away. `drawnText` and `textDraws` still answer the raw calls, for the readers
- * that count or place one entry per call.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
-
 /* -------------------------------------------------------------------------- */
 /* The surface a build never returned                                         */
 /* -------------------------------------------------------------------------- */
@@ -1198,8 +1168,10 @@ const loopStops = new WeakMap<object, { n: number }>();
  *
  * The recorder measures text (`measureText`), so every `fillText`/`strokeText`
  * carries the width and alignment the package's merge rule needs to coalesce a
- * letter-spaced heading back into the run it spells — which is what
- * {@link drewText} reads copy off. No `internImages`: the identity a produced
+ * letter-spaced heading back into the run it spells — which is what the
+ * package's `drewText` and `drawnTextLines` (`case-harness/text`) read copy and
+ * figures off, and why `specs/ui.md` can fix the copy a screen shows while
+ * leaving its spacing to the build. No `internImages`: the identity a produced
  * sprite is recognized by is {@link imageRef}'s, above.
  */
 const kit = createEngineCaseHarness<

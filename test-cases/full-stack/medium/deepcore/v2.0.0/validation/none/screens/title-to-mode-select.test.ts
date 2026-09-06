@@ -26,9 +26,9 @@ import {
   captureStill,
   createHarness,
   drawnTextLines,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { drawnCopy } from "./frames";
 
 /** The two things specs/modes.md has both death rules turn on. */

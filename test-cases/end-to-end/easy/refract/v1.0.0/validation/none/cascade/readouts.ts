@@ -114,7 +114,7 @@ function runsAdjacent(a: TextDraw, b: TextDraw): boolean {
 /**
  * Every way the frame draws `label` with `value` beside it: the label's own run
  * carrying the number, or a separate run of it within `HUD_VALUE_GAP`. Label
- * matching is by substring, ignoring case, the same reading as the harness's
+ * matching is by substring, ignoring case, the same reading as the package's
  * `drewText` — the copy is the case's, the presentation the build's.
  */
 export function findReadouts(

@@ -18,7 +18,10 @@
 // a build that evolved something else fails against its own report. The
 // weapon's name is read from `WEAPON_NAMES` for the id the result names.
 //
-// THE TOLERANCE. The name is matched folded, and the icon counts as the
+// THE TOLERANCE. The name is matched ignoring case and whitespace, across the
+// runs of text the frame drew (the shared harness's `drewTextAnywhere`), its
+// row is the one the shortest span of consecutive draws spelling it landed on,
+// and the icon counts as the
 // result's when it is drawn from a `24 x 24` source within `ROW_BAND` (`110`
 // units) of the row the name was drawn on, the case's allowance for a layout
 // specs/ui.md does not fix and one that keeps the HUD's own slots, which stand

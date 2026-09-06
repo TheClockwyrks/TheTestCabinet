@@ -29,10 +29,10 @@ import { ALMANAC_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   poseScreen,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 

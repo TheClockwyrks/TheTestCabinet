@@ -33,11 +33,11 @@ import {
   captureStill,
   createHarness,
   drawnTextForms,
-  drewText,
   pixelsChanged,
   resetTo,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The run the screen reports: won, with a score no other figure shares. */
 const RUN_SCORE = 8460;

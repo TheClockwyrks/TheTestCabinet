@@ -118,7 +118,6 @@ import {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText as spelledText,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -1398,35 +1397,12 @@ export function sampleTile(h: Harness, c: number, r: number): Rgb {
 /* -------------------------------------------------------------------------- */
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
-
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and `specs/ui.md` fixes
- * the copy a screen shows while leaving its spacing to the build. The recorder
- * measures every text call (`recorder: { measureText: true }`), so the shared
- * harness's merge rule (`case-harness/text.ts`) can coalesce side-by-side
- * glyphs on one baseline back into the string they spell. Every raw string is a
- * substring of the run it belongs to, so coalescing can only add a match and
- * never take one away. This is the package's own `drewText`, bound under the
- * name every copy point here has always called.
- *
- * A reader that wants a WORD or a FIGURE on its own — a boundary on both sides
- * rather than a substring — reads {@link drawnTextForms} instead, because a run
- * can also swallow a boundary: a label and the figure one space after it merge
- * into one run under the same rule.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
+//
+// Copy is read through the shared harness's `drewText` (`case-harness/text`),
+// which the screen suites import directly: a substring of the logical runs a
+// frame spells, ignoring case, so a letter-spaced heading and a menu entry drawn
+// beside its marker both read as the words they show. The text readers below
+// are the readings this case needs beyond it.
 
 /**
  * Every string the frame drew, BOTH as the calls split it and as the logical

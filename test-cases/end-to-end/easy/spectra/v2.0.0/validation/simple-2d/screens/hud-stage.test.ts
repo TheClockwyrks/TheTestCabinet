@@ -32,10 +32,10 @@ import {
   createHarness,
   drawFrame,
   drawnTextSpans,
-  drewText,
   startPosed,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { TOP_STRIP, insideBand, numberRuns } from "./reading";
 
 /** The two stages the run is posed at, in the order they are posed. */

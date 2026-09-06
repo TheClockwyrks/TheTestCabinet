@@ -15,13 +15,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import { PAUSE_ITEMS } from "../constants";
 import {
   HOME_HEAD,
   captureStill,
   chainFrom,
   createHarness,
-  drewText,
   poseScene,
   type Harness,
 } from "../harness";

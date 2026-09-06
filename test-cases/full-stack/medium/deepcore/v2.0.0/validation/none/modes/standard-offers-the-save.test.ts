@@ -22,12 +22,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { GAME_OVER_ITEMS, GAME_OVER_SAVE_ITEMS } from "../constants";
-import {
-  captureStill,
-  createHarness,
-  drewText,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewText } from "../case-harness/index";
 import {
   bankSave,
   driveDeath,

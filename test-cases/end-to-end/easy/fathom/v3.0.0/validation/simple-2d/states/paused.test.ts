@@ -39,6 +39,7 @@ import { BRIGHT_HOLD } from "../constants";
 import { placeForager, poseApart, spawnPredator } from "../fixtures";
 
 import { assertEqual, assertGreaterThan } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   captureStill,
   createHarness,
@@ -47,7 +48,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { MOVE_KEY, assertDrew, frameOps } from "./screens";
+import { MOVE_KEY, frameOps } from "./screens";
 
 /** How far apart the forager's room and the hunter's ring stand, in tiles. */
 const APART_TILES = 12;
@@ -123,9 +124,9 @@ it("freezes the dive behind its menu", async () => {
     "paused",
     "the screen this point's freeze is read on (specs/ui.md)",
   );
-  assertDrew(
-    ops,
-    `DEPTH ${String(paused.depth)}`,
+  assertEqual(
+    drewText(ops, `DEPTH ${String(paused.depth)}`),
+    true,
     "the HUD's depth readout, still drawn over the maze that stays visible " +
       "behind the pause menu (specs/ui.md)",
   );

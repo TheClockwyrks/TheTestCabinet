@@ -20,9 +20,11 @@
 // specification gives to this screen. One frame is then drawn and its runs of
 // text are read.
 //
-// THE TOLERANCE. The heading is matched as words in order through
-// `drewPhrase`, which admits any font, wrap, or shadow; nothing about its
-// colour or place is read, since specs/ui.md fixes no styling for any screen.
+// THE TOLERANCE. The heading is matched as a substring of the frame's text
+// through the shared harness's `drewTextAnywhere`, ignoring case and whitespace
+// across every run the frame drew, which admits any font, wrap, or shadow;
+// nothing about its colour or place is read, since specs/ui.md fixes no
+// styling for any screen.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -30,11 +32,11 @@ import { CHEST_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   isolate,
   openChest,
   type Harness,
 } from "../harness";
+import { drewTextAnywhere } from "../case-harness/text";
 
 let h: Harness;
 
@@ -55,7 +57,7 @@ it("draws A CHEST OPENS over the held world", async () => {
   captureStill(h, "chest");
 
   assertEqual(
-    drewPhrase(calls, CHEST_TEXT),
+    drewTextAnywhere(calls, CHEST_TEXT),
     true,
     `the chest overlay's frame draws ${CHEST_TEXT}`,
   );

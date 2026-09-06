@@ -37,13 +37,13 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
-  drewText,
   hasToken,
   isolate,
   placedRuns,
   textReadings,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY } from "./stage";
 
 /** The run the fallen screen reports: its clock, its level, its kills. */

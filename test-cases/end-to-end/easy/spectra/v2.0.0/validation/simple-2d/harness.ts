@@ -117,12 +117,7 @@ import {
   type Rect,
 } from "./case-harness/point";
 import { retable } from "./case-harness/replay/retable";
-import {
-  drawnText,
-  drawnTextRuns,
-  drewText as spelledText,
-  type TextDraw,
-} from "./case-harness/text";
+import { drawnText, drawnTextRuns, type TextDraw } from "./case-harness/text";
 import {
   DevicePointerEvent,
   applyDriver,
@@ -1474,28 +1469,6 @@ export async function drawFrame(h: Harness): Promise<DrawCall[]> {
 // at zero gain.
 
 /* ---- Text ----------------------------------------------------------------- */
-
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a validator asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and the specification
- * fixes the copy a screen shows while leaving its spacing to the build. Every
- * text call is measured, so the shared harness's merge rule
- * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
- * into the string they spell. Every raw string is a substring of the run it
- * belongs to, so coalescing can only add a match and never take one away.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
 
 /**
  * One run of text a frame drew, and the logical x range its glyphs span.

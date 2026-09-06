@@ -17,9 +17,11 @@
 // yours" — and letter spacing is not portable, so a build is free to draw one
 // run of copy as one call, as a call per word, or as a call per glyph. What
 // all of those share is the baseline: one line of copy is drawn at one `y`,
-// and stacked lines are drawn at different ones. So the frame's text runs are
-// gathered by the `y` their anchor maps to and joined in `x` order, and each
-// piece of copy is found by the line it lies on. Nothing here reads a
+// and stacked lines are drawn at different ones. So each piece of copy is read
+// with the shared harness's `drewText`, and then placed by the line it lies on
+// — `drawing.ts`'s `textLines`, the same logical runs gathered onto the
+// baselines they share, and `lineWith`, which finds a line by the rule
+// `drewText` matched it by. Nothing here reads a
 // coordinate, a size or a colour `specs/` does not fix — only which line is
 // further down the stage than which, and the stage's `y` grows downward.
 //
@@ -29,15 +31,22 @@
 // that is out of order.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNotNull,
+  assertTrue,
+} from "../assert";
+import { drewText } from "../case-harness/text";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
+  lineWith,
   openTitle,
-  textDraws,
+  textLines,
   type Harness,
-  type TextDraw,
+  type TextLine,
 } from "../harness";
 
 let h: Harness;
@@ -50,39 +59,11 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/** The frame's text runs, gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), draw]);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
-
-/** The line the frame drew `text` on, or `null` when it drew it on none. */
-function lineWith(lines: readonly Line[], text: string): Line | null {
-  const wanted = text.trim().toLowerCase();
-  return lines.find((line) => line.text.toLowerCase().includes(wanted)) ?? null;
-}
-
 it("stacks CAMPAIGN, EXTRAS and HOW TO PLAY down the screen under the title", async () => {
   await openTitle(h);
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const calls = await h.lastCalls();
+  const lines = textLines(calls);
   await captureStill(h, "stack");
 
   const shown = await h.snapshot();
@@ -92,18 +73,33 @@ it("stacks CAMPAIGN, EXTRAS and HOW TO PLAY down the screen under the title", as
     "the frame this point reads is the title screen's",
   );
 
-  const title = lineWith(lines, TITLE_TEXT);
-  const tagline = lineWith(lines, TAGLINE_TEXT);
-  assertNotNull(title, `the title frame draws TITLE_TEXT (${TITLE_TEXT})`);
-  assertNotNull(
-    tagline,
+  assertTrue(
+    drewText(calls, TITLE_TEXT),
+    `the title frame draws TITLE_TEXT (${TITLE_TEXT})`,
+  );
+  assertTrue(
+    drewText(calls, TAGLINE_TEXT),
     `the title frame draws TAGLINE_TEXT (${TAGLINE_TEXT})`,
   );
+  const title = lineWith(lines, TITLE_TEXT);
+  const tagline = lineWith(lines, TAGLINE_TEXT);
+  assertNotNull(title, `TITLE_TEXT (${TITLE_TEXT}) lies on a line of its own`);
+  assertNotNull(
+    tagline,
+    `TAGLINE_TEXT (${TAGLINE_TEXT}) lies on a line of its own`,
+  );
 
-  const rows: Line[] = [];
+  const rows: TextLine[] = [];
   for (const item of TITLE_ITEMS) {
+    assertTrue(
+      drewText(calls, item),
+      `the title frame draws the TITLE_ITEMS entry ${item}`,
+    );
     const row = lineWith(lines, item);
-    assertNotNull(row, `the title frame draws the TITLE_ITEMS entry ${item}`);
+    assertNotNull(
+      row,
+      `the TITLE_ITEMS entry ${item} lies on a line of its own`,
+    );
     if (row !== null) rows.push(row);
   }
   assertEqual(

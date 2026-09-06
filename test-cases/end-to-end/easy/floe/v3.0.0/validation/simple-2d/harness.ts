@@ -121,7 +121,6 @@ import { rectCenter, type Point } from "./case-harness/point";
 import {
   drawnText as rawDrawnText,
   drawnTextRuns as sharedTextRuns,
-  drewText as spelledText,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -1392,30 +1391,6 @@ export const watchCues = kit.watchCues;
 /** Every string the frame drew, through `fillText` or `strokeText`. */
 export function drawnText(calls: readonly DrawCall[]): string[] {
   return rawDrawnText(calls);
-}
-
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the exact
- * run would fail a screen that shows precisely the right words.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split: this is the package's `drewText` under this case's own name. A build
- * that letter-spaces a heading draws one glyph per call, which is the only
- * portable way to letter-space canvas text, and specs/ui.md fixes the copy a
- * screen shows while leaving its typography to the build. The recorder measures
- * every text call (`recorder: { measureText: true }`), so the shared harness's
- * merge rule (`case-harness/text.ts`) can coalesce side-by-side glyphs on one
- * baseline back into the string they spell. Every raw string is a substring of
- * the run it belongs to, so coalescing can only add a match and never take one
- * away.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
 }
 
 /** One run of text a frame drew, and the logical box its glyphs span. */

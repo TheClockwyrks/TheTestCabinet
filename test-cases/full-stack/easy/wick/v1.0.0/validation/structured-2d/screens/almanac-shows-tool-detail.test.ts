@@ -47,11 +47,11 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   poseScreen,
   placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { drewRightOfList, statLine, windowNames } from "./almanac";
 
 /** The entry shown: the first of the tools tab, Taper, and its level 1 row. */

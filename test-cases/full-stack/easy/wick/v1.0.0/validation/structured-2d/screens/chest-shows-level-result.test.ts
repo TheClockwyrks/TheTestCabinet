@@ -50,13 +50,13 @@ import {
   blitsFrom,
   captureStill,
   createHarness,
-  drewText,
   holdWeapon,
   isolate,
   openChest,
   textReadings,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The one item held below a maximum, so the chest's level result is certain. */
 const ITEM = "ember";

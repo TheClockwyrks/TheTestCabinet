@@ -105,7 +105,6 @@ import {
 } from "./case-harness/engine/2d";
 import {
   drawnText as rawDrawnText,
-  drewText as spelledText,
   drawnTextLines as spelledLines,
   reanchoredTextRuns,
   textDraws,
@@ -939,37 +938,19 @@ export function pixelsChanged(
 
 /* ---- Reading one frame's text draws ---------------------------------------- */
 //
-// All three readings are the package's, which walks the frame's calls once and
+// Every reading here is the package's, which walks the frame's calls once and
 // places each text draw through the transform the recorder took at it. What this
 // file adds is the conversion out of canvas pixels and into the stage's logical
 // units, which is where every figure a check states is stated. At the harness's
 // default shape the two coincide; at any other they do not, and a check that
-// runs at another shape reads what it meant either way.
+// runs at another shape reads what it meant either way. Copy is matched by the
+// package's `drewText`, which a suite imports from `../case-harness/text`
+// directly: it reads the logical runs the frame spells, so there is nothing to
+// convert and nothing for this file to add.
 
 /** Every string the frame drew, through `fillText` or `strokeText`. */
 export function drawnText(calls: readonly DrawCall[]): string[] {
   return rawDrawnText(calls);
-}
-
-/**
- * Whether the frame spelled `text` somewhere along some baseline, ignoring
- * case and whitespace.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * The shared harness's reading (`case-harness/text.ts`): off the logical runs
- * the frame spells rather than off the raw calls, so a heading letter-spaced a
- * glyph per `fillText` is found by the words it spells; and with the
- * whitespace folded out of both sides across every run sharing a baseline, so
- * the copy is found whether the build drew its spaces, skipped them, or split
- * the line into words. Every raw string is a substring of the run it belongs
- * to, so coalescing can only add a match and never take one away.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
 }
 
 /** Every logical run of text the frame spelled, as the strings it spells. */

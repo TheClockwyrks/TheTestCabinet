@@ -32,9 +32,9 @@ import {
   createHarness,
   drawnText,
   drawnTextSpans,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { drawFrame, runCarrying, titleItems } from "./reading";
 
 let h: Harness;

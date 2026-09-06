@@ -90,6 +90,7 @@ import {
   drawnTextLines,
   drawnTextRuns,
   luminance,
+  restrikes,
   sampleColor,
   textDraws,
   type Clock,
@@ -151,7 +152,6 @@ export {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText,
   luminance,
   sampleColor,
   setsOf,
@@ -1088,31 +1088,33 @@ export function speedOverFrames(delta: number, frames: number): number {
 /* -------------------------------------------------------------------------- */
 //
 // The readings themselves are the shared harness's; what is here is the two
-// this case adds. `drewWord` is the stricter sibling of `drewText`, for copy a
-// specification names as a WORD; the transform walk is what lets a check about
-// where the build drew something read a frame that drew it under a translate or
-// a rotate, which every screen in this game does.
+// this case adds. `drewWord` is the stricter sibling of the package's
+// `drewText`, for copy a specification names as a WORD; the transform walk is
+// what lets a check about where the build drew something read a frame that
+// drew it under a translate or a rotate, which every screen in this game does.
 
 /**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
- * The stricter sibling of {@link drewText}, for the copy `specs/screens.md` and
- * `specs/hud.md` require as a word rather than as a substring — a readout's
- * `WAVE` label, or the how-to screen naming a key. A panel reading "waveform"
- * contains `wave` and does not carry the label the specification named.
+ * The stricter sibling of the package's `drewText`, for the copy
+ * `specs/screens.md` and `specs/hud.md` require as a word rather than as a
+ * substring — a readout's `WAVE` label, or the how-to screen naming a key. A
+ * panel reading "waveform" contains `wave` and does not carry the label the
+ * specification named.
  *
- * Read off the LOGICAL RUNS the frame spells, as `drewText` is, AND off the raw
- * `fillText` split, and the two are not redundant. A build that letter-spaces
- * its label draws `WAVE` a glyph per call, and no single glyph is the word; the
- * harness measures every text call, so the shared merge rule
- * (`case-harness/text.ts`) folds those glyphs back into the word they spell. But
- * the merge joins any gap up to 0.6 of the run's mean advance and concatenates
- * VERBATIM wherever the gap stays inside the run's own tracking, writing a space
- * only past it: a label and its figure drawn as two calls set tight, or a
- * letter-spaced label whose figure sits one tracking gap along, come back as the
- * one run `WAVE3/15`, in which `WAVE` is no longer a whole token. A substring reader still finds its copy in
- * that; a whole-word reader would lose the match it had call by call. So both
- * readings are taken, and coalescing only ever adds a match.
+ * Read off the LOGICAL RUNS the frame spells, as the package's `drewText` is,
+ * AND off the raw `fillText` split, and the two are not redundant. A build that
+ * letter-spaces its label draws `WAVE` a glyph per call, and no single glyph is
+ * the word; the harness measures every text call, so the shared merge rule
+ * (`case-harness/text.ts`) folds those glyphs back into the word they spell.
+ * But the merge joins any gap up to 0.6 of the run's mean advance and
+ * concatenates VERBATIM wherever the gap stays inside the run's own tracking,
+ * writing a space only past it: a label and its figure drawn as two calls set
+ * tight, or a letter-spaced label whose figure sits one tracking gap along,
+ * come back as the one run `WAVE3/15`, in which `WAVE` is no longer a whole
+ * token. A substring reader still finds its copy in that; a whole-word reader
+ * would lose the match it had call by call. So both readings are taken, and
+ * coalescing only ever adds a match.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
@@ -1161,12 +1163,12 @@ export interface TextRun extends TextDraw {
  * draw of whitespace alone is in the run verbatim, since the rule writes no
  * space beside one; and a RESTRIKE — the same text struck again where the last
  * draw consumed already stands, an outlined glyph's fill over its stroke — is
- * the glyph the run already spells, folded by the rule under the same test it
- * folds it by ({@link restrikes}), and is passed over without becoming a part.
- * Were a run's text ever left unspelled by that walk, every run in the frame
- * would be handed back as its own only part, which is the reading a whole-token
- * reader had before the runs existed; the walk above is the rule's own, so that
- * is a guard and not a path the rule takes.
+ * the glyph the run already spells, folded by the rule under the one test it
+ * folds it by, the package's {@link restrikes}, and is passed over without
+ * becoming a part. Were a run's text ever left unspelled by that walk, every
+ * run in the frame would be handed back as its own only part, which is the
+ * reading a whole-token reader had before the runs existed; the walk above is
+ * the rule's own, so that is a guard and not a path the rule takes.
  */
 export function spelledRuns(calls: readonly DrawCall[]): TextRun[] {
   const runs = drawnTextRuns(calls);
@@ -1203,26 +1205,6 @@ export function spelledRuns(calls: readonly DrawCall[]): TextRun[] {
     spelled.push({ ...run, parts });
   }
   return spelled;
-}
-
-/** How far apart two draws' baselines may sit and still be one glyph struck twice. */
-const RESTRIKE_BASELINE_SLACK = 0.75;
-
-/** How far a draw may sit from the one it repeats and still be a restrike of it. */
-const RESTRIKE_ANCHOR_SLACK = 0.5;
-
-/**
- * Whether `draw` strikes `last` again where it already stands: the same text at
- * the same anchor, within the slacks the shared merge rule folds a restrike by.
- * An outlined glyph is drawn twice, `strokeText` then `fillText`, and the rule
- * keeps the run spelling it once.
- */
-function restrikes(draw: TextDraw, last: TextDraw): boolean {
-  return (
-    draw.text === last.text &&
-    Math.abs(draw.y - last.y) <= RESTRIKE_BASELINE_SLACK &&
-    Math.abs(draw.left - last.left) <= RESTRIKE_ANCHOR_SLACK
-  );
 }
 
 /** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */

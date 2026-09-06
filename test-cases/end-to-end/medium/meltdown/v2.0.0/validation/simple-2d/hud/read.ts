@@ -120,7 +120,7 @@ export function spellingsOf(spans: readonly Spelled[]): string[] {
  * Whether some run in `spans` carries `text`, ignoring case and surrounding
  * punctuation.
  *
- * Substring rather than equality, for the reason `drewText` in the harness gives:
+ * Substring rather than equality, for the reason the package's `drewText` gives:
  * the words a check asserts are the specification's, but how a build frames them
  * — a label beside them, a marker around them, padding — is the build's.
  */

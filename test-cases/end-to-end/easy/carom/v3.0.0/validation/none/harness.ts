@@ -606,12 +606,12 @@ const kit = createCaseHarness<CaromSnapshot, CaromCoreApi>({
   // the device a build offering touch controls has to believe it is on.
   hasTouch: true,
   // Every text call carries the width the page measured for it and the alignment
-  // in force, which is what the merge behind {@link drewText} works on: the
-  // `ui/state-*` suites read a screen's copy off the LOGICAL runs a frame spells,
-  // so a title or a menu entry a build letter-spaces a glyph per `fillText` is
-  // found by the words it spells — the same reading this project's two engine
-  // siblings take. Without it no two draws ever coalesce and the runs are exactly
-  // the calls.
+  // in force, which is what the merge behind the package's `drewText` works on:
+  // the `ui/state-*` suites read a screen's copy off the LOGICAL runs a frame
+  // spells, so a title or a menu entry a build letter-spaces a glyph per
+  // `fillText` is found by the words it spells — the same reading this project's
+  // two engine siblings take. Without it no two draws ever coalesce and the runs
+  // are exactly the calls.
   measureText: true,
   // A build installs its surface while its entry module runs, so a page that has
   // fired `load` has either installed it already or is not going to, and the
@@ -736,7 +736,6 @@ export {
   colorDistance,
   drawnText,
   drawnTextLines,
-  drewText,
   mouseGlide,
   mousePress,
   mouseRelease,

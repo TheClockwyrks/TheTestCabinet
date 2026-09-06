@@ -111,7 +111,6 @@ import {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText as spelledText,
   DEFAULT_FONT,
   DEFAULT_TEXT_ALIGN,
 } from "./case-harness/text";
@@ -2638,24 +2637,6 @@ export function spriteNear(
 ): string | null {
   const found = blitsNear(h, blits, x, y, tolerance);
   return found.length === 0 ? null : found[found.length - 1].id;
-}
-
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case. Substring on purpose: the copy a check asserts is the case's own, but
- * how a build presents it — a selection marker, padding — is the build's.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and specs/ui.md fixes
- * the copy a screen shows while leaving its spacing to the build. The recorder
- * measures every text call, so the shared harness's merge rule
- * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline
- * back into the string they spell. Every raw string is a substring of the run
- * it belongs to, so coalescing can only add a match and never take one away.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
 }
 
 /**

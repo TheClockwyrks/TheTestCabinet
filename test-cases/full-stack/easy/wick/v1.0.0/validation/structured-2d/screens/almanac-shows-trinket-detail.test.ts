@@ -45,11 +45,11 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   poseScreen,
   placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { drewRightOfList, moveTab, statLine, windowNames } from "./almanac";
 
 /** The entry shown: the first of the trinkets tab, Wick. */

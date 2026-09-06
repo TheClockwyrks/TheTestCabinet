@@ -15,11 +15,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import { TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   openTitle,
   type Harness,
 } from "../harness";

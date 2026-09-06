@@ -8,9 +8,10 @@
 //
 //   * WHERE a run of text ended up, in logical field units, so "the first entry
 //     above the second" is a comparison of two numbers rather than of two strings;
-//   * WHETHER a piece of copy was drawn, with the three matchings the specification
-//     actually calls for — a phrase inside a longer line, a standalone WORD, and a
-//     NUMBER that is not part of a longer number;
+//   * WHETHER a standalone WORD, or a NUMBER that is not part of a longer number,
+//     was drawn — the two matchings the specification calls for beyond the phrase
+//     inside a longer line, which is the shared harness's own `drewText`
+//     (`case-harness/text.ts`) and is read straight from it;
 //   * WHICH run belongs to WHICH menu entry, which needs care on the title menu
 //     where `PLAY` is a substring of `HOW TO PLAY`;
 //   * and a rectangle of the canvas read back in one go, for the one check that
@@ -113,11 +114,13 @@ const BEFORE_PARTS = " || ";
 /**
  * Every run the frame drew, laid end to end as one string a failure can print.
  *
- * This is the `Actual:` line of every copy check in this group: a build that drew
- * the wrong words shows the reviewer the words it did draw, beside the copy
- * `specs/ui.md` fixes. Each run is {@link normalize}d and the runs are separated
- * by a marker that appears in no piece of screen copy, so nothing matches across
- * the join.
+ * This is the container every WORD and NUMBER check in this group matches
+ * against, and the `Actual:` line of its failure: a build that drew the wrong
+ * words shows the reviewer the words it did draw, beside the copy `specs/ui.md`
+ * fixes. Each run is {@link normalize}d and the runs are separated by a marker
+ * that appears in no piece of screen copy, so nothing matches across the join.
+ * A PHRASE — the title, the tagline — is not read here: that is the shared
+ * harness's `drewText`, which the check that wants it imports directly.
  *
  * The runs are laid out AS THE BUILD WROTE THEM, separators and all. What a figure
  * was grouped with is {@link numberPattern}'s business, and leaving it in the string

@@ -33,160 +33,29 @@
 // highlights and that mark is not a state either.
 
 import { afterEach, beforeEach, it } from "vitest";
+import {
+  apply,
+  drawnTextRuns,
+  IDENTITY,
+  transformed,
+  type DrawCall,
+  type Matrix,
+  type TextDraw,
+} from "../case-harness/index";
 import { assertTrue, fail } from "../assert";
 import { SITE_COUNT, SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
-/* -------------------------------------------------------------------------- */
-/* Reading the frame's text                                                   */
-/* -------------------------------------------------------------------------- */
-//
-// The harness lifts the clock, the projection and the input out of the surface
-// but exposes no reading of the frame's draw operations, so this suite reaches
-// the injected recorder over `h.page` — the one escape hatch the harness leaves
-// open. `last()` answers every operation the last CLOSED frame issued, so a frame
-// is advanced before it is read.
-
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
-/** One operation the recorder wrote, in the order the render made it. */
-type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
-  | { op: "set"; property: string; value: unknown };
-
-/** A 2D affine transform, in the order `setTransform` takes its arguments. */
-type Matrix = readonly [number, number, number, number, number, number];
-
-const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
-
-/** `m` with `n` applied under it, as the canvas composes a transform. */
-function mul(m: Matrix, n: Matrix): Matrix {
-  return [
-    m[0] * n[0] + m[2] * n[1],
-    m[1] * n[0] + m[3] * n[1],
-    m[0] * n[2] + m[2] * n[3],
-    m[1] * n[2] + m[3] * n[3],
-    m[0] * n[4] + m[2] * n[5] + m[4],
-    m[1] * n[4] + m[3] * n[5] + m[5],
-  ];
-}
-
-/** Where `(x, y)` lands under `m`. */
-function at(m: Matrix, x: number, y: number): { x: number; y: number } {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
-
-/** `m` after the transform `method` names, or `null` when it names none. */
-function moved(m: Matrix, method: string, n: readonly number[]): Matrix | null {
-  if (method === "resetTransform") return IDENTITY;
-  if (method === "setTransform" && n.length >= 6) {
-    return [n[0], n[1], n[2], n[3], n[4], n[5]];
-  }
-  if (method === "transform" && n.length >= 6) {
-    return mul(m, [n[0], n[1], n[2], n[3], n[4], n[5]]);
-  }
-  if (method === "translate" && n.length >= 2) {
-    return mul(m, [1, 0, 0, 1, n[0], n[1]]);
-  }
-  if (method === "scale" && n.length >= 2) {
-    return mul(m, [n[0], 0, 0, n[1], 0, 0]);
-  }
-  if (method === "rotate" && n.length >= 1) {
-    const c = Math.cos(n[0]);
-    const s = Math.sin(n[0]);
-    return mul(m, [c, s, -s, c, 0, 0]);
-  }
-  return null;
-}
-
-/** One run of text a frame drew, at the point the transform in force put it. */
-interface TextDraw {
-  text: string;
-  x: number;
-  y: number;
-}
-
-/**
- * Every run of text the frame drew, with its anchor.
- *
- * A build is free to draw under a transform — to translate to a corner of the
- * stage and draw at the origin — so where a `fillText` landed is only the point
- * it names once the transform in force at that call is applied.
- */
-function textDraws(ops: readonly RecordedOp[]): TextDraw[] {
-  const out: TextDraw[] = [];
-  const stack: Matrix[] = [];
-  let m = IDENTITY;
-  for (const op of ops) {
-    if (op.op !== "call") continue;
-    const n = op.args.filter((a): a is number => typeof a === "number");
-    if (op.method === "save") {
-      stack.push(m);
-      continue;
-    }
-    if (op.method === "restore") {
-      m = stack.pop() ?? IDENTITY;
-      continue;
-    }
-    const next = moved(m, op.method, n);
-    if (next !== null) {
-      m = next;
-      continue;
-    }
-    if (
-      (op.method === "fillText" || op.method === "strokeText") &&
-      typeof op.args[0] === "string" &&
-      n.length >= 2
-    ) {
-      out.push({ text: op.args[0], ...at(m, n[0], n[1]) });
-    }
-  }
-  return out;
-}
-
-/** Two runs are on one line when their anchors sit this close in `y`. */
-const LINE_TOL = 4;
-
-/** The frame's runs of text in reading order: down the stage, then across. */
-function readingOrder(draws: readonly TextDraw[]): TextDraw[] {
-  return [...draws].sort((a, b) =>
-    Math.abs(a.y - b.y) > LINE_TOL ? a.y - b.y : a.x - b.x,
-  );
-}
-
-/**
- * Where `wanted` starts among the frame's runs, or `null` when it was not drawn.
- *
- * The frame's text is joined in reading order with every space removed, so copy
- * split across calls, letter-spaced, or padded matches the same as copy drawn in
- * one call; the answer is the index of the run the match starts in, which is what
- * puts two pieces of copy in order.
- */
-function findText(order: readonly TextDraw[], wanted: string): number | null {
-  const needle = wanted.replace(/\s+/g, "").toLowerCase();
-  let joined = "";
-  const owner: number[] = [];
-  order.forEach((draw, index) => {
-    const bare = draw.text.replace(/\s+/g, "").toLowerCase();
-    joined += bare;
-    for (let k = 0; k < bare.length; k += 1) owner.push(index);
-  });
-  const found = joined.indexOf(needle);
-  return found < 0 ? null : owner[found]!;
-}
-
-/** Every operation the last closed frame's render issued. */
-async function frameOps(harness: Harness): Promise<RecordedOp[]> {
-  return (await harness.page.evaluate(
-    (global) =>
-      (window as unknown as Record<string, { last(): unknown[] }>)[
-        global
-      ]!.last(),
-    RECORDER,
-  )) as RecordedOp[];
-}
+import { runStarting } from "./reading";
 
 /* ---- The six rows of the site list ---------------------------------------- */
+//
+// The frame is read twice over, both off `h.screenCalls()` — the last CLOSED
+// frame's operations on the screen layer, every text call measured. The site
+// names are found among the logical runs the shared harness's `drawnTextRuns`
+// spells, in the reading order it hands them over in, and the run each name
+// starts in (`./reading`) is what places its row. Everything the row then DREW is
+// walked raw, below: that is a comparison of marks and styles between two
+// readings of one row, not a reading of copy, and it is not a package reader.
 
 /** One row of the list: the axis the rows run along, and the band it occupies. */
 interface Row {
@@ -207,7 +76,7 @@ interface Row {
  */
 function siteRows(order: readonly TextDraw[]): Row[] {
   const anchors = SITE_NAMES.map((name, index) => {
-    const found = findText(order, name);
+    const found = runStarting(order, name);
     if (found === null) {
       fail(
         `site ${index + 1}'s name, "${name}", drawn on the select screen ` +
@@ -293,7 +162,7 @@ function stateText(text: string, index: number): string {
  * taken out.
  */
 function rowMarks(
-  ops: readonly RecordedOp[],
+  calls: readonly DrawCall[],
   rows: readonly Row[],
   hue: boolean,
 ): string[][] {
@@ -301,23 +170,23 @@ function rowMarks(
   const stack: Matrix[] = [];
   const style = new Map<string, unknown>();
   const props = hue ? [...SHAPE_PROPS, ...HUE_PROPS] : [...SHAPE_PROPS];
-  let m = IDENTITY;
+  let m: Matrix = IDENTITY;
   let last = -1;
-  for (const op of ops) {
-    if (op.op === "set") {
-      style.set(op.property, op.value);
+  for (const call of calls) {
+    if (call.kind === "set") {
+      style.set(call.property, call.value);
       continue;
     }
-    const n = op.args.filter((a): a is number => typeof a === "number");
-    if (op.method === "save") {
+    const { method, args } = call;
+    if (method === "save") {
       stack.push(m);
       continue;
     }
-    if (op.method === "restore") {
+    if (method === "restore") {
       m = stack.pop() ?? IDENTITY;
       continue;
     }
-    const next = moved(m, op.method, n);
+    const next = transformed(m, method, args);
     if (next !== null) {
       m = next;
       continue;
@@ -325,24 +194,25 @@ function rowMarks(
     // `fill`, `stroke` and `closePath` carry no coordinates, and they are what
     // separates an outlined mark from a filled one — so each belongs to the row
     // the path before it was drawn in.
-    if (
-      op.method === "fill" ||
-      op.method === "stroke" ||
-      op.method === "closePath"
-    ) {
-      if (last >= 0) marks[last]!.push(op.method);
+    if (method === "fill" || method === "stroke" || method === "closePath") {
+      if (last >= 0) marks[last]!.push(method);
       continue;
     }
+    const n = args.filter((a): a is number => typeof a === "number");
     if (n.length < 2) continue;
+    // A text call the recorder measured carries the transform it was really
+    // made under; the walk stands in where it did not, which is how the shared
+    // `textDraws` places the same call, so a mark lands in the row its name did.
+    const placed = call.text?.transform ?? m;
     const points: { x: number; y: number }[] = [];
     for (let i = 0; i + 1 < n.length; i += 2)
-      points.push(at(m, n[i]!, n[i + 1]!));
+      points.push(apply(placed, n[i]!, n[i + 1]!));
     const index = rows.findIndex((row) => inRow(row, points[0]!));
     if (index < 0) continue;
     const row = rows[index]!;
     let text: string | null = null;
-    if (typeof op.args[0] === "string") {
-      text = stateText(op.args[0], index);
+    if (typeof args[0] === "string") {
+      text = stateText(args[0], index);
       if (text === "") continue;
     }
     last = index;
@@ -354,7 +224,7 @@ function rowMarks(
       )
       .join(" ");
     const set = props.map((p) => `${p}=${String(style.get(p))}`).join(";");
-    marks[index]!.push(`${op.method}|${text ?? ""}|${where}|${set}`);
+    marks[index]!.push(`${method}|${text ?? ""}|${where}|${set}`);
   }
   return marks;
 }
@@ -390,14 +260,14 @@ async function rowWith(clear: number | null): Promise<string> {
   await h.debug.setMenuIndex(SITE_COUNT - 1);
   await h.advance(1);
 
-  const ops = await frameOps(h);
-  const order = readingOrder(textDraws(ops));
+  const calls = await h.screenCalls();
+  const order = drawnTextRuns(calls);
   assertTrue(
     order.length > 0,
     "the select screen to draw text at all (specs/ui.md)",
   );
   const rows = siteRows(order);
-  return rowMarks(ops, rows, false)[SITE]!.join("\n");
+  return rowMarks(calls, rows, false)[SITE]!.join("\n");
 }
 
 it("tells cleared, open and locked apart with the hue removed", async () => {

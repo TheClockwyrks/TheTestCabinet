@@ -14,10 +14,10 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  drewText,
   driveCourse,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { CAMPAIGN_LENGTH } from "../notation";
 
 let h: Harness;

@@ -37,7 +37,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PAUSE_ITEMS } from "../constants";
-import { assertContains, assertLessThan } from "../assert";
+import { assertLessThan, fail } from "../assert";
+import { drawnTextLines, drewText } from "../case-harness/text";
 import {
   captureStill,
   clearCalls,
@@ -45,7 +46,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { drawnRuns, menuRows } from "./reading";
+import { menuRows } from "./reading";
 
 let h: Harness;
 
@@ -65,15 +66,15 @@ it("draws all three PAUSE_ITEMS, stacked in the order the spec fixes", async () 
   await h.advance(1);
   captureStill(h, "menu");
 
-  const drawn = drawnRuns(h);
   for (const item of PAUSE_ITEMS) {
-    assertContains(
-      drawn,
-      item.toLowerCase(),
-      `the pause menu entry ${JSON.stringify(item)} drawn on the paused ` +
-        "screen's frame — PAUSE_ITEMS is RESUME, RESTART, QUIT TO MENU " +
-        "(specs/ui.md)",
-    );
+    if (!drewText(h.calls, item)) {
+      fail(
+        `the pause menu entry ${JSON.stringify(item)} drawn on the paused ` +
+          "screen's frame — PAUSE_ITEMS is RESUME, RESTART, QUIT TO MENU " +
+          "(specs/ui.md)",
+        drawnTextLines(h.calls),
+      );
+    }
   }
 
   const rows = menuRows(h, PAUSE_ITEMS);

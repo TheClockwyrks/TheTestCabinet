@@ -33,7 +33,6 @@
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertDeepEqual,
-  assertDefined,
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
@@ -45,11 +44,14 @@ import { METRICS } from "../constants";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
+  lineWith,
   openSelect,
   openTitle,
-  textDraws,
+  textLines,
   type Harness,
   type TextDraw,
+  type TextLine,
 } from "../harness";
 
 /** The challenge given records and left unsolved, and the three figures posed. */
@@ -70,40 +72,10 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/** The frame's text runs gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
-
-/** Text with its case and its whitespace dropped. */
-function squash(text: string): string {
-  return text.toLowerCase().replace(/\s+/gu, "");
-}
-
 /** The baseline a challenge's row was drawn on, found by its name. */
-function baselineOf(lines: readonly Line[], name: string): number {
-  const row = lines.find((line) => squash(line.text).includes(squash(name)));
-  assertDefined(
+function baselineOf(lines: readonly TextLine[], name: string): number {
+  const row = lineWith(lines, name);
+  assertNotNull(
     row,
     `the Extras select screen draws a row carrying ${JSON.stringify(name)}, ` +
       "which is how the row this point reads is found; the lines the frame drew " +
@@ -120,10 +92,10 @@ function baselineOf(lines: readonly Line[], name: string): number {
  * point and not this one's: a build that lost one of them is reported there, and
  * still has a row pitch here.
  */
-function pitchOf(lines: readonly Line[]): number {
+function pitchOf(lines: readonly TextLine[]): number {
   const rows = EXTRA_NAMES.flatMap((name) => {
-    const row = lines.find((line) => squash(line.text).includes(squash(name)));
-    return row === undefined ? [] : [row.y];
+    const row = lineWith(lines, name);
+    return row === null ? [] : [row.y];
   }).sort((a, b) => a - b);
   assertGreaterThanOrEqual(
     rows.length,
@@ -213,7 +185,8 @@ it("draws none of the three records on a row whose challenge is unsolved", async
   }
 
   await openSelect(h, "extras");
-  const drawn = textDraws(await h.lastCalls());
+  const calls = await h.lastCalls();
+  const drawn = drawnTextRuns(calls);
   await captureStill(h, "bare-row");
 
   const shelf = (await h.snapshot()).extras;
@@ -230,7 +203,10 @@ it("draws none of the three records on a row whose challenge is unsolved", async
       "draws a row's records whenever it has any has three figures to draw here",
   );
 
-  const lines = linesOf(drawn);
+  // The rows are read as `drawing.ts`'s `textLines`: the shared harness's
+  // logical runs gathered onto the baselines they share, so a row drawn as one
+  // run, as a run per word or as a run per glyph reads the same way.
+  const lines = textLines(calls);
   const pitch = pitchOf(lines);
   assertGreaterThan(
     pitch,

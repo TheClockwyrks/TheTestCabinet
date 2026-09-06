@@ -19,9 +19,10 @@
 // detail shows is the first of `GEM_TIERS`, which is the small gem. Both the tab
 // and the highlight are read back before the frame is.
 //
-// THE TOLERANCE. The name, the label and the line are matched folded —
-// lower-cased, with spaces, dashes and underscores removed, across consecutive
-// runs of text — so a build that draws `Small Gem` word by word passes. The
+// THE TOLERANCE. The name, the label and the line are matched ignoring case
+// and whitespace, across the runs of text the frame drew joined in reading
+// order (the shared harness's `drewTextAnywhere`) — so a build that draws
+// `Small Gem` word by word passes. The
 // experience is read as a whole number standing alone, bounded by non-digits.
 
 import { afterEach, beforeEach, it } from "vitest";

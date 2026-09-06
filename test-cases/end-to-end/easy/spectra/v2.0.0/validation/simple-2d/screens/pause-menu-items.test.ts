@@ -28,10 +28,10 @@ import {
   captureStill,
   createHarness,
   drawFrame,
-  drewText,
   startPosed,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 

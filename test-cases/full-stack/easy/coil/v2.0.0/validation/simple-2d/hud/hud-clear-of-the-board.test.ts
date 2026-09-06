@@ -26,7 +26,7 @@ import {
   MODE_LABEL,
   SCORE_LABEL,
 } from "../constants";
-import { assertGreaterThan, assertLessThan } from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
   HOME_HEAD,
   captureStill,
@@ -35,11 +35,12 @@ import {
   poseScene,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import {
   bandBottom,
+  linesOf,
   matchingRuns,
   numberRuns,
-  runsOf,
   type TextDraw,
 } from "./band";
 
@@ -72,16 +73,20 @@ it("anchors every HUD readout above the board's first row", async () => {
   const calls = await h.frameCalls();
   captureStill(h, "band");
 
+  for (const label of [SCORE_LABEL, BEST_LABEL, MODE_LABEL[live.mode]]) {
+    assertEqual(drewText(calls, label), true, `the HUD drawing ${label}`);
+  }
+
   const readouts: Readonly<Record<string, TextDraw[]>> = {
-    [SCORE_LABEL]: runsOf(calls, SCORE_LABEL),
+    [SCORE_LABEL]: linesOf(calls, SCORE_LABEL),
     [`the score ${SCORE}`]: numberRuns(calls, SCORE),
-    [BEST_LABEL]: runsOf(calls, BEST_LABEL),
+    [BEST_LABEL]: linesOf(calls, BEST_LABEL),
     [`the best ${BEST}`]: numberRuns(calls, BEST),
     [`the multiplier x${COMBO}`]: matchingRuns(
       calls,
       new RegExp(`[x×]\\s*${COMBO}`, "i"),
     ),
-    [MODE_LABEL[live.mode]]: runsOf(calls, MODE_LABEL[live.mode]),
+    [MODE_LABEL[live.mode]]: linesOf(calls, MODE_LABEL[live.mode]),
   };
 
   for (const [name, runs] of Object.entries(readouts)) {

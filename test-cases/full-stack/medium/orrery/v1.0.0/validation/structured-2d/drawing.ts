@@ -29,7 +29,7 @@
 import type { TextGeometry } from "./case-harness/draw-calls";
 import {
   drawnTextRuns as coalescedTextRuns,
-  drewText as spelledText,
+  RUN_BASELINE_SLACK,
 } from "./case-harness/text";
 
 /* -------------------------------------------------------------------------- */
@@ -473,6 +473,15 @@ export function distinctSources(calls: readonly DrawCall[]): ImageRef[] {
 // A reader that matches copy against a single draw — a row's number, a readout's
 // figure, an identifier on a part — reads the runs, or a row drawn `1 2` a glyph
 // at a time never shows the number `12`.
+//
+// WHETHER A FRAME DREW A PIECE OF COPY IS THE SHARED HARNESS'S READING. A suite
+// asks `case-harness/text.ts`'s `drewText` — substring, ignoring case, the
+// whitespace folded out of both sides, along each baseline — or its
+// `drewTextAnywhere` for copy a build may wrap, and imports them from there.
+// What this file adds is WHERE: {@link textLines} gathers those same runs onto
+// the baselines they share, and {@link lineWith} finds the line spelling a
+// piece of copy by the one rule `drewText` matches by, for a check that reads a
+// line's position — a menu's order, a row's band — once the copy has been read.
 
 /** Every string the frame drew, through `fillText` or `strokeText`. RAW. */
 export function drawnText(calls: readonly DrawCall[]): string[] {
@@ -480,17 +489,6 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
     ...callsTo(calls, "fillText"),
     ...callsTo(calls, "strokeText"),
   ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
-}
-
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Read off {@link drawnTextLines} and never off the raw calls, for the reason in
- * this section's header: a heading drawn a glyph at a time is still the heading.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
 }
 
 /** One run of text a frame drew, and where it drew it. */
@@ -522,7 +520,7 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
 
 /** Whether a draw's anchor lies inside a rectangle. */
 function anchoredIn(
-  draw: TextDraw,
+  draw: Point,
   region: { x: number; y: number; w: number; h: number },
 ): boolean {
   return (
@@ -592,4 +590,91 @@ export function textRunsIn(
   region: { x: number; y: number; w: number; h: number },
 ): TextDraw[] {
   return drawnTextRuns(calls).filter((draw) => anchoredIn(draw, region));
+}
+
+/** One baseline the frame drew text on, and the runs on it read left to right. */
+export interface TextLine {
+  /** The baseline its runs were anchored on, in stage units. */
+  y: number;
+  /**
+   * The horizontal extent of its runs, under the recorder's measurement. A run
+   * the harness never measured stands as the point its anchor names, so on such
+   * a frame `left` and `right` are the outermost anchors on the line.
+   */
+  left: number;
+  right: number;
+  /** The logical runs on it, in reading order. */
+  runs: string[];
+  /** Those runs joined with spaces: the line as `drewText` reads it. */
+  text: string;
+}
+
+/**
+ * The frame's logical runs gathered onto the baselines they share, in reading
+ * order down the stage, each line placed.
+ *
+ * The runs are the shared harness's (`drawnTextRuns`) and the baseline is the
+ * shared harness's too — two runs share one when their baselines sit within
+ * `RUN_BASELINE_SLACK` — so a line here is exactly the line `drewText` matches
+ * along, and {@link lineWith} finds the one it matched. A build is free to draw
+ * a line of copy as one call, a call per word, or a call per glyph; what all of
+ * those share is the baseline, and this reads the line the same way under each.
+ *
+ * With a `region`, only the runs whose anchor lies inside it are gathered: the
+ * lines of the heading, or of the field, and not the frame's.
+ */
+export function textLines(
+  calls: readonly DrawCall[],
+  region?: { x: number; y: number; w: number; h: number },
+): TextLine[] {
+  const lines: TextLine[] = [];
+  for (const run of coalescedTextRuns(calls)) {
+    if (region !== undefined && !anchoredIn(run, region)) continue;
+    const open = lines[lines.length - 1];
+    if (open !== undefined && Math.abs(run.y - open.y) <= RUN_BASELINE_SLACK) {
+      open.left = Math.min(open.left, run.left);
+      open.right = Math.max(open.right, run.right);
+      open.runs.push(run.text);
+      open.text += ` ${run.text}`;
+      continue;
+    }
+    lines.push({
+      y: run.y,
+      left: run.left,
+      right: run.right,
+      runs: [run.text],
+      text: run.text,
+    });
+  }
+  return lines;
+}
+
+/** Text with its case dropped and every run of whitespace removed. */
+function folded(text: string): string {
+  return text.replace(/\s+/g, "").toLowerCase();
+}
+
+/**
+ * Whether a line spells `text`: substring, ignoring case, with the whitespace
+ * folded out of both sides — the rule the shared `drewText` matches a baseline
+ * by, so a frame `drewText` answers true for has a line this answers true for.
+ */
+export function spells(line: TextLine, text: string): boolean {
+  return folded(line.text).includes(folded(text));
+}
+
+/**
+ * The topmost line the frame spelled `text` on, or `null` when it spelled it on
+ * none.
+ *
+ * For a check that has read the copy with the shared `drewText` and now needs
+ * WHERE it was drawn: the baseline a menu entry sits on, the band a row's name
+ * marks out. A check that only needs to know the copy is on screen asks
+ * `drewText` and never this.
+ */
+export function lineWith(
+  lines: readonly TextLine[],
+  text: string,
+): TextLine | null {
+  return lines.find((line) => spells(line, text)) ?? null;
 }

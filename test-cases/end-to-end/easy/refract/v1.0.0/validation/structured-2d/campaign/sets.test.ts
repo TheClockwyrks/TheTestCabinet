@@ -24,9 +24,11 @@
 // holds for every build, including one whose labels are wrong. The
 // specification is the only authority this compares against.
 //
-// The copy is matched case-insensitively with runs of whitespace squashed on
-// both sides, because letter spacing is a font choice and a build that draws
-// its label a glyph at a time spells it with the spacing it chose.
+// The copy is matched the way the package's `drewText` matches it — ignoring
+// case, with the whitespace folded out of both sides — because letter spacing
+// is a font choice and a build that draws its label a glyph at a time spells it
+// with the spacing it chose. The order reading below applies the same fold to
+// each placed run it takes a label from.
 //
 // THE ORDER IS READ AS A CHAIN, NOT AS FOUR FIRST DRAWS. Text runs arrive in
 // the order the build drew them, and draw order is not top-to-bottom order:
@@ -51,11 +53,11 @@ import { SET_LABELS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drawnTextLines,
   drawnTextRuns,
   startCampaign,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 
@@ -67,9 +69,9 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** One line of copy as it reads: upper case, its runs of whitespace squashed. */
-function squash(text: string): string {
-  return text.replace(/\s+/g, " ").trim().toUpperCase();
+/** Copy as `drewText` reads it: upper case, its whitespace folded out. */
+function fold(text: string): string {
+  return text.replace(/\s+/g, "").toUpperCase();
 }
 
 it("draws all four set labels, in order down the frame", async () => {
@@ -79,18 +81,16 @@ it("draws all four set labels, in order down the frame", async () => {
   await h.advance(1);
   captureStill(h, "select");
 
-  const lines = drawnTextLines(h.calls);
   const runs = drawnTextRuns(h);
 
   // All four entries are drawn…
   for (const label of SET_LABELS) {
-    const wanted = squash(label);
-    if (!lines.some((line) => squash(line).includes(wanted))) {
+    if (!drewText(h.calls, label)) {
       fail(
         `the select frame drawing ${JSON.stringify(label)} ` +
           "(SET_LABELS, specs/modes/campaign.md: each row is labelled with " +
           "its set's entry, in that order from the top row down)",
-        lines,
+        runs.map((run) => run.text),
       );
     }
   }
@@ -100,9 +100,9 @@ it("draws all four set labels, in order down the frame", async () => {
   let above: number | null = null;
   let previous: string | null = null;
   for (const label of SET_LABELS) {
-    const wanted = squash(label);
+    const wanted = fold(label);
     const top = runs
-      .filter((run) => squash(run.text).includes(wanted))
+      .filter((run) => fold(run.text).includes(wanted))
       .map((run) => run.y)
       .filter((y) => above === null || y > above)
       .reduce<number | null>(

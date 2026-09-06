@@ -15,12 +15,18 @@
 //
 // `empty-program` IS AN IDENTIFIER, and the screen is read for that identifier
 // rather than for a sentence: specs/structure.md gives each issue "a stable
-// identifier, reported wherever readiness is reported", and how a build sets it —
-// `empty-program`, `EMPTY PROGRAM`, `Empty program` — is its own. Matching
-// therefore ignores case, spacing and punctuation.
+// identifier, reported wherever readiness is reported", and the identifier is
+// what is looked for, spelled as the specification spells it. The reading is
+// the text the last frame drew on the screen layer, which `h.screenCalls()`
+// answers with every text call measured, read with the shared harness's
+// `drewTextAnywhere`: the frame's logical runs joined in reading order with the
+// whitespace folded out, matched as a substring ignoring case — so
+// `EMPTY-PROGRAM`, an identifier letter-spaced a glyph per call, or one set in a
+// longer line all read as the identifier, and how a build sets the line around
+// it is its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/index";
 import { fail } from "../assert";
 import {
   clearAll,
@@ -30,28 +36,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
 /** The issue an empty tape raises (specs/program.md). */
 const ISSUE = "empty-program";
-
-/** Every run of text the last closed frame drew, in draw order. */
-async function frameText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.page.evaluate(
-    (global) =>
-      (window as unknown as Record<string, { last(): unknown[] }>)[
-        global
-      ]!.last(),
-    RECORDER,
-  )) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
-}
-
-/** Letters and digits alone, lowercased. */
-function bare(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
 
 let h: Harness;
 
@@ -71,17 +57,17 @@ it("names empty-program on the check display when the tape is empty", async () =
   await h.debug.showCheck();
   await h.advance(1);
 
-  const runs = await frameText(h);
+  const calls = await h.screenCalls();
   await h.capture(
     "empty-program-shown",
     "The check display naming empty-program",
   );
 
-  if (!bare(runs.join(" ")).includes(bare(ISSUE))) {
+  if (!drewTextAnywhere(calls, ISSUE)) {
     fail(
       `the check display to name "${ISSUE}", the issue an empty tape raises ` +
         "(specs/ui.md § Build)",
-      `the build screen drew ${JSON.stringify(runs)}`,
+      `the build screen drew ${JSON.stringify(drawnTextLines(calls))}`,
     );
   }
 });

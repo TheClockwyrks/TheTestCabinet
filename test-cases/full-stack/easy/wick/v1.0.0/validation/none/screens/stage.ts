@@ -11,10 +11,12 @@
 // units, and the text the document carries is read beside it so that a build
 // that lays part of a screen over the page as elements is read the way it
 // shows. `specs/ui.md` ("Presentation") fixes "no palette, no font, no layout,
-// and no styling", so a piece of copy is looked for folded — lower-cased, with
-// every space, dash, and underscore removed — and across consecutive runs, so a
-// build that letter-spaces a heading, draws a menu item word by word, or wraps
-// a highlighted item in marks of its own is read as showing it.
+// and no styling", so a piece of copy is looked for the way the shared
+// harness's `drewTextAnywhere` reads it — ignoring case and whitespace, across
+// every run the frame drew joined in reading order — so a build that
+// letter-spaces a heading, draws a menu item word by word, wraps a heading over
+// two lines, or wraps a highlighted item in marks of its own is read as showing
+// it.
 //
 // AND NEVER OFF THE `fillText` SPLIT. A build that letter-spaces a heading
 // draws one glyph per `fillText`, which is the only portable way to letter-space
@@ -27,7 +29,8 @@
 // is read as the figure `143` rather than as three. The harness measures under
 // the font a frame INHERITED as well as under the ones it set, so a build that
 // sets its font once at start-up merges the same. The consecutive-run joins
-// below stay on top of that, for copy drawn word by word or over a shadow.
+// the placement readers below make stay on top of that, for copy drawn word by
+// word or over a shadow.
 //
 // AND THE RAW CALLS ARE KEPT BESIDE THE RUNS. The merge rule writes a space
 // only where a gap opens past the run's own tracking, so a single key drawn as
@@ -35,12 +38,13 @@
 // `PPause`, and a label and its figure may still merge. A reading that wants a
 // token STANDING ALONE ({@link names}) would then lose the `73` or the `P` the
 // raw call carried on its own word boundary, so it reads the raw strings as
-// well ({@link Shown.raw}), and {@link shows} reads either corpus. A reading
-// that takes the DIFFERENCE between two frames ({@link ownTextBelow}) diffs the
-// raw calls and the logical runs each on their own and keeps the larger, since a
-// merge could otherwise fold a frame's own word into a run the other frame
-// draws too. Reading both keeps the property the merge promises: it only ever
-// adds a match.
+// well ({@link Shown.raw}). A reading that takes the DIFFERENCE between two
+// frames ({@link ownTextBelow}) diffs the raw calls and the logical runs each
+// on their own and keeps the larger, since a merge could otherwise fold a
+// frame's own word into a run the other frame draws too. Reading both keeps
+// the property the merge promises: it only ever adds a match. {@link shows},
+// which asks only whether copy is on the frame, reads the runs alone, through
+// the shared reader.
 //
 // WHERE A PIECE OF COPY WAS DRAWN. A check about an ORDER, about which row an
 // icon or a tag belongs to, or about a highlight moving needs the place a run
@@ -76,6 +80,7 @@ import {
   type OfferId,
   type PassiveId,
 } from "../constants";
+import { drewTextAnywhere } from "../case-harness/index";
 import {
   drawnText,
   drawnTextRuns,
@@ -134,8 +139,9 @@ export interface Shown {
   draws: TextDraw[];
   /**
    * Every string it drew as the raw `fillText`/`strokeText` calls made it, in
-   * draw order: what a token bounded either side is looked for in as well as in
-   * {@link Shown.draws}, for the reason in this module's header.
+   * draw order: what a token bounded either side ({@link names}) is looked for
+   * in as well as in {@link Shown.draws}, for the reason in this module's
+   * header.
    */
   raw: string[];
   /** The document's own text, for a build that lays part of a screen over the page. */
@@ -157,22 +163,22 @@ function runsOf(page: Shown): string[] {
   ];
 }
 
+/** `text` lower-cased with every run of whitespace removed: the shared reader's fold. */
+function foldedCopy(text: string): string {
+  return text.replace(/\s+/g, "").toLowerCase();
+}
+
 /**
- * Whether the frame shows `text`: some run holds it, or consecutive runs spell
- * it, folded for case, spacing, dashes, and underscores.
- *
- * Read over the logical runs in reading order and, failing that, over the raw
- * calls in draw order: the two corpora differ only in the order they join the
- * same strings in, and the raw one is the reading every point here was written
- * against, so keeping it beside the runs can only add a match.
+ * Whether the frame shows `text`: the frame drew it, ignoring case and
+ * whitespace, within some run or across consecutive runs in reading order —
+ * the shared harness's `drewTextAnywhere` — or the document carries it as
+ * text, folded the same way, for a build that lays part of a screen over the
+ * page as elements.
  */
 export function shows(page: Shown, text: string): boolean {
-  const wanted = folded(text);
-  if (wanted === "") return true;
-  return (
-    folded(runsOf(page).join("")).includes(wanted) ||
-    folded(page.raw.join("")).includes(wanted)
-  );
+  if (drewTextAnywhere(page.calls, text)) return true;
+  const wanted = foldedCopy(text);
+  return foldedCopy(page.dom).includes(wanted);
 }
 
 /** The frame shows `text`, or the point fails, naming what was on show. */

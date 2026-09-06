@@ -14,10 +14,10 @@
 // 4, which is what makes the reading unambiguous.
 //
 // HOW THE FIGURE IS READ. As in `presentation/hud-score`: `specs/ui.md` fixes no
-// font, no layout and no copy, so the runs of text the frame drew are grouped
-// into the words their spacing makes and the digits of each word are the figures
-// the HUD showed. A "4" drawn beside a label, alone, or glyph by glyph all
-// answer the same; a "24" or a "45" does not.
+// font, no layout and no copy, so the digits of each logical run the frame
+// spells — the package's merge of side-by-side glyphs on one baseline back into
+// the string they spell — are the figures the HUD showed. A "4" drawn beside a
+// label, alone, or glyph by glyph all answer the same; a "24" or a "45" does not.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";

@@ -132,7 +132,6 @@ export {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText,
   imageDraws,
   imageRef,
   luminance,
@@ -958,7 +957,7 @@ export function frameIndexes(
  * Every string the frame drew, BOTH as the calls split it and as the logical
  * runs those calls spell.
  *
- * The shared `drewText` reads copy off `drawnTextLines` alone, and rightly: a
+ * The shared `drewText` reads copy off the logical runs alone, and rightly: a
  * build that letter-spaces a heading draws one glyph per `fillText`, the merge
  * rule (`case-harness/text.ts`) folds those back into the string they spell,
  * and every raw string is a substring of its run. A reader that holds a word or

@@ -5,9 +5,10 @@
 // `RESUME`, `RESTART`, and `QUIT TO MENU`. The floor is still drawn behind the
 // menu."
 //
-// TWO READINGS, BOTH NAMED BY THE ITEM. The three rows are looked for as runs of
-// text, by the copy the seeded `PAUSE_ITEMS` handed the build; and the floor
-// behind them is read as a floor a player can still SEE.
+// TWO READINGS, BOTH NAMED BY THE ITEM. The three rows are looked for as copy
+// the frame drew — the package's `drewText` (`../case-harness/text`), by the
+// strings the seeded `PAUSE_ITEMS` handed the build; and the floor behind them
+// is read as a floor a player can still SEE.
 //
 // HOW "STILL DRAWN" IS READ, AND WHY IT IS READ THAT WAY. specs/screens.md fixes
 // nothing about what a build may draw OVER the floor — a dimming wash, a panel
@@ -46,8 +47,14 @@
 // `controls.pause-key` and `controls.esc-pauses`; this item reads the screen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual, fail } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertTrue,
+  fail,
+} from "../assert";
 import { PAUSE_ITEMS, TILE, tileLeft, tileTop } from "../constants";
+import { drewText } from "../case-harness/text";
 import {
   captureStill,
   createHarness,
@@ -57,7 +64,7 @@ import {
   towerById,
   type Harness,
 } from "../harness";
-import { largestShift, pixelsOver, readScreen, requireRun } from "./menu";
+import { largestShift, pixelsOver, readScreen, textOf } from "./menu";
 
 /**
  * The footprint's top-left tile: the largest tower in the game, standing clear of
@@ -106,8 +113,13 @@ it("draws RESUME, RESTART and QUIT TO MENU, with the floor still drawn behind th
     "paused",
     "the screen the scenario is posed on",
   );
+  const drawn = textOf(runs).join(" | ");
   for (const item of PAUSE_ITEMS) {
-    requireRun(runs, item, "the pause menu");
+    assertTrue(
+      drewText(h.calls, item),
+      `the ${JSON.stringify(item)} row of PAUSE_ITEMS drawn on the pause ` +
+        `menu (specs/screens.md); it drew ${drawn}`,
+    );
   }
 
   const tower = towerById(h.snapshot(), id);

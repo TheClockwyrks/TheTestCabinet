@@ -90,7 +90,6 @@ import { makeReplayCapture } from "./case-harness/engine/2d";
 import type { DrawCall } from "./case-harness/draw-calls";
 import {
   drawnText,
-  drewText as spelledText,
   textDraws as placedText,
   DEFAULT_TEXT_ALIGN,
   type TextDraw as PlacedText,
@@ -421,31 +420,6 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
 }
 
 /**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * THE PACKAGE'S READING, under Kessler's name. `spelledText` matches against
- * the LOGICAL RUNS a frame spells (`drawnTextLines`), never the `fillText`
- * split: a build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and specs/screens.md
- * fixes the copy a screen shows while leaving its font and layout to the
- * build. The kit's recorder measures every text call (`measureText`), so the
- * package's merge rule (`case-harness/text.ts`) can coalesce side-by-side
- * glyphs on one baseline back into the string they spell. Every raw string is
- * a substring of the run it belongs to, so coalescing can only add a match and
- * never take one away — a copy point decided against the raw calls still
- * passes, and one a letter-spaced build failed now reads what it drew.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
-
-/**
  * Every bitmap the recorded calls blitted, as axis-aligned boxes in device
  * pixels: the four corners of each destination rectangle are mapped through
  * the transform in force at the call and the box is taken around them.
@@ -717,10 +691,10 @@ const runningLoops = new WeakMap<object, Set<string>>();
  * The recorder is asked for both extras, and each pays for itself:
  * `measureText` is what gives a text draw the extent `hud/hud-clear-of-field`
  * holds the HUD clear of the field by, and the width the package's merge rule
- * coalesces a letter-spaced heading by, which is what {@link drewText} reads
- * copy off; `internImages` is what gives a `drawImage` an identity
- * {@link sourceId} can turn into the produced file it painted — the reading
- * every produced-sprite point in this project is decided on.
+ * coalesces a letter-spaced heading by, which is what the package's
+ * `drewText` reads copy off; `internImages` is what gives a `drawImage` an
+ * identity {@link sourceId} can turn into the produced file it painted — the
+ * reading every produced-sprite point in this project is decided on.
  *
  * `cueEvents` names BOTH firings, because `specs/assets.md` gives this case two
  * music beds beside its thirteen one-shot cues and a bed is announced as a loop;

@@ -2,7 +2,8 @@
 //
 // specs/ui.md fixes the WORDS a screen carries and leaves the presentation to the
 // build, so a screen check reads the text the frame painted and asks whether the
-// case's copy is in it. Words are matched by `drewText` in the harness. Numbers
+// case's copy is in it. Words are matched by the shared harness's `drewText`
+// (`case-harness/text.ts`), which every screen suite imports directly. Numbers
 // need this, because a figure is commonly drawn beside its label in one run
 // (`SCORE 250`) or padded to a fixed width (`0250`), and both are the same figure
 // to a player. So each run of text is reduced to the numbers it holds and the

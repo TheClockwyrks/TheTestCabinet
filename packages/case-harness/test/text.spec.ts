@@ -11,8 +11,13 @@ import {
   drawnTextLines,
   drawnTextRuns,
   drewText,
+  drewTextAnywhere,
+  restrikes,
+  RUN_BACKTRACK_SLACK,
+  RUN_BASELINE_SLACK,
   textDraws,
   type DrawCall,
+  type TextDraw,
 } from "../src/index";
 import { createHarness, type Harness } from "./fixture";
 
@@ -250,6 +255,88 @@ it("folds an outline's fill into the glyph it restrikes", () => {
   // But the same text drawn again further along is a second run of its own.
   const twice = calls(text("GO", 100, 40, 20), text("GO", 200, 40, 20));
   expect(drawnTextLines(twice)).toEqual(["GO", "GO"]);
+});
+
+it("tells a restrike from the next glyph by one exported rule", () => {
+  // A draw the harness placed: text, anchor, extent, alignment.
+  const draw = (text: string, x: number, y: number, width = 10): TextDraw => ({
+    text,
+    x,
+    y,
+    left: x,
+    right: x + width,
+    align: "start",
+  });
+  const glyph = draw("F", 100, 40);
+
+  // The same text at the same anchor on the same baseline — an outline's fill.
+  expect(restrikes(draw("F", 100, 40), glyph)).toBe(true);
+  // Within the slacks the merge rule allows, either way.
+  expect(restrikes(draw("F", 100 + RUN_BACKTRACK_SLACK, 40), glyph)).toBe(true);
+  expect(restrikes(draw("F", 100, 40 - RUN_BASELINE_SLACK), glyph)).toBe(true);
+
+  // Different text at the same anchor is a different glyph, not a restrike.
+  expect(restrikes(draw("A", 100, 40), glyph)).toBe(false);
+  // The same text further along is the next draw of a run, or another run.
+  expect(restrikes(draw("F", 114, 40), glyph)).toBe(false);
+  // And just past either slack is not a restrike.
+  expect(
+    restrikes(draw("F", 100 + RUN_BACKTRACK_SLACK + 0.01, 40), glyph),
+  ).toBe(false);
+  expect(restrikes(draw("F", 100, 40 + RUN_BASELINE_SLACK + 0.01), glyph)).toBe(
+    false,
+  );
+
+  // The exported slacks ARE the rule the merge folds by: a fill sitting exactly
+  // the backtrack slack off its stroke folds, and one a hair further does not.
+  const folded = calls(
+    stroked("F", 100, 40, 10),
+    text("F", 100 + RUN_BACKTRACK_SLACK, 40, 10),
+  );
+  expect(drawnTextRuns(folded)).toHaveLength(1);
+  const apart = calls(
+    stroked("F", 100, 40, 10),
+    text("F", 100 + RUN_BACKTRACK_SLACK + 0.01, 40, 10),
+  );
+  // Not a restrike — and not a join either, since the second glyph starts
+  // inside the first's extent past the backtrack the join allows.
+  expect(drawnTextRuns(apart)).toHaveLength(2);
+});
+
+it("finds copy anywhere on the frame, across baselines", () => {
+  // A tagline the build wrapped onto two lines: no baseline spells it, so the
+  // baseline reading cannot find it, and the whole-frame reading can.
+  const wrapped = calls(
+    text("EVERY SHOT", 100, 40, 100),
+    text("COUNTS", 100, 80, 60),
+  );
+  expect(drewText(wrapped, "every shot counts")).toBe(false);
+  expect(drewTextAnywhere(wrapped, "every shot counts")).toBe(true);
+  // Ignoring case and whitespace, the same as along one baseline.
+  expect(drewTextAnywhere(wrapped, "  Every SHOT\ncounts ")).toBe(true);
+  expect(drewTextAnywhere(wrapped, "everyshotcounts")).toBe(true);
+  expect(drewTextAnywhere(wrapped, "every miss")).toBe(false);
+
+  // A menu entry and its marker on separate baselines are found together too.
+  const marked = calls(text(">", 80, 40, 8), text("PLAY", 100, 44, 40));
+  expect(drewTextAnywhere(marked, "> play")).toBe(true);
+
+  // On a one-baseline phrase the two readings agree, whichever way it went:
+  // every match under the stricter reading is a match under this one.
+  const glyphs = ["H", "O", "W", "T", "O", "P", "L", "A", "Y"];
+  let x = 100;
+  const split = calls(
+    ...glyphs.map((glyph, i) => {
+      const call = text(glyph, x, 40, 10);
+      x += 16 + (i === 2 || i === 4 ? 14 : 0);
+      return call;
+    }),
+  );
+  for (const wanted of ["HOW TO PLAY", "howtoplay", "to play", "how to quit"]) {
+    expect(drewTextAnywhere(split, wanted)).toBe(drewText(split, wanted));
+  }
+  // A frame that drew nothing spells nothing.
+  expect(drewTextAnywhere(calls(), "play")).toBe(false);
 });
 
 it("finds copy whatever the spaces did, along one baseline", () => {

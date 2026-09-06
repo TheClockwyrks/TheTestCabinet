@@ -33,11 +33,11 @@ import { READY_HOLD, READY_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   startPosed,
   drawnTextRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { PLAY_FIELD, insideBand, runCarrying } from "./reading";
 
 let h: Harness;

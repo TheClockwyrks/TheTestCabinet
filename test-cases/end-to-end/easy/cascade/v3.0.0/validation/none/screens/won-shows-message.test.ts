@@ -24,6 +24,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/index";
 import {
   CARD_W,
   DECK_SIZE,
@@ -36,7 +37,6 @@ import {
   RUNOUT_HZ,
   captureStill,
   createHarness,
-  drewText,
   openTable,
   startCascade,
   type Harness,

@@ -19,6 +19,7 @@
 
 import { fail } from "../assert";
 import { CENTER_X, CENTER_Y } from "../constants";
+import { drawnTextLines } from "../case-harness/text";
 import { drawnText, textDraws, type DrawCall, type Harness } from "../harness";
 
 /** The pixel grid's sampling step, in device pixels: finer than any readout. */
@@ -182,16 +183,22 @@ export function assertReadoutChanged(
 }
 
 /**
- * Whether the frame drew `digits` as text: inside one run once every non-digit
- * is stripped (so "SCORE 1,050" shows "1050"), or across the frame's runs in
- * draw order, for a build that draws its figure one glyph per call.
+ * Whether the frame drew `digits` as text, once every non-digit is stripped
+ * (so "SCORE 1,050" shows "1050"): inside one logical run — the package's
+ * (`case-harness/text.ts`), which spells a letter-spaced figure drawn one
+ * glyph per call as the string it makes and folds a restruck glyph to one —
+ * or across the frame's raw strings in draw order, for a figure whose glyphs
+ * sit too far apart for the merge rule to coalesce. Each reading can only add
+ * a match; the one fact added here is the digit grouping specs/screens.md
+ * leaves to the build.
  */
 export function digitsShown(
   calls: readonly DrawCall[],
   digits: string,
 ): boolean {
-  const runs = drawnText(calls).map((text) => text.replace(/\D+/g, ""));
+  const figures = (text: string) => text.replace(/\D+/g, "");
   return (
-    runs.some((run) => run.includes(digits)) || runs.join("").includes(digits)
+    drawnTextLines(calls).some((run) => figures(run).includes(digits)) ||
+    drawnText(calls).map(figures).join("").includes(digits)
   );
 }

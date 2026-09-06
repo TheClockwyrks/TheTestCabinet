@@ -24,12 +24,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { VICTORY_ITEMS } from "../constants";
 import { assertEqual, assertNotNull } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  drewText,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewText } from "../case-harness/text";
 import { driveVictory, menuLength } from "./expedition";
 
 /** Settings a session never opens at, so "the same" is a real reading. */

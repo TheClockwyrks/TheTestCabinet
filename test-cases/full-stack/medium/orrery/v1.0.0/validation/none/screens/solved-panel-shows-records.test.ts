@@ -26,13 +26,13 @@
 // (`specs/simulation.md`) — and a delivery would be another point's business.
 //
 // HOW THE TEXT IS READ. `specs/assets.md` puts every word on the stage on the
-// frame as drawn text and fixes no more, so the frame's text runs are gathered
-// by the baseline they were drawn on and read left to right: a build that
-// draws a figure as one call and one that draws it glyph by glyph read alike.
-// A figure counts as drawn when the line carries its digits with no digit
-// beside them, or when a run — or a run of consecutive runs — spells it
-// exactly, which is what a right-aligned column of figures drawn beside one
-// another looks like.
+// frame as drawn text and fixes no more, so the frame is read as `drawing.ts`'s
+// `textLines` — the shared harness's logical runs, gathered onto the baselines
+// they share and read left to right — so a build that draws a figure as one
+// call and one that draws it glyph by glyph read alike. A figure counts as
+// drawn when a line carries its digits with no digit beside them, or when a
+// run — or a run of consecutive runs — spells it exactly, which is what a
+// column of figures whose glyphs the merge left apart looks like.
 //
 // THE VERDICT. The run really is `complete`, the challenge's records really are
 // still the three posed figures, and the frame that drew the panel drew all three
@@ -51,9 +51,9 @@ import {
   loadMachine,
   openChallenge,
   progressOf,
-  textDraws,
+  textLines,
   type Harness,
-  type TextDraw,
+  type TextLine,
 } from "../harness";
 
 /** The Extra this check completes: the first of the shelf. */
@@ -90,38 +90,17 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  runs: string[];
-  text: string;
-}
-
-/** The frame's text runs, gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), draw]);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => {
-      const runs = [...on].sort((a, b) => a.x - b.x).map((draw) => draw.text);
-      return { y, runs, text: runs.join("") };
-    })
-    .sort((a, b) => a.y - b.y);
-}
-
 /**
  * Whether the frame drew `value` as a figure of its own.
  *
  * Two readings, because two builds draw a column of figures two ways. A line that
  * carries the digits with no digit on either side has drawn the figure plainly
- * (`best: 137`). A line whose runs were drawn beside one another joins into
- * something no boundary can be found in (`cost` `180` `137` reads as
- * `cost180137`), so a consecutive group of runs that spells the figure exactly
- * counts as well.
+ * (`best: 137`). A figure whose glyphs the shared merge left as separate runs —
+ * a frame the harness never measured, or digits tracked wider than the merge
+ * allows — spells itself only across them, so a consecutive group of a line's
+ * runs that spells the figure exactly counts as well.
  */
-function drewFigure(lines: readonly Line[], value: number): boolean {
+function drewFigure(lines: readonly TextLine[], value: number): boolean {
   const wanted = String(value);
   const plainly = lines.some((line) => {
     for (let at = line.text.indexOf(wanted); at >= 0; ) {
@@ -160,7 +139,7 @@ it("draws the challenge's cost, cycles and area records", async () => {
   await advanceCycles(h, 1);
   await h.advance(1);
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const lines = textLines(await h.lastCalls());
   await captureStill(h, "records");
 
   const shown = await h.snapshot();

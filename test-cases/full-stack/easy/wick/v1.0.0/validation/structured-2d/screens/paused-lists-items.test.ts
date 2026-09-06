@@ -35,12 +35,12 @@ import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   isolate,
   poseScreen,
   placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY } from "./stage";
 
 let h: Harness;

@@ -4,7 +4,8 @@
 // Meltdown's debug surface carries no operation that reports a screen's copy:
 // `specs/instrumentation.md` reports the game's STATE, so what a screen SAYS can
 // only be read off the frame it drew. The harness already gives that as
-// `drawnText`, `drewText`, `drewWord` and `spelledRuns`; the helpers here are
+// `drawnText`, `drewWord` and `spelledRuns`, and the package as `drewText`;
+// the helpers here are
 // the readings those do not cover, each of which more than one point in this
 // group needs.
 //

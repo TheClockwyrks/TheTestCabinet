@@ -28,10 +28,10 @@ import { ENDING_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   drewWord,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { poseEnding } from "./screens";
 
 /**

@@ -134,11 +134,17 @@ every sound in the window, so an engineless check fences its window with silence
 
 **What a frame drew** — `h.frameCalls()` / `h.lastCalls()` hand back the
 operations, and `drawing.ts` reads them: `imageDraws`, `imagesNear`,
-`distinctSources`, `drawnText`, `drewText`, `textDraws`, `textIn`,
-`drawnTextRuns`, `drawnTextLines`, `textRunsIn`, `drawnPoints`, `drawOps`. Copy
+`distinctSources`, `drawnText`, `textDraws`, `textIn`, `drawnTextRuns`,
+`drawnTextLines`, `textRunsIn`, `textLines`, `lineWith`, `spells`,
+`drawnPoints`, `drawOps`. Whether a frame drew a piece of copy is the shared
+harness's reading — a suite imports `drewText` (along one baseline) or
+`drewTextAnywhere` (copy that may wrap) from `case-harness/text` — and the rest
 is read off the logical runs (`drawnTextRuns`, `drawnTextLines`, `textRunsIn`),
 which fold a heading drawn one glyph per call back into the word it spells;
-`textDraws` and `textIn` stay one entry per call, for a count or a clearance.
+`textLines` gathers those runs onto the baselines they share and `lineWith`
+finds the line spelling a piece of copy, for a check that needs WHERE it was
+drawn. `textDraws` and `textIn` stay one entry per call, for a count or a
+clearance.
 `h.imagePixels(id)` reads a drawn source's own pixels back, which is how a
 sprite is identified — never by matching a path.
 

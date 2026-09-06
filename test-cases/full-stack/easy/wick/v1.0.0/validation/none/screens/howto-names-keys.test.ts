@@ -18,8 +18,8 @@
 //
 // THE TOLERANCE. specs/ui.md fixes the screen's words as "How to play, written
 // in a player's words", so nothing is matched exactly. A key of several letters
-// is looked for folded — lower-cased, with spaces, dashes and underscores
-// removed — anywhere in the screen's text, and a key of one letter is looked
+// is looked for ignoring case and whitespace anywhere in the screen's text (the
+// shared harness's `drewTextAnywhere`), and a key of one letter is looked
 // for standing alone, bounded by non-letters, because a single letter is a
 // substring of nearly any sentence. The arrows are named either as the word or
 // as one of the four arrow glyphs, since the specification names them in words

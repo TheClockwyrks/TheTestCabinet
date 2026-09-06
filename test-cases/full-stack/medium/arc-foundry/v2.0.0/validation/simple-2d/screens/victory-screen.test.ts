@@ -20,10 +20,11 @@
 // and off the frame by the copy `specs/ui.md` fixes for them.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drewText } from "../case-harness/text";
 import { VICTORY_ITEMS } from "../constants";
 import { assertEqual, assertTruthy } from "../assert";
 import { captureStill, menuControl, type Harness } from "../harness";
-import { drawnNumbers, drewNumber, drewText } from "./reading";
+import { drawnNumbers, drewNumber } from "./reading";
 import {
   ENDING_WAVES,
   VICTORY_INTEGRITY,

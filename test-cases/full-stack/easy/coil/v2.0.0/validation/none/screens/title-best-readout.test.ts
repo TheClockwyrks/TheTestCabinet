@@ -21,11 +21,11 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import { BEST_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   poseScene,
   type Harness,
 } from "../harness";

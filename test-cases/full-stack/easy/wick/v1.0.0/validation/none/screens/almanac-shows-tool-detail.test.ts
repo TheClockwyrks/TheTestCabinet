@@ -18,12 +18,13 @@
 // `0`, and Taper is the first of `BASE_WEAPON_IDS`, so the entry the detail
 // shows is the one the screen is entered on and no key is pressed at all.
 //
-// THE TOLERANCE. The name, the labels and the line are matched folded —
-// lower-cased, with spaces, dashes and underscores removed, across consecutive
-// runs of text — so a build that letter-spaces a heading or wraps a label passes.
-// The damage is read as a whole number standing alone, bounded by non-digits, so
-// a build that writes it inside a longer number fails; the cooldown is matched
-// folded, so a build that writes a unit after it is read as showing it.
+// THE TOLERANCE. The name, the labels and the line are matched ignoring case
+// and whitespace, across the runs of text the frame drew joined in reading
+// order (the shared harness's `drewTextAnywhere`) — so a build that
+// letter-spaces a heading or wraps a label passes. The damage is read as a
+// whole number standing alone, bounded by non-digits, so a build that writes
+// it inside a longer number fails; the cooldown is matched the same way as the
+// copy, so a build that writes a unit after it is read as showing it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

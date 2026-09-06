@@ -26,12 +26,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   arrangeGoal,
   arrangeMatchPoint,
   captureStill,
   createHarness,
-  drewText,
   driveGoal,
   enterPlaying,
   type Harness,

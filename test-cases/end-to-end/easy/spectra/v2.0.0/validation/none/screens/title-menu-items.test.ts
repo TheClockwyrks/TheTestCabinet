@@ -30,10 +30,10 @@ import {
   captureStill,
   createHarness,
   drawnText,
-  drewText,
   drawnTextRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { runCarrying } from "./reading";
 
 let h: Harness;

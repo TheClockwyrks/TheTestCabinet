@@ -8,13 +8,12 @@
 // the spec sentence each one comes from.
 
 import { CORE_SPRITE, HUD_ICON_SPRITE, type Point } from "../constants";
+import { drawnText, drawnTextLines } from "../case-harness/text";
 import {
   distance,
   imageDraws,
-  textDraws,
   type DrawCall,
   type ImageDraw,
-  type TextDraw,
 } from "../harness";
 
 /* -------------------------------------------------------------------------- */
@@ -105,46 +104,14 @@ export function sheetFrameKey(draw: ImageDraw): string {
 // only looked at the strings the frame issued would fail a perfectly good HUD
 // that draws its own letterforms one at a time.
 //
-// So a figure is read the way a reader reads it: the runs of text a frame drew
-// are grouped into the LINES they landed on and, within a line, into the words
-// the spacing separates, and the digits of each word are taken as the figures the
+// So a figure is read off the LOGICAL RUNS the frame spells — the package's
+// `drawnTextLines` (`case-harness/text`), whose merge rule coalesces side-by-side
+// glyphs on one baseline back into the string they spell and puts a space at a
+// gap the build advanced over rather than drew; the harness measures every text
+// call so that it can — and the digits of each run are taken as the figures the
 // HUD showed. A build is free to group the digits of a long figure as it draws
 // it — "1,234" is the score 1234 with the separator `toLocaleString()` puts there
 // by default — so a grouped figure is read as the one figure it is.
-
-/**
- * How far apart two glyph anchors on one line may sit and still be one word.
- *
- * A HUD that carries six readouts legibly on a 960-unit field draws them in a
- * font whose glyph advance is a small fraction of this, and it separates two
- * readouts by far more than this, so the bound sits in the gap between the two
- * with room on both sides. It only ever has to separate two DIGIT groups: a
- * label between two figures already separates them whatever the spacing.
- */
-const WORD_GAP = 48;
-
-/** How far apart two anchors may sit vertically and still be on one line. */
-const LINE_GAP = 6;
-
-/** The words a frame's text draws form, in the order they were laid down. */
-export function drawnWords(calls: readonly DrawCall[]): string[] {
-  const runs = [...textDraws(calls)].sort((a, b) => a.y - b.y || a.x - b.x);
-  const words: string[] = [];
-  let current = "";
-  let previous: TextDraw | null = null;
-  for (const run of runs) {
-    const joins =
-      previous !== null &&
-      Math.abs(run.y - previous.y) <= LINE_GAP &&
-      run.x - previous.x <= WORD_GAP &&
-      run.x >= previous.x;
-    if (!joins && current !== "") words.push(current);
-    current = joins ? current + run.text : run.text;
-    previous = run;
-  }
-  if (current !== "") words.push(current);
-  return words;
-}
 
 /**
  * The marks a build may draw between the digit triples of one figure.
@@ -153,10 +120,10 @@ export function drawnWords(calls: readonly DrawCall[]): string[] {
  * grouping the digits of a long figure is what `Number.prototype.toLocaleString`
  * does by default, so "1,234" and "1234" are the same score drawn two ways —
  * along with the apostrophe and the narrow and non-breaking spaces other locales
- * group with. The ASCII space is deliberately not one of them: the runs a frame
- * drew are joined into words above, and taking it for a grouping mark would read
- * the two readouts of "40 130" as the single figure 40130. Neither is ".", which
- * is the decimal point — a build drawing "1.5" means one and a half.
+ * group with. The ASCII space is deliberately not one of them: the package's
+ * merge writes one between the words of a run, and taking it for a grouping mark
+ * would read the two readouts of "40 130" as the single figure 40130. Neither is
+ * ".", which is the decimal point — a build drawing "1.5" means one and a half.
  */
 const GROUP_MARKS = [",", "'", "\u00A0", "\u202F", "\u2009"];
 
@@ -206,19 +173,17 @@ function showsFigure(text: string, value: number): boolean {
  * could be part of the same figure beside it, so a HUD reading "SCORE 50" and
  * one reading "50" both answer yes while one reading "504" does not, and a
  * figure the build grouped answers the same drawn "1,234" as drawn "1234". The
- * strings the frame issued are read the same way before they are grouped into
- * words, so a build that draws a whole readout in one call is never at the mercy
- * of that grouping.
+ * strings the frame issued are read the same way before they are merged into
+ * runs, so a build that draws a whole readout in one call is never at the mercy
+ * of the merge.
  */
 export function drewFigure(calls: readonly DrawCall[], value: number): boolean {
-  // A run the frame issued carries its own word boundaries, so it is read as it
-  // stands — but only when it is more than one glyph long. A build that draws a
-  // readout one glyph at a time issues runs that carry no boundary at all, and
-  // reading those as words would find every digit on the HUD in isolation.
-  const issued = textDraws(calls)
-    .map((run) => run.text)
-    .filter((text) => text.trim().length > 1);
-  return [...issued, ...drawnWords(calls)].some((text) =>
+  // A string the frame issued carries its own word boundaries, so it is read as
+  // it stands — but only when it is more than one glyph long. A build that draws
+  // a readout one glyph at a time issues strings that carry no boundary at all,
+  // and reading those as words would find every digit on the HUD in isolation.
+  const issued = drawnText(calls).filter((text) => text.trim().length > 1);
+  return [...issued, ...drawnTextLines(calls)].some((text) =>
     showsFigure(text, value),
   );
 }

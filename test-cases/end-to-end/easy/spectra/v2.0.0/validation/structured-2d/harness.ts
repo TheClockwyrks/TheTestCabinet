@@ -137,7 +137,6 @@ import {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText as spelledText,
   type TextDraw,
 } from "./case-harness/text";
 import { colorDistance, type Rgb } from "./case-harness/color";
@@ -1986,28 +1985,6 @@ export const pixelsChanged = countPixelsChanged;
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and the specification
- * fixes the copy a screen shows while leaving its spacing to the build. Every
- * text call is measured, so the shared harness's merge rule
- * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
- * into the string they spell. Every raw string is a substring of the run it
- * belongs to, so coalescing can only add a match and never take one away.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
-
 /** Every character with a meaning inside a regular expression, escaped. */
 function escapeForPattern(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -2017,14 +1994,14 @@ function escapeForPattern(text: string): string {
  * Whether the frame drew `word` as a STANDALONE token, at word boundaries,
  * ignoring case.
  *
- * The stricter reading {@link drewText} deliberately is not, for the checks about
- * copy that NAMES something — a key, a band — where a substring match would
- * accept a screen that never says the word. "CYAN" must not be answered by
- * "CYANOGEN", and "AD" must not be answered by "READY"; the boundaries are what
- * make the difference. Punctuation and spacing around the token are still the
- * build's, because a boundary is not a character. Read off the same logical
- * runs as {@link drewText}, for the same reason: `CYAN` letter-spaced a glyph
- * per call is still the word.
+ * The stricter reading the shared harness's `drewText` (`case-harness/text.ts`)
+ * deliberately is not, for the checks about copy that NAMES something — a key,
+ * a band — where a substring match would accept a screen that never says the
+ * word. "CYAN" must not be answered by "CYANOGEN", and "AD" must not be
+ * answered by "READY"; the boundaries are what make the difference.
+ * Punctuation and spacing around the token are still the build's, because a
+ * boundary is not a character. Read off the same logical runs as `drewText`,
+ * for the same reason: `CYAN` letter-spaced a glyph per call is still the word.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(`\\b${escapeForPattern(word.trim())}\\b`, "i");

@@ -13,8 +13,9 @@
 // and one frame is run and read.
 //
 // THE TOLERANCE. The words around it are the build's, so only the figure is
-// looked for, folded and across consecutive runs of text. `10:00` carries its
-// colon, which folding keeps, so it is not matched by a stray digit.
+// looked for, ignoring case and whitespace and across the runs of text the
+// frame drew (the shared harness's `drewTextAnywhere`). `10:00` carries its
+// colon, which that reading keeps, so it is not matched by a stray digit.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

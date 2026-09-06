@@ -92,7 +92,6 @@ import {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText as spelledText,
   meanOf,
   mouseGlide,
   rectCenter,
@@ -991,10 +990,11 @@ export function watchCues(h: Harness): TimedCue[] {
 // the CALLS: one entry per `fillText`/`strokeText`, for the reader that counts
 // draws or holds one draw clear of a region. `drawnTextLines` and `drawnTextRuns`
 // are the package's too, and answer the LOGICAL RUNS a frame spells, merging
-// draws that sit side by side on one baseline. Every reader of COPY here — the
-// two predicates below, and the screen suites' `numberRuns` and `runCarrying` —
-// reads the runs, because a build that letter-spaces a heading draws it a glyph
-// per call and the specification fixes the words, not their spacing.
+// draws that sit side by side on one baseline. Every reader of COPY — the
+// package's `drewText`, which the screen suites import directly, `drewWord`
+// below, and the screen suites' `numberRuns` and `runCarrying` — reads the
+// runs, because a build that letter-spaces a heading draws it a glyph per call
+// and the specification fixes the words, not their spacing.
 
 /**
  * The frame's text as the LOGICAL RUNS it spells: the strings alone, and the
@@ -1010,36 +1010,15 @@ export function watchCues(h: Harness): TimedCue[] {
 export { drawnTextLines, drawnTextRuns };
 
 /**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and the specification
- * fixes the copy a screen shows while leaving its spacing to the build. Every
- * text call is measured, so the shared harness's merge rule
- * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
- * into the string they spell. Every raw string is a substring of the run it
- * belongs to, so coalescing can only add a match and never take one away.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
-
-/**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
- * The stricter sibling of {@link drewText}, for the copy `specs/ui.md` requires
- * as a word rather than as a substring — the how-to screen's `SPACE`, `ARROWS`
- * and `AD`. A screen reading "press the spacebar" contains `space` and does not
- * name the key the specification named. Read off the same logical runs as
- * {@link drewText}, for the same reason: `SPACE` letter-spaced a glyph per call
- * is still the word.
+ * The stricter sibling of the shared harness's `drewText`
+ * (`case-harness/text.ts`), for the copy `specs/ui.md` requires as a word
+ * rather than as a substring — the how-to screen's `SPACE`, `ARROWS` and `AD`.
+ * A screen reading "press the spacebar" contains `space` and does not name the
+ * key the specification named. Read off the same logical runs as `drewText`,
+ * for the same reason: `SPACE` letter-spaced a glyph per call is still the
+ * word.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(

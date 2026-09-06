@@ -22,9 +22,10 @@
 // frame as drawn text and fixes no more — "Which typeface carries them is
 // yours" — and letter spacing is not portable, so a build is free to draw one
 // entry as one call, as a call per word, or as a call per glyph. What all of
-// those share is the baseline: one entry is drawn at one `y`. So the frame's
-// text runs are gathered by the `y` their anchor maps to and joined in `x`
-// order, and each entry is found by the line it lies on.
+// those share is the baseline: one entry is drawn at one `y`. So each entry is
+// read with the shared harness's `drewText` — the frame's logical runs gathered
+// onto the baselines they share, matched by substring, ignoring case and
+// whitespace.
 //
 // THE VERDICT. The frame that carries the panel draws all three entries of
 // `SOLVED_ITEMS`, `NEXT CHALLENGE` included, and the challenge really is the
@@ -32,6 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
+import { drewText } from "../case-harness/text";
 import { EXTRA_COUNT, SOLVED_ITEMS } from "../constants";
 import { extra } from "../challenges";
 import { setPart, solution } from "../formats";
@@ -42,9 +44,7 @@ import {
   createHarness,
   loadMachine,
   openChallenge,
-  textDraws,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 /** The Extra this check completes: the first, which the shelf holds nine after. */
@@ -63,35 +63,6 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/** The frame's text runs, gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), draw]);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
-
-/** Whether the frame drew `text` on some baseline, ignoring case. */
-function drewLine(lines: readonly Line[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return lines.some((line) => line.text.toLowerCase().includes(wanted));
-}
-
 it("offers NEXT CHALLENGE, KEEP TINKERING and BACK TO SELECT on a challenge the mode holds one after", async () => {
   await openChallenge(h, "extras", INDEX);
   await loadMachine(h, ONE_SET);
@@ -100,7 +71,7 @@ it("offers NEXT CHALLENGE, KEEP TINKERING and BACK TO SELECT on a challenge the 
   await advanceCycles(h, 1);
   await h.advance(1);
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const calls = await h.lastCalls();
   await captureStill(h, "three-items");
 
   const shown = await h.snapshot();
@@ -129,7 +100,7 @@ it("offers NEXT CHALLENGE, KEEP TINKERING and BACK TO SELECT on a challenge the 
 
   for (const item of SOLVED_ITEMS) {
     assertEqual(
-      drewLine(lines, item),
+      drewText(calls, item),
       true,
       `the mode holds a challenge after this one, so the panel's menu is the ` +
         `whole of SOLVED_ITEMS and draws ${item}`,

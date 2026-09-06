@@ -21,11 +21,11 @@ import {
   SCORE_LABEL,
 } from "../constants";
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   arrangeFullBoard,
   captureStill,
   createHarness,
-  drewText,
   type Harness,
 } from "../harness";
 

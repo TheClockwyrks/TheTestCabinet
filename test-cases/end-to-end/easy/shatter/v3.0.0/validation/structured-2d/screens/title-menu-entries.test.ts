@@ -38,7 +38,8 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../constants";
-import { assertContains, assertLessThan } from "../assert";
+import { assertLessThan, fail } from "../assert";
+import { drawnTextLines, drewText } from "../case-harness/text";
 import {
   captureStill,
   clearCalls,
@@ -46,7 +47,7 @@ import {
   resetTo,
   type Harness,
 } from "../harness";
-import { drawnRuns, menuRows } from "./reading";
+import { menuRows } from "./reading";
 
 let h: Harness;
 
@@ -65,14 +66,14 @@ it("draws both TITLE_ITEMS, the first stacked above the second", async () => {
   await h.advance(1);
   captureStill(h, "menu");
 
-  const drawn = drawnRuns(h);
   for (const item of TITLE_ITEMS) {
-    assertContains(
-      drawn,
-      item.toLowerCase(),
-      `the title menu entry ${JSON.stringify(item)} drawn on the title ` +
-        "screen's frame — TITLE_ITEMS is PLAY, HOW TO PLAY (specs/ui.md)",
-    );
+    if (!drewText(h.calls, item)) {
+      fail(
+        `the title menu entry ${JSON.stringify(item)} drawn on the title ` +
+          "screen's frame — TITLE_ITEMS is PLAY, HOW TO PLAY (specs/ui.md)",
+        drawnTextLines(h.calls),
+      );
+    }
   }
 
   const [first, second] = menuRows(h, TITLE_ITEMS);

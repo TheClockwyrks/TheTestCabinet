@@ -63,7 +63,6 @@ import {
   type Rgb,
   type UntilResult as BaseUntilResult,
 } from "./case-harness/index";
-import { drewText as spelledText } from "./case-harness/text";
 import {
   CUE_NAMES,
   MUSIC_PLAY,
@@ -180,7 +179,7 @@ const KESSLER: CaseConfig<KesslerSnapshot> = {
   // Measure every text call the harness reads, in the page under the build's
   // own fonts, so the package's readers over LOGICAL runs of text can coalesce
   // a heading drawn a glyph per `fillText` back into the words it spells.
-  // {@link drewText} reads copy off those runs.
+  // The package's `drewText` reads copy off those runs.
   measureText: true,
   extraInitScripts: ["audio-init.js", "image-init.js"],
   projectRoot: PROJECT_ROOT,
@@ -641,36 +640,6 @@ export async function hold(
   } finally {
     await h.keyUp(code);
   }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Reading one frame's render                                                 */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * THE PACKAGE'S READING, under Kessler's name. `spelledText` matches against
- * the LOGICAL RUNS a frame spells (`drawnTextLines`), never the `fillText`
- * split: a build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and specs/screens.md
- * fixes the copy a screen shows while leaving its font and layout to the
- * build. The shared harness measures every text call it reads (`measureText`
- * in {@link KESSLER}), so its merge rule (`case-harness/text.ts`) can coalesce
- * side-by-side glyphs on one baseline back into the string they spell. Every
- * raw string is a substring of the run it belongs to, so coalescing can only
- * add a match and never take one away — a copy point decided against the raw
- * calls still passes, and one a letter-spaced build failed now reads what it
- * drew.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -31,9 +31,9 @@ import {
   createHarness,
   drawFrame,
   drawnTextForms,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The run the screen reports: lost, out of lives, and well scored. */
 const RUN_SCORE = 3070;

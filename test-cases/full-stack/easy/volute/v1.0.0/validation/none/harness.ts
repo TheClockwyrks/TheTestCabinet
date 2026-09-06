@@ -305,12 +305,12 @@ const kit = createCaseHarness<VoluteSnapshot, VoluteDebugApi>({
   // to — and every check runs after the reset, so that half of the requirement
   // would be invisible without a reading taken first (`screens/title`).
   readOpeningSnapshot: true,
-  // Measure every text call in the page, so the shared `drewText` this harness
-  // re-exports reads copy off the logical runs a frame spells rather than off
-  // the `fillText` split: a build that letter-spaces a heading draws one glyph
-  // per call, and `specs/ui.md` fixes the copy while leaving its spacing to the
-  // build. Without the measurement nothing coalesces and a letter-spaced run
-  // reads as its glyphs.
+  // Measure every text call in the page, so the package's readers of copy and
+  // figures (`case-harness/text`'s `drewText` and `drawnTextLines`) read off the
+  // logical runs a frame spells rather than off the `fillText` split: a build
+  // that letter-spaces a heading draws one glyph per call, and `specs/ui.md`
+  // fixes the copy while leaving its spacing to the build. Without the
+  // measurement nothing coalesces and a letter-spaced run reads as its glyphs.
   measureText: true,
   // FIFTEEN SECONDS RATHER THAN THE FIVE A SHORTER CASE ALLOWS, because the
   // ceiling is not really on the build: it is on the host. This project holds
@@ -388,7 +388,6 @@ export {
   drawnPoints,
   drawnText,
   drawOps,
-  drewText,
   imageDraws,
   imageRef,
   pixelsDiffering,

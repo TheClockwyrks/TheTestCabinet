@@ -29,7 +29,8 @@ import {
   poseScene,
   type Harness,
 } from "../harness";
-import { numberRuns, runsOf } from "./band";
+import { drewText } from "../case-harness/text";
+import { linesOf, numberRuns } from "./band";
 
 /** A score no fresh round reaches, and a best above it so it stays put. */
 const SCORE = 1234;
@@ -60,9 +61,13 @@ it("draws the posed score with the SCORE label above it", async () => {
   captureStill(h, "score");
 
   const figures = numberRuns(calls, SCORE);
-  const labels = runsOf(calls, SCORE_LABEL);
+  assertEqual(
+    drewText(calls, SCORE_LABEL),
+    true,
+    `the HUD drawing ${SCORE_LABEL}`,
+  );
+  const labels = linesOf(calls, SCORE_LABEL);
   assertGreaterThan(figures.length, 0, `the HUD drawing the score ${SCORE}`);
-  assertGreaterThan(labels.length, 0, `the HUD drawing ${SCORE_LABEL}`);
   assertLessThanOrEqual(
     Math.min(...labels.map((run) => run.y)),
     Math.min(...figures.map((run) => run.y)),

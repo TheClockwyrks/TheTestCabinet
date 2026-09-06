@@ -30,11 +30,11 @@ import { ALMANAC_TABS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   poseScreen,
   placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorX } from "./almanac";
 
 let h: Harness;

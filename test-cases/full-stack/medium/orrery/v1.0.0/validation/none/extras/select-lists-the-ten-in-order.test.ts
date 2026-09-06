@@ -37,16 +37,23 @@
 // campaign's course here instead has no such chain.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDefined, assertEqual, assertLength } from "../assert";
+import {
+  assertDefined,
+  assertEqual,
+  assertLength,
+  assertTrue,
+} from "../assert";
+import { drewText } from "../case-harness/text";
 import { EXTRA_NAMES } from "../challenges";
 import { EXTRA_COUNT } from "../constants";
 import {
   captureStill,
   createHarness,
   openSelect,
-  textDraws,
+  spells,
+  textLines,
+  type DrawCall,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 let h: Harness;
@@ -59,60 +66,32 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/**
- * The frame's text runs gathered into the baselines they were drawn on.
- *
- * A build is free to draw a row as one run of text or as a run per word or per
- * glyph — `specs/ui.md` "fixes no palette, no font", and `specs/assets.md`,
- * which puts every word on the stage on the frame as drawn text, fixes no more
- * than that. What every one of those does share is the baseline: the runs of
- * one row are drawn at one `y`, and the rows are drawn at different ones. So
- * the runs are grouped by the `y` their anchor maps to and joined in `x`
- * order, which reads a row the same way whichever way it was drawn.
- */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    const on = baselines.get(draw.y) ?? [];
-    on.push(draw);
-    baselines.set(draw.y, on);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
-
 /**
  * The baseline each Extra's row was drawn on, taken in shelf order.
  *
- * The screen "lists the ten challenges IN ORDER" down the screen, so the rows are
- * matched in shelf order and each one is looked for BELOW the row before it. A
- * build that listed the shelf in some other order has no such chain and is
- * reported at the first challenge whose row is not under its predecessor's.
+ * Each name is read with the shared harness's `drewText`, and the row it sits
+ * on as `drawing.ts`'s `textLines`: the same logical runs gathered onto the
+ * baselines they share, so a row drawn as one run, as a run per word or as a
+ * run per glyph reads the same way. The screen "lists the ten challenges IN
+ * ORDER" down the screen, so the rows are matched in shelf order and each one
+ * is looked for BELOW the row before it. A build that listed the shelf in some
+ * other order has no such chain and is reported at the first challenge whose
+ * row is not under its predecessor's.
  */
 function rowBaselines(
-  lines: readonly Line[],
+  calls: readonly DrawCall[],
   names: readonly string[],
 ): number[] {
+  const lines = textLines(calls);
   const rows: number[] = [];
   let below = -Infinity;
   for (const name of names) {
-    const wanted = name.trim().toLowerCase();
-    const row = lines.find(
-      (line) => line.y > below && line.text.toLowerCase().includes(wanted),
+    assertTrue(
+      drewText(calls, name),
+      `the Extras select screen draws a row for ${JSON.stringify(name)}; the ` +
+        `lines the frame drew are ${JSON.stringify(lines.map((line) => line.text))}`,
     );
+    const row = lines.find((line) => line.y > below && spells(line, name));
     assertDefined(
       row,
       `the Extras select screen draws a row for ${JSON.stringify(name)} below ` +
@@ -129,7 +108,7 @@ it("draws one row per Extra, in the order specs/challenges.md gives them", async
   await h.debug.reset();
 
   await openSelect(h, "extras");
-  const drawn = textDraws(await h.lastCalls());
+  const calls = await h.lastCalls();
   await captureStill(h, "list");
 
   const shown = await h.snapshot();
@@ -145,7 +124,7 @@ it("draws one row per Extra, in the order specs/challenges.md gives them", async
     "the Extras select screen is the screen this point reads",
   );
 
-  const rows = rowBaselines(linesOf(drawn), EXTRA_NAMES);
+  const rows = rowBaselines(calls, EXTRA_NAMES);
   assertLength(
     rows,
     EXTRA_COUNT,

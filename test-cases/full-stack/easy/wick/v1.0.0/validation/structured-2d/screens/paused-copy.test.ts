@@ -49,13 +49,13 @@ import {
   blitsNear,
   captureStill,
   createHarness,
-  drewText,
   isolate,
   placeEnemy,
   poseScreen,
   placedRuns,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY } from "./stage";
 
 /** Where the moth stands, relative to the lamplighter at the origin. */

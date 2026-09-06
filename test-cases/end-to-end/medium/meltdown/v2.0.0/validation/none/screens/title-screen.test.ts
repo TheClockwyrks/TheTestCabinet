@@ -42,9 +42,9 @@ import {
   colorDistance,
   createHarness,
   drawnTextRuns,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 
 /** The row whose band is read: `HOW TO PLAY`, the second of `TITLE_ITEMS`. */
 const READ_ROW = TITLE_ITEMS.length - 1;

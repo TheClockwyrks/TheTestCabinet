@@ -597,7 +597,6 @@ export {
   colorDistance,
   drawOps,
   drawnTextRuns,
-  drewText,
   luminance,
   sampleColor,
   textDraws,

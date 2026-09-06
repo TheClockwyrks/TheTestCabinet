@@ -32,9 +32,9 @@ import {
   ACTION_KEY,
   captureStill,
   createHarness,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { drawnCopy } from "./frames";
 
 /**

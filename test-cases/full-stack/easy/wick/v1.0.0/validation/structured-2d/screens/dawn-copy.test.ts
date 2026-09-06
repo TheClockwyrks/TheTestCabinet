@@ -32,7 +32,6 @@ import { DAWN_TEXT, DAWN_TICK, END_ITEMS, clockText } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewText,
   endDawn,
   hasToken,
   isolate,
@@ -40,6 +39,7 @@ import {
   textReadings,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { anchorY } from "./stage";
 
 /** The run the dawn screen reports: its level and its kills. */

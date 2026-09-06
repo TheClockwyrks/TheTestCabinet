@@ -29,12 +29,14 @@
 // test. Nothing here settles a chain, so the round stays on `playing` for both
 // readings even though the quiet filler carries no legal swap of its own.
 //
-// The copy is read through `frameText`, which gathers a frame's canvas text and
-// the page's own DOM text alike, because specs/assets.md has an engineless
-// build draw its chrome "in code (canvas or DOM)" and this point is not about
-// which of the two it chose. `showsText` then decides whether a string is on
-// screen across every shape specs/ui.md leaves open — one call per line, one
-// per word, one per glyph, or a figure drawn beside its label in a single run.
+// The copy is read through `frameText`, which hands back a frame's draw calls
+// and the page's own rendered DOM text alike, because specs/assets.md has an
+// engineless build draw its chrome "in code (canvas or DOM)" and this point is
+// not about which of the two it chose. `frameShows` then decides whether a
+// string is on screen — the calls through the shared harness's
+// `drewTextAnywhere`, the document by the same reading — across every shape
+// specs/ui.md leaves open: one call per line, one per word, one per glyph, or a
+// figure drawn beside its label in a single run.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
@@ -43,8 +45,10 @@ import { HUD_SCORE_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
+  frameShows,
   loadBoard,
-  showsText,
+  shownText,
+  type FrameText,
   type Harness,
 } from "../harness";
 
@@ -54,25 +58,23 @@ const SECOND_SCORE = 912;
 
 let h: Harness;
 
-/** The frame showed `wanted`, or the failure names it beside what it drew. */
-function requireCopy(
-  drawn: readonly string[],
-  wanted: string,
-  when: string,
-): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the frame at ${when} to show ${JSON.stringify(wanted)}`, drawn);
+/** The frame showed `wanted`, or the failure names it beside what it showed. */
+function requireCopy(frame: FrameText, wanted: string, when: string): void {
+  if (!frameShows(frame, wanted)) {
+    fail(
+      `the frame at ${when} to show ${JSON.stringify(wanted)}`,
+      shownText(frame),
+    );
   }
 }
 
-/** The frame did not show `wanted`, or the failure names what it did draw. */
-function refuseCopy(
-  drawn: readonly string[],
-  wanted: string,
-  when: string,
-): void {
-  if (showsText(drawn, wanted)) {
-    fail(`the frame at ${when} not to show ${JSON.stringify(wanted)}`, drawn);
+/** The frame did not show `wanted`, or the failure names what it did show. */
+function refuseCopy(frame: FrameText, wanted: string, when: string): void {
+  if (frameShows(frame, wanted)) {
+    fail(
+      `the frame at ${when} not to show ${JSON.stringify(wanted)}`,
+      shownText(frame),
+    );
   }
 }
 

@@ -19,9 +19,9 @@
 // pipeline held across exactly one frame, and the overlay ticks nothing, so the
 // only thing that differs between the two frames is what the highlight drew.
 //
-// THE TOLERANCE. The copy is matched folded — lower-cased, with spaces, dashes
-// and underscores removed, across consecutive runs of text — and the two lines
-// stay distinct under that folding.
+// THE TOLERANCE. The copy is matched ignoring case and whitespace, across the
+// runs of text the frame drew joined in reading order (the shared harness's
+// `drewTextAnywhere`) — and the two lines stay distinct under that reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

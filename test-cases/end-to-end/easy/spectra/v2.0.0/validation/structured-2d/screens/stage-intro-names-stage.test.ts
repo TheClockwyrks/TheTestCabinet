@@ -38,9 +38,9 @@ import {
   captureStill,
   createHarness,
   drawnTextSpans,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { drawFrame, numberRuns } from "./reading";
 
 /** The stage the intro is posed at: not `1`, not a challenge stage. */

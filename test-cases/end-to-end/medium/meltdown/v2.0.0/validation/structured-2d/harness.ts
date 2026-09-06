@@ -124,7 +124,7 @@ import {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText as spelledText,
+  restrikes,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -1657,7 +1657,8 @@ export const pixelsChanged = countPixelsChanged;
  * The package's reading, which answers the RAW strings one entry per call — what
  * a reader that counts draws, or takes the difference between two frames' text,
  * wants. A reader of COPY wants the merged-run reading beside it,
- * {@link drawnTextLines}: see {@link drewText} for why.
+ * {@link drawnTextLines}, or the package's `drewText` over it: see
+ * {@link drawnTextLines} for why.
  */
 export { drawnText };
 
@@ -1667,34 +1668,26 @@ export { drawnText };
  * The shared harness's reading, re-exported so a suite next door goes on naming
  * `../harness` for everything it reads. Where {@link drawnText} answers the raw
  * `fillText` split, this answers the RUNS those calls spell: a heading drawn a
- * glyph at a time is one entry here and a dozen there. See {@link drewText} for
- * why copy is read off this and never off the split.
+ * glyph at a time is one entry here and a dozen there.
+ *
+ * COPY IS READ OFF THIS, AND NEVER OFF THE SPLIT. A build that letter-spaces a
+ * heading draws one glyph per call, which is the only portable way to
+ * letter-space canvas text, and the specification fixes the copy a screen shows
+ * while leaving its spacing to the build. The recorder measures every text call
+ * (`recorder: { measureText: true }` above), so the shared harness's merge rule
+ * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline
+ * back into the string they spell. Every raw string is a substring of the run
+ * it belongs to, so coalescing can only add a match and never take one away. A
+ * check asking whether a frame drew its copy reads the package's `drewText` from
+ * `../case-harness/text` directly, as the `screens` suites do: whether the text
+ * is a substring of the runs along some one baseline, joined, ignoring case and
+ * with the whitespace folded out of both sides. Substring rather than equality
+ * on purpose: the copy a check asserts is the case's own, but how a build
+ * presents it is the build's, and a readout is commonly drawn with its label, a
+ * separator or padding around it. Requiring the exact run would fail a screen
+ * that shows precisely the right words.
  */
 export { drawnTextLines };
-
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a readout is
- * commonly drawn with its label, a separator or padding around it. Requiring the
- * exact run would fail a panel that shows precisely the right words.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which is
- * the only portable way to letter-space canvas text, and the specification fixes
- * the copy a screen shows while leaving its spacing to the build. The recorder
- * measures every text call (`recorder: { measureText: true }` above), so the
- * shared harness's merge rule (`case-harness/text.ts`) can coalesce side-by-side
- * glyphs on one baseline back into the string they spell. Every raw string is a
- * substring of the run it belongs to, so coalescing can only add a match and
- * never take one away. The package's `drewText`, under the name every check
- * here has always used.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
 
 /**
  * The geometry calls a frame made, by name.
@@ -1880,14 +1873,14 @@ export interface TextRun extends TextSpan {
  * alone is in the run verbatim, since the rule writes no space beside one; and
  * a RESTRIKE — the same text struck again where the last draw consumed already
  * stands, an outlined glyph's fill over its stroke — is the glyph the run
- * already spells, folded by the rule under the same test it folds it by
- * ({@link restrikes}), and is passed over without becoming a part. That test
- * is stated in canvas pixels, where the rule decided it, so the walk runs over
- * the draws as the package placed them and only the parts it took are mapped
- * into logical units. Were a run's text ever left unspelled by that walk, every
- * run in the frame would be handed back as its own only part, which is the
- * reading a whole-token reader had before the runs existed; the walk is the
- * rule's own, so that is a guard and not a path the rule takes.
+ * already spells, folded by the rule under the one test it folds it by, the
+ * package's {@link restrikes}, and is passed over without becoming a part. That
+ * test is stated in canvas pixels, where the rule decided it, so the walk runs
+ * over the draws as the package placed them and only the parts it took are
+ * mapped into logical units. Were a run's text ever left unspelled by that
+ * walk, every run in the frame would be handed back as its own only part, which
+ * is the reading a whole-token reader had before the runs existed; the walk is
+ * the rule's own, so that is a guard and not a path the rule takes.
  *
  * NAMED AS THE NONE HARNESS NAMES ITS OWN, AND NOT `drawnTextRuns`. That name is
  * the shared package's — the merge over raw draw calls, answering a `TextDraw[]`
@@ -1933,27 +1926,6 @@ export function spelledRuns(h: Harness): TextRun[] {
     spelled.push({ ...run, parts: allInLogical(view, parts) });
   }
   return spelled;
-}
-
-/** How far apart two draws' baselines may sit and still be one glyph struck twice. */
-const RESTRIKE_BASELINE_SLACK = 0.75;
-
-/** How far a draw may sit from the one it repeats and still be a restrike of it. */
-const RESTRIKE_ANCHOR_SLACK = 0.5;
-
-/**
- * Whether `draw` strikes `last` again where it already stands: the same text at
- * the same anchor, within the slacks the shared merge rule folds a restrike by,
- * both in the canvas pixels the rule compared them in. An outlined glyph is
- * drawn twice, `strokeText` then `fillText`, and the rule keeps the run
- * spelling it once.
- */
-function restrikes(draw: TextDraw, last: TextDraw): boolean {
-  return (
-    draw.text === last.text &&
-    Math.abs(draw.y - last.y) <= RESTRIKE_BASELINE_SLACK &&
-    Math.abs(draw.left - last.left) <= RESTRIKE_ANCHOR_SLACK
-  );
 }
 
 /** Forget every draw call recorded so far, so a check reads its own frame alone. */

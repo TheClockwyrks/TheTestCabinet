@@ -19,9 +19,12 @@
 // title it does not report, each fail here rather than passing on one half.
 //
 // THE COPY IS THE CASE'S, THE LOOK IS THE BUILD'S. Matching is by containment
-// and ignores case, because `specs/ui.md` leaves "the palette, the type, and the
-// layout of each screen" to the build and fixes only the words. Nothing here
-// asserts a position, a size or a colour.
+// and ignores case and whitespace, because `specs/ui.md` leaves "the palette, the
+// type, and the layout of each screen" to the build and fixes only the words:
+// the reading is the shared harness's `drewText` (`case-harness/text.ts`), over
+// the logical runs the frame spells along each baseline, so a title drawn a
+// glyph per `fillText` is read as the word it spells. Nothing here asserts a
+// position, a size or a colour.
 //
 // WHAT THIS DOES NOT DECIDE. The menu beneath the copy, which is
 // `screens/title-menu-entries`' and `screens/title-menu-highlight`'s; or that the
@@ -29,14 +32,14 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TAGLINE_TEXT, TITLE_TEXT } from "../constants";
-import { assertContains, assertEqual } from "../assert";
+import { assertEqual, fail } from "../assert";
+import { drawnTextLines, drewText } from "../case-harness/text";
 import {
   captureStill,
   clearCalls,
   createHarness,
   type Harness,
 } from "../harness";
-import { drawnRuns } from "./reading";
 
 let h: Harness;
 
@@ -54,24 +57,25 @@ it("opens on the title screen and draws TITLE_TEXT and TAGLINE_TEXT", async () =
   await h.advance(1);
   captureStill(h, "title");
 
-  const drawn = drawnRuns(h);
-
   assertEqual(
     h.snapshot().screen,
     "title",
     "the screen the game opens on — specs/ui.md makes title the main menu " +
       "and where the game opens",
   );
-  assertContains(
-    drawn,
-    TITLE_TEXT.toLowerCase(),
-    `TITLE_TEXT drawn on the title screen's frame (specs/ui.md), among the ` +
-      `runs of text that frame drew`,
-  );
-  assertContains(
-    drawn,
-    TAGLINE_TEXT.toLowerCase(),
-    `TAGLINE_TEXT drawn on the title screen's frame (specs/ui.md), among the ` +
-      `runs of text that frame drew`,
-  );
+  // A failure prints the runs the frame DID draw, beside the copy it lacks.
+  if (!drewText(h.calls, TITLE_TEXT)) {
+    fail(
+      "TITLE_TEXT drawn on the title screen's frame (specs/ui.md), among the " +
+        "runs of text that frame drew",
+      drawnTextLines(h.calls),
+    );
+  }
+  if (!drewText(h.calls, TAGLINE_TEXT)) {
+    fail(
+      "TAGLINE_TEXT drawn on the title screen's frame (specs/ui.md), among the " +
+        "runs of text that frame drew",
+      drawnTextLines(h.calls),
+    );
+  }
 });

@@ -29,14 +29,23 @@
 // yours" — and letter spacing is not portable, so a build is free to draw one
 // entry as one call, as a call per word, or as a call per glyph. What all of
 // those share is the baseline: one entry is drawn at one `y`, and stacked
-// entries at different ones. So the frame's text runs are gathered by the `y`
-// their anchor maps to and joined in `x` order.
+// entries at different ones. So each entry is read with the shared harness's
+// `drewText`, and the two that remain are placed by the line each lies on —
+// `drawing.ts`'s `textLines`, the same logical runs gathered onto the baselines
+// they share, and `lineWith`, which finds a line by the rule `drewText` matched
+// it by.
 //
 // THE VERDICT. The frame that carries the panel draws `KEEP TINKERING` and, below
 // it, `BACK TO SELECT`, and draws `NEXT CHALLENGE` nowhere at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNotNull,
+  assertTrue,
+} from "../assert";
+import { drewText } from "../case-harness/text";
 import { SOLVED_ITEMS } from "../constants";
 import { setPart, solution } from "../formats";
 import { BARE, ORIGIN, TARGET } from "../fixtures";
@@ -44,11 +53,11 @@ import {
   advanceCycles,
   captureStill,
   createHarness,
+  lineWith,
   loadMachine,
   openChallengeDocument,
-  textDraws,
+  textLines,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 /** The whole machine: the set for the loaded challenge's one product. */
@@ -66,35 +75,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await h.dispose();
 });
-
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  y: number;
-  text: string;
-}
-
-/** The frame's text runs, gathered into the baselines they were drawn on. */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of draws) {
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), draw]);
-  }
-  return [...baselines.entries()]
-    .map(([y, on]) => ({
-      y,
-      text: [...on]
-        .sort((a, b) => a.x - b.x)
-        .map((draw) => draw.text)
-        .join(""),
-    }))
-    .sort((a, b) => a.y - b.y);
-}
-
-/** The topmost line the frame drew `text` on, or `null` when it drew it on none. */
-function lineWith(lines: readonly Line[], text: string): Line | null {
-  const wanted = text.trim().toLowerCase();
-  return lines.find((line) => line.text.toLowerCase().includes(wanted)) ?? null;
-}
 
 it("leaves KEEP TINKERING then BACK TO SELECT, and no NEXT CHALLENGE, on a directly loaded challenge", async () => {
   await openChallengeDocument(h, BARE);
@@ -117,7 +97,8 @@ it("leaves KEEP TINKERING then BACK TO SELECT, and no NEXT CHALLENGE, on a direc
   await advanceCycles(h, 1);
   await h.advance(1);
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
+  const calls = await h.lastCalls();
+  const lines = textLines(calls);
   await captureStill(h, "two-items");
 
   const shown = await h.snapshot();
@@ -128,19 +109,20 @@ it("leaves KEEP TINKERING then BACK TO SELECT, and no NEXT CHALLENGE, on a direc
     "the boundary that reached the target completed the run, which is when the panel is up",
   );
 
-  assertEqual(
-    lineWith(lines, NEXT as string),
-    null,
+  assertTrue(
+    !drewText(calls, NEXT as string),
     `a directly loaded challenge belongs to no course, so its panel never offers ${String(NEXT)}`,
   );
 
-  const keep = lineWith(lines, KEEP as string);
-  const back = lineWith(lines, BACK as string);
-  assertNotNull(
-    keep,
+  assertTrue(
+    drewText(calls, KEEP as string),
     `the menu is the remaining two items, so it draws ${String(KEEP)}`,
   );
-  assertNotNull(back, `and it draws ${String(BACK)}`);
+  assertTrue(drewText(calls, BACK as string), `and it draws ${String(BACK)}`);
+  const keep = lineWith(lines, KEEP as string);
+  const back = lineWith(lines, BACK as string);
+  assertNotNull(keep, `${String(KEEP)} lies on a line of its own`);
+  assertNotNull(back, `${String(BACK)} lies on a line of its own`);
   assertGreaterThan(
     back?.y ?? Number.NEGATIVE_INFINITY,
     keep?.y ?? Number.POSITIVE_INFINITY,

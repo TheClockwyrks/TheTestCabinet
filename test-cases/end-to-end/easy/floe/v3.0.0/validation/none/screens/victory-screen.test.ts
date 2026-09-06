@@ -30,18 +30,32 @@
 // bar carries a score readout, a lives readout and a level label
 // (`specs/ui.md`), which are the very figures this screen must report. A check
 // that read the whole frame would pass a victory screen that reported nothing at
-// all, off a HUD drawn behind it. `screenCopy` reads only what the build drew
-// over the strait, where `specs/ui.md` puts the screens.
+// all, off a HUD drawn behind it. Both readings here — `screenTokens` for the
+// figures, the shared harness's `drewTextAnywhere` over `screenText` for the
+// two entries — take only what the build drew over the strait, where
+// `specs/ui.md` puts the screens.
 //
 // THE SCREEN IS POSED. That a run reaches it is `progression.victory-on-level-8`;
 // what its two entries do is `screens.victory-play-again` and
 // `screens.victory-menu`. This point reads what it says.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertMatches,
+  assertTrue,
+} from "../assert";
+import { drewTextAnywhere } from "../case-harness/index";
 import { ENDING_ITEMS, TOTAL_LEVELS } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { poseEnding, screenCopy, screenRuns, standsAlone } from "./screens";
+import {
+  poseEnding,
+  screenRuns,
+  screenText,
+  screenTokens,
+  standsAlone,
+} from "./screens";
 
 /**
  * The run the screen must report.
@@ -77,12 +91,13 @@ it("draws the final score, the levels cleared, the lives left and both entries",
   const calls = await h.frameCalls();
   await captureStill(h, "victory");
 
-  const copy = screenCopy(calls);
+  const runs = screenRuns(calls);
   assertGreaterThan(
-    screenRuns(calls).length,
+    runs.length,
     0,
     "the victory screen to draw text over the strait at all (specs/ui.md)",
   );
+  const copy = screenTokens(calls);
   assertMatches(
     copy,
     standsAlone(String(SCORE)),
@@ -98,11 +113,12 @@ it("draws the final score, the levels cleared, the lives left and both entries",
     standsAlone(String(LIVES)),
     "and the lives remaining (specs/ui.md)",
   );
+  const text = screenText(calls);
   for (const item of ENDING_ITEMS) {
-    assertMatches(
-      copy,
-      item.toUpperCase(),
-      `and draws ${JSON.stringify(item)} (specs/ui.md)`,
+    assertTrue(
+      drewTextAnywhere(text, item),
+      `and draws ${JSON.stringify(item)} (specs/ui.md) — the strait drew ` +
+        JSON.stringify(runs),
     );
   }
 });

@@ -37,7 +37,13 @@
 // standing off the ground behind it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertNotNull,
+  assertTrue,
+} from "../assert";
+import { drewText, RUN_BASELINE_SLACK } from "../case-harness/text";
 import {
   CAMPAIGN_REFERENCE_CYCLES,
   SOLVED_ITEMS,
@@ -52,6 +58,7 @@ import {
   allowCompletion,
   captureStill,
   createHarness,
+  lineWith,
   loadMachine,
   CHANNEL_EPSILON,
   meanRect,
@@ -59,10 +66,14 @@ import {
   openChallenge,
   referenceSolution,
   setSpeed,
+  spells,
   textDraws,
+  textLines,
+  type DrawCall,
   type Harness,
   type OrrerySnapshot,
   type TextDraw,
+  type TextLine,
 } from "../harness";
 
 /** The whole stage, which is what a band on a full-screen panel is clipped to. */
@@ -107,83 +118,60 @@ const BAND_PAD = 80;
 const BAND_ABOVE = 18;
 const BAND_BELOW = 6;
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  /** The baseline its runs were anchored on. */
-  y: number;
-  /** The leftmost and the rightmost anchor on it. */
-  x0: number;
-  x1: number;
-  /** The runs joined in `x` order, which is the line as a player reads it. */
-  text: string;
-  /** Where the first of its runs sits in the frame's own drawing order. */
-  from: number;
-}
-
 /**
- * The frame's text runs gathered into the baselines they were drawn on.
+ * The frame's lines of text, one per baseline, with the blank ones dropped.
  *
  * `specs/assets.md` puts every word on the stage on the frame as drawn text
  * and fixes no more — "Which typeface carries them is yours" — and letter
  * spacing is not portable, so a build is free to draw one line of copy as one
  * call, as a call per word, or as a call per glyph. What all of those share is
- * the baseline: one line of copy is drawn at one `y`. This is the gathering
- * `screens/title-draws-title-text` reads a line of screen copy with.
+ * the baseline, so the lines are `drawing.ts`'s `textLines` — the shared
+ * harness's logical runs gathered onto the baselines they share, the reading
+ * the shared `drewText` matches screen copy along. A line that spells nothing
+ * but whitespace put no ink on the stage and is not read.
  */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, { draw: TextDraw; at: number }[]>();
-  draws.forEach((draw, at) => {
-    if (draw.text.trim() === "") return;
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), { draw, at }]);
-  });
-  return [...baselines.entries()]
-    .map(([y, on]) => {
-      const sorted = [...on].sort((a, b) => a.draw.x - b.draw.x);
-      return {
-        y,
-        x0: sorted[0]?.draw.x ?? 0,
-        x1: sorted[sorted.length - 1]?.draw.x ?? 0,
-        text: sorted.map((entry) => entry.draw.text).join(""),
-        from: Math.min(...on.map((entry) => entry.at)),
-      };
-    })
-    .sort((a, b) => a.y - b.y);
+function linesOf(calls: readonly DrawCall[], region: Region): TextLine[] {
+  return textLines(calls, region).filter((line) => line.text.trim() !== "");
 }
 
-/** Text with its case and its whitespace dropped, which is how a line is matched. */
-function squash(text: string): string {
-  return text.toLowerCase().replace(/\s+/gu, "");
-}
-
-/** The line the frame drew `text` on, or `null` when it drew it on none. */
-function lineWith(lines: readonly Line[], text: string): Line | null {
-  const wanted = squash(text);
-  return lines.find((line) => squash(line.text).includes(wanted)) ?? null;
+/**
+ * Where a line sits in the frame's own drawing order: the index, among the
+ * frame's text calls, of the first one anchored on its baseline.
+ *
+ * The panel is drawn over the finished machine, so every line the frame drew
+ * from the heading on is the panel's, whatever the editor's chrome under it
+ * still carries.
+ */
+function orderOf(draws: readonly TextDraw[], line: TextLine): number {
+  return draws.findIndex(
+    (draw) => Math.abs(draw.y - line.y) <= RUN_BASELINE_SLACK,
+  );
 }
 
 /**
  * The band of the stage a line is read inside, clipped to `bounds`.
  *
- * The anchors are all a frame's operations report, and where the glyphs sit
- * around one depends on the alignment and the font, neither of which `specs/`
- * fixes — so the band is taken ABOUT the anchors, wide enough that a run set to
- * any alignment puts glyphs inside it and shallow enough not to swallow the line
+ * A line's extent is what the recorder measured of its runs, and on a frame it
+ * never measured only the anchors; where the glyphs sit around an anchor
+ * depends on the alignment and the font, neither of which `specs/` fixes — so
+ * the band is taken ABOUT that extent, wide enough that a run set to any
+ * alignment puts glyphs inside it and shallow enough not to swallow the line
  * above.
  */
-function bandOf(line: Line, bounds: Region): Region {
-  const x = Math.max(bounds.x, line.x0 - BAND_PAD);
+function bandOf(line: TextLine, bounds: Region): Region {
+  const x = Math.max(bounds.x, line.left - BAND_PAD);
   const y = Math.max(bounds.y, line.y - BAND_ABOVE);
   return {
     x,
     y,
-    w: Math.max(1, Math.min(bounds.x + bounds.w, line.x1 + BAND_PAD) - x),
+    w: Math.max(1, Math.min(bounds.x + bounds.w, line.right + BAND_PAD) - x),
     h: Math.max(1, Math.min(bounds.y + bounds.h, line.y + BAND_BELOW) - y),
   };
 }
 
 /** Decide whether one line was drawn into the band the frame anchored it in. */
 async function assertDrawn(
-  line: Line,
+  line: TextLine,
   bounds: Region,
   what: string,
 ): Promise<void> {
@@ -244,26 +232,29 @@ it("draws the solved panel's heading, figures and menu over the finished machine
   await h.advance(1);
   await captureStill(h, "solved");
 
-  const lines = linesOf(textDraws(await h.lastCalls()));
-  const title = lineWith(lines, SOLVED_TITLE_TEXT);
-  assertNotNull(
-    title,
+  const calls = await h.lastCalls();
+  const lines = linesOf(calls, STAGE);
+  assertTrue(
+    drewText(calls, SOLVED_TITLE_TEXT),
     `the panel draws SOLVED_TITLE_TEXT (${SOLVED_TITLE_TEXT}); the lines the ` +
       `frame drew are ${JSON.stringify(lines.map((line) => line.text))}`,
   );
   for (const item of SOLVED_ITEMS) {
-    assertNotNull(
-      lineWith(lines, item),
+    assertTrue(
+      drewText(calls, item),
       `the panel's menu is built from SOLVED_ITEMS, and the mode has a ` +
         `challenge after this one, so ${item} is on the screen`,
     );
   }
+  const title = lineWith(lines, SOLVED_TITLE_TEXT);
+  assertNotNull(title, "the heading lies on a line of its own to read");
 
-  const from = title?.from ?? 0;
+  const draws = textDraws(calls);
+  const from = title === null ? 0 : orderOf(draws, title);
   const panel = lines.filter(
     (line) =>
-      line.from >= from ||
-      SOLVED_ITEMS.some((item) => squash(line.text).includes(squash(item))),
+      orderOf(draws, line) >= from ||
+      SOLVED_ITEMS.some((item) => spells(line, item)),
   );
   for (const line of panel) {
     await assertDrawn(line, STAGE, "the solved panel's line");

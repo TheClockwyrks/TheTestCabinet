@@ -14,6 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import { TITLE_COPY } from "../constants";
 import { captureStill, openHarness, type Harness } from "../harness";
 import { frameText, minusLines, pressToggle, stableLines } from "./overlay";
@@ -30,14 +31,12 @@ afterEach(async () => {
 
 it("draws no overlay before the first backtick press", async () => {
   await h.reset();
-  const bootStable = stableLines(await frameText(h), await frameText(h));
-  await captureStill(h, "fresh");
   assertTrue(
-    bootStable.some((line) =>
-      line.toLowerCase().includes(TITLE_COPY.toLowerCase()),
-    ),
+    drewText((await h.frameDraw()).calls, TITLE_COPY),
     "the boot frame carrying the title",
   );
+  const bootStable = stableLines(await frameText(h), await frameText(h));
+  await captureStill(h, "fresh");
 
   await pressToggle(h);
   const shownStable = stableLines(await frameText(h), await frameText(h));

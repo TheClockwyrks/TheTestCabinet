@@ -36,6 +36,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import { figureAnywherePattern, figurePattern } from "../figures";
 import { spawnDrifter } from "../fixtures";
 import {
@@ -44,7 +45,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { drawnText, frameOps, loseEveryLife } from "./screens";
+import { frameOps, loseEveryLife } from "./screens";
 
 /** Ticks spent taking the opening mouthful and the posed drifter, one each. */
 const EAT_TICKS = 1;
@@ -92,13 +93,17 @@ it("draws the score the run finished on and the depth it reached", async () => {
     "the screen contact with no life in reserve reaches (specs/progression.md)",
   );
 
+  // The frame's logical runs, joined for the two figure readings. The join is a
+  // plain space, which `figures.ts` deliberately does not accept as a digit
+  // separator, so `40` drawn beside `130` stays two figures rather than one.
+  const text = drawnTextLines(ops).join(" ");
   assertMatches(
-    drawnText(ops),
+    text,
     figureAnywherePattern(over.score),
     "the score the run finished on, drawn on the game-over screen (specs/ui.md)",
   );
   assertMatches(
-    drawnText(ops),
+    text,
     figurePattern(over.depth),
     "the depth the run reached, drawn on the game-over screen as a number of " +
       "its own (specs/ui.md)",

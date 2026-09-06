@@ -16,21 +16,22 @@
 // snapshot taken beside it says the phase it was drawn at.
 //
 // THE READING IS AN ABSENCE, so it is guarded against answering `false` for the
-// wrong reason. `showsText` searches a frame's whole run of text, and a run
+// wrong reason. `frameShows` searches a frame's whole run of text, and a run
 // with nothing in it finds nothing — which would make a build that drew no
 // frame at all look like a build that correctly hid one label. The frame is
 // therefore required to have put text on screen before the absence is read, so
 // a silent render fails as the empty frame it is rather than passing as a
 // hidden readout.
 //
-// The copy is read through `frameText`, which gathers a frame's canvas text and
-// the page's own DOM text alike, because specs/assets.md has an engineless
-// build draw its chrome "in code (canvas or DOM)" and this point is not about
-// which of the two it chose. Its DOM half reads what is RENDERED, so an element
-// the build keeps in the document and hides while the board is idle has shown a
-// player nothing and is read as nothing — which is what specs/ui.md asks for,
-// the label "shown while `state.phase` is `resolving` and absent while it is
-// `idle`".
+// The copy is read through `frameText`, which hands back a frame's draw calls
+// and the page's own rendered DOM text alike, because specs/assets.md has an
+// engineless build draw its chrome "in code (canvas or DOM)" and this point is
+// not about which of the two it chose. `frameShows` reads the two together, the
+// calls through the shared harness's `drewTextAnywhere`. The DOM half holds what
+// is RENDERED, so an element the build keeps in the document and hides while the
+// board is idle has shown a player nothing and is read as nothing — which is
+// what specs/ui.md asks for, the label "shown while `state.phase` is
+// `resolving` and absent while it is `idle`".
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
@@ -39,8 +40,9 @@ import { HUD_CHAIN_LABEL } from "../constants";
 import {
   captureStill,
   createHarness,
+  frameShows,
   loadBoard,
-  showsText,
+  shownText,
   type Harness,
 } from "../harness";
 
@@ -64,17 +66,18 @@ it("draws no chain label while the board is idle", async () => {
   assertEqual(posed.chainStep, 0, "the chain step of a settled board");
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameText();
   await captureStill(h, "hud");
   assertEqual((await h.snapshot()).phase, "idle", "the phase it was read at");
 
   // The frame drew something, so the absence below is a reading of the screen
   // rather than a reading of nothing.
+  const drawn = shownText(frame);
   if (drawn.length === 0) {
     fail("the playing screen to put text on the frame", drawn);
   }
 
-  if (showsText(drawn, HUD_CHAIN_LABEL)) {
+  if (frameShows(frame, HUD_CHAIN_LABEL)) {
     fail(
       `the idle playing screen not to show ${JSON.stringify(HUD_CHAIN_LABEL)}`,
       drawn,

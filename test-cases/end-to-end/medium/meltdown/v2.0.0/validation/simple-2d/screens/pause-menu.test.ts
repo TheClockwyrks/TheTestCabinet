@@ -38,7 +38,6 @@ import {
   colorDistance,
   createHarness,
   drawFrame,
-  drewText,
   poseTower,
   sampleColor,
   towerCentre,
@@ -46,6 +45,7 @@ import {
   type Harness,
   type Point,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { poseMenu } from "./menu";
 
 /** The row the screen is posed on: the first, which is where a menu opens. */

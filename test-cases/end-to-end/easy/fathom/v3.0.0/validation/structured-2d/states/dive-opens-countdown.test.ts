@@ -21,6 +21,7 @@
 import { afterEach, beforeEach, it } from "vitest";
 
 import { assertEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import { BINDINGS, TITLE_ITEMS } from "../constants";
 import {
   captureStill,
@@ -28,7 +29,7 @@ import {
   openTitle,
   type Harness,
 } from "../harness";
-import { assertDrew, frameOps } from "./screens";
+import { frameOps } from "./screens";
 
 /** The key specs/movement.md binds `confirm` to first: it takes a menu item. */
 const CONFIRM_KEY = BINDINGS.confirm[0];
@@ -64,9 +65,9 @@ it("opens the dive on the countdown, over the maze and the HUD", async () => {
     "countdown",
     "the screen DIVE confirmed on the title menu reaches (specs/ui.md)",
   );
-  assertDrew(
-    ops,
-    `DEPTH ${String(entered.depth)}`,
+  assertEqual(
+    drewText(ops, `DEPTH ${String(entered.depth)}`),
+    true,
     "the HUD's depth readout, drawn behind the countdown because the maze " +
       "view and the HUD are what it is drawn over (specs/ui.md)",
   );

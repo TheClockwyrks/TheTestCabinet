@@ -24,21 +24,23 @@
 // because specs/ fixes no grouping for a large number and a build is free to
 // write one, the second so the needle is not a lone digit that any readout could
 // answer for. The two share no digit, so neither can answer for the other on a
-// frame `showsText` searches whole.
+// frame `drewTextAnywhere` searches whole.
 //
-// The copy is read through `frameText`, which hands back every string one frame
-// put on screen, and `showsText` decides whether a string is among them across
-// every shape specs/ui.md leaves open — one call per line, one per word, one per
-// glyph, or a figure drawn beside its label in a single run.
+// The copy is read off the frame's draw calls through the shared harness's
+// `drewTextAnywhere`, which decides whether a string is among the runs of text
+// they spell across every shape specs/ui.md leaves open — one call per line,
+// one per word, one per glyph, or a figure drawn beside its label in a single
+// run.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { assertEqual, fail } from "../assert";
 import { deadBoard } from "../board";
 import {
   captureStill,
   createHarness,
   loadBoard,
-  showsText,
+  type DrawCall,
   type Harness,
 } from "../harness";
 
@@ -52,11 +54,14 @@ let h: Harness;
 
 /**
  * The frame put `wanted` on screen, or the failure names the copy the screen
- * owes beside every string the frame actually drew.
+ * owes beside every run of text the frame actually spelled.
  */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the game-over screen to show ${JSON.stringify(wanted)}`, drawn);
+function requireCopy(frame: readonly DrawCall[], wanted: string): void {
+  if (!drewTextAnywhere(frame, wanted)) {
+    fail(
+      `the game-over screen to show ${JSON.stringify(wanted)}`,
+      drawnTextLines(frame),
+    );
   }
 }
 
@@ -84,8 +89,8 @@ it("draws the level the round reached", async () => {
   assertEqual(over.level, FINAL_LEVEL, "the level the round ended on");
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameCalls();
   captureStill(h, "gameover");
 
-  requireCopy(drawn, String(FINAL_LEVEL));
+  requireCopy(frame, String(FINAL_LEVEL));
 });

@@ -197,12 +197,6 @@ export function saysWord(runs: readonly TextRun[], word: string): boolean {
   return runs.some((run) => spellings(run).some((text) => pattern.test(text)));
 }
 
-/** Whether some run's text contains `text`, ignoring case. */
-export function saysText(runs: readonly TextDraw[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return runs.some((run) => run.text.toLowerCase().includes(wanted));
-}
-
 /**
  * Every panel run's text, trimmed and upper-cased, as a set — the runs and the
  * raw draws they were spelled from both.

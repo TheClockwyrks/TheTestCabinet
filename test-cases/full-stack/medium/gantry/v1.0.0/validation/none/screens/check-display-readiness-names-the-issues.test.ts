@@ -12,12 +12,16 @@
 // leaves every member standing, so the crane is a crane with rails and no ring
 // and `no-ring` is on the list the check display has to name.
 //
-// The identifier is what is looked for, ignoring case, spacing and punctuation:
-// how a build sets an issue's name is its own, and what specs/structure.md fixes
-// is the name.
+// The identifier is what is looked for, spelled as specs/structure.md spells
+// it, off the text the last frame drew on the screen layer — which
+// `h.screenCalls()` answers with every text call measured — with the shared
+// harness's `drewTextAnywhere`: the frame's logical runs joined in reading order
+// with the whitespace folded out, matched as a substring ignoring case. How a
+// build sets the line around an issue's name is its own, and what
+// specs/structure.md fixes is the name.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/index";
 import { assertContains, fail } from "../assert";
 import {
   clearAll,
@@ -27,28 +31,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** The page global the shared harness installs its draw recorder on. */
-const RECORDER = "__tcabRec";
-
 /** The readiness issue a crane with no slew ring raises. */
 const ISSUE = "no-ring";
-
-/** Every run of text the last closed frame drew, in draw order. */
-async function frameText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.page.evaluate(
-    (global) =>
-      (window as unknown as Record<string, { last(): unknown[] }>)[
-        global
-      ]!.last(),
-    RECORDER,
-  )) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
-}
-
-/** Letters and digits alone, lowercased. */
-function bare(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, "");
-}
 
 let h: Harness;
 
@@ -70,7 +54,7 @@ it("names the readiness issues on the check display", async () => {
   await h.debug.showCheck();
   await h.advance(1);
 
-  const runs = await frameText(h);
+  const calls = await h.screenCalls();
   await h.capture("check-issues", "The named readiness issues");
 
   assertContains(
@@ -79,11 +63,11 @@ it("names the readiness issues on the check display", async () => {
     `the readiness issue a crane with no slew ring raises, so "${ISSUE}" is ` +
       "one of the issues the screen has to name (specs/structure.md)",
   );
-  if (!bare(runs.join(" ")).includes(bare(ISSUE))) {
+  if (!drewTextAnywhere(calls, ISSUE)) {
     fail(
       `the check display to name the readiness issue "${ISSUE}" ` +
         "(specs/ui.md § Build)",
-      `the build screen drew ${JSON.stringify(runs)}`,
+      `the build screen drew ${JSON.stringify(drawnTextLines(calls))}`,
     );
   }
 });

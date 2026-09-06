@@ -18,26 +18,28 @@
 //
 // WHY 13, AND WHY THE OTHER FIGURES ARE POSED TO ZERO. specs/ui.md fixes each
 // readout's label and the state field it shows and fixes no numeric format, and
-// `showsText` searches the frame's whole run of text, so the figure under test
+// `drewTextAnywhere` spans the whole frame's text, so the figure under test
 // has to be one no other readout on the screen could be built from. The score,
 // the longest chain and the best move are posed to `0`, and `13` is two digits
 // so the needle is not a lone digit any readout could answer for. Posing on the
 // screen itself is what specs/instrumentation.md allows: `setScore`,
 // `setBestChain` and `setBestMove` each change nothing but their own figure.
 //
-// The copy is read through `frameText`, which hands back every string one frame
-// put on screen, and `showsText` decides whether a string is among them across
-// every shape specs/ui.md leaves open — one call per line, one per word, one per
-// glyph, or a figure drawn beside its label in a single run.
+// The copy is read off the frame's draw calls through the shared harness's
+// `drewTextAnywhere`, which decides whether a string is among the runs of text
+// they spell across every shape specs/ui.md leaves open — one call per line,
+// one per word, one per glyph, or a figure drawn beside its label in a single
+// run.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { assertEqual, fail } from "../assert";
 import { quietRowsWithEscape } from "../board";
 import {
   captureStill,
   createHarness,
   loadBoard,
-  showsText,
+  type DrawCall,
   type Harness,
 } from "../harness";
 
@@ -48,11 +50,14 @@ let h: Harness;
 
 /**
  * The frame put `wanted` on screen, or the failure names the copy the screen
- * owes beside every string the frame actually drew.
+ * owes beside every run of text the frame actually spelled.
  */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the level-clear screen to show ${JSON.stringify(wanted)}`, drawn);
+function requireCopy(frame: readonly DrawCall[], wanted: string): void {
+  if (!drewTextAnywhere(frame, wanted)) {
+    fail(
+      `the level-clear screen to show ${JSON.stringify(wanted)}`,
+      drawnTextLines(frame),
+    );
   }
 }
 
@@ -84,8 +89,8 @@ it("draws the level just finished", async () => {
   assertEqual(cleared.bestMove, 0, "the posed best move");
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameCalls();
   captureStill(h, "levelclear");
 
-  requireCopy(drawn, String(FINISHED_LEVEL));
+  requireCopy(frame, String(FINISHED_LEVEL));
 });

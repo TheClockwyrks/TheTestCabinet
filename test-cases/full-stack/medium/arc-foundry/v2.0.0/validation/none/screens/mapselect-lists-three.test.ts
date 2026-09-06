@@ -24,8 +24,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { MAPS } from "../constants";
+import { drewText } from "../case-harness/text";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { drewText } from "./reading";
 
 let h: Harness;
 

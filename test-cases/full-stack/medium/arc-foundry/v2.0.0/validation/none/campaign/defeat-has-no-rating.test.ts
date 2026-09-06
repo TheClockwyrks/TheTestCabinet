@@ -22,9 +22,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import { COLLECTOR_WAYPOINT } from "../constants";
 import { captureStill, type Harness } from "../harness";
-import { frameText } from "../screens/reading";
 import {
   createRunHarness,
   harvestWave,
@@ -107,16 +107,19 @@ it("ends the last wave on the overload screen, with no finale and no rating", as
   await captureStill(h, "defeat");
   // Off the whole of the frame's text, upper-cased, with letter-spacing folded
   // back into words: a screen that letter-spaces `MAZE RATING` a glyph at a time
-  // shows a rating as surely as one that draws it whole, and `frameText` reads
-  // the merged runs of the shared harness (`case-harness/text.ts`) joined with a
-  // space, so a phrase the merge split at a narrow space glyph still reads as
-  // one line here. What counts is a rating SHOWN: a `MAZE RATING` label, with a
-  // figure after it or without. A `NO MAZE RATING` or `NO RATING` — the
-  // disclaimer specs/ui.md has the defeat screen make — states that there is
-  // none, and is not one. The spaces of the disclaimer are optional because a
-  // recording without geometry folds a letter-spaced line by shape, and a build
-  // that skips its space glyphs then folds to `NOMAZERATING`.
-  const text = frameText(calls).replace(/\s+/g, " ");
+  // shows a rating as surely as one that draws it whole, and the logical runs
+  // the shared harness reads off the frame (`drawnTextLines`,
+  // `case-harness/text.ts`) are joined with a space, so a phrase the merge split
+  // at a narrow space glyph still reads as one line here. What counts is a
+  // rating SHOWN: a `MAZE RATING` label, with a figure after it or without. A
+  // `NO MAZE RATING` or `NO RATING` — the disclaimer specs/ui.md has the defeat
+  // screen make — states that there is none, and is not one. The spaces of the
+  // disclaimer are optional because a build that letter-spaces it and skips its
+  // space glyphs merges to `NOMAZERATING`, its word gaps inside its tracking.
+  const text = drawnTextLines(calls)
+    .join(" ")
+    .toUpperCase()
+    .replace(/\s+/g, " ");
   assertEqual(
     /(?<!\bNO ?(?:MAZE ?)?)RATING/.test(text),
     false,

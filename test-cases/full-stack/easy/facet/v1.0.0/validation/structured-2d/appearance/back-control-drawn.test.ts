@@ -20,8 +20,9 @@
 // WHY THE READING IS IN TWO HALVES, AND HOW CLOSE THAT GETS. Read exactly as
 // `appearance/pause-control-drawn` reads its control, and for the same reasons.
 //
-//   The copy — `BACK_LABEL` is looked for among the strings the frame drew, in
-//   whatever pieces the build drew them, which `showsText` reads.
+//   The copy — `BACK_LABEL` is looked for among the runs of text the frame
+//   spelled, in whatever pieces the build drew them, which the shared harness's
+//   `drewTextAnywhere` reads.
 //
 //   The rectangle — the pixels inside the `back` target the same screen reports
 //   are read off the canvas and asked to carry more than one color.
@@ -41,6 +42,7 @@
 // those belong to the pointer items.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { type TargetRect } from "../board";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
 import { BACK_LABEL } from "../constants";
@@ -48,7 +50,6 @@ import {
   captureStill,
   createHarness,
   openHowTo,
-  showsText,
   targetById,
   type Harness,
 } from "../harness";
@@ -125,16 +126,16 @@ it("draws the BACK label and puts something inside the back target it reports", 
   );
   await h.settle(ART_SETTLE_MS);
 
-  // One frame, and the strings it drew.
-  const drawn = await h.frameText();
+  // One frame, and everything it drew.
+  const frame = await h.frameCalls();
 
   // Evidence, and no part of the verdict: the control on the how-to screen.
   captureStill(h, "control");
 
   assertTrue(
-    showsText(drawn, BACK_LABEL),
+    drewTextAnywhere(frame, BACK_LABEL),
     `the ${JSON.stringify(BACK_LABEL)} control drawn on the how-to screen, ` +
-      `among ${JSON.stringify(drawn)}`,
+      `among ${JSON.stringify(drawnTextLines(frame))}`,
   );
 
   const target = targetById(h.snapshot(), TARGET_ID);

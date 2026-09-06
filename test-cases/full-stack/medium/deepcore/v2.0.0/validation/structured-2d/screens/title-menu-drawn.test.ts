@@ -23,12 +23,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../constants";
 import { assertEqual } from "../assert";
-import {
-  captureStill,
-  createHarness,
-  drewText,
-  type Harness,
-} from "../harness";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** The main menu with no save banked: `TITLE_ITEMS` without its first entry. */
 const ITEMS = TITLE_ITEMS.slice(1);

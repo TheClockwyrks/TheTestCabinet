@@ -855,7 +855,6 @@ export {
   drawnText,
   drawnTextLines,
   drawnTextRuns,
-  drewText,
   luminance,
   mouseGlide,
   mousePress,
@@ -884,10 +883,12 @@ export { DEFAULT_REPLAY_BACKGROUND as REPLAY_BACKGROUND } from "./case-harness/i
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
 //
-// What a frame drew is the shared harness's reading — `drawnText`, `drewText`,
+// What a frame drew is the shared harness's reading — `drawnText`,
 // `drawnTextLines`, `drawnTextRuns`, `textDraws`, `callsTo` and `setsOf` are
-// re-exported above and behave the same in every engineless project. Copy is
-// read off the LOGICAL RUNS a frame spells (`drewText`, `drawnTextLines`,
+// re-exported above and behave the same in every engineless project, and a
+// suite that asks whether a frame spelled some copy imports the package's
+// `drewText` from `../case-harness/index` directly. Copy is read off the
+// LOGICAL RUNS a frame spells (`drewText`, `drawnTextLines`,
 // `drawnTextRuns`) and never off the `fillText` split: a build that
 // letter-spaces a heading draws one glyph per call, and the specification fixes
 // the words while leaving their spacing to the build. The two below are
@@ -899,7 +900,7 @@ export { DEFAULT_REPLAY_BACKGROUND as REPLAY_BACKGROUND } from "./case-harness/i
 /**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
- * The stricter sibling of `drewText`, for the copy `specs/screens.md` requires as
+ * The stricter sibling of the package's `drewText`, for the copy `specs/screens.md` requires as
  * a word rather than as a substring — the how-to screen's `ACE`, `KING`, `STOCK`
  * and `DOUBLE-CLICK`, which `HOWTO_TOKENS` holds. A screen reading "restocking"
  * contains `stock` and does not name the pile the specification named.

@@ -31,9 +31,10 @@
 // damage and leave the third reading unable to fail on its own. Each figure is
 // therefore looked for on the line its own label was written on.
 //
-// THE TOLERANCE. The name, the labels and the line are matched as words in
-// order through `drewPhrase`, which admits any font, wrap, marker, or split
-// across runs. Each figure is matched as a number, within `FIGURE_TOLERANCE`,
+// THE TOLERANCE. The name, the labels and the line are matched as substrings
+// of the frame's text through the shared harness's `drewTextAnywhere`,
+// ignoring case and whitespace across every run the frame drew, which admits
+// any font, wrap, marker, or split across runs. Each figure is matched as a number, within `FIGURE_TOLERANCE`,
 // because specs/ui.md fixes the figure and its label but fixes no place for
 // either and no unit beside the figure.
 
@@ -48,10 +49,10 @@ import {
 import {
   captureStill,
   createHarness,
-  drewPhrase,
   poseScene,
   type Harness,
 } from "../harness";
+import { drewTextAnywhere } from "../case-harness/text";
 import { drewFigureBeside, tabIndex, walkToTab } from "./almanac";
 
 let h: Harness;
@@ -91,7 +92,7 @@ it("draws the enemy's name, its three stat labels, and its line", async () => {
     ENEMY_DESCRIPTIONS[ENEMY],
   ];
   assertDeepEqual(
-    copy.filter((text) => !drewPhrase(calls, text)),
+    copy.filter((text) => !drewTextAnywhere(calls, text)),
     [],
     `the copy specs/ui.md gives ${ROW.name}'s entry, missing from its frame`,
   );

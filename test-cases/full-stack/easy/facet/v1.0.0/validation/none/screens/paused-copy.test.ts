@@ -18,10 +18,12 @@
 // resting position: specs/instrumentation.md has a posed board rest exactly as
 // it was written until a swap is accepted on it.
 //
-// The copy is read through `frameText`, which gathers a frame's canvas text and
-// the page's own DOM text alike, because specs/assets.md has an engineless
-// build draw its chrome "in code (canvas or DOM)" and this point is not about
-// which of the two it chose.
+// The copy is read through `frameText`, which hands back a frame's draw calls
+// and the page's own rendered DOM text alike, because specs/assets.md has an
+// engineless build draw its chrome "in code (canvas or DOM)" and this point is
+// not about which of the two it chose. `frameShows` then decides whether the
+// copy is on screen — the calls through the shared harness's `drewTextAnywhere`,
+// the document by the same reading.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
@@ -30,7 +32,9 @@ import {
   captureStill,
   createHarness,
   poseBoardWithEscape,
-  showsText,
+  frameShows,
+  shownText,
+  type FrameText,
   type Harness,
 } from "../harness";
 
@@ -38,11 +42,14 @@ let h: Harness;
 
 /**
  * The frame put `wanted` on screen, or the failure names the copy the screen
- * owes beside every string the frame actually drew.
+ * owes beside every string the frame actually showed.
  */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the pause screen to show ${JSON.stringify(wanted)}`, drawn);
+function requireCopy(frame: FrameText, wanted: string): void {
+  if (!frameShows(frame, wanted)) {
+    fail(
+      `the pause screen to show ${JSON.stringify(wanted)}`,
+      shownText(frame),
+    );
   }
 }
 
@@ -68,12 +75,12 @@ it("draws the pause heading and every menu item", async () => {
   );
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameText();
   await captureStill(h, "paused");
 
-  requireCopy(drawn, PAUSED_TITLE_TEXT);
-  // Both entries, each on its own: `showsText` can find a phrase spanning two
+  requireCopy(frame, PAUSED_TITLE_TEXT);
+  // Both entries, each on its own: `frameShows` can find a phrase spanning two
   // adjacent draws, so the menu is asked about one item at a time rather than
   // as a joined run that a single long draw would answer for.
-  for (const item of PAUSED_ITEMS) requireCopy(drawn, item);
+  for (const item of PAUSED_ITEMS) requireCopy(frame, item);
 });

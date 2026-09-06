@@ -28,26 +28,30 @@
 // (specs/instrumentation.md), so a build with a broken pause key fails its own
 // point and not this one. One frame is drawn and its runs of text are read.
 //
-// THE TOLERANCE. The copy is matched as words in order through `drewPhrase`,
-// which admits any font, layout, or line wrap; the clock is matched as the
-// `m:ss` spelling the specification fixes, and the level as `LEVEL` beside its
-// number, which is how specs/ui.md spells the label. "Below it" is read as a
+// THE TOLERANCE. The heading is matched as a substring of a run of drawn text
+// through the shared harness's `drewText`, ignoring case and whitespace, which
+// admits any font, layout, or marker; the clock is matched as a whole token in
+// the `m:ss` spelling the specification fixes, and the level as `LEVEL`
+// followed by its number with any run of spaces between them, the digits
+// standing as their own token, which is how specs/ui.md spells the label. "Below it" is read as a
 // strict inequality between the topmost anchor of `PAUSED_TEXT` and that of
 // each menu item, which admits any spacing, font, and alignment the build
 // chose.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
+import { assertEqual, assertLessThan, assertTrue } from "../assert";
 import { LEVEL_LABEL, PAUSED_TEXT, PAUSE_ITEMS, clockText } from "../constants";
 import {
   captureStill,
   createHarness,
-  drewPhrase,
+  hasToken,
   isolate,
   present,
+  textReadings,
   topAnchorOf,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 let h: Harness;
 
@@ -74,11 +78,23 @@ it("draws PAUSED over the HUD of the tick the pause found, the menu below", asyn
   const { calls } = await h.frameDraw();
   captureStill(h, "paused");
 
-  const copy = [PAUSED_TEXT, clockText(TICK), `${LEVEL_LABEL} ${LEVEL}`];
-  assertDeepEqual(
-    copy.filter((text) => !drewPhrase(calls, text)),
-    [],
-    "the copy specs/ui.md gives the pause screen, missing from its frame",
+  assertTrue(
+    drewText(calls, PAUSED_TEXT),
+    `the pause frame drew ${PAUSED_TEXT} (specs/ui.md, paused)`,
+  );
+  // The raw calls and the logical runs they spell, both (`textReadings`): a
+  // figure drawn a glyph per call is the number it is off the runs, and one
+  // drawn a narrow gap after its label, which the run rule merges into
+  // `TIME2:05`, still stands alone as the raw call.
+  const lines = textReadings(calls);
+  assertTrue(
+    hasToken(lines, clockText(TICK)),
+    `the HUD's clock reading ${clockText(TICK)}, the tick the pause found`,
+  );
+  const level = new RegExp(`${LEVEL_LABEL}\\s*${LEVEL}(?![\\w])`, "i");
+  assertTrue(
+    lines.some((line) => level.test(line)),
+    `a run of text reading ${LEVEL_LABEL} ${LEVEL}, the HUD's level`,
   );
 
   const heading = present(

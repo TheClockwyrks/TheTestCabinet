@@ -42,12 +42,12 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   isolate,
   openLevelUp,
   tap,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** Three candidates of the pool over an empty loadout, in the order offered. */
 const OFFERS: readonly OfferId[] = ["ember", "tallow", "lure"];

@@ -38,9 +38,9 @@ import {
   captureStill,
   createHarness,
   drawFrame,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 
 /** A stage `specs/stages.md` makes a challenge stage, and one it does not. */
 const CHALLENGE_STAGE = 3;

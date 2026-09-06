@@ -26,9 +26,9 @@ import {
   captureStill,
   createHarness,
   drawnTextLines,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { drawnCopy } from "./frames";
 
 /** The main menu with no save banked: `TITLE_ITEMS` without its first entry. */

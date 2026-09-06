@@ -30,6 +30,13 @@
 // every run that shares a baseline. A match under the spaced comparison is a
 // match under the folded one, so this too can only add a match.
 //
+// AND, WHEN A CASE SAYS SO, NOT ALONG ONE BASELINE EITHER. Copy a build may
+// wrap — a tagline broken onto two lines, a menu entry and its marker on
+// separate baselines — is read by {@link drewTextAnywhere} over every run of
+// the frame joined, which can only add a match to {@link drewText}'s and is
+// bounded by it: it decides that copy IS on screen, never that two pieces of
+// copy are separate.
+//
 // ONE NAME IS TAKEN, AND ONE CASE MEANS SOMETHING ELSE BY IT. `drawnText` here
 // answers the RAW CALLS, as an array of strings. A case whose own `drawnText`
 // answers the runs folded into one string means a different function, and it
@@ -67,6 +74,35 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
   return baselineLines(drawnTextRuns(calls)).some((line) =>
     foldWhitespace(line).toLowerCase().includes(wanted),
   );
+}
+
+/**
+ * Whether the frame spelled `text` ANYWHERE, across every baseline it drew,
+ * ignoring case and whitespace.
+ *
+ * The most permissive reading of copy that ships: every logical run of the
+ * frame, in reading order, joined into one string, with the whitespace folded
+ * out of both sides and `text` matched as a substring of that, ignoring case.
+ * It is for copy a build may break across lines — a tagline wrapped onto two
+ * baselines, a menu entry and its marker on separate baselines — which
+ * {@link drewText} cannot follow because it reads one baseline at a time.
+ *
+ * THE BOUND. Joining the whole frame means a phrase can be found across two
+ * adjacent runs that spell it only together, so this decides that copy IS on
+ * screen and never that two pieces of copy are SEPARATE: a check that needs
+ * the second answer reads {@link drewText}, or the runs themselves.
+ * {@link drewText} is the stricter reading, and every match under it is a match
+ * under this one — each baseline's line is a substring of the whole, and the
+ * fold is the same on both sides.
+ */
+export function drewTextAnywhere(
+  calls: readonly DrawCall[],
+  text: string,
+): boolean {
+  const wanted = foldWhitespace(text).toLowerCase();
+  return foldWhitespace(drawnTextLines(calls).join(" "))
+    .toLowerCase()
+    .includes(wanted);
 }
 
 /** `text` with every run of whitespace removed. */
@@ -226,17 +262,43 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
 // advance is zero and no gap can be inside it: the runs are the calls, which is
 // exactly what a case that never asked to measure was already reading.
 
-/** How far apart two draws' baselines may sit and still read as one run. */
-const RUN_BASELINE_SLACK = 0.75;
+/**
+ * How far apart two draws' baselines may sit and still read as one run, in
+ * canvas pixels.
+ *
+ * Exported with {@link RUN_BACKTRACK_SLACK} and {@link restrikes} so a case that
+ * walks a run's per-call parts folds a restrike by the one rule
+ * {@link drawnTextRuns} folds it by, rather than by a copy of it.
+ */
+export const RUN_BASELINE_SLACK = 0.75;
 
 /** How far a draw may sit back inside the run before it and still join it. */
-const RUN_BACKTRACK_SLACK = 0.5;
+export const RUN_BACKTRACK_SLACK = 0.5;
 
 /** The share of the run's mean advance a gap may reach and still join it. */
 const RUN_GAP_RATIO = 0.6;
 
 /** The share of the run's mean glyph width a gap must open past to be a space. */
 const WORD_GAP_SHARE = 0.2;
+
+/**
+ * Whether `draw` strikes `last` again where it already stands: the same text at
+ * the same anchor, within {@link RUN_BACKTRACK_SLACK}, on the same baseline,
+ * within {@link RUN_BASELINE_SLACK}.
+ *
+ * An outlined glyph is drawn twice, `strokeText` then `fillText`, and the
+ * second draw sits where the first did rather than after it. This is the one
+ * definition of that: {@link drawnTextRuns} folds such a draw into the one it
+ * repeats, and a case recovering a run's per-call parts from the raw draws
+ * skips it by the same test.
+ */
+export function restrikes(draw: TextDraw, last: TextDraw): boolean {
+  return (
+    draw.text === last.text &&
+    Math.abs(draw.y - last.y) <= RUN_BASELINE_SLACK &&
+    Math.abs(draw.left - last.left) <= RUN_BACKTRACK_SLACK
+  );
+}
 
 /** Whether `next` continues `open`, `chars` long, under the rule stated above. */
 function joinsRun(open: TextDraw, chars: number, next: TextDraw): boolean {
@@ -299,13 +361,7 @@ export function drawnTextRuns(calls: readonly DrawCall[]): TextDraw[] {
     const open = runs[runs.length - 1];
     const last = chars.length - 1;
     const tail = tails[last];
-    if (
-      open !== undefined &&
-      tail !== undefined &&
-      draw.text === tail.text &&
-      Math.abs(draw.y - tail.y) <= RUN_BASELINE_SLACK &&
-      Math.abs(draw.left - tail.left) <= RUN_BACKTRACK_SLACK
-    ) {
+    if (open !== undefined && tail !== undefined && restrikes(draw, tail)) {
       // The same glyph struck again where it already stands: an outline and
       // its fill. The run already spells it.
       open.right = Math.max(open.right, draw.right);

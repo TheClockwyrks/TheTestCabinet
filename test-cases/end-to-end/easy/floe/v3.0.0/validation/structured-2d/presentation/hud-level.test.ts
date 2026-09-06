@@ -17,7 +17,8 @@
 // free to set the label and its value as two draws — a dim `LEVEL` with a bright
 // `1 / 8` beside it is ordinary HUD typography — and specs/ui.md fixes the
 // readout's contents, not how many `fillText` calls it takes. So the label is
-// matched against the bar's copy and the figures against the bar's numbers.
+// read by the shared harness's `drewText` over the bar's runs, and the figures
+// against the bar's numbers.
 //
 // TWO LEVELS ARE POSED, AND THAT IS WHAT MAKES THE FIGURE THE CURRENT LEVEL. A
 // single reading cannot tell "the current level" from a hard-coded `1`, so the
@@ -37,23 +38,26 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { HUD_LEVEL_LABEL, TOTAL_LEVELS } from "../constants";
-import { assertContains, assertMatches } from "../assert";
+import { assertContains, assertTrue } from "../assert";
+import { drewText } from "../case-harness/text";
 import {
   captureStill,
   createHarness,
   startCrossing,
+  type DrawCall,
   type Harness,
 } from "../harness";
 import { renderFrame } from "./frame";
-import { hudCopy, hudNumbers } from "./hud";
+import { hudNumbers, hudRuns, hudText } from "./hud";
 
 /** The two levels this point reads the readout at. */
 const FIRST_LEVEL = 1;
 const SECOND_LEVEL = 6;
 
-/** What the HUD bar carried at one level: its copy and its figures. */
+/** What the HUD bar carried at one level: its runs, as text, and its figures. */
 interface Readout {
-  copy: string;
+  runs: string[];
+  text: DrawCall[];
   numbers: number[];
 }
 
@@ -71,15 +75,18 @@ afterEach(() => {
 async function readoutAt(level: number): Promise<Readout> {
   startCrossing(h, level);
   await renderFrame(h);
-  return { copy: hudCopy(h), numbers: hudNumbers(h) };
+  return {
+    runs: hudRuns(h).map((span) => span.text),
+    text: hudText(h),
+    numbers: hudNumbers(h),
+  };
 }
 
 function assertReadout(level: number, readout: Readout): void {
-  assertMatches(
-    readout.copy,
-    HUD_LEVEL_LABEL,
+  assertTrue(
+    drewText(readout.text, HUD_LEVEL_LABEL),
     `the HUD bar's copy carries ${HUD_LEVEL_LABEL} at level ${level} ` +
-      `(specs/ui.md)`,
+      `(specs/ui.md) — the bar drew ${JSON.stringify(readout.runs)}`,
   );
   assertContains(
     readout.numbers,

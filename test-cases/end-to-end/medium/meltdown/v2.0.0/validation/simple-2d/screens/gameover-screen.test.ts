@@ -33,10 +33,10 @@ import {
   captureStill,
   createHarness,
   drawFrame,
-  drewText,
   waveCountOf,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { numbersDrawn, poseMenu } from "./menu";
 
 /** The pair the lost run was played on. */

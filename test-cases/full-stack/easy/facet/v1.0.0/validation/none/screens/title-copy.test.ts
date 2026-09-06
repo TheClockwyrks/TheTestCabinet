@@ -14,14 +14,15 @@
 // `instrumentation/reset-restores-every-field`'s, and it is read here only as
 // the fixture that says the frame below is the title's.
 //
-// The copy is read through `frameText`, which gathers a frame's canvas text and
-// the page's own DOM text alike, because specs/assets.md has an engineless
-// build draw its chrome "in code (canvas or DOM)" and this point is not about
-// which of the two it chose. `showsText` then decides whether the copy is on
-// screen across every shape specs/ui.md leaves open — one call per line, one
-// per word, one per glyph, or an entry decorated with a highlight marker —
-// since the specification fixes the words and fixes no font, no layout and no
-// call count.
+// The copy is read through `frameText`, which hands back a frame's draw calls
+// and the page's own rendered DOM text alike, because specs/assets.md has an
+// engineless build draw its chrome "in code (canvas or DOM)" and this point is
+// not about which of the two it chose. `frameShows` then decides whether the
+// copy is on screen — the calls through the shared harness's `drewTextAnywhere`,
+// the document by the same reading — across every shape specs/ui.md leaves open:
+// one call per line, one per word, one per glyph, or an entry decorated with a
+// highlight marker, since the specification fixes the words and fixes no font,
+// no layout and no call count.
 //
 // `reset()` is the route because specs/instrumentation.md defines it as
 // restoring "the title screen with its first menu item highlighted", which
@@ -33,7 +34,9 @@ import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
   createHarness,
-  showsText,
+  frameShows,
+  shownText,
+  type FrameText,
   type Harness,
 } from "../harness";
 
@@ -41,11 +44,14 @@ let h: Harness;
 
 /**
  * The frame put `wanted` on screen, or the failure names the copy the screen
- * owes beside every string the frame actually drew.
+ * owes beside every string the frame actually showed.
  */
-function requireCopy(drawn: readonly string[], wanted: string): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the title screen to show ${JSON.stringify(wanted)}`, drawn);
+function requireCopy(frame: FrameText, wanted: string): void {
+  if (!frameShows(frame, wanted)) {
+    fail(
+      `the title screen to show ${JSON.stringify(wanted)}`,
+      shownText(frame),
+    );
   }
 }
 
@@ -68,13 +74,13 @@ it("draws the title, the tagline and every menu item", async () => {
   );
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const drawn = await h.frameText();
+  const frame = await h.frameText();
   await captureStill(h, "title");
 
-  requireCopy(drawn, TITLE_TEXT);
-  requireCopy(drawn, TAGLINE_TEXT);
-  // Both entries, each on its own: `showsText` can find a phrase spanning two
+  requireCopy(frame, TITLE_TEXT);
+  requireCopy(frame, TAGLINE_TEXT);
+  // Both entries, each on its own: `frameShows` can find a phrase spanning two
   // adjacent draws, so the menu is asked about one item at a time rather than
   // as a joined run that a single long draw would answer for.
-  for (const item of TITLE_ITEMS) requireCopy(drawn, item);
+  for (const item of TITLE_ITEMS) requireCopy(frame, item);
 });

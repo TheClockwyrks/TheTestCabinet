@@ -29,12 +29,14 @@
 // test. Nothing here settles a chain, so the round stays on `playing` for both
 // readings even though the quiet filler carries no legal swap of its own.
 //
-// The copy is read through `frameText`, which hands back every string one frame
-// put on screen, and `showsText` decides whether a string is among them across
-// every shape specs/ui.md leaves open — one call per line, one per word, one
-// per glyph, or a figure drawn beside its label in a single run.
+// The copy is read off the frame's draw calls through the shared harness's
+// `drewTextAnywhere`, which decides whether a string is among the runs of text
+// they spell across every shape specs/ui.md leaves open — one call per line,
+// one per word, one per glyph, or a figure drawn beside its label in a single
+// run.
 
 import { afterEach, beforeEach, it } from "vitest";
+import { drawnTextLines, drewTextAnywhere } from "../case-harness/text";
 import { assertEqual, fail } from "../assert";
 import { quietBoard } from "../board";
 import { HUD_SCORE_LABEL } from "../constants";
@@ -42,7 +44,7 @@ import {
   captureStill,
   createHarness,
   loadBoard,
-  showsText,
+  type DrawCall,
   type Harness,
 } from "../harness";
 
@@ -52,25 +54,31 @@ const SECOND_SCORE = 912;
 
 let h: Harness;
 
-/** The frame showed `wanted`, or the failure names it beside what it drew. */
+/** The frame showed `wanted`, or the failure names it beside what it spelled. */
 function requireCopy(
-  drawn: readonly string[],
+  frame: readonly DrawCall[],
   wanted: string,
   when: string,
 ): void {
-  if (!showsText(drawn, wanted)) {
-    fail(`the frame at ${when} to show ${JSON.stringify(wanted)}`, drawn);
+  if (!drewTextAnywhere(frame, wanted)) {
+    fail(
+      `the frame at ${when} to show ${JSON.stringify(wanted)}`,
+      drawnTextLines(frame),
+    );
   }
 }
 
-/** The frame did not show `wanted`, or the failure names what it did draw. */
+/** The frame did not show `wanted`, or the failure names what it did spell. */
 function refuseCopy(
-  drawn: readonly string[],
+  frame: readonly DrawCall[],
   wanted: string,
   when: string,
 ): void {
-  if (showsText(drawn, wanted)) {
-    fail(`the frame at ${when} not to show ${JSON.stringify(wanted)}`, drawn);
+  if (drewTextAnywhere(frame, wanted)) {
+    fail(
+      `the frame at ${when} not to show ${JSON.stringify(wanted)}`,
+      drawnTextLines(frame),
+    );
   }
 }
 
@@ -94,7 +102,7 @@ it("draws the score label and the score, and the figure follows the score", asyn
   assertEqual(posed.score, FIRST_SCORE, "the posed score");
 
   // One frame, and everything it put on screen. The still is that same frame.
-  const first = await h.frameText();
+  const first = await h.frameCalls();
   captureStill(h, "hud");
   requireCopy(first, HUD_SCORE_LABEL, `a score of ${FIRST_SCORE}`);
   requireCopy(first, String(FIRST_SCORE), `a score of ${FIRST_SCORE}`);
@@ -104,7 +112,7 @@ it("draws the score label and the score, and the figure follows the score", asyn
 
   // The readout followed: the new figure is on the frame and the old one has
   // left it, which a caption drawn once cannot do.
-  const second = await h.frameText();
+  const second = await h.frameCalls();
   requireCopy(second, HUD_SCORE_LABEL, `a score of ${SECOND_SCORE}`);
   requireCopy(second, String(SECOND_SCORE), `a score of ${SECOND_SCORE}`);
   refuseCopy(second, String(FIRST_SCORE), `a score of ${SECOND_SCORE}`);

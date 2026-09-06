@@ -158,7 +158,7 @@ import type { Matrix } from "./case-harness/matrix";
 import {
   drawnText,
   drawnTextRuns as coalesceTextDraws,
-  drewText as spelledText,
+  restrikes,
 } from "./case-harness/text";
 import {
   BINDINGS,
@@ -2153,28 +2153,6 @@ export async function renderFrame(h: Harness): Promise<DrawCall[]> {
   return [...h.calls];
 }
 
-/**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words.
- *
- * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
- * split. A build that letter-spaces a heading draws one glyph per call, which
- * is the only portable way to letter-space canvas text, and the specification
- * fixes the copy a screen shows while leaving its spacing to the build. The
- * recorder measures every text call, so the shared harness's merge rule
- * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
- * into the string they spell. Every raw string is a substring of the run it
- * belongs to, so coalescing can only add a match and never take one away.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
-
 /*
  * THE COUNT OF GEOMETRY CALLS is the package's `drawOps` over its own
  * `DRAW_METHODS` — enough of a count to compare two frames of the same scene: a
@@ -2371,8 +2349,10 @@ export function spelledTextRuns(
   // FOLDS A RESTRIKE — the same string struck again where the run's last draw
   // stands, `strokeText` then `fillText` of an outlined heading — into the draw
   // it repeats, widening the run without adding to its copy; so a span that
-  // restrikes the part just taken is stepped over here, or it would be counted
-  // against the NEXT run's copy and throw the lining-up off from there on.
+  // restrikes the part just taken is stepped over here, by the package's own
+  // `restrikes` (its `RUN_BASELINE_SLACK` and `RUN_BACKTRACK_SLACK` decide it,
+  // on the spans as they are handed over), or it would be counted against the
+  // NEXT run's copy and throw the lining-up off from there on.
   const fold = (text: string): string => text.replace(/\s+/g, "");
   const runs: TextRunSpan[] = [];
   let next = 0;
@@ -2385,7 +2365,7 @@ export function spelledTextRuns(
       parts.push(part);
       spelled += fold(part.text);
       next += 1;
-      while (next < spans.length && restrikes(part, spans[next])) next += 1;
+      while (next < spans.length && restrikes(spans[next], part)) next += 1;
     }
     const first = parts[0];
     if (first === undefined || spelled !== wanted) {
@@ -2409,25 +2389,6 @@ export function spelledTextRuns(
   }
   return runs;
 }
-
-/**
- * Whether `span` restrikes `struck` under the shared rule: the same text at the
- * same anchor, within the slack the merge allows a draw on one baseline and a
- * draw sitting back inside the run before it. The rule decides on the draws it
- * is handed, which {@link spelledTextRuns} anchors at each span's own `left`
- * and `y`, so the same figures decide here.
- */
-function restrikes(struck: TextSpan, span: TextSpan): boolean {
-  return (
-    span.text === struck.text &&
-    Math.abs(span.y - struck.y) <= RESTRIKE_BASELINE_SLACK &&
-    Math.abs(span.left - struck.left) <= RESTRIKE_ANCHOR_SLACK
-  );
-}
-
-/** The shared rule's own slacks, `RUN_BASELINE_SLACK` and `RUN_BACKTRACK_SLACK`. */
-const RESTRIKE_BASELINE_SLACK = 0.75;
-const RESTRIKE_ANCHOR_SLACK = 0.5;
 
 /* -------------------------------------------------------------------------- */
 /* Gestures over a menu                                                       */

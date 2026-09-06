@@ -45,7 +45,6 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import { STAGE_H, STAGE_W } from "../constants";
 import {
-  contains,
   HEADING_REGION,
   READOUT_REGION,
   TAPE_REGION,
@@ -61,9 +60,10 @@ import {
   meanRect,
   shareAwayFrom,
   openBareRun,
-  textDraws,
+  textLines,
+  type DrawCall,
   type Harness,
-  type TextDraw,
+  type TextLine,
 } from "../harness";
 
 /** The four regions `specs/editor.md` puts words in, under its own names. */
@@ -106,72 +106,46 @@ const BAND_PAD = 80;
 const BAND_ABOVE = 18;
 const BAND_BELOW = 6;
 
-/** One baseline the frame drew text on, and the runs on it read left to right. */
-interface Line {
-  /** The baseline its runs were anchored on. */
-  y: number;
-  /** The leftmost and the rightmost anchor on it. */
-  x0: number;
-  x1: number;
-  /** The runs joined in `x` order, which is the line as a player reads it. */
-  text: string;
-  /** Where the first of its runs sits in the frame's own drawing order. */
-  from: number;
-}
-
 /**
- * The frame's text runs gathered into the baselines they were drawn on.
+ * The frame's lines of text, one per baseline, with the blank ones dropped.
  *
  * `specs/assets.md` puts every word on the stage on the frame as drawn text
  * and fixes no more — "Which typeface carries them is yours" — and letter
  * spacing is not portable, so a build is free to draw one line of copy as one
  * call, as a call per word, or as a call per glyph. What all of those share is
- * the baseline: one line of copy is drawn at one `y`. This is the gathering
- * `screens/title-draws-title-text` reads a line of screen copy with.
+ * the baseline, so the lines are `drawing.ts`'s `textLines` — the shared
+ * harness's logical runs gathered onto the baselines they share, the reading
+ * the shared `drewText` matches screen copy along. A line that spells nothing
+ * but whitespace put no ink on the stage and is not read.
  */
-function linesOf(draws: readonly TextDraw[]): Line[] {
-  const baselines = new Map<number, { draw: TextDraw; at: number }[]>();
-  draws.forEach((draw, at) => {
-    if (draw.text.trim() === "") return;
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), { draw, at }]);
-  });
-  return [...baselines.entries()]
-    .map(([y, on]) => {
-      const sorted = [...on].sort((a, b) => a.draw.x - b.draw.x);
-      return {
-        y,
-        x0: sorted[0]?.draw.x ?? 0,
-        x1: sorted[sorted.length - 1]?.draw.x ?? 0,
-        text: sorted.map((entry) => entry.draw.text).join(""),
-        from: Math.min(...on.map((entry) => entry.at)),
-      };
-    })
-    .sort((a, b) => a.y - b.y);
+function linesOf(calls: readonly DrawCall[], region: Region): TextLine[] {
+  return textLines(calls, region).filter((line) => line.text.trim() !== "");
 }
 
 /**
  * The band of the stage a line is read inside, clipped to `bounds`.
  *
- * The anchors are all a frame's operations report, and where the glyphs sit
- * around one depends on the alignment and the font, neither of which `specs/`
- * fixes — so the band is taken ABOUT the anchors, wide enough that a run set to
- * any alignment puts glyphs inside it and shallow enough not to swallow the line
+ * A line's extent is what the recorder measured of its runs, and on a frame it
+ * never measured only the anchors; where the glyphs sit around an anchor
+ * depends on the alignment and the font, neither of which `specs/` fixes — so
+ * the band is taken ABOUT that extent, wide enough that a run set to any
+ * alignment puts glyphs inside it and shallow enough not to swallow the line
  * above.
  */
-function bandOf(line: Line, bounds: Region): Region {
-  const x = Math.max(bounds.x, line.x0 - BAND_PAD);
+function bandOf(line: TextLine, bounds: Region): Region {
+  const x = Math.max(bounds.x, line.left - BAND_PAD);
   const y = Math.max(bounds.y, line.y - BAND_ABOVE);
   return {
     x,
     y,
-    w: Math.max(1, Math.min(bounds.x + bounds.w, line.x1 + BAND_PAD) - x),
+    w: Math.max(1, Math.min(bounds.x + bounds.w, line.right + BAND_PAD) - x),
     h: Math.max(1, Math.min(bounds.y + bounds.h, line.y + BAND_BELOW) - y),
   };
 }
 
 /** Decide whether one line was drawn into the band the frame anchored it in. */
 async function assertDrawn(
-  line: Line,
+  line: TextLine,
   bounds: Region,
   what: string,
 ): Promise<void> {
@@ -184,11 +158,6 @@ async function assertDrawn(
       `line reads ${JSON.stringify(line.text)}, and the band the frame ` +
       `anchored it in carries paint standing off the ground behind it`,
   );
-}
-
-/** The runs of a frame whose anchors fall inside a region. */
-function runsIn(draws: readonly TextDraw[], region: Region): TextDraw[] {
-  return draws.filter((draw) => contains(region, { x: draw.x, y: draw.y }));
 }
 
 it("draws every line the editor's heading, tray, readout and tape panel carry", async () => {
@@ -219,9 +188,9 @@ it("draws every line the editor's heading, tray, readout and tape panel carry", 
     "the machine is the two arms, so the tape panel carries a row for each",
   );
 
-  const draws = textDraws(await h.lastCalls());
+  const calls = await h.lastCalls();
   for (const { name, region } of WORDED) {
-    const lines = linesOf(runsIn(draws, region));
+    const lines = linesOf(calls, region);
     assertGreaterThan(
       lines.length,
       0,

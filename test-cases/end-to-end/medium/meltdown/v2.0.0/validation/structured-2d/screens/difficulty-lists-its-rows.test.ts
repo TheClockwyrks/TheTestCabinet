@@ -4,8 +4,9 @@
 // THE RULE. specs/screens.md, `difficultyselect`: "Draws the four rows of
 // `DIFFICULTY_ITEMS`: `EASY`, `MEDIUM`, `HARD`, and `BACK`."
 //
-// ONE READING PER ROW OF ONE REQUIREMENT: each name is looked for as a run of
-// text, and the failure names the one the build did not draw. A build that lists
+// ONE READING PER ROW OF ONE REQUIREMENT: each name is looked for as copy the
+// frame drew, through the package's `drewText` (`../case-harness/text`), and
+// the failure names the one the build did not draw. A build that lists
 // two difficulties leaves one a player can never reach, and a build that omits
 // `BACK` leaves a touchscreen player no way off the list, so every row is the
 // requirement.
@@ -19,10 +20,11 @@
 // vertical list of rows" and no more.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
+import { assertEqual, assertTrue } from "../assert";
 import { DIFFICULTY_ITEMS } from "../constants";
+import { drewText } from "../case-harness/text";
 import { captureStill, createHarness, resetTo, type Harness } from "../harness";
-import { readScreen, requireRun } from "./menu";
+import { readScreen, textOf } from "./menu";
 
 let h: Harness;
 
@@ -47,7 +49,12 @@ it("draws Easy, Medium and Hard on the difficulty list", async () => {
     "difficultyselect",
     "the screen the scenario is posed on",
   );
+  const drawn = textOf(runs).join(" | ");
   for (const item of DIFFICULTY_ITEMS) {
-    requireRun(runs, item, "the difficulty list");
+    assertTrue(
+      drewText(h.calls, item),
+      `the ${JSON.stringify(item)} row of DIFFICULTY_ITEMS drawn on the ` +
+        `difficulty list (specs/screens.md); it drew ${drawn}`,
+    );
   }
 });

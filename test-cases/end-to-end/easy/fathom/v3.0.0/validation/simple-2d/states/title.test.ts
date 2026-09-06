@@ -34,9 +34,10 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { drewText } from "../case-harness/text";
 import { TAGLINE_TEXT, TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { assertDrew, frameOps, opDiff } from "./screens";
+import { frameOps, opDiff } from "./screens";
 
 /**
  * How much more of the frame must change when the selection moves than when it
@@ -93,20 +94,20 @@ it("opens on the title, draws its copy, and shows which item is selected", async
       "(specs/state.md, specs/ui.md)",
   );
 
-  assertDrew(
-    selected,
-    TITLE_TEXT,
+  assertEqual(
+    drewText(selected, TITLE_TEXT),
+    true,
     "the title the title screen shows (specs/ui.md)",
   );
-  assertDrew(
-    selected,
-    TAGLINE_TEXT,
+  assertEqual(
+    drewText(selected, TAGLINE_TEXT),
+    true,
     "the tagline the title screen shows (specs/ui.md)",
   );
   for (const item of TITLE_ITEMS) {
-    assertDrew(
-      selected,
-      item,
+    assertEqual(
+      drewText(selected, item),
+      true,
       `an item of the title menu, which is ${TITLE_ITEMS.join(" then ")} (specs/ui.md)`,
     );
   }

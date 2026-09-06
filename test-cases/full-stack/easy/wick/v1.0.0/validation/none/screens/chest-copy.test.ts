@@ -14,9 +14,10 @@
 // the heading, which every chest shows. The screen is read back before the
 // frame so that a build that opened nothing fails on the precondition.
 //
-// THE TOLERANCE. The heading is matched folded — lower-cased, with spaces,
-// dashes and underscores removed, across consecutive runs of text — because
-// specs/ui.md fixes "no palette, no font, no layout, and no styling".
+// THE TOLERANCE. The heading is matched ignoring case and whitespace, across
+// the runs of text the frame drew joined in reading order (the shared
+// harness's `drewTextAnywhere`) — because specs/ui.md fixes "no palette, no
+// font, no layout, and no styling".
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";

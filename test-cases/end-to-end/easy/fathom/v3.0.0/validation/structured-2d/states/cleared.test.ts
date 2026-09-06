@@ -37,6 +37,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
+import { drewText } from "../case-harness/text";
 import { HOLD_MAX, HOLD_MIN, TICK_HZ } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
@@ -46,7 +47,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { assertDrew, frameOps, watchScreen } from "./screens";
+import { frameOps, watchScreen } from "./screens";
 
 /**
  * The frames the maze is given to clear once the forager stands on its last
@@ -127,9 +128,9 @@ it("reaches the cleared interstitial, names the depth, and holds 1-3 s", async (
     "cleared",
     "the screen eating the maze's last plankton reaches (specs/ui.md)",
   );
-  assertDrew(
-    ops,
-    `DEPTH ${String(cleared.depth)} CLEARED`,
+  assertEqual(
+    drewText(ops, `DEPTH ${String(cleared.depth)} CLEARED`),
+    true,
     "the depth just cleared, named on the interstitial (specs/ui.md)",
   );
 

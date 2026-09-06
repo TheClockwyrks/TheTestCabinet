@@ -26,11 +26,11 @@ import {
 import {
   captureStill,
   createHarness,
-  drewText,
   pinDrill,
   pinMiner,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/index";
 import { bankSave, menuLength, openAtCamp } from "./expedition";
 
 /** Seconds of game time the lift-off is given to reach the Victory screen. */

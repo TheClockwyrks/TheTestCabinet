@@ -257,14 +257,15 @@ export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
 /**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
  *
- * The harness's own `drewText` is a substring match, which is the right reading for
- * a piece of copy a build may present inside a longer line. It is the wrong reading
- * for a token `specs/ui.md` asks for as a "standalone word": a screen reading
- * "press the spacebar" contains `space` and has not named the key the specification
- * named. Word boundaries here are non-letter, non-digit characters, so a token
- * inside quotes, brackets or a slash-separated pair still counts. Read off the
- * logical runs the frame spells, as `drewText` is: `SPACE` letter-spaced a glyph
- * per call is still the word.
+ * The shared harness's `drewText` (`case-harness/text.ts`) is a substring match,
+ * which is the right reading for a piece of copy a build may present inside a
+ * longer line. It is the wrong reading for a token `specs/ui.md` asks for as a
+ * "standalone word": a screen reading "press the spacebar" contains `space` and
+ * has not named the key the specification named. Word boundaries here are
+ * non-letter, non-digit characters, so a token inside quotes, brackets or a
+ * slash-separated pair still counts. Read off the logical runs the frame
+ * spells, as `drewText` is: `SPACE` letter-spaced a glyph per call is still the
+ * word.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(

@@ -8,8 +8,12 @@
 //
 //   - THE COPY IS THE CASE'S OWN. `TITLE_TEXT`, `TAGLINE_TEXT`, `TITLE_ITEMS`,
 //     `MODE_ITEMS`, `DIFFICULTY_ITEMS`, `PAUSE_ITEMS` and `ENDING_ITEMS` are
-//     seeded constants, so a run of text is looked for by the string the case
-//     handed the build rather than by a literal written here.
+//     seeded constants, so copy is looked for by the string the case handed the
+//     build rather than by a literal written here. WHETHER a screen drew its copy
+//     is never decided here: a suite asks the package's `drewText`, from
+//     `../case-harness/text`, over the frame's calls. What this file decides is
+//     WHICH run of text is the row — {@link runFor} — for the checks that go on
+//     to read the pixels over it.
 //   - EVERY FIGURE A SCREEN REPORTS IS A NUMBER. `specs/screens.md` fixes not one
 //     thing about how a screen formats what it reports — a build may draw
 //     `SCORE 875`, `875 PTS`, `Score: 875` or, for a long figure, `12,345` — so a
@@ -86,20 +90,28 @@ function normalize(text: string): string {
 }
 
 /**
- * The run that drew `copy`, or `undefined` when no run carries it.
+ * The run that IS the row reading `copy`, placed where the build drew it, or
+ * `undefined` when no single run carries it.
  *
- * A run that IS the copy wins over a run that merely contains it, and among
- * containing runs the shortest wins. Both rules are there for the same reason:
- * `TITLE_ITEMS` holds `PLAY` and `HOW TO PLAY`, so a bare substring search for
- * `PLAY` would happily answer with the other row. A build free to decorate its
- * highlighted row — `> PLAY`, `[PLAY]` — is still answered with its own row
- * rather than with the longer one.
+ * A PLACEMENT reading, not a copy check. Whether the screen drew `copy` at all is
+ * the package's `drewText` (`../case-harness/text`), which every suite asks
+ * before it comes here; this decides WHICH of the frame's runs is the row, so a
+ * check can box the pixels over it. A run that IS the copy wins over a run that
+ * merely contains it, and among containing runs the shortest wins. Both rules
+ * are there for the same reason: `TITLE_ITEMS` holds `PLAY` and `HOW TO PLAY`,
+ * so taking the first run mentioning `PLAY` would happily answer with the other
+ * row. A build free to decorate its highlighted row — `> PLAY`, `[PLAY]` — is
+ * still answered with its own row rather than with the longer one.
  *
  * A run that IS the copy is looked for among the runs first and then among the
  * spans they were spelled from, for the reason {@link readScreen} gives: a row
  * whose label merged with a figure beside it is still answered with the label
  * as it was drawn, placed where it was drawn. Containment is asked of the runs
  * alone, since a span holding the copy belongs to a run that holds it too.
+ *
+ * One run, on purpose: a row is boxed as one span, so copy the merge left in
+ * several runs along one baseline — which `drewText` still finds, reading the
+ * baseline joined — is copy this cannot place, and answers `undefined`.
  */
 export function runFor(
   runs: readonly TextRun[],
@@ -120,12 +132,14 @@ export function runFor(
 }
 
 /**
- * The run that drew `copy`, or a failure naming the copy the screen did not draw.
+ * The run that IS the row reading `copy`, placed, or a failure naming the row
+ * that could not be placed.
  *
- * `specs/screens.md` names the copy each screen draws as a seeded constant, so a
- * screen that drew none of it is a screen missing its content, and that is what
- * this says — with every run the screen DID draw as the actual, so a reviewer
- * reads what the build put on the screen instead.
+ * For a check that goes on to read the pixels over the row: {@link runFor}, with
+ * the absent case turned into a verdict. Asked only after the package's
+ * `drewText` has said the copy is on the screen, so a failure here is a row the
+ * build drew in no single run of text — with every run the screen DID draw as
+ * the actual, so a reviewer reads what the build put on the screen instead.
  */
 export function requireRun(
   runs: readonly TextRun[],
@@ -135,8 +149,8 @@ export function requireRun(
   const run = runFor(runs, copy);
   if (run === undefined) {
     return fail(
-      `a run of text reading ${JSON.stringify(copy)} on ${context} ` +
-        `(specs/screens.md)`,
+      `one run of text reading ${JSON.stringify(copy)} on ${context}, placed ` +
+        `where the build drew it (specs/screens.md)`,
       runs.map((entry) => entry.text),
     );
   }

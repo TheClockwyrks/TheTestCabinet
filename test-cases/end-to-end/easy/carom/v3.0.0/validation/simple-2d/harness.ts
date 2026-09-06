@@ -150,7 +150,6 @@ import {
 import {
   drawnText as rawDrawnText,
   drawnTextLines,
-  drewText as spelledText,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -2091,21 +2090,6 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
  * when two draws close together coalesce across it.
  */
 export { drawnTextLines };
-
-/**
- * Whether the frame spelled `text` inside some run of text, ignoring case.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words. Read off
- * the LOGICAL runs rather than off the raw calls, so a heading letter-spaced a
- * glyph per `fillText` is found by the words it spells — which is the same
- * reading the engineless sibling of this project takes.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  return spelledText(calls, text);
-}
 
 /**
  * The geometry calls a frame made, by name, and how many of them a frame issued.

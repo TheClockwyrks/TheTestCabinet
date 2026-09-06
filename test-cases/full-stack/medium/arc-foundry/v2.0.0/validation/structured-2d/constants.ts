@@ -324,6 +324,18 @@ export const COMPONENT_TYPES = [
 
 export type ComponentType = (typeof COMPONENT_TYPES)[number];
 
+/** Each base type's name, as `specs/components.md` writes it — the copy a screen names it by. */
+export const COMPONENT_NAMES: Readonly<Record<ComponentType, string>> = {
+  capacitor: "Capacitor",
+  coil: "Coil",
+  emitter: "Emitter",
+  arcnode: "Arc-Node",
+  discharge: "Discharge Rig",
+  choke: "Choke",
+  rectifier: "Rectifier",
+  regulator: "Regulator",
+};
+
 /**
  * "Seven of the eight fire. The Regulator never fires: it has no range, no
  * damage, no firing head, no projectile, and no targeting priority."

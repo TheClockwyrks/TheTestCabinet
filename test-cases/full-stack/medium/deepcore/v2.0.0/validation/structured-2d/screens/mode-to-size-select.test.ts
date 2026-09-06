@@ -33,9 +33,9 @@ import {
   captureStill,
   coreRowFor,
   createHarness,
-  drewText,
   type Harness,
 } from "../harness";
+import { drewText } from "../case-harness/text";
 import { drawnCopy } from "./frames";
 
 /**

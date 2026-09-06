@@ -40,6 +40,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull } from "../assert";
+import { drewText } from "../case-harness/text";
 import { FAULTS } from "../constants";
 import { FIELD_REGION } from "../field";
 import { armPart, setPart, solution } from "../formats";
@@ -51,11 +52,11 @@ import {
   createHarness,
   openBareRun,
   openRun,
+  lineWith,
   resumeRun,
-  textIn,
+  textLines,
   type DrawCall,
   type Harness,
-  type TextDraw,
 } from "../harness";
 
 /**
@@ -83,26 +84,21 @@ afterEach(async () => {
 /**
  * The names of `FAULTS` the frame drew inside the field region.
  *
- * The runs are gathered into the baselines they were drawn on and read left to
- * right, because a build is free to draw a line of copy as one call, as a call
- * per word, or as a call per glyph — letter spacing is not portable, and
- * `specs/assets.md` fixes no more than that the copy reaches the frame as
- * drawn text. Joining a baseline's runs in `x` order reads a banner the same
- * way whichever of those it was drawn as.
+ * Whether the frame named a fault is the shared harness's `drewText` —
+ * substring, ignoring case and whitespace, along each baseline — which reads a
+ * banner the same way whether a build drew it as one call, as a call per word,
+ * or as a call per glyph: letter spacing is not portable, and `specs/assets.md`
+ * fixes no more than that the copy reaches the frame as drawn text. WHERE it
+ * named it is `drawing.ts`'s `textLines` over the field region — the same
+ * logical runs gathered onto the baselines they share — and `lineWith`, which
+ * finds the line by the rule `drewText` matched it by. A fault is named on the
+ * field when both hold.
  */
 function faultsNamedOnField(calls: readonly DrawCall[]): string[] {
-  const baselines = new Map<number, TextDraw[]>();
-  for (const draw of textIn(calls, FIELD_REGION)) {
-    baselines.set(draw.y, [...(baselines.get(draw.y) ?? []), draw]);
-  }
-  const lines = [...baselines.values()].map((on) =>
-    [...on]
-      .sort((a, b) => a.x - b.x)
-      .map((draw) => draw.text)
-      .join("")
-      .toLowerCase(),
+  const field = textLines(calls, FIELD_REGION);
+  return FAULTS.filter(
+    (fault) => drewText(calls, fault) && lineWith(field, fault) !== null,
   );
-  return FAULTS.filter((fault) => lines.some((line) => line.includes(fault)));
 }
 
 it("draws a banner naming the fault while faulted, and none while paused, running or complete", async () => {

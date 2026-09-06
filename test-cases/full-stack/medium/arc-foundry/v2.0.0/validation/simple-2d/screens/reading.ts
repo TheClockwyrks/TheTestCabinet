@@ -7,10 +7,9 @@
 // sequence that POSES the game — opening a run, standing a structure, releasing a
 // unit — because those are shared by every category, and it owns the colour
 // samplers for the same reason. What this file holds is the one reading of a
-// rendered screen the screens checks take, and one campaign check
-// (`defeat-has-no-rating`) borrows to read the screen a run ends on: the text a
-// frame drew, folded so that a heading a build letter-spaced still reads as the
-// words a player sees.
+// rendered screen the screens checks take that the shared harness does not: the
+// figures a frame drew, each a number of its own in whatever grouping the build
+// gave it.
 //
 // WHAT A TEXT READING IS FAIR TO ASSERT. `specs/ui.md` fixes each screen's COPY
 // and its navigation and explicitly leaves its layout, palette and type to the
@@ -19,7 +18,10 @@
 // specification names are among them — by substring and ignoring case, because a
 // menu entry is commonly drawn with a marker beside it and a heading is commonly
 // padded. Where the entry was drawn, in what colour, at what size, is the
-// build's.
+// build's. The copy itself is read through the shared harness's `drewText`
+// (`case-harness/text.ts`), which each check imports directly; what this file
+// adds is the reading of a FIGURE, which is a number of its own and not a
+// substring, and which a build is free to group.
 //
 // UNDER THIS ENGINE the runs come off the draw-command recorder the harness wraps
 // the 2D context in: the game draws everything itself through `RenderApi.ctx`
@@ -29,104 +31,22 @@
 import { drawnTextLines } from "../case-harness/text";
 import type { DrawCall } from "../harness";
 
-/** Every run of text a frame drew, filled or stroked, in the order it drew them. */
-export function drawnText(calls: readonly DrawCall[]): string[] {
-  return calls.flatMap((call) =>
-    call.kind === "call" &&
-    (call.method === "fillText" || call.method === "strokeText") &&
-    typeof call.args[0] === "string"
-      ? [call.args[0]]
-      : [],
-  );
-}
-
-/**
- * Whether the recording carries measured text geometry.
- *
- * The harness measures every text call it records — the string's width under
- * the font in force, and its alignment — and that is what the shared merge rule
- * decides on. A recording without it can only be folded by the shape of its
- * calls, which is the fallback below.
- */
-function measured(calls: readonly DrawCall[]): boolean {
-  return calls.some((call) => call.kind === "call" && call.text !== undefined);
-}
-
-/**
- * The runs of a recording that carries no geometry, with a maximal sequence of
- * consecutive one-character draws joined into the word it spells.
- *
- * The best that can be read without widths: a letter-spaced heading is a run of
- * one-character draws, and joining them with nothing between is the text the
- * player reads. It is also a guess, which is why it is only the fallback — two
- * lone characters drawn one after the other fold into one word whether or not
- * they sat together.
- */
-function foldSpaced(runs: readonly string[]): string[] {
-  const groups: string[] = [];
-  let spaced: string[] = [];
-  const flush = (): void => {
-    if (spaced.length > 1) groups.push(spaced.join(""));
-    else if (spaced.length === 1) groups.push(spaced[0]!);
-    spaced = [];
-  };
-  for (const run of runs) {
-    if ([...run].length === 1) spaced.push(run);
-    else {
-      flush();
-      groups.push(run);
-    }
-  }
-  flush();
-  return groups;
-}
-
-/**
- * The whole of a frame's text as one upper-cased string, with letter-spacing
- * folded back into words.
- *
- * WHY THE FOLDING. `specs/ui.md` fixes each screen's copy and leaves its type to
- * the build, and the only portable way to letter-space a heading on a canvas is
- * to draw each character with its own `fillText` at its own advance. A frame
- * that does that emits the heading as a run of one-character draws, so joining
- * the runs naively turns `ARC FOUNDRY` into `A R C   F O U N D R Y` — which no
- * reading of the copy would find, and which would also scatter a standalone
- * letter across the frame for every heading on the screen, so that a check
- * looking for the key `B` would find one in `BUILD`.
- *
- * HOW. The groups are the LOGICAL RUNS the frame spells, read off the shared
- * harness's `drawnTextLines` (`case-harness/text.ts`): the harness measures
- * every text call, and the merge rule coalesces side-by-side draws on one
- * baseline back into the string they spell, so a heading drawn a glyph at a
- * time comes back as the heading and two figures a clear gap apart stay two.
- * Every raw string is a substring of the run it belongs to, so the merge can
- * only add a match and never take one away. A recording that carries no
- * geometry falls back to folding consecutive one-character draws by shape,
- * which is what this read before the harness measured. Either way the groups
- * are joined with a space, and a build that draws its copy as whole strings is
- * unaffected: every such run is a group of its own.
- */
-export function frameText(calls: readonly DrawCall[]): string {
-  const groups = measured(calls)
-    ? drawnTextLines(calls)
-    : foldSpaced(drawnText(calls));
-  return groups.join(" ").toUpperCase();
-}
-
-/**
- * Whether the frame drew `text`, ignoring case and every difference of spacing.
- *
- * Substring rather than equality on purpose: the copy a check asserts is the
- * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Whitespace is
- * dropped from both sides as well, because a build is free to letter-space a
- * heading, to break a line where it likes, and to draw a phrase as several runs —
- * none of which changes the words on the screen.
- */
-export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const squeeze = (value: string): string => value.replace(/\s+/g, "");
-  return squeeze(frameText(calls)).includes(squeeze(text.toUpperCase()));
-}
+/* -------------------------------------------------------------------------- */
+/* Numbers                                                                    */
+/* -------------------------------------------------------------------------- */
+//
+// A FIGURE IS READ OFF THE FRAME'S LOGICAL RUNS. `specs/ui.md` fixes each
+// screen's copy and leaves its type to the build, and the only portable way to
+// letter-space a heading on a canvas is to draw each character with its own
+// `fillText` at its own advance — so a frame's raw draws may spell `1234` as
+// four strings. The shared harness's `drawnTextLines` (`case-harness/text.ts`)
+// coalesces side-by-side draws on one baseline back into the string they
+// spell, because the harness measures every text call, so a figure drawn a
+// glyph at a time comes back as the figure and two figures a clear gap apart
+// stay two. Every raw string is a substring of the run it belongs to, so the
+// merge can only add a match and never take one away. The runs are joined with
+// a space before a figure is looked for, and a build that draws its copy as
+// whole strings is unaffected: every such run is a line of its own.
 
 /**
  * The separators a build may set between the digit triples of a figure.
@@ -137,8 +57,8 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
  * no-break space, a narrow no-break space, a thin space. So a screen drawing
  * `1,234` and one drawing `1234` state the same figure and read the same.
  *
- * The ASCII space is deliberately absent from the class. {@link frameText} joins
- * the runs of a frame with one, so accepting it would read the two figures of
+ * The ASCII space is deliberately absent from the class. The runs of a frame
+ * are joined with one here, so accepting it would read the two figures of
  * `40 130` as the single `40130`. `.` is absent for a related reason: it is the
  * decimal point, and a build drawing `1.5` means one and a half.
  */
@@ -191,21 +111,21 @@ function renderings(value: number): string[] {
  * so every rendering of it, plain and grouped, is asked for in turn.
  */
 export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
-  const text = frameText(calls);
+  const text = drawnTextLines(calls).join(" ");
   return renderings(value).some((rendering) =>
     new RegExp(`(?<![\\d.])${escapeRegExp(rendering)}(?![\\d.])`).test(text),
   );
 }
 
 /**
- * Every number the frame drew, as numbers, in the order {@link frameText} reads
- * them.
+ * Every number the frame drew, as numbers, in the order the frame's logical runs
+ * read.
  *
  * A grouped figure is one number: the separators come off the match before it is
  * read, so `1,234` is the single `1234`.
  */
 export function drawnNumbers(calls: readonly DrawCall[]): number[] {
-  return (frameText(calls).match(DRAWN) ?? []).map((drawn) =>
+  return (drawnTextLines(calls).join(" ").match(DRAWN) ?? []).map((drawn) =>
     Number(drawn.replace(GROUPS, "")),
   );
 }

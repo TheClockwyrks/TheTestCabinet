@@ -17,8 +17,11 @@
 // MATCHING IS BY CONTAINMENT, not equality. `specs/ui.md` fixes the words and
 // leaves the type and the layout to the build, so a title drawn with a subtitle on
 // the same line, or a tagline drawn inside a longer strapline, has drawn the copy
-// the specification names. Case and the amount of whitespace between words are
-// likewise the build's (`./menu.ts`).
+// the specification names. Case and the whitespace between words are likewise the
+// build's: the reading is the shared harness's `drewText` (`case-harness/text.ts`),
+// over the logical runs the frame spells along each baseline — so a title drawn a
+// glyph per `fillText` is read as the word it spells — with the whitespace folded
+// out of both sides.
 //
 // THE ROUTE. `reset()` and one tick. `specs/instrumentation.md` restores `screen`
 // to `"title"`, so this is the state a player sees on load, reached without
@@ -32,9 +35,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TAGLINE_TEXT, TITLE_TEXT } from "../constants";
-import { assertContains, assertEqual } from "../assert";
+import { assertEqual, fail } from "../assert";
+import { drawnTextLines, drewText } from "../case-harness/text";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { drawnCopy, normalize, textRuns } from "./menu";
 
 let h: Harness;
 
@@ -60,15 +63,17 @@ it("draws the title and the tagline on the screen the game opens on", async () =
     "the screen specs/instrumentation.md says reset restores",
   );
 
-  const copy = drawnCopy(textRuns(h, h.calls));
-  assertContains(
-    copy,
-    normalize(TITLE_TEXT),
-    "the title TITLE_TEXT drawn on the title screen (specs/ui.md)",
-  );
-  assertContains(
-    copy,
-    normalize(TAGLINE_TEXT),
-    "the tagline TAGLINE_TEXT drawn on the title screen (specs/ui.md)",
-  );
+  // A failure prints the runs the frame DID draw, beside the copy it lacks.
+  if (!drewText(h.calls, TITLE_TEXT)) {
+    fail(
+      "the title TITLE_TEXT drawn on the title screen (specs/ui.md)",
+      drawnTextLines(h.calls),
+    );
+  }
+  if (!drewText(h.calls, TAGLINE_TEXT)) {
+    fail(
+      "the tagline TAGLINE_TEXT drawn on the title screen (specs/ui.md)",
+      drawnTextLines(h.calls),
+    );
+  }
 });

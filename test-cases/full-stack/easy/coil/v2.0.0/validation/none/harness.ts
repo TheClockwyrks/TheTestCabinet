@@ -123,7 +123,6 @@ export {
   callsTo,
   colorDistance,
   drawnText,
-  drewText,
   setsOf,
   textDraws,
 } from "./case-harness/index";
