@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter } from "react-router";
+import { ToastContainer } from "react-toastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "../../../client/auth";
 import type { WorkerClient } from "../../../client/clients";
@@ -423,7 +424,9 @@ function stopWorkers() {
 }
 
 // The console as the controls require it: a cancel-capable worker, a signed-in
-// account (seeded the way a reload restores one), and a seeded in-flight list.
+// account (seeded the way a reload restores one), a seeded in-flight list, and the
+// toast container the console mounts once for the whole app, which is where a
+// sweep's report lands.
 function renderConsole(runs: InProgressRun[]) {
   localStorage.setItem(
     "tcab.auth",
@@ -438,6 +441,7 @@ function renderConsole(runs: InProgressRun[]) {
             <SeedActive runs={runs} />
             <GalleryDataProvider value={galleryValue([])}>
               <RunsPage />
+              <ToastContainer />
             </GalleryDataProvider>
           </RunsRuntimeProvider>
         </AuthProvider>
@@ -507,7 +511,7 @@ describe("RunsPage global stop controls", () => {
     fireEvent.click(clear);
 
     // Cheap enough to need no confirmation — it discards no work — and the count
-    // comes back in the bar rather than the press simply succeeding quietly.
+    // comes back as a toast rather than the press simply succeeding quietly.
     await waitFor(() => expect(cancelWaitingRuns).toHaveBeenCalledWith("tok"));
     await screen.findByText("Canceled 2 waiting runs.");
   });

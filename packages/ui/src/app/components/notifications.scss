@@ -1,7 +1,7 @@
 // Theme the react-toastify chrome onto the synthwave palette. Toastify is styled
 // through global CSS custom properties, so this maps its variables onto the
 // `--tcab-*` tokens (and is imported once, as a side effect, by
-// `NotificationsLayer`). The toast *content* is owned by `NotificationToast`.
+// `NotificationsLayer`). The toast content is owned by `toasts.module.scss`.
 :root {
   --toastify-font-family: var(--tcab-font);
   --toastify-toast-bd-radius: 0.5rem;

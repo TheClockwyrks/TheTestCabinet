@@ -6,6 +6,7 @@ import {
   useConfirm,
   type ConfirmOptions,
 } from "../../components/ConfirmDialog";
+import { showToast } from "../../components/MessageToast";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import type { InProgressRun } from "../../../client/types";
 import styles from "./StopRunsControls.module.scss";
@@ -81,8 +82,6 @@ export function StopRunsControls() {
   const { confirm } = useConfirm();
   const runtime = useRunsRuntime();
   const [busy, setBusy] = useState<StopScope | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   if (!sweeps) return null;
   const { token, cancelWaiting, cancelActive, cancelAll } = sweeps;
 
@@ -157,10 +156,14 @@ export function StopRunsControls() {
   const onSweep = async (control: (typeof controls)[number]) => {
     if (control.confirm && !(await confirm(control.confirm))) return;
     setBusy(control.scope);
-    setStatus(null);
-    setError(null);
     try {
-      setStatus(describeSweep(await control.sweep()));
+      const result = await control.sweep();
+      // Always reported, never merely "succeeded": "the queue was already empty"
+      // and "nothing matched what I meant" look identical from the outside and
+      // call for opposite next moves. Reported as a toast, so the count arrives
+      // wherever the user is looking rather than as a line the header row has to
+      // find room for beside three buttons.
+      showToast({ title: control.label, body: describeSweep(result) });
       // The swept jobs are moving to `canceled`. Nudge the data source to re-read
       // produced runs so they reappear as finished records; the in-flight list is
       // deliberately left to the console stream rather than pruned optimistically
@@ -170,7 +173,11 @@ export function StopRunsControls() {
       // as the sweep raced past it.
       runtime.requestRefresh();
     } catch (e) {
-      setError(String(e));
+      showToast({
+        title: `${control.label} failed`,
+        body: String(e),
+        tone: "error",
+      });
     } finally {
       setBusy(null);
     }
@@ -190,21 +197,6 @@ export function StopRunsControls() {
           {busy === control.scope ? "Canceling…" : control.label}
         </button>
       ))}
-      {/*
-        Always reported, never merely "succeeded": "the queue was already empty"
-        and "nothing matched what I meant" look identical from the outside and call
-        for opposite next moves. The live region is mounted from the start (and
-        hidden while empty) rather than appearing with its first message, because a
-        status region a screen reader has not been watching announces nothing.
-      */}
-      <span className={styles.status} role="status">
-        {status}
-      </span>
-      {error && (
-        <span className={styles.error} role="alert">
-          {error}
-        </span>
-      )}
     </div>
   );
 }
