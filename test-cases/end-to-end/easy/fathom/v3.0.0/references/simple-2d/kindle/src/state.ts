@@ -10,7 +10,7 @@
 // THIS SHAPE IS THE CONTRACT. It is what the debug surface poses and reads, and
 // what the snapshot projects. Nothing authoritative lives anywhere else: there is
 // no module-level game state in this build and no closure over mutable data, so
-// `reset` restoring these fields is enough to make a scenario replay identically.
+// `reset` restoring these fields returns the whole game to its initial state.
 //
 // `src/game.ts` re-exports every type here, because the game module is where the
 // specification says the state contract is declared.

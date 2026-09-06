@@ -128,7 +128,7 @@ export class FathomState extends GameState {
   desired: Dir | null = null;
   heldDirs: Dir[] = [];
 
-  /** The one generator every random draw the game makes runs off. */
+  /** The build's private source of random draws. */
   rng = new Rng();
   /** What is left of the frame's delta, carried into the next frame. */
   accumulator = 0;

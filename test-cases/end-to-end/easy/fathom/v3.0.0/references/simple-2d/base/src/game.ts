@@ -27,12 +27,12 @@
 //   * Nothing authoritative lives anywhere else. There is no module-level game
 //     state in this build and no closure over mutable data — every module beside
 //     the state is arithmetic over it — so `reset` restoring the declared fields
-//     is enough to make a scenario replay identically.
+//     returns the whole game to its initial state.
 //
 // The fixed timestep is `src/simulate.ts`'s. `dt` is real elapsed seconds, the
 // simulation advances the whole `TICK_DT` ticks that delta completes, and the
-// remainder is carried into the next frame, so the same interval of game time
-// reaches the same state however it was divided into frames
+// remainder is carried into the next frame, so the number of ticks run over an
+// interval of game time is the same however it was divided into frames
 // (`specs/movement.md`).
 
 import {
