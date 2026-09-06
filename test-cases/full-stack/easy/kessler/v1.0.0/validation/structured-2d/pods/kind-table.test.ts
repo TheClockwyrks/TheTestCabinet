@@ -1,29 +1,28 @@
-// pods/kind-table — the second draw value picks the shed pod's kind by the
-// fixed bands.
+// pods/kind-table — a shed pod's kind follows the kind table's probabilities.
 //
-// specs/pods.md fixes the table over u2: widen on [0, 0.25), multiball on
-// [0.25, 0.45), shield on [0.45, 0.65), pierce on [0.65, 0.80), and narrow on
-// [0.80, 1). Each band is read off a fresh session's FIRST destruction, seeded
-// (from the specification's own generator) so u1 sheds and u2 lands in that
-// band — five seeds, one per band, so a build with one band wrong fails by the
-// kind it drew rather than somewhere down a longer sequence.
+// specs/pods.md: "A shed pod's kind is drawn with the probabilities below":
+// widen 0.25, multiball 0.20, shield 0.20, pierce 0.15, narrow 0.20. The odds
+// are the requirement, so the check samples through specs/instrumentation.md's
+// `drawPod`, which "performs one pod draw exactly as a destruction performs
+// it", and reads each kind's count among the shedding draws against the
+// binomial band of pods/sample.ts around its share.
 //
-// THE WORLD IS ONE TARGET AND ONE BALL PER DRAW, staged by the shared draw
-// helper on a frozen ring 1 with the deflector parked away.
+// EVERY KIND IS READ AGAINST ITS OWN BAND, so a build that swapped two rows,
+// flattened the table to even odds, or left a kind out fails by the kind it got
+// wrong. The shedding draws are the sample, so the bands follow the count the
+// run actually shed rather than a figure assumed for it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength, assertTrue } from "../assert";
-import { POD_DROP_CHANCE } from "../constants";
-import { captureReplay, isolate, openHarness, type Harness } from "../harness";
-import { AWAY_ANGLE, destroyPosedTarget } from "./draw";
-import { mulberry32, podKindFor } from "./rng";
-
-/**
- * One seed per band of the kind table, first draw shedding: mulberry32 opens
- * 7 → u2 0.0620 (widen), 15 → 0.4041 (multiball), 8 → 0.6252 (shield),
- * 39 → 0.7530 (pierce), 9 → 0.8512 (narrow).
- */
-const BAND_SEEDS = [7, 15, 8, 39, 9];
+import { assertBetween, assertGreaterThan } from "../assert";
+import { POD_KIND_CHANCES, POD_KINDS } from "../constants";
+import {
+  captureStill,
+  drawPods,
+  isolate,
+  openHarness,
+  type Harness,
+} from "../harness";
+import { binomialBand, KIND_DRAWS } from "./sample";
 
 let h: Harness;
 
@@ -35,31 +34,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("draws each kind from its band of u2", async () => {
-  const expected: string[] = [];
-  for (const seed of BAND_SEEDS) {
-    const next = mulberry32(seed);
-    const u1 = next();
-    const u2 = next();
-    assertTrue(u1 < POD_DROP_CHANCE, `seed ${seed}'s first draw sheds`);
-    expected.push(podKindFor(u2));
-  }
-  // The five seeds cover the five bands, one each.
-  assertEqual(new Set(expected).size, 5, "one seed per band of the table");
+it("draws each kind on its share of the shedding draws", async () => {
+  isolate(h);
+  const outcomes = await drawPods(h, KIND_DRAWS);
+  await h.tick(1);
+  captureStill(h, "sampled");
 
-  for (const [i, seed] of BAND_SEEDS.entries()) {
-    isolate(h, seed);
-    h.debug.setPodSpawn(true);
-    h.debug.setPaddleAngle(AWAY_ANGLE);
-    const after =
-      i === 0
-        ? await captureReplay(h, "band-draw", () => destroyPosedTarget(h, 1, 0))
-        : await destroyPosedTarget(h, 1, 0);
-    assertLength(after.pods, 1, `seed ${seed}'s first destruction sheds`);
-    assertEqual(
-      after.pods[0].kind,
-      expected[i],
-      `the kind u2 selects under seed ${seed}`,
+  const shed = outcomes.filter((outcome) => outcome !== null);
+  assertGreaterThan(shed.length, 0, "draws that shed a pod");
+  for (const kind of POD_KINDS) {
+    const count = shed.filter((outcome) => outcome === kind).length;
+    const band = binomialBand(shed.length, POD_KIND_CHANCES[kind]);
+    assertBetween(
+      count,
+      band.low,
+      band.high,
+      `${kind} pods among ${shed.length} shed at probability ${POD_KIND_CHANCES[kind]}`,
     );
   }
 });

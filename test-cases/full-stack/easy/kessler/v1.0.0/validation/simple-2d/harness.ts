@@ -29,7 +29,7 @@
 //
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. `specs/instrumentation.md`
 // fixes its operations, so they mean the same thing in every build; posing
-// through it is how a scenario is reproducible, and it is the seam the case's
+// through it is how a scenario is staged, and it is the seam the case's
 // specification documents. `surface.ts` is that specification as types, and it
 // is the only description of the surface this harness reads: the build's own
 // module for it is never imported.
@@ -651,8 +651,8 @@ export interface Harness {
 
   /** A fresh read of the game's state through the case's `snapshot`. */
   snapshot(): KesslerSnapshot;
-  /** `debug.reset`, with `seed` seeding the pod generator when given. */
-  reset(seed?: number): void;
+  /** `debug.reset`: the boot state, with no posed pod outcome. */
+  reset(): void;
   /** Run `frames` frames of the harness's clock, back to back. */
   advance(frames: number): Promise<void>;
   /** Run `ticks` whole ticks of simulation time, and read what they left. */
@@ -857,8 +857,8 @@ export async function openHarness(
     timeMs: () => base.timeMs(),
 
     snapshot: () => base.snapshot(),
-    reset: (seed) => {
-      base.debug.reset(seed);
+    reset: () => {
+      base.debug.reset();
     },
 
     advance: (frames) => base.advance(frames),
@@ -977,8 +977,8 @@ export async function advanceTicks(h: Harness, n: number): Promise<void> {
  * scenario "so it can watch one behavior without another arriving on top of
  * it".
  */
-export function isolate(h: Harness, seed?: number): KesslerSnapshot {
-  h.reset(seed);
+export function isolate(h: Harness): KesslerSnapshot {
+  h.reset();
   h.debug.setScreen("playing");
   h.debug.clearTargets();
   h.debug.clearBalls();
@@ -998,11 +998,8 @@ export function isolate(h: Harness, seed?: number): KesslerSnapshot {
  * because a build with a broken menu and a correct simulation must fail the
  * menu points and pass the others.
  */
-export async function startPlay(
-  h: Harness,
-  seed?: number,
-): Promise<KesslerSnapshot> {
-  h.reset(seed);
+export async function startPlay(h: Harness): Promise<KesslerSnapshot> {
+  h.reset();
   await tap(h, "Enter");
   return h.snapshot();
 }
@@ -1053,6 +1050,18 @@ export function spawnPodPolar(
 }
 
 /**
+ * Perform `count` pod draws through the build's `drawPod`, one independent
+ * draw each, and hand back their outcomes in order: a kind name, or `null`
+ * for a draw that shed nothing. It is what lets a sampling check make
+ * thousands of draws in well under a second.
+ */
+export function drawPods(h: Harness, count: number): (string | null)[] {
+  const out: (string | null)[] = [];
+  for (let i = 0; i < count; i += 1) out.push(h.debug.drawPod());
+  return out;
+}
+
+/**
  * Start a fresh session the way confirming START starts one, out of atomic
  * poses: the reset lays wave 1 — score `0`, `3` lives, wave `1`, every slot
  * filled, every ring angle at `0`, the wave-1 figures in force, the deflector
@@ -1062,10 +1071,10 @@ export function spawnPodPolar(
  * `setScreen` sets the screen and nothing else, so the arrangement is this
  * sequence rather than the call: the authoring guide puts every compound
  * sequence in the harness, and this is the one every check that needs a
- * session in play shares. `seed` seeds the pod generator.
+ * session in play shares.
  */
-export function startFreshSession(h: Harness, seed?: number): KesslerSnapshot {
-  h.reset(seed);
+export function startFreshSession(h: Harness): KesslerSnapshot {
+  h.reset();
   h.debug.setScreen("playing");
   h.debug.parkBall();
   return h.snapshot();

@@ -11,15 +11,11 @@ import { fail } from "../assert";
 import {
   ballSpeed,
   DEG,
-  mulberry32,
   outwardVelocity,
   PIERCE_TICKS,
-  POD_DROP_CHANCE,
-  podKindFor,
   pointAt,
   polarOf,
   slotArcCenterDeg,
-  type PodKind,
 } from "../constants";
 import { isolate, type Harness, type KesslerSnapshot } from "../harness";
 
@@ -33,11 +29,8 @@ export type Target = KesslerSnapshot["rings"][number]["targets"][number];
 export const PIERCE_DURATION = PIERCE_TICKS;
 
 /** The isolated field: playing, empty, both driver switches held off. */
-export async function poseIsolated(
-  h: Harness,
-  seed?: number,
-): Promise<KesslerSnapshot> {
-  return isolate(h, seed);
+export async function poseIsolated(h: Harness): Promise<KesslerSnapshot> {
+  return isolate(h);
 }
 
 /** A fresh read of the posed state, before any tick has run. */
@@ -137,21 +130,6 @@ export async function spawnPiercePod(
 ): Promise<void> {
   const at = pointAt(r, thetaDeg);
   await h.debug.spawnPod("pierce", at.x, at.y);
-}
-
-/**
- * The kind the seeded stream's FIRST draw sheds — the prediction of
- * specs/pods.md's mulberry32 draw, computed here rather than read off the
- * build. Fails if the chosen seed's first draw sheds nothing, which would be a
- * mis-designed scenario rather than a build defect.
- */
-export function firstShedKind(seed: number): PodKind {
-  const next = mulberry32(seed);
-  const u1 = next();
-  if (u1 >= POD_DROP_CHANCE) {
-    fail("a scenario seed whose first destruction sheds a pod (u1 < 0.25)", u1);
-  }
-  return podKindFor(next());
 }
 
 /** The one posed ball, or the failure that says the world is not as posed. */

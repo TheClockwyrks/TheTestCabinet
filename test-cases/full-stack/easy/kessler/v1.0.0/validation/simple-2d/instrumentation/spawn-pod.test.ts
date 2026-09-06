@@ -1,27 +1,19 @@
-// instrumentation/spawn-pod — the posed pod falls like a drawn one, and the
-// seeded stream has not moved.
+// instrumentation/spawn-pod — the posed pod falls like a drawn one.
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md words `spawnPod` as
 // "adds one pod of `kind` ... at `(x, y)`. It falls radially inward at the fall
-// speed specs/pods.md fixes, from the call onward", and closes with the
-// generator clause: "the generator is not consumed, so the seeded sequence
-// stays where it stands." specs/pods.md fixes the fall: "the pod falls radially
-// inward at `120` units per second, its center angle constant".
+// speed specs/pods.md fixes, from the call onward", and specs/pods.md fixes the
+// fall: "the pod falls radially inward at `120` units per second, its center
+// angle constant".
 //
-// TWO READS DECIDE IT. The flight read poses two pods and runs a second of
-// ticks: each reads back its kind and position at the call, and afterwards
-// stands `120` units further in on an unchanged angle. The generator read is
-// against the stream specs/pods.md fixes exactly (mulberry32 under the session
-// seed): under seed 8 the FIRST draw sheds a `shield` pod, so after the two
-// `spawnPod` calls a destruction's draw must still be that first draw. A build
-// whose `spawnPod` consumed the stream reads a later value there (`u1 >= 0.25`
-// for the next four) and sheds nothing.
-//
-// The float tolerance on the fall is integration slack over 60 fixed ticks of
-// the exact `120 * 1/60` advance — generous at a twentieth of a unit.
+// THE READ poses two pods and runs a second of ticks: each reads back its kind
+// and position at the call, and afterwards stands `120` units further in on an
+// unchanged angle. The float tolerance on the fall is integration slack over 60
+// fixed ticks of the exact `120 * 1/60` advance — generous at a twentieth of a
+// unit.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertEqual, assertLength, fail } from "../assert";
+import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import { POD_FALL_SPEED } from "../constants";
 import {
   captureReplay,
@@ -31,11 +23,6 @@ import {
   xyToPolar,
   type Harness,
 } from "../harness";
-import { podSequence } from "./rng";
-import { shedDestruction } from "./shed";
-
-/** The session seed: specs/pods.md's stream sheds on seed 8's FIRST draw. */
-const SEED = 8;
 
 /** The two posed pods, well clear of every crossing radius. */
 const PODS = [
@@ -56,8 +43,8 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("adds the posed pods, falls them at 120, and leaves the stream", async () => {
-  isolate(h, SEED);
+it("adds the posed pods and falls them at 120", async () => {
+  isolate(h);
   for (const pod of PODS) spawnPodPolar(h, pod.kind, pod.r, pod.deg);
 
   const posed = h.snapshot();
@@ -81,19 +68,4 @@ it("adds the posed pods, falls them at 120, and leaves the stream", async () => 
     );
     assertCloseTo(at.deg, PODS[i].deg, 1, `pod ${i}'s angle in the fall`);
   });
-
-  // The stream: the next draw is still the seed's FIRST draw.
-  const expected = podSequence(SEED, 1)[0];
-  if (expected === null) {
-    return fail("a seed whose first draw sheds a pod", "seed 8 shed nothing");
-  }
-  h.debug.clearPods();
-  h.debug.setPodSpawn(true);
-  const destroyed = await shedDestruction(h, 0);
-  assertLength(destroyed.pods, 1, "the pod the first real draw shed");
-  assertEqual(
-    destroyed.pods[0].kind,
-    expected,
-    "the shed kind against the seed's first draw",
-  );
 });

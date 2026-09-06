@@ -8,12 +8,7 @@
 // contact.
 
 import { fail } from "../assert";
-import {
-  ballSpeedAtWave,
-  PIERCE_DURATION_TICKS,
-  POD_DROP_CHANCE,
-  POD_KIND_TABLE,
-} from "../constants";
+import { ballSpeedAtWave, PIERCE_DURATION_TICKS } from "../constants";
 import {
   isolate,
   polarToXy,
@@ -22,7 +17,6 @@ import {
   velocityPolar,
   type Harness,
   type KesslerSnapshot,
-  type PodKind,
 } from "../harness";
 
 /** One ball of the snapshot's `balls`. */
@@ -35,11 +29,8 @@ export type Target = KesslerSnapshot["rings"][number]["targets"][number];
 export const PIERCE_DURATION = PIERCE_DURATION_TICKS;
 
 /** The isolated field: playing, empty, both driver switches held off. */
-export async function poseIsolated(
-  h: Harness,
-  seed?: number,
-): Promise<KesslerSnapshot> {
-  return isolate(h, seed);
+export async function poseIsolated(h: Harness): Promise<KesslerSnapshot> {
+  return isolate(h);
 }
 
 /** A fresh read of the posed state, before any tick has run. */
@@ -139,46 +130,6 @@ export async function spawnPiercePod(
 ): Promise<void> {
   const at = polarToXy(r, thetaDeg);
   h.debug.spawnPod("pierce", at.x, at.y);
-}
-
-/**
- * The mulberry32 generator specs/pods.md fixes as the session's one random
- * stream: seeded once, each call the stream's next value in [0, 1). Stated
- * here so a check can PREDICT the seeded pod draw rather than read it off the
- * build under test.
- */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** The kind the draw's second value selects, per specs/pods.md's table. */
-function podKindFor(u2: number): PodKind {
-  for (const row of POD_KIND_TABLE) {
-    if (u2 < row.upTo) return row.kind;
-  }
-  return "narrow";
-}
-
-/**
- * The kind the seeded stream's FIRST draw sheds — the prediction of
- * specs/pods.md's mulberry32 draw, computed here rather than read off the
- * build. Fails if the chosen seed's first draw sheds nothing, which would be a
- * mis-designed scenario rather than a build defect.
- */
-export function firstShedKind(seed: number): PodKind {
-  const next = mulberry32(seed);
-  const u1 = next();
-  if (u1 >= POD_DROP_CHANCE) {
-    fail("a scenario seed whose first destruction sheds a pod (u1 < 0.25)", u1);
-  }
-  return podKindFor(next());
 }
 
 /** The one posed ball, or the failure that says the world is not as posed. */

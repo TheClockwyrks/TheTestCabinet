@@ -1,28 +1,26 @@
 // instrumentation/pod-spawn-switch-holds — with the switch off a destruction
 // draws nothing.
 //
-// specs/instrumentation.md's driver table, for `podSpawn` off: "No draw is made
-// and the generator is not consumed, so no pod spawns and the seeded sequence
-// stays where it stands."
+// specs/instrumentation.md's driver table, for `podSpawn` off: "No draw is
+// made, so no pod spawns, and an outcome `setNextPod` posed stays posed for the
+// next draw that is made."
 //
-// THIS POINT IS THE FIRST HALF: no pod appears. The seed is one whose FIRST draw
-// sheds a pod, computed from specs/pods.md's own stream rather than read off the
-// build, so the destruction watched here is one that WOULD have shed had the
-// switch been on — and the watch runs long enough that a shed pod would be
-// visibly falling. That the generator was not consumed either is
-// `pod-spawn-switch-resumes`.
+// THIS POINT IS THE FIRST HALF: no pod appears. A kind is posed through
+// `setNextPod` first, so the destruction watched here is one that WOULD have
+// shed had the switch been on — and the watch runs long enough that a shed pod
+// would be visibly falling. That the pose survives and the draw resumes from
+// the next destruction is `pod-spawn-switch-resumes`.
 //
 // `waveAdvance` stays off, per isolate(), so emptying the one-target field never
 // clears.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLength, fail } from "../assert";
+import { assertEqual, assertLength } from "../assert";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
-import { podSequence } from "./rng";
 import { shedDestruction } from "./shed";
 
-/** The session seed: specs/pods.md's stream sheds on seed 7's FIRST draw. */
-const SEED = 7;
+/** The kind posed for the draw the held destruction must not make. */
+const POSED_KIND = "shield";
 
 /** Ticks watched for a pod that must not appear. */
 const WATCH_TICKS = 20;
@@ -38,10 +36,8 @@ afterEach(() => {
 });
 
 it("sheds nothing from a destruction that would have drawn a pod", async () => {
-  isolate(h, SEED);
-  if (podSequence(SEED, 1)[0] === null) {
-    return fail("a seed whose first draw sheds a pod", "seed 7 shed nothing");
-  }
+  isolate(h);
+  h.debug.setNextPod(POSED_KIND);
 
   const later = await captureReplay(h, "held", async () => {
     const held = await shedDestruction(h, 0);
@@ -50,4 +46,9 @@ it("sheds nothing from a destruction that would have drawn a pod", async () => {
     return h.tick(WATCH_TICKS);
   });
   assertLength(later.pods, 0, "pods after the held destruction");
+  assertEqual(
+    later.nextPod,
+    POSED_KIND,
+    "the posed outcome, still standing because no draw was made",
+  );
 });

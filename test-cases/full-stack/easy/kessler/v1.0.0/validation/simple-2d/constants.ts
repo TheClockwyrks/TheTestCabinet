@@ -190,16 +190,26 @@ export function ringSpeedAtWave(ring: number, w: number): number {
 /* ------------------------------- The pods --------------------------------- */
 // specs/pods.md.
 
-/** A destruction sheds a pod at `u1 < 0.25`. */
+/** A destruction sheds a pod with probability 0.25. */
 export const POD_DROP_CHANCE = 0.25;
-/** The five kinds, with the `[from, to)` band of `u2` that draws each. */
-export const POD_KIND_TABLE = [
-  { kind: "widen", from: 0, to: 0.25 },
-  { kind: "multiball", from: 0.25, to: 0.45 },
-  { kind: "shield", from: 0.45, to: 0.65 },
-  { kind: "pierce", from: 0.65, to: 0.8 },
-  { kind: "narrow", from: 0.8, to: 1 },
+/** The five kinds, in the table's order. */
+export const POD_KINDS = [
+  "widen",
+  "multiball",
+  "shield",
+  "pierce",
+  "narrow",
 ] as const;
+/** The probability a shed pod is each kind, per the table. */
+export const POD_KIND_CHANCES: Readonly<
+  Record<(typeof POD_KINDS)[number], number>
+> = {
+  widen: 0.25,
+  multiball: 0.2,
+  shield: 0.2,
+  pierce: 0.15,
+  narrow: 0.2,
+};
 /** A pod falls radially inward at 120 units per second. */
 export const POD_FALL_SPEED = 120;
 /** `widen` sets the span to 72 degrees. */
@@ -233,8 +243,6 @@ export const START_LIVES = 3;
 export const START_WAVE = 1;
 /** specs/screens.md: the waveclear banner runs 180 ticks. */
 export const WAVECLEAR_TICKS = 180;
-/** specs/pods.md, specs/instrumentation.md: the default pod-draw seed. */
-export const DEFAULT_SEED = 1;
 
 /* ------------------------------- Screens ---------------------------------- */
 // specs/screens.md.

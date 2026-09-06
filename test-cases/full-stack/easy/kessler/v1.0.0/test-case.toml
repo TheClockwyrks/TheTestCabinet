@@ -696,7 +696,7 @@ validation = { script = "instrumentation/draw-pod-returns-an-outcome.test.ts", o
 [[review.categories.items]]
 id = "draw-pod-changes-nothing"
 title = "drawPod leaves the game as it stood"
-description = "drawPod() adds no pod and changes nothing else: a posed session's snapshot, a posed nextPod included, reads the same before and after a run of calls, and no cue sounds."
+description = "drawPod() adds no pod and changes nothing else: a posed session's snapshot, a posed nextPod included, reads the same before and after a run of calls."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/draw-pod-changes-nothing.test.ts", outputs = [ { id = "unchanged", name = "The session unchanged by the draws", kind = "image" } ] }

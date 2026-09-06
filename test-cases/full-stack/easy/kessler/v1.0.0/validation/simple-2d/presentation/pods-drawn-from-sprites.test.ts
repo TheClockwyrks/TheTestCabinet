@@ -14,12 +14,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNotNull, assertTrue } from "../assert";
-import {
-  POD_KIND_TABLE,
-  POD_SPRITES,
-  POD_FALL_SPEED,
-  TICK_DT,
-} from "../constants";
+import { POD_KINDS, POD_SPRITES, POD_FALL_SPEED, TICK_DT } from "../constants";
 import {
   captureStill,
   isolate,
@@ -34,8 +29,8 @@ import { CLEAR_RADIUS, SPRITE_ATTRIBUTION_UNITS } from "./sprites";
 /** The five posed angles, one pod per kind, well apart around the planet. */
 const THETAS = [18, 90, 162, 234, 306] as const;
 
-/** The five kinds, in the drop table's order. */
-const KINDS = POD_KIND_TABLE.map((row) => row.kind);
+/** The five kinds, in the kind table's order. */
+const KINDS = POD_KINDS;
 
 let h: Harness;
 

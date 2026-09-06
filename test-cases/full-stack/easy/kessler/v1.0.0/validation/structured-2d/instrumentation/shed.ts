@@ -1,4 +1,4 @@
-// instrumentation/shed — the shared destruction rig the switch and generator
+// instrumentation/shed — the shared destruction rig the switch and pod-draw
 // points stage their "ball-caused destruction" with.
 //
 // Several instrumentation points need a destruction to happen and then read what

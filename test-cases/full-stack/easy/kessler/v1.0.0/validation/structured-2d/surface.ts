@@ -28,9 +28,6 @@
 // `ConstantClock(1000 / 60)` — one frame, one tick — and dispatches
 // keyboard-shaped events at the surface's own listener.
 
-/** The seed `reset` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
-
 /** Every screen the state machine moves between. The game opens on `title`. */
 export type Screen =
   | "title"
@@ -42,6 +39,9 @@ export type Screen =
 
 /** The five salvage pod kinds, as `specs/pods.md` names them. */
 export type PodKind = "widen" | "narrow" | "multiball" | "shield" | "pierce";
+
+/** What `setNextPod` poses for the next draw: a kind, `none`, or nothing. */
+export type PodPose = PodKind | "none" | null;
 
 /** The three TIMED effects `setEffectTicks` takes. Shield is its own pose. */
 export type EffectKind = "widen" | "narrow" | "pierce";
@@ -72,6 +72,8 @@ export const REQUIRED_OPS = [
   "setRingSpeed",
   "clearPods",
   "spawnPod",
+  "setNextPod",
+  "drawPod",
   "setEffectTicks",
   "setShield",
   "setWaveAdvance",
@@ -154,14 +156,14 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
-  /** The seed the last `reset` laid the pod generator with. */
-  seed: number;
   /** Ticks left of the interstitial; counts down on `waveclear` alone. */
   interstitialTicks: number;
   /** Driver switch: whether the clearing event fires. */
   waveAdvance: boolean;
   /** Driver switch: whether a destruction makes the pod draw. */
   podSpawn: boolean;
+  /** The outcome `setNextPod` posed for the next draw; `null` once consumed. */
+  nextPod: PodPose;
   paddle: { angleDeg: number; spanDeg: number };
   balls: SnapshotBall[];
   rings: [SnapshotRing, SnapshotRing, SnapshotRing];
@@ -191,10 +193,10 @@ export interface KesslerDebugApi {
    * lives, wave `1`, `ticks` `0`, the deflector at angle `90` span `48`,
    * every ring slot filled at full hit points with every ring angle `0` and
    * wave-1 speeds, no balls, no pods, no timed effect, no shield, both
-   * driver switches on, and the interstitial timer at `0`. `seed` seeds the
-   * pod generator, defaulting to `DEFAULT_SEED` (`1`).
+   * driver switches on, the interstitial timer at `0`, and no posed pod
+   * outcome.
    */
-  reset(seed?: number): void;
+  reset(): void;
 
   /** A pure read of the state; changes nothing. */
   snapshot(): KesslerSnapshot;
@@ -293,10 +295,23 @@ export interface KesslerDebugApi {
 
   /**
    * Adds one pod of `kind` at `(x, y)`, falling radially inward at the fixed
-   * fall speed; catching or burning resolves as for a drawn pod. The
-   * generator is NOT consumed.
+   * fall speed; catching or burning resolves as for a drawn pod. No draw is
+   * made.
    */
   spawnPod(kind: PodKind, x: number, y: number): void;
+
+  /**
+   * Poses the outcome of the next pod draw: a kind, or `none`. The next
+   * destruction that makes a draw sheds it in place of the random outcome and
+   * consumes the pose.
+   */
+  setNextPod(kind: PodKind | "none"): void;
+
+  /**
+   * Performs one pod draw alone and returns its outcome, a kind name or
+   * `null`; nothing spawns and nothing else changes.
+   */
+  drawPod(): PodKind | null;
 
   /**
    * Sets the timer of timed effect `kind` to `ticks` (whole, at least `0`).

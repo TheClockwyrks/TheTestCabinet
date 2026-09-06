@@ -55,8 +55,8 @@ state read off `snapshot()`:
 
 Two debug operations, and no others:
 
-- `reset(seed)`, called BEFORE the take begins, which lays the pod generator
-  with the seed. Choosing the seed is what lets a take be auditioned at all.
+- `reset()`, called BEFORE the take begins, which stands the game on its boot
+  state.
 - `snapshot()`, a reading that changes nothing.
 
 There is no `setScreen`, no `spawnBall`, no `setPaddleAngle`, no `spawnPod`, no
@@ -64,8 +64,8 @@ There is no `setScreen`, no `spawnBall`, no `setPaddleAngle`, no `spawnPod`, no
 own `ConstantClock` of one tick a frame, which is what `specs/instrumentation.md`
 says a scenario pairs with `engine.advance`. The deflector turns because a key
 is down, the ball leaves because `Space` was struck, every derelict that breaks
-was hit by a ball the player put there, and every pod is one the seeded draw
-shed.
+was hit by a ball the player put there, and every pod is one the game's own
+draw shed.
 
 ## Running it
 
@@ -130,14 +130,12 @@ with `git status` before committing.
 
 ## Auditioning
 
-The take is deterministic: the same seed replays the identical run, which is
-what lets a take be judged with the recorder off and then re-run with it on.
-EVERY TAKE IS RECORDED AS IT IS PLAYED anyway, so the take that was judged is
-provably the take that was committed and the winner never has to be replayed —
-which is the expensive half of doing it the other way. Each take also gets its
-own engine: a run replayed over a world that has already run inherits its frame
-counter, the key edges the last take left armed, and whatever the last render
-left on the canvas.
+The pod draw is the game's own, so no take can be played twice: EVERY TAKE IS
+RECORDED AS IT IS PLAYED, the takes are judged, and the best recording is the
+one kept, so the take that was judged is provably the take that was committed.
+Each take also gets its own engine: a run played over a world that has already
+run inherits its frame counter, the key edges the last take left armed, and
+whatever the last render left on the canvas.
 
 Each take prints what it did — balls served and lost, deflector bounces, hits
 and derelicts destroyed, pods shed, caught, burned and which kinds were caught,
@@ -155,16 +153,16 @@ which is the one thing a preview stage cannot afford.
 | --- | --- | --- |
 | `TCAB_VALIDATION_MEDIA_DIR` | unset | Where the media is written. Nothing is written without it, and the driver still plays every take. |
 | `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's written-replay cap, patched above to read it. At `1000` a take of this length is thinned by exactly two, to 30 fps; see the weight note below. |
-| `TCAB_SHOWCASE_TAKES` | `8` | How many seeds to play and judge. |
-| `TCAB_SHOWCASE_FIRST_SEED` | `1` | The first seed of that run of takes. |
+| `TCAB_SHOWCASE_TAKES` | `8` | How many takes to play and judge. |
+| `TCAB_SHOWCASE_FIRST_TAKE` | `1` | The number the first take of that run is labelled with. |
 | `TCAB_SHOWCASE_MIN_SECONDS` | `23` | The clip ends at the first settled beat past this. |
 | `TCAB_SHOWCASE_MAX_SECONDS` | `29` | The take is abandoned here, wherever it had got to. |
 
 ## What shipped
 
-Twenty-four takes were played and judged, from seed `1`, at the default bounds
-and a `1000`-frame cap. The committed take is **seed 22**, the clear winner at
-1042 against a field whose next best scored 823:
+Twenty-four takes were played and judged at the default bounds and a
+`1000`-frame cap. The committed take is **take 22**, the clear winner at 1042
+against a field whose next best scored 823:
 
 | | |
 | --- | --- |
@@ -180,7 +178,7 @@ and a `1000`-frame cap. The committed take is **seed 22**, the clear winner at
 
 NO TAKE CLEARED A WAVE, and none was expected to. A wave is 48 derelicts and
 64 hits, and the driver lands 50 in the twenty-four seconds a preview can
-afford. Played out to seventy-five seconds, the best seed still had one derelict
+afford. Played out to seventy-five seconds, the best take still had one derelict
 standing: with the rings nearly empty the planner's aim search finds no offset
 whose return breaks anything, so the endgame degenerates into a hunt. A driver
 that meant to record a clearing event would need a tiebreak that steers toward
