@@ -183,7 +183,7 @@ export interface HarnessOptions {
    * one sixtieth of a second, the frame a player gets; a check that has to
    * cover a long run gives itself a coarser one, and reaches exactly the same
    * state, because a run advances by whole cycles however the time was divided
-   * (specs/instrumentation.md "A deterministic core").
+   * (specs/instrumentation.md "A render-free core").
    */
   frameMs?: number;
 }

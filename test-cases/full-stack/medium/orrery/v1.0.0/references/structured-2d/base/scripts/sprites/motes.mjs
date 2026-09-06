@@ -37,7 +37,7 @@ const C = SIZE / 2;
  */
 const REACH = 20;
 
-/** A small deterministic generator, so a scatter is the same on every run. */
+/** A small generator from a fixed start, so a scatter comes out the same each time the script runs. */
 function seeded(seed) {
   let state = seed >>> 0;
   return () => {

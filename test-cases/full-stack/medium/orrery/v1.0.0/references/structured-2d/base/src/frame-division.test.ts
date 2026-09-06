@@ -1,7 +1,7 @@
 // The property specs/instrumentation.md rests the whole surface on: an
 // interval of game time reaches the same state however it was divided into
 // frames. "`advance(1, 1)` and `advance(1, 60)` cover the same cycles and
-// reach the same outcome, to the precision the deterministic core fixes."
+// reach the same outcome, to the precision the render-free core fixes."
 //
 // The interesting case is a span that lands EXACTLY on a cycle boundary. In
 // exact arithmetic one second at `SPEEDS[1]` (3 cycles per second) is three
