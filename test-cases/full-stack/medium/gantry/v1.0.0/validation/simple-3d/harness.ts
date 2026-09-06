@@ -149,7 +149,7 @@ import {
   type TimedCue,
 } from "./case-harness/engine/index";
 import { createGlStub, defineSelfForThree } from "./case-harness/engine/3d";
-import type { DrawCall } from "./case-harness/draw-calls";
+import type { DrawCall, RecordedOp } from "./case-harness/draw-calls";
 import {
   ASSET_ROOT,
   LAYOUT,
@@ -369,12 +369,10 @@ export interface AssetFailure {
  * The two projects read a build's drawing the same way — "what was called, what
  * was set" — so a check that asks what the build wrote on its readouts reads the
  * same list here as it does there, and `toDrawCall`, `drawnText` and `textDraws`
- * work over it unchanged. It is spelled here rather than imported because it is
- * the shape the SUITES declare and cast to, in all three directories.
+ * work over it unchanged. It is the package's own type, re-exported, because it
+ * is the shape the SUITES declare and cast to, in all three directories.
  */
-export type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
-  | { op: "set"; property: string; value: unknown };
+export type { RecordedOp };
 
 /**
  * One call the package's recorder wrote, as the engineless recorder would have
@@ -383,14 +381,18 @@ export type RecordedOp =
  * The two records hold the same facts under two spellings — `kind` here, `op`
  * there — because the engineless recorder is injected into a page and writes the
  * console player's replay format. Renaming the discriminant is the whole of the
- * difference; the `text` geometry the package's recorder attaches to a measured
- * text call is left off, because that format carries none — a check that wants
- * it reads {@link Harness.screenCalls}, which answers the calls with it on.
+ * difference: the `text` geometry the package's recorder attached to a measured
+ * text call travels with it, and `toDrawCall` carries it back, so a check reads
+ * the same measured calls whether it asked for {@link Harness.screenOps} or
+ * {@link Harness.screenCalls}.
  */
 function recordedOp(call: DrawCall): RecordedOp {
-  return call.kind === "call"
-    ? { op: "call", method: call.method, args: call.args }
-    : { op: "set", property: call.property, value: call.value };
+  if (call.kind === "set") {
+    return { op: "set", property: call.property, value: call.value };
+  }
+  const op: RecordedOp = { op: "call", method: call.method, args: call.args };
+  if (call.text !== undefined) op.text = call.text;
+  return op;
 }
 
 /** How a harness's engine is built, where a check wants something other than the default. */
@@ -605,8 +607,9 @@ export interface Harness {
    * heading a build letter-spaced, one glyph per `fillText`, back into the run
    * it spells; the specification fixes the words and leaves their spacing to
    * the build, so a check reads the runs and never the call split.
-   * {@link screenOps} answers the engineless recorder's document, which carries
-   * no measurement, so a check that reads copy reads this one.
+   * {@link screenOps} answers the same calls, measurement and all, in the
+   * engineless recorder's document; a check that reads copy reads this one
+   * because the readers take draw calls.
    */
   screenCalls(): Promise<DrawCall[]>;
   /** The ticks this harness has driven, 1-based, as the engine's frame counter reports. */

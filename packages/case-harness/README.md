@@ -853,6 +853,14 @@ were drawn, skipped, or split the run into words, and a match under any stricter
 reading is a match under this one — the merge and the fold can only add a match,
 never take one away.
 
+**A recorded operation carries its measurement.** A recorder that measures a
+text call as it is made writes the geometry beside the call, and a `RecordedOp`
+carries it the same way a `DrawCall` does: `toDrawCall` forwards it, so a frame
+handed round as the engineless recorder's document — gantry's two 3D harnesses
+answer the kit's measured calls that way, as `screenOps` — coalesces exactly as
+the same frame read as draw calls does. The page recorder under `none` writes no
+measurement of its own; it is attached afterwards, in the page.
+
 **Nothing merges without measurement.** The rule works on each draw's extent, so
 every text call has to carry a measured `width` and the `textAlign` in force.
 Under `none` a case asks for it with `measureText: true` in its `CaseConfig`, and
