@@ -17,17 +17,21 @@
 // (`specs/stages.md`), so the first stage is the standard wave this rule is about;
 // what a challenge stage sends instead is the `stages` group's.
 //
-// The wave is the game's own and is given the twelve seconds `swarm/assembles`
-// allows it, and the reading is over the drones standing in the formation, which is
-// where the specification puts the rule. The dive gate is shut so the block is read
-// whole rather than with a diver missing from it, and the contact gate so nothing
-// reaching the ship interrupts the wave.
+// THE WAVE IS THE GAME'S OWN, AND ITS ASSEMBLY IS POSED. `startStage` has the
+// build's own stage-intro code build the wave, so the roster, the kinds and the
+// stored bands are the build's and nothing about them is posed; `settleWave` then
+// stands every drone at its own slot in phase `formation`, which is the state its
+// entrance ends in and where the specification puts the rule, rather than flying
+// the twelve seconds `swarm/assembles` grades. The dive gate stays shut so the
+// block is read whole rather than with a diver missing from it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  settleWave,
+  startPosed,
   startStage,
   type Band,
   type Harness,
@@ -35,9 +39,6 @@ import {
 
 /** The stage the wave is opened at: the first, which is a standard wave. */
 const STAGE = 1;
-
-/** The seconds the wave is given to assemble, as `swarm/assembles` allows. */
-const ASSEMBLE_BY = 12;
 
 /** The two bands the field is built of (specs/bands.md). */
 const BANDS: readonly Band[] = ["cyan", "magenta"];
@@ -59,11 +60,12 @@ afterEach(() => {
 });
 
 it("builds a standard wave out of Shards of both bands, two Fluxes and a Prism", async () => {
-  h.debug.setDiveLaunching(false);
-  h.debug.setShipContact(false);
+  startPosed(h);
+  h.debug.setWaveEntry(true);
   await startStage(h, STAGE);
+  settleWave(h);
 
-  await h.advanceSeconds(ASSEMBLE_BY);
+  await h.advance(1);
   const settled = h.snapshot();
   captureStill(h, "composition");
 

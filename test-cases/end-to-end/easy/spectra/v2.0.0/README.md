@@ -214,9 +214,11 @@ the same factor, so the error cancels in the ratio whatever band is put around
 it. Each leg is read absolutely, against the figure the specification fixes for
 its own stage, and the two points whose quantity is drawn or sampled rather than
 exact carry a second, exact reading beside the measured one — the Flux hold
-probes `shimmer` either side of the stated boundary, and the dive gap brackets a
-hundred drawn gaps against `[DIVE_GAP_MIN, DIVE_GAP_MAX] * diveGapScale(7)` by
-posing the wave's own dive clock either side of the window.
+probes `shimmer` either side of the stated boundary, and the dive gap brackets
+two dozen drawn gaps against `[DIVE_GAP_MIN, DIVE_GAP_MAX] * diveGapScale(7)` by
+posing the wave's own dive clock either side of the window. Neither sample is a
+measurement of the ramp: a draw is held to the stated window and nothing is
+inferred from the spread of a few dozen of them.
 
 `validation-baseline/<engine>/<variant>/` holds the media the same suites captured
 from that engine's reference build of that variant, so a reviewer sees the run's
@@ -248,24 +250,25 @@ showcase, so the baseline for it is the reference's own picture. Two kinds of
 output differ between two runs of the command over unchanged code, so the
 committed baseline for each is one sample rather than a fixed picture.
 
-The first kind is taken off a clock rather than off a posed frame. They are three
+The first kind is taken off a clock rather than off a posed frame. They are two
 outputs:
 
-| Output                                         | Targets | Why it moves                                                                                                                                      |
-| ---------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `controls.overlay-backquote__overlay`          | 2       | The panel carries a frame-time reading measured on the host that ran it. It is scoped to `none`, where the build writes the overlay.              |
-| `instrumentation.advances-in-real-time__after` | 6       | The point's whole subject is a second of real time under the engine's own loop, so what has moved by the still is whatever that second delivered. |
-| `instrumentation.overlay__overlay`             | 5       | The same panel as the first, over a posed field.                                                                                                  |
+| Output                                | Targets | Why it moves                                                                                                                         |
+| ------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `controls.overlay-backquote__overlay` | 2       | The panel carries a frame-time reading measured on the host that ran it. It is scoped to `none`, where the build writes the overlay. |
+| `instrumentation.overlay__overlay`    | 5       | The same panel as the first, over a posed field.                                                                                     |
 
-None of the three is worth posing away. One of the points measures what a build
-does with real time, and the other two open a panel whose own heading reports
+Neither is worth posing away. Both points open a panel whose own heading reports
 the frame it was drawn on; a still taken off a posed frame would show something
-none of them asserts.
+neither of them asserts.
 
-`audio.no-autoplay__loaded` used to be a fourth. It is not any more: that point
+`audio.no-autoplay__loaded` used to be a third. It is not any more: that point
 reads a fixed number of driven frames and winds the build's own timers on rather
 than sitting through a stretch of the wall clock, so its still is the same
-picture on every host and any movement in it is the build's.
+picture on every host and any movement in it is the build's. No point waits on
+the wall clock at all any more: what a build does with a second of real time is a
+fact about the host that ran it, so a suite drives frames and reads what they
+left.
 
 The second kind shows a drone-burst. `specs/assets.md` has each burst scatter at
 random, and the reference draws that scatter from a private source of its own,

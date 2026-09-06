@@ -16,11 +16,14 @@
 // multiples of `SLOT_DX` off the centre and a build reporting them has no
 // arithmetic to lose.
 //
-// The wave is the game's own and is given the twelve seconds `swarm/assembles`
-// allows it. The dive gate is shut, so the layout read is the one the wave laid out
-// rather than one a dive has taken a drone out of — a launched dive would leave a
-// slot unmirrored through no fault of the layout — and the contact gate is shut so
-// nothing reaching the ship interrupts the wave.
+// THE WAVE IS THE GAME'S OWN, AND ITS ASSEMBLY IS POSED. `startStage` has the
+// build's own stage-intro code build the stage-1 wave, so which slots are filled
+// is the build's and nothing about it is posed; `settleWave` then stands every
+// drone at its own slot in phase `formation`, which is the state its entrance
+// ends in, rather than flying the twelve seconds `swarm/assembles` grades. The
+// dive gate stays shut, so the layout read is the one the wave laid out rather
+// than one a dive has taken a drone out of — a launched dive would leave a slot
+// unmirrored through no fault of the layout.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FORM_CENTER_X } from "../constants";
@@ -28,15 +31,14 @@ import { assertGreaterThanOrEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
+  settleWave,
+  startPosed,
   startStage,
   type Harness,
 } from "../harness";
 
 /** The stage the wave is opened at: the first, which is a standard wave. */
 const STAGE = 1;
-
-/** The seconds the wave is given to assemble, as `swarm/assembles` allows. */
-const ASSEMBLE_BY = 12;
 
 /** How near the mirrored x a slot must be filled: the item's own one unit. */
 const MIRROR_TOLERANCE = 1;
@@ -55,11 +57,12 @@ afterEach(() => {
 });
 
 it("fills a slot at the mirror of every slot it fills", async () => {
-  h.debug.setDiveLaunching(false);
-  h.debug.setShipContact(false);
+  startPosed(h);
+  h.debug.setWaveEntry(true);
   await startStage(h, STAGE);
+  settleWave(h);
 
-  await h.advanceSeconds(ASSEMBLE_BY);
+  await h.advance(1);
   const settled = h.snapshot();
   captureStill(h, "mirror");
 
@@ -69,8 +72,8 @@ it("fills a slot at the mirror of every slot it fills", async () => {
   assertGreaterThanOrEqual(
     assembled.length,
     MIN_DRONES,
-    `the drones standing in the formation ${String(ASSEMBLE_BY)}s after the ` +
-      `wave opened (specs/swarm.md)`,
+    `the drones standing in the formation the stage-${String(STAGE)} wave ` +
+      "laid out (specs/swarm.md)",
   );
 
   const filled = assembled.map((drone) => drone.slotX);

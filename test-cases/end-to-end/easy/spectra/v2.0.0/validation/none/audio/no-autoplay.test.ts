@@ -51,10 +51,8 @@
 // exercise no line the frames below do not.
 //
 // SO NO STRETCH OF THE WALL CLOCK IS DRIVEN, and that is deliberate. What this
-// point requires is silence before a key, not that the game advances on its own;
-// the one point in this project whose requirement IS unstepped advance is
-// `instrumentation/advances-in-real-time`, and even that one ends its wait on the
-// build's own clock passing a floor rather than on a fixed span of the wall clock.
+// point requires is silence before a key, not that the game advances on its own,
+// which only real time elapsing could decide and no point in this project reads.
 // A fixed span here would have decided nothing except how many frames of its own a
 // busy host let the build run — reach that rises and falls with the machine rather
 // than with the build.

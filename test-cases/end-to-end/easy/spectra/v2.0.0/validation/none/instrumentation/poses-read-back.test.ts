@@ -40,8 +40,7 @@
 // `controls/mute-m` drives the real binding and `audio/mute-silences` reads the
 // consequence. The two clock operations are absent for a related reason:
 // `setAutoStep` and `advance` set no field of the state, and
-// `instrumentation/elapsed-time-steps` and `instrumentation/advances-in-real-time`
-// read what they do.
+// `instrumentation/elapsed-time-steps` reads what `advance` does.
 //
 // WHAT THIS DOES NOT DECIDE. What any posed value MEANS to the simulation. That a
 // gate held off keeps a wave's drones away is `instrumentation/wave-entry-gate`'s,

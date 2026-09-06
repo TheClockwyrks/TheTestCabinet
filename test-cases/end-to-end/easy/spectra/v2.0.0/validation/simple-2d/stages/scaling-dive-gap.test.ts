@@ -38,14 +38,15 @@
 //   reviewer's replay is cut from, and it is what ties the figure above to the
 //   behaviour it is supposed to describe.
 //
-// Neither subsumes the other. The cadence alone cannot separate a build one step
-// out along the ramp without many gaps of game time — at stage 7 it would draw from
-// [0.91, 1.69] against a stated [0.98, 1.82], and a handful of drawn gaps is far
-// too few to name the difference. The drawn figure separates it on the first draw
-// that lands outside the stated window, which is about one draw in six, so over a
-// hundred draws it is named to better than a part in ten thousand. The drawn figure
-// in turn says nothing about whether the clock advances at all, or whether the
-// launcher waits for the figure it drew, which the cadence does.
+// Neither subsumes the other. The drawn figure says nothing about whether the
+// clock advances at all, or whether the launcher waits for the figure it drew,
+// which the cadence does; the cadence, over two drawn gaps, cannot tell a window
+// from one a step along the ramp, which the drawn figures do the moment one lands
+// outside the stated window. The draws are a small sample: each is held to the
+// window and nothing is inferred from their spread, so a build drawing from a
+// wider window is named by the first draw that lands outside it, and a window
+// whose every draw sits inside the stated one is the reviewer's to judge from the
+// replay rather than a figure this point measures.
 //
 // THE CADENCE OPENS ON A POSED GAP. specs/instrumentation.md gives `setDiveGap` the
 // figure the clock must reach, and the first leg poses it at `GAP_MIN` exactly:
@@ -55,16 +56,16 @@
 // gap the build DREW, and each is held to the figure the wave reported before the
 // leg began.
 //
-// WHAT IS POSED. A complete formation, every slot filled with an inert Shard. Every
-// drone's TRAVEL is off, so a launched drone holds its position and its `diving`
-// phase — specs/instrumentation.md: "Off, it holds its exact centre and keeps its
-// phase; nothing is cancelled, completed, or resolved early" — which is what
-// isolates the CADENCE from the dive: no drone flies down the field, none returns
-// to its slot to be launched a second time, and none of them fires. The cadence
-// leaves its four divers where they are, which still leaves forty-one of the
-// grid's forty-five standing; each of the hundred draws puts its own diver back
-// into `formation` before the next, so the grid is full for every one of them and
-// no drone is ever the reason a launch did not happen.
+// WHAT IS POSED. A block of two full rows, every slot filled with an inert Shard.
+// Every drone's TRAVEL is off, so a launched drone holds its position and its
+// `diving` phase — specs/instrumentation.md: "Off, it holds its exact centre and
+// keeps its phase; nothing is cancelled, completed, or resolved early" — which is
+// what isolates the CADENCE from the dive: no drone flies down the field, none
+// returns to its slot to be launched a second time, and none of them fires. The
+// cadence leaves its three divers where they are, which still leaves fifteen of
+// the block's eighteen standing; each of the draws puts its own diver back into
+// `formation` before the next, so the block is whole for every one of them and no
+// drone is ever the reason a launch did not happen.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -72,13 +73,13 @@ import {
   DIVE_GAP_MAX,
   DIVE_GAP_MIN,
   FORM_COLS,
-  FORM_ROWS,
   diveGapScale,
 } from "../constants";
 import {
   assertBetween,
   assertCloseTo,
   assertEqual,
+  assertGreaterThanOrEqual,
   assertTrue,
 } from "../assert";
 import {
@@ -105,26 +106,36 @@ const GAP_MAX = DIVE_GAP_MAX * SCALE;
 /**
  * Drawn gaps read off the wave, one launch each.
  *
- * A hundred. Each is read EXACTLY, so the count is not beating down noise in a
- * mean: it is how many independent draws the window is held over. A build one step
- * out along the ramp draws from [0.91, 1.69], of which the part outside the stated
- * window is about a sixth, so a hundred draws leave it unnamed with probability
- * under one in ten thousand. Each draw costs two driven frames and a handful of
- * posed fields.
+ * Two dozen, which is a sample and not a measurement: each is read EXACTLY and
+ * held to the window on its own, so the count is how many draws are looked at
+ * rather than a figure any band is sized from. A build drawing from a wider
+ * window is named by the first draw that lands outside the stated one, and a
+ * draw that varies at all across two dozen shows at least two distinct figures.
+ * Each draw costs two driven frames and a handful of posed fields.
  */
-const DRAWS = 100;
+const DRAWS = 24;
+
+/**
+ * The distinct figures the drawn gaps must show among them.
+ *
+ * Two. specs/swarm.md draws each gap "uniformly at random" over the window, so a
+ * wave that reports the same gap for every launch is not drawing one; and two is
+ * where "varies" begins, so a build that draws is never failed on chance.
+ */
+const DISTINCT_MIN = 2;
 
 /**
  * Drawn gaps the wave is left to run out on its own clock.
  *
- * Three, after the posed one the cadence opens on. Each is held to the figure the
+ * Two, after the posed one the cadence opens on. Each is held to the figure the
  * wave reported, which is an EXACT reading rather than a sample of a distribution,
  * so the count is not a sample size: what more of them would buy is more of the
- * same exact agreement, at `GAP_MAX` of game time each. Three is enough
- * that a build agreeing by accident on one gap does not agree on all of them, and
- * it keeps the whole drive inside six seconds of game time.
+ * same exact agreement, at up to `GAP_MAX` of game time each. Two is enough that
+ * a build agreeing by accident on one gap does not agree on the next, and it
+ * keeps the whole drive inside five seconds of game time, so the point costs the
+ * same on every build rather than growing with a long real play.
  */
-const DRIVEN_GAPS = 3;
+const DRIVEN_GAPS = 2;
 
 /**
  * How far outside the stated window each bracket is posed, in seconds.
@@ -166,19 +177,22 @@ const LAUNCH_SLACK = seconds(2);
 const SCALE_DIGITS = 6;
 
 /**
- * Every slot of the grid specs/field.md fixes, filled with an inert Shard.
+ * The block the launcher chooses from: two full rows of the grid, every drone an
+ * inert Shard.
  *
- * The whole grid rather than a handful, so a build that launches from a chosen
- * subset of the block still has something to launch on every cadence the reading
- * counts, and so nothing about which slots are filled can shorten a leg.
+ * A block of drones resting in their slots is the situation specs/swarm.md
+ * launches a dive out of, and eighteen is several times the launches this point
+ * counts, so the wave always has drones standing to choose from and nothing about
+ * which slots are filled can move a launch. The rest of the grid would add
+ * nothing to the reading and a drawn drone to every frame of the drive.
  */
-const FULL_FORMATION: FormationEntry[] = Array.from(
-  { length: FORM_ROWS * FORM_COLS },
-  (_, index) => ({
+const BLOCK_ROWS = [0, 1] as const;
+const BLOCK: FormationEntry[] = BLOCK_ROWS.flatMap((row) =>
+  Array.from({ length: FORM_COLS }, (_, col) => ({
     kind: "shard" as const,
-    col: index % FORM_COLS,
-    row: Math.floor(index / FORM_COLS),
-  }),
+    col,
+    row,
+  })),
 );
 
 /**
@@ -201,7 +215,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** A live stage-7 wave holding a full formation, with the dive gate open. */
+/** A live stage-7 wave holding the block, with the dive gate open. */
 function poseWave(harness: Harness): void {
   harness.debug.reset();
   startPosed(harness);
@@ -213,7 +227,7 @@ function poseWave(harness: Harness): void {
     `the dive-gap scale the game derives at stage ${String(STAGE)}, ` +
       "max(0.55, 1 - 0.05 * (stage - 1)) (specs/stages.md)",
   );
-  poseFormation(harness, FULL_FORMATION);
+  poseFormation(harness, BLOCK);
   harness.debug.setDiveClock(0);
   harness.debug.setDiveLaunching(true);
 }
@@ -366,6 +380,12 @@ it("draws stage-seven dive gaps from the window diveGapScale(7) scales", async (
         "(specs/stages.md, specs/swarm.md)",
     );
   }
+  assertGreaterThanOrEqual(
+    new Set(draws.gaps).size,
+    DISTINCT_MIN,
+    `the distinct figures among the ${String(DRAWS)} stage-${String(STAGE)} dive gaps the wave ` +
+      "drew, each drawn uniformly at random over the window (specs/swarm.md)",
+  );
   assertEqual(
     draws.early,
     0,

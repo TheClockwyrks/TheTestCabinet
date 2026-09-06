@@ -22,20 +22,24 @@
 // faculties off, so nothing but a launch can change one of those phases, and a
 // launched drone reports `diving` whether or not its travel is gated.
 //
-// TWENTY SECONDS IS SEVERAL TIMES ANY GAP THE SPECIFICATION NAMES.
-// `DIVE_FIRST_DELAY` is `2.0` s and the longest later gap is `DIVE_GAP_MAX`
-// (`2.6`) times `diveGapScale(1)` (`1`), so twenty seconds is ten first delays: a
-// build whose gate merely delays the assault rather than holding it is caught.
-//
-// THE DIVE CLOCK IS POSED TO ZERO BEFORE EITHER HALF, so the delay the ungated
-// half measures runs from a moment this check chose rather than from whenever the
-// build decided its formation had assembled.
+// THE DIVE CLOCK IS POSED PAST EVERY GAP THE SPECIFICATION NAMES, so the gated
+// half is not a wait for a delay to run out. `DIVE_FIRST_DELAY` plus
+// `DIVE_GAP_MAX` times `diveGapScale(1)` is `4.6` s, beyond the first dive's
+// delay and beyond the longest gap any later dive draws, so a launcher the gate
+// does not hold has its figure in hand on the very first frame; a build whose
+// gate merely delays the assault, or one whose clock keeps running under it and
+// launches a fresh gap later, is caught inside the three seconds the formation is
+// then played for, which is longer than `DIVE_GAP_MAX` itself. What the clock
+// does under the gate is not read here, and the clock is a wave figure the
+// specification bounds below and not above, so a posed `4.6` s is inside what it
+// allows.
 //
 // AND THE GATE IS THEN OPENED ON THE SAME FORMATION. Without that half, a build
 // that never launches a dive at all would pass a point about holding its dives.
-// Six seconds is three `DIVE_FIRST_DELAY`s, so a build whose delay is anywhere up
-// to three times the figure still launches inside it and is graded on the figure
-// by `swarm.dive-first-delay`.
+// The clock already stands past the figure the launcher waits on, so a conforming
+// build launches at once; it is given three `DIVE_FIRST_DELAY`s all the same, so a
+// build whose launcher is anywhere up to three times late still launches inside
+// it and is graded on the figure by `swarm.dive-first-delay`.
 //
 // WHAT THIS DOES NOT DECIDE. When a dive is launched, how the gaps are drawn, or
 // which drone is taken — `swarm.dive-first-delay`, `swarm.dive-cadence` and
@@ -43,7 +47,12 @@
 // which no point reads on its own.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DIVE_FIRST_DELAY, DIVE_GAP_MAX, FORM_COLS } from "../constants";
+import {
+  DIVE_FIRST_DELAY,
+  DIVE_GAP_MAX,
+  FORM_COLS,
+  diveGapScale,
+} from "../constants";
 import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
@@ -70,15 +79,28 @@ const STAGE = 1;
  */
 const ROWS = [0, 1] as const;
 
-/** How long the gated formation is played for, in seconds. */
-const GATED_SECONDS = 20;
+/**
+ * Where the wave's dive clock is posed, in seconds: past the first dive's delay
+ * and past the longest gap a later dive draws at this stage, so a launcher the
+ * gate does not hold has nothing left to wait for.
+ */
+const POSED_CLOCK = DIVE_FIRST_DELAY + DIVE_GAP_MAX * diveGapScale(STAGE);
+
+/**
+ * How long the gated formation is played for, in seconds.
+ *
+ * Longer than `DIVE_GAP_MAX` (`2.6`), so a build whose clock runs on under the
+ * gate and launches a whole fresh gap later is still seen doing it.
+ */
+const GATED_SECONDS = 3;
 
 /**
  * How long the ungated formation is given to launch one, in seconds.
  *
- * Three `DIVE_FIRST_DELAY`s. A build whose first dive is as much as three times
- * late still launches inside it, and `swarm.dive-first-delay` is what grades the
- * figure.
+ * Three `DIVE_FIRST_DELAY`s. The posed clock already stands past the figure the
+ * launcher waits on, so a conforming build launches at once; a build whose first
+ * dive is as much as three times late still launches inside it, and
+ * `swarm.dive-first-delay` is what grades the figure.
  */
 const UNGATED_SECONDS = 3 * DIVE_FIRST_DELAY;
 
@@ -111,9 +133,9 @@ it("launches no dive while the gate is off, and one once it is on", async () => 
   }
   const formation = poseFormation(h, entries);
 
-  // The clock at a moment this check chose, so the ungated half below measures
-  // from there rather than from an assembly the build decided on.
-  h.debug.setDiveClock(0);
+  // The clock past every figure the launcher could be waiting on, so the gate is
+  // the only thing between the formation and a dive.
+  h.debug.setDiveClock(POSED_CLOCK);
 
   const launchedGated = await h.until(anyDiving, {
     maxFrames: ticksFor(GATED_SECONDS),
@@ -127,9 +149,9 @@ it("launches no dive while the gate is off, and one once it is on", async () => 
     false,
     `whether any of the ${formation.length} drones resting in the formation ` +
       `entered phase "diving" over ${GATED_SECONDS} s at stage ${STAGE} with ` +
-      `setDiveLaunching(false) held — that is ten DIVE_FIRST_DELAYs ` +
-      `(${DIVE_FIRST_DELAY} s) and several times DIVE_GAP_MAX ` +
-      `(${DIVE_GAP_MAX} s) (specs/swarm.md)`,
+      `setDiveLaunching(false) held and the dive clock posed at ` +
+      `${POSED_CLOCK} s — past DIVE_FIRST_DELAY (${DIVE_FIRST_DELAY} s) plus ` +
+      `DIVE_GAP_MAX (${DIVE_GAP_MAX} s) (specs/swarm.md)`,
   );
 
   // And the control: the formation really was one a dive could be launched from.
@@ -142,7 +164,7 @@ it("launches no dive while the gate is off, and one once it is on", async () => 
     launched.hit,
     `a dive to be launched within ${UNGATED_SECONDS} s of ` +
       `setDiveLaunching(true) on the same formation, with the dive clock ` +
-      `posed at 0 — without one, a formation that held together while the ` +
-      `gate was off says nothing about the gate`,
+      `posed at ${POSED_CLOCK} s — without one, a formation that held ` +
+      `together while the gate was off says nothing about the gate`,
   );
 });
