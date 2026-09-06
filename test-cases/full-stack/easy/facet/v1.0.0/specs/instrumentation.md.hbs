@@ -7,7 +7,8 @@ waiting on real time.
 
 You implement it. Every operation this file specifies is a deliverable, and the
 build installs the finished surface on `window.__facet` as soon as the game has
-initialized. Every scenario driven from code reaches the game through it, so it
+initialized, which is once every load of a produced file `specs/assets.md` names
+has settled. Every scenario driven from code reaches the game through it, so it
 is present and exactly as specified here.
 
 Each operation is a read or a pose of the game's state. It arranges the board,
@@ -22,7 +23,8 @@ and inspected from code without moving a real pointer or waiting on real time.
 
 You implement it. Every operation this file specifies is a deliverable, and the
 build's `initialize` returns the finished surface beside the state it built, as
-the pair `[state, debug]`. The engine returns that same value from
+the pair `[state, debug]`, resolving once every load of a produced file
+`specs/assets.md` names has settled. The engine returns that same value from
 `engine.debug`, and it is reached that way alone: nothing is installed on the
 page. Every scenario driven from code reaches the game through it, so it is
 present and exactly as specified here.
@@ -47,8 +49,10 @@ and inspected from code without moving a real pointer or waiting on real time.
 You implement it. Every operation this file specifies is a deliverable, and the
 game instance's `initialize` returns the finished surface. The engine holds it
 and returns it from `engine.debug`, and it is reached that way alone: nothing is
-installed on the page. Every scenario driven from code reaches the game through
-it, so it is present and exactly as specified here.
+installed on the page. The engine's own `initialize` resolves once every load
+of a produced file `specs/assets.md` names has settled, so the surface is
+reached once the game has initialized. Every scenario driven from code reaches
+the game through it, so it is present and exactly as specified here.
 
 Each operation acts on the live game at the moment it is called. A pose takes
 only the parameters its heading names, arranges the running game through the

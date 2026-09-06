@@ -43,11 +43,17 @@ const runtime = createRuntime({
 // in one go and runs no frame. It also starts the produced files loading, which
 // the frames after it draw and sound as each one arrives.
 runtime.initialize();
+runtime.start();
 
 // window.__facet (see debug.ts and specs/instrumentation.md). Installed on
 // every build, and inert during normal play. It is handed the runtime as well
 // as the pose surface, because two of its operations — `setAutoStep` and
 // `advance` — are about the clock, and nothing outside this build owns that.
-installDebugApi(runtime, runtime.debug);
-
-runtime.start();
+//
+// Installed once the load has settled: specs/assets.md makes the load part of
+// initialization, and specs/instrumentation.md puts the surface up once the
+// game has initialized, so a frame driven through it draws from the produced
+// art rather than from the fallback a still-loading frame draws.
+void runtime.loaded().then(() => {
+  installDebugApi(runtime, runtime.debug);
+});

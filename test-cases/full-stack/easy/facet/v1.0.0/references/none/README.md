@@ -176,8 +176,9 @@ files:
   through.
 - **`src/assets.ts`** — the manifest of every produced file and the loader that
   fetches it. Loading runs in the background from the first frame, so the game
-  and `window.__facet` are up immediately and each sprite joins the picture on
-  the frame after it lands.
+  is up immediately and each sprite joins the picture on the frame after it
+  lands; `window.__facet` is installed once every load has settled, since the
+  specs make the load part of initialization.
 - **`src/audio-bus.ts`** — cues declared by name over the produced `.wav`s,
   decoded once through `decodeAudioData` on a Web Audio context opened by the
   first user gesture, plus the looping music bed. Muting is a gain of zero on the
@@ -320,7 +321,7 @@ vite.config.ts        Build config (base "./", emits to dist/)
 vitest.config.ts      The build's own test suite, over src/
 public/assets/        The produced art, effects, and audio, copied into dist/
 src/
-  main.ts             Bootstrap: stand the runtime up, initialize, install, run
+  main.ts             Bootstrap: stand the runtime up, initialize, run, install
   runtime.ts          The frame loop, the manual clock, and the wiring
   viewport.ts         The canvas fit and the pointer map: scale, letterbox, dpr
   keyboard.ts         Named actions over key codes, with edge detection

@@ -75,6 +75,11 @@ root of its origin, so it runs correctly from any sub-path of it. So:
 This governs the produced art, the `system.json` files, the `.wav`s, and the
 bundled JS and CSS alike.
 
+Loading the produced files is part of initialization: the game has not
+initialized until every load it starts has settled. `specs/instrumentation.md`
+makes the debug surface reachable once the game has initialized, so every frame
+driven through that surface draws from the produced art.
+
 ## Sprites — `draw`
 
 Every gem on the board is a produced sprite. Produce a single PNG per sprite
