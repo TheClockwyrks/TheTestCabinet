@@ -83,7 +83,7 @@ const INSPECTED = quietRowsWith([
  * Every snapshot field specs/instrumentation.md types as a plain number.
  *
  * The whole list rather than a sample, because the shape is what this point
- * decides: a build that reports nineteen of the twenty is caught here and
+ * decides: a build that reports eighteen of the nineteen is caught here and
  * nowhere else, and the three timing figures in particular (`swapTimer`,
  * `stepTimer`, `stepHold`) are the ones a reader of the chain reaches for.
  */
@@ -105,7 +105,6 @@ const NUMBERS = [
   "moveScore",
   "bestMove",
   "bestChain",
-  "rngState",
   "simTime",
 ] as const;
 
@@ -183,6 +182,16 @@ it("reports the whole documented snapshot shape, off a board in play", async () 
   // list the shape says it is, so a reader that walks it never meets an
   // `undefined`.
   assertTrue(Array.isArray(s.targets), "snapshot.targets is a list");
+
+  // `refillKinds` is "`GRID_COLS` (`8`) entries whatever the board", one string
+  // per column. What a pose writes into an entry is
+  // `instrumentation/set-refill-kinds-reported`'s; what is decided here is that
+  // the field is the list of strings the shape says it is.
+  assertTrue(Array.isArray(s.refillKinds), "snapshot.refillKinds is a list");
+  assertLength(s.refillKinds, GRID_COLS, "snapshot.refillKinds");
+  s.refillKinds.forEach((kinds, col) => {
+    assertEqual(typeof kinds, "string", `snapshot.refillKinds[${col}]`);
+  });
 
   // A board is really in play, so these are live values rather than the resting
   // ones a stub would answer with.

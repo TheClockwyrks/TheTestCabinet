@@ -26,7 +26,7 @@
 // further is waited out for exactly as long as it asks for.
 //
 // WHAT IS ASSERTED IS COMPUTED FROM THE BOARD THAT WAS OBSERVED. R9 refills the
-// top of every cleared column from the game's own seeded generator, and what it
+// top of every cleared column from the game's own random draw, and what it
 // deals there is the build's business: it could itself seed a run. So the
 // expectation is read off the settled board the build reported, through R5's
 // seed and R6's closure, rather than predicted from the posed board — a refill

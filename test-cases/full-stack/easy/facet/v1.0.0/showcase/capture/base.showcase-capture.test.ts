@@ -9,7 +9,7 @@
 // screen. Nothing is posed mid-play: `loadBoard` and `setGem` are never called,
 // and the only surface operations the take uses are the clock
 // (`setAutoStep`/`advance`, which nothing outside an engineless build owns),
-// `reset` for the seed, and `snapshot` for reading.
+// `reset` to open on the title screen, and `snapshot` for reading.
 //
 // The player has two layers, and the split is the same one carom's driver uses.
 // EXECUTION is a real pointer through `press`/`moveTo`/`lift`, the input path a
@@ -38,9 +38,10 @@
 // with the pointer — the menus answer the same mouse the board does — and plays
 // on into the next level, whose board pours in from above.
 //
-// The take is deterministic — the same seed replays the identical session —
-// which is what lets several takes be auditioned with the recorder off and the
-// winner re-run with it on.
+// Every take is a fresh deal off the build's own random source, so no take can
+// be played twice: each one is recorded as it is auditioned, under its own
+// output ids, and the winner's files are copied to the names the showcase
+// carries once every take has been judged.
 //
 // Run from the reference workspace root:
 //   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1500 \
@@ -48,11 +49,13 @@
 //
 // See `showcase/capture/README.md` for the staging steps and every knob.
 
+import { copyFileSync, existsSync } from "node:fs";
 import { afterEach, beforeEach, it } from "vitest";
 import {
   captureReplay,
   captureStill,
   createHarness,
+  mediaDestination,
   TICK_HZ,
   type Harness,
 } from "./harness";
@@ -79,21 +82,30 @@ import type { FacetSnapshot } from "./surface";
 /* Knobs                                                                      */
 /* -------------------------------------------------------------------------- */
 
-/** Seeds auditioned when the driver is asked to pick a take. */
-const AUDITION_SEEDS = (process.env.TCAB_SHOWCASE_SEEDS ?? "1,2,3,4,5,6")
-  .split(",")
-  .map((piece) => Number(piece.trim()))
-  .filter((seed) => Number.isFinite(seed));
+/** How many takes are auditioned, each a fresh deal and a fresh session. */
+const AUDITION_TAKES = Number(process.env.TCAB_SHOWCASE_TAKES ?? "12");
 
-/** Tie-break rotations auditioned against each seed. */
+/** Tie-break rotations, applied to the takes in turn. */
 const AUDITION_PHASES = (process.env.TCAB_SHOWCASE_PHASES ?? "0,1")
   .split(",")
   .map((piece) => Number(piece.trim()))
   .filter((phase) => Number.isFinite(phase));
 
-/** The take that ships, when the driver is not auditioning. */
-const CHOSEN_SEED = Number(process.env.TCAB_SHOWCASE_SEED ?? "NaN");
-const CHOSEN_PHASE = Number(process.env.TCAB_SHOWCASE_PHASE ?? "0");
+/** The showcase's own output ids, which the winning take's files are copied to. */
+const SHOWCASE_OUTPUTS: readonly (readonly [id: string, extension: string])[] =
+  [
+    ["gameplay", "json.gz"],
+    ["fresh-board", "png"],
+    ["a-corner-goes", "png"],
+    ["deep-chain", "png"],
+    ["strained-board", "png"],
+    ["level-clear", "png"],
+  ];
+
+/** The output id one take's media is written under, so no take overwrites another. */
+function takeOutput(take: number, id: string): string {
+  return `take-${String(take).padStart(2, "0")}-${id}`;
+}
 
 /** How long the clip runs, in seconds of game time. */
 const MIN_SECONDS = Number(process.env.TCAB_SHOWCASE_MIN_SECONDS ?? "20");
@@ -236,7 +248,8 @@ function cutCount(rows: BoardRows): number {
 /* -------------------------------------------------------------------------- */
 
 interface Take {
-  seed: number;
+  /** Which audition this was, counted from 1. */
+  take: number;
   phase: number;
   frames: number;
   moves: number;
@@ -264,23 +277,27 @@ interface Take {
 /**
  * Play one take out.
  *
- * `record` writes the stills; the replay is armed by the caller around this, so
- * the recorded stretch is exactly the session below and nothing else.
+ * The stills are written under the take's own output ids; the replay is armed by
+ * the caller around this, so the recorded stretch is exactly the session below
+ * and nothing else.
  */
 async function runTake(
   h: Harness,
-  seed: number,
+  index: number,
   phase: number,
-  record: boolean,
 ): Promise<Take> {
   // A previous take can end with the mouse held over a gem. Lift it before the
-  // reset, so no drag leaks across and the seed replays what it replayed before.
+  // reset, so no drag leaks across into the next session.
   await h.lift();
-  await h.debug.reset({ seed });
+  await h.debug.reset();
   await h.advance(1);
 
+  const record = true;
+  const still = (id: string): Promise<void> =>
+    captureStill(h, takeOutput(index, id));
+
   const take: Take = {
-    seed,
+    take: index,
     phase,
     frames: 0,
     moves: 0,
@@ -314,7 +331,7 @@ async function runTake(
       const want = Math.floor(take.frames / (TICK_HZ * 2));
       if (want > qaStills) {
         qaStills = want;
-        await captureStill(h, `qa-${String(want).padStart(2, "0")}`);
+        await still(`qa-${String(want).padStart(2, "0")}`);
       }
     }
   };
@@ -338,9 +355,9 @@ async function runTake(
   await h.tapAction("confirm");
   take.frames += 1;
 
-  // The board the seed dealt, caught pouring in from above it, and then standing.
+  // The board the deal dealt, caught pouring in from above it, and then standing.
   await advance(POUR_STILL_FRAMES);
-  if (record) await captureStill(h, "fresh-board");
+  if (record) await still("fresh-board");
   await advance(DEAL_FRAMES - POUR_STILL_FRAMES);
 
   let snapshot: FacetSnapshot = await h.snapshot();
@@ -366,7 +383,7 @@ async function runTake(
     if (record && next.lastCleared > bestTearStill && next.lastCleared >= 8) {
       bestTearStill = next.lastCleared;
       await intoStep(shatterEnd(next.lastWaves) * 0.5 + SHATTER_STILL_LEAD);
-      await captureStill(h, "a-corner-goes");
+      await still("a-corner-goes");
     }
     // The deepest step of the take, kept rather than the first deep one so the
     // still carries the highest multiplier the session reached, and framed part
@@ -376,7 +393,7 @@ async function runTake(
       const shattered = shatterEnd(next.lastWaves);
       const landed = landAt(next.lastWaves, next.lastFall);
       await intoStep(shattered + (landed - shattered) * FALL_STILL_FRACTION);
-      await captureStill(h, "deep-chain");
+      await still("deep-chain");
     }
   };
 
@@ -402,7 +419,7 @@ async function runTake(
    */
   const clearLevel = async (): Promise<void> => {
     await advance(LEVELCLEAR_FRAMES);
-    if (record) await captureStill(h, "level-clear");
+    if (record) await still("level-clear");
 
     const screen = await h.snapshot();
     const cont = screen.targets.find((target) => target.id === "menu-0");
@@ -447,7 +464,7 @@ async function runTake(
       standing * 100 + cutCount(rows) > bestStrainStill
     ) {
       bestStrainStill = standing * 100 + cutCount(rows);
-      await captureStill(h, "strained-board");
+      await still("strained-board");
     }
 
     const candidates = rank(rows);
@@ -515,7 +532,7 @@ function judge(take: Take): number {
 
 function describe(take: Take): string {
   return (
-    `seed=${take.seed} phase=${take.phase}: ` +
+    `take=${take.take} phase=${take.phase}: ` +
     `${(take.frames / TICK_HZ).toFixed(1)}s, ${take.moves} moves, ` +
     `${take.steps} steps, ${take.cleared} cleared, biggest ${take.biggest}, ` +
     `deepest chain ${take.deepest}, best move ${take.richest}, ` +
@@ -544,29 +561,31 @@ it(
     if (h.surfaceFault !== null) {
       throw new Error(`facet: ${h.surfaceFault}`);
     }
-    let seed = CHOSEN_SEED;
-    let phase = CHOSEN_PHASE;
-
-    if (!Number.isFinite(seed)) {
-      // Audition with the recorder off, then re-run the winner under it.
-      let best: Take | null = null;
-      for (const auditionSeed of AUDITION_SEEDS) {
-        for (const auditionPhase of AUDITION_PHASES) {
-          const take = await runTake(h, auditionSeed, auditionPhase, false);
-          console.log(`take ${describe(take)}`);
-          if (best === null || judge(take) > judge(best)) best = take;
-        }
-      }
-      if (best === null) throw new Error("facet: no take was auditioned");
-      seed = best.seed;
-      phase = best.phase;
+    if (AUDITION_TAKES < 1 || AUDITION_PHASES.length === 0) {
+      throw new Error("facet: nothing to audition");
     }
 
-    console.log(`recording seed=${seed} phase=${phase}`);
-    const final = await captureReplay(h, "gameplay", () =>
-      runTake(h, seed, phase, true),
-    );
-    console.log(`recorded ${describe(final)}`);
+    // Every take is recorded as it is played, because a fresh deal cannot be
+    // played twice; the winner's files are copied to the showcase's names once
+    // every take has been judged.
+    let best: Take | null = null;
+    for (let index = 1; index <= AUDITION_TAKES; index += 1) {
+      const phase = AUDITION_PHASES[(index - 1) % AUDITION_PHASES.length];
+      const take = await captureReplay(h, takeOutput(index, "gameplay"), () =>
+        runTake(h, index, phase),
+      );
+      console.log(`take ${describe(take)}`);
+      if (best === null || judge(take) > judge(best)) best = take;
+    }
+    if (best === null) throw new Error("facet: no take was auditioned");
+
+    console.log(`keeping ${describe(best)}`);
+    for (const [id, extension] of SHOWCASE_OUTPUTS) {
+      const from = mediaDestination(takeOutput(best.take, id), extension);
+      const to = mediaDestination(id, extension);
+      if (from === null || to === null || !existsSync(from)) continue;
+      copyFileSync(from, to);
+    }
   },
   30 * 60 * 1000,
 );

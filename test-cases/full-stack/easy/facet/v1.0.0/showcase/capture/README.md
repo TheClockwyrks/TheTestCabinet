@@ -9,8 +9,8 @@ chains, the strain, the cuts and the refill are all the build's own.
 
 Nothing is posed mid-play: the driver never calls `loadBoard` or `setGem`, and
 the only surface operations it uses are the clock (`setAutoStep` and `advance`,
-which nothing outside an engineless build owns), `reset` for the seed, and
-`snapshot` for reading. What it plans with is the case's own rule helpers in
+which nothing outside an engineless build owns), `reset` to open on the title
+screen, and `snapshot` for reading. What it plans with is the case's own rule helpers in
 `validation/none/board.ts` — `legalSwaps`, `swapped`, `runSeed`, `expandClearSet`
 — so each candidate swap is played forward under R1, R3, R4, R5 and R6 before it
 is made and the player takes the move that clears the most. The escalation in the
@@ -53,16 +53,17 @@ sed -i 's/^export const MAX_REPLAY_FRAMES = 300;$/export const MAX_REPLAY_FRAMES
   validation/constants.ts
 TCAB_VALIDATION_MEDIA_DIR=/tmp/facet-showcase \
   TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1600 \
-  TCAB_SHOWCASE_SEED=8 TCAB_SHOWCASE_PHASE=1 \
+  TCAB_SHOWCASE_TAKES=16 TCAB_SHOWCASE_PHASES=0,1 \
   TCAB_SHOWCASE_MIN_SECONDS=22 TCAB_SHOWCASE_MAX_SECONDS=40 \
   npx vitest run --config validation/vitest.config.ts \
   validation/showcase-capture.test.ts
 ```
 
 The outputs land under
-`/tmp/facet-showcase/validation/showcase-capture.test.ts/`. Copy
-`gameplay.json.gz`, `a-corner-goes.png`, `deep-chain.png`, `strained-board.png`,
-`level-clear.png` and `fresh-board.png` into `showcase/base/`, then delete the
+`/tmp/facet-showcase/validation/showcase-capture.test.ts/`: every take under its
+own `take-NN-` prefix, and the winner copied to `gameplay.json.gz`,
+`a-corner-goes.png`, `deep-chain.png`, `strained-board.png`, `level-clear.png`
+and `fresh-board.png`. Copy those six into `showcase/base/`, then delete the
 staged `validation/` copy — `references/*/validation` is scratch, it is
 gitignored, and nothing may be left behind in it. Deleting the copy is also what
 undoes the two `sed` edits, which are made to it rather than to the case's own
@@ -70,33 +71,33 @@ undoes the two `sed` edits, which are made to it rather than to the case's own
 
 ## The knobs
 
-| Variable | Does |
-| --- | --- |
-| `TCAB_VALIDATION_MEDIA_DIR` | Where the media is written. Nothing is written without it. |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | The written recording's frame cap, after the patch above. `1600` keeps every frame of a 24-second take, so the replay plays back at the 64 Hz it was driven at. |
-| `TCAB_SHOWCASE_SEED`, `TCAB_SHOWCASE_PHASE` | The take to record. Naming a seed skips the audition. |
-| `TCAB_SHOWCASE_SEEDS`, `TCAB_SHOWCASE_PHASES` | The takes auditioned when no seed is named, as comma-separated lists. |
-| `TCAB_SHOWCASE_MIN_SECONDS`, `TCAB_SHOWCASE_MAX_SECONDS` | The clip's bounds in game time. The take ends on the first settled board past the minimum, never mid-chain and never on the level-clear screen. |
-| `TCAB_SHOWCASE_QA_STILLS` | `1` writes a still every two seconds, for eyeballing a take. |
+| Variable                                                 | Does                                                                                                                                                            |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_VALIDATION_MEDIA_DIR`                              | Where the media is written. Nothing is written without it.                                                                                                      |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES`                        | The written recording's frame cap, after the patch above. `1600` keeps every frame of a 24-second take, so the replay plays back at the 64 Hz it was driven at. |
+| `TCAB_SHOWCASE_TAKES`                                    | How many takes are auditioned, each a fresh deal. `1` records a single take.                                                                                    |
+| `TCAB_SHOWCASE_PHASES`                                   | The tie-break rotations, as a comma-separated list, applied to the takes in turn.                                                                               |
+| `TCAB_SHOWCASE_MIN_SECONDS`, `TCAB_SHOWCASE_MAX_SECONDS` | The clip's bounds in game time. The take ends on the first settled board past the minimum, never mid-chain and never on the level-clear screen.                 |
+| `TCAB_SHOWCASE_QA_STILLS`                                | `1` writes a still every two seconds, for eyeballing a take.                                                                                                    |
 
 ## Auditioning
 
-The take is deterministic: the same seed and phase replay the identical session,
-which is what lets a take be judged with the recorder off and then re-run with it
-on. Running with no `TCAB_SHOWCASE_SEED` auditions every seed in
-`TCAB_SHOWCASE_SEEDS` against every phase in `TCAB_SHOWCASE_PHASES`, prints what
-each one did — moves, chain steps, gems cleared, the largest single step, the
-deepest chain, the richest move, the most flawed gems standing at once, the
-levels cleared, the longest stretch with nothing clearing, and whether it ended
-settled — and records the best. A phase rotates the choice between moves the
-planner rated equally, so it varies a take without ever handing the player a
-worse move than the one it had.
+Every take opens on a fresh deal off the build's own random source, so no take
+can be played twice. The driver therefore records every take as it plays it,
+each under its own `take-NN-` output ids, prints what each one did — moves,
+chain steps, gems cleared, the largest single step, the deepest chain, the
+richest move, the most flawed gems standing at once, the levels cleared, the
+longest stretch with nothing clearing, and whether it ended settled — and copies
+the best one's files to the showcase's own names once the last take has been
+judged. A phase rotates the choice between moves the planner rated equally, so
+it varies a take without ever handing the player a worse move than the one it
+had.
 
-The committed take is seed `8`, phase `1`, chosen from sixteen: twenty-three and
-three quarter seconds, fourteen moves, twenty-seven chain steps, a hundred and
-seventy-one stones cleared, a chain five steps deep, a single step that took
-twenty-two stones off the board, a best move of seven hundred and seventy, and a
-level cleared and continued from, ending settled at level two.
+The committed take was chosen from sixteen: twenty-three and three quarter
+seconds, fourteen moves, twenty-seven chain steps, a hundred and seventy-one
+stones cleared, a chain five steps deep, a single step that took twenty-two
+stones off the board, a best move of seven hundred and seventy, and a level
+cleared and continued from, ending settled at level two.
 
 ## What the size is
 

@@ -1,22 +1,30 @@
-// Facet — audio/mute-preserves-play: with sound muted from the mute key, the
-// same drive reaches the same place it reaches unmuted.
+// Facet — audio/mute-preserves-play: with sound muted from the mute key, a
+// drive reaches the place the rules put it.
 //
 // specs/ui.md, under Audio: "Muting and the first-interaction unlock belong to
 // the runtime. The game binds the `mute` action to the runtime's mute bit and
 // toggles it from any screen, then mirrors that bit into `state.muted` every
 // frame. The game stays fully playable with sound muted." The last sentence is
 // this point, and "fully playable" is read the only way it can be decided
-// without opinion: a muted round is the SAME round.
+// without opinion: a muted round is the round specs/rules.md describes.
 //
-// WHAT IS COMPARED, AND WHAT IS NOT. Two harnesses are stood up from the same
-// seed and driven through the identical scenario — a board carrying one planted
-// run, the swap that completes it requested, and its chain carried to the end.
-// One of them presses the key specs/controls.md binds to `mute` first.
-// Afterwards the board, `screen`, `phase`, `chainStep`, `score`, `levelScore`,
-// `level`, the four figures the last step left (`lastCleared`, `lastPoints`,
-// `lastWaves`, `lastFall`), the level's `bestMove` and `bestChain`, `legalSwap`,
-// the selection and the offer all have to agree, and so do the frames the drive
-// took and the game time it covered; `muted` is the one field entitled to differ.
+// WHAT IS ASSERTED, AND WHAT IS NOT. One harness is stood up, the key
+// specs/controls.md binds to `mute` is pressed, and the identical scenario every
+// chain point drives is played out: a board carrying one planted run, the swap
+// that completes it requested, and its chain carried to the end. Afterwards the
+// board, `screen`, `phase`, `chainStep`, `score`, `levelScore`, `level`, the
+// four figures the last step left (`lastCleared`, `lastPoints`, `lastWaves`,
+// `lastFall`), the level's `bestMove` and `bestChain`, `legalSwap`, the
+// selection and the offer all have to be what the rules give for that one
+// step, and `muted` has to still be `true`. A build that stops advancing the
+// board, refuses the swap, or skips the step's scoring while its bus is silent
+// fails here on the figure it lost.
+//
+// WHY THE REFILL IS POSED. R9 draws a refill's kind at random, so what lands in
+// the three cells the step empties is the build's and could complete a run of
+// its own. The refill is posed through `setRefillKinds` on the three columns
+// with kinds that complete no run, so the chain is exactly one step long and the
+// board it settles on can be stated.
 //
 // SILENCE ITSELF IS NOT READ, deliberately. specs/ui.md puts muting on the
 // RUNTIME rather than on the game, so a muted frame is entitled to raise its cue
@@ -25,52 +33,45 @@
 // made no sound would fail a build that muted exactly as the specification says
 // to. What is asserted is the game, which is what the sentence is about.
 //
-// WHY THE COUNTERS ARE READ FROM AN ORIGIN RATHER THAN ABSOLUTELY. Reaching the
-// mute bit costs the muted drive a key press, and a press is a frame the other
-// drive never spends. So each drive records `frame()` and the snapshot's
-// `simTime` at the instant its board is posed, and what is compared is the
-// frames taken and the game time covered SINCE that moment.
-//
-// AND WHY THE FRAME COUNTS CAN BE COMPARED AT ALL. `resolveChain` sizes each
-// boundary's drive off the state as it stands — the swap's own span while the
-// board is `swapping`, and the step's own `stepHold` less the `stepTimer` already
-// run while it is `resolving` — so two builds that reach the same states over the
-// same spans are driven over the same frames. A drive that took a different
-// number of frames is a drive that met different states, which is the difference
-// this point is looking for.
-//
-// NEITHER RESTING VALUE IS ASSUMED. The specification never says which way the
-// runtime's mute bit rests when a build opens, so each drive is brought to the
-// state it wants with at most one press of the toggle and then checked, rather
-// than being assumed to start unmuted.
+// THE RESTING VALUE IS NOT ASSUMED. The specification never says which way the
+// runtime's mute bit rests when a build opens, so the drive is brought to muted
+// with at most one press of the toggle and then checked, rather than being
+// assumed to start unmuted.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  assertCloseTo,
   assertDeepEqual,
   assertEqual,
+  assertGreaterThan,
   assertLength,
+  assertNull,
   assertTrue,
 } from "../assert";
 import {
-  assertBoardEquals,
+  clearSetFromRuns,
   hasAnyRun,
+  legalSwapExists,
   maximalRuns,
   quietRowsWithEscape,
+  renderBoard,
+  settle,
   swapIsLegal,
   swapped,
+  WILDCARD,
+  type BoardRows,
   type CellRef,
   type PlacedToken,
 } from "../board";
+import { BASE_SCORE, GRID_COLS } from "../constants";
 import {
   captureReplay,
   createHarness,
   loadBoard,
+  poseRefill,
   requestSwap,
   resolveChain,
   type Harness,
 } from "../harness";
-import type { FacetSnapshot } from "../surface";
 
 /** Three rubies one exchange short of a run in row 3, clear of the filler's corner. */
 const RUN_CELLS: readonly PlacedToken[] = [
@@ -84,41 +85,49 @@ const FROM: CellRef = { col: 5, row: 2 };
 const TO: CellRef = { col: 5, row: 3 };
 
 /**
- * Decimal places the two drives' elapsed game time is compared to.
+ * What the refill deals into the three columns the step empties, top down.
  *
- * NOT a specification figure. Each drive sums the same frame deltas over the
- * same number of frames, so the two spans are the same number; the tolerance is
- * there so a difference in the last bits of a floating-point sum is not read as
- * a difference in play.
+ * Each letter is chosen so the refilled gem completes no run with its
+ * neighbors, which is proved over the settled board below rather than trusted.
  */
-const TIME_DIGITS = 9;
+const REFILL: readonly (readonly [col: number, kinds: string])[] = [
+  [3, "C"],
+  [4, "S"],
+  [5, "M"],
+];
 
-/** What one drive of the scenario reached, measured from the moment it was posed. */
-interface Drive {
-  /** Frames run since the board was posed. */
-  frames: number;
-  /** Game time covered since the board was posed, in seconds. */
-  seconds: number;
-  /** Chain steps the settle took. */
-  steps: number;
-  /** The board it ended on, in specs/board.md's notation. */
-  board: string[];
-  /** The state it settled in. */
-  snapshot: FacetSnapshot;
+/** The refill pose in the snapshot's own shape, for `settle`. */
+const REFILL_KINDS: readonly string[] = Array.from(
+  { length: GRID_COLS },
+  (_, col) => REFILL.find(([at]) => at === col)?.[1] ?? "",
+);
+
+/** Three plain rubies at multiplier 1: the one step's points. */
+const STEP_POINTS = 3 * BASE_SCORE;
+
+/** The kind letter at each cell, so R7's strain digit is left to its own points. */
+function kindsOf(rows: BoardRows): string[] {
+  return rows.map((row) =>
+    row
+      .trim()
+      .split(/\s+/)
+      .map((token) => (token === WILDCARD ? token : token[0]))
+      .join(" "),
+  );
 }
 
-let plain: Harness;
+let h: Harness;
 
 beforeEach(async () => {
-  plain = await createHarness();
+  h = await createHarness();
 });
 
 afterEach(async () => {
-  await plain.dispose();
+  await h.dispose();
 });
 
 /**
- * Bring a build's mute bit to `want` with at most one press of the bound key,
+ * Bring the build's mute bit to `true` with at most one press of the bound key,
  * and prove it got there.
  *
  * The toggle is what specs/controls.md fixes ("`mute` — Toggles the runtime's
@@ -126,163 +135,100 @@ afterEach(async () => {
  * rather than assumed. A frame follows the press because specs/instrumentation.md
  * has the game mirror the bit into `muted` every frame.
  */
-async function setMuted(h: Harness, want: boolean): Promise<void> {
-  if ((await h.snapshot()).muted !== want) {
+async function mute(): Promise<void> {
+  if (!(await h.snapshot()).muted) {
     await h.tapAction("mute");
     await h.advance(1);
   }
   assertEqual(
     (await h.snapshot()).muted,
-    want,
+    true,
     "the mute bit the drive runs under",
   );
 }
 
-/** Drive the whole scenario on one harness, muted or not, and report where it got. */
-async function drive(h: Harness, muted: boolean): Promise<Drive> {
-  // A real gesture first, so a build that withholds audio until the player has
-  // interacted is in the same state in both drives.
-  await h.armAudio();
-  await setMuted(h, muted);
-
-  await loadBoard(h, quietRowsWithEscape(RUN_CELLS));
-  const originFrame = h.frame();
-  const originTime = (await h.snapshot()).simTime;
-
-  const requested = await requestSwap(h, FROM, TO);
-  assertEqual(
-    requested.phase,
-    "swapping",
-    "the phase the accepted swap opened",
-  );
-
-  const settled = await resolveChain(h);
-  assertTrue(settled.settled, "the chain returned to idle within the cap");
-
-  return {
-    frames: h.frame() - originFrame,
-    seconds: settled.snapshot.simTime - originTime,
-    steps: settled.steps,
-    board: await h.board(),
-    snapshot: settled.snapshot,
-  };
-}
-
-it("reaches the same board, score, phase and game time with sound muted", async () => {
+it("reaches the board, score, phase and figures the rules give with sound muted", async () => {
   const posed = quietRowsWithEscape(RUN_CELLS);
-  // The fixture is what it claims before either build is asked anything.
+  // The fixture is what it claims before the build is asked anything: no run on
+  // the posed board, a legal exchange, exactly one run made by it, and a refill
+  // that leaves the settled board with no run of its own, so the chain is one
+  // step long.
   assertEqual(hasAnyRun(posed), false, "a maximal run on the posed board");
-  assertEqual(
+  assertTrue(
     swapIsLegal(posed, FROM, TO),
-    true,
     "the scenario's exchange is legal under R1 and R3",
   );
-  assertLength(
-    maximalRuns(swapped(posed, FROM, TO)),
-    1,
-    "maximal runs the exchange produces",
+  const exchanged = swapped(posed, FROM, TO);
+  assertLength(maximalRuns(exchanged), 1, "maximal runs the exchange produces");
+  const cleared = clearSetFromRuns(exchanged);
+  assertLength(cleared, 3, "cells the one step clears");
+  const settled = settle(exchanged, cleared, REFILL_KINDS);
+  assertTrue(
+    settled.rows.every((row) => !row.includes(WILDCARD)),
+    "every refilled cell is posed",
+  );
+  assertEqual(hasAnyRun(settled.rows), false, "a run on the settled board");
+
+  // A real gesture first, so a build that withholds audio until the player has
+  // interacted is in the state it would be in under a hand.
+  await h.armAudio();
+  await mute();
+
+  await loadBoard(h, posed);
+  await poseRefill(h, REFILL);
+  const originTime = (await h.snapshot()).simTime;
+
+  const outcome = await captureReplay(h, "muted", async () => {
+    const requested = await requestSwap(h, FROM, TO);
+    assertEqual(
+      requested.phase,
+      "swapping",
+      "the phase the accepted swap opened",
+    );
+    return resolveChain(h);
+  });
+  assertTrue(outcome.settled, "the chain returned to idle within the cap");
+  const s = outcome.snapshot;
+
+  // The one field a muted drive is entitled to differ in, still set.
+  assertEqual(s.muted, true, "the mute bit the drive ran under");
+
+  // The board, kind for kind, as R9 leaves it after the one step, with the
+  // gems above the cleared row fallen into it and the posed refill on top.
+  assertDeepEqual(
+    kindsOf(renderBoard(s)),
+    kindsOf(settled.rows),
+    "the kinds on the board the muted drive settled on",
   );
 
-  const heard = await drive(plain, false);
+  // Every figure the round is played for, as specs/rules.md sets it after one
+  // step of three plain gems: the round goes on, the chain has settled, and the
+  // step's points reached every accumulation they are added to.
+  assertEqual(s.screen, "playing", "the screen");
+  assertEqual(s.phase, "idle", "the phase");
+  assertEqual(s.chainStep, 0, "the chain step");
+  assertEqual(s.level, 1, "the level");
+  assertEqual(s.score, STEP_POINTS, "the score");
+  assertEqual(s.levelScore, STEP_POINTS, "the level score");
+  assertEqual(s.lastCleared, 3, "the cells the last step cleared");
+  assertEqual(s.lastPoints, STEP_POINTS, "the points the last step scored");
+  assertEqual(s.lastWaves, 0, "the waves the last step's clear set carried");
+  assertGreaterThan(s.lastFall, 0, "the longest fall the last step left");
+  assertEqual(s.bestMove, STEP_POINTS, "the level's best move");
+  assertEqual(s.bestChain, 1, "the level's longest chain");
+  assertEqual(
+    s.legalSwap,
+    legalSwapExists(settled.rows),
+    "whether a legal swap remains",
+  );
+  assertNull(s.selection, "the selection");
+  assertNull(s.offer, "the offer");
 
-  const silent = await createHarness();
-  try {
-    const quiet = await captureReplay(silent, "muted", () =>
-      drive(silent, true),
-    );
-
-    // The one field entitled to differ, on both sides, so the comparison below
-    // is between a muted drive and an unmuted one rather than between two alike.
-    assertEqual(
-      heard.snapshot.muted,
-      false,
-      "the mute bit the sounding drive ran under",
-    );
-    assertEqual(
-      quiet.snapshot.muted,
-      true,
-      "the mute bit the silent drive ran under",
-    );
-
-    // The board, cell for cell.
-    assertBoardEquals(
-      quiet.board,
-      heard.board,
-      "the board the muted drive reached",
-    );
-
-    // Every figure the round is played for.
-    assertEqual(quiet.snapshot.screen, heard.snapshot.screen, "the screen");
-    assertEqual(quiet.snapshot.phase, heard.snapshot.phase, "the phase");
-    assertEqual(
-      quiet.snapshot.chainStep,
-      heard.snapshot.chainStep,
-      "the chain step",
-    );
-    assertEqual(quiet.snapshot.score, heard.snapshot.score, "the score");
-    assertEqual(
-      quiet.snapshot.levelScore,
-      heard.snapshot.levelScore,
-      "the level score",
-    );
-    assertEqual(quiet.snapshot.level, heard.snapshot.level, "the level");
-    assertEqual(
-      quiet.snapshot.lastCleared,
-      heard.snapshot.lastCleared,
-      "the cells the last step cleared",
-    );
-    assertEqual(
-      quiet.snapshot.lastPoints,
-      heard.snapshot.lastPoints,
-      "the points the last step scored",
-    );
-    assertEqual(
-      quiet.snapshot.lastWaves,
-      heard.snapshot.lastWaves,
-      "the waves the last step's clear set carried",
-    );
-    assertEqual(
-      quiet.snapshot.lastFall,
-      heard.snapshot.lastFall,
-      "the longest fall the last step left",
-    );
-    assertEqual(
-      quiet.snapshot.bestMove,
-      heard.snapshot.bestMove,
-      "the level's best move",
-    );
-    assertEqual(
-      quiet.snapshot.bestChain,
-      heard.snapshot.bestChain,
-      "the level's longest chain",
-    );
-    assertEqual(
-      quiet.snapshot.legalSwap,
-      heard.snapshot.legalSwap,
-      "whether a legal swap remains",
-    );
-    assertDeepEqual(
-      quiet.snapshot.selection,
-      heard.snapshot.selection,
-      "the selection",
-    );
-    assertDeepEqual(quiet.snapshot.offer, heard.snapshot.offer, "the offer");
-
-    // And the drive itself: the same chain, over the same frames, covering the
-    // same span of game time.
-    assertEqual(quiet.steps, heard.steps, "the chain steps the settle took");
-    assertEqual(
-      quiet.frames,
-      heard.frames,
-      "the frames the drive took from the posed board",
-    );
-    assertCloseTo(
-      quiet.seconds,
-      heard.seconds,
-      TIME_DIGITS,
-      "the game time the drive covered from the posed board",
-    );
-  } finally {
-    await silent.dispose();
-  }
+  // And the drive itself covered game time: the swap's own span and the step's
+  // hold both ran off the clock while the bus was silent.
+  assertGreaterThan(
+    s.simTime - originTime,
+    0,
+    "the game time the drive covered from the posed board",
+  );
 });

@@ -143,10 +143,11 @@ export interface BoardReading {
 /**
  * The token that matches whatever stands at its cell.
  *
- * R9 refills from the game's own seeded generator, so what lands in a refilled
- * cell is the build's business and no check may assert it. A check about a chain
- * states the cells that SURVIVED and writes this at every cell the refill could
- * have reached.
+ * R9 draws a refill's kind at random, so what lands in a refilled cell is the
+ * build's business and no check may assert it unless the check posed it. A
+ * check about a chain states the cells that SURVIVED and writes this at every
+ * cell the refill could have reached, or poses the refill through
+ * `setRefillKinds` and states the posed token there.
  */
 export const WILDCARD = "..";
 
@@ -984,8 +985,9 @@ export interface SettledCell {
   row: number;
   /**
    * The token the cell holds, and {@link WILDCARD} where the refill dealt the
-   * gem: R9 draws a refill's kind off the game's own seeded generator, so what
-   * lands there is the build's business and no check may assert it.
+   * gem without a pose: R9 draws a refill's kind at random, so what lands there
+   * is the build's business and no check may assert it. A refill the check
+   * posed is written as the posed kind, plain at strain `0`.
    */
   token: string;
   /** What R9 fixes as this gem's `fell`. */
@@ -1031,10 +1033,17 @@ export interface Settlement {
  * cut in it writes the created gem over `rows` with {@link withCells} and leaves
  * its cell out of `emptied`, and this settles it correctly with no further
  * argument.
+ *
+ * `refillKinds` is the pose `setRefillKinds` stands in for the draw with, in
+ * the snapshot's own shape: one string per column, the letter at index `r`
+ * being the kind the refill deals into row `r`. A refilled cell the pose names
+ * is written as that kind, plain at strain `0`; every other refilled cell is
+ * {@link WILDCARD}.
  */
 export function settle(
   rows: BoardRows,
   emptied: readonly CellRef[],
+  refillKinds: readonly string[] = [],
 ): Settlement {
   const grid = parseRows(rows);
   const empty = new Set<string>();
@@ -1066,9 +1075,12 @@ export function settle(
     }
     for (let row = target; row >= 0; row -= 1) {
       // A refill comes from above the board's top row, so `row + 1` rows is the
-      // least it can have traveled, and the token it lands as is the build's.
+      // least it can have traveled, and the token it lands as is the build's
+      // unless the check posed it.
       fellOf.set(cellKey({ col, row }), { atLeast: row + 1 });
       refilled.push({ col, row });
+      const letter = refillKinds[col]?.[row];
+      if (letter !== undefined) placed[row][col] = `${letter}0`;
     }
   }
 

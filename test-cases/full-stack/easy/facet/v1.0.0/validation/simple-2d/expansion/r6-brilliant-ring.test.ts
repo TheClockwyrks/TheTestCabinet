@@ -73,7 +73,7 @@ function kindAt(rows: BoardRows, col: number, row: number): GemKind | null {
  *
  * Kinds alone. Strain is R7's business and a cut is R8's, and neither belongs to
  * this point. The cells above the survivors hold R9's refill, drawn from the
- * game's own seeded source, and nothing here reads them.
+ * game's own random draw, and nothing here reads them.
  */
 function restingKinds(
   before: BoardRows,

@@ -19,8 +19,8 @@
 // corners and is caught there as well as on the count.
 //
 // AND THE CELLS ARE ONLY EVER READ FOR THEIR CUT. Nothing here reads a strain or
-// a kind: what R9 deals into an emptied cell is drawn off the game's own seeded
-// generator and is `settling/r9-refill-plain-zero`'s point rather than this one,
+// a kind: what R9 deals into an emptied cell is drawn off the game's own random
+// draw and is `settling/r9-refill-plain-zero`'s point rather than this one,
 // so a build that refills at the wrong strain loses that point and not this one
 // too.
 //

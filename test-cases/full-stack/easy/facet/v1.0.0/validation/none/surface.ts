@@ -36,7 +36,7 @@ export const FACET_HANDLE = HANDLE;
 // notation is written in and the target rectangle the four requirements are
 // asked of, so a check reads the same type whichever module it imported from and
 // two declarations cannot drift apart.
-export { FACET_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
+export { FACET_DEBUG_VERSION } from "./constants";
 export type { Cut, GemKind, PointerDevice, Screen } from "./constants";
 export type { CellRef, TargetRect } from "./board";
 
@@ -129,7 +129,11 @@ export interface FacetSnapshot {
   bestChain: number;
   /** Whether any legal swap exists, derived from R1 and R3. */
   legalSwap: boolean;
-  rngState: number;
+  /**
+   * The kinds posed for each column's refill, `GRID_COLS` entries: the string
+   * `setRefillKinds` posed for that column, and `""` for a column that draws.
+   */
+  refillKinds: string[];
   pointer: { x: number; y: number; down: boolean; device: PointerDevice };
   /** The id of the target the held press armed, or `null`. */
   armedTarget: string | null;
@@ -161,7 +165,7 @@ export interface FacetWindowApi {
   advance(seconds: number, frames?: number): void;
 
   /** Restores every declared field to its title-screen value. */
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   /** A pure read of the state. */
   snapshot(): FacetSnapshot;
 
@@ -172,12 +176,19 @@ export interface FacetWindowApi {
 
   /** Poses an arbitrary board, written in `specs/board.md`'s notation. */
   loadBoard(rows: readonly string[]): void;
-  /** Deals a fresh opening board through the game's own code, from `rngState`. */
+  /** Deals a fresh opening board through the game's own code. */
   dealBoard(): void;
   /** Leaves no board in play. */
   clearBoard(): void;
   /** Writes one cell of the board. */
   setGem(col: number, row: number, token: string): void;
+  /**
+   * Poses what R9's refill deals into column `col`, letter by letter from the
+   * top of the board down; a row past the end of `kinds` draws.
+   */
+  setRefillKinds(col: number, kinds: string): void;
+  /** Leaves no refill posed on any column, so every refill draws. */
+  clearRefillKinds(): void;
 
   setScore(points: number): void;
   setLevel(level: number): void;
@@ -214,8 +225,8 @@ export interface FacetWindowApi {
  * Every operation `specs/instrumentation.md` requires on the surface under this
  * engine.
  *
- * Twenty-six names, in the order the specification introduces them: the
- * twenty-four every engine's surface carries, plus the two clock operations that
+ * Twenty-eight names, in the order the specification introduces them: the
+ * twenty-six every engine's surface carries, plus the two clock operations that
  * exist only here because nothing outside an engineless build owns its loop.
  *
  * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE, reads it, or moves the
@@ -234,6 +245,8 @@ export const REQUIRED_OPS = [
   "dealBoard",
   "clearBoard",
   "setGem",
+  "setRefillKinds",
+  "clearRefillKinds",
   "setScore",
   "setLevel",
   "setLevelScore",

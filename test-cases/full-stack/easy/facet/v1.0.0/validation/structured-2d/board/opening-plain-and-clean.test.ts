@@ -20,7 +20,7 @@
 // membership of `GEM_KINDS` — which also rules out the `null` a prism reports,
 // since a prism carries no kind at all.
 //
-// WHY SEVERAL SEEDS. Each seed is a different draw off the build's own random
+// WHY SEVERAL DEALS. Each deal is a different draw off the build's own random
 // source, and the property has to hold of every board it deals rather than of a
 // lucky one.
 
@@ -36,18 +36,20 @@ import {
 import type { FacetSnapshot } from "../surface";
 
 /**
- * The seeds a round is dealt from.
+ * How many rounds are dealt.
  *
- * Twelve arbitrary positive numbers, each a different draw off the build's own
- * seeded source. Nothing is asserted about any particular one.
+ * One deal proves nothing: a build that never checks its deal still passes when
+ * the draw happens to come out right. Each deal here is a fresh draw off the
+ * build's own random source, nothing is asserted about any particular one, and
+ * the property under test has to hold of all of them.
  */
-const SEEDS = [1, 2, 3, 5, 8, 13, 21, 42, 99, 1234, 7777, 99991] as const;
+const DEALS = 8;
 
 let h: Harness;
 
-/** Seed the game's random source and open a fresh round on it. */
-function deal(seed: number): FacetSnapshot {
-  h.debug.reset({ seed });
+/** Open a fresh round from the title, which deals a fresh opening board. */
+function deal(): FacetSnapshot {
+  h.debug.reset();
   return startRound(h);
 }
 
@@ -59,22 +61,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("deals 64 plain gems at strain 0, of the seven kinds, from every seed", async () => {
-  for (const seed of SEEDS) {
-    const opened = deal(seed);
+it("deals 64 plain gems at strain 0, of the seven kinds, deal after deal", async () => {
+  for (let deal_ = 1; deal_ <= DEALS; deal_ += 1) {
+    const opened = deal();
 
     // Every cell has to be reported before "every gem is plain" means anything:
     // a board of forty cells would satisfy the loop below and still be no
     // opening board.
-    assertEqual(opened.screen, "playing", `screen dealt from seed ${seed}`);
+    assertEqual(opened.screen, "playing", `screen of deal ${deal_}`);
     assertLength(
       opened.board.cells,
       GRID_COLS * GRID_ROWS,
-      `cells dealt from seed ${seed}`,
+      `cells of deal ${deal_}`,
     );
 
     for (const cell of opened.board.cells) {
-      const where = `(${cell.col},${cell.row}) dealt from seed ${seed}`;
+      const where = `(${cell.col},${cell.row}) of deal ${deal_}`;
       assertEqual(cell.cut, "plain", `${where}: cut`);
       assertEqual(cell.strain, 0, `${where}: strain`);
       // Membership rather than a comparison, because which of the seven kinds
@@ -84,7 +86,7 @@ it("deals 64 plain gems at strain 0, of the seven kinds, from every seed", async
       assertContains(GEM_KINDS, cell.kind, `${where}: kind`);
     }
 
-    if (seed === SEEDS[0]) {
+    if (deal_ === 1) {
       await h.advance(1);
       captureStill(h, "deal");
     }

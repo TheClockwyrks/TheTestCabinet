@@ -25,7 +25,7 @@
 // column 3 are cleared by the swap, and the two jades above them fall onto the
 // jade below to make a column of three on the board the next read finds. All
 // three cells of that second run are SURVIVORS of the first step rather than
-// refills, so the cascade runs whatever the build's seeded generator dealt into
+// refills, so the cascade runs whatever the build's draw dealt into
 // the top of the column. The loop reads every step the chain actually takes, so a
 // build whose refill happened to seed a third is measured over that step too.
 //

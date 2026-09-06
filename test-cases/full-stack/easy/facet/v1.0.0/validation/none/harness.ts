@@ -124,7 +124,6 @@ import { fail } from "./assert";
 import {
   type ActionName,
   BINDINGS,
-  DEFAULT_SEED,
   HANDLE,
   MAX_CHAIN_STEPS,
   PATCH_HALF,
@@ -185,7 +184,7 @@ export type {
  * re-exported from the engine package, so a suite imports its clocks from
  * `./harness` whichever engine ran and the three read the same; there is no
  * engine here to re-export from, so they come from `@clockwyrks/case-harness`,
- * whose copies are the same names, the same behavior and the same seeded jitter
+ * whose copies are the same names, the same behavior and the same jitter
  * constants. What this project does with a delta is its own: each one becomes a
  * `__facet.advance(dt / 1000, 1)`.
  */
@@ -283,8 +282,6 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
-  /** The seed the opening `reset` carries. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /**
    * The sub-path the built site is served from. Defaults to `"/"`.
    *
@@ -673,7 +670,6 @@ const kit = createCaseHarness<FacetSnapshot, FacetSurface>({
   step: { kind: "seconds-frames", op: "advance" },
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
-  defaultSeed: DEFAULT_SEED,
   // A GENUINE browser gesture, so the build's audio context can open: a build is
   // free to open its audio from a real DOM event alone, so a gesture delivered
   // any other way would leave a perfectly good build silent. A KEY rather than a
@@ -831,8 +827,8 @@ function baseOf(h: Harness): BaseHarness<FacetSnapshot, FacetSurface> {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Load the built site in a browser, take the game off the wall clock, reset it on
- * a known seed, and hand back everything a check reads.
+ * Load the built site in a browser, take the game off the wall clock, reset it to
+ * its title screen, and hand back everything a check reads.
  *
  * The default shape is the stage's own size at one device pixel per CSS pixel, so
  * a logical coordinate and a canvas pixel are the same thing and only a check
@@ -841,7 +837,6 @@ function baseOf(h: Harness): BaseHarness<FacetSnapshot, FacetSurface> {
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  const seed = options.seed ?? DEFAULT_SEED;
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const mounted = basePath !== "/";
 
@@ -913,7 +908,6 @@ export async function createHarness(
     cssWidth: options.cssWidth,
     cssHeight: options.cssHeight,
     dpr: options.dpr,
-    seed,
     beforeLoad: watch,
   });
 
@@ -935,13 +929,13 @@ export async function createHarness(
     });
     if (base.surfaceFault === null) {
       // The opening the shared harness performs on its own navigation, performed
-      // again on this one: off the wall clock, back to a known title screen on
-      // this harness's seed, and a recorder over the surface before a check can
-      // arm one. A build is free to ask for its 2D context on the frame it first
-      // draws, so the surface can be answering before any context exists to
-      // record — and a `captureReplay` armed in that window writes no evidence.
+      // again on this one: off the wall clock, back to the title screen, and a
+      // recorder over the surface before a check can arm one. A build is free to
+      // ask for its 2D context on the frame it first draws, so the surface can be
+      // answering before any context exists to record — and a `captureReplay`
+      // armed in that window writes no evidence.
       await base.debug.setAutoStep(false);
-      await base.debug.reset({ seed });
+      await base.debug.reset();
       await base.page
         .waitForFunction(
           (recorder) =>
@@ -1707,13 +1701,27 @@ export async function loadBoard(
 }
 
 /**
+ * Pose what R9's refill deals into each named column, one `setRefillKinds`
+ * per column, so a scenario whose outcome a draw would otherwise decide is the
+ * rules' alone. Every column not named keeps whatever pose it had, and a
+ * `reset` returns every column to drawing.
+ */
+export async function poseRefill(
+  h: Harness,
+  poses: readonly (readonly [col: number, kinds: string])[],
+): Promise<FacetSnapshot> {
+  for (const [col, kinds] of poses) await h.debug.setRefillKinds(col, kinds);
+  return h.snapshot();
+}
+
+/**
  * Begin a fresh round, exactly as choosing `PLAY` from the title does.
  *
  * Every figure specs/rules.md returns to its opening value when a round starts,
  * written one at a time, and then the opening board dealt through the game's own
- * code from `rngState` — which is the one part of it that cannot be decomposed,
- * since what makes a dealt board an opening board is R4 and the generator rather
- * than any cell a check could write.
+ * code — which is the one part of it that cannot be decomposed, since what makes
+ * a dealt board an opening board is R4 and the draw rather than any cell a check
+ * could write.
  *
  * `PLAY AGAIN` on the game-over menu opens the same round; specs/ui.md gives the
  * two menu items the same effect.

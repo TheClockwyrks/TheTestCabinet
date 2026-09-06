@@ -38,7 +38,7 @@
 // THE CHAIN HAS A SECOND STEP TO RESOLVE INTO. The jade posed at (4,2) falls
 // three rows into (4,5), between the jades already standing at (3,5) and (5,5),
 // so the board step 1 settles into carries a maximal run of three across row 5 —
-// made of survivors alone rather than of anything R9's seeded refill dealt. The
+// made of survivors alone rather than of anything R9's drawn refill dealt. The
 // check reads the settled board back and asserts it seeds a clear set before it
 // waits for anything, so a scenario that stopped cascading is reported as that
 // rather than as a build holding too long.

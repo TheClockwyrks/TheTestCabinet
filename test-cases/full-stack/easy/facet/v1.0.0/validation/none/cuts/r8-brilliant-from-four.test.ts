@@ -20,7 +20,7 @@
 // step 1 then resolves, R8 and R9 both inside it. `swapAndResolve` carries the
 // game through that animation and hands back `first`, the reading of step 1's
 // result, beside `settled`, where the chain came to rest. `first` is what this
-// check reads. A later step is seeded by whatever R9's seeded refill dropped in
+// check reads. A later step is seeded by whatever R9's drawn refill dropped in
 // and is entitled to create cuts of its own — reading the settled board would be
 // reading a different question, and one whose answer the build's random source
 // decides.

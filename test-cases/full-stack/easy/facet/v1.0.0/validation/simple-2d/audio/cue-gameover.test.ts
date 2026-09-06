@@ -23,7 +23,7 @@
 // `setGem` leaves "the screen, the phase, and the selection" where they were, so
 // the step keeps holding and reads this board when its hold is up. Letting a
 // chain run itself out until the refill happened to go dead would leave the
-// moment to R9's seeded draw, which two equally correct builds would answer
+// moment to R9's draw, which two equally correct builds would answer
 // differently; posing the dead board outright asks every build the same question,
 // and puts the settling frame where the check can name it.
 //

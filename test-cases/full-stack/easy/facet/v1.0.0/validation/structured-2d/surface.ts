@@ -27,10 +27,9 @@
 // frame loop. Under an engine "the clock, the keyboard, the pointer, and the
 // overlay belong to the Structured 2D engine ... and the surface carries no
 // operation for any of them", so the suite drives frames with `engine.advance`
-// and the surface carries twenty-three operations rather than twenty-five.
+// and the surface carries twenty-six operations rather than twenty-eight.
 
 import {
-  DEFAULT_SEED,
   FACET_DEBUG_VERSION,
   type Cut,
   type GemKind,
@@ -45,14 +44,13 @@ import type { CellRef, TargetRect } from "./board";
  *
  * `constants.ts` derives `GemKind`, `Cut`, `Screen` and `PointerDevice` from the
  * literal tables specs/board.md, specs/ui.md and specs/controls.md fix, and
- * holds the version and the default seed beside every other figure the
- * specification states; `board.ts` declares the cell address every fixture and
+ * holds the version beside every other figure the specification states; `board.ts` declares the cell address every fixture and
  * every geometry helper already speaks in, and the target rectangle its four
  * requirements are asked of. They are re-exported rather than restated because a
  * second declaration of a union drifts from the first in silence, and this file
  * and those two are read together on every check.
  */
-export { DEFAULT_SEED, FACET_DEBUG_VERSION };
+export { FACET_DEBUG_VERSION };
 export type { CellRef, Cut, GemKind, PointerDevice, Screen, TargetRect };
 
 /**
@@ -143,7 +141,11 @@ export interface FacetSnapshot {
   bestChain: number;
   /** Whether any legal swap exists, derived from R1 and R3 over the board. */
   legalSwap: boolean;
-  rngState: number;
+  /**
+   * The kinds posed for each column's refill, `GRID_COLS` entries: the string
+   * `setRefillKinds` posed for that column, and `""` for a column that draws.
+   */
+  refillKinds: string[];
   pointer: { x: number; y: number; down: boolean; device: PointerDevice };
   /** The id of the target the held press armed, or `null`. */
   armedTarget: string | null;
@@ -170,7 +172,7 @@ export interface FacetDebugApi {
   version: number;
 
   /** Restores every declared field to its title-screen value. */
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   /** A pure read of the state. */
   snapshot(): FacetSnapshot;
 
@@ -181,12 +183,19 @@ export interface FacetDebugApi {
 
   /** Poses an arbitrary board, in the notation specs/board.md defines. */
   loadBoard(rows: readonly string[]): void;
-  /** Deals a fresh opening board through the game's own code, from `rngState`. */
+  /** Deals a fresh opening board through the game's own code. */
   dealBoard(): void;
   /** Leaves no board in play. */
   clearBoard(): void;
   /** Writes one cell of the board from a single cell token. */
   setGem(col: number, row: number, token: string): void;
+  /**
+   * Poses what R9's refill deals into column `col`, letter by letter from the
+   * top of the board down; a row past the end of `kinds` draws.
+   */
+  setRefillKinds(col: number, kinds: string): void;
+  /** Leaves no refill posed on any column, so every refill draws. */
+  clearRefillKinds(): void;
 
   setScore(points: number): void;
   setLevel(level: number): void;
@@ -231,7 +240,7 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Twenty-four, not twenty-six: `setAutoStep` and `advance` exist under `none`
+ * Twenty-six, not twenty-eight: `setAutoStep` and `advance` exist under `none`
  * alone, because here the clock is the engine's.
  *
  * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE or reads it. Reaching a
@@ -248,6 +257,8 @@ export const REQUIRED_OPS = [
   "dealBoard",
   "clearBoard",
   "setGem",
+  "setRefillKinds",
+  "clearRefillKinds",
   "setScore",
   "setLevel",
   "setLevelScore",

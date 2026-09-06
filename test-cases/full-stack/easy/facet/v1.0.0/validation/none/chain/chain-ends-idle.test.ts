@@ -9,8 +9,8 @@
 // running as though it were.
 //
 // THE BOARD IS DRIVEN TO ITS OWN END RATHER THAN FOR A FIXED NUMBER OF STEPS.
-// R9 refills the top of every cleared column from the game's own seeded
-// generator, and a refill is entitled to deal a run of its own; a check that
+// R9 refills the top of every cleared column from the game's own random
+// draw, and a refill is entitled to deal a run of its own; a check that
 // insisted the chain end after exactly one step would be asserting the deal. So
 // the chain is carried to wherever it settles, the board it settled on is read
 // for a clear set under R5 and R6, and the point is that the settling and the

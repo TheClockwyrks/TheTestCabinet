@@ -37,8 +37,8 @@
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build:
 // `loadBoard(rows)` poses the written board exactly, `requestSwap` goes through
-// the same acceptance path a player's swap takes, and `reset({ seed })` gives
-// everything back. Posing through it is how a scenario is reproducible, and it
+// the same acceptance path a player's swap takes, and `reset()` gives
+// everything back. Posing through it is how a scenario is arranged, and it
 // is the seam the case's specification documents. `surface.ts` is that
 // specification as types, and it is the only description of the surface this
 // harness reads: the build's own module for it is never imported.
@@ -140,7 +140,6 @@ import {
 import {
   BACKGROUND_FALLBACK,
   BINDINGS,
-  DEFAULT_SEED,
   LAYOUT,
   MAX_CHAIN_STEPS,
   MAX_REPLAY_FRAMES,
@@ -219,7 +218,7 @@ export type FacetState = GameState & {
   pointer: { x: number; y: number; down: boolean; device: PointerDevice };
   simTime: number;
   muted: boolean;
-  rngState: number;
+  refillKinds: string[];
 };
 
 /**
@@ -473,8 +472,6 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
-  /** The seed `reset` is posed with. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /**
    * The sub-path the build is served from, as though the page sat there.
    * Defaults to `"/"`.
@@ -1383,7 +1380,7 @@ export async function createHarness(
 
   if (h.surfaceFault === null) {
     try {
-      h.debug.reset({ seed: options.seed ?? DEFAULT_SEED });
+      h.debug.reset();
     } catch {
       // A `reset` that throws is the build's fault and belongs to the point about
       // `reset`, not to every other suite's setup.
@@ -1621,13 +1618,27 @@ export function loadBoard(h: Harness, rows: BoardRows): FacetSnapshot {
 }
 
 /**
+ * Pose what R9's refill deals into each named column, one `setRefillKinds`
+ * per column, so a scenario whose outcome a draw would otherwise decide is the
+ * rules' alone. Every column not named keeps whatever pose it had, and a
+ * `reset` returns every column to drawing.
+ */
+export function poseRefill(
+  h: Harness,
+  poses: readonly (readonly [col: number, kinds: string])[],
+): FacetSnapshot {
+  for (const [col, kinds] of poses) h.debug.setRefillKinds(col, kinds);
+  return h.snapshot();
+}
+
+/**
  * Begin a fresh round, exactly as choosing `PLAY` from the title does.
  *
  * Every figure specs/rules.md returns to its opening value when a round starts,
  * written one at a time, and then the opening board dealt through the game's own
- * code from `rngState` — which is the one part of it that cannot be decomposed,
- * since what makes a dealt board an opening board is R4 and the generator rather
- * than any cell a check could write.
+ * code — which is the one part of it that cannot be decomposed, since what makes
+ * a dealt board an opening board is R4 and the draw rather than any cell a check
+ * could write.
  *
  * `PLAY AGAIN` on the game-over menu opens the same round; specs/ui.md gives the
  * two menu items the same effect.

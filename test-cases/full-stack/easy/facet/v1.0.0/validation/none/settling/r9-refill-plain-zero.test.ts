@@ -6,7 +6,7 @@
 // uniformly from `GEM_KINDS`". Three separate claims, and all three are read
 // here: the cut is `plain`, the strain is `0`, and the kind is one of the seven
 // specs/board.md names. The KIND ITSELF is not read and must not be — it comes
-// off the game's own seeded generator, and asserting which one landed would fail
+// off the game's own random draw, and asserting which one landed would fail
 // every build but the one the check was written against.
 //
 // WHERE the refill goes is the fourth claim, and it is what the marks are for.
