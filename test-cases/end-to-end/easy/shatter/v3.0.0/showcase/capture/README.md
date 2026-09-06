@@ -65,8 +65,11 @@ NODE_OPTIONS=--max-old-space-size=8192 \
   TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
   TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2200 \
   npx vitest run --config validation/vitest.config.ts \
-    validation/showcase-capture.test.ts
+    --disableConsoleIntercept validation/showcase-capture.test.ts
 ```
+
+`--disableConsoleIntercept` is what lets the ratings reach the terminal: the
+runner otherwise holds a passing test's console output back.
 
 The outputs land under `$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`,
 one set per take under a `take-NN-` prefix: `take-NN-gameplay.json.gz`,
@@ -120,11 +123,11 @@ unaffected, because a player paces itself off the per-frame deltas.
 
 ## The committed media
 
-| Variant   | Take    | Cap  | What it turned out to be                                                                                                                                                                                                                      |
-| --------- | ------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `base`    | phase 1 | 2200 | 29.9 s. Opens on the title; wave 1 cleared at 15.8 s and the `WAVE 2` banner run over an empty field; the saucer arriving at 18.0 s and hunting to the end. 61 rocks broken for 4 480 points, no ship lost.                                   |
-| `warhead` | phase 2 | 2200 | 31.6 s. Opens on the title; four torpedo runs launched and all four detonated; wave 1 cleared at 16.0 s with the banner; the saucer's whole visit, arriving at 18.0 s and leaving at 30.0 s. 48 rocks broken for 3 330 points, one ship lost. |
+| Variant   | Take                  | Cap  | What it turned out to be                                                                                                                                                                                                                               |
+| --------- | --------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `base`    | take 5 of 9 (phase 1) | 2200 | 26.0 s. Opens on the title; wave 1 cleared and the `WAVE 2` banner run; the saucer arriving at 18.0 s and hunting to the end. 48 rocks broken for 3 460 points, no ship lost. Rated 138, the best of its run.                                          |
+| `warhead` | take 6 of 9 (phase 1) | 2200 | 27.3 s. Opens on the title; four torpedo runs launched and all four detonated; wave 1 cleared with the banner; the saucer arriving at 18.0 s and shot down at 18.6 s. 35 rocks broken for 2 720 points, one ship lost. Rated 193, the best of its run. |
 
-Both were chosen from a run over the default phases and recorded at
-`TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2200`, which thins each to 60 frames a second.
-`base`'s replay is 0.9 MB and `warhead`'s 1.4 MB.
+Both were the best-rated take of one run over the default phases, three takes
+each, recorded at `TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2200`, which thins each to
+60 frames a second. `base`'s replay is 0.8 MB and `warhead`'s 1.2 MB.
