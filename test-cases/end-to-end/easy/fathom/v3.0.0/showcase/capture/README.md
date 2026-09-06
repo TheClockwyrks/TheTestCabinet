@@ -55,16 +55,16 @@ staged `validation/` copy so the reference stays byte-clean.
 
 Where the two drivers default differently, both are given.
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_VALIDATION_MEDIA_DIR` | unset | Where the media is written. Unset writes nothing, so the run only judges. |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched to read this. A clip is recorded at 60 frames a second, so this is roughly `60 × seconds`; `2100` holds a thirty-five-second take whole. |
-| `TCAB_SHOWCASE_TAKES` | `4` | How many takes of each of the three play styles are auditioned, each on a fresh trench. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `26` | The earliest the clip may end. |
-| `TCAB_SHOWCASE_QUIET_SECONDS` | base `33`, kindle `32` | When a merely calm frame is allowed to end a take that never took a drifter. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | base `38`, kindle `35` | The hard ceiling, past which the take ends wherever it stands. |
-| `TCAB_SHOWCASE_TAKE` | unset | `<style>` records one take of that style and auditions nothing. |
-| `TCAB_SHOWCASE_QA_STILLS` | unset | `1` writes a still every few seconds, for eyeballing a take. |
+| Variable                          | Default                | What it does                                                                                                                                                               |
+| --------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_VALIDATION_MEDIA_DIR`       | unset                  | Where the media is written. Unset writes nothing, so the run only judges.                                                                                                  |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`                  | The harness's replay cap, patched to read this. A clip is recorded at 60 frames a second, so this is roughly `60 × seconds`; `2100` holds a thirty-five-second take whole. |
+| `TCAB_SHOWCASE_TAKES`             | `4`                    | How many takes of each of the three play styles are auditioned, each on a fresh trench.                                                                                    |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `26`                   | The earliest the clip may end.                                                                                                                                             |
+| `TCAB_SHOWCASE_QUIET_SECONDS`     | base `33`, kindle `32` | When a merely calm frame is allowed to end a take that never took a drifter.                                                                                               |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | base `38`, kindle `35` | The hard ceiling, past which the take ends wherever it stands.                                                                                                             |
+| `TCAB_SHOWCASE_TAKE`              | unset                  | `<style>` records one take of that style and auditions nothing.                                                                                                            |
+| `TCAB_SHOWCASE_QA_STILLS`         | unset                  | `1` writes a still every few seconds, for eyeballing a take.                                                                                                               |
 
 Both drivers run their whole audition inside one process, so give them
 `NODE_OPTIONS=--max-old-space-size=8192`.

@@ -769,11 +769,17 @@ describe("the predator poses", () => {
 
   it("holds one creature where it stands and leaves the rest running", async () => {
     const harness = await playing();
-    const fixture = pose(harness.debug, HALL);
+    // A longer hall than HALL, so the hunter left running can wander either
+    // way for the whole window without coming inside the forager's light.
+    const fixture = pose(harness.debug, [
+      "#".repeat(24),
+      `#F${".".repeat(21)}#`,
+      "#".repeat(24),
+    ]);
     const start = at(fixture, "F");
     harness.debug.clearPredators();
     harness.debug.addPredator("lanternjaw", start.tx + 4, start.ty);
-    harness.debug.addPredator("lanternjaw", start.tx + 6, start.ty);
+    harness.debug.addPredator("lanternjaw", start.tx + 12, start.ty);
     harness.debug.spawnDrifter(start.tx + 8, start.ty);
     harness.debug.setPredatorMind(0, false);
     harness.debug.setDrifterMind(0, false);
