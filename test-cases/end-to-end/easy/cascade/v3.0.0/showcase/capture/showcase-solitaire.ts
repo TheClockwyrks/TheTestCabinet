@@ -20,9 +20,9 @@
 //
 // The model deliberately restates the rules rather than importing the build's,
 // because the driver runs against a page rather than a module: `references/none/`
-// is a static site and there is nothing to import. The deal is restated for the
-// same reason, and {@link dealFor} is checked against the game's own deal at
-// capture time — the driver refuses to play if the two disagree.
+// is a static site and there is nothing to import. The deal is never restated:
+// it is read off the game's own `snapshot()` once NEW GAME has been clicked, so
+// the plan is made against exactly the board the game dealt.
 //
 // PERFECT KNOWLEDGE IS DELIBERATE. The search plans against the whole deal, the
 // face-down cards included, which `snapshot()` reports and a human player cannot
@@ -71,62 +71,15 @@ export function nameOf(code: Code): string {
 }
 
 /* -------------------------------------------------------------------------- */
-/* The deal (specs/deal.md, mirroring src/rng.ts and src/deck.ts)              */
+/* The deal (specs/deal.md), as read off the game                               */
 /* -------------------------------------------------------------------------- */
 
-/** The deal a seed produces: seven columns bottom-to-top, and the stock. */
+/** The deal the game dealt: seven columns bottom-to-top, and the stock. */
 export interface Deal {
   /** Column `i` holds `i + 1` cards; all but the last are face-down. */
   columns: Code[][];
   /** Bottom to top, so the last entry is the card the first turn takes. */
   stock: Code[];
-}
-
-/** mulberry32, as `src/rng.ts` states it. */
-function mulberry32(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    const a = (state + 0x6d2b79f5) | 0;
-    state = a;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/**
- * The deal a seed produces, by the same shuffle and the same dealing order the
- * build uses.
- *
- * `orderedDeck()` is suit by suit and Ace to King within each, which is exactly
- * the code order above; the shuffle is Fisher-Yates from the top down, drawing
- * each index from the generator; the deal fills column by column, then the
- * stock.
- */
-export function dealFor(seed: number): Deal {
-  const deck: Code[] = Array.from({ length: DECK_SIZE }, (_, i) => i);
-  const next = mulberry32(seed);
-  for (let i = deck.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(next() * (i + 1));
-    const swap = deck[i];
-    deck[i] = deck[j];
-    deck[j] = swap;
-  }
-  const columns: Code[][] = [];
-  let at = 0;
-  for (let column = 0; column < COLUMNS; column += 1) {
-    const cards: Code[] = [];
-    for (let row = 0; row <= column; row += 1) {
-      cards.push(deck[at]);
-      at += 1;
-    }
-    columns.push(cards);
-  }
-  const stock: Code[] = [];
-  for (let i = 0; i < DECK_SIZE - at; i += 1) {
-    stock.push(deck[at + i]);
-  }
-  return { columns, stock };
 }
 
 /* -------------------------------------------------------------------------- */

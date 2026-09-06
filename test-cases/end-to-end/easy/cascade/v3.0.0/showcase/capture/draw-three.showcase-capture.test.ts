@@ -15,27 +15,13 @@
 //   the-cascade.png       the cascade burying the table, from the same game
 //   title.png             the title screen the take opened on
 //
-// The committed seed is recorded in `showcase/capture/README.md` beside the
-// takes it was chosen over.
+// The deal is the game's own, so a capture is an audition: several takes are
+// played, each on the deal the game dealt, and the best of the ones the planner
+// could win is the one kept. `showcase/capture/README.md` records how the
+// committed take was chosen.
 
 import { inject, it } from "vitest";
-import {
-  captureTake,
-  knob,
-  sweepPlans,
-  sweepRange,
-  DEFAULT_PACE,
-} from "./showcase-player";
-
-/**
- * The deal the committed clip plays.
- *
- * Chosen by auditioning: every seed whose game the planner could win inside the
- * move budget was scored on how long the take runs, how long its longest stretch
- * of nothing but stock turns is, and how much of it is cards moving between
- * columns rather than off the stock. See `showcase/capture/README.md`.
- */
-const SEED = knob("TCAB_SHOWCASE_SEED", 822);
+import { auditionTakes, knob, DEFAULT_PACE } from "./showcase-player";
 
 /** Three cards a turn, which is what makes this variant Draw Three. */
 const TURN_COUNT = 3;
@@ -53,8 +39,16 @@ const MAX_MOVES = 102;
 const MAX_NODES = 90_000;
 const WEIGHT = 3;
 
+/**
+ * How many won takes are played before one is chosen, and how many deals may
+ * be dealt looking for them. A deal the planner cannot win costs a page load and
+ * a search and nothing more, so the deal budget is generous.
+ */
+const TAKES = 3;
+const DEALS = 600;
+
 it(
-  "plays a whole game of Draw Three and records it",
+  "plays whole games of Draw Three and records the best of them",
   async () => {
     const search = {
       maxMoves: knob("TCAB_SHOWCASE_MAX_MOVES", MAX_MOVES),
@@ -62,51 +56,45 @@ it(
       weight: knob("TCAB_SHOWCASE_WEIGHT", WEIGHT),
     };
 
-    // The first pass of an audition: score the plans over a range of seeds and
-    // stop. No browser is opened and nothing is played.
-    const sweep = process.env.TCAB_SHOWCASE_SWEEP;
-    if (sweep !== undefined && sweep !== "") {
-      const { from, to } = sweepRange(sweep);
-      const scored = sweepPlans(from, to, TURN_COUNT, search);
-      process.stdout.write(
-        `${scored.length} of ${to - from + 1} seeds solved inside ${search.maxMoves} gestures\n`,
-      );
-      return;
-    }
-
-    const seeds = (process.env.TCAB_SHOWCASE_SEEDS ?? String(SEED))
-      .split(",")
-      .map((entry) => Number(entry.trim()))
-      .filter((entry) => Number.isFinite(entry));
-    const record =
-      process.env.TCAB_SHOWCASE_RECORD !== "0" && seeds.length === 1;
-    const outDir = process.env.TCAB_SHOWCASE_OUT;
-
-    for (const seed of seeds) {
-      const report = await captureTake(
-        inject("cascadeBrowserWs"),
-        inject("cascadeUrl"),
-        {
-          turnCount: TURN_COUNT,
-          seed,
-          outDir: record ? outDir : undefined,
-          record,
-          search,
-          pace: DEFAULT_PACE,
-          bitrate: process.env.TCAB_SHOWCASE_BITRATE ?? "380k",
-          midStillAt: knob("TCAB_SHOWCASE_MID_STILL", 0.3),
-          verbose: process.env.TCAB_SHOWCASE_VERBOSE === "1",
+    const audition = await auditionTakes(
+      inject("tcabBrowserWs"),
+      inject("tcabUrl"),
+      {
+        turnCount: TURN_COUNT,
+        outDir: process.env.TCAB_SHOWCASE_OUT,
+        takes: knob("TCAB_SHOWCASE_TAKES", TAKES),
+        deals: knob("TCAB_SHOWCASE_DEALS", DEALS),
+        search,
+        pace: DEFAULT_PACE,
+        bitrate: process.env.TCAB_SHOWCASE_BITRATE ?? "380k",
+        midStillAt: knob("TCAB_SHOWCASE_MID_STILL", 0.3),
+        verbose: process.env.TCAB_SHOWCASE_VERBOSE === "1",
+        report: (take, report) => {
+          process.stdout.write(
+            `draw-three take ${take}: ${report.moves} gestures, ${report.seconds}s, ` +
+              `${report.turns} turns (longest run ${report.longestTurnRun}, ` +
+              `${report.recycles} recycles), ${report.drags} drags, ` +
+              `longest lull ${report.longestLull}s\n`,
+          );
         },
-      );
-      process.stdout.write(
-        `draw-three seed ${report.seed}: ${report.moves} gestures, ${report.seconds}s, ` +
-          `longest lull ${report.longestLull}s, longest turn run ${report.longestTurnRun}` +
-          (report.files.length > 0
-            ? `, wrote ${report.files.join(", ")}`
-            : "") +
-          "\n",
+      },
+    );
+
+    process.stdout.write(
+      `draw-three: ${audition.played.length} of ${audition.dealt} deals won` +
+        (audition.winner >= 0
+          ? `, kept take ${audition.winner + 1}` +
+            (process.env.TCAB_SHOWCASE_OUT !== undefined
+              ? ` in ${process.env.TCAB_SHOWCASE_OUT}`
+              : "")
+          : "") +
+        "\n",
+    );
+    if (audition.winner < 0) {
+      throw new Error(
+        `cascade: none of ${audition.dealt} deals could be won inside ${search.maxMoves} gestures`,
       );
     }
   },
-  60 * 60_000,
+  4 * 60 * 60_000,
 );
