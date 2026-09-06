@@ -17,7 +17,7 @@
 // origin, that is the track's origin node `(4, 4, 0)` and it must stay there
 // EXACTLY, tick after tick. And the member forces, which are what an elastic
 // displacement would move if it were fed back: the solve at tick sixty must
-// answer what the solve at tick two answered, to the last bit. A build that let
+// answer what the solve at tick two answered, within `1e-9`. A build that let
 // the solved displacements move its nodes reads a pivot that drifts, or forces
 // that walk.
 

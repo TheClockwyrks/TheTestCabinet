@@ -5602,11 +5602,12 @@ validation = { script = "rigging/placed-load-stays-put.test.ts", outputs = [
   { id = "placed", name = "the crane driven through the placed load", kind = "image" },
 ] }
 
-# Clear the loads and the obstacles and run the same posed crane and tape
-# twice — once with the release step and once with it removed — sampling
-# run.bob every tick. — run.bob.pos and run.bob.vel are identical tick for
-# tick in both runs: the pendulum steps read no mass, so a release moves the
-# bob not at all.
+# Clear the loads and the obstacles, hang one load on the hook, pose the bob
+# swinging, and run the same posed crane and tape twice — once with the
+# release step and once with it removed — sampling run.bob at checkpoints
+# through the swing. — run.bob.pos and run.bob.vel agree at every checkpoint
+# between the two runs, within 1e-9: the pendulum steps read no mass, so a
+# release moves the bob not at all.
 # From specs/rigging.md § Releasing.
 [[review.categories.items]]
 id = "release-carries-the-bob-on"

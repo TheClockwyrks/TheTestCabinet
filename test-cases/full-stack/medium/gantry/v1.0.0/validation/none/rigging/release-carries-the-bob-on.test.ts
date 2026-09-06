@@ -40,12 +40,15 @@
 // the bottom of the arc — where the load's bottom face rests exactly on `y = 0`
 // — so the load the control run keeps carrying never reaches through the ground.
 //
-// THE TWO PATHS ARE COMPARED EXACTLY. The pendulum's steps carry no mass term,
-// so a build that honours them computes the same figures from the same inputs in
-// both runs, down to the last bit.
+// THE TWO PATHS ARE COMPARED WITHIN A TOLERANCE. The pendulum's steps carry no
+// mass term, so a build that honours them integrates the same figures from the
+// same inputs in both runs; a mass that leaked into the step would move the bob
+// by whole units within a few ticks, while the rounding a compliant build is
+// allowed to carry through an intermediate that cancels is many orders below
+// `TOLERANCE` (`1e-9`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual } from "../assert";
+import { assertNear } from "../assert";
 import { GRIP_MAX_RATE, PLACE_VEL_TOL } from "../constants";
 import {
   addOneLoad,
@@ -57,6 +60,7 @@ import {
   runTicks,
   standMinimalCrane,
   startRun,
+  type GantrySnapshot,
   type Harness,
   type LoadPose,
   type TapeStepSpec,
@@ -80,6 +84,26 @@ const SWING: Vec3 = { x: PLACE_VEL_TOL - 0.1, y: 0, z: 0 };
 
 /** The ticks of the two runs the bob is compared at, counted from the start. */
 const CHECKPOINTS = [1, 2, 3, 20] as const;
+
+/**
+ * How close the two swings of the same pendulum have to come.
+ *
+ * The pendulum tick reads no mass, so the two runs integrate the same seven
+ * steps from the same state; a release that moved the bob diverges by whole
+ * units within a few ticks, and the rounding of an intermediate that cancels
+ * sits many orders below this.
+ */
+const TOLERANCE = 1e-9;
+
+/** One checkpoint's reading of the bob. */
+interface BobSample {
+  pos: Vec3;
+  vel: Vec3;
+}
+
+function bobOf(snapshot: GantrySnapshot): BobSample {
+  return { pos: snapshot.run.bob.pos, vel: snapshot.run.bob.vel };
+}
 
 /** The step under test: the release, taken on the run's first tick. */
 const RELEASE: TapeStepSpec = { kind: "action", action: "release" };
@@ -132,46 +156,50 @@ async function hangOnHook(
 }
 
 /** Run one of the two tapes over the same crane and yard, sampling the bob. */
-async function swing(harness: Harness, first: TapeStepSpec): Promise<string[]> {
-  await openSite(harness, SITE);
-  await clearAll(harness);
-  await standMinimalCrane(harness);
-  await addOneLoad(harness, "crate", MASS, START, PAD);
-  await poseTape(harness, [first, TURN]);
-  await startRun(harness);
-  await hangOnHook(harness, 0, PAD, SWING);
+async function swing(first: TapeStepSpec): Promise<BobSample[]> {
+  await openSite(h, SITE);
+  await clearAll(h);
+  await standMinimalCrane(h);
+  await addOneLoad(h, "crate", MASS, START, PAD);
+  await poseTape(h, [first, TURN]);
+  await startRun(h);
+  await hangOnHook(h, 0, PAD, SWING);
 
-  const path: string[] = [];
+  const path: BobSample[] = [];
   let at = 0;
   for (const tick of CHECKPOINTS) {
-    const state = await runTicks(harness, tick - at);
+    path.push(bobOf(await runTicks(h, tick - at)));
     at = tick;
-    path.push(JSON.stringify(state.run.bob));
   }
   return path;
 }
 
-it("leaves the bob's position and velocity exactly as the pendulum left them", async () => {
-  const released = await swing(h, RELEASE);
+it("carries the bob's position and velocity on unchanged through a release", async () => {
+  const released = await swing(RELEASE);
   await h.capture("bob", "The bob's path across the release");
 
-  const control = await createHarness();
-  let carried: string[];
-  try {
-    carried = await swing(control, HOLD);
-  } finally {
-    await control.dispose();
-  }
+  const carried = await swing(HOLD);
 
   for (const [index, sample] of released.entries()) {
-    assertEqual(
-      sample,
-      carried[index],
-      `the bob ${CHECKPOINTS[index]} tick(s) after the release, against the ` +
-        "same run " +
-        "still carrying the load: a release changes the bob's mass and " +
-        "nothing else about it, and the pendulum tick reads no mass " +
-        "(specs/rigging.md)",
-    );
+    const same = carried[index] as BobSample;
+    for (const axis of ["x", "y", "z"] as const) {
+      assertNear(
+        sample.pos[axis],
+        same.pos[axis],
+        TOLERANCE,
+        `the bob's ${axis} ${CHECKPOINTS[index]} tick(s) after the release, ` +
+          "against the same tick of the run still carrying the load: a " +
+          "release changes the bob's mass and nothing else about it, and the " +
+          "pendulum tick reads no mass (specs/rigging.md § Releasing)",
+      );
+      assertNear(
+        sample.vel[axis],
+        same.vel[axis],
+        TOLERANCE,
+        `the bob's ${axis} velocity ${CHECKPOINTS[index]} tick(s) after the ` +
+          "release, against the same tick of the run still carrying the load " +
+          "(specs/rigging.md § Releasing)",
+      );
+    }
   }
 });

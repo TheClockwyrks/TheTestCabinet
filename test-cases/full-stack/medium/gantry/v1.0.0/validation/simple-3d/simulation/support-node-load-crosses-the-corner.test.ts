@@ -10,10 +10,11 @@
 // A counterweight on a TOP-FLANGE node is the cleanest probe of that rule there
 // is. Top-flange nodes are the arm solve's supports, and a support's rows and
 // columns leave the system, so an applied force there cannot reach any arm
-// member: every arm force must be unchanged to the last bit. The whole of it
-// instead shows up in that support's reaction, is negated, and is applied at the
-// bottom-flange node the ring pairs it with — so exactly one tower member should
-// move, and by exactly `COUNTERWEIGHT_MASS` (`80`) times `GRAVITY` (`10`).
+// member: every arm force must be unchanged within the solve's rounding. The
+// whole of it instead shows up in that support's reaction, is negated, and is
+// applied at the bottom-flange node the ring pairs it with — so exactly one
+// tower member should move, and by exactly `COUNTERWEIGHT_MASS` (`80`) times
+// `GRAVITY` (`10`).
 //
 // THE TOWER IS SHAPED SO THAT ONE MEMBER READS THE CROSSING EXACTLY. Two of the
 // four bottom-flange corners carry a vertical leg and horizontal members and
