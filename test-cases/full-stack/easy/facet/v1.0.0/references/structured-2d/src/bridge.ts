@@ -127,7 +127,7 @@ export function toCore(state: FacetState): CoreState {
     armedTarget: state.armedTarget,
     muted: state.muted,
     simTime: state.simTime,
-    rngState: state.rngState,
+    refillKinds: [...state.refillKinds],
   };
 }
 
@@ -178,7 +178,7 @@ export function applyCore(state: FacetState, next: CoreState): void {
     device: next.pointer.device,
   };
   state.simTime = next.simTime;
-  state.rngState = next.rngState;
+  state.refillKinds = [...next.refillKinds];
   state.chainSwap = next.chainSwap
     ? { a: cellOf(next.chainSwap.a), b: cellOf(next.chainSwap.b) }
     : null;

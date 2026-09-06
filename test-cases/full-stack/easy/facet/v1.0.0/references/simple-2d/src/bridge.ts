@@ -154,7 +154,7 @@ export function toCore(state: DeepReadonly<FacetState>): CoreState {
     armedTarget: state.armedTarget,
     muted: state.muted,
     simTime: state.simTime,
-    rngState: state.rngState,
+    refillKinds: [...state.refillKinds],
   };
 }
 
@@ -196,7 +196,7 @@ export function fromCore(state: CoreState): FacetState {
     },
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
+    refillKinds: [...state.refillKinds],
     chainSwap: state.chainSwap === null ? null : fromCorePair(state.chainSwap),
   };
 }

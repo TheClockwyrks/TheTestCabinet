@@ -7,7 +7,12 @@ import {
 } from "./debug";
 import type { DebugHost, FacetWindowApi } from "./debug";
 import { FACET_DEBUG_VERSION, GRID_COLS, GRID_ROWS } from "./constants";
-import { cellCenter, createInitialState, type FacetState } from "./core";
+import {
+  cellCenter,
+  createInitialState,
+  NO_REFILL,
+  type FacetState,
+} from "./core";
 import { quietRows, quietRowsWith } from "./core/fixtures";
 
 /** A host over one state value, which is what the runtime is to the surface. */
@@ -86,15 +91,33 @@ describe("the installed surface", () => {
     expect(bench.state.screen).toBe("howto");
   });
 
-  it("seeds the generator on reset and keeps the mute bit", () => {
+  it("resets the state and keeps the mute bit", () => {
     const { api, bench } = surface({ ...createInitialState(), muted: true });
     api.setScore(999);
-    api.reset({ seed: 77 });
-    expect(bench.state.rngState).toBe(77);
-    expect(bench.state.score).toBe(0);
-    expect(bench.state.muted).toBe(true);
+    api.setRefillKinds(2, "RA");
     api.reset();
-    expect(bench.state.rngState).toBe(1);
+    expect(bench.state.score).toBe(0);
+    expect(bench.state.refillKinds).toEqual(NO_REFILL);
+    expect(bench.state.muted).toBe(true);
+  });
+
+  it("poses a column's refill, and clears every pose", () => {
+    const { api, bench } = surface();
+    api.setRefillKinds(2, "RA");
+    api.setRefillKinds(5, "J");
+    expect(bench.state.refillKinds).toEqual([
+      "",
+      "",
+      "RA",
+      "",
+      "",
+      "J",
+      "",
+      "",
+    ]);
+    expect(api.snapshot().refillKinds).toEqual(bench.state.refillKinds);
+    api.clearRefillKinds();
+    expect(bench.state.refillKinds).toEqual(NO_REFILL);
   });
 
   it("reads the state without changing it", () => {

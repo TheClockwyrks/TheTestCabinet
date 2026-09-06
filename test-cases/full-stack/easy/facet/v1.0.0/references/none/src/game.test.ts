@@ -9,6 +9,7 @@ import {
   cellCenter,
   createInitialState,
   loadBoard,
+  setRefillKinds,
   requestSwap,
   setScreen,
   startRound,
@@ -165,8 +166,8 @@ const NEAR_RUN = quietRowsWith({
  * asked for off the `playing` screen is not a request at all, and `loadBoard`
  * writes the board and nothing else.
  */
-const play = (rows: readonly string[], seed?: number): FacetState =>
-  setScreen(loadBoard(createInitialState(seed), rows), "playing");
+const play = (rows: readonly string[]): FacetState =>
+  setScreen(loadBoard(createInitialState(), rows), "playing");
 
 describe("reportFor", () => {
   it("reports nothing when no chain step ran", () => {
@@ -434,7 +435,16 @@ describe("the game the runtime drives", () => {
   });
 
   it("reaches the same board from one long frame as from sixty short ones", () => {
-    const posed = play(NEAR_RUN, 1234);
+    // The refill is posed on the one column the step empties, so the board the
+    // two drives are compared over is the rules' alone.
+    let posed = play(NEAR_RUN);
+    for (const [col, kinds] of [
+      [2, "M"],
+      [3, "C"],
+      [4, "J"],
+    ] as const) {
+      posed = setRefillKinds(posed, col, kinds);
+    }
     const swapped = requestSwap(posed, {
       a: { col: 4, row: 5 },
       b: { col: 4, row: 4 },
@@ -464,7 +474,6 @@ describe("the game the runtime drives", () => {
 
     expect(long.board).toEqual(short.board);
     expect(long.score).toBe(short.score);
-    expect(long.rngState).toBe(short.rngState);
     expect(long.phase).toBe(short.phase);
   });
 

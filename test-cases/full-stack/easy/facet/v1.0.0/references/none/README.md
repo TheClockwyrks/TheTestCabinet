@@ -203,8 +203,8 @@ mute mirrors honest. The one thing it adds is the link to the **presentation**
 shatter sheets and particle bursts need to know _which_ cells, so `reportFor`
 re-derives it from the core's own R5, R6, and R8 over the board that step read.
 None of that decoration is part of the state, because
-`specs/instrumentation.md` rests on the state being reproducible from a seed and
-a delta time.
+`specs/instrumentation.md` rests on the state advancing from the delta time
+alone.
 
 ## Debugging and automation
 
@@ -252,9 +252,9 @@ for the registered actions (the runtime's keyboard is driven by dispatching real
 key events at the page) and none for the overlay (the runtime owns the backtick
 key).
 
-The surface is inert during normal play. All randomness runs off the seeded
-generator state the snapshot reports as `rngState`, so a given seed deals the
-same opening board and the same refills exactly.
+The surface is inert during normal play. The deal and the refill draw from the
+game's own random source, and a scenario that needs a refill pinned down poses
+it with `setRefillKinds`.
 
 ## Requirements
 

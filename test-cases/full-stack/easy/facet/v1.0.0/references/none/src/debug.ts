@@ -37,6 +37,7 @@ import {
   clearBoard,
   clearChain,
   clearOffer,
+  clearRefillKinds,
   clearRefusal,
   clearSelection,
   dealBoard,
@@ -54,6 +55,7 @@ import {
   setMenuIndex,
   setMoveScore,
   setOffer,
+  setRefillKinds,
   setScore,
   setScreen,
   setSelection,
@@ -74,7 +76,7 @@ export const FACET_HANDLE = "__facet";
  */
 export interface FacetDebugApi {
   version: number;
-  reset(state: FacetState, options?: { seed?: number }): FacetState;
+  reset(state: FacetState): FacetState;
   snapshot(state: FacetState): FacetSnapshot;
   setScreen(state: FacetState, screen: Screen): FacetState;
   setMenuIndex(state: FacetState, index: number): FacetState;
@@ -87,6 +89,8 @@ export interface FacetDebugApi {
     row: number,
     token: string,
   ): FacetState;
+  setRefillKinds(state: FacetState, col: number, kinds: string): FacetState;
+  clearRefillKinds(state: FacetState): FacetState;
   setScore(state: FacetState, points: number): FacetState;
   setLevel(state: FacetState, level: number): FacetState;
   setLevelScore(state: FacetState, points: number): FacetState;
@@ -140,6 +144,8 @@ export function createDebugApi(): FacetDebugApi {
     dealBoard,
     clearBoard,
     setGem,
+    setRefillKinds,
+    clearRefillKinds,
     setScore,
     setLevel,
     setLevelScore,
@@ -182,7 +188,7 @@ export interface FacetWindowApi {
   version: number;
   setAutoStep(enabled: boolean): void;
   advance(seconds: number, frames?: number): void;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): FacetSnapshot;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
@@ -190,6 +196,8 @@ export interface FacetWindowApi {
   dealBoard(): void;
   clearBoard(): void;
   setGem(col: number, row: number, token: string): void;
+  setRefillKinds(col: number, kinds: string): void;
+  clearRefillKinds(): void;
   setScore(points: number): void;
   setLevel(level: number): void;
   setLevelScore(points: number): void;
@@ -234,15 +242,15 @@ export function createWindowApi(
      * same update the loop runs, then a render — so the game's own chain
      * cadence and end conditions produce the result and the canvas reflects
      * it. Advancing while the game is still stepping automatically ADDS to
-     * what the wall clock is already doing, so a scenario that must be
-     * reproducible calls `setAutoStep(false)` first.
+     * what the wall clock is already doing, so a scenario driven from code
+     * calls `setAutoStep(false)` first.
      */
     advance(seconds, frames = 1) {
       host.advance(seconds, frames);
     },
 
-    reset(options) {
-      host.apply((state) => api.reset(state, options));
+    reset() {
+      host.apply((state) => api.reset(state));
     },
 
     snapshot() {
@@ -271,6 +279,14 @@ export function createWindowApi(
 
     setGem(col, row, token) {
       host.apply((state) => api.setGem(state, col, row, token));
+    },
+
+    setRefillKinds(col, kinds) {
+      host.apply((state) => api.setRefillKinds(state, col, kinds));
+    },
+
+    clearRefillKinds() {
+      host.apply((state) => api.clearRefillKinds(state));
     },
 
     setScore(points) {

@@ -57,6 +57,7 @@ import {
   clearBoard,
   clearChain,
   clearOffer,
+  clearRefillKinds,
   clearRefusal,
   clearSelection,
   dealBoard,
@@ -75,6 +76,7 @@ import {
   setMenuIndex,
   setMoveScore,
   setOffer,
+  setRefillKinds,
   setScore,
   setScreen,
   setSelection,
@@ -94,7 +96,7 @@ export type { FacetSnapshot };
  */
 export interface FacetDebugApi {
   version: number;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): FacetSnapshot;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
@@ -102,6 +104,8 @@ export interface FacetDebugApi {
   dealBoard(): void;
   clearBoard(): void;
   setGem(col: number, row: number, token: string): void;
+  setRefillKinds(col: number, kinds: string): void;
+  clearRefillKinds(): void;
   setScore(points: number): void;
   setLevel(level: number): void;
   setLevelScore(points: number): void;
@@ -146,13 +150,12 @@ export function createDebugApi(world: () => World): FacetDebugApi {
     version: FACET_DEBUG_VERSION,
 
     /**
-     * Every declared field back at its title-screen value, with `rngState`
-     * seeded from `options.seed` or `DEFAULT_SEED`. `muted` is deliberately
-     * untouched: the engine owns muting, and a reset is not a reason to start
-     * making noise again.
+     * Every declared field back at its title-screen value. `muted` is
+     * deliberately untouched: the engine owns muting, and a reset is not a
+     * reason to start making noise again.
      */
-    reset(options) {
-      pose((state) => reset(state, options));
+    reset() {
+      pose((state) => reset(state));
     },
 
     /** A pure read of the state. It changes nothing. */
@@ -198,6 +201,19 @@ export function createDebugApi(world: () => World): FacetDebugApi {
     /** One cell of the board written; everything else stands. */
     setGem(col, row, token) {
       pose((state) => setGem(state, col, row, token));
+    },
+
+    /**
+     * What R9's refill deals into one column posed, letter by letter from the
+     * top of the board down. The board and every other column's pose stand.
+     */
+    setRefillKinds(col, kinds) {
+      pose((state) => setRefillKinds(state, col, kinds));
+    },
+
+    /** No refill posed on any column, so every refill draws as R9 states. */
+    clearRefillKinds() {
+      pose((state) => clearRefillKinds(state));
     },
 
     /** `score` set. `levelScore` is its own figure. */

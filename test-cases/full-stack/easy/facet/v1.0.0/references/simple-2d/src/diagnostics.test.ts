@@ -86,7 +86,7 @@ describe("the overlay's sources", () => {
     );
     expect(registered.get("last motion")?.(posed)).toBe("0 waves  0 rows");
 
-    const dealt = fromCore(startRound(createInitialState(4)));
+    const dealt = fromCore(startRound(createInitialState()));
     expect(registered.get("last motion")?.(dealt)).toMatch(/0 waves {2}[1-9]/);
   });
 

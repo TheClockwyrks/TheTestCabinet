@@ -74,10 +74,9 @@ export function quietRowsWith(
  */
 export function posedPlaying(
   edits: Readonly<Record<string, string>> = {},
-  seed = 1,
 ): FacetState {
   return setScreen(
-    loadBoard(createInitialState(seed), quietRowsWith(edits)),
+    loadBoard(createInitialState(), quietRowsWith(edits)),
     "playing",
   );
 }

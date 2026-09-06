@@ -18,10 +18,10 @@ import { goBack } from "./flow";
 import { targetsFor } from "./targets";
 import { createInitialState, type FacetState, type Screen } from "./state";
 
-const title = () => createInitialState(1);
+const title = () => createInitialState();
 
 const play = (edits: Readonly<Record<string, string>> = {}): FacetState =>
-  setScreen(loadBoard(createInitialState(1), quietRowsWith(edits)), "playing");
+  setScreen(loadBoard(createInitialState(), quietRowsWith(edits)), "playing");
 
 /** The swap that drops a third ruby into (3, 4), making a row run of three. */
 const ROW_RUN = { "3,3": "R0", "4,4": "R0" };

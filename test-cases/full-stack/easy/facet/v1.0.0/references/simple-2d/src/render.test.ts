@@ -461,7 +461,7 @@ describe("the board in motion", () => {
   });
 
   it("pours a board no step timed on the presentation's own clock", () => {
-    const dealt = startRound(createInitialState(9));
+    const dealt = startRound(createInitialState());
     // A settled board with no pour running rests every stone on its cell.
     expect(boardMotion(dealt, null).falling).toBeNull();
     expect(boardMotion(dealt, 0.02).falling).toBe(0.02);

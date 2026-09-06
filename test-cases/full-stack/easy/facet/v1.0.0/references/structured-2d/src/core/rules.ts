@@ -24,11 +24,12 @@ import {
   isFlawed,
   orthogonalNeighbors,
   orthogonallyAdjacent,
+  kindForLetter,
   plainGem,
   sameCell,
   surroundingCells,
 } from "./board";
-import type { RngCursor } from "./rng";
+import type { Picker } from "./random";
 import type { BoardState, Cell, CellPair, Gem, GemKind, Phase } from "./state";
 
 /** A maximal run under R4: three or more of one kind, in one line. */
@@ -426,6 +427,27 @@ export function placeCreations(
 
 // ---- R9 Settling ---------------------------------------------------------
 
+/** The kind the refill deals into `(col, row)`, a cell R9 left empty. */
+export type RefillKindAt = (col: number, row: number) => GemKind;
+
+/**
+ * The refill `specs/instrumentation.md` gives a posed column: the gem dealt
+ * into row `r` of column `col` takes the kind `refillKinds[col][r]` names, and
+ * a column with nothing posed, or a row past the end of its pose, draws from
+ * `GEM_KINDS` as R9 states. The pose is validated when it is written, so a
+ * letter here always names a kind.
+ */
+export function posedRefill(
+  refillKinds: readonly string[],
+  picker: Picker,
+): RefillKindAt {
+  return (col, row) => {
+    const letter = refillKinds[col]?.[row];
+    const kind = letter === undefined ? null : kindForLetter(letter);
+    return kind ?? picker.pick(GEM_KINDS);
+  };
+}
+
 /**
  * R9: within each column every surviving gem falls to the lowest empty cell
  * below it, keeping the order its column held it in and carrying its strain
@@ -439,11 +461,13 @@ export function placeCreations(
  * refilled gem comes from just above the board's top row. That is the shape a
  * column fills in, one gem entering per row of the gap.
  *
- * The columns are settled left to right and each is filled from its top down,
- * so the sequence of draws — and therefore the board — is a function of the
- * generator state alone.
+ * `refill` is what decides the kind dealt into a refilled cell: the draw R9
+ * states, or the kind a pose stands in for it (`posedRefill`).
  */
-export function settleAndRefill(board: BoardState, rng: RngCursor): BoardState {
+export function settleAndRefill(
+  board: BoardState,
+  refill: RefillKindAt,
+): BoardState {
   const gems = [...board.gems];
   for (let col = 0; col < board.cols; col++) {
     const survivors: { gem: Gem; row: number }[] = [];
@@ -454,7 +478,7 @@ export function settleAndRefill(board: BoardState, rng: RngCursor): BoardState {
     const missing = board.rows - survivors.length;
     for (let row = 0; row < board.rows; row++) {
       if (row < missing) {
-        gems[row * board.cols + col] = plainGem(rng.pick(GEM_KINDS), row + 1);
+        gems[row * board.cols + col] = plainGem(refill(col, row), row + 1);
         continue;
       }
       const survivor = survivors[row - missing];

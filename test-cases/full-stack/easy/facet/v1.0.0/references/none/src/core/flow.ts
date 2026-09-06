@@ -56,18 +56,13 @@ export function moveMenu(state: FacetState, delta: number): FacetState {
  * A fresh round, which is what `PLAY` and `PLAY AGAIN` both start: the figures
  * back at their opening values and an opening board dealt through the game's
  * own code, so it holds no run under R4 and carries at least one legal swap.
- *
- * `rngState` is not reseeded — it advances by the deal — so a round from a
- * known deal is a `reset` carrying a seed followed by this.
  */
 export function startRound(state: FacetState): FacetState {
-  const deal = dealOpeningBoard(state.rngState);
   return {
     ...state,
     screen: "playing",
     menuIndex: 0,
-    board: deal.board,
-    rngState: deal.rngState,
+    board: dealOpeningBoard(),
     score: 0,
     level: 1,
     levelScore: 0,
@@ -97,13 +92,11 @@ export function startRound(state: FacetState): FacetState {
  * rather than the level's.
  */
 export function continueLevel(state: FacetState): FacetState {
-  const deal = dealOpeningBoard(state.rngState);
   return {
     ...state,
     screen: "playing",
     menuIndex: 0,
-    board: deal.board,
-    rngState: deal.rngState,
+    board: dealOpeningBoard(),
     level: state.level + 1,
     levelScore: 0,
     moveScore: 0,

@@ -30,10 +30,16 @@ import {
   stepHold,
   tick,
 } from "./chain";
-import { loadBoard, setLevelScore, setScreen } from "./debug";
+import { loadBoard, setLevelScore, setRefillKinds, setScreen } from "./debug";
 import { quietRows, quietRowsWith } from "./fixtures";
-import { startRound } from "./flow";
-import { applySwap, cellKey, lastFall, seedFromRuns } from "./rules";
+import { randomPicker } from "./random";
+import {
+  applySwap,
+  cellKey,
+  lastFall,
+  posedRefill,
+  seedFromRuns,
+} from "./rules";
 import {
   createInitialState,
   mergeEvents,
@@ -44,14 +50,22 @@ import {
 } from "./state";
 
 /** A round posed on the quiet board with a scenario written into it. */
-const play = (
-  edits: Readonly<Record<string, string>> = {},
-  seed = 1,
-): FacetState =>
-  setScreen(
-    loadBoard(createInitialState(seed), quietRowsWith(edits)),
-    "playing",
-  );
+const play = (edits: Readonly<Record<string, string>> = {}): FacetState =>
+  setScreen(loadBoard(createInitialState(), quietRowsWith(edits)), "playing");
+
+/**
+ * A board that chains exactly twice: clearing the row run drops three ambers
+ * into a column of their own. The refill is posed on the three columns the
+ * chain empties, with kinds that complete no run, so what the chain does is
+ * decided by the rules alone rather than by a draw.
+ */
+const cascade = (): FacetState => {
+  let posed = play({ ...ROW_RUN, "2,3": "A0", "2,5": "A0" });
+  posed = setRefillKinds(posed, 2, "SMRJ");
+  posed = setRefillKinds(posed, 3, "JBSM");
+  posed = setRefillKinds(posed, 4, "CJBS");
+  return posed;
+};
 
 const at = (state: FacetState, col: number, row: number) =>
   gemAt(state.board, { col, row });
@@ -208,7 +222,7 @@ describe("a refused swap", () => {
   });
 
   it("does not request a swap at all off the playing screen", () => {
-    const title = createInitialState(1);
+    const title = createInitialState();
     const { state, events } = requestSwap(title, {
       a: { col: 0, row: 0 },
       b: { col: 1, row: 0 },
@@ -462,10 +476,7 @@ describe("the chain's cadence", () => {
 
   it("raises the chain step, and the multiplier with it, when it chains", () => {
     // Clearing the row run drops three ambers into a column of their own.
-    const chaining = move(
-      play({ ...ROW_RUN, "2,3": "A0", "2,5": "A0" }, 5),
-      ROW_RUN_SWAP,
-    ).state;
+    const chaining = move(cascade(), ROW_RUN_SWAP).state;
     expect(chaining.chainStep).toBe(1);
     expect(chaining.lastPoints).toBe(3 * BASE_SCORE);
 
@@ -490,10 +501,10 @@ describe("the chain's cadence", () => {
     const traded = applySwap(posed.board, ROW_RUN_SWAP);
     const capped = resolveStep(
       traded,
-      posed.rngState,
       multiplierFor(100),
       seedFromRuns(traded),
       ROW_RUN_SWAP,
+      posedRefill(posed.refillKinds, randomPicker),
     );
     expect(capped.cleared).toBe(3);
     expect(capped.points).toBe(3 * BASE_SCORE * MAX_MULTIPLIER);
@@ -501,10 +512,7 @@ describe("the chain's cadence", () => {
   });
 
   it("covers the same game time however it is divided into frames", () => {
-    const swapping = requestSwap(
-      play({ ...ROW_RUN, "2,3": "A0", "2,5": "A0" }, 5),
-      ROW_RUN_SWAP,
-    ).state;
+    const swapping = requestSwap(cascade(), ROW_RUN_SWAP).state;
     const oneFrame = tick(swapping, 1).state;
     let many = swapping;
     for (let i = 0; i < 60; i++) many = tick(many, 1 / 60).state;
@@ -517,10 +525,7 @@ describe("the chain's cadence", () => {
 
 describe("what a level is measured by", () => {
   it("accumulates the move's points and takes the deepest chain step", () => {
-    const chaining = move(
-      play({ ...ROW_RUN, "2,3": "A0", "2,5": "A0" }, 5),
-      ROW_RUN_SWAP,
-    ).state;
+    const chaining = move(cascade(), ROW_RUN_SWAP).state;
     expect(chaining.moveScore).toBe(3 * BASE_SCORE);
     expect(chaining.bestChain).toBe(1);
 
@@ -530,10 +535,7 @@ describe("what a level is measured by", () => {
   });
 
   it("weighs the move against the level's best when the chain settles", () => {
-    const chaining = move(
-      play({ ...ROW_RUN, "2,3": "A0", "2,5": "A0" }, 5),
-      ROW_RUN_SWAP,
-    ).state;
+    const chaining = move(cascade(), ROW_RUN_SWAP).state;
     const second = tick(chaining, stepHold(chaining)).state;
     expect(second.bestMove).toBe(0);
     const settled = tick(second, stepHold(second)).state;
@@ -592,7 +594,7 @@ describe("levels and the end of a round", () => {
     // The quiet board has no legal swap at all, so a chain settling over it
     // is the end of the round.
     const stuck: FacetState = {
-      ...setScreen(loadBoard(createInitialState(1), quietRows()), "playing"),
+      ...setScreen(loadBoard(createInitialState(), quietRows()), "playing"),
       phase: "resolving",
       chainStep: 1,
     };
@@ -607,7 +609,7 @@ describe("levels and the end of a round", () => {
   it("ends the level rather than the round, when both would", () => {
     const stuck: FacetState = {
       ...setLevelScore(
-        setScreen(loadBoard(createInitialState(1), quietRows()), "playing"),
+        setScreen(loadBoard(createInitialState(), quietRows()), "playing"),
         5000,
       ),
       phase: "resolving",
@@ -656,46 +658,67 @@ describe("what advances on each screen", () => {
   });
 });
 
-describe("determinism", () => {
-  const round = (seed: number): FacetState => {
-    let state = startRound(createInitialState(seed));
-    for (let frame = 0; frame < 60; frame++) {
-      const swap = firstLegalSwap(state);
-      if (swap && state.phase === "idle") {
-        state = requestSwap(state, swap).state;
-      }
-      state = tick(state, 1 / 30).state;
-    }
-    return state;
-  };
-
-  const firstLegalSwap = (state: FacetState) => {
-    for (let row = 0; row < state.board.rows; row++) {
-      for (let col = 0; col < state.board.cols; col++) {
-        for (const other of [
-          { col: col + 1, row },
-          { col, row: row + 1 },
-        ]) {
-          const swap = { a: { col, row }, b: other };
-          if (requestSwap(state, swap).verdict === "accepted") return swap;
-        }
-      }
-    }
-    return null;
-  };
-
-  it("reaches the same board from the same seed and the same calls", () => {
-    const first = round(19);
-    const second = round(19);
-    expect(formatBoard(first.board)).toEqual(formatBoard(second.board));
-    expect(first.score).toBe(second.score);
-    expect(first.rngState).toBe(second.rngState);
-    expect(first.simTime).toBeCloseTo(second.simTime);
+describe("a posed refill", () => {
+  it("deals the posed kinds into the refilled cells, from the top down", () => {
+    // The column run at (3,3), (3,4), (3,5) is completed by the swap and
+    // cleared in one step, so column 3 refills rows 0 to 2. Posed as `CJB`, the
+    // three refilled gems are a citrine, a jade, and a beryl, top down, each
+    // plain at strain 0 and dealt in from above its row.
+    const posed = setRefillKinds(
+      play({ "3,3": "R0", "3,4": "R0", "4,5": "R0" }),
+      3,
+      "CJB",
+    );
+    const swap = { a: { col: 3, row: 5 }, b: { col: 4, row: 5 } };
+    const resolved = tick(requestSwap(posed, swap).state, SWAP_SECONDS).state;
+    expect(resolved.chainStep).toBe(1);
+    expect(at(resolved, 3, 0)).toEqual({
+      kind: "citrine",
+      cut: "plain",
+      strain: 0,
+      fell: 1,
+    });
+    expect(at(resolved, 3, 1)).toEqual({
+      kind: "jade",
+      cut: "plain",
+      strain: 0,
+      fell: 2,
+    });
+    expect(at(resolved, 3, 2)).toEqual({
+      kind: "beryl",
+      cut: "plain",
+      strain: 0,
+      fell: 3,
+    });
   });
 
-  it("reaches a different board from a different seed", () => {
-    expect(formatBoard(round(19).board)).not.toEqual(
-      formatBoard(round(20).board),
+  it("governs every refill of the column while it stands", () => {
+    const posed = setRefillKinds(play(ROW_RUN), 3, "M");
+    const first = tick(
+      requestSwap(posed, ROW_RUN_SWAP).state,
+      SWAP_SECONDS,
+    ).state;
+    expect(first.refillKinds[3]).toBe("M");
+    expect(at(first, 3, 0)?.kind).toBe("amethyst");
+  });
+
+  it("draws for a row past the end of the pose, and for a column with none", () => {
+    // Column 3 refills three rows and the pose names one, so rows 1 and 2 are
+    // drawn; column 4 has no pose at all. Every drawn gem is still a plain gem
+    // at strain 0 of one of the seven kinds.
+    const posed = setRefillKinds(
+      play({ "3,3": "R0", "3,4": "R0", "4,5": "R0" }),
+      3,
+      "C",
     );
+    const swap = { a: { col: 3, row: 5 }, b: { col: 4, row: 5 } };
+    const resolved = tick(requestSwap(posed, swap).state, SWAP_SECONDS).state;
+    expect(at(resolved, 3, 0)?.kind).toBe("citrine");
+    for (const row of [1, 2]) {
+      const gem = at(resolved, 3, row);
+      expect(gem?.cut).toBe("plain");
+      expect(gem?.strain).toBe(0);
+      expect(gem?.kind).not.toBeNull();
+    }
   });
 });

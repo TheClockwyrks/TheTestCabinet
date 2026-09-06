@@ -140,7 +140,7 @@ export interface FacetState {
   readonly pointer: PointerState;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
+  readonly refillKinds: readonly string[];
 
   // ---- Beyond the declaration ------------------------------------------
   //

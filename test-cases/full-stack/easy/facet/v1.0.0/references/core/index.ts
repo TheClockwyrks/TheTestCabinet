@@ -16,7 +16,7 @@ export * from "./controls";
 export * from "./deal";
 export * from "./debug";
 export * from "./flow";
-export * from "./rng";
+export * from "./random";
 export * from "./rules";
 export * from "./state";
 export * from "./targets";

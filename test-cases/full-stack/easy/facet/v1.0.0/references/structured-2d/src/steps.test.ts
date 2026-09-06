@@ -19,6 +19,7 @@ import {
   loadBoard,
   quiet,
   requestSwap,
+  setRefillKinds,
   setScreen,
   startRound,
   tick,
@@ -43,11 +44,21 @@ const CASCADE = quietRowsWith({
 });
 const CASCADE_SWAP: CellPair = { a: { col: 3, row: 6 }, b: { col: 4, row: 6 } };
 
-function posed(rows: readonly string[], seed = 1): CoreState {
+function posed(rows: readonly string[]): CoreState {
   // `loadBoard` writes the board and nothing else (specs/instrumentation.md),
   // so the round is opened for it: off `playing` there is no move to make, and
   // every swap below would be refused before the rules ever read the board.
-  return setScreen(loadBoard(createInitialState(seed), rows), "playing");
+  // The refill is posed on the three columns a cascade empties, with kinds
+  // that complete no run, so what a chain does is the rules' alone.
+  let state = setScreen(loadBoard(createInitialState(), rows), "playing");
+  for (const [col, kinds] of [
+    [2, "B"],
+    [3, "SMC"],
+    [4, "A"],
+  ] as const) {
+    state = setRefillKinds(state, col, kinds);
+  }
+  return state;
 }
 
 /** A swap accepted, which leaves the two cells exchanged and `swapping`. */
@@ -237,7 +248,6 @@ describe("advanceTime", () => {
     const many = openBatch(start);
     for (let frame = 0; frame < 60; frame += 1) advanceTime(many, 1 / 60);
 
-    expect(many.state.rngState).toBe(one.rngState);
     expect(many.state.score).toBe(one.score);
     expect(many.state.board).toEqual(one.board);
   });

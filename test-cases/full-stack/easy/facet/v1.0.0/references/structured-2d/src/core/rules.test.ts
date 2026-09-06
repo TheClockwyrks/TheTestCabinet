@@ -5,10 +5,11 @@
 // the board that the rules can find.
 
 import { describe, expect, it } from "vitest";
-import { BASE_SCORE, FLAWED_SCORE, MAX_STRAIN } from "../constants";
+import { BASE_SCORE, FLAWED_SCORE, GEM_KINDS, MAX_STRAIN } from "../constants";
 import { formatBoard, gemAt, parseBoard, withGem } from "./board";
 import { quietRows, quietRowsWith } from "./fixtures";
-import { cursor } from "./rng";
+import { randomPicker } from "./random";
+import { NO_REFILL } from "./state";
 import {
   applySwap,
   applyStrain,
@@ -28,6 +29,7 @@ import {
   removeCells,
   scoreClearSet,
   seedFromRuns,
+  posedRefill,
   settleAndRefill,
   type Run,
 } from "./rules";
@@ -39,6 +41,9 @@ const board = (edits: Readonly<Record<string, string>> = {}) =>
 const keys = (cells: Iterable<Cell>) => [...cells].map(cellKey).sort();
 
 const setOf = (...cells: Cell[]) => new Set(cells.map(cellKey));
+
+/** A refill that draws every cell, as R9 states for a column with no pose. */
+const drawn = posedRefill(NO_REFILL, randomPicker);
 
 describe("R4 runs", () => {
   it("finds nothing on a board with no three in a line", () => {
@@ -549,7 +554,7 @@ describe("R9 settling", () => {
       posed,
       setOf({ col: 2, row: 4 }, { col: 2, row: 5 }),
     );
-    const settled = settleAndRefill(emptied, cursor(1));
+    const settled = settleAndRefill(emptied, drawn);
 
     // The column held C S A B(2, brilliant) R J M C; two cells went, so the
     // six survivors sit at rows 2..7 in the order they stood in.
@@ -576,7 +581,7 @@ describe("R9 settling", () => {
       board(),
       setOf({ col: 2, row: 4 }, { col: 2, row: 5 }),
     );
-    const settled = settleAndRefill(emptied, cursor(1));
+    const settled = settleAndRefill(emptied, drawn);
     // Two cells went from column 2, so its four survivors above them each
     // dropped two rows and the two below them did not move at all.
     for (const row of [2, 3, 4, 5]) {
@@ -599,7 +604,7 @@ describe("R9 settling", () => {
     const column = new Set(
       Array.from({ length: 8 }, (_v, row) => cellKey({ col: 5, row })),
     );
-    const settled = settleAndRefill(removeCells(board(), column), cursor(3));
+    const settled = settleAndRefill(removeCells(board(), column), drawn);
     for (let row = 0; row < 8; row++) {
       expect(gemAt(settled, { col: 5, row })?.fell).toBe(row + 1);
     }
@@ -611,18 +616,18 @@ describe("R9 settling", () => {
       board(),
       setOf({ col: 2, row: 4 }, { col: 2, row: 5 }),
     );
-    expect(lastFall(settleAndRefill(emptied, cursor(1)))).toBe(2);
+    expect(lastFall(settleAndRefill(emptied, drawn))).toBe(2);
     const column = new Set(
       Array.from({ length: 8 }, (_v, row) => cellKey({ col: 5, row })),
     );
     const emptyColumn = removeCells(board(), column);
-    expect(lastFall(settleAndRefill(emptyColumn, cursor(3)))).toBe(8);
+    expect(lastFall(settleAndRefill(emptyColumn, drawn))).toBe(8);
   });
 
   it("leaves every other column exactly as it was", () => {
     const posed = board();
     const emptied = removeCells(posed, setOf({ col: 2, row: 4 }));
-    const settled = settleAndRefill(emptied, cursor(1));
+    const settled = settleAndRefill(emptied, drawn);
     for (const col of [0, 1, 3, 4, 5, 6, 7]) {
       for (let row = 0; row < 8; row++) {
         expect(gemAt(settled, { col, row })).toEqual(
@@ -636,7 +641,7 @@ describe("R9 settling", () => {
     const column = new Set(
       Array.from({ length: 8 }, (_, row) => cellKey({ col: 5, row })),
     );
-    const settled = settleAndRefill(removeCells(board(), column), cursor(3));
+    const settled = settleAndRefill(removeCells(board(), column), drawn);
     expect(formatBoard(settled)).toHaveLength(8);
     for (let row = 0; row < 8; row++) {
       expect(gemAt(settled, { col: 5, row })?.strain).toBe(0);
@@ -644,20 +649,34 @@ describe("R9 settling", () => {
     }
   });
 
-  it("draws the same refill from the same generator state", () => {
-    const emptied = removeCells(board(), setOf({ col: 2, row: 4 }));
-    expect(formatBoard(settleAndRefill(emptied, cursor(42)))).toEqual(
-      formatBoard(settleAndRefill(emptied, cursor(42))),
+  it("deals the posed kind into a posed column, and draws elsewhere", () => {
+    const refill = posedRefill(["", "", "SJ", "", "", "", "", ""], {
+      pick: <T>(items: readonly T[]): T => items[0],
+    });
+    const emptied = removeCells(
+      board(),
+      setOf({ col: 2, row: 4 }, { col: 2, row: 5 }, { col: 3, row: 4 }),
     );
-    expect(formatBoard(settleAndRefill(emptied, cursor(42)))).not.toEqual(
-      formatBoard(settleAndRefill(emptied, cursor(43))),
-    );
+    const settled = settleAndRefill(emptied, refill);
+    expect(gemAt(settled, { col: 2, row: 0 })?.kind).toBe("sapphire");
+    expect(gemAt(settled, { col: 2, row: 1 })?.kind).toBe("jade");
+    // Column 3 has no pose, so its refill is the picker's draw.
+    expect(gemAt(settled, { col: 3, row: 0 })?.kind).toBe(GEM_KINDS[0]);
   });
 
-  it("hands back the generator state the refill left", () => {
-    const rng = cursor(42);
-    settleAndRefill(removeCells(board(), setOf({ col: 2, row: 4 })), rng);
-    expect(rng.state).not.toBe(42);
+  it("draws a row past the end of a column's pose", () => {
+    const refill = posedRefill(["", "", "S", "", "", "", "", ""], {
+      pick: <T>(items: readonly T[]): T => items[items.length - 1],
+    });
+    const emptied = removeCells(
+      board(),
+      setOf({ col: 2, row: 4 }, { col: 2, row: 5 }),
+    );
+    const settled = settleAndRefill(emptied, refill);
+    expect(gemAt(settled, { col: 2, row: 0 })?.kind).toBe("sapphire");
+    expect(gemAt(settled, { col: 2, row: 1 })?.kind).toBe(
+      GEM_KINDS[GEM_KINDS.length - 1],
+    );
   });
 });
 
@@ -729,7 +748,7 @@ describe("R1, R2 and R3, the move rules", () => {
   it("leaves both exchanged gems standing still in their new cells", () => {
     const fallen = settleAndRefill(
       removeCells(board(), setOf({ col: 3, row: 4 })),
-      cursor(1),
+      drawn,
     );
     expect(gemAt(fallen, { col: 3, row: 4 })?.fell).toBe(1);
     const swapped = applySwap(fallen, {

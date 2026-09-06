@@ -37,7 +37,6 @@ import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { loadAssets } from "./assets";
 import { defineCues, loadCues } from "./audio";
 import { Bench } from "./bench";
-import { DEFAULT_SEED } from "./constants";
 import { FacetController } from "./controller";
 import { createDebugApi, type FacetDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -154,7 +153,7 @@ export class FacetState extends GameStateBase {
   pointer: PointerState = { x: 0, y: 0, down: false, device: "mouse" };
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
+  refillKinds: string[] = ["", "", "", "", "", "", "", ""];
 
   // ---- Bookkeeping the rules need and the snapshot does not report -------
   //
@@ -162,7 +161,7 @@ export class FacetState extends GameStateBase {
   // not name, and it is required for a rule that file points at. It lives here
   // rather than in a module variable or a closure because the state is "the
   // whole of the authoritative game": a field kept anywhere else would survive
-  // `reset` and put a seeded replay out of step.
+  // `reset`.
   //
   // It is an addition to the declared shape, never a substitute: every declared
   // field above keeps its name, its type, and its meaning, and `reset` restores

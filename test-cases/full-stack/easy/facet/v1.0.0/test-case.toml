@@ -61,7 +61,7 @@ prompt = "prompt.hbs"
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
 # stopped. It exists so a stuck or runaway session cannot run unbounded, not to
 # make the job tight. Facet asks for a rules engine that resolves a chain step in
-# one fixed order, a seeded deal that owes the player an opening board with a
+# one fixed order, a deal that owes the player an opening board with a
 # legal swap on it, a legal-swap search, a board played with the pointer alone —
 # a gem taken hold of, offered onto its neighbor, and let go — a set of pointer
 # targets on every screen with a keyboard driving the menus beside them, a swap
@@ -350,8 +350,8 @@ source = "specs/controls.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; an API to pose a board, drive the game through its own real
+# The debugging and automation surface every build must expose: a render-free
+# core; an API to pose a board, drive the game through its own real
 # input path, and read it back; and a read-only debug overlay. Framed as an
 # ordinary developer affordance of the game. It branches on the engine for how the
 # surface is reached and for the clock operations only an engineless build owns.

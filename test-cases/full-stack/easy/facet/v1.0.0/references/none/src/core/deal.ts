@@ -2,9 +2,7 @@
 //
 // An opening board has two properties: it holds NO RUN under R4, and AT LEAST
 // ONE LEGAL SWAP exists on it. Every gem on it is plain at strain 0, with its
-// kind drawn from `GEM_KINDS` off the game's seeded random source, and the
-// whole of that source's state is `FacetState.rngState`, so a seed replays a
-// deal exactly.
+// kind drawn at random from `GEM_KINDS`.
 //
 // The first property is earned by construction: a cell is drawn from the kinds
 // that would not complete a run with the two cells already placed to its left
@@ -24,14 +22,8 @@
 import { GEM_KINDS, GRID_COLS, GRID_ROWS } from "../constants";
 import { parseBoard, plainGem } from "./board";
 import { legalSwapExists, maximalRuns } from "./rules";
-import { cursor } from "./rng";
+import { randomPicker, type Picker } from "./random";
 import type { BoardState, Cell, Gem, GemKind } from "./state";
-
-/** A dealt board, and the generator state to store back in `rngState`. */
-export interface Deal {
-  readonly board: BoardState;
-  readonly rngState: number;
-}
 
 /** Deals made before the reserve board is taken. */
 const MAX_ATTEMPTS = 64;
@@ -100,17 +92,15 @@ function allowedKinds(
 /**
  * One deal of the fixed `GRID_COLS` by `GRID_ROWS` grid: plain gems at strain
  * `0`, each with the `fell` its row gives it, and no run under R4. Whether it
- * carries a legal swap is the caller's to check. The generator is anything that
+ * carries a legal swap is the caller's to check. The picker is anything that
  * can pick out of a list, so a test can hand it a degenerate one.
  */
-export function dealBoardWithoutRuns(rng: {
-  pick<T>(items: readonly T[]): T;
-}): BoardState {
+export function dealBoardWithoutRuns(picker: Picker): BoardState {
   const cells = GRID_COLS * GRID_ROWS;
   const gems: (Gem | null)[] = new Array<Gem | null>(cells).fill(null);
   for (let row = 0; row < GRID_ROWS; row++) {
     for (let col = 0; col < GRID_COLS; col++) {
-      const kind = rng.pick(allowedKinds(gems, GRID_COLS, { col, row }));
+      const kind = picker.pick(allowedKinds(gems, GRID_COLS, { col, row }));
       gems[row * GRID_COLS + col] = plainGem(kind, row + 1);
     }
   }
@@ -118,20 +108,20 @@ export function dealBoardWithoutRuns(rng: {
 }
 
 /**
- * An opening board and the generator state after it. Deals until one carries a
- * legal swap, and falls to the reserve board if the budget runs out. `attempts`
- * is the budget, named so a test can watch the fallback rather than trust it.
+ * An opening board. Deals until one carries a legal swap, and falls to the
+ * reserve board if the budget runs out. `attempts` is the budget, named so a
+ * test can watch the fallback rather than trust it, and `picker` is the random
+ * source, named so a test can hand it a degenerate one.
  */
 export function dealOpeningBoard(
-  rngState: number,
+  picker: Picker = randomPicker,
   attempts: number = MAX_ATTEMPTS,
-): Deal {
-  const rng = cursor(rngState);
+): BoardState {
   for (let attempt = 0; attempt < attempts; attempt++) {
-    const board = dealBoardWithoutRuns(rng);
-    if (legalSwapExists(board)) return { board, rngState: rng.state };
+    const board = dealBoardWithoutRuns(picker);
+    if (legalSwapExists(board)) return board;
   }
-  return { board: reserveBoard(), rngState: rng.state };
+  return reserveBoard();
 }
 
 /**

@@ -31,7 +31,6 @@ import { ladderCue, MUSIC_PLAY, MUSIC_TITLE } from "./audio";
 import {
   BOARD_CX,
   CUES,
-  DEFAULT_SEED,
   GRID_COLS,
   GRID_ROWS,
   LAYOUT,
@@ -312,7 +311,7 @@ const BARREN: readonly [number, number, number, number] = [6, 6, 7, 6];
  * along the bottom row, and the jades that fall into the gap line up with the
  * jade at `(0, 7)`, so a second step resolves one `STEP_SECONDS` later. Every
  * gem involved is a survivor rather than a refill, so the cascade is a fact of
- * the board rather than of the seed.
+ * the board rather than of a draw.
  */
 function cascade(): string[] {
   return quietRowsWith({
@@ -339,7 +338,7 @@ describe("the engine stands the game up", () => {
     expect(snapshot.level).toBe(1);
     expect(snapshot.levelTarget).toBe(2000);
     expect(snapshot.phase).toBe("idle");
-    expect(snapshot.rngState).toBe(DEFAULT_SEED);
+    expect(snapshot.refillKinds).toEqual(["", "", "", "", "", "", "", ""]);
     expect(snapshot.simTime).toBe(0);
     expect(snapshot.selection).toBeNull();
     expect(snapshot.offer).toBeNull();
@@ -800,13 +799,24 @@ describe("the pointer plays the board", () => {
   });
 });
 
-describe("the simulation is deterministic", () => {
-  /** A round from a known seed, advanced as `frames` frames of `stepMs`. */
+describe("the simulation advances on elapsed time", () => {
+  /**
+   * A round posed with its refill pinned down, advanced as `frames` frames of
+   * `stepMs`. The three columns the run empties are posed so that the board
+   * the two drives are compared over is the rules' alone.
+   */
   async function play(stepMs: number, frames: number): Promise<FacetState> {
     const harness = await createHarness();
     harness.engine.setClock(new ConstantClock(stepMs));
-    harness.pose((state) => harness.debug.reset(state, { seed: 7 }));
+    harness.pose((state) => harness.debug.reset(state));
     poseRound(harness, threeInARow());
+    for (const [col, kinds] of [
+      [1, "S"],
+      [2, "J"],
+      [3, "C"],
+    ] as const) {
+      harness.pose((state) => harness.debug.setRefillKinds(state, col, kinds));
+    }
     harness.pose((state) => harness.debug.requestSwap(state, 3, 1, 3, 2));
     await harness.engine.advance(frames);
     return harness.state as FacetState;
@@ -816,22 +826,12 @@ describe("the simulation is deterministic", () => {
     const coarse = await play(1000, 1);
     const fine = await play(1000 / 60, 60);
 
-    expect(coarse.rngState).toBe(fine.rngState);
+    expect(coarse.phase).toBe("idle");
+    expect(coarse.score).toBe(30);
     expect(coarse.score).toBe(fine.score);
     expect(coarse.board).toEqual(fine.board);
     expect(coarse.phase).toBe(fine.phase);
     expect(coarse.simTime).toBeCloseTo(fine.simTime, 6);
-  });
-
-  it("replays a seeded deal exactly", async () => {
-    const deal = async (): Promise<FacetState> => {
-      const harness = await createHarness();
-      harness.pose((state) => harness.debug.reset(state, { seed: 99 }));
-      startRound(harness);
-      return harness.state as FacetState;
-    };
-
-    expect((await deal()).board).toEqual((await deal()).board);
   });
 });
 

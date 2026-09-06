@@ -29,13 +29,14 @@ describe("the core's surface", () => {
       "legalSwapExists",
       // The chain and the frame.
       "resolveStep",
+      "posedRefill",
       "requestSwap",
       "tick",
       "levelTarget",
       "multiplierFor",
       "stepHold",
       "landAt",
-      // The deal, the controls, the screens, the state, the generator.
+      // The deal, the controls, the screens, the state.
       "dealOpeningBoard",
       "pressCell",
       "offerCell",
@@ -46,7 +47,6 @@ describe("the core's surface", () => {
       "startRound",
       "continueLevel",
       "createInitialState",
-      "nextRandom",
       // The debug logic.
       "snapshot",
       "reset",
@@ -62,6 +62,8 @@ describe("the core's surface", () => {
       "setBestChain",
       "setBestMove",
       "setMoveScore",
+      "setRefillKinds",
+      "clearRefillKinds",
       "poseSwap",
     ]) {
       expect(typeof core[name as keyof typeof core]).toBe("function");
@@ -69,7 +71,7 @@ describe("the core's surface", () => {
   });
 
   it("runs a whole round through the barrel alone", () => {
-    const started = core.startRound(core.createInitialState(3));
+    const started = core.startRound(core.createInitialState());
     const shot = core.snapshot(core.tick(started, 1 / 60).state);
     expect(shot.screen).toBe("playing");
     expect(shot.board.cells).toHaveLength(64);
