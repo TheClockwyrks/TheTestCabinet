@@ -120,7 +120,6 @@ import {
 import {
   deviceOf,
   makeReplayCapture,
-  pixelAt,
   sampleColor as sampleCluster,
 } from "./case-harness/engine/2d";
 import { colorDistance, luminance, type Rgb } from "./case-harness/color";
@@ -403,7 +402,33 @@ const DEFAULT_MAX_FRAMES = 1200;
 export type UntilResult = SweepResult<FoundrySnapshot>;
 
 /** The window a harness reports to the engine, and the clock it steps on. */
-export type HarnessOptions = EngineHarnessOptions;
+/**
+ * The window a harness reports to the engine, the rate it steps at, and the
+ * clock it steps on.
+ */
+export interface HarnessOptions extends EngineHarnessOptions {
+  /**
+   * Frames a second the harness's clock ticks at. Defaults to {@link TICK_HZ}.
+   *
+   * THE RATE IS THE CHECK'S TO CHOOSE, and a check whose frames are spent on a
+   * SPAN of simulation rather than on a reading picks a coarser one. The
+   * specification fixes no frame size and guarantees that "an interval of
+   * simulation time reaches the same state however it was divided into frames
+   * and whatever frame rate produced it" (specs/instrumentation.md), so a span
+   * covered in a quarter of the frames reaches the same state and costs a
+   * quarter of the work. `instrumentation/frame-division-movement` and
+   * `instrumentation/frame-division-projectile` are the two points that decide
+   * that guarantee.
+   *
+   * {@link Harness.advanceSeconds}, {@link Harness.seconds} and
+   * {@link Harness.ticks} are all measured against this rate, so a check states
+   * its span in seconds and never in frames of somebody else's clock. A `clock`
+   * of the caller's own overrides the rate for what a FRAME is worth, and those
+   * three keep answering against `hz`, so a check whose subject IS the clock
+   * drives frames rather than seconds.
+   */
+  hz?: number;
+}
 
 /**
  * What this project reads that the neutral kit does not carry.
@@ -435,7 +460,7 @@ export interface FoundryModel {
   /** Every asset the build asked for and got, by path, oldest first. */
   readonly assetLoads: string[];
 
-  /** Run whole frames of the default clock covering `s` seconds of game time. */
+  /** Run whole frames of THIS harness's clock covering `s` seconds of game time. */
   advanceSeconds(s: number): Promise<void>;
   /** Run exactly one frame and hand back every operation its render issued. */
   frameCalls(): Promise<DrawCall[]>;
@@ -571,17 +596,50 @@ const kit = createEngineCaseHarness<
      * on the stage's own edge maps onto the boundary of the store; clamping is what
      * keeps such a read a colour rather than an exception from `getImageData`.
      */
+    // ONE READBACK, NOT ONE PER POINT. A reading of a REGION is a lattice of a
+    // couple of hundred points, and a check that watches a region over a span takes
+    // that lattice again on every frame, so a `getImageData` per point is tens of
+    // thousands of readbacks for one verdict — and a readback is the one operation
+    // on this canvas that has to wait for everything queued before it. The points
+    // are mapped to the device first, their bounding box is read once, and each
+    // point is indexed out of that buffer. What each point reads is exactly what a
+    // one-pixel readback at the same device pixel reads.
     const pixels = (points: readonly Point[]): Pixel[] => {
+      if (points.length === 0) return [];
       const view = engine.viewport();
       const world = engine.world;
       const store = base.canvas;
-      return points.map((point) => {
+      const lastX = Math.max(store.width - 1, 0);
+      const lastY = Math.max(store.height - 1, 0);
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      const at = points.map((point) => {
         const logical = world.camera.worldToLogical(point);
-        const at = deviceOf(view, logical.x, logical.y);
-        return pixelAt(base.ctx, {
-          x: Math.min(Math.max(at.x, 0), Math.max(store.width - 1, 0)),
-          y: Math.min(Math.max(at.y, 0), Math.max(store.height - 1, 0)),
-        });
+        const device = deviceOf(view, logical.x, logical.y);
+        const x = Math.min(Math.max(device.x, 0), lastX);
+        const y = Math.min(Math.max(device.y, 0), lastY);
+        x0 = Math.min(x0, x);
+        y0 = Math.min(y0, y);
+        x1 = Math.max(x1, x);
+        y1 = Math.max(y1, y);
+        return { x, y };
+      });
+      const { data, width } = base.ctx.getImageData(
+        x0,
+        y0,
+        x1 - x0 + 1,
+        y1 - y0 + 1,
+      );
+      return at.map(({ x, y }) => {
+        const i = ((y - y0) * width + (x - x0)) * 4;
+        return [
+          data[i] as number,
+          data[i + 1] as number,
+          data[i + 2] as number,
+          data[i + 3] as number,
+        ];
       });
     };
 
@@ -677,13 +735,32 @@ const kit = createEngineCaseHarness<
   },
 });
 
+/**
+ * The rate a harness steps at, and the seconds a check states its spans in.
+ *
+ * Separate from {@link FoundryModel} because these three are not the kit's to
+ * build: the kit is handed one clock and knows nothing of the rate the caller
+ * chose, so {@link createHarness} defines them over the harness the kit answers.
+ */
+export interface RateModel {
+  /** Frames a second this harness's clock ticks at. */
+  readonly hz: number;
+  /** Run whole frames of THIS harness's clock covering `s` seconds of game time. */
+  advanceSeconds(s: number): Promise<void>;
+  /** Frames of THIS harness's clock covering `s` seconds, rounded up. */
+  ticks(s: number): number;
+  /** Seconds of simulated time in `n` frames of THIS harness's clock. */
+  seconds(n: number): number;
+}
+
 /** Everything a check reads off one engine running one build. */
 export type Harness = EngineHarness<
   FoundrySnapshot,
   FoundryDriver,
   FoundryEngine
 > &
-  FoundryModel;
+  FoundryModel &
+  RateModel;
 
 /**
  * Build an engine over a canvas of the harness's own, initialize the build's game,
@@ -699,7 +776,28 @@ export type Harness = EngineHarness<
  * decodes and announces exactly as it does in a page, and the build asks for its
  * files exactly as it always does.
  */
-export const createHarness = kit.createHarness;
+export async function createHarness(
+  options: HarnessOptions = {},
+): Promise<Harness> {
+  const hz = options.hz ?? TICK_HZ;
+  const harness = await kit.createHarness({
+    ...options,
+    clock: options.clock ?? new ConstantClock(1000 / hz),
+  });
+  // Defined over the kit's harness rather than passed into it, because the rate
+  // is this case's own vocabulary: the kit builds one clock and knows nothing of
+  // the seconds a check states its spans in. `advanceSeconds` is replaced rather
+  // than added, so a span means the same thing whichever rate the check chose.
+  return Object.defineProperties(harness, {
+    hz: { value: hz, enumerable: true },
+    ticks: { value: (s: number) => Math.ceil(s * hz), enumerable: true },
+    seconds: { value: (n: number) => n / hz, enumerable: true },
+    advanceSeconds: {
+      value: (s: number) => harness.advance(Math.ceil(s * hz)),
+      enumerable: true,
+    },
+  }) as Harness;
+}
 
 /**
  * A reader of the frame's input that consumes nothing the build was owed.
