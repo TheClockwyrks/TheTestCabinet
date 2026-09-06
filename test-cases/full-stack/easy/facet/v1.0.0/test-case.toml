@@ -1533,9 +1533,8 @@ validation = { script = "cuts/r8-prism-swap-creates-nothing.test.ts", outputs = 
 #
 # What the refill's kind is drawn FROM is asserted (one of GEM_KINDS, plain, at
 # strain 0); that the draw is UNIFORM is not, because deciding a distribution
-# off a settled board would take either the build's own generator or a
-# statistical test, and this case ships neither an opinionated validator nor one
-# tuned to a reference.
+# off a settled board would take a statistical test over many refills, and this
+# case ships neither an opinionated validator nor one tuned to a reference.
 [[review.categories]]
 id = "settling"
 title = "Settling and Refill (R9)"
@@ -1692,7 +1691,7 @@ validation = { script = "settling/r9-posed-board-fell-zero.test.ts", outputs = [
 # the board the first step actually settled, read back out of the snapshot,
 # rather than from a prediction. That is what keeps R9's random refill out of
 # the assertion: the check derives the clear set the spec gives for exactly the
-# board in front of it, whatever the build's generator dealt into it.
+# board in front of it, whatever R9's draw dealt into it.
 [[review.categories]]
 id = "chain"
 title = "The Chain Step"

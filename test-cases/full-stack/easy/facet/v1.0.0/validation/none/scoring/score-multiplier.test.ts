@@ -87,7 +87,7 @@ import type { FacetSnapshot } from "../surface";
  * The jade at `(3,5)` sits under the run and does not move; the two above fall
  * onto it. Nothing here is three of a kind before the swap. All three cells of
  * the run step 2 clears are SURVIVORS of step 1 rather than refills, so the
- * second step happens whatever the build's generator dealt into the top of the
+ * second step happens whatever R9's draw dealt into the top of the
  * column.
  */
 const CHAIN_CELLS: readonly PlacedToken[] = [

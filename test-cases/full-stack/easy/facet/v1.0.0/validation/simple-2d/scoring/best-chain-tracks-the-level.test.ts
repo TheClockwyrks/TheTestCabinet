@@ -30,7 +30,7 @@
 //
 // AND THE DRIVE STOPS AT STEP 2 ON PURPOSE. The board is arranged to cascade
 // exactly that far out of its own survivors; anything past it would be seeded by
-// whatever R9's generator dealt into the top of the column, which is the build's
+// whatever R9's draw dealt into the top of the column, which is the build's
 // business and no part of this point. Stopping at the second boundary is what
 // makes "reaches exactly 2" a statement about the arrangement rather than about
 // the deal.

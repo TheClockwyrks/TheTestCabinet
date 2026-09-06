@@ -22,7 +22,7 @@ next board pours in from above, and the round ends when no move is left that
 would shatter anything.
 
 A build carries the whole bench — the nine rules and the chain that resolves
-them, the seeded deal, a move offered and withdrawn under the hand until a
+them, a deal, a move offered and withdrawn under the hand until a
 release commits it, and six screens worked equally by a mouse, a pen or a finger
 — and, because this is a full-stack case, it also draws every stone, effect and
 sound it plays as a file it produced during the run.

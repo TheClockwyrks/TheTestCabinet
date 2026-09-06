@@ -190,11 +190,12 @@ files:
 
 ## The core, and what sits on it
 
-`src/core/` is Facet's whole simulation — the board and its notation, the seeded
-generator, R1 to R9, the chain cadence, the screens and their menus, the opening
-deal, and the pose logic behind the debug surface. It imports **nothing** but
-`src/constants.ts`: no engine, no renderer, no DOM. It is the same core the case's
-`simple-2d` and `structured-2d` reference builds carry, written once.
+`src/core/` is Facet's whole simulation — the board and its notation, the random
+source the deal and the refill draw from, R1 to R9, the chain cadence, the
+screens and their menus, the opening deal, and the pose logic behind the debug
+surface. It imports **nothing** but `src/constants.ts`: no engine, no renderer,
+no DOM. It is the same core the case's `simple-2d` and `structured-2d` reference
+builds carry, written once.
 
 `src/game.ts` is the bridge. It reads the frame's input, hands the core the
 frame's delta time, plays the cues the frame raised, and keeps the pointer and

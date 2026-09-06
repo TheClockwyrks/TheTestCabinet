@@ -18,7 +18,7 @@
 // ONLY ONE STEP MAY SCORE, or the figure read on the running chain would not be
 // the figure the level change was handed. The board is rewritten under the
 // running step to one carrying no run at all, so the read at the end of the
-// step's hold seeds nothing, the chain ends there, and no cascade off R9's seeded
+// step's hold seeds nothing, the chain ends there, and no cascade off R9's
 // refill can add points between the two readings. `setGem` is what rewrites it:
 // specs/instrumentation.md says it writes one cell and leaves "every other cell,
 // the screen, the phase, and the selection" standing, so the step keeps holding

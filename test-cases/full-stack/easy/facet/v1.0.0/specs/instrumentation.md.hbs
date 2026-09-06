@@ -287,8 +287,10 @@ letters from the notation `specs/board.md` defines, and the gem the refill deals
 into row `r` of that column takes the kind `kinds[r]` names, `plain` at strain
 `0` and with the `fell` R9 gives it, in place of the draw R9 states. A row past
 the end of `kinds` draws as R9 states. The pose stands until `clearRefillKinds`
-or `reset` and governs every refill of that column while it stands. The board
-and every other column's pose stand where they were, and nothing else changes.
+or `reset` and governs every refill of that column while it stands. It governs
+R9's refill alone: an opening board, whether a round deals it or `dealBoard`
+does, draws as `specs/rules.md` states while a pose stands. The board and every
+other column's pose stand where they were, and nothing else changes.
 
 {{#if (eq engine.slug "none")}}
 ### `clearRefillKinds()`

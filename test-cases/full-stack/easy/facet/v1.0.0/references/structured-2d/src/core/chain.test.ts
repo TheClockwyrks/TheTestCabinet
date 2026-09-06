@@ -31,7 +31,7 @@ import {
   tick,
 } from "./chain";
 import { loadBoard, setLevelScore, setRefillKinds, setScreen } from "./debug";
-import { quietRows, quietRowsWith } from "./fixtures";
+import { quietRows, quietRowsWith, withQuietRefill } from "./fixtures";
 import { randomPicker } from "./random";
 import {
   applySwap,
@@ -54,18 +54,20 @@ const play = (edits: Readonly<Record<string, string>> = {}): FacetState =>
   setScreen(loadBoard(createInitialState(), quietRowsWith(edits)), "playing");
 
 /**
- * A board that chains exactly twice: clearing the row run drops three ambers
- * into a column of their own. The refill is posed on the three columns the
- * chain empties, with kinds that complete no run, so what the chain does is
- * decided by the rules alone rather than by a draw.
+ * A round whose chain settles where the rules end it: the refill is posed on
+ * the three columns the row run empties, with kinds that complete no run, so a
+ * test that reads the settled board or the end of the chain is not reading a
+ * draw.
  */
-const cascade = (): FacetState => {
-  let posed = play({ ...ROW_RUN, "2,3": "A0", "2,5": "A0" });
-  posed = setRefillKinds(posed, 2, "SMRJ");
-  posed = setRefillKinds(posed, 3, "JBSM");
-  posed = setRefillKinds(posed, 4, "CJBS");
-  return posed;
-};
+const settling = (edits: Readonly<Record<string, string>> = {}): FacetState =>
+  withQuietRefill(play(edits));
+
+/**
+ * A board that chains exactly twice: clearing the row run drops three ambers
+ * into a column of their own, and the posed refill completes nothing more.
+ */
+const cascade = (): FacetState =>
+  settling({ ...ROW_RUN, "2,3": "A0", "2,5": "A0" });
 
 const at = (state: FacetState, col: number, row: number) =>
   gemAt(state.board, { col, row });
@@ -464,7 +466,7 @@ describe("the chain's cadence", () => {
   });
 
   it("returns to idle when the board it reads seeds nothing", () => {
-    const resolving = move(play(ROW_RUN), ROW_RUN_SWAP).state;
+    const resolving = move(settling(ROW_RUN), ROW_RUN_SWAP).state;
     const settled = tick(resolving, stepHold(resolving)).state;
     expect(seedFromRuns(resolving.board).cells.size).toBe(0);
     expect(settled.phase).toBe("idle");
@@ -544,7 +546,7 @@ describe("what a level is measured by", () => {
   });
 
   it("keeps a smaller move from lowering the level's best", () => {
-    const posed = { ...play(ROW_RUN), bestMove: 5000, bestChain: 7 };
+    const posed = { ...settling(ROW_RUN), bestMove: 5000, bestChain: 7 };
     const resolving = move(posed, ROW_RUN_SWAP).state;
     const settled = tick(resolving, stepHold(resolving)).state;
     expect(settled.bestMove).toBe(5000);
@@ -559,7 +561,7 @@ describe("levels and the end of a round", () => {
   });
 
   it("ends the level when the chain settles at or past the target", () => {
-    const primed = setLevelScore(play(ROW_RUN), LEVEL_TARGET_STEP - 10);
+    const primed = setLevelScore(settling(ROW_RUN), LEVEL_TARGET_STEP - 10);
     const resolving = move(primed, ROW_RUN_SWAP).state;
     expect(resolving.levelScore).toBe(LEVEL_TARGET_STEP + 20);
 
@@ -581,7 +583,7 @@ describe("levels and the end of a round", () => {
   });
 
   it("holds the level until the chain settles, however it is posed", () => {
-    const primed = setLevelScore(play(ROW_RUN), LEVEL_TARGET_STEP);
+    const primed = setLevelScore(settling(ROW_RUN), LEVEL_TARGET_STEP);
     expect(primed.screen).toBe("playing");
     const resolving = move(primed, ROW_RUN_SWAP).state;
     expect(resolving.screen).toBe("playing");

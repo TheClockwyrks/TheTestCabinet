@@ -103,7 +103,7 @@ function besideRun(cell: CellRef): boolean {
  * column's order. Exactly one cell of each of these columns was emptied, so
  * every gem above the run's row stands one row lower afterward and every gem
  * below it stands where it stood. The one cell of each column that holds no
- * survivor afterward is row `0`, which R9 refilled off the game's own generator,
+ * survivor afterward is row `0`, which R9 refilled by its draw,
  * and no check may assert what landed there.
  */
 const SETTLED: { from: CellRef; at: CellRef }[] = [];

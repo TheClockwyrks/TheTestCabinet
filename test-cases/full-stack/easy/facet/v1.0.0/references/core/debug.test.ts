@@ -38,7 +38,7 @@ import {
   setSelection,
   snapshot,
 } from "./debug";
-import { quietRows, quietRowsWith } from "./fixtures";
+import { quietRows, quietRowsWith, withQuietRefill } from "./fixtures";
 import {
   continueLevel,
   openHowTo,
@@ -227,7 +227,9 @@ describe("snapshot", () => {
   });
 
   it("reports the level's figures as the level earns them", () => {
-    const resolving = move(play(ROW_RUN));
+    // The refill is posed so the chain ends at step 1, where the move is
+    // weighed against the level's best.
+    const resolving = move(withQuietRefill(play(ROW_RUN)));
     const shot = snapshot(resolving);
     expect(shot.moveScore).toBe(30);
     expect(shot.bestChain).toBe(1);

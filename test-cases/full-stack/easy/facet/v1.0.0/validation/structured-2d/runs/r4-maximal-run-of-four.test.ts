@@ -120,7 +120,7 @@ function besideRun(cell: CellRef): boolean {
  * stand where they stood. A column that fell by less than three is a column
  * whose cell of the run was left standing, which is exactly the failure this
  * point exists to catch. The three cells holding no survivor afterward are the
- * top three rows, which R9 refilled off the game's own generator, and no check
+ * top three rows, which R9 refilled by its draw, and no check
  * may assert what landed there.
  */
 const SETTLED: { from: CellRef; at: CellRef }[] = [];
