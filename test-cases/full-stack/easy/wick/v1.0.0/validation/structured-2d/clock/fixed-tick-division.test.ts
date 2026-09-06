@@ -33,12 +33,20 @@
 // from parts. Nothing in the world draws at random, so the three runs differ
 // in nothing but their division.
 //
-// TOLERANCE. `MOTION_EPS` on the two integrated positions, the suite's slack
-// for a figure summed tick by tick; the tick count is exact.
+// TOLERANCE. `INTEGRATION_TOLERANCE` (0.1) on the two integrated positions:
+// thirty steps summed in floats stray by far less than a tenth of a unit, and
+// a build that integrated with the frame's delta rather than the tick's
+// strays by whole steps; the tick count is exact.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNear } from "../assert";
-import { ENEMIES, MOTION_EPS, TICK_DT, TICK_HZ, TICK_MS } from "../constants";
+import {
+  ENEMIES,
+  INTEGRATION_TOLERANCE,
+  TICK_DT,
+  TICK_HZ,
+  TICK_MS,
+} from "../constants";
 import {
   advanceTicks,
   captureReplay,
@@ -116,16 +124,21 @@ function assertDivision(division: Division, what: string): void {
   assertNear(
     moth.x,
     MOTH_X_AFTER,
-    MOTION_EPS,
+    INTEGRATION_TOLERANCE,
     `the moth's x after ${what}, thirty chase steps from ${MOTH_X}`,
   );
   const bolt = projectileById(after, division.bolt);
   if (bolt === undefined) throw new Error(`the bolt is gone after ${what}`);
-  assertNear(bolt.x, BOLT_X, MOTION_EPS, `the bolt's x after ${what}`);
+  assertNear(
+    bolt.x,
+    BOLT_X,
+    INTEGRATION_TOLERANCE,
+    `the bolt's x after ${what}`,
+  );
   assertNear(
     bolt.y,
     BOLT_Y_AFTER,
-    MOTION_EPS,
+    INTEGRATION_TOLERANCE,
     `the bolt's y after ${what}, thirty steps of ${BOLT_VY} units/s`,
   );
 }

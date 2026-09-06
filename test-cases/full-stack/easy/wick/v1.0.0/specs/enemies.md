@@ -148,8 +148,8 @@ A death leaves its drop at the enemy's center on the tick it dies.
 | `dark` | Nothing. |
 
 The experience each gem tier carries, how a gem is attracted and collected,
-and how a chest opens are in `specs/world.md`. A common kill also draws for
-bread and for a draft, as that file states.
+and how a chest opens are in `specs/world.md`. A common kill also rolls for
+a pickup, as that file states.
 
 ## The spawn director
 

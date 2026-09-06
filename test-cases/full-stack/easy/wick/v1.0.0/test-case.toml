@@ -1907,7 +1907,7 @@ validation = { script = "instrumentation/overlay-off-at-start.test.ts", engines 
 [[review.categories.items]]
 id = "overlay-read-only"
 title = "The overlay reads the game without changing it"
-description = "Showing the overlay, letting it report over 120 frames of a posed run paused through the surface, and hiding it leaves the run exactly as it stood: the documented run reads the same before and after the watched stretch."
+description = "Showing the overlay, letting it report over 120 frames, and hiding it leaves the run as it stood: on a posed run paused through the surface the documented run reads the same before and after the watched stretch, and on an isolated playing run the stretch raises tick by 120 and time to tick / TICK_HZ and changes nothing else."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The watched stretch the overlay reports over", kind = "replay" } ] }

@@ -5,7 +5,7 @@
 //   - `specs/enemies.md` ("Elites and the Dark"): the Dark's row is rank
 //     `dark` and drops `nothing`.
 //   - `specs/enemies.md` ("Drops"): a `dark` death leaves "Nothing".
-//   - `specs/world.md` ("The drop roll"): "Elites and the Dark make no draw;
+//   - `specs/world.md` ("The drop roll"): "Elites and the Dark make no roll;
 //     an elite drops its chest, and the Dark drops nothing", so neither bread
 //     nor draft can appear either.
 //

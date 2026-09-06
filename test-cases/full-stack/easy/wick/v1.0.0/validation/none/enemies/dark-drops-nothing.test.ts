@@ -6,7 +6,7 @@
 // 10000 | 170 | 50 | 40 | nothing | chase". `specs/world.md` ("Gems") gives the
 // gem to a common alone — "Every common enemy drops one gem" — ("Pickups")
 // gives the chest to "An elite", and ("The drop roll") settles the other two:
-// "Elites and the Dark make no draw; an elite drops its chest, and the Dark
+// "Elites and the Dark make no roll; an elite drops its chest, and the Dark
 // drops nothing." So the tick the Dark dies on creates no gem and no pickup of
 // any kind.
 //

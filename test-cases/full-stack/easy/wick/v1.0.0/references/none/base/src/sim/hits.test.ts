@@ -266,6 +266,10 @@ describe("the evolved heals", () => {
 
   it("Corona heals one per enemy a pulse kills", () => {
     const world = playing(["corona", 1]);
+    // The moths die within collection distance, so the drop roll is held
+    // off: a bread they rolled would be collected on the same tick and heal
+    // BREAD_HEAL on top of the pulse's heal.
+    world.state.switches.drops = false;
     world.state.run.player.hp = 50;
     spawnEnemy(world.state.run, "moth", 20, 0);
     spawnEnemy(world.state.run, "moth", -20, 0);

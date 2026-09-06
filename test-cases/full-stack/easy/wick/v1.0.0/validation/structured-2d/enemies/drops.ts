@@ -39,11 +39,11 @@
 // `PICKUP_ITEM_RADIUS + PLAYER_RADIUS` (`28`) (`specs/world.md`). So whatever
 // the death leaves is still lying where it fell when the snapshot is read.
 //
-// WHAT ELSE THE TICK MAY LEAVE. A common's death also "draws for bread and for
-// a draft, as that file states", so a common kill may leave a pickup beside its
-// gem; the gem checks read gems and say nothing about it. Elites and the Dark
-// "make no draw", so what a check reads in `pickups` after one of those deaths
-// is the whole of what the death left.
+// WHAT ELSE THE TICK MAY LEAVE. A common's death also "rolls for a pickup, as
+// that file states", so a common kill may leave a pickup beside its gem; the
+// gem checks read gems and say nothing about it. Elites and the Dark "make no
+// roll", so what a check reads in `pickups` after one of those deaths is the
+// whole of what the death left.
 
 import { fail } from "../assert";
 import { ENEMIES, OIL_SPLASH_LEVELS, type EnemyId } from "../constants";

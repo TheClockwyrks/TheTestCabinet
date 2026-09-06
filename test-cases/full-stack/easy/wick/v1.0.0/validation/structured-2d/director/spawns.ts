@@ -123,23 +123,20 @@ export const TYPE_DRAWS = 60;
 
 /**
  * Draw `count` window spawns one to a tick, each posed by setting the timer to
- * `0` so the next tick spawns and cleared away as it lands, and answer the
- * type of each in order.
+ * `0` so the next tick spawns and cleared away as it lands, and answer each
+ * arrival in order, read on the tick it landed.
  *
  * The cap never binds, since nothing is left standing, and every draw is the
- * window's own: "spawn one enemy of a type chosen uniformly from the window's
- * types" (`specs/enemies.md`, "The spawn timer"). Sixty is what makes a
- * reading that every type of a row was drawn honest against chance: a uniform
- * draw over three types leaves one of them undrawn across sixty draws about
- * once in ten thousand million runs, past six standard deviations, while a
- * build that draws from one type alone, or from a roster short of the row's,
- * fails it every time.
+ * window's own: the type "chosen uniformly from the window's types" and the
+ * angle "drawn uniformly over the full circle" (`specs/enemies.md`, "The
+ * spawn timer" and "The spawn ring"). Each draw costs one tick whatever the
+ * window's interval, so a reading over many draws finishes in seconds.
  */
-export async function drawTypes(
+export async function drawSpawns(
   h: Harness,
-  count = TYPE_DRAWS,
-): Promise<EnemyId[]> {
-  const types: EnemyId[] = [];
+  count: number,
+): Promise<Arrival[]> {
+  const spawns: Arrival[] = [];
   for (let draw = 0; draw < count; draw += 1) {
     h.debug.setSpawnTimer(0);
     const drive = await driveArrivals(h, 1, { removeOnArrival: true });
@@ -149,9 +146,26 @@ export async function drawTypes(
         drive.arrivals.length,
       );
     }
-    types.push(drive.arrivals[0].enemy.type);
+    spawns.push(drive.arrivals[0]);
   }
-  return types;
+  return spawns;
+}
+
+/**
+ * The type of each of `count` window spawns drawn by {@link drawSpawns}, in
+ * order.
+ *
+ * Sixty is what makes a reading that every type of a row was drawn honest
+ * against chance: a uniform draw over three types leaves one of them undrawn
+ * across sixty draws about once in ten thousand million runs, past six
+ * standard deviations, while a build that draws from one type alone, or from
+ * a roster short of the row's, fails it every time.
+ */
+export async function drawTypes(
+  h: Harness,
+  count = TYPE_DRAWS,
+): Promise<EnemyId[]> {
+  return (await drawSpawns(h, count)).map((spawn) => spawn.enemy.type);
 }
 
 /**

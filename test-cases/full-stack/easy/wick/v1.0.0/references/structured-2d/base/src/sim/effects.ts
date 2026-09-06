@@ -138,7 +138,7 @@ function rollDrop(ctx: TickContext): "bread" | "draft" | "none" {
 /**
  * The last part of phase 6: an enemy whose `hp` is at or below `0` dies. The
  * kill count rises, and a puff is left to draw; while `drops` is on its drop
- * lands at its center and a common kill draws for bread and a draft.
+ * lands at its center and a common kill rolls for a pickup.
  */
 export function resolveDeaths(ctx: TickContext): void {
   const { run } = ctx;
@@ -154,7 +154,7 @@ export function resolveDeaths(ctx: TickContext): void {
     ctx.cues.add(CUES.kill);
     run.puffs.push({ x: enemy.x, y: enemy.y, bornTick: run.tick });
     // The `drops` switch gates what a death LEAVES, not the death itself: the
-    // kill still counts, the cue still sounds, and no draw is made.
+    // kill still counts, the cue still sounds, and no roll is made.
     if (!ctx.state.drops) continue;
     const def = ENEMIES[enemy.type];
     if (def.drop === "chest") {

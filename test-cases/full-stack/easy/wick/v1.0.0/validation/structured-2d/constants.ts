@@ -1513,6 +1513,15 @@ export const MOTION_EPS = 1e-6;
 export const ANGLE_EPS = 1e-6;
 
 /**
+ * A position the simulation integrates over a span of ticks, read against the
+ * figure the rules give it: thirty steps of `speed × TICK_DT` summed in floats
+ * stray by far less than a tenth of a unit, and a build that integrated with
+ * the frame's delta rather than the tick's strays by whole steps. A tenth of a
+ * unit is below every figure the specification states in units.
+ */
+export const INTEGRATION_TOLERANCE = 0.1;
+
+/**
  * How many drop rolls the drop-roll checks make alone through `rollDrop`, and
  * the bounds the bread and draft counts must fall in, as the checklist states
  * them: the expected counts are `800` at `BREAD_CHANCE` (deviation `28`) and

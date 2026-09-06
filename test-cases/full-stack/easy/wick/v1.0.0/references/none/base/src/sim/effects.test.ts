@@ -138,7 +138,7 @@ describe("deaths", () => {
     expect(run.nextDrop).toBe("bread");
   });
 
-  it("leaves nothing and draws nothing while `drops` is off", () => {
+  it("leaves nothing and makes no roll while `drops` is off", () => {
     const world = playing();
     world.state.switches.drops = false;
     const { run } = world.state;

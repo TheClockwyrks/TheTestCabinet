@@ -8,7 +8,7 @@
 // `specs/world.md` ("Pickups") says where a chest comes from and where it
 // lands: "`chest` | An elite, at its position, on the tick it dies." A gem is
 // the common's drop alone, and the same file adds that "Elites and the Dark
-// make no draw", so no bread and no draft either: what the tick leaves in
+// make no roll", so no bread and no draft either: what the tick leaves in
 // `pickups` is one chest, and `gems` is untouched.
 //
 // WHY THE WORLD IS POSED AS IT IS. `enemies/drops` states the arrangement

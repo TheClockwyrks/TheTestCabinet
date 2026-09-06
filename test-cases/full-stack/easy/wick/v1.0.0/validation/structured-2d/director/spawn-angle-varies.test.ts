@@ -10,12 +10,13 @@
 // Nothing is posed for the angle, so every draw is the build's own; a posed
 // angle is `instrumentation/set-next-spawn-angle`'s.
 //
-// THE DRIVE. Window 0 with the timer at 0 and `spawning` alone on. Each
-// arrival is removed on the tick it lands (`removeEnemy`: "Nothing drops,
-// nothing counts as a kill, and no cue plays"), so `aliveCommons` stays at 0
-// and the window's cap of 20 never holds the timer — the check is about the
-// angles, not the cap. Nothing moves: `enemyMotion` is off, so every arrival
-// is read at its spawn point.
+// THE DRIVE. Window 0 with `spawning` alone on, each spawn drawn on a tick of
+// its own by `drawSpawns`: the timer is set to `0`, so the next tick spawns
+// whatever the window's interval, and each arrival is removed on the tick it
+// lands (`removeEnemy`: "Nothing drops, nothing counts as a kill, and no cue
+// plays"), so `aliveCommons` stays at 0 and the window's cap of 20 never holds
+// the timer — the check is about the angles, not the cap. Nothing moves:
+// `enemyMotion` is off, so every arrival is read at its spawn point.
 //
 // THE TOLERANCE. `ANGLE_EPS`, a millionth of a degree, as the bound two
 // angles must differ by to count as different. Thirty uniform draws all
@@ -24,7 +25,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { ANGLE_EPS, SPAWN_WINDOWS, ticksOf } from "../constants";
+import { ANGLE_EPS } from "../constants";
 import {
   angleOf,
   angularOffset,
@@ -34,22 +35,18 @@ import {
   isolate,
   type Harness,
 } from "../harness";
-import { driveArrivals, poseWindow } from "./spawns";
+import { drawSpawns, poseWindow } from "./spawns";
 
-/** Spawns read from one run, and the ticks that covers at window 0's interval. */
+/** Spawns read from one run. */
 const SPAWNS = 30;
-const BUDGET_TICKS = SPAWNS * ticksOf(SPAWN_WINDOWS[0]!.interval) + 1;
 
 /** The angles of a run's spawns, in degrees about the lamplighter. */
 async function spawnAngles(h: Harness, count: number): Promise<number[]> {
   isolate(h);
   poseWindow(h, 0);
   enable(h, "spawning");
-  const drive = await driveArrivals(h, BUDGET_TICKS, {
-    removeOnArrival: true,
-    stopAfter: count,
-  });
-  return drive.arrivals.map((arrival) =>
+  const spawns = await drawSpawns(h, count);
+  return spawns.map((arrival) =>
     angleOf(
       arrival.enemy.x - arrival.player.x,
       arrival.enemy.y - arrival.player.y,
@@ -71,11 +68,7 @@ it("draws a different spawn angle across a run's spawns", async () => {
   const angles = await spawnAngles(h, SPAWNS);
   captureStill(h, "angles");
 
-  assertEqual(
-    angles.length,
-    SPAWNS,
-    `the spawns read within ${BUDGET_TICKS} ticks`,
-  );
+  assertEqual(angles.length, SPAWNS, "the spawns read, one to a tick");
   const spread = angles.filter(
     (angle) => Math.abs(angularOffset(angles[0], angle)) > ANGLE_EPS,
   ).length;

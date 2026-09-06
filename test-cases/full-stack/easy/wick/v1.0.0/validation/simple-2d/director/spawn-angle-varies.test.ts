@@ -13,15 +13,17 @@
 // angle fails. Nothing is posed for the angle, so every draw is the build's
 // own; a posed angle is `instrumentation/set-next-spawn-angle`.
 //
-// WHY THE NIGHT IS POSED AS IT IS. `spawning` alone is on and the field is
-// emptied after each spawn, so every angle read belongs to a spawn the timer
-// placed on the tick it was read and the cap never intervenes. The lamplighter
-// stands still, so the angle is measured about one fixed center.
+// WHY THE NIGHT IS POSED AS IT IS. `spawning` alone is on, and each spawn is
+// drawn on a tick of its own by `drawSpawns`: the field is emptied and the
+// timer set to `0`, so the next tick spawns whatever the window's interval,
+// the cap never intervenes, and every angle read belongs to a spawn the timer
+// placed on the tick it was read. The lamplighter stands still, so the angle
+// is measured about one fixed center.
 //
 // THE PICTURE. What the director spawns lands 760 units out, past the edge of
-// the view, so the still is taken after a closing drift that lets it travel in.
-// Every reading the assertions use is taken before that drift, and the drift
-// cannot fail the item.
+// the view, so one last spawn is left standing and the still is taken after a
+// closing drift that lets it travel in. Every reading the assertions use is
+// taken before that drift, and the drift cannot fail the item.
 //
 // TOLERANCE. `ANGLE_SEPARATION` (1e-6 degrees) separates two angles that were
 // drawn from two that are the same figure: a build that fixes its angle repeats
@@ -30,7 +32,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLength } from "../assert";
-import { SPAWN_WINDOWS, ticksFor } from "../constants";
 import {
   angleAbout,
   angularOffset,
@@ -40,18 +41,13 @@ import {
   isolate,
   type Harness,
 } from "../harness";
-import { closeIn, collectSpawns, poseWindow, type Spawn } from "./stage";
+import { closeIn, drawSpawns, poseWindow, type Spawn } from "./stage";
 
 /** How many spawns the reading is taken over. */
 const SPAWNS = 30;
 
 /** How far apart two angles must be, in degrees, to have been drawn apart. */
 const ANGLE_SEPARATION = 1e-6;
-
-/** How far past the last expected spawn a sweep runs before giving up. */
-const SWEEP_MARGIN = 4;
-
-const INTERVAL_TICKS = ticksFor(SPAWN_WINDOWS[0].interval);
 
 let h: Harness;
 
@@ -72,11 +68,10 @@ it("draws a spawn's angle at random rather than fixing it", async () => {
   isolate(h);
   enable(h, "spawning");
   poseWindow(h, 0);
-  const within = await collectSpawns(
-    h,
-    SPAWNS,
-    SPAWNS * INTERVAL_TICKS + SWEEP_MARGIN,
-  );
+  const within = await drawSpawns(h, SPAWNS);
+  // One more spawn, left standing for the picture alone.
+  h.debug.setSpawnTimer(0);
+  await h.tick(1);
   await closeIn(h);
   captureStill(h, "angles");
   assertLength(within, SPAWNS, "spawns read from the run");

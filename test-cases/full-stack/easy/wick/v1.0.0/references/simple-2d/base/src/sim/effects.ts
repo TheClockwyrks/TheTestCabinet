@@ -133,8 +133,8 @@ function rollDrop(ctx: TickContext): "bread" | "draft" | "none" {
 /**
  * The last part of phase 6: an enemy whose `hp` is at or below `0` dies. The
  * kill count rises and a puff is left to draw. While `drops` is on its drop
- * lands at its center and a common kill draws for bread and a draft; while it
- * is off the death leaves nothing on the field and draws nothing.
+ * lands at its center and a common kill rolls for a pickup; while it is off
+ * the death leaves nothing on the field and makes no roll.
  */
 export function resolveDeaths(ctx: TickContext): void {
   const { run } = ctx;
