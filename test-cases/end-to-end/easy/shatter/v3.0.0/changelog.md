@@ -81,7 +81,7 @@ property as a point of its own.
 What that replaced:
 
 - The patch operations. `setShip(state)`, `setSaucer(state)`, `addRock(size,
-state)` and `addBullet(state)` each took a partial object and applied every
+  state)` and `addBullet(state)` each took a partial object and applied every
   field it carried, which made the case's own state layout a requirement on the
   build. Each is now a set of scalar operations that name what they set.
 - `startGame()`, which entered a screen, opened a run and began a wave at once.

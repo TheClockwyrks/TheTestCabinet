@@ -35,8 +35,9 @@
 // units — a saucer at `SAUCER_SPEED` (`140`) covers `9.3` units in eight ticks,
 // which is why `enters-at-an-edge` reads a `40`-unit band and not a tighter one —
 // and no point marches where it needs a tick-exact reading. `at-most-one-at-a-time`
-// samples every tick and so builds its own harness at the default clock; nothing
-// here forces a stride on a check that does not want one.
+// marches too, because a second visit begun over a live one shows as one live id
+// followed straight by another at any stride, while a conformant clear stretch
+// between visits lasts twenty-five seconds and more.
 //
 // THE DRAW CALLS ARE DROPPED AS THE MARCH GOES. The harness records every call the
 // render makes so the presentation points can read them, and a two-minute march

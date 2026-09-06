@@ -15,12 +15,16 @@
 // A build whose spawner starts one while the previous is still up shows exactly
 // that, whichever of the two its single slot ends up holding.
 //
-// EVERY TICK, AND TWO MINUTES OF THEM. The changeover this hunts is one tick wide,
-// so this is the one point in this directory that does NOT march: its harness runs
-// at the default clock and every tick is a sample. Two minutes of game time is
-// long enough to hold three arrivals under the `18` s first delay and the
-// `25`–`35` s gaps after it, so the requirement is exercised across visits rather
-// than asserted over one.
+// A MARCHED FRAME IS SAMPLE ENOUGH. The watch reads the slot once a frame, and
+// its harness hands the game `MARCH_TICKS` (`8`) whole ticks a frame, a fifteenth
+// of a second of game time. That stride cannot hide what it hunts: a second visit
+// begun over a live one shows as one live id followed straight by another
+// however far apart the samples are, and a conformant build's clear stretch
+// between visits lasts `SAUCER_GAP_MIN` (`25` s) and more, which no stride of a
+// fifteenth of a second steps over. Two minutes of game time is long enough to
+// hold three arrivals under the `18` s first delay and the `25`–`35` s gaps
+// after it, so the requirement is exercised across visits rather than asserted
+// over one.
 //
 // AT LEAST TWO VISITS ARE REQUIRED. A run that produced one saucer, or none, could
 // not have shown an overlap and must not be reported as having ruled one out — so
@@ -36,13 +40,13 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { captureStill, type Harness } from "../harness";
 import {
-  captureStill,
-  createHarness,
-  ticksFor,
-  type Harness,
-} from "../harness";
-import { openQuietGame, watchVisits } from "./visits";
+  createMarchHarness,
+  marchFrames,
+  openQuietGame,
+  watchVisits,
+} from "./visits";
 
 /** How much game time the slot is watched for, in seconds. */
 const WATCH_SECONDS = 120;
@@ -59,24 +63,23 @@ const MIN_VISITS = 2;
 let h: Harness;
 
 beforeEach(async () => {
-  // The default clock: one simulation tick a frame, so every tick is a sample.
-  h = await createHarness();
+  h = await createMarchHarness();
 });
 
 afterEach(() => {
   h?.dispose();
 });
 
-it("never reports one live saucer id giving way to another without a clear tick between", async () => {
+it("never reports one live saucer id giving way to another without a clear sample between", async () => {
   const opened = await openQuietGame(h);
 
   let filmed = false;
-  const watch = await watchVisits(h, ticksFor(WATCH_SECONDS) - opened, {
+  const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
     onArrival: async () => {
       if (filmed) return;
       filmed = true;
       // One visit on the field at a time: the first arrival. The watch runs
-      // undrawn, so one frame is drawn for this picture — the tick after the
+      // undrawn, so one frame is drawn for this picture — the frame after the
       // arrival the watch read.
       await h.paint();
       captureStill(h, "visit");
@@ -93,8 +96,8 @@ it("never reports one live saucer id giving way to another without a clear tick 
   assertEqual(
     watch.overlaps.length,
     0,
-    "ticks on which a live saucer id gave way to another live one with no " +
-      "tick between reporting the slot clear — a saucer already on the field " +
+    "samples on which a live saucer id gave way to another live one with no " +
+      "sample between reporting the slot clear — a saucer already on the field " +
       `is never joined by a second (specs/saucer.md): ${watch.overlaps.join("; ")}`,
   );
 });

@@ -31,11 +31,18 @@
 // `reset()` — which `specs/instrumentation.md` returns every declared field to
 // its title value and `simTime` to `0` — and `startPlaying`, which empties the
 // field and shuts every spawner. The field holds no rock, no round and no saucer,
-// so the game makes no draw between the reset and the reading, the two frames
-// hold the same world at the same moment, and they differ only by the thing being
-// looked for. Anything the build legitimately paints over its field (a vignette, a
-// starfield, a HUD readout, a pulsing halo) is painted identically in both and
-// cancels.
+// so the two frames hold the same world at the same moment and differ by the
+// thing being looked for. Whatever the build paints over its field from the
+// clock (a vignette, a HUD readout, a pulsing halo) is painted the same way in
+// both and cancels.
+//
+// AND WHY THAT IS ENOUGH: EVERY READING HERE IS A CLAIM THAT SOMETHING WAS
+// DRAWN. What the build paints at random — a twinkling starfield, a dithered
+// edge — is legal appearance the specification says nothing about, and it can
+// differ between the two frames. Such a difference can only ADD to a count of
+// changed pixels, so it cannot take a body that was drawn below a presence
+// floor; a claim that nothing was drawn would need a bound measured from the
+// build's own idle frames instead, and no check in this group makes one.
 //
 // NO THRESHOLD LIVES HERE. What counts as "changed" and how many changed pixels a
 // verdict takes are each check's own figures, stated in the check beside the

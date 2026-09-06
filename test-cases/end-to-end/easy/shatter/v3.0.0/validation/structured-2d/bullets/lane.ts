@@ -32,20 +32,26 @@
 // neighbour; and because the well bends a round flown across the field by a unit
 // or so over the span a tail covers.
 //
-// WHY THE CONTROL IS THE SAME FLIGHT FLOWN TWICE. `specs/overview.md` fixes no
-// palette and leaves the whole look to the build, so there is no colour to hold a
-// reading against: the only honest control is the same canvas, at the same moment
-// of the same game, without the thing being looked for. {@link trailLane} flies
-// the scenario once with the round and once without, and each run begins with
-// `reset()` — which `specs/instrumentation.md` returns every declared field to
-// its title value and `simTime` to `0` — and `startPlaying`, which empties the
-// field and shuts every spawner. The field holds no rock, no round and no
-// saucer, so the game makes no draw between the reset and the reading; the two
-// runs therefore reach the same tick of the same game holding the same world,
-// and the render-free simulation core `specs/simulation.md` fixes makes the two
-// frames identical but for the round and its tail. Nothing the build draws from the clock — a blinking readout, a
-// pulsing halo, a HUD wherever it chose to put it — can read as a trail, because
-// it is drawn identically in both.
+// WHY THE CONTROL IS THE SAME FLIGHT WITH THE ROUND TAKEN OFF IT. `specs/overview.md`
+// fixes no palette and leaves the whole look to the build, so there is no colour
+// to hold a reading against: the only honest control is the same canvas, in the
+// same posed world, without the thing being looked for. {@link trailLane} flies
+// the round, reads the band, removes that one round through `removeBullet`, and
+// reads the band again one frame on. `startPlaying` has emptied the field and
+// shut every spawner, so nothing else moves between the two readings, and every
+// column that changed is the round's own drawing — its disc and the tail behind
+// it — plus whatever one frame does to what the build paints there on its own.
+//
+// WHY THE SPREAD OF IDLE FRAMES IS MEASURED. That last term is the build's to
+// choose: a twinkling starfield, a dithered vignette, a pulsing readout are all
+// legal appearance, and each of them moves a few pixels of the band from one
+// frame to the next with no round on the field at all. A claim that NOTHING was
+// drawn somewhere therefore takes its bound from a measurement rather than a
+// figure: the band is read over several more idle frames after the round is
+// gone, and the most any column moved between one and the next is what the
+// build's own drawing does to the band by itself ({@link TrailReading.spread}).
+// A claim that SOMETHING was drawn keeps its floor — noise can only ever add to a
+// presence reading, never take from it.
 //
 // EVERY LANE IN THIS GROUP IS HORIZONTAL AND EVERY ROUND ON ONE TRAVELS ALONG
 // `+x`, so "behind" is `-x` and a distance along the lane is a distance along
@@ -60,7 +66,13 @@
 import { FIELD_W } from "../constants";
 import { fail } from "../assert";
 import { shortestDelta } from "../geometry";
-import { poseBullet, resetTo, startPlaying, type Harness } from "../harness";
+import {
+  captureStill,
+  poseBullet,
+  resetTo,
+  startPlaying,
+  type Harness,
+} from "../harness";
 import type { BulletSnapshot } from "../surface";
 
 /**
@@ -156,7 +168,10 @@ export interface Flight {
   ticks: number;
 }
 
-/** A flight's two readings, the round as it stood, and the lane's device map. */
+/**
+ * A flight's two readings, the round as it stood, the lane's device map, and
+ * the band's own unrest.
+ */
 export interface TrailReading {
   /** The band with the round and its tail on it, and the same band without. */
   pair: LanePair;
@@ -164,44 +179,86 @@ export interface TrailReading {
   round: BulletSnapshot;
   /** How a logical `x` on that lane maps onto a device column. */
   map: LaneMap;
+  /**
+   * The most any column of the band moved between two idle frames with no round
+   * on the field, on the `0`-to-`441.67` scale of the RGB distance.
+   *
+   * What the build's own drawing does to the band by itself, frame to frame.
+   * `0` for a build whose empty field is drawn the same way every frame.
+   */
+  spread: number;
 }
 
 /**
- * Fly `flight` along `lane` twice — once with the round on the field and once
- * with the field bare — and read the band at the end of each.
+ * How many idle frames the band is read over after the round is gone, so the
+ * spread is taken from several frames rather than from one pair.
+ */
+const IDLE_FRAMES = 4;
+
+/**
+ * Fly `flight` along `lane`, read the band with the round on it, take the round
+ * off the field and read the band without it.
  *
- * Each run opens with `reset()` and `startPlaying`, so the two reach the same
- * tick of the same empty game with the same world, and the only difference
- * between the two frames is the round this reads.
+ * The run opens with `reset()` and `startPlaying`, so the field holds the ship
+ * at rest far from the lane and nothing else. The band is read on the frame the
+ * flight ends, the still `still` names is taken off that frame, and the round is
+ * then removed through `removeBullet` and the band read again one frame on; the
+ * same band is read over {@link IDLE_FRAMES} further frames for the spread.
  *
- * The bare run goes FIRST, so the reading the check is about is the frame left on
- * the canvas when this returns — which is the frame `captureStill` keeps.
+ * The drawn frame is read FIRST, so the still shows the round and its tail, and
+ * the frame left on the canvas when this returns is an idle one.
  */
 export async function trailLane(
   h: Harness,
   lane: LaneBand,
   flight: Flight,
+  still: string,
 ): Promise<TrailReading> {
-  const run = async (round: boolean): Promise<Lane> => {
-    resetTo(h);
-    startPlaying(h);
-    if (round) poseBullet(h, flight.x, lane.y, flight.speed, 0);
-    await h.advance(flight.ticks);
-    return readLane(h, lane.y, lane.halfHeight);
-  };
+  resetTo(h);
+  startPlaying(h);
+  const id = poseBullet(h, flight.x, lane.y, flight.speed, 0);
+  await h.advance(flight.ticks);
 
-  const bare = await run(false);
-  const drawn = await run(true);
-  const round = h.snapshot().bullets[0];
+  const round = h.snapshot().bullets.find((bullet) => bullet.id === id);
   if (round === undefined) {
     fail(
       `the round this scenario placed still in flight after ${flight.ticks} ` +
         `ticks, which is well inside BULLET_LIFE (specs/weapons.md, ` +
         `specs/instrumentation.md: addBullet gives a placed round a full life)`,
-      "an empty bullet roster",
+      "no bullet with its id on the roster",
     );
   }
-  return { pair: { drawn, bare }, round, map: laneMap(h, lane.y) };
+  const drawn = readLane(h, lane.y, lane.halfHeight);
+  captureStill(h, still);
+
+  h.debug.removeBullet(id);
+  await h.advance(1);
+  const bare = readLane(h, lane.y, lane.halfHeight);
+
+  let spread = 0;
+  let previous = bare;
+  for (let frame = 0; frame < IDLE_FRAMES; frame += 1) {
+    await h.advance(1);
+    const idle = readLane(h, lane.y, lane.halfHeight);
+    spread = Math.max(spread, laneUnrest({ bare: previous, drawn: idle }));
+    previous = idle;
+  }
+
+  return { pair: { drawn, bare }, round, map: laneMap(h, lane.y), spread };
+}
+
+/**
+ * The bound a claim that nothing was drawn holds a column to: `floor`, or twice
+ * the band's measured {@link TrailReading.spread} where that is more.
+ *
+ * Twice, because the spread is the largest move a handful of idle frames showed
+ * and the frame under test is one more draw from the same unrest: a bound set at
+ * the spread itself would be crossed by chance about as often as any one of the
+ * idle frames set it. Doubling it puts a conformant build's noise well inside,
+ * and a tail drawn where none should be still reads in the hundreds.
+ */
+export function absenceBound(reading: TrailReading, floor: number): number {
+  return Math.max(floor, 2 * reading.spread);
 }
 
 /** How far one column of the band moved between the two readings, at its furthest row. */
@@ -221,6 +278,15 @@ export function laneChange(pair: LanePair, column: number): number {
         now[at + 2] - was[at + 2],
       ),
     );
+  }
+  return most;
+}
+
+/** The most any column of the band moved between the two readings. */
+function laneUnrest(pair: LanePair): number {
+  let most = 0;
+  for (let column = 0; column < pair.bare.width; column += 1) {
+    most = Math.max(most, laneChange(pair, column));
   }
   return most;
 }

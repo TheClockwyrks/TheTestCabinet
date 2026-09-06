@@ -14,8 +14,17 @@
 // not any particular colour: specs/overview.md fixes no palette and leaves the
 // whole look to the build, so the only honest control is the same canvas, at the
 // same simulation time, with that round taken off it. Nothing advances between
-// the two readings, so the star, the ship and the HUD are painted identically in
-// both and the only thing that can have moved a pixel is the round and its tail.
+// the two readings, so the star, the ship and the HUD stand where they stood and
+// what moved a pixel is the round and its tail, plus whatever the build's own
+// drawing does to the lane from one presented frame to the next.
+//
+// TWO THRESHOLDS, ONE FOR EACH HALF. The stations are a claim that something was
+// drawn, and a column counts once it moved by `DISTINCT_MIN`, a floor any legible
+// tail clears. The reading ahead is a claim that nothing was drawn, and a build's
+// empty field may twinkle or dither on its own, which is legal appearance that
+// would otherwise read as ink ahead of the round. So that claim is held to the
+// lane's own measured unrest (lane.ts, `absenceBound`), or to `DISTINCT_MIN`
+// where the lane is still.
 //
 // WHY THE STATIONS STOP AT TWO FIFTHS. The same file has the tail "narrowing and
 // fading to nothing at its oldest end", so its far reach is a build's own choice
@@ -51,7 +60,13 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { bulletLane, changedColumns, laneChangeNear, laneX } from "./lane";
+import {
+  absenceBound,
+  bulletLane,
+  changedColumns,
+  laneChangeNear,
+  laneX,
+} from "./lane";
 
 /** The lane the round is flown along, and where on it the flight begins. */
 const LANE_Y = STAR_Y;
@@ -149,8 +164,9 @@ it("paints a tail along the segment behind a moving round and not ahead of it", 
 
   // AND NOTHING AHEAD OF IT. Every column the round's drawing changed, measured
   // along the travel; the furthest one forward of the round decides the bound.
+  const still = absenceBound(lane, DISTINCT_MIN);
   let ahead = 0;
-  for (const column of changedColumns(lane.bare, lane.drawn, DISTINCT_MIN)) {
+  for (const column of changedColumns(lane.bare, lane.drawn, still)) {
     const forward = laneX(h, column) - flying.x;
     if (forward > ahead) ahead = forward;
   }
@@ -162,8 +178,10 @@ it("paints a tail along the segment behind a moving round and not ahead of it", 
       `along its travel — over six times BULLET_R (${BULLET_R}), which is ` +
       `room for the round's own disc and the stroke that meets it at the head ` +
       `(specs/weapons.md: the tail is widest and brightest where it meets the ` +
-      `bullet, and traces the bullet's RECENT path, which is behind it); the ` +
-      `furthest forward column the flight changed stood ${ahead.toFixed(1)} ` +
-      `units ahead of the round at x = ${flying.x.toFixed(1)}`,
+      `bullet, and traces the bullet's RECENT path, which is behind it); a ` +
+      `column counts as painted past ${still.toFixed(1)} of 255, the lane's ` +
+      `own idle unrest read ${lane.spread.toFixed(1)}, and the furthest ` +
+      `forward column the flight changed stood ${ahead.toFixed(1)} units ` +
+      `ahead of the round at x = ${flying.x.toFixed(1)}`,
   );
 });

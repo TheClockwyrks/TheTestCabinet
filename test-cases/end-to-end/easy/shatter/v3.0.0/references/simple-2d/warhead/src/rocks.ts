@@ -210,18 +210,18 @@ export function recycleRock(sim: Sim, rock: MutRock): void {
 
   if (edge === "left") {
     rock.x = 1;
-    rock.y = range(150, FIELD_H - 150);
+    rock.y = range(0, FIELD_H);
     inward = 0;
   } else if (edge === "right") {
     rock.x = FIELD_W - 1;
-    rock.y = range(150, FIELD_H - 150);
+    rock.y = range(0, FIELD_H);
     inward = Math.PI;
   } else if (edge === "top") {
-    rock.x = range(200, FIELD_W - 200);
+    rock.x = range(0, FIELD_W);
     rock.y = 1;
     inward = Math.PI / 2;
   } else {
-    rock.x = range(200, FIELD_W - 200);
+    rock.x = range(0, FIELD_W);
     rock.y = FIELD_H - 1;
     inward = -Math.PI / 2;
   }

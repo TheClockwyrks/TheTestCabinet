@@ -30,11 +30,14 @@
 // there from the figure `specs/` fixes for it.
 
 import {
+  MU,
   MUZZLE_SPEED,
   ROCK_SPEED_MAX,
   ROCK_SPEED_MIN,
+  TICK_DT,
   WAVE_BANNER_TIME,
   WAVE_BASE_ROCKS,
+  WAVE_MIN_STAR_DIST,
   WAVE_SPEED_CAP,
   WAVE_SPEED_STEP,
 } from "../constants";
@@ -365,10 +368,10 @@ export async function posedWaveSpeeds(
  * nothing about where a spawn sits among them). So at most one tick of the well
  * is in every reading. `specs/progression.md` spawns no rock closer than
  * `WAVE_MIN_STAR_DIST` (`200`) to the star, where `specs/gravity.md` pulls at
- * `112.5` units per second squared — a shade under one unit per second over a
- * tick, against a smallest legal base speed of `60`.
+ * `MU / d^2` — a shade under one unit per second over a tick, against a smallest
+ * legal base speed of `60`.
  */
-export const SPAWN_WELL_PER_TICK = 112.5 / ticksFor(1);
+export const SPAWN_WELL_PER_TICK = (MU / WAVE_MIN_STAR_DIST ** 2) * TICK_DT;
 
 /** The smallest and largest base drift speed `specs/rocks.md` gives a Large. */
 export const BASE_SPEED_MIN = ROCK_SPEED_MIN.large;

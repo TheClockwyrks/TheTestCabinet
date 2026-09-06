@@ -24,6 +24,15 @@
 // picture a conforming build draws and pass it. So the band is walked end to end
 // and the furthest changed column is what is asserted on.
 //
+// TWO THRESHOLDS, ONE FOR EACH HALF. The far-side reading is a claim that
+// something was drawn, and a column counts once it moved by `LIT`, a floor any
+// drawing clears. The ceiling is a claim that nothing was drawn anywhere else on
+// the lane, and a build's empty field may twinkle or dither on its own, which is
+// legal appearance that would otherwise read as a smear. So a column counts
+// against the ceiling only past the band's own measured unrest (lane.ts,
+// `absenceBound`), or past `LIT` where the band is still; a smear reads in the
+// hundreds either way.
+//
 // THE POSE IS ARRANGED SO THE TAIL MUST STRADDLE THE SEAM. The round is placed
 // `110` units short of the right edge and flown thirty ticks at `MUZZLE_SPEED`,
 // which carries it `130` units: it crosses the edge and stands `20` units in from
@@ -42,9 +51,9 @@
 // THE LANE IS THE BOTTOM OF THE FIELD, `330` units below the star. Nothing of the
 // star is drawn beyond `180` units (specs/field.md), the ship stands `130` units
 // above the lane, and `startPlaying` leaves no rock and no saucer — and the
-// control flight (lane.ts) is the same empty game flown to the same tick without
-// the round, so whatever else the build paints on that band is painted identically
-// in both and cannot read as tail.
+// control (lane.ts) is the same band with the round taken off the field, so
+// whatever else the build paints on that band is painted in both and cannot read
+// as tail.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -59,9 +68,15 @@ import {
   assertLessThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
+import { createHarness, type Harness } from "../harness";
 import { wrapCoordinate } from "../geometry";
-import { furthestDrawn, litColumns, logicalX, trailLane } from "./lane";
+import {
+  absenceBound,
+  furthestDrawn,
+  litColumns,
+  logicalX,
+  trailLane,
+} from "./lane";
 
 /** The lane the round is flown along, and how deep the band read along it is. */
 const LANE_Y = 690;
@@ -116,13 +131,15 @@ afterEach(() => {
 });
 
 it("draws the tail behind the round across the seam and nowhere else", async () => {
-  const { pair, round, map } = await trailLane(
+  // The trail carried across the seam behind the round.
+  const reading = await trailLane(
     h,
     { y: LANE_Y, halfHeight: LANE_HALF },
     { x: START_X, speed: SPEED, ticks: FLIGHT_TICKS },
+    "trail",
   );
-  // The trail carried across the seam behind the round.
-  captureStill(h, "trail");
+  const { pair, round, map } = reading;
+  const still = absenceBound(reading, LIT);
 
   assertLessThan(
     round.x,
@@ -164,7 +181,7 @@ it("draws the tail behind the round across the seam and nowhere else", async () 
       `${painted.length} columns of the lane were painted at all`,
   );
 
-  const furthest = furthestDrawn(map, pair, round.x, LIT);
+  const furthest = furthestDrawn(map, pair, round.x, still);
 
   assertLessThanOrEqual(
     furthest.distance,
@@ -175,8 +192,10 @@ it("draws the tail behind the round across the seam and nowhere else", async () 
       `${SPAN_ALLOWANCE} units of room for the round's own disc of BULLET_R ` +
       `(${BULLET_R}) and the stroke that meets it (specs/weapons.md: across a ` +
       `wrap the tail follows the bullet to the opposite edge rather than ` +
-      `smearing across the field); the furthest column the flight changed was ` +
-      `at x = ${furthest.x.toFixed(1)}, with the round at ` +
+      `smearing across the field); a column counts as drawn past ` +
+      `${still.toFixed(1)} of 441, the band's own idle unrest read ` +
+      `${reading.spread.toFixed(1)}, and the furthest column the round's ` +
+      `drawing changed was at x = ${furthest.x.toFixed(1)}, with the round at ` +
       `x = ${round.x.toFixed(1)}`,
   );
 });
