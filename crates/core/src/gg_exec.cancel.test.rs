@@ -6,6 +6,11 @@
 //! These drive [`prepare_gg`] and [`run_gg_session`] against a container double, so the
 //! whole branch runs for real — the invocation write, the version probe, the streamed
 //! ingest and the cancel race — with only the container itself faked.
+//!
+//! The kill lands **mid-session**: the double raises the latch itself once it has played
+//! the in-flight telemetry, which is when a real operator's kill reaches a running
+//! session. A latch raised *before* the launch is the other case these cover — the
+//! session is refused rather than wound down, because there is nothing yet to preserve.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -30,13 +35,19 @@ const EPILOGUE: &[&str] = &[
 
 /// A container double standing in for a run container with gg inside it.
 ///
-/// Its streamed exec plays [`IN_FLIGHT`], then **waits for the cancellation sentinel to be
+/// Its streamed exec plays [`IN_FLIGHT`], raises the run's latch when it holds one (the
+/// operator's kill landing mid-session), then **waits for the cancellation sentinel to be
 /// written** before playing [`EPILOGUE`] and exiting — which is exactly the sequence a real
 /// canceled session produces, and the only way to prove the host keeps draining rather
 /// than walking away the moment it raises the sentinel.
 struct GgContainer {
     /// Every path written through `write_container_file`, in order.
     written: Arc<Mutex<Vec<String>>>,
+    /// Whether the streamed session was launched at all.
+    launched: Arc<Mutex<bool>>,
+    /// The run's latch, raised once the in-flight telemetry has played; `None` for a
+    /// session nobody kills.
+    kill_mid_session: Option<RunCancellation>,
     /// Whether the streamed session should wait for the sentinel at all. `false` models a
     /// session that runs to its own end with nobody cancelling it.
     waits_for_sentinel: bool,
@@ -49,17 +60,32 @@ impl GgContainer {
     fn new() -> Self {
         Self {
             written: Arc::new(Mutex::new(Vec::new())),
+            launched: Arc::new(Mutex::new(false)),
+            kill_mid_session: None,
             waits_for_sentinel: true,
             ignores_sentinel: false,
         }
     }
 
-    /// A session that never winds down, so only the host's grace ends the drain.
-    fn unresponsive() -> Self {
+    /// A session an operator kills once it is under way: the double raises `cancel`
+    /// after playing the in-flight telemetry.
+    fn killed_mid_session(cancel: &RunCancellation) -> Self {
         Self {
-            ignores_sentinel: true,
+            kill_mid_session: Some(cancel.clone()),
             ..Self::new()
         }
+    }
+
+    /// A session that never winds down, so only the host's grace ends the drain.
+    fn unresponsive(cancel: &RunCancellation) -> Self {
+        Self {
+            ignores_sentinel: true,
+            ..Self::killed_mid_session(cancel)
+        }
+    }
+
+    fn launched(&self) -> bool {
+        *self.launched.lock().expect("launched lock")
     }
 
     fn sentinel_raised(&self) -> bool {
@@ -104,8 +130,12 @@ impl ContainerRuntime for GgContainer {
         _idle_timeout: Option<Duration>,
         sink: &mut dyn OutputSink,
     ) -> Result<ExecOutput> {
+        *self.launched.lock().expect("launched lock") = true;
         for line in IN_FLIGHT {
             sink.on_line(OutputStream::Stdout, line);
+        }
+        if let Some(cancel) = &self.kill_mid_session {
+            cancel.cancel();
         }
         if self.ignores_sentinel {
             // Never returns; the host's grace is what ends this.
@@ -173,9 +203,8 @@ async fn a_canceled_session_is_asked_to_stop_through_the_sentinel() {
     // The kill has to reach gg somehow, and gg is its own process inside the container.
     // Raising the sentinel is that channel; without it the session would run on, spending,
     // until the sandbox went away underneath it.
-    let container = GgContainer::new();
     let cancel = RunCancellation::new();
-    cancel.cancel();
+    let container = GgContainer::killed_mid_session(&cancel);
 
     let (outcome, _) = drive(&container, &cancel).await;
     outcome.expect("a canceled session is an outcome, not an error");
@@ -191,9 +220,8 @@ async fn a_canceled_session_is_asked_to_stop_through_the_sentinel() {
 async fn a_canceled_session_keeps_everything_it_accumulated() {
     // The whole point: a killed run reports the tokens and cost it actually spent, so the
     // operator can see what the run cost them before they stopped it.
-    let container = GgContainer::new();
     let cancel = RunCancellation::new();
-    cancel.cancel();
+    let container = GgContainer::killed_mid_session(&cancel);
 
     let (outcome, _) = drive(&container, &cancel).await;
     let outcome = outcome.expect("a canceled session is an outcome, not an error");
@@ -209,9 +237,8 @@ async fn a_canceled_session_is_drained_through_its_epilogue() {
     // Raising the sentinel and walking away would throw away the most valuable part of a
     // gg run's telemetry — the summary it emits as it winds down. The host keeps draining
     // until gg exits, so the epilogue is ingested like any other telemetry.
-    let container = GgContainer::new();
     let cancel = RunCancellation::new();
-    cancel.cancel();
+    let container = GgContainer::killed_mid_session(&cancel);
 
     let (outcome, events) = drive(&container, &cancel).await;
     let outcome = outcome.expect("a canceled session is an outcome, not an error");
@@ -240,9 +267,8 @@ async fn a_session_that_will_not_wind_down_still_hands_back_what_it_streamed() {
     // forever, and giving up on it must not cost the telemetry already ingested — only
     // the epilogue that never came.
     tokio::time::pause();
-    let container = GgContainer::unresponsive();
     let cancel = RunCancellation::new();
-    cancel.cancel();
+    let container = GgContainer::unresponsive(&cancel);
 
     let driven = tokio::spawn(async move {
         let handle = ContainerHandle {
@@ -285,6 +311,32 @@ async fn a_session_that_will_not_wind_down_still_hands_back_what_it_streamed() {
     assert!(
         outcome.gg_summary.is_none(),
         "a session that never wound down emitted no summary",
+    );
+}
+
+#[tokio::test]
+async fn a_latch_raised_before_the_launch_refuses_the_session() {
+    // A kill that lands before gg is launched has nothing to wind down. Launching gg
+    // only to stop it at its first boundary would hand back a record of nothing, so the
+    // session is refused outright: gg never starts, no sentinel is written, and the run
+    // ends on the one error the driver reads as "destroy this, record nothing".
+    let container = GgContainer::new();
+    let cancel = RunCancellation::new();
+    cancel.cancel();
+
+    let (outcome, _) = drive(&container, &cancel).await;
+
+    assert!(
+        matches!(outcome, Err(Error::CanceledBeforeSession)),
+        "a session must be refused against a raised latch, got {outcome:?}",
+    );
+    assert!(
+        !container.launched(),
+        "gg must never be launched for a run already killed"
+    );
+    assert!(
+        !container.sentinel_raised(),
+        "a session that never launched has nothing to be asked to stop",
     );
 }
 

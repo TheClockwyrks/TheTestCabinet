@@ -12,6 +12,10 @@
 //! it so `crate::main` can stream the terminal status — carrying the produced or
 //! failed record — back to the backend.
 
+#[cfg(test)]
+#[path = "run.test.rs"]
+mod tests;
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -20,7 +24,7 @@ use test_cabinet_core::ToolchainStage;
 use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
-    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog, FsRepoSeeder,
+    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog, Error, FsRepoSeeder,
     HttpBackendClient, OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer,
     PriorGameJamEntry, RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest,
     RunState, TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
@@ -54,6 +58,15 @@ pub struct RunFailure {
     pub detail: String,
     /// The resolved version, present once the definition materialized.
     pub test_case: Option<TestCaseVersion>,
+    /// Whether the run ended because an operator killed it before its harness
+    /// session was launched ([`Error::CanceledBeforeSession`]).
+    ///
+    /// Such a run is destroyed rather than recorded: nothing ran that a record
+    /// could preserve, so the driver posts no status for it and the job stays
+    /// `canceled` with its record slot empty, exactly as for a killed run of a
+    /// third-party harness. Read by the driver's `main` ahead of every other
+    /// failure disposition.
+    pub canceled_before_session: bool,
 }
 
 impl RunFailure {
@@ -65,6 +78,19 @@ impl RunFailure {
             state: RunState::Infrastructure,
             detail,
             test_case: None,
+            canceled_before_session: false,
+        }
+    }
+
+    /// The failure for an error the engine returned once the definition had
+    /// resolved: classified into its terminal state, and flagged when it is the
+    /// engine refusing to launch a session for a run already killed.
+    pub fn from_engine(err: &Error, test_case: Option<TestCaseVersion>) -> Self {
+        Self {
+            state: RunState::classify_failure(err),
+            detail: format!("run failed: {err}"),
+            test_case,
+            canceled_before_session: matches!(err, Error::CanceledBeforeSession),
         }
     }
 }
@@ -206,6 +232,7 @@ pub async fn drive(
         state: RunState::Infrastructure,
         detail,
         test_case: Some(test_case.clone()),
+        canceled_before_session: false,
     };
     match config.runtime {
         DriverRuntime::Cli => {
@@ -264,11 +291,7 @@ pub async fn drive(
     // harness that stopped itself on one of its own configured ceilings are model
     // outcomes, everything else is infrastructure) before it is flattened to a
     // diagnostic string for the record.
-    .map_err(|err| RunFailure {
-        state: RunState::classify_failure(&err),
-        detail: format!("run failed: {err}"),
-        test_case: Some(test_case.clone()),
-    })
+    .map_err(|err| RunFailure::from_engine(&err, Some(test_case.clone())))
 }
 
 /// Assemble the [`RunEngine`] around the selected container `runtime` and
@@ -353,6 +376,16 @@ where
     // relay, so the console's run monitor can watch the sprite take shape; other
     // run types produce none and the listener simply never fires.
     let preview = Arc::new(BackendPreviewSink::new(outbound.clone()));
+
+    // A kill that landed during the setup above finds no session to wind down. The
+    // `running` transition is the seam that separates setup from the session, so
+    // refuse to cross it: the run ends here, recorded nowhere, and the driver's
+    // `main` destroys it as it would a killed third-party run. The engine holds the
+    // same line at the container start and the session launch for a kill that
+    // lands later in setup.
+    if cancel.is_canceled() {
+        return Err(Error::CanceledBeforeSession);
+    }
 
     // The pre-run setup is done (the definition is materialized and the container
     // runtime is connected); the engine is about to create the sandbox and drive the

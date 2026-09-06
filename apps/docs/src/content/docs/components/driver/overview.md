@@ -79,6 +79,20 @@ wind-down protocol to ask for: every other is a CLI the Test Cabinet drives
 through an `exec`, with no boundary at which it can be told to stop and no
 epilogue to wait for.
 
+The disposition also turns on whether the session has begun. A gg run is wound
+down only once gg has been launched inside the sandbox, because what a kill
+preserves is what the session got through. A kill that lands earlier, while the
+driver resolves the definition, pulls the image, starts the sandbox, or seeds
+the workspace, finds no session to stop and nothing worth a record, so the
+driver destroys the run exactly as it destroys a third-party one: it records
+nothing, posts no further status, tears the sandbox down, and exits. The job
+stays `canceled` with the record slot empty.
+
+Two checks enforce this. The driver refuses to advance the job to `running`
+once it has observed the kill, and the engine refuses to launch a session
+against a raised latch, stopping the sandbox it started instead. A kill that
+lands after gg is launched is a wind-down however little the session has done.
+
 ### gg wind-down
 
 The driver raises the run's cancellation latch and keeps awaiting the run,
@@ -122,7 +136,9 @@ nothing else: no state change, no completion notification, and no retry.
 #### Degraded fallbacks
 
 Two paths produce a bare canceled record instead: the session does not wind down
-inside the grace, or the run errors on its way out. In both the driver builds
+inside the grace, or the run errors on its way out. Both concern a session that
+had been launched; a run killed before that is destroyed rather than recorded
+bare. In both the driver builds
 the record itself from what it still holds: state
 [`canceled`](/components/core/run-records/#status), the detail
 `canceled by operator`, and the resolved case identity and test type when the
@@ -151,11 +167,11 @@ keeps the driver Job running until the session reaches its own end, while the
 its in-flight cap. A destroyed run's driver goes terminal promptly, so the runs
 an operator queues after a kill start straight away.
 
-The disposition is decided by harness, not by how far the run got, so a kill
-that lands in the post-session stages destroys the run just as one landing
-mid-session does. Those stages are minutes of work holding the same slot, and an
-operator who stopped the run asked for the slot back rather than for the tail to
-be finished on their behalf.
+For a third-party harness the disposition is decided by harness alone, not by
+how far the run got, so a kill that lands in the post-session stages destroys
+the run just as one landing mid-session does. Those stages are minutes of work
+holding the same slot, and an operator who stopped the run asked for the slot
+back rather than for the tail to be finished on their behalf.
 
 "Promptly" is the [cancellation poll](#cancellation) interval plus whatever the
 run is doing when the kill lands: the driver can only abandon the run at a point

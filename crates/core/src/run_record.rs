@@ -636,15 +636,18 @@ impl RunState {
     /// case-init timeouts and container/cluster faults — is the Test Cabinet's
     /// [`Infrastructure`](RunState::Infrastructure).
     ///
-    /// [`Canceled`](RunState::Canceled) is never reached here: an operator kill is
-    /// not an error the run returns, it is observed out-of-band by the driver
-    /// (which sets the state itself).
+    /// [`Canceled`](RunState::Canceled) is reached by one error only, a run the
+    /// engine refused to launch a session for because its operator had already
+    /// killed it ([`CanceledBeforeSession`](crate::Error::CanceledBeforeSession)).
+    /// Every other operator kill is observed out-of-band by the driver, which sets
+    /// the state itself, and never surfaces as an error the run returns.
     pub fn classify_failure(err: &crate::Error) -> RunState {
         match err {
             crate::Error::RunTimedOut { .. } => RunState::TimedOut,
             crate::Error::HarnessInvocation { .. } => RunState::HarnessError,
             crate::Error::HarnessLimitExceeded { .. } => RunState::LimitExceeded,
             crate::Error::HarnessHung { .. } => RunState::Hung,
+            crate::Error::CanceledBeforeSession => RunState::Canceled,
             _ => RunState::Infrastructure,
         }
     }

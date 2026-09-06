@@ -28,6 +28,19 @@
 //! in one at a time behind runs nobody will ever read. So the run future is dropped at
 //! once, the sandbox is torn down, nothing is recorded, and the driver exits.
 //!
+//! # A gg run killed before its session
+//!
+//! The wind-down exists to preserve what a session got through, so it applies only once
+//! gg has been launched. A kill that lands earlier — during the driver's own setup, the
+//! image pull, the sandbox start or the seeding — is refused at the next seam rather than
+//! wound down: the driver declines to advance the job to `running`, and the engine
+//! declines to start a sandbox or launch a session against a raised latch
+//! ([`Error::CanceledBeforeSession`](test_cabinet_core::Error::CanceledBeforeSession)).
+//! The driver's `main` then treats the run as destroyed: nothing is recorded, no status
+//! is posted, the sandbox is torn down. The latch is raised all the same, because that is
+//! what the seams read; what differs from [`DestroyNow`](CancelDisposition::DestroyNow) is
+//! only that the run is allowed to reach the seam on its own rather than being dropped.
+//!
 //! # What "destroyed" does and does not promise
 //!
 //! The destroy path keeps nothing *of a run it interrupts*, and its edges — which runs

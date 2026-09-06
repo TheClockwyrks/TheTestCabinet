@@ -471,9 +471,10 @@ and attaches the record id to the already-canceled job. The job keeps its
 `canceled` state and its cancellation detail, no completion notification fires,
 and no retry is enqueued.
 
-Only a killed gg run's driver posts this status. A killed run of any other
-harness is destroyed by its driver, which posts nothing further, so the job stays
-`canceled` with no record attached.
+Only the driver of a killed gg run whose session had been launched posts this
+status. A killed run of any other harness, and a gg run killed before its
+session was launched, is destroyed by its driver, which posts nothing further,
+so the job stays `canceled` with no record attached.
 
 ### `POST /runs/{id}/reviews`
 
@@ -626,7 +627,8 @@ since the cursor listings walk one lifecycle slice at a time.
 A `canceled` run, a gg run an operator killed mid-flight, reaches
 `state=unpublished` and `state=any`. It can never be published, carries no review
 checklist, and is not a publishable failure, so the other selectors omit it. A
-killed run of any other harness leaves no record, so it is listed by no selector.
+killed run of any other harness, and a gg run killed before its session was
+launched, leaves no record, so it is listed by no selector.
 
 #### Two projections
 

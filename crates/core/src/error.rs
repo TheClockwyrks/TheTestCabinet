@@ -190,6 +190,17 @@ pub enum Error {
         seconds: u64,
     },
 
+    /// The run was canceled before its harness session was launched.
+    ///
+    /// A kill preserves what the session got through, so the engine launches a
+    /// session only against an un-raised [`RunCancellation`](crate::RunCancellation).
+    /// A latch already raised when the run reaches the container start, or the
+    /// session launch, ends the run here instead: the sandbox it started is stopped
+    /// and nothing is recorded. The [driver](https://docs.testcabinet.ai/components/driver/overview/#cancellation)
+    /// treats this exactly as it treats a destroyed third-party run.
+    #[error("the run was canceled before its harness session was launched")]
+    CanceledBeforeSession,
+
     /// The harness's install command failed inside the run container before the
     /// session could start. The detail carries the exit code and captured output
     /// so a broken install can be diagnosed. The container is torn down before
