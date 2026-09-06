@@ -173,9 +173,9 @@ export async function decodeSprite(
   const decoded = await h.page.evaluate(
     async (url: string) => {
       const image = new Image();
-      const loaded = await new Promise<boolean>((settle) => {
-        image.onload = () => settle(true);
-        image.onerror = () => settle(false);
+      const loaded = await new Promise<boolean>((decided) => {
+        image.onload = () => decided(true);
+        image.onerror = () => decided(false);
         image.src = url;
       });
       if (!loaded) return null;

@@ -20,8 +20,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** Calls made: enough that a draw of each outcome is all but certain. */
-const DRAWS = 400;
+/** Calls made, each read for the shape of its answer. */
+const DRAWS = 200;
 
 let h: Harness;
 

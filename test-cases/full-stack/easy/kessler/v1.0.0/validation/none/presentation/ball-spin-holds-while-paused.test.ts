@@ -1,16 +1,18 @@
 // presentation/ball-spin-holds-while-paused — the pause holds the ball on the
-// frame it was caught on, however much real time passes.
+// frame it was caught on, however many ticks are counted behind it.
 //
 // specs/assets.md: "The spin runs on simulation time", and specs/screens.md
 // fixes what `paused` shows: "The pause menu, over the field drawn exactly as
 // the tick that paused it left it." The reading is pixels: a stationary ball
 // is caught mid-frame-run, the pause is entered, and the pixels across the
-// ball's box are read twice with most of a second of real wall-clock time
-// between the reads — thirty-plus frame steps' worth had the spin been
-// running on real time. The two readings must match: a spin fed by the frame
-// loop's clock lands the ball frames ahead and moves the box's pixels. The
-// ball is posed away from the stage center, where the pause menu's own copy
-// stands, so the box reads the frozen field rather than the overlay's text.
+// ball's box are read twice with fifty stepped ticks between the reads —
+// specs/instrumentation.md has a frozen screen still count them, and each
+// step renders, so ten frame steps' worth had the spin run on the counter or
+// on the frames rendered. The two readings must match: a spin fed by the tick
+// counter that keeps counting on frozen screens, or by the frames the loop
+// renders, lands the ball frames ahead and moves the box's pixels. The ball is
+// posed away from the stage center, where the pause menu's own copy stands, so
+// the box reads the frozen field rather than the overlay's text.
 //
 // The world is the one ball, stationary on an empty radius; the pause is
 // entered through the surface, so no menu key and no unrelated screen sits in
@@ -39,8 +41,8 @@ const BALL_THETA = 200;
  */
 const HOLD_MAX = 4;
 
-/** Most of a second of wall-clock time: 40-plus ticks had the spin run on it. */
-const REAL_MS = 700;
+/** Fifty stepped ticks behind the pause: ten frame steps had the spin run. */
+const HELD_TICKS = 50;
 
 let h: Harness;
 
@@ -52,7 +54,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("keeps the caught frame across real time behind the pause", async () => {
+it("keeps the caught frame across ticks stepped behind the pause", async () => {
   await isolate(h);
   await spawnBallPolar(h, CLEAR_RADIUS, BALL_THETA, 0);
 
@@ -72,7 +74,7 @@ it("keeps the caught frame across real time behind the pause", async () => {
     await advanceTicks(h, 1);
 
     const caught = await h.pixels(box);
-    await h.runFor(REAL_MS);
+    await advanceTicks(h, HELD_TICKS);
     const later = await h.pixels(box);
 
     assertEqual(caught.length, later.length, "the two readings' point counts");
@@ -83,7 +85,7 @@ it("keeps the caught frame across real time behind the pause", async () => {
         colorDistance({ r: r1, g: g1, b: b1 }, { r: r2, g: g2, b: b2 }),
         HOLD_MAX,
         `the pixel at (${Math.round(box[i].x)}, ${Math.round(box[i].y)}) ` +
-          `after ${REAL_MS}ms of real time behind the pause`,
+          `after ${HELD_TICKS} ticks stepped behind the pause`,
       );
     }
   });

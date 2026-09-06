@@ -39,9 +39,7 @@
 // tick accumulator, and `step(ticks)` runs whole ticks immediately, each the
 // full tick followed by a render. Every harness opens by taking the game off
 // the clock, so a check asks for a number of ticks and gets exactly that number
-// — no polling, no waiting, and no measurement of the machine it ran on. The
-// one check that is ABOUT the loop running itself hands it back with
-// {@link Harness.runFor}.
+// — no polling, no waiting, and no measurement of the machine it ran on.
 //
 // WHERE THE COMPOUND SEQUENCES LIVE. Here, and nowhere else. The debug surface
 // is atomic by design — one field, one read, one clock move — so posing an

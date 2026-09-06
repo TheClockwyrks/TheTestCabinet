@@ -12,7 +12,10 @@
 // page actually makes — every same-origin request stays under the mount and
 // every one of them resolves — plus the game coming up at all, which is what
 // "runs unchanged" costs a build that constructed its script or asset URLs
-// against the origin root.
+// against the origin root. The game is up once its surface is installed, and
+// one tick is stepped through it so a build that asks for a file as it first
+// draws has asked; the log is read once every request the page opened has
+// been answered, a condition the site reports rather than a wait.
 
 import { it } from "vitest";
 import { fail } from "../assert";
@@ -37,8 +40,23 @@ it("runs unchanged mounted under a sub-path", async () => {
     } catch {
       surfaced = false;
     }
-    // Let every produced file's request settle before reading the log.
-    await site.page.waitForTimeout(1_500);
+    if (surfaced) {
+      // One stepped tick, the frame a build that loads as it first draws asks
+      // for its files on, through the surface specs/instrumentation.md fixes.
+      await site.page
+        .evaluate((handle) => {
+          const api = (
+            window as unknown as Record<
+              string,
+              { setAutoStep(auto: boolean): void; step(ticks: number): void }
+            >
+          )[handle];
+          api.setAutoStep(false);
+          api.step(1);
+        }, HANDLE)
+        .catch(() => undefined);
+    }
+    await site.settled();
     writeImageBytes("resolved", await site.page.screenshot({ type: "png" }));
 
     const escaped = site.requests.filter(

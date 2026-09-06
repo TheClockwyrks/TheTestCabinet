@@ -16,7 +16,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { inject } from "vitest";
-import type { Browser, Page } from "playwright";
+import type { Browser, Page, Request } from "playwright";
 // The endpoint key is the shared harness's and fixed there: a per-case key
 // could not be declared once for a program that type-checks two cases together,
 // which is exactly what the per-case keys were trying to avoid.
@@ -60,10 +60,23 @@ export interface SiteRequest {
 
 export interface Site {
   page: Page;
-  /** Every same-origin request the page made, in order. */
+  /** Every same-origin request the page made and was answered on, in order. */
   requests: SiteRequest[];
+  /**
+   * Resolve once no same-origin request the page opened is still unanswered,
+   * so `requests` holds every URL the page has asked for so far. The wait is
+   * bounded as a failure cap alone: a request still unanswered at the cap is
+   * appended with no status, and the caller reads it as the failure it is.
+   */
+  settled(): Promise<void>;
   close(): Promise<void>;
 }
+
+/**
+ * The failure cap on {@link Site.settled}: a request the static server has not
+ * answered in this long is never going to be, and is read as unanswered.
+ */
+const SETTLE_CAP_MS = 10_000;
 
 export interface SiteOptions {
   /** The path the site is mounted under, e.g. `/mounted/deep/`. Default `/`. */
@@ -127,23 +140,52 @@ export async function openSite(options: SiteOptions = {}): Promise<Site> {
   });
   const page = await context.newPage();
   const requests: SiteRequest[] = [];
+  /** The same-origin requests the page has opened and not yet been answered on. */
+  const inFlight = new Map<Request, string>();
+  let onDrained: (() => void) | null = null;
+  const answered = (request: Request, status: number | null): void => {
+    inFlight.delete(request);
+    requests.push({ path: new URL(request.url()).pathname, status });
+    if (inFlight.size === 0 && onDrained !== null) onDrained();
+  };
+  page.on("request", (request) => {
+    if (!request.url().startsWith(origin)) return;
+    inFlight.set(request, new URL(request.url()).pathname);
+  });
   page.on("requestfinished", async (request) => {
     if (!request.url().startsWith(origin)) return;
     const response = await request.response();
-    requests.push({
-      path: new URL(request.url()).pathname,
-      status: response?.status() ?? null,
-    });
+    answered(request, response?.status() ?? null);
   });
   page.on("requestfailed", (request) => {
     if (!request.url().startsWith(origin)) return;
-    requests.push({ path: new URL(request.url()).pathname, status: null });
+    answered(request, null);
   });
   await page.goto(`${origin}${prefix}`, { waitUntil: "load" });
 
   return {
     page,
     requests,
+    settled: () =>
+      new Promise<void>((done) => {
+        if (inFlight.size === 0) {
+          done();
+          return;
+        }
+        const cap = setTimeout(() => {
+          onDrained = null;
+          for (const [request, path] of inFlight) {
+            inFlight.delete(request);
+            requests.push({ path, status: null });
+          }
+          done();
+        }, SETTLE_CAP_MS);
+        onDrained = () => {
+          clearTimeout(cap);
+          onDrained = null;
+          done();
+        };
+      }),
     close: async () => {
       await context.close().catch(() => undefined);
       await browser.close().catch(() => undefined);

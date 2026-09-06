@@ -4,8 +4,10 @@
 // sheds nothing otherwise", and specs/instrumentation.md's `drawPod` "performs
 // one pod draw exactly as a destruction performs it" and returns the kind it
 // would shed, or `null`. The odds are the requirement, so the check samples:
-// a run of draws through `drawPod`, the shed count read against the binomial
-// band of pods/sample.ts around one in four.
+// a few hundred draws through `drawPod`, the shed count read against the
+// binomial band of pods/sample.ts around one in four, sized so a draw that
+// never sheds, one that always sheds, and one at even odds each land outside
+// it.
 //
 // THE WORLD IS THE ISOLATED FIELD, and the draws touch nothing on it: no pod
 // is added, no destruction is staged. A build whose draw sheds at the wrong
