@@ -350,6 +350,16 @@ export function abortRun(state: ReadonlyGantryState): GantryState {
   return s;
 }
 
+/** The run's tick count, from which the run clock follows. */
+export function setRunTick(
+  state: ReadonlyGantryState,
+  tick: number,
+): GantryState {
+  const s = thaw(state);
+  s.run.tick = tick;
+  return s;
+}
+
 /** The watch speed, as an index into `RUN_SPEEDS`. */
 export function setSpeedIndex(
   state: ReadonlyGantryState,

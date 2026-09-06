@@ -136,13 +136,13 @@ for every one. `experimental` is off.
 What is committed: all thirteen specs (the five that branch three ways included),
 all three starter workspaces, the prompt, `asset_dimension = "3d"` so a run
 schedules onto the 3D full-stack image, the four scoring domains, a checklist of
-817 validator-rated points across 14 categories, a validator suite per engine, a
+819 validator-rated points across 14 categories, a validator suite per engine, a
 reference implementation per engine, the produced asset set with the scripts
 that made it, baseline media per engine, and a showcase.
 
 ### The validator suites, and where they differ
 
-The three harnesses export **one async API**, so 732 of the 817 suite files are
+The three harnesses export **one async API**, so 734 of the 819 suite files are
 byte-identical across the three engine directories and the same point is decided
 by the same file whichever runtime a run selected. The 80 forks are where the
 scene is genuinely read differently, plus four that are per-engine by the
@@ -168,20 +168,20 @@ What every project reads first is the frame's own account of itself: `drawn()`
 reports one entry per thing the last frame put on screen, with its kind, its
 name, the produced file its geometry came from, the world position it stands at
 and the extent it covers. The `none` project drives the built site in real
-headless Chromium through `window.__gantry`, so the 812 points it shares are
+headless Chromium through `window.__gantry`, so the 814 points it shares are
 decided against a real browser as well as against the two in-process runtimes,
 and the five it carries alone are decided there only.
 
 ### What a suite run costs
 
 The `none` project is the largest validator suite in the repository and the only
-one that pays a browser crossing per tick: 817 suites, each loading the built
+one that pays a browser crossing per tick: 819 suites, each loading the built
 site into its own page. It is configured at eight workers rather than the shared
 default's four because the whole run must fit inside the platform's
 twenty-minute cap on a validator suite (`VITEST_TIMEOUT` in
 `crates/core/src/vitest_validator.rs`) — at four it measured 39 minutes, which
 the runner stops, and a stopped suite decides no point at all. The two engine
-projects run the 812 points they share in about half a minute each.
+projects run the 814 points they share in about half a minute each.
 
 The numbers pass this list used to call for is **done**. Every site in
 `specs/sites.md` has a worked crane and a tape that clears it inside its budget,

@@ -5,6 +5,7 @@ import {
   SITES,
   SITE_COUNT,
   SITE_NAMES,
+  TICK_HZ,
 } from "./constants";
 import { createDebugSurface } from "./debug";
 import { GantryState, type GantryDebugApi } from "./game";
@@ -434,6 +435,17 @@ describe("the run poses", () => {
     expect(s.run.attached).toBe(0);
     expect(() => h.debug.setLoadPhase(0, "hanging")).toThrow(/phase/);
     expect(() => h.debug.setLoadPose(1, 0, 0, 0, 0)).toThrow(/index/);
+  });
+
+  it("sets the run's tick count, and with it the run clock", () => {
+    const h = onSite();
+    h.state.run.phase = "running";
+    h.debug.setRunTick(1200);
+    const s = h.debug.snapshot();
+    expect(s.run.tick).toBe(1200);
+    expect(s.run.time).toBeCloseTo(1200 / TICK_HZ, 12);
+    expect(() => h.debug.setRunTick(-1)).toThrow(/tick/);
+    expect(() => h.debug.setRunTick(1.5)).toThrow(/tick/);
   });
 
   it("sets the watch speed on the run screen alone", () => {

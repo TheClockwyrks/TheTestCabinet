@@ -396,6 +396,12 @@ export function abortRun(state: GantryState): GantryState {
   return { ...state, screen: "build", run: idleRun() };
 }
 
+/** The run's tick count, from which the run clock follows. */
+export const setRunTick = (state: GantryState, tick: number): GantryState => ({
+  ...state,
+  run: { ...state.run, tick },
+});
+
 /** The watch speed, as an index into `RUN_SPEEDS`. */
 export const setSpeedIndex = (
   state: GantryState,

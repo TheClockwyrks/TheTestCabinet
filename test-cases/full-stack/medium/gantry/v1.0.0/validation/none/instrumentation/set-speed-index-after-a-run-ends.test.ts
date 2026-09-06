@@ -3,8 +3,8 @@
 //
 // `specs/instrumentation.md` § The run in progress: "`setSpeedIndex` poses the
 // watch speed on the run screen, as the `speed` action does, whether or not the
-// run that screen is showing has ended." The first six run poses are the ones
-// that need a run in progress — "The first six pose the run while one is in
+// run that screen is showing has ended." The first seven run poses are the ones
+// that need a run in progress — "The first seven pose the run while one is in
 // progress" — and `setSpeedIndex` is deliberately held apart from them, because
 // what it poses belongs to the screen rather than to the simulation: a failed
 // run "stays on the run screen with its cause read out and the scene as it

@@ -613,6 +613,7 @@ export interface GantryDebugApi {
     yaw: number,
   ): void;
   setLoadPhase(index: number, phase: string): void;
+  setRunTick(tick: number): void;
   setSpeedIndex(index: number): void;
 }
 

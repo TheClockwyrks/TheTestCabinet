@@ -475,6 +475,8 @@ export interface GantryDebugApi {
     yaw: number,
   ): Promise<void>;
   setLoadPhase(index: number, phase: LoadPhase): Promise<void>;
+  /** Sets the number of ticks the run has taken, and so the run clock. */
+  setRunTick(tick: number): Promise<void>;
   /** Sets the watch speed to that index into `RUN_SPEEDS`. */
   setSpeedIndex(index: number): Promise<void>;
 

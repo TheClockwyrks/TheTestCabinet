@@ -233,6 +233,7 @@ export const REQUIRED_OPS = [
   "setBobVelocity",
   "setLoadPose",
   "setLoadPhase",
+  "setRunTick",
   "setSpeedIndex",
 ] as const;
 

@@ -472,9 +472,10 @@ an anchor set, or a budget opens the site carrying the one it is about.
 | `setBobVelocity(vx, vy, vz)` | Sets the bob's velocity. |
 | `setLoadPose(index, x, y, z, yaw)` | Puts a load's lift point at a world position, at that yaw. |
 | `setLoadPhase(index, phase)` | Sets a load's phase to `"waiting"`, `"attached"`, `"placed"`, or `"lost"`. |
+| `setRunTick(tick)` | Sets the number of ticks the run has taken, from which the run clock is `tick / TICK_HZ` seconds (`specs/state.md`). The domain is the whole numbers at or above `0`. |
 | `setSpeedIndex(index)` | Sets the watch speed to that index into `RUN_SPEEDS`. |
 
-The first six pose the run while one is in progress. `setSpeedIndex` poses the
+The first seven pose the run while one is in progress. `setSpeedIndex` poses the
 watch speed on the run screen, as the `speed` action does, whether or not the
 run that screen is showing has ended. Each sets what it names and leaves the
 rest of the run as it stands, and none of them reaches a verdict: the run's own
@@ -490,6 +491,11 @@ sets the load down exactly as a successful `release` leaves it: it sits at
 exactly its target pose and stays there for the rest of the run
 (`specs/world.md`), and `"waiting"` and `"lost"` leave the load at the pose it
 holds when it comes off.
+
+`setRunTick` poses how long the run has been going and nothing else. The tape's
+position, the axes, the loads, and the watch speed stand where they were, the
+run clock the snapshot reports and the score a clear records both follow the
+number posed, and the run's next tick is numbered one above it.
 
 `setAxis` takes any value the axis can hold. The ranges in `specs/program.md`
 are what a step's target is judged against when the step starts, not a bound on

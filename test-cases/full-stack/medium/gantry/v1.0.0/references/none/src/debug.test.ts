@@ -801,6 +801,15 @@ describe("the run poses", () => {
     });
   });
 
+  it("set the run's tick count, and with it the run clock", () => {
+    h.debug.setRunTick(1200);
+    const s = h.debug.snapshot();
+    expect(s.run.tick).toBe(1200);
+    expect(s.run.time).toBeCloseTo(1200 / TICK_HZ, 12);
+    expect(() => h.debug.setRunTick(-1)).toThrow(/tick/);
+    expect(() => h.debug.setRunTick(1.5)).toThrow(/tick/);
+  });
+
   it("cycle the watch speed on the run screen", () => {
     h.debug.setSpeedIndex(2);
     expect(h.debug.snapshot().run.speedIndex).toBe(2);

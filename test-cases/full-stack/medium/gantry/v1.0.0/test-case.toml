@@ -290,7 +290,7 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 # to the window are the engine's own work under the two 3D runtimes, so a check
 # on them there would grade the engine rather than the build.
 #
-# 817 points across 14 categories. Each asserts ONE observable behavior,
+# 819 points across 14 categories. Each asserts ONE observable behavior,
 # because a build that gets half of a compound point right must score
 # differently from one that gets all of it right. A domain's rating is
 # the worst cap among its failures, so the count weights nothing — what the split
@@ -1657,18 +1657,18 @@ validation = { script = "instrumentation/run-pose-reaches-no-verdict.test.ts", o
   { id = "state", name = "the run at the call, with every load placed", kind = "image" },
 ] }
 
-# On the build screen with an idle run call each of the six poses in turn,
+# On the build screen with an idle run call each of the seven poses in turn,
 # reading snapshot().run after each. — run is still the idle placeholder
 # after every call.
 # From specs/instrumentation.md § The run in progress.
 [[review.categories.items]]
 id = "run-poses-do-nothing-with-no-run"
 title = "A run pose with no run in progress does nothing"
-description = "setAxis, setAxisRate, setBob, setBobVelocity, setLoadPose and setLoadPhase pose a run in progress, so they change nothing against an idle run."
+description = "setAxis, setAxisRate, setBob, setBobVelocity, setLoadPose, setLoadPhase and setRunTick pose a run in progress, so they change nothing against an idle run."
 domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "instrumentation/run-poses-do-nothing-with-no-run.test.ts", outputs = [
-  { id = "state", name = "the idle run six run poses could not touch", kind = "image" },
+  { id = "state", name = "the idle run seven run poses could not touch", kind = "image" },
 ] }
 
 # Start a run whose first step commands the hoist, advance until it is
@@ -1865,6 +1865,35 @@ domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-load-pose-puts-the-load.test.ts", outputs = [
   { id = "pose", name = "The load at the pose it was handed", kind = "image" },
+] }
+
+# openSite(0), empty the yard, stand the minimal crane, pose a tape of three
+# steps that move nothing, startRun, then setRunTick(1200) and read run.tick
+# and run.time with nothing advanced. — run.tick reads 1200 and run.time reads
+# 1200 / TICK_HZ.
+# From specs/instrumentation.md § The run in progress.
+[[review.categories.items]]
+id = "set-run-tick-sets-the-tick-count"
+title = "setRunTick sets the number of ticks the run has taken"
+description = "setRunTick(tick) sets how many ticks the run has taken, which the snapshot reports under run.tick, and the run clock beside it is that count over TICK_HZ."
+domains = ["choreography"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-run-tick-sets-the-tick-count.test.ts", outputs = [
+  { id = "clock", name = "The run clock at the tick count posed", kind = "image" },
+] }
+
+# The same run, posed to 1200 and then advanced one tick. — run.tick reads
+# 1201 with the run still running, so the run counts on from the number posed
+# rather than from a count of its own.
+# From specs/instrumentation.md § The run in progress.
+[[review.categories.items]]
+id = "set-run-tick-carries-the-run-on"
+title = "The run counts on from the tick count setRunTick posed"
+description = "setRunTick poses how long the run has been going and nothing else, so the run's next tick is numbered one above the count posed and the run is still running."
+domains = ["choreography"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-run-tick-carries-the-run-on.test.ts", outputs = [
+  { id = "carried", name = "The run one tick past the count posed", kind = "image" },
 ] }
 
 # Drive a run to a failure, then call setSpeedIndex(2) and read
@@ -5036,7 +5065,7 @@ validation = { script = "simulation/break-does-not-touch-the-structure.test.ts",
 ] }
 
 # ----------------------------------------------------------------------------
-# The hoist, the swing, and the hook — 49 points
+# The hoist, the swing, and the hook — 48 points
 # ----------------------------------------------------------------------------
 [[review.categories]]
 id = "rigging"
@@ -11743,12 +11772,12 @@ validation = { script = "sites/site-names-in-order.test.ts", outputs = [
 ] }
 
 # openSite(0) (par cost 2400, time 18, budget 3000), clearObstacles, pose a
-# ready crane whose cost lands between 2400 and 3000, and add a tape whose
-# one move step drives an axis at a low enough rate that the run lasts longer
-# than 18 seconds. startRun, setLoadPhase(0, "placed"), then advance until
-# run.phase leaves "running". — run.phase reads "cleared" with run.time above
-# 18 and the crane's cost above 2400, and cleared[0] reads true: neither par
-# figure refuses the clear.
+# ready crane whose cost lands between 2400 and 3000, and add a tape of one
+# move step that moves nothing. startRun, setRunTick to nineteen seconds of
+# run clock, setLoadPhase(0, "placed"), then advance until run.phase leaves
+# "running". — run.phase reads "cleared" with run.time above 18 and the
+# crane's cost above 2400, and cleared[0] reads true: neither par figure
+# refuses the clear.
 # From specs/sites.md, the preamble on par figures.
 [[review.categories.items]]
 id = "par-gates-nothing"

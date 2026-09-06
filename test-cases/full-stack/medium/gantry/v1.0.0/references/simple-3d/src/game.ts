@@ -634,6 +634,7 @@ export interface GantryDebugApi {
     index: number,
     phase: string,
   ): GantryState;
+  setRunTick(state: ReadonlyGantryState, tick: number): GantryState;
   setSpeedIndex(state: ReadonlyGantryState, index: number): GantryState;
 }
 

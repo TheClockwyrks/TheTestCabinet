@@ -483,6 +483,8 @@ export interface GantryDebugApi {
     yaw: number,
   ): void;
   setLoadPhase(index: number, phase: LoadPhase): void;
+  /** Sets the number of ticks the run has taken, and so the run clock. */
+  setRunTick(tick: number): void;
   /** Sets the watch speed to that index into `RUN_SPEEDS`. */
   setSpeedIndex(index: number): void;
 }
