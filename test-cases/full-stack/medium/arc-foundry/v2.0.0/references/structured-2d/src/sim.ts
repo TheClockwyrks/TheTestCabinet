@@ -13,15 +13,14 @@
 // one path by which the game changes.
 //
 // The simulation is free of the canvas, the clock, and input: it advances from the
-// elapsed time it is handed and from the seeded generators the world carries, so an
-// interval of simulation time reaches the same state however it was divided into
-// frames, and a scenario driven a counted number of steps reproduces exactly.
+// elapsed time it is handed, so an interval of simulation time reaches the same state
+// however it was divided into frames. The press's rolls and the crit roll draw at random
+// on their own, and the surface poses each outcome a scenario needs.
 
 import {
   COMBOS,
   COMBO_MAX_LEVEL,
   COMPONENT_TYPES,
-  DEFAULT_SEED,
   DEFAULT_TARGETING,
   MAX_QUALITY,
   OVERLOAD_SPEED,
@@ -48,7 +47,6 @@ import {
 } from "./constants";
 import { boardOf, type Board, type Occupancy } from "./board";
 import { fireCue } from "./audio";
-import { next, stream } from "./rng";
 import {
   COMBO_BY_ID,
   DIFFICULTY_BY_ID,
@@ -67,7 +65,7 @@ import {
   type Stats,
 } from "./tables";
 import { buildWave } from "./waves";
-import { COMBAT_SALT, FoundryState } from "./state";
+import { FoundryState } from "./state";
 import { noAssets, type Assets } from "./assets";
 import type {
   Blocker,
@@ -128,20 +126,9 @@ function ownCandidate(w: FoundryState, id: number): Candidate | null {
   return s && s.kind === "candidate" ? s : null;
 }
 
-/** The next draw from the scrap-press generator, advancing the world's copy of it. */
-function pressDraw(w: FoundryState): number {
-  const rng = stream(w.pressRng);
-  const value = next(rng);
-  w.pressRng = rng.state;
-  return value;
-}
-
-/** The next draw from the crit generator, advancing the world's copy of it. */
-function combatDraw(w: FoundryState): number {
-  const rng = stream(w.combatRng);
-  const value = next(rng);
-  w.combatRng = rng.state;
-  return value;
+/** One draw in `[0, 1)` for the press's rolls and the crit roll. */
+function draw(): number {
+  return Math.random();
 }
 
 // ---- Building a world ----------------------------------------------------
@@ -164,14 +151,13 @@ export function createWorld(assets: Assets = noAssets()): FoundryState {
 }
 
 /**
- * Return the world to its title state and reseed every random draw.
+ * Return the world to its title state.
  *
  * Every field the snapshot reports goes back to its title-screen value. The mute bit
  * and the pointer are deliberately left alone, because both belong to the runtime
  * rather than to the game, and so are the loaded assets and the bursts still playing.
  */
-export function resetWorld(w: FoundryState, seed: number = DEFAULT_SEED): void {
-  w.pressSeed = seed >>> 0;
+export function resetWorld(w: FoundryState): void {
   w.mapId = "substation";
   w.difficultyId = "medium";
   w.screen = "title";
@@ -211,8 +197,6 @@ export function resetWorld(w: FoundryState, seed: number = DEFAULT_SEED): void {
   w.stepAcc = 0;
   w.renderAlpha = 0;
   w.nextId = 1;
-  w.pressRng = w.pressSeed;
-  w.combatRng = (w.pressSeed ^ COMBAT_SALT) >>> 0;
   w.nextWave = buildWave(1, difficulty(w));
   refreshMaze(w);
 }
@@ -220,9 +204,6 @@ export function resetWorld(w: FoundryState, seed: number = DEFAULT_SEED): void {
 /**
  * Enter a run on the current map at the current difficulty, opening it on its first
  * build phase with the allocation `specs/campaign.md` states.
- *
- * It never reseeds. Every random draw runs off the generator `reset` seeded, and nothing
- * else seeds it, so the same seed and the same calls reach the same run every time.
  */
 export function startRun(w: FoundryState): void {
   w.screen = "playing";
@@ -261,8 +242,6 @@ export function startRun(w: FoundryState): void {
   w.nextId = 1;
   // The press keeps whatever `setNextRoll` armed: only a rock consuming it or
   // `clearNextRoll` clears the arming (specs/instrumentation.md).
-  w.pressRng = w.pressSeed;
-  w.combatRng = (w.pressSeed ^ COMBAT_SALT) >>> 0;
   w.nextWave = buildWave(1, difficulty(w));
   refreshMaze(w);
 }
@@ -684,7 +663,13 @@ function launchProjectile(
   const muzzle = 16;
   const mx = center.x + Math.cos(c.aimAngle) * muzzle;
   const my = center.y + Math.sin(c.aimAngle) * muzzle;
-  const isCrit = stats.critChance > 0 && combatDraw(w) < stats.critChance;
+  // The outcome `setNextCrit` armed for this shot, or the stated chance rolled afresh
+  // (specs/components.md). The shot consumes the arming either way.
+  const armed = c.armedCrit;
+  c.armedCrit = null;
+  const isCrit =
+    stats.critChance > 0 &&
+    (armed === null ? draw() < stats.critChance : armed);
   const dmg = isCrit ? stats.dmg * stats.critMult : stats.dmg;
   w.projectiles.push({
     id: w.nextId++,
@@ -1192,6 +1177,7 @@ function newComponent(
     kills: 0,
     damageDealt: 0,
     auraBonus: 0,
+    armedCrit: null,
   };
 }
 
@@ -1240,8 +1226,8 @@ export function pullPress(w: FoundryState): boolean {
 }
 
 /** The type roll: every base type equally likely, whatever the refinement. */
-function rollType(w: FoundryState): ComponentType {
-  let r = pressDraw(w);
+function rollType(): ComponentType {
+  let r = draw();
   for (const type of COMPONENT_TYPES) {
     r -= TYPE_ROLL_ODDS;
     if (r <= 0) return type;
@@ -1252,7 +1238,7 @@ function rollType(w: FoundryState): ComponentType {
 /** The quality roll, on the odds the current refinement level gives. */
 function rollQuality(w: FoundryState): number {
   const odds = REFINEMENT_ODDS[w.refinement]!;
-  let r = pressDraw(w);
+  let r = draw();
   for (let q = 1; q <= MAX_QUALITY; q++) {
     r -= odds[q - 1]!;
     if (r <= 0) return q;
@@ -1309,7 +1295,7 @@ export function placeStamp(
   const cand: Candidate = {
     id: w.nextId++,
     kind: "candidate",
-    type: armed ? armed.type : rollType(w),
+    type: armed ? armed.type : rollType(),
     quality: armed ? armed.quality : rollQuality(w),
     col,
     row,
@@ -2231,6 +2217,40 @@ export function armNextRoll(
 
 export function clearNextRoll(w: FoundryState): void {
   w.armedRoll = null;
+}
+
+/**
+ * One press roll at the current refinement level, exactly as a dropped rock rolls, and
+ * nothing else: no rock lands, no stamp is spent, and an armed roll stays armed.
+ */
+export function rollPress(w: FoundryState): {
+  type: ComponentType;
+  quality: number;
+} {
+  return { type: rollType(), quality: rollQuality(w) };
+}
+
+/** A live structure whose stats carry a crit chance: the subject `setNextCrit` takes. */
+export function critStructureById(
+  w: FoundryState,
+  id: number,
+): Component | null {
+  const c = firingStructureById(w, id);
+  return c && statsOf(c).critChance > 0 ? c : null;
+}
+
+/**
+ * Arm the outcome of the crit roll on the next shot a structure launches. The shot
+ * consumes it; until then a later call replaces it (specs/instrumentation.md).
+ */
+export function armNextCrit(w: FoundryState, id: number, crit: boolean): void {
+  const c = ownComponent(w, id);
+  if (c) c.armedCrit = crit;
+}
+
+export function clearNextCrit(w: FoundryState, id: number): void {
+  const c = ownComponent(w, id);
+  if (c) c.armedCrit = null;
 }
 
 /**

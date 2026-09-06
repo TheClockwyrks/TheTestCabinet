@@ -17,9 +17,9 @@ function advance(game: Game, seconds: number): void {
 }
 
 /** A run posed on an empty yard with nothing but what a check puts on it. */
-function openRun(seed = 1): Game {
+function openRun(): Game {
   const game = new Game();
-  game.debugReset(seed);
+  game.debugReset();
   game.startRun();
   game.clearStructures();
   game.clearUnits();
@@ -88,6 +88,23 @@ describe("the scrap-press", () => {
     expect(game.holding).toBe(true);
   });
 
+  it("rolls the press on its own without landing anything", () => {
+    const game = openRun();
+    game.armNextRoll("coil", 4);
+    game.pullPress();
+    game.setRefinement(8);
+    const before = JSON.stringify(game.debugSnapshot());
+    for (let i = 0; i < 50; i++) {
+      const roll = game.rollPress();
+      expect(game.debugSnapshot().structures.map((x) => x.type)).not.toContain(
+        undefined,
+      );
+      expect(roll.quality).toBeGreaterThanOrEqual(2);
+      expect(roll.quality).toBeLessThanOrEqual(5);
+    }
+    expect(JSON.stringify(game.debugSnapshot())).toBe(before);
+  });
+
   it("refuses an illegal drop without spending a stamp", () => {
     const game = openRun();
     const wp = game.board.map.waypoints[0]!;
@@ -112,8 +129,8 @@ describe("the scrap-press", () => {
   });
 
   it("biases the roll with refinement and nothing else", () => {
-    const game = openRun(99);
-    // At R0 the press rolls Scrap alone, whatever the seed.
+    const game = openRun();
+    // At R0 the press rolls Scrap alone.
     for (let i = 0; i < 5; i++) game.placeStamp(4 + i * 3, 10);
     for (const s of game.debugSnapshot().structures) expect(s.quality).toBe(1);
     game.setRefinement(8);
@@ -257,6 +274,40 @@ describe("firing", () => {
     expect(t.damageDealt).toBeGreaterThan(0);
     expect(u.hp).toBeLessThan(u.maxHp);
     expect(u.maxHp - u.hp).toBeCloseTo(t.damageDealt, 6);
+  });
+
+  it("lands the crit outcome armed for the next shot, and consumes it", () => {
+    const tower = game.placeCombo("slagdriver", 20, 10)!;
+    const centre = footprintCenter(20, 10);
+    const unit = game.debugSpawn("overload")!;
+    game.setUnitPosition(unit, centre.x + 40, centre.y);
+    game.setUnitFrozen(unit, true);
+    const damage = game.debugSnapshot().structures[0]!.damage;
+    game.armNextCrit(tower.id, true);
+    expect(game.debugSnapshot().structures[0]!.nextCrit).toBe(true);
+    let tallied = 0;
+    while (tallied === 0) {
+      advance(game, FIXED_STEP);
+      tallied = game.debugSnapshot().structures[0]!.damageDealt;
+    }
+    expect(tallied).toBeCloseTo(damage * 2, 6);
+    expect(game.debugSnapshot().structures[0]!.nextCrit).toBeNull();
+    game.armNextCrit(tower.id, false);
+    let next = tallied;
+    while (next === tallied) {
+      advance(game, FIXED_STEP);
+      next = game.debugSnapshot().structures[0]!.damageDealt;
+    }
+    expect(next - tallied).toBeCloseTo(damage, 6);
+  });
+
+  it("clears an armed crit outcome without firing", () => {
+    const tower = game.placeCombo("slagdriver", 20, 10)!;
+    game.armNextCrit(tower.id, true);
+    game.clearNextCrit(tower.id);
+    const t = game.debugSnapshot().structures[0]!;
+    expect(t.nextCrit).toBeNull();
+    expect(t.damageDealt).toBe(0);
   });
 
   it("holds fire with nothing in range", () => {
@@ -410,8 +461,8 @@ describe("the economy", () => {
 
 describe("the clock", () => {
   it("reaches the same state however a span is divided into steps", () => {
-    const a = openRun(3);
-    const b = openRun(3);
+    const a = openRun();
+    const b = openRun();
     a.setWave(4);
     b.setWave(4);
     a.debugSpawn("mote");
@@ -443,20 +494,6 @@ describe("the clock", () => {
     expect(
       game.debugSnapshot().units.find((u) => u.id === unit.id)!.x,
     ).toBeGreaterThan(at);
-  });
-
-  it("runs the same seed to the same rolls", () => {
-    const a = openRun(4242);
-    const b = openRun(4242);
-    a.setRefinement(5);
-    b.setRefinement(5);
-    for (let i = 0; i < 5; i++) {
-      a.placeStamp(4 + i * 3, 10);
-      b.placeStamp(4 + i * 3, 10);
-    }
-    expect(
-      a.debugSnapshot().structures.map((s) => [s.type, s.quality]),
-    ).toEqual(b.debugSnapshot().structures.map((s) => [s.type, s.quality]));
   });
 });
 

@@ -51,12 +51,6 @@ import type {
 } from "./types";
 import { buildWave } from "./waves";
 
-/** The default state of the scrap-press generator, before a seed replaces it. */
-export const PRESS_SEED = 0x51a6c0de;
-
-/** What the crit generator is derived from, so the two streams never run in step. */
-export const COMBAT_SALT = 0x2f9d3b17;
-
 /**
  * The whole of Arc Foundry's state.
  *
@@ -167,12 +161,6 @@ export class FoundryState extends GameState {
 
   // ---- Identity ----
   nextId = 1;
-  /** The scrap-press generator's state: the type and quality rolls. */
-  pressRng: number = PRESS_SEED;
-  /** The seed `reset` set, which `startRun` restores the press to. */
-  pressSeed: number = PRESS_SEED;
-  /** The combat generator's state: the crit rolls. */
-  combatRng: number = (PRESS_SEED ^ COMBAT_SALT) >>> 0;
 
   // ---- The ground route, recomputed whenever the walls move ----
   mazePath: readonly Pt[] = [];

@@ -89,6 +89,8 @@ export interface Component extends StructureBase {
   damageDealt: number;
   /** The summed external aura on it, recomputed whenever the yard changes. */
   auraBonus: number;
+  /** The crit outcome `setNextCrit` armed for the next shot; `null` rolls the chance. */
+  armedCrit: boolean | null;
 }
 
 /** A rock placed this build phase, which has rolled a type and a quality. */

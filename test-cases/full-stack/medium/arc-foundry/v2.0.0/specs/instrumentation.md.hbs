@@ -68,9 +68,10 @@ transition.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic. Three properties make it so.
+The surface rests on the simulation being steppable apart from drawing. Two properties
+make it so.
 
 - Decoupled from rendering. The simulation advances from the elapsed time it is handed
   and from nothing else, so an interval of simulation time reaches the same state however
@@ -80,13 +81,12 @@ The surface rests on the simulation being deterministic. Three properties make i
   and the economy all advance without a canvas, without the frame loop that measured the
   elapsed time, and without the wall clock. The dependency runs one way: the simulation
   reads nothing from the renderer.
-- Seeded randomness. Every random draw runs off a generator `reset` seeds, and the game
-  keeps that generator's whole state where `reset` can restore it. The press's type and
-  quality rolls, each wave's composition and spawn order, and every crit roll all come
-  off it.
 
-Given the same seed and the same sequence of calls and elapsed simulation time, the game
-reaches the same state every time.
+Where the game draws at random, the press's type and quality rolls of `specs/scrap-press.md`
+and the crit roll of `specs/components.md`, the draw is stated as a distribution and the
+surface below poses its outcome: `setNextRoll` fixes what the next rock rolls,
+`setNextCrit` fixes whether a structure's next shot crits, and `rollPress` performs one
+press roll on its own. How the game draws is its own.
 
 ## What the runtime provides instead
 
@@ -156,7 +156,7 @@ and everything else in the game, carries on untouched.
 
 ## The operations
 
-The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `4`), a plain number, and the
+The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `5`), a plain number, and the
 operations below. Values are plain numbers, strings, and booleans. `x` and `y` are in the
 stage's logical units, `col` and `row` are tile coordinates, durations are in seconds,
 and an `id` is a structure's or a unit's identifier as `snapshot` reports it.
@@ -207,7 +207,7 @@ menu screen, or while the game is paused, draws frames and moves the simulation 
 all.
 
 Advancing while the game is still stepping automatically adds to what the wall clock is
-already doing, so a scenario that must be reproducible calls `setAutoStep(false)` first.
+already doing, so a scenario driven from code calls `setAutoStep(false)` first.
 
 {{/if}}
 ### Readings
@@ -222,6 +222,7 @@ already doing, so a scenario that must be reproducible calls `setAutoStep(false)
 | `statusReadouts` | The status bar's readouts — the reads it draws that are not controls — in the order they are drawn. |
 | `recipeEntries` | Every ingredient cell the recipe book currently draws, in the order the book draws them. |
 | `waveCount(type)` | How many units of `type` the live wave releases across the whole of its schedule, those it has already released and those still to come. |
+| `rollPress` | Performs one press roll at the current refinement level, exactly as a dropped rock rolls, and returns what it decided as `{ type, quality }`. |
 
 `panelButtons`, `pressControls`, and `menuButtons` each return an array of
 `{ action, label, x, y, w, h, disabled }`. `label` is the text as drawn, `x`, `y`, `w`,
@@ -318,14 +319,21 @@ which is what the maze-length hover of `specs/controls.md` acts on. A `recipeEnt
 rectangle is where that ingredient cell is drawn, so whatever the book draws to tell the
 cell's `state` apart is inside it.
 
-All eight readings are pure. Reading a menu never moves the highlight and never activates
-a choice, and reading the recipe book never opens or closes it.
+`rollPress` draws the type and the quality with the distribution of `specs/scrap-press.md`,
+so `type` is one of the eight base component identifiers and `quality` is a tier the
+current refinement level's row of `REFINEMENT_ODDS` gives a non-zero weight. Each call is
+one independent draw, so repeated calls sample the press's distribution. It lands no rock,
+spends no stamp, and leaves an arming `setNextRoll` made standing, so what `snapshot`
+reports is the same before and after a call.
+
+All nine readings leave the game as it stands. Reading a menu never moves the highlight
+and never activates a choice, and reading the recipe book never opens or closes it.
 
 ### The run
 
 | Operation | Effect |
 | --- | --- |
-| `reset(options)` | Returns the game to its title state, as below. `options` is optional, and `options.seed` seeds every random draw, defaulting to `DEFAULT_SEED` (`1`). |
+| `reset` | Returns the game to its title state, as below. |
 | `setMap(map)` | Sets the map the next run opens on: `"substation"`, `"switchyard"`, or `"transformer"`. |
 | `setDifficulty(difficulty)` | Sets the difficulty the next run opens at: `"easy"`, `"medium"`, or `"hard"`. |
 | `startRun` | Enters a run on the current map at the current difficulty, through the same path confirming the difficulty select takes, and opens it on its first build phase. |
@@ -391,7 +399,7 @@ release it.
 | --- | --- |
 | `clearStructures` | Removes every candidate, component, combination tower, and blocker from the yard, reopens their tiles, clears the selection and the combine set, and recomputes the route. |
 | `setNextRoll(type, quality)` | Arms the exact component the next placed rock rolls. `type` is a base component identifier and `quality` is `1` through `5`. The rock still enters through the real placement path; this fixes only what it rolls. |
-| `clearNextRoll` | Clears the arming and returns the press to its seeded random roll. |
+| `clearNextRoll` | Clears the arming and returns the press to its random roll. |
 | `clearHeld` | Puts away whatever rock is held on the cursor, spending no stamp. |
 | `placeRock(col, row)` | Drops a rock at the anchor tile through the real placement path: it rolls, becomes a candidate, spends one stamp, and the route is recomputed. |
 | `placeComponent(type, quality, col, row)` | Places a permanent firing component of that type at that quality, at the anchor tile. |
@@ -407,6 +415,8 @@ release it.
 | `dismantle(id)` | Removes a structure, reopens its tiles, and recomputes the route. |
 | `setTargeting(id, priority)` | Sets a firing structure's targeting priority to one of the five of `specs/components.md`. |
 | `setComboLevel(id, level)` | Sets a combination tower's upgrade level to `level`, `0` through `COMBO_MAX_LEVEL`, and with it the damage and range that level gives. It spends no Charge. |
+| `setNextCrit(id, crit)` | Arms the outcome of the crit roll on the next shot a structure carrying `crit` launches: `true` lands the crit and `false` lands an ordinary hit. |
+| `clearNextCrit(id)` | Clears the arming and returns the structure's next shot to its random crit roll. |
 | `upgradeQuality` | Buys the next refinement level for Charge, as the panel's refinement control does. |
 | `upgradeCombo(id)` | Raises a combination tower's upgrade level by one, for Charge, as the panel's upgrade control does. |
 
@@ -425,6 +435,15 @@ that blocker in place, as `specs/scrap-press.md` states.
 `setNextRoll` fixes the roll and nothing else, so the type-and-quality distribution of
 `specs/scrap-press.md` is what an unarmed press draws from. The arming survives until a
 rock consumes it or `clearNextRoll` clears it.
+
+`setNextCrit` fixes one shot's crit roll and nothing else: the structure fires on its own
+cadence at the target its priority selects, and the shot it launches next carries
+`critMult` times its damage for `true` and its plain damage for `false`, in place of the
+random outcome. That shot consumes the arming, and every shot after it rolls the stated
+chance again until the next call; a call before the shot is launched replaces the arming.
+`id` is a live structure whose `abilities` carry `crit`, and the arming is reported as that
+structure's `nextCrit`, `null` once consumed or cleared. `clearStructures`, `dismantle`,
+and a combine that consumes the structure take the arming with it.
 
 `clearHeld` empties the cursor, so `held` reads
 `{ active: false, col: 0, row: 0, legal: false }` and the build panel shows the inspector
@@ -506,7 +525,7 @@ down at a time, a `touchMove` or a `touchEnd` with none down does nothing, and a
 
 ```js
 {
-  version: 4,
+  version: 5,
   screen: "title" | "mapselect" | "difficultyselect" | "howto"
         | "playing" | "paused" | "victory" | "overload",
   phase: "build" | "wave" | "finale" | null,   // null off the yard
@@ -569,6 +588,7 @@ down at a time, a `touchMove` or a `touchEnd` with none down does nothing, and a
       kills: <number>, damageDealt: <number>,
       auraRadius: <number>, auraBonus: <number>,
       abilities: [<string>, ...],
+      nextCrit: <boolean> | null,  // the crit outcome armed for its next shot
     },
   ],
   projectiles: [
@@ -590,6 +610,7 @@ does not use reports its resting value rather than going missing.
 | `wave` | `0` before wave `1` |
 | `mazeRating` | `0` before the finale |
 | `selected`, `nextRoll` | `null` |
+| A structure's `nextCrit` | `null` unless `setNextCrit` arms it |
 | `combineSet`, `units`, `structures`, `projectiles` | empty |
 | `held` | `{ active: false, col: 0, row: 0, legal: false }` |
 
@@ -599,6 +620,8 @@ does not use reports its resting value rather than going missing.
 - `damage` is the structure's effective per-shot damage, including any aura buff on it,
   unrounded.
 - `kills` and `damageDealt` are the running tallies of `specs/components.md`.
+- `nextCrit` is the outcome `setNextCrit` armed for the structure's next shot, and `null`
+  on every structure carrying no arming, which includes every structure without `crit`.
 - `progress` is the remaining length of the unit's route to the checkpoint it is heading
   for, in tiles, so `waypointIndex` and `progress` together are the ordering `first` and
   `last` select on.

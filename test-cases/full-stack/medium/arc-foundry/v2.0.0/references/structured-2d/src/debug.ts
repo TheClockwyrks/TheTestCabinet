@@ -26,7 +26,6 @@ import {
   COMBO_IDS,
   COMBO_MAX_LEVEL,
   COMPONENT_TYPES,
-  DEFAULT_SEED,
   DIFFICULTY_IDS,
   FOUNDRY_DEBUG_VERSION,
   LOAD_TYPES,
@@ -69,7 +68,10 @@ import {
   clearHeld,
   clearNextRoll,
   clearProjectiles,
+  armNextCrit,
+  clearNextCrit,
   clearStructures,
+  critStructureById,
   clearUnits,
   combineFrom,
   combineSet,
@@ -87,6 +89,7 @@ import {
   removeStructure,
   reportedPhase,
   resetWorld,
+  rollPress,
   select,
   setCharge,
   setComboLevel,
@@ -219,6 +222,8 @@ export interface StructureSnapshot {
   auraRadius: number;
   auraBonus: number;
   abilities: string[];
+  /** The crit outcome `setNextCrit` armed for its next shot, or `null`. */
+  nextCrit: boolean | null;
 }
 
 /** One shot in flight, as the snapshot reports it. */
@@ -293,9 +298,10 @@ export interface FoundryDebugApi {
   statusReadouts(): ReadoutSnapshot[];
   recipeEntries(): RecipeEntrySnapshot[];
   waveCount(type: string): number;
+  rollPress(): { type: string; quality: number };
 
   // The run.
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   setMap(map: string): void;
   setDifficulty(difficulty: string): void;
   startRun(): void;
@@ -333,6 +339,8 @@ export interface FoundryDebugApi {
   dismantle(id: number): void;
   setTargeting(id: number, priority: string): void;
   setComboLevel(id: number, level: number): void;
+  setNextCrit(id: number, crit: boolean): void;
+  clearNextCrit(id: number): void;
   upgradeQuality(): void;
   upgradeCombo(id: number): void;
 
@@ -527,6 +535,7 @@ export function snapshot(state: FoundryState): FoundrySnapshot {
           auraRadius: 0,
           auraBonus: 0,
           abilities: [],
+          nextCrit: null,
         };
       }
       if (s.kind === "candidate") {
@@ -544,6 +553,7 @@ export function snapshot(state: FoundryState): FoundrySnapshot {
           auraRadius: st.auraRadius,
           auraBonus: st.auraBonus,
           abilities: abilityTags(st),
+          nextCrit: null,
         };
       }
       const isCombo = Boolean(s.combo);
@@ -570,6 +580,7 @@ export function snapshot(state: FoundryState): FoundrySnapshot {
         auraRadius: own.auraRadius,
         auraBonus: own.auraBonus,
         abilities: abilityTags(live),
+        nextCrit: s.armedCrit,
       };
     }),
     projectiles: state.projectiles
@@ -670,16 +681,13 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
         live(),
         oneOf("waveCount", "type", type, SPAWNABLE) as LoadType | "overload",
       ),
+    // One press roll at the current refinement, as a dropped rock rolls; nothing lands.
+    rollPress: () => rollPress(live()),
 
     // ---- The run ----------------------------------------------------------
 
-    reset(options) {
-      resetWorld(
-        live(),
-        options?.seed === undefined
-          ? DEFAULT_SEED
-          : num("reset", "options.seed", options.seed),
-      );
+    reset() {
+      resetWorld(live());
     },
 
     setMap(map) {
@@ -908,6 +916,24 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
         n,
         int("setComboLevel", "level", level, 0, COMBO_MAX_LEVEL),
       );
+    },
+
+    setNextCrit(id, crit) {
+      const state = live();
+      const n = num("setNextCrit", "id", id);
+      if (!critStructureById(state, n)) {
+        invalid("setNextCrit", "an id a structure carrying crit holds", id);
+      }
+      armNextCrit(state, n, bool("setNextCrit", "crit", crit));
+    },
+
+    clearNextCrit(id) {
+      const state = live();
+      const n = num("clearNextCrit", "id", id);
+      if (!critStructureById(state, n)) {
+        invalid("clearNextCrit", "an id a structure carrying crit holds", id);
+      }
+      clearNextCrit(state, n);
     },
 
     upgradeQuality() {

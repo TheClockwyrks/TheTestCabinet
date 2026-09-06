@@ -351,7 +351,7 @@ source = "specs/controls.md.hbs"
 [[spec]]
 source = "specs/assets.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic core;
+# The debugging and automation surface every build must expose: a render-free core;
 # an API to pose and read the game from code through its own real systems; and a
 # read-only debug overlay. Framed as an ordinary developer affordance of the game. It
 # branches on the engine for how the surface is reached, for the shape each operation
@@ -451,7 +451,7 @@ format = 2
 # The debug and automation surface is a deliverable of the build, not a courtesy: it
 # is how the yard is posed and read from code, and every other suite on this
 # checklist establishes its scenario through it. These points check that it is
-# really there, really wired to the running game, and really deterministic. A
+# really there, really wired to the running game, and really steppable. A
 # surface that reports a plausible-looking object unconnected to what is on the
 # yard is the failure mode worth naming, and it shows up as every other suite
 # failing to run as well.
@@ -510,7 +510,7 @@ validation = { script = "instrumentation/snapshot-resting-values.test.ts", outpu
 [[review.categories.items]]
 id = "reset-title-state"
 title = "reset returns the game to its title-screen values"
-description = "After a run has been driven — structures standing, Charge spent, refinement bought, a wave under way — reset({seed: 7}) restores the title screen with menuIndex 0, the map back to substation and the difficulty to medium, the yard emptied, the selection and combine set cleared, nothing held, the press unarmed, Charge at START_CHARGE (10), Grid Integrity at START_INTEGRITY (20), refinement 0, wave 0, stampsLeft at STAMPS_PER_LEVEL (5), the Maze Rating 0, speed 1, both overlays closed, the pause released and simTime 0."
+description = "After a run has been driven — structures standing, Charge spent, refinement bought, a wave under way — reset restores the title screen with menuIndex 0, the map back to substation and the difficulty to medium, the yard emptied, the selection and combine set cleared, nothing held, the press unarmed, Charge at START_CHARGE (10), Grid Integrity at START_INTEGRITY (20), refinement 0, wave 0, stampsLeft at STAMPS_PER_LEVEL (5), the Maze Rating 0, speed 1, both overlays closed, the pause released and simTime 0."
 domains = ["simulation"]
 failure_cap = "broken"
 # Automated validation: dirty every field first, then reset and hold the state
@@ -542,18 +542,6 @@ failure_cap = "great"
 # validation/<engine>/instrumentation/reset-keeps-the-pointer.test.ts.
 validation = { script = "instrumentation/reset-keeps-the-pointer.test.ts", outputs = [
   { id = "title", name = "The title screen a reset returned to", kind = "image" },
-] }
-[[review.categories.items]]
-id = "seeded-rolls-repeat"
-title = "The same seed reaches the same rolls"
-description = "reset({seed: 42}) followed by the same sequence of placements rolls the same types and qualities in the same order both times, so every random draw runs off the generator reset seeds."
-domains = ["simulation"]
-failure_cap = "scuffed"
-# Automated validation: reset to a fixed seed twice and compare the rolled
-# type and quality of a counted run of placements. See
-# validation/<engine>/instrumentation/seeded-rolls-repeat.test.ts.
-validation = { script = "instrumentation/seeded-rolls-repeat.test.ts", outputs = [
-  { id = "rolls", name = "The yard of rolls the seeded press produced", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "frame-division-movement"
@@ -629,16 +617,64 @@ validation = { script = "instrumentation/start-run-keeps-the-arming.test.ts", ou
   { id = "armed", name = "The arming carried into the run", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "menu-run-uses-the-seed"
-title = "A run begun from the menus draws off the seed reset was given"
-description = "reset({seed: 42}) followed by choosing a map and a difficulty from the menus and placing the same rocks rolls the same types and qualities in the same order both times, so confirming a difficulty seeds nothing of its own."
+id = "set-next-crit-arms"
+title = "setNextCrit arms a structure's next shot"
+description = "setNextCrit(id, true) on a structure carrying crit reads back as that structure's nextCrit true, setNextCrit(id, false) as false, and every other structure's nextCrit stays null."
 domains = ["simulation"]
-failure_cap = "scuffed"
-# Automated validation: walk the menus into a seeded run twice, placing the
-# same three rocks each time, and compare the rolls. See
-# validation/<engine>/instrumentation/menu-run-uses-the-seed.test.ts.
-validation = { script = "instrumentation/menu-run-uses-the-seed.test.ts", outputs = [
-  { id = "rolls", name = "The same rolls from two menu-driven runs", kind = "image" },
+failure_cap = "passable"
+# Automated validation: stand two Slag Drivers, arm one each way in turn, and
+# read every structure's nextCrit back. See
+# validation/<engine>/instrumentation/set-next-crit-arms.test.ts.
+validation = { script = "instrumentation/set-next-crit-arms.test.ts", outputs = [
+  { id = "armed", name = "The armed structure beside the unarmed one", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-crit-consumed-by-the-shot"
+title = "The next shot consumes the armed crit outcome"
+description = "The first shot a structure launches after setNextCrit carries the armed outcome and consumes it, so nextCrit reads null once that shot is in flight and the shot after it is the structure's own roll again."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: arm a Slag Driver, hold a target in its reach, advance
+# to its first shot, and read the arming back. See
+# validation/<engine>/instrumentation/next-crit-consumed-by-the-shot.test.ts.
+validation = { script = "instrumentation/next-crit-consumed-by-the-shot.test.ts", outputs = [
+  { id = "consumed", name = "The shot that consumed the arming", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "clear-next-crit"
+title = "clearNextCrit returns a structure to its own roll"
+description = "clearNextCrit(id) on an armed structure leaves its nextCrit reading null with no shot fired, and changes nothing else about it."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: arm a Slag Driver, clear it, and read its nextCrit and
+# the rest of its entry back. See
+# validation/<engine>/instrumentation/clear-next-crit.test.ts.
+validation = { script = "instrumentation/clear-next-crit.test.ts", outputs = [
+  { id = "cleared", name = "The structure after its arming was cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "roll-press-returns-a-roll"
+title = "rollPress returns one press roll"
+description = "rollPress returns { type, quality } on every call, with type one of the eight base component identifiers and quality a tier the current refinement level's row of REFINEMENT_ODDS weights above zero, so at R0 every call returns quality 1 and at R8 no call returns it."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: call rollPress a bounded number of times at R0 and at
+# R8 and hold every return against the two rows. See
+# validation/<engine>/instrumentation/roll-press-returns-a-roll.test.ts.
+validation = { script = "instrumentation/roll-press-returns-a-roll.test.ts", outputs = [
+  { id = "rolled", name = "The run the rolls were drawn in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "roll-press-changes-nothing"
+title = "rollPress leaves the game as it stood"
+description = "A run of rollPress calls lands no rock, spends no stamp, and leaves an arming setNextRoll made standing: the snapshot reads the same before and after, held rock and all."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: arm a roll, hold a rock, read the snapshot, call
+# rollPress repeatedly, and read it again. See
+# validation/<engine>/instrumentation/roll-press-changes-nothing.test.ts.
+validation = { script = "instrumentation/roll-press-changes-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The run unchanged by the rolls", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "clear-held"
@@ -1090,10 +1126,10 @@ validation = { script = "press/reroll-blocker.test.ts", outputs = [
 [[review.categories.items]]
 id = "type-uniform"
 title = "The type roll is uniform over the eight base types"
-description = "Over a long run of rolls at a fixed seed every one of the eight base types appears, and no type takes more than a quarter of the draws, so the type axis is uniform at 0.125 each and refinement does not bias it."
+description = "Over a bounded sample of press rolls drawn through rollPress at R8 every one of the eight base types appears, and no type takes more than a quarter of the draws, so the type axis is uniform at 0.125 each and refinement does not bias it."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: roll several hundred rocks at a fixed seed and count
+# Automated validation: draw several hundred rolls through rollPress and count
 # the types. See validation/<engine>/press/type-uniform.test.ts.
 validation = { script = "press/type-uniform.test.ts", outputs = [
   { id = "spread", name = "The yard of rolled types", kind = "image" },
@@ -1101,11 +1137,11 @@ validation = { script = "press/type-uniform.test.ts", outputs = [
 [[review.categories.items]]
 id = "r0-scrap-only"
 title = "At R0 the press rolls Scrap alone"
-description = "At refinement 0 every rolled candidate is quality 1, over a long run of rolls, and the reported qualityOdds are [1, 0, 0, 0, 0]."
+description = "At refinement 0 every roll drawn through rollPress is quality 1, over a bounded sample, and the reported qualityOdds are [1, 0, 0, 0, 0]."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: roll a long run at refinement 0 and read every rolled
-# quality. See validation/<engine>/press/r0-scrap-only.test.ts.
+# Automated validation: draw a bounded sample through rollPress at refinement 0
+# and read every quality. See validation/<engine>/press/r0-scrap-only.test.ts.
 validation = { script = "press/r0-scrap-only.test.ts", outputs = [
   { id = "scrap", name = "A yard of Scrap rolls", kind = "image" },
 ] }
@@ -1404,10 +1440,10 @@ validation = { script = "refinement/odds-table.test.ts", outputs = [
 [[review.categories.items]]
 id = "odds-bias-rolls"
 title = "The odds actually bias the roll"
-description = "At R8, over a long run of rolls at a fixed seed, no candidate rolls Scrap and every one of the other four tiers appears, so the table is what the press draws from rather than a display."
+description = "At R8, over a bounded sample of rolls drawn through rollPress, no roll is Scrap and every one of the other four tiers appears, so the table is what the press draws from rather than a display."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: set R8, roll several hundred rocks at a fixed seed,
+# Automated validation: set R8, draw several hundred rolls through rollPress,
 # and count the qualities. See validation/<engine>/refinement/odds-bias-
 # rolls.test.ts.
 validation = { script = "refinement/odds-bias-rolls.test.ts", outputs = [
@@ -1653,7 +1689,8 @@ validation = { script = "firing/tallies-damage.test.ts", outputs = [
 # --- Targeting priorities -----------------------------------------------------
 # Five priorities, and each is its own point: a build with a working `first` and a
 # broken `weakest` must grade differently from one with neither. The tie rule is its
-# own point because it is what makes the choice deterministic.
+# own point because it is what a build gets wrong by leaving the choice to the
+# order its own list happened to be in.
 [[review.categories]]
 id = "targeting"
 title = "Targeting priorities"
@@ -1718,7 +1755,7 @@ validation = { script = "targeting/weakest.test.ts", outputs = [
 [[review.categories.items]]
 id = "tie-to-further-along"
 title = "A tie resolves toward the unit further along"
-description = "Two in-range units that tie on the priority's own measure — the same distance under nearest, the same health under strongest — resolve toward the one further along the chain, so the choice is deterministic and repeats across two identical runs."
+description = "Two in-range units that tie on the priority's own measure — the same distance under nearest, the same health under strongest — resolve toward the one further along the chain."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: park two units tied on the measure at different
@@ -2190,12 +2227,12 @@ validation = { script = "combos/stat-blocks.test.ts", outputs = [
 [[review.categories.items]]
 id = "crit"
 title = "A crit deals its multiplier of the shot's damage"
-description = "A tower carrying crit rolls the stated chance on each shot off the game's seeded generator, and a shot that crits removes critMult times its damage instead of its damage: over a long run at a fixed seed both figures appear and neither is any other value."
+description = "A shot that crits removes critMult times the tower's damage instead of its damage, and a shot that does not removes the damage alone: a Slag Driver armed to crit through setNextCrit tallies twice its damage on its next shot, and armed not to crit tallies its damage exactly."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: park a frozen invincible target inside a ring of Slag
-# Drivers and record the damage of every shot the ring lands over a counted
-# interval at a fixed seed. See validation/<engine>/combos/crit.test.ts.
+# Automated validation: park a frozen invincible target inside one Slag
+# Driver's reach, arm its next shot each way in turn, and read the damage each
+# shot tallied. See validation/<engine>/combos/crit.test.ts.
 validation = { script = "combos/crit.test.ts", outputs = [
   { id = "crit", name = "The critical hit among the ordinary ones", kind = "replay" },
 ] }
@@ -4197,11 +4234,11 @@ validation = { script = "overlays/recipe-book-blockers-not-owned.test.ts", outpu
 [[review.categories.items]]
 id = "overlays-are-inert"
 title = "Neither overlay pauses or alters the game"
-description = "Opening either overlay leaves the simulation running: over ten seconds of simulation with the recipe book open and again with the leaderboard open, simTime and the units advance exactly as they do with both closed."
+description = "Opening either overlay leaves the simulation running: over ten seconds of simulation with the recipe book open and again with the leaderboard open, simTime advances by the ten seconds and a released unit walks on along the chain at its roster speed."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: advance ten seconds with each overlay open and with
-# both closed and compare simTime and the unit positions. See
+# Automated validation: advance ten seconds with each overlay open and read
+# simTime, the unit's speed and its place along the chain. See
 # validation/<engine>/overlays/overlays-are-inert.test.ts.
 validation = { script = "overlays/overlays-are-inert.test.ts", outputs = [
   { id = "inert", name = "The wave running under an open overlay", kind = "replay" },
@@ -4950,12 +4987,12 @@ validation = { script = "audio/cue-plays-on-every-update.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "playable-muted"
-title = "The game plays identically with sound muted"
-description = "With the mute bit engaged the same drive reaches the same state as an unmuted one — the same snapshot after the same calls and the same elapsed simulation — so nothing about the game depends on the audio being audible."
+title = "The game stays fully playable with sound muted"
+description = "With the mute bit engaged a run keeps playing: a structure fires, its shots land and tally damage, the units it hits lose health, and the simulation clock advances over the drive, so nothing about the game depends on the audio being audible."
 domains = ["audio"]
 failure_cap = "passable"
-# Automated validation: drive the same scenario muted and unmuted from the
-# same seed and compare the two snapshots. See
+# Automated validation: mute, drive a firing structure against two units for
+# two seconds, and read the tallies, the health and the clock back. See
 # validation/<engine>/audio/playable-muted.test.ts.
 validation = { script = "audio/playable-muted.test.ts", outputs = [
   { id = "muted", name = "The run driven with sound muted", kind = "replay" },

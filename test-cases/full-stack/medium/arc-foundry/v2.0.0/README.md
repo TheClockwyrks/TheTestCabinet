@@ -46,8 +46,8 @@ Arc Foundry is designed for three engines, and seeds a different project for eac
 | `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: the state, the debug surface, and the game's update and render. The engine holds the state by value, so a pose takes the current state and returns the next, applied through `engine.apply`, and a reading takes the state and returns what it read. |
 | `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored at seed time, plus the same two case-owned modules. The build writes `src/game.ts`: the game definition the engine drives, its mode, its live state class, its actors, and the debug surface its instance's `initialize` returns. The world is live, so a pose acts on it at the call and a reading returns plain data. |
 
-Neither engine supplies pathfinding, collision response, or a seeded random
-source, so the maze router, the never-seal test, the projectile flight, and the
+Neither engine supplies pathfinding, collision response, or a random source,
+so the maze router, the never-seal test, the projectile flight, and the
 scrap-press roll are the build's own work under every one of the three. All three
 carry the produced-effect runtime `@clockwyrks/particle-runtime` as a baked-in
 `file:` dependency, because every build plays its produced particle systems by

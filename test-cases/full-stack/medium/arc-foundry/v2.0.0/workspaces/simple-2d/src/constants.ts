@@ -1154,7 +1154,4 @@ export const CYCLE_FRAMES = 4;
 // ---- Debug surface (specs/instrumentation.md) ----------------------------
 
 /** The version the debug surface reports as `version`. */
-export const FOUNDRY_DEBUG_VERSION = 4;
-
-/** The seed `reset` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
+export const FOUNDRY_DEBUG_VERSION = 5;

@@ -1,10 +1,9 @@
-// Arc Foundry — the seeded generator every random draw comes off.
+// Arc Foundry — a small generator for the wave composer.
 //
-// The engine supplies no randomness, deliberately, so the game brings its own: a
-// mulberry32 stream whose whole state is one 32-bit number. That is what lets the
-// state carry it (`FoundryWorld.pressRng`, `FoundryWorld.combatRng`) and `reset` put
-// it back, so a seed plus a sequence of calls reproduces a run exactly
-// (`specs/instrumentation.md`).
+// A stream whose whole state is one 32-bit number. The wave composer (`src/waves.ts`)
+// keys one by the wave's number, so a wave plays the same each time it is reached while
+// still varying wave to wave. The press's rolls and the crit roll draw at random on
+// their own (`src/sim.ts`).
 //
 // A stream is a plain record rather than an object with behavior, so a caller either
 // keeps one for the length of a computation — a wave's composition — or lifts one out

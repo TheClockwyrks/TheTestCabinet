@@ -33,7 +33,7 @@ describe("initialization", () => {
     const snap = h.debug.snapshot();
     expect(snap.screen).toBe("title");
     expect(snap.phase).toBeNull();
-    expect(snap.version).toBe(4);
+    expect(snap.version).toBe(5);
   });
 
   it("draws a frame without a produced file behind it", async () => {

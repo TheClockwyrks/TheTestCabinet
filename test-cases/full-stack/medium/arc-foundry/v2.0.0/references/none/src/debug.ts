@@ -21,7 +21,6 @@ import {
   COMBOS,
   MAX_COMBO_LEVEL,
   COMPONENT_ORDER,
-  DEFAULT_SEED,
   DIFFICULTY,
   FONT,
   FOUNDRY_DEBUG_VERSION,
@@ -131,9 +130,10 @@ export interface FoundryDebugApi {
   statusReadouts(): StatusReadout[];
   recipeEntries(): RecipeEntry[];
   waveCount(type: string): number;
+  rollPress(): { type: string; quality: number };
 
   // The run.
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   setMap(map: string): void;
   setDifficulty(difficulty: string): void;
   startRun(): void;
@@ -171,6 +171,8 @@ export interface FoundryDebugApi {
   dismantle(id: number): void;
   setTargeting(id: number, priority: string): void;
   setComboLevel(id: number, level: number): void;
+  setNextCrit(id: number, crit: boolean): void;
+  clearNextCrit(id: number): void;
   upgradeQuality(): void;
   upgradeCombo(id: number): void;
 
@@ -359,15 +361,15 @@ export function installDebugApi(ctx: DebugContext): void {
         oneOf("waveCount", "type", type, LOAD_TYPES) as LoadType | "overload",
       );
     },
+    // One press roll at the current refinement, as a dropped rock rolls; nothing lands.
+    rollPress() {
+      return game.rollPress();
+    },
 
     // ---- The run ---------------------------------------------------------------
 
-    reset(options) {
-      const seed =
-        options?.seed === undefined
-          ? DEFAULT_SEED
-          : num("reset", "options.seed", options.seed);
-      game.debugReset(seed);
+    reset() {
+      game.debugReset();
     },
     setMap(map) {
       game.setMap(mapById(oneOf("setMap", "map", map, MAP_IDS)));
@@ -533,6 +535,18 @@ export function installDebugApi(ctx: DebugContext): void {
         n,
         int("setComboLevel", "level", level, 0, MAX_COMBO_LEVEL),
       );
+    },
+    setNextCrit(id, crit) {
+      const n = num("setNextCrit", "id", id);
+      if (!game.critStructureById(n))
+        invalid("setNextCrit", "an id a structure carrying crit holds", id);
+      game.armNextCrit(n, bool("setNextCrit", "crit", crit));
+    },
+    clearNextCrit(id) {
+      const n = num("clearNextCrit", "id", id);
+      if (!game.critStructureById(n))
+        invalid("clearNextCrit", "an id a structure carrying crit holds", id);
+      game.clearNextCrit(n);
     },
     upgradeQuality() {
       game.upgradeQuality();

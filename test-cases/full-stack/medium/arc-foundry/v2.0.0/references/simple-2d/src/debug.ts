@@ -28,7 +28,6 @@ import {
   COMBO_IDS,
   COMBO_MAX_LEVEL,
   COMPONENT_TYPES,
-  DEFAULT_SEED,
   DIFFICULTY_IDS,
   FOUNDRY_DEBUG_VERSION,
   LOAD_TYPES,
@@ -73,7 +72,10 @@ import {
   clearHeldRock,
   clearNextRoll,
   clearProjectiles,
+  armNextCrit,
+  clearNextCrit,
   clearStructures,
+  critStructureById,
   clearUnits,
   combineFrom,
   combineSet,
@@ -92,6 +94,7 @@ import {
   removeStructure,
   reportedPhase,
   resetWorld,
+  rollPress,
   select,
   setCharge,
   setComboLevel,
@@ -240,6 +243,8 @@ export interface StructureSnapshot {
   auraRadius: number;
   auraBonus: number;
   abilities: string[];
+  /** The crit outcome `setNextCrit` armed for its next shot, or `null`. */
+  nextCrit: boolean | null;
 }
 
 /** One shot in flight, as the snapshot reports it. */
@@ -315,9 +320,10 @@ export interface FoundryDebugApi {
   statusReadouts(state: FoundryView): ReadoutSnapshot[];
   recipeEntries(state: FoundryView): RecipeEntrySnapshot[];
   waveCount(state: FoundryView, type: string): number;
+  rollPress(state: FoundryView): { type: string; quality: number };
 
   // The run.
-  reset(state: FoundryView, options?: { seed?: number }): FoundryWorld;
+  reset(state: FoundryView): FoundryWorld;
   setMap(state: FoundryView, map: string): FoundryWorld;
   setDifficulty(state: FoundryView, difficulty: string): FoundryWorld;
   startRun(state: FoundryView): FoundryWorld;
@@ -366,6 +372,8 @@ export interface FoundryDebugApi {
   dismantle(state: FoundryView, id: number): FoundryWorld;
   setTargeting(state: FoundryView, id: number, priority: string): FoundryWorld;
   setComboLevel(state: FoundryView, id: number, level: number): FoundryWorld;
+  setNextCrit(state: FoundryView, id: number, crit: boolean): FoundryWorld;
+  clearNextCrit(state: FoundryView, id: number): FoundryWorld;
   upgradeQuality(state: FoundryView): FoundryWorld;
   upgradeCombo(state: FoundryView, id: number): FoundryWorld;
 
@@ -575,6 +583,7 @@ export function snapshot(state: FoundryView): FoundrySnapshot {
           auraRadius: 0,
           auraBonus: 0,
           abilities: [],
+          nextCrit: null,
         };
       }
       if (s.kind === "candidate") {
@@ -592,6 +601,7 @@ export function snapshot(state: FoundryView): FoundrySnapshot {
           auraRadius: st.auraRadius,
           auraBonus: st.auraBonus,
           abilities: abilityTags(st),
+          nextCrit: null,
         };
       }
       const isCombo = Boolean(s.combo);
@@ -618,6 +628,7 @@ export function snapshot(state: FoundryView): FoundrySnapshot {
         auraRadius: own.auraRadius,
         auraBonus: own.auraBonus,
         abilities: abilityTags(live),
+        nextCrit: s.armedCrit,
       };
     }),
     projectiles: state.projectiles
@@ -727,18 +738,12 @@ export function createDebugApi(): FoundryDebugApi {
         state,
         oneOf("waveCount", "type", type, SPAWNABLE) as LoadType | "overload",
       ),
+    // One press roll at the current refinement, as a dropped rock rolls; nothing lands.
+    rollPress: (state) => rollPress(state),
 
     // ---- The run ----------------------------------------------------------
 
-    reset: (state, options) =>
-      pose(state, (w) =>
-        resetWorld(
-          w,
-          options?.seed === undefined
-            ? DEFAULT_SEED
-            : num("reset", "options.seed", options.seed),
-        ),
-      ),
+    reset: (state) => pose(state, (w) => resetWorld(w)),
 
     setMap: (state, map) =>
       pose(state, (w) =>
@@ -964,6 +969,23 @@ export function createDebugApi(): FoundryDebugApi {
       }
       const lvl = int("setComboLevel", "level", level, 0, COMBO_MAX_LEVEL);
       return pose(state, (w) => setComboLevel(w, n, lvl));
+    },
+
+    setNextCrit: (state, id, crit) => {
+      const n = num("setNextCrit", "id", id);
+      if (!critStructureById(state, n)) {
+        invalid("setNextCrit", "an id a structure carrying crit holds", id);
+      }
+      const outcome = bool("setNextCrit", "crit", crit);
+      return pose(state, (w) => armNextCrit(w, n, outcome));
+    },
+
+    clearNextCrit: (state, id) => {
+      const n = num("clearNextCrit", "id", id);
+      if (!critStructureById(state, n)) {
+        invalid("clearNextCrit", "an id a structure carrying crit holds", id);
+      }
+      return pose(state, (w) => clearNextCrit(w, n));
     },
 
     upgradeQuality: (state) =>
