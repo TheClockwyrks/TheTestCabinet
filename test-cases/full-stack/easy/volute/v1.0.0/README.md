@@ -97,10 +97,10 @@ across them.
 A `validation.script` path is relative to `validation/<engine>/`. Most points
 cover all three engines, so the same path exists under all three engine
 directories and a point is never decided under one engine and left to a reviewer
-under another. Fifteen points name `engines` instead, because what they decide
+under another. Fourteen points name `engines` instead, because what they decide
 belongs to the runtime rather than to the build under the engines they leave out:
 `injector/swap-pointer` and `screens/start-touch` run under `none` alone, where
-the build writes the input layer, and the thirteen cue-identity points of the
+the build writes the input layer, and the twelve cue-identity points of the
 `audio` category run under `simple-2d` and `structured-2d` alone, where the
 engine's bus reports the name a cue sounded under. A scoped point is left out of
 the checklist of a run on an engine it does not name, and adds no weight to that

@@ -423,8 +423,8 @@ description = "The produced art, motion, effects, and audio, and how the hall re
 # point (the default weight), so a category is worth the number of items it holds
 # and there is no fractional scoring. A category carries no prose of its own; each
 # item states in `description` the claim its validator checks. One hundred and
-# twenty-nine items across eleven categories, all common: the case has one
-# variant, so no point lives in a variant file. Three of them are scoped to the
+# twenty-eight items across eleven categories, all common: the case has one
+# variant, so no point lives in a variant file. Two of them are scoped to the
 # engineless configuration and twelve to the two engines, since the behavior
 # each decides is the build's own work there and the runtime's elsewhere; every
 # other point covers all three.
