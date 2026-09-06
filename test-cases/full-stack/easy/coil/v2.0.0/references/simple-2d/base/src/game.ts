@@ -32,13 +32,11 @@ import { registerDiagnostics } from "./diagnostics";
 import { pressedActions, registerActions } from "./input";
 import { menuItemAt, menuItems } from "./menus";
 import { renderGame } from "./render";
-import { seedState } from "./rng";
 import { layChain, requestTurn, spawnPellet, tick } from "./sim";
 import { COLORS } from "./theme";
 import {
   BITE_SECONDS,
   CUES,
-  DEFAULT_SEED,
   OBSTACLE_CELLS,
   TICK_SECONDS,
   type ActionName,
@@ -116,13 +114,16 @@ export interface CoilState {
   readonly travel: boolean;
   /** The placement inside step 5. */
   readonly pelletRespawn: boolean;
+  /**
+   * The cell `setNextPellet` posed for the next spawn, or `null` while none
+   * stands. The spawn that consumes it decides whether it is valid.
+   */
+  readonly nextPellet: Cell | null;
 
   /** Game time held past the last whole tick, carried into the next update. */
   readonly accumulator: number;
   /** Seconds left of the head's bite; `0` is the resting pose. */
   readonly biteRemaining: number;
-  /** The pellet generator's whole state (`src/rng.ts`). */
-  readonly rngState: number;
   /** The produced sprite set, loaded once before the first frame. */
   readonly sprites: SnakeSprites;
 }
@@ -150,7 +151,8 @@ const STEER: Partial<Record<ActionName, Direction>> = {
 
 /**
  * The whole opening state: the title screen, a fresh round laid out but not
- * started, the mode's obstacle course, and all three driver switches on.
+ * started, the mode's obstacle course, no posed pellet cell, and all three
+ * driver switches on.
  *
  * `sprites` and `muted` are the two things a session carries in from outside it —
  * the files the engine loaded and the player's sound preference — so both are
@@ -159,7 +161,6 @@ const STEER: Partial<Record<ActionName, Direction>> = {
 export function createInitialState(
   sprites: SnakeSprites,
   muted: boolean,
-  seed: number = DEFAULT_SEED,
 ): CoilState {
   return layChain({
     screen: "title",
@@ -181,23 +182,23 @@ export function createInitialState(
     steering: true,
     travel: true,
     pelletRespawn: true,
+    nextPellet: null,
     accumulator: 0,
     biteRemaining: 0,
-    rngState: seedState(seed),
     sprites,
   });
 }
 
 /**
  * Every field the snapshot reports back to its opening value, the course back to
- * the mode's, the three switches back on, and the generator reseeded.
+ * the mode's, the three switches back on, and no posed pellet cell.
  *
  * `muted` is untouched, because muting is a player preference rather than a value
  * a round opens with, and the sprites are kept because they are the files the
  * engine loaded rather than anything a round decides.
  */
-export function resetSession(state: CoilState, seed: number): CoilState {
-  return createInitialState(state.sprites, state.muted, seed);
+export function resetSession(state: CoilState): CoilState {
+  return createInitialState(state.sprites, state.muted);
 }
 
 /** Begin a round: the board as `specs/board.md` lays it, with its first pellet. */

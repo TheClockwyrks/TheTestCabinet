@@ -127,21 +127,26 @@ export function fatal(
 }
 
 /**
- * Place the next pellet on a cell drawn uniformly from the valid set.
+ * Place the next pellet on the posed cell if one stands and is valid, and
+ * otherwise on a cell drawn uniformly from the valid set.
  *
- * Returns `false` when the valid set is empty, which is the board-cleared win;
- * the board is left without a pellet in that case. The generator state advances
- * by exactly one draw whenever a cell was there to draw.
+ * The spawn consumes the pose either way, so a posed cell the board no longer
+ * allows is discarded rather than kept for a later spawn. Returns `false` when
+ * the valid set is empty, which is the board-cleared win; the board is left
+ * without a pellet in that case.
  */
 export function spawnPellet(state: CoilState): boolean {
+  const posed = state.nextPellet;
+  state.nextPellet = null;
   const free = validPelletCells(state.snake, state.pellet, state.obstacles);
   if (free.length === 0) {
     state.pellet = null;
     return false;
   }
-  const draw = drawBelow(state.rngState, free.length);
-  state.pellet = free[draw.index]!;
-  state.rngState = draw.state;
+  state.pellet =
+    posed !== null && cellsHold(free, posed.col, posed.row)
+      ? { col: posed.col, row: posed.row }
+      : free[drawBelow(free.length)]!;
   return true;
 }
 

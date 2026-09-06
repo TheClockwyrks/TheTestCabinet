@@ -21,7 +21,8 @@ import {
   COIL_DEBUG_VERSION,
   COMBO_MAX,
   COMBO_WINDOW,
-  DEFAULT_SEED,
+  GRID_COLS,
+  GRID_ROWS,
   cellKey,
   isInterior,
   type Cell,
@@ -58,6 +59,7 @@ export interface CoilSnapshot {
   steering: boolean;
   travel: boolean;
   pelletRespawn: boolean;
+  nextPellet: Cell | null;
 }
 
 /**
@@ -75,7 +77,7 @@ export interface CoilDebugApi {
   version: number;
   setAutoStep(enabled: boolean): void;
   advance(seconds: number, frames?: number): void;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): CoilSnapshot;
   menuItemRect(index: number): MenuRect | null;
   setScreen(screen: Screen): void;
@@ -92,6 +94,7 @@ export interface CoilDebugApi {
   setPellet(col: number, row: number): void;
   clearPellet(): void;
   setPelletRespawn(enabled: boolean): void;
+  setNextPellet(col: number, row: number): void;
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(): void;
   addObstacle?(col: number, row: number): void;
@@ -142,6 +145,15 @@ function requireInterior(name: string, col: unknown, row: unknown): Cell {
   return { col: c, row: r };
 }
 
+function requireCell(name: string, col: unknown, row: unknown): Cell {
+  const c = requireInteger(`${name} col`, col);
+  const r = requireInteger(`${name} row`, row);
+  if (c < 0 || c >= GRID_COLS || r < 0 || r >= GRID_ROWS) {
+    fail(`${name} takes a cell of the grid; (${c}, ${r}) is not one`);
+  }
+  return { col: c, row: r };
+}
+
 /** Build the surface over one live game and the runtime driving it. */
 export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
   const sim = game.sim;
@@ -182,14 +194,12 @@ export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
     },
 
     /**
-     * Restore every field the snapshot reports to its opening value and reseed the
-     * pellet generator. `muted` is untouched: muting is a player preference rather
-     * than a value a round opens with. A reset also re-arms manual stepping.
+     * Restore every field the snapshot reports to its opening value. `muted` is
+     * untouched: muting is a player preference rather than a value a round opens
+     * with. A reset also re-arms manual stepping.
      */
-    reset(options) {
-      const seed = options?.seed ?? DEFAULT_SEED;
-      requireInteger("reset(seed)", seed);
-      game.reset(seed);
+    reset() {
+      game.reset();
       clock.autoStep = false;
     },
 
@@ -222,6 +232,9 @@ export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
         steering: sim.steering,
         travel: sim.travel,
         pelletRespawn: sim.pelletRespawn,
+        nextPellet: sim.nextPellet
+          ? { col: sim.nextPellet.col, row: sim.nextPellet.row }
+          : null,
       };
     },
 
@@ -363,7 +376,7 @@ export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
 
     /**
      * Place the live pellet, replacing whatever pellet was on the board. Placing a
-     * pellet is not spawning one, so the generator is left where it stands.
+     * pellet is not spawning one, so a posed next pellet stays posed.
      */
     setPellet(col, row) {
       const cell = requireInterior("setPellet(col, row)", col, row);
@@ -388,6 +401,16 @@ export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
     /** Turn the pellet's respawn on or off. */
     setPelletRespawn(enabled) {
       sim.pelletRespawn = requireBoolean("setPelletRespawn(enabled)", enabled);
+    },
+
+    /**
+     * Pose the cell the next spawn places the pellet on. Whether the cell is
+     * valid is decided at the spawn rather than here, so the cell may be a wall
+     * cell, or hold a snake segment or an obstacle, at the call.
+     */
+    setNextPellet(col, row) {
+      const cell = requireCell("setNextPellet(col, row)", col, row);
+      sim.setNextPellet(cell.col, cell.row);
     },
   };
 

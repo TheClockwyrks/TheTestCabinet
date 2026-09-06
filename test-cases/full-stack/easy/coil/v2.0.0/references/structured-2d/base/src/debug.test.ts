@@ -17,7 +17,7 @@ import {
 import { startRound } from "./flow";
 import { createHarness, type Harness } from "./harness";
 import { HAS_OBSTACLES } from "./mode";
-import { spawnPellet, tick } from "./sim";
+import { tick } from "./sim";
 
 let h: Harness;
 
@@ -50,6 +50,7 @@ describe("the snapshot", () => {
         "menuIndex",
         "mode",
         "muted",
+        "nextPellet",
         "obstacles",
         "pellet",
         "pelletRespawn",
@@ -153,19 +154,83 @@ describe("reset", () => {
     expect(h.debug.snapshot().muted).toBe(true);
   });
 
-  it("draws the same pellet sequence from the same seed", () => {
-    const sequence = (seed: number): string[] => {
-      h.debug.reset({ seed });
-      round();
-      const cells: string[] = [];
-      for (let i = 0; i < 6; i++) {
-        cells.push(`${h.state.pellet!.col},${h.state.pellet!.row}`);
-        spawnPellet(h.state);
-      }
-      return cells;
-    };
-    expect(sequence(11)).toEqual(sequence(11));
-    expect(sequence(11)).not.toEqual(sequence(12));
+  it("clears a posed next pellet", () => {
+    h.debug.setNextPellet(20, 4);
+    h.debug.reset();
+    expect(h.debug.snapshot().nextPellet).toBeNull();
+  });
+});
+
+describe("the posed spawn", () => {
+  /** A round with a chain along row 8 and its meal one cell ahead of the head. */
+  function arrangeEat(): void {
+    round();
+    h.state.obstacles = [];
+    h.debug.setSnake(chain(10, 8, 3));
+    h.debug.setDirection("right");
+    h.debug.setPellet(11, 8);
+  }
+
+  it("reports the posed cell until a spawn takes it", () => {
+    arrangeEat();
+    h.debug.setNextPellet(20, 4);
+    expect(h.debug.snapshot().nextPellet).toEqual({ col: 20, row: 4 });
+    h.debug.setNextPellet(21, 5);
+    expect(h.debug.snapshot().nextPellet).toEqual({ col: 21, row: 5 });
+  });
+
+  it("places the next pellet on the posed cell and consumes the pose", () => {
+    arrangeEat();
+    h.debug.setNextPellet(20, 4);
+    tick(h.state);
+    const shot = h.debug.snapshot();
+    expect(shot.snake[0]).toEqual({ col: 11, row: 8 });
+    expect(shot.pellet).toEqual({ col: 20, row: 4 });
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("discards a posed cell the chain holds at the spawn", () => {
+    arrangeEat();
+    h.debug.setNextPellet(9, 8);
+    tick(h.state);
+    const shot = h.debug.snapshot();
+    expect(shot.pellet).not.toBeNull();
+    expect(shot.pellet).not.toEqual({ col: 9, row: 8 });
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("keeps the pose through an eat with respawn off", () => {
+    arrangeEat();
+    h.debug.setPelletRespawn(false);
+    h.debug.setNextPellet(20, 4);
+    tick(h.state);
+    const shot = h.debug.snapshot();
+    expect(shot.pellet).toBeNull();
+    expect(shot.nextPellet).toEqual({ col: 20, row: 4 });
+  });
+
+  it("keeps the pose when a pellet is placed by hand", () => {
+    arrangeEat();
+    h.debug.setNextPellet(20, 4);
+    h.debug.setPellet(12, 8);
+    expect(h.debug.snapshot().nextPellet).toEqual({ col: 20, row: 4 });
+  });
+
+  it("discards a posed wall cell and draws an interior cell instead", () => {
+    arrangeEat();
+    h.debug.setNextPellet(0, 8);
+    tick(h.state);
+    const shot = h.debug.snapshot();
+    expect(shot.pellet).not.toBeNull();
+    expect(shot.pellet).not.toEqual({ col: 0, row: 8 });
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("refuses a cell off the grid", () => {
+    expect(() => h.debug.setNextPellet(-1, 8)).toThrow();
+    expect(() => h.debug.setNextPellet(30, 8)).toThrow();
+    expect(() => h.debug.setNextPellet(5, 18)).toThrow();
+    expect(() => h.debug.setNextPellet(1.5, 8)).toThrow();
   });
 });
 
@@ -189,13 +254,6 @@ describe("the poses", () => {
     expect(h.debug.snapshot().pellet).toEqual({ col: 20, row: 4 });
     h.debug.clearPellet();
     expect(h.debug.snapshot().pellet).toBeNull();
-  });
-
-  it("places a pellet without drawing from the generator", () => {
-    round();
-    const before = h.state.rngState;
-    h.debug.setPellet(20, 4);
-    expect(h.state.rngState).toBe(before);
   });
 
   it("empties the turn buffer, turning nothing", () => {

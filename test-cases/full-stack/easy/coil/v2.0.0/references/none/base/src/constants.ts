@@ -3,7 +3,7 @@
 // The stage and the board come from `specs/overview.md` and `specs/board.md`, the
 // tick and the turn buffer from `specs/movement.md`, the combo and the points from
 // `specs/scoring.md`, the screen copy and the cue names from `specs/ui.md`, the
-// sprite sheet from `specs/assets.md`, and the debug version and default seed from
+// sprite sheet from `specs/assets.md`, and the debug version from
 // `specs/instrumentation.md`. Nothing here is derived from anything else the build
 // decides; the palette and the type live in `src/theme.ts` because they are the
 // build's own choices rather than the specification's.
@@ -82,9 +82,6 @@ export const COMBO_WINDOW = 3.5;
 
 /** The version the surface reports, and the version the snapshot carries. */
 export const COIL_DEBUG_VERSION = 1;
-
-/** The seed `reset()` uses when its caller names none. */
-export const DEFAULT_SEED = 1;
 
 // ---- The produced assets (specs/assets.md) -----------------------------------
 

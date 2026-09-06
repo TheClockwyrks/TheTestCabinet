@@ -137,11 +137,13 @@ export function fatal(
 }
 
 /**
- * Place the next pellet on a cell drawn uniformly from the valid set.
+ * Place the next pellet on the posed cell if one stands and is valid, and
+ * otherwise on a cell drawn uniformly from the valid set.
  *
- * `placed` is `false` when the valid set is empty, which is the board-cleared win;
- * the board is left without a pellet in that case. The generator state advances by
- * exactly one draw whenever a cell was there to draw.
+ * The spawn consumes the pose either way, so a posed cell the board no longer
+ * allows is discarded rather than kept for a later spawn. `placed` is `false`
+ * when the valid set is empty, which is the board-cleared win; the board is left
+ * without a pellet in that case.
  */
 export function spawnPellet(state: CoilState): {
   readonly state: CoilState;
@@ -149,13 +151,17 @@ export function spawnPellet(state: CoilState): {
 } {
   const free = validPelletCells(state.snake, state.pellet, state.obstacles);
   if (free.length === 0) {
-    return { state: { ...state, pellet: null }, placed: false };
+    return {
+      state: { ...state, pellet: null, nextPellet: null },
+      placed: false,
+    };
   }
-  const draw = drawBelow(state.rngState, free.length);
-  return {
-    state: { ...state, pellet: free[draw.index]!, rngState: draw.state },
-    placed: true,
-  };
+  const posed = state.nextPellet;
+  const pellet =
+    posed !== null && cellsHold(free, posed.col, posed.row)
+      ? { col: posed.col, row: posed.row }
+      : free[drawBelow(free.length)]!;
+  return { state: { ...state, pellet, nextPellet: null }, placed: true };
 }
 
 /** Resolve one whole tick, in the six steps `specs/movement.md` fixes. */

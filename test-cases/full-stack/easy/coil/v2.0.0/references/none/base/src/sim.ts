@@ -24,12 +24,13 @@ import {
   TICK_SECONDS,
   TURN_QUEUE_MAX,
   cellKey,
+  isInterior,
   isWall,
   type Cell,
   type Dir,
 } from "./constants";
 import { OBSTACLE_CELLS } from "./mode";
-import { Rng } from "./rng";
+import { drawBelow } from "./rng";
 
 /** How a round ended, or `null` while it is still running. */
 export type EndReason = "dead" | "cleared";
@@ -104,14 +105,17 @@ export class Sim {
   travel = true;
   /** The placement inside step 5. */
   pelletRespawn = true;
+  /**
+   * The cell `setNextPellet` posed for the next spawn, or `null` while none
+   * stands. The spawn that consumes it decides whether it is valid.
+   */
+  nextPellet: Cell | null = null;
 
   private obstacleCells: Cell[] = [];
   private obstacleSet = new Set<number>();
-  private rng: Rng;
 
-  constructor(seed: number) {
-    this.rng = new Rng(seed);
-    this.restore(seed);
+  constructor() {
+    this.restore();
   }
 
   /** The obstacle cells currently on the board. */
@@ -121,15 +125,15 @@ export class Sim {
 
   /**
    * Every field back to its opening value, the course back to the mode's, the
-   * three switches back on, and the generator reseeded. No pellet is placed: a
+   * three switches back on, and no posed pellet cell. No pellet is placed: a
    * round lays the first one, and `reset()` leaves the game on the title screen.
    */
-  restore(seed: number): void {
-    this.rng = new Rng(seed);
+  restore(): void {
     this.setObstacles(OBSTACLE_CELLS);
     this.steering = true;
     this.travel = true;
     this.pelletRespawn = true;
+    this.nextPellet = null;
     this.layChain();
     this.pellet = null;
   }
@@ -267,6 +271,11 @@ export class Sim {
     this.pellet = null;
   }
 
+  /** Pose the cell the next spawn places the pellet on, replacing any pose. */
+  setNextPellet(col: number, row: number): void {
+    this.nextPellet = { col, row };
+  }
+
   /** Take every obstacle cell off the board at once. */
   clearObstacles(): void {
     this.setObstacles([]);
@@ -288,10 +297,13 @@ export class Sim {
   }
 
   /**
-   * Place the next pellet on a cell drawn uniformly from the valid set, and report
-   * whether one was found. The free cells are collected once and one is drawn from
-   * the list, so a nearly full board picks its pellet without a rejection-sampling
-   * stall. `false` means the valid set is empty, which is the board-cleared win.
+   * Place the next pellet on the posed cell if one stands and is valid, and
+   * otherwise on a cell drawn uniformly from the valid set, and report whether
+   * one was found. The spawn consumes the pose either way, so a posed cell the
+   * board no longer allows is discarded rather than kept for a later spawn. The
+   * free cells are collected once and one is drawn from the list, so a nearly
+   * full board picks its pellet without a rejection-sampling stall. `false`
+   * means the valid set is empty, which is the board-cleared win.
    */
   private spawnPellet(): boolean {
     const occupied = new Set<number>();
@@ -299,6 +311,19 @@ export class Sim {
       occupied.add(cellKey(segment.col, segment.row));
     }
     if (this.pellet) occupied.add(cellKey(this.pellet.col, this.pellet.row));
+    const posed = this.nextPellet;
+    this.nextPellet = null;
+    if (posed !== null) {
+      const key = cellKey(posed.col, posed.row);
+      if (
+        isInterior(posed.col, posed.row) &&
+        !occupied.has(key) &&
+        !this.obstacleSet.has(key)
+      ) {
+        this.pellet = { col: posed.col, row: posed.row };
+        return true;
+      }
+    }
     const free: Cell[] = [];
     for (let row = INTERIOR_ROW_MIN; row <= INTERIOR_ROW_MAX; row++) {
       for (let col = INTERIOR_COL_MIN; col <= INTERIOR_COL_MAX; col++) {
@@ -311,7 +336,7 @@ export class Sim {
       this.pellet = null;
       return false;
     }
-    this.pellet = free[this.rng.below(free.length)]!;
+    this.pellet = free[drawBelow(free.length)]!;
     return true;
   }
 }

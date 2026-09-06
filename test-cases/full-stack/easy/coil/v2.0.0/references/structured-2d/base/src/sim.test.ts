@@ -37,9 +37,9 @@ import {
   tick,
 } from "./sim";
 
-function opening(seed = 1): CoilState {
+function opening(): CoilState {
   const state = new CoilState();
-  resetSession(state, seed);
+  resetSession(state);
   return state;
 }
 
@@ -72,8 +72,8 @@ describe("the opening board", () => {
   });
 
   it("places the first pellet clear of the starting chain", () => {
-    for (let seed = 1; seed <= 40; seed++) {
-      const state = opening(seed);
+    for (let round = 0; round < 40; round++) {
+      const state = opening();
       startRound(state);
       const pellet = state.pellet!;
       expect(isInterior(pellet.col, pellet.row)).toBe(true);
@@ -82,19 +82,55 @@ describe("the opening board", () => {
     }
   });
 
-  it("draws the same pellet sequence from the same seed", () => {
-    const sequence = (seed: number): string[] => {
-      const state = opening(seed);
-      startRound(state);
-      const cells: string[] = [];
-      for (let i = 0; i < 8; i++) {
-        cells.push(`${state.pellet!.col},${state.pellet!.row}`);
-        spawnPellet(state);
-      }
-      return cells;
-    };
-    expect(sequence(4)).toEqual(sequence(4));
-    expect(sequence(4)).not.toEqual(sequence(5));
+  it("lays the first pellet on the posed cell when it is valid", () => {
+    const state = opening();
+    state.nextPellet = { col: 20, row: 4 };
+    startRound(state);
+    expect(state.pellet).toEqual({ col: 20, row: 4 });
+    expect(state.nextPellet).toBeNull();
+  });
+
+  it("discards a posed cell under the starting chain", () => {
+    const state = opening();
+    state.nextPellet = { col: START_CELLS[0]!.col, row: START_CELLS[0]!.row };
+    startRound(state);
+    expect(state.pellet).not.toEqual(START_CELLS[0]);
+    expect(state.nextPellet).toBeNull();
+  });
+});
+
+describe("the posed spawn", () => {
+  it("places the next pellet on the posed cell and consumes the pose", () => {
+    const state = posed([{ col: 14, row: 8 }], "right", { col: 15, row: 8 });
+    state.nextPellet = { col: 20, row: 4 };
+    tick(state);
+    expect(state.pellet).toEqual({ col: 20, row: 4 });
+    expect(state.nextPellet).toBeNull();
+  });
+
+  it("discards a posed cell the chain holds and draws instead", () => {
+    const state = posed(
+      [
+        { col: 14, row: 8 },
+        { col: 13, row: 8 },
+      ],
+      "right",
+      { col: 15, row: 8 },
+    );
+    state.nextPellet = { col: 13, row: 8 };
+    tick(state);
+    expect(state.pellet).not.toBeNull();
+    expect(state.pellet).not.toEqual({ col: 13, row: 8 });
+    expect(state.nextPellet).toBeNull();
+  });
+
+  it("keeps the pose while respawn is off", () => {
+    const state = posed([{ col: 14, row: 8 }], "right", { col: 15, row: 8 });
+    state.pelletRespawn = false;
+    state.nextPellet = { col: 20, row: 4 };
+    tick(state);
+    expect(state.pellet).toBeNull();
+    expect(state.nextPellet).toEqual({ col: 20, row: 4 });
   });
 });
 
@@ -386,7 +422,7 @@ describe("the pellet", () => {
   });
 
   it("never places one under the chain or on an obstacle", () => {
-    const state = opening(9);
+    const state = opening();
     state.snake = [{ col: 14, row: 8 }];
     state.obstacles = [{ col: 3, row: 3 }];
     state.pellet = null;

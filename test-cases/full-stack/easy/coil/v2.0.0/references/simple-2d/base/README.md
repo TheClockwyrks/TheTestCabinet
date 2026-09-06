@@ -96,10 +96,11 @@ state and no closure over mutable data; `render` and every diagnostic source are
 reads of the state they are given, and the compiler — not a convention — is what
 says they cannot change it.
 
-The pellet generator is part of that: its whole state is one 32-bit word held in
-`CoilState.rngState`, and each draw returns the next word beside its result, so
-reseeding is assigning a number and replaying the same calls reproduces the same
-pellet sequence exactly.
+The pellet draw is the one place a transition reaches outside the state it was
+handed: `src/rng.ts` draws the spawn cell from the build's own random source, and
+a scenario that needs a particular cell poses it with the surface's
+`setNextPellet`, which `CoilState.nextPellet` carries until the spawn that takes
+it.
 
 ## Debugging and automation
 
@@ -125,10 +126,10 @@ await engine.advance(8);
 const { score, snake } = engine.debug.snapshot(engine.state);
 ```
 
-The operations are `reset` (seedable), `snapshot`, `setScreen`, `setMenuIndex`,
+The operations are `reset`, `snapshot`, `setScreen`, `setMenuIndex`,
 `setScore`, `setBest`, `setCombo`, `setComboWindow`, `setSnake`, `setDirection`,
-`clearTurns`, `setPellet`, `clearPellet`, and the three driver switches
-`setSnakeSteering`, `setSnakeTravel`, and `setPelletRespawn`. A pose sets one
+`clearTurns`, `setPellet`, `clearPellet`, `setNextPellet`, and the three driver
+switches `setSnakeSteering`, `setSnakeTravel`, and `setPelletRespawn`. A pose sets one
 thing and the game's own tick, turning, collision, pellet placement and scoring
 run from there exactly as they do in play. Everything about _driving a browser
 game_ — the clock, exact frames, key events — is the engine's, which is why the
@@ -228,7 +229,7 @@ npm test               # vitest, with coverage over src/
 
 `npm test` runs the build's own suite **in process**, with no browser. Most of
 it is arithmetic over the state — the tick, the turn buffer, the collision
-rules, the combo, the pellet generator, and the debug surface's poses — and
+rules, the combo, the pellet draw, and the debug surface's poses — and
 `src/render.test.ts` draws real frames through an `@napi-rs/canvas` context to
 read back what a player sees. `src/engine.test.ts` stands a **real engine** up
 over that canvas and a `SurfaceMetrics` of its own, steps it with
@@ -248,7 +249,7 @@ events, and the pixels the render produced.
 | `src/board.ts`       | The grid's geometry and the valid pellet set.                    |
 | `src/mode.ts`        | What the mode this build ships means for the rest of it.         |
 | `src/menus.ts`       | The items each menu-bearing screen holds.                        |
-| `src/rng.ts`         | The seeded generator the pellet is drawn from.                   |
+| `src/rng.ts`         | The random source the pellet is drawn from.                      |
 | `src/input.ts`       | The engine actions, registered and read one edge per frame.      |
 | `src/audio.ts`       | The four cues, declared and played by name.                      |
 | `src/assets.ts`      | The produced sprite set, loaded through the engine's loader.     |

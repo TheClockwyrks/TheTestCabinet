@@ -24,9 +24,9 @@ import { CoilState } from "./game";
 import { HOWTO_ITEMS, menuItemRect, menuItems } from "./menus";
 import type { PointerSample } from "@clockwyrks/structured-2d";
 
-function opening(seed = 1): CoilState {
+function opening(): CoilState {
   const state = new CoilState();
-  resetSession(state, seed);
+  resetSession(state);
   return state;
 }
 

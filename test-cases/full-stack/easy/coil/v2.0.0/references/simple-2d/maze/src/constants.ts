@@ -285,6 +285,3 @@ export const BITE_SECONDS = 0.25;
 
 /** The version the debug surface reports as `version`. */
 export const COIL_DEBUG_VERSION = 1;
-
-/** The seed `reset` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
