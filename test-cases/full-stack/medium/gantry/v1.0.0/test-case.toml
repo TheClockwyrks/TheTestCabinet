@@ -1870,8 +1870,8 @@ validation = { script = "instrumentation/set-load-pose-puts-the-load.test.ts", o
 
 # openSite(0), empty the yard, stand the minimal crane, pose a tape of three
 # steps that move nothing, startRun, then setRunTick(1200) and read run.tick
-# and run.time with nothing advanced. — run.tick reads 1200 and run.time reads
-# 1200 / TICK_HZ.
+# and run.time with nothing advanced, driving the frame the still is of after
+# the reading. — run.tick reads 1200 and run.time reads 1200 / TICK_HZ.
 # From specs/instrumentation.md § The run in progress.
 [[review.categories.items]]
 id = "set-run-tick-sets-the-tick-count"
@@ -1880,7 +1880,7 @@ description = "setRunTick(tick) sets how many ticks the run has taken, which the
 domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-run-tick-sets-the-tick-count.test.ts", outputs = [
-  { id = "clock", name = "The run clock at the tick count posed", kind = "image" },
+  { id = "clock", name = "The run screen at the run clock posed", kind = "image" },
 ] }
 
 # The same run, posed to 1200 and then advanced one tick. — run.tick reads
