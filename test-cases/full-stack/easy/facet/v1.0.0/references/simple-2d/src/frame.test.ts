@@ -11,6 +11,8 @@ import { AssetStore } from "./assets";
 import { fromCore, toCore } from "./bridge";
 import { CUES, MAX_STRAIN, STEP_SECONDS, SWAP_SECONDS } from "./constants";
 import {
+  applySwap,
+  cellCenter,
   continueLevel,
   createInitialState,
   loadBoard,
@@ -519,6 +521,81 @@ describe("runFrame", () => {
     const dealt = startRound(title);
     runFrame(title, dealt, api, 1 / 60, new AssetStore(), presentation);
     expect(presentation.pourAge()).toBeGreaterThan(0);
+  });
+
+  it("does not pour the board when a release plays a swap", () => {
+    // The stones of a fresh deal all carry the `fell` that brought them in,
+    // and an accepted swap leaves every one of them where it stands. A frame
+    // that read the exchange as a new board would pour all sixty-four in from
+    // above on the release.
+    const presentation = new Presentation(scratch);
+    const assets = new AssetStore();
+    const fresh = board();
+    const state: CoreState = {
+      ...fresh,
+      board: {
+        ...fresh.board,
+        gems: fresh.board.gems.map((gem, index) =>
+          gem === null
+            ? gem
+            : { ...gem, fell: Math.floor(index / fresh.board.cols) + 1 },
+        ),
+      },
+    };
+    const [fromX, fromY] = cellCenter({ col: 3, row: 1 });
+    const [toX, toY] = cellCenter({ col: 3, row: 2 });
+    const { api } = fakeApi(
+      [],
+      [
+        sample("down", fromX, fromY),
+        sample("move", toX, toY),
+        sample("up", toX, toY),
+      ],
+    );
+    const next = runFrame(state, state, api, 1 / 60, assets, presentation);
+    expect(next.phase).toBe("swapping");
+    expect(presentation.pourAge()).toBeNull();
+  });
+
+  it("does not pour the columns the last chain refilled on the next move", () => {
+    // The columns a chain settled carry a `fell` until the next step rewrites
+    // it. The second move must not replay their fall as a pour.
+    const presentation = new Presentation(scratch);
+    const assets = new AssetStore();
+    const swapping = poseSwap(board(), 3, 1, 3, 2);
+    let state = runFrame(
+      swapping,
+      swapping,
+      fakeApi().api,
+      SWAP_SECONDS + 1 / 60,
+      assets,
+      presentation,
+    );
+    // Run the chain out to rest.
+    for (let frame = 0; frame < 400 && state.phase !== "idle"; frame += 1) {
+      state = runFrame(
+        state,
+        state,
+        fakeApi().api,
+        1 / 60,
+        assets,
+        presentation,
+      );
+    }
+    expect(state.phase).toBe("idle");
+    expect(state.board.gems.some((gem) => gem !== null && gem.fell > 0)).toBe(
+      true,
+    );
+    // Any exchange at all, as an accepted swap leaves the state.
+    const swap = { a: { col: 0, row: 7 }, b: { col: 1, row: 7 } };
+    const again: CoreState = {
+      ...state,
+      board: applySwap(state.board, swap),
+      chainSwap: swap,
+      phase: "swapping",
+    };
+    runFrame(state, again, fakeApi().api, 1 / 60, assets, presentation);
+    expect(presentation.pourAge()).toBeNull();
   });
 
   it("counts a gem at MAX_STRAIN as flawed in what it reports", () => {
