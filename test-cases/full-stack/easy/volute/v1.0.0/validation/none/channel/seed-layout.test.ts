@@ -36,9 +36,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** Long enough for the build's own render loop to have drawn the opened level. */
-const RENDER_MS = 120;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -53,7 +50,10 @@ it("opens the twelve from the inlet out to 308, spaced by 28", async () => {
   await h.debug.startLevel(1);
   const opened = await h.snapshot();
 
-  await h.page.waitForTimeout(RENDER_MS);
+  // The evidence, after the reading: `step` runs "the full tick followed by a
+  // render" (`specs/instrumentation.md`), so one tick is what puts the opened
+  // level on the canvas, and the layout above was read before it ran.
+  await h.step(1);
   await captureStill(h, "opening");
 
   assertNear(

@@ -87,7 +87,7 @@ engine's own `file:` dependency, written in at seed time.
 
 ## The checklist
 
-One hundred and twenty-nine items across eleven categories, in the categories
+One hundred and twenty-eight items across eleven categories, in the categories
 grammar (`[review] format = 2`), every one weighted `1`. The case is on the
 per-engine spelling and so is validator-rated: every item carries `validation`,
 `failure_cap`, and `domains`. Four domains — `channel`, `injector`,
@@ -97,15 +97,14 @@ across them.
 A `validation.script` path is relative to `validation/<engine>/`. Most points
 cover all three engines, so the same path exists under all three engine
 directories and a point is never decided under one engine and left to a reviewer
-under another. Sixteen points name `engines` instead, because what they decide
+under another. Fifteen points name `engines` instead, because what they decide
 belongs to the runtime rather than to the build under the engines they leave out:
-`channel/self-advancing`, `injector/swap-pointer` and `screens/start-touch` run
-under `none` alone, where the build writes the frame loop and the input layer,
-and the thirteen cue-identity points of the `audio` category run under
-`simple-2d` and `structured-2d` alone, where the engine's bus reports the name a
-cue sounded under. A scoped point is left out of the checklist of a run on an
-engine it does not name, and adds no weight to that run's score. Every script is
-named `<category>/<item>.test.ts`.
+`injector/swap-pointer` and `screens/start-touch` run under `none` alone, where
+the build writes the input layer, and the thirteen cue-identity points of the
+`audio` category run under `simple-2d` and `structured-2d` alone, where the
+engine's bus reports the name a cue sounded under. A scoped point is left out of
+the checklist of a run on an engine it does not name, and adds no weight to that
+run's score. Every script is named `<category>/<item>.test.ts`.
 
 Motion is handed back as a `replay` — the draw-command recording a validator
 takes off the recorder it arms itself — rather than as a `video`, which is a

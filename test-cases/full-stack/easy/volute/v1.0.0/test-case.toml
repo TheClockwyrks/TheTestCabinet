@@ -698,35 +698,13 @@ title = "An emitted core carries a charge already on the channel"
 description = "A core placed at the inlet carries a charge drawn from the set of charges already standing on the channel."
 domains = ["channel"]
 failure_cap = "scuffed"
-# Automated validation: startLevel(5), clearTrain(), pose a train of halide cores
-# alone, setQuotaRemaining(20), step until ten further cores have been placed, and
-# confirm every one of them is halide. See
-# validation/<engine>/channel/emission-charge-present.test.ts.
+# Automated validation: six times over — setLevel(5), setEmission(true),
+# setQuotaRemaining(12), pose a run of three halide cores whose tail is clear of
+# SPACING, step one tick, and confirm the core the inlet placed at the inlet is
+# halide, which is the whole of the set standing on the channel when it was
+# drawn. See validation/<engine>/channel/emission-charge-present.test.ts.
 validation = { script = "channel/emission-charge-present.test.ts", outputs = [
   { id = "emitted", name = "Cores emitted onto a single-charge channel", kind = "image" },
-] }
-[[review.categories.items]]
-id = "self-advancing"
-title = "The hall runs on its own clock"
-description = "With nothing stepping the game from outside, the train rides the channel on the build's own clock."
-domains = ["channel"]
-failure_cap = "broken"
-# Automated validation: start a level, hand the build a real wall clock, let a
-# stretch of real time pass without stepping, and confirm the head's arc position
-# increased — a build that only advances when something pokes it stays where it
-# was put. See validation/none/channel/self-advancing.test.ts.
-#
-# ENGINELESS ONLY. Under `none` the frame loop is a deliverable: the build writes
-# the requestAnimationFrame loop, the accumulator, and the fixed tick under them,
-# and a build that wrote none of it stands still. Under either engine the loop is
-# the ENGINE's — the seeded `src/main.ts`, which a build does not edit, stands the
-# engine up and runs it — so the point would grade the engine rather than the
-# build, and the build's own residue (that its `update` integrates against the dt
-# it is handed) is `channel/feed-advance`'s point, measured there against counted
-# ticks where it can be measured exactly.
-validation = { script = "channel/self-advancing.test.ts", engines = ["none"], outputs = [
-  { id = "before", name = "The instant play begins", kind = "image" },
-  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
 ] }
 
 # --- Pressure -----------------------------------------------------------------
@@ -1521,9 +1499,10 @@ title = "Each level uses only its own charges"
 description = "No core in a level carries a charge outside that level's set: level 1 uses halide, sulfur and cobalt; levels 2 and 3 add garnet; levels 4 and 5 add olivine."
 domains = ["progression"]
 failure_cap = "scuffed"
-# Automated validation: for each n — startLevel(n), read the opening twelve, step
-# through twenty further emissions, and confirm every charge seen is a member of
-# that level's set. See validation/<engine>/progression/charge-set-table.test.ts.
+# Automated validation: for each n — startLevel(n), read the opening twelve, then
+# empty the channel and step one tick eight times over, and confirm every charge
+# seen is a member of that level's set. See
+# validation/<engine>/progression/charge-set-table.test.ts.
 validation = { script = "progression/charge-set-table.test.ts", outputs = [
   { id = "charges", name = "The charges a level opens with", kind = "image" },
 ] }

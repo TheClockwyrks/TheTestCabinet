@@ -16,10 +16,9 @@
 // tail is at least `SPACING` out, and the seeded tail sits at `s = 0`, so no
 // emission can land inside the reading — but the count that the *opening* fixes
 // is the one before the hall has run at all, so nothing is stepped before it is
-// read. The still is taken from the frame the build's own loop is drawing, which
-// `specs/instrumentation.md` requires it to keep drawing off the clock
-// ("Drawing is unaffected either way: the loop keeps rendering"), so the
-// evidence costs the reading nothing.
+// read. The still is taken after one tick, because `step` runs "the full tick
+// followed by a render" (`specs/instrumentation.md`) and that render is what puts
+// the opened level on the canvas; the count was read before it ran.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -30,9 +29,6 @@ import {
   createHarness,
   type Harness,
 } from "../harness";
-
-/** Long enough for the build's own render loop to have drawn the opened level. */
-const RENDER_MS = 120;
 
 let h: Harness;
 
@@ -48,7 +44,7 @@ it("opens a level with twelve cores on the channel", async () => {
   await h.debug.startLevel(1);
   const opened = await h.snapshot();
 
-  await h.page.waitForTimeout(RENDER_MS);
+  await h.step(1);
   await captureStill(h, "opening");
 
   assertEqual(

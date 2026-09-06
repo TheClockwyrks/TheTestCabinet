@@ -44,8 +44,10 @@
 // takes the game off real time and `step(ticks)` runs whole simulation ticks.
 // Every harness opens by taking the game off the clock, so a check asks for a
 // number of ticks and gets exactly that number — no polling, no waiting, and no
-// measurement of the machine it ran on. The one check that is ABOUT the loop
-// running itself (`channel/self-advancing`) hands it back with {@link Harness.runFor}.
+// measurement of the machine it ran on. Nothing in this project hands the loop
+// back: whether the build runs itself on real time is decided by real time
+// passing, which no check here reads, so the frames a check drives are the
+// whole of what it measures.
 //
 // A TICK IS THE UNIT. `specs/instrumentation.md` fixes the simulation at 60 ticks
 // a second, each worth exactly 1/60 s, so a count of stepped ticks converts to

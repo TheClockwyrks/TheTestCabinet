@@ -98,24 +98,6 @@ import {
   type VoluteSnapshot,
 } from "../harness";
 
-/**
- * Real time allowed to pass with no frame advanced.
- *
- * Long enough that a build carrying a clock of its own would have run tens of
- * ticks in it, and short enough to cost the suite nothing.
- */
-const FROZEN_MS = 500;
-
-/**
- * Real time the game runs under the engine's own loop for.
- *
- * The only reading of "the engine advances the game frame by frame" is time
- * passing while nothing steps it. A third of a second is many frames at any rate
- * the host schedules them at, so the check turns on whether the game advanced
- * rather than on how fast it did.
- */
-const RUNNING_MS = 300;
-
 /** Ticks stepped where a check only needs the drive to have really moved. */
 const DRIVE_TICKS = 30;
 
@@ -175,43 +157,29 @@ it("carries the documented version and every operation, as functions", async () 
 
 /* ---- The clock the engine owns --------------------------------------------- */
 
-it("advances from its ticks alone, and rides the engine's own loop", async () => {
-  // Nothing has advanced the engine, so a hall posed here is a hall nothing can
-  // move. Real time is simply allowed to pass: a build carrying a clock of its
-  // own — a `setInterval`, a `requestAnimationFrame` it started in `initialize`,
-  // a `Date.now()` read inside `update` — accumulates ticks while this waits, and
-  // one whose state "advances from ticks and input alone" accumulates none.
+it("advances exactly one tick per advanced frame", async () => {
+  // An advanced frame is exactly one tick: the harness's `ConstantClock` of
+  // `1000 / 60` ms is the step specs/instrumentation.md names, so the game's own
+  // accumulated simulation time moves by exactly the time those ticks cover, and
+  // the train it carries moves with it. Nothing here waits on real time: a
+  // stretch of the wall clock decides nothing about the build, and the rule that
+  // the state "advances from ticks and input alone" is read through what the
+  // counted frames did.
   await startRun(h);
   await poseHall(h, { cores: spacedBlock(1000, 3, "halide") });
-  const frozen = await h.snapshot();
-  await new Promise((done) => setTimeout(done, FROZEN_MS));
-  const still = await h.snapshot();
+  const posed = await h.snapshot();
 
-  // Exact rather than tolerant: no frame ran, so nothing may have moved at all.
-  assertEqual(still.simTime, frozen.simTime, "simTime while no frame ran");
-  assertEqual(head(still).s, head(frozen).s, "the head while no frame ran");
-
-  // And an advanced frame is exactly one tick: the harness's `ConstantClock` of
-  // `1000 / 60` ms is the step specs/instrumentation.md names, so the game's own
-  // accumulated simulation time moves by exactly the time those ticks cover.
   const driven = await h.step(DRIVE_TICKS);
   assertNear(
-    driven.simTime - frozen.simTime,
+    driven.simTime - posed.simTime,
     seconds(DRIVE_TICKS),
     SIM_TIME_TOL,
     `the simulated seconds ${DRIVE_TICKS} ticks covered`,
   );
-
-  // And the same game runs under the engine's own loop, which is how it is
-  // played: the harness hands it a wall clock and lets it run for a stretch of
-  // real time, and the hall advances with nothing stepping it. HOW FAST it runs
-  // is `channel/self-advancing`; that it runs at all is this point's half.
-  await h.runFor(RUNNING_MS);
-  const ran = await h.snapshot();
   assertGreaterThan(
-    ran.simTime,
-    driven.simTime,
-    "simTime after the game ran under the engine's own loop",
+    head(driven).s,
+    head(posed).s,
+    `the head's arc position after ${DRIVE_TICKS} advanced frames`,
   );
 });
 

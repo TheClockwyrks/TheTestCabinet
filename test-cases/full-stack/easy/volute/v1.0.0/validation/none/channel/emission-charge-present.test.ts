@@ -4,51 +4,48 @@
 // THE SPEC LINE. `specs/channel.md`, "Emission": "An emitted core's charge is
 // drawn at random, uniformly over the set of distinct charges on the channel at
 // the moment of emission, and uniformly over the level's charge set when the
-// channel carries no core." Both halves are read
-// here, because the specification states both: an emission onto an occupied
-// channel is confined to what stands on it, and an emission onto an empty one
-// falls back to the level's set (`specs/progression.md`'s table).
+// channel carries no core." The half this point decides is the first, which is
+// what the item's own wording names. The empty-channel fallback belongs to
+// `progression/charge-set-table`, where the level's set is what a draw is read
+// against.
 //
-// THE DRIVE. Level 5, whose charge set is all five charges, with the channel
-// posed as a short run of halide alone. A build drawing from the level's set
-// instead of the channel's would produce a non-halide core four times out of
-// five, so the arrangement separates the two rules as sharply as the case
-// allows. Twenty cores are left in the quota and the hall is stepped one tick at
-// a time until ten have been placed.
+// THE POSE, AND WHY IT LEAVES THE RULE WITH ONE OUTCOME. Level 5, whose charge
+// set is all five charges, with the channel posed as a run of three halide cores
+// whose tail stands well clear of `SPACING`. `specs/channel.md`'s emission
+// condition — "While the level's quota is not exhausted, the inlet emits a core
+// at `s = 0` on a tick where the tail core's arc position is at least `SPACING`,
+// one core at most per tick" — is therefore already met, so the tick stepped
+// after the pose is a tick the inlet emits on, and it emits exactly one core.
+// At the moment it does, the distinct charges on the channel are exactly
+// `{ halide }`, and a draw uniform over a one-member set has one outcome. The
+// specification fixes the emitted charge exactly here, with no probability left
+// in it, while a build reaching for the level's set instead lands outside four
+// times in five.
 //
-// WHY THE CHECK IS WRITTEN AGAINST THE SET ON THE CHANNEL RATHER THAN AGAINST
-// "halide". A channel carrying one charge is a channel every emission adds to,
-// and `specs/extraction.md` extracts "the maximal same-charge run spanning that
-// join" the moment a merge carries the run to three — so a single-charge channel
-// empties itself as it fills, and the specification's own fallback then draws
-// the next core from the level's set. "Every emitted core is halide" is
-// therefore not a consequence of the specification, and a check asserting it
-// would fail a conformant build. What the specification does fix, on every
-// emission without exception, is the SET the draw comes from, so that is what is
-// read: for each emission, the charges standing on the channel at that moment,
-// or the level's charge set when nothing stood on it.
+// SIX DRAWS, EACH POSED. Every draw is read off its own posed hall: the hall is
+// re-posed and one tick stepped, six times over. Nothing accumulates between
+// them, so no merge extracts, no machinery is granted, and the drive costs six
+// ticks whatever a build's generator does. Six independent draws leave a build
+// drawing from level 5's five charges one chance in 15625 of looking right.
 //
-// WHERE THE SET IS READ. The emission is step 7 of the tick, the last step, so
-// the state at the emission is the state at the end of the tick less the core
-// just placed — and that core is the one at the inlet, which is the tail, since
-// the train is reported head first. An emission is identified by the quota
-// falling by one ("Each emission decrements the level's quota by one"), which is
-// the one reading that survives a tick on which an extraction also removed
-// cores.
+// WHERE THE EMITTED CORE IS READ. The inlet "emits a core at `s = 0`", and
+// `specs/instrumentation.md` has the snapshot report the train head first
+// ("the train orders them by descending `s`"), so the core the inlet placed is
+// the last one reported. The tick is required to have placed exactly one, so the
+// reading is of the emitted core rather than of nothing.
 //
-// THE TOLERANCE. None: a charge id is exact. Membership of a set is a yes or a
-// no, and one stray charge fails the point.
+// THE TOLERANCE. None: a charge id is exact, and one stray charge fails the
+// point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertContains, assertEqual, assertTrue } from "../assert";
-import { levelSpec, type ChargeId } from "../constants";
+import { assertEqual, assertLength } from "../assert";
+import { type ChargeId } from "../constants";
 import {
   captureStill,
   createHarness,
   poseHall,
   spacedBlock,
   type Harness,
-  type VoluteSnapshot,
 } from "../harness";
 
 /** The level: five charges in play, so a wrong draw is four times as likely. */
@@ -59,25 +56,11 @@ const POSED_CHARGE: ChargeId = "halide";
 const POSED_HEAD_S = 300;
 const POSED_COUNT = 3;
 
-/** Cores left in the quota, twice what the drive reads. */
-const QUOTA = 20;
+/** Cores left in the quota, so the inlet has one to place on every draw. */
+const QUOTA = 12;
 
-/** Emissions read. */
-const WANTED = 10;
-
-/** Ticks the drive may take to see them. */
-const MAX_TICKS = 1500;
-
-/** Long enough for the build's own render loop to have drawn the hall. */
-const RENDER_MS = 120;
-
-/** One emission: the tick it landed on, its charge, and the set it was drawn from. */
-interface Emission {
-  tick: number;
-  charge: string;
-  allowed: readonly string[];
-  onto: number;
-}
+/** Emissions read, each off its own posed hall. */
+const DRAWS = 6;
 
 let h: Harness;
 
@@ -90,65 +73,34 @@ afterEach(async () => {
 });
 
 it("draws an emitted core's charge from the charges on the channel", async () => {
-  await poseHall(h, {
-    level: LEVEL,
-    // The inlet is the faculty this point is about, so it is the one gate left
-    // open (`specs/instrumentation.md`, `setEmission`).
-    emission: true,
-    quotaRemaining: QUOTA,
-    cores: spacedBlock(POSED_HEAD_S, POSED_COUNT, POSED_CHARGE),
-  });
+  const emitted: ChargeId[] = [];
 
-  const levelCharges = levelSpec(LEVEL).charges;
-  const emissions: Emission[] = [];
-  let quota = (await h.snapshot()).quotaRemaining;
-
-  const note = (snapshot: VoluteSnapshot, tick: number): void => {
-    // An emission, and only an emission, takes exactly one off the quota.
-    if (snapshot.quotaRemaining !== quota - 1) return;
-    const train = snapshot.train ?? [];
-    const placed = train[train.length - 1];
-    if (placed === undefined) return;
-    // Everything else standing on the channel when the core was placed.
-    const standing = train.slice(0, -1);
-    emissions.push({
-      tick,
-      charge: placed.charge,
-      allowed:
-        standing.length === 0
-          ? levelCharges
-          : [...new Set(standing.map((core) => core.charge))],
-      onto: standing.length,
+  for (let draw = 0; draw < DRAWS; draw += 1) {
+    await poseHall(h, {
+      level: LEVEL,
+      // The requirement IS what the inlet emits, so its gate is the one left
+      // open (`specs/instrumentation.md`, `setEmission`).
+      emission: true,
+      quotaRemaining: QUOTA,
+      cores: spacedBlock(POSED_HEAD_S, POSED_COUNT, POSED_CHARGE),
     });
-  };
 
-  await h.stepWatching(MAX_TICKS, (snapshot, tick) => {
-    note(snapshot, tick);
-    quota = snapshot.quotaRemaining;
-    return emissions.length >= WANTED;
-  });
+    const standing = (await h.step(1)).train;
+    assertLength(
+      standing,
+      POSED_COUNT + 1,
+      `the cores standing after the tick draw ${draw + 1} was emitted on`,
+    );
+    emitted.push(standing[standing.length - 1]!.charge);
+  }
 
-  await h.page.waitForTimeout(RENDER_MS);
   await captureStill(h, "emitted");
 
-  assertEqual(
-    emissions.length,
-    WANTED,
-    `the cores the inlet placed within ${MAX_TICKS} ticks`,
-  );
-  // The drive is only worth reading if some of those emissions landed on an
-  // occupied channel; that is where the rule bites.
-  assertTrue(
-    emissions.some((emission) => emission.onto > 0),
-    "at least one core placed onto an occupied channel",
-  );
-
-  for (const emission of emissions) {
-    assertContains(
-      emission.allowed,
-      emission.charge,
-      `the charge of the core placed on tick ${emission.tick}, drawn from ` +
-        `the ${emission.onto === 0 ? "level's" : "channel's"} charges`,
+  for (const [index, charge] of emitted.entries()) {
+    assertEqual(
+      charge,
+      POSED_CHARGE,
+      `the charge of the core the inlet placed onto a halide channel on draw ${index + 1}`,
     );
   }
 });

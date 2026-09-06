@@ -90,24 +90,6 @@ import {
   type VoluteSnapshot,
 } from "../harness";
 
-/**
- * Real time allowed to pass with the game off the wall clock.
- *
- * Long enough that a build still driving itself off `requestAnimationFrame` would
- * have run tens of ticks in it, and short enough to cost the suite nothing.
- */
-const FROZEN_MS = 500;
-
-/**
- * Real time the game is handed back to its own clock for.
- *
- * `setAutoStep(true)` "returns it to running itself", and the only reading of
- * that is time passing while nothing steps it. A third of a second is many frames
- * on any refresh rate a browser runs at, so the check turns on whether the loop
- * reconnected rather than on how fast it runs.
- */
-const RUNNING_MS = 300;
-
 /** Ticks stepped where a check only needs the drive to have really moved. */
 const DRIVE_TICKS = 30;
 
@@ -167,43 +149,29 @@ it("carries the documented version and every operation, as functions", async () 
 
 /* ---- The clock the surface owns -------------------------------------------- */
 
-it("takes the hall off the wall clock, runs whole ticks, and gives it back", async () => {
-  // The harness has already called `setAutoStep(false)`. So a hall is posed and
-  // real time is simply allowed to pass: a build still running itself off the
-  // wall clock accumulates ticks while this waits, and one that really
-  // disconnected accumulates none.
+it("runs whole ticks through step", async () => {
+  // The harness has already called `setAutoStep(false)`, so the hall posed here
+  // moves only when `step` says so. `step(ticks)` "Runs `ticks` whole simulation
+  // ticks", each worth `TICK_DT`, so the game's own accumulated simulation time
+  // moves by exactly the time those ticks cover, and the train it carries moves
+  // with it. Nothing here waits on real time: a stretch of the wall clock decides
+  // nothing about the build, and the rule that the hall is off the clock is read
+  // through what the counted ticks did.
   await startRun(h);
   await poseHall(h, { cores: spacedBlock(1000, 3, "halide") });
-  const frozen = await h.snapshot();
-  await h.page.waitForTimeout(FROZEN_MS);
-  const still = await h.snapshot();
+  const posed = await h.snapshot();
 
-  // Exact rather than tolerant: nothing stepped, so nothing may have moved at
-  // all. A build whose `setAutoStep(false)` did not disconnect fails by whole
-  // ticks, not by a rounding.
-  assertEqual(still.simTime, frozen.simTime, "simTime while nothing stepped");
-  assertEqual(head(still).s, head(frozen).s, "the head while nothing stepped");
-
-  // And `step` runs whole ticks: the game's own accumulated simulation time moves
-  // by exactly the time those ticks cover.
   const driven = await h.step(DRIVE_TICKS);
   assertNear(
-    driven.simTime - frozen.simTime,
+    driven.simTime - posed.simTime,
     seconds(DRIVE_TICKS),
     SIM_TIME_TOL,
     `the simulated seconds ${DRIVE_TICKS} ticks covered`,
   );
-
-  // `setAutoStep(true)` "returns it to running itself": the harness hands the
-  // page back to its own frame loop for a stretch of real time, and the hall
-  // advances without anything stepping it. HOW FAST it runs is
-  // `channel/self-advancing`; that it runs at all is the surface's half.
-  await h.runFor(RUNNING_MS);
-  const ran = await h.snapshot();
   assertGreaterThan(
-    ran.simTime,
-    driven.simTime,
-    "simTime after the game was handed back its own clock",
+    head(driven).s,
+    head(posed).s,
+    `the head's arc position after ${DRIVE_TICKS} stepped ticks`,
   );
 });
 

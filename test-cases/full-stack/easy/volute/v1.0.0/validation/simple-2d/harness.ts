@@ -48,9 +48,9 @@
 // simulation tick of `TICK_DT`. That clock is what every harness below is built
 // with, so a duration written as a tick count means the same thing here as it
 // does in the engineless project, and the tolerances the case states in ticks
-// carry across unchanged. The one check that is ABOUT the game running itself
-// (`channel/self-advancing`) hands the loop back with {@link Harness.runFor},
-// which is the only place real time enters this project.
+// carry across unchanged. Nothing in this project hands the loop back to a real
+// clock: the frames a check drives are the whole of what it measures, so a
+// check lands the same ticks on any host.
 //
 // EVERY OPERATION IS STILL ASYNC. `engine.advance` and `engine.initialize` really
 // are, and the rest are written the same way so one vocabulary — `await
@@ -79,7 +79,6 @@ import {
 } from "@napi-rs/canvas";
 import {
   ConstantClock,
-  WallClock,
   createEngine,
   type Clock,
   type Engine,
@@ -1074,9 +1073,6 @@ export interface Harness {
     ticks: number,
     watch?: (snapshot: VoluteSnapshot, tick: number) => boolean,
   ): Promise<VoluteSnapshot[]>;
-  /** Hand the game to the engine's own frame loop for `ms` of real time. */
-  runFor(ms: number): Promise<void>;
-
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): Promise<void>;
   /** Release a key held by {@link hold}. */
@@ -1405,29 +1401,6 @@ export async function createHarness(
         if (watch?.(snapshot, i + 1) === true) break;
       }
       return seen;
-    },
-
-    async runFor(ms) {
-      // The one thing in this project that depends on real elapsed time: the
-      // engine's own loop, pumped off the host's frame callback, with a clock
-      // that reads the host timestamp. The scripted clock goes back afterwards,
-      // so everything after this call is exact again.
-      //
-      // The operation log is put back exactly as the last DRIVEN tick left it.
-      // The loop below runs frames this harness did not bracket, and letting
-      // them pile into the log would make {@link Harness.lastCalls} answer "the
-      // last driven tick plus however many frames the wall clock happened to fit"
-      // — a reading of the host's speed rather than of the build's render.
-      const kept = [...calls];
-      const controller = new AbortController();
-      engine.setClock(new WallClock());
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((done) => setTimeout(done, ms));
-      controller.abort();
-      await running;
-      engine.setClock(options.clock ?? new ConstantClock(TICK_MS));
-      calls.length = 0;
-      calls.push(...kept);
     },
 
     hold: (code) => {
