@@ -68,25 +68,16 @@ one played by hand. `src/game.ts` declares and exports its type,
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic: every rate integrated
-against the delta time the game is given, so an interval of game time reaches the
-same state however it was divided into frames. Two more properties make it
-driveable from code:
-
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer. Whether a segment may be added is decided from the board and the beams
-  alone, never from anything the renderer holds.
-- Seeded randomness. Any randomness the game uses runs off a generator seeded from
-  `state.rngState`, and it keeps its whole generator state in that field, so
-  reseeding and replaying the same calls reproduces the same result exactly. A
-  build that uses no randomness simply never reads it.
-
-Given the same seed and the same sequence of calls and elapsed game time, the game
-reaches the same state every time.
+Game state advances from the elapsed simulation time the game is handed,
+independent of a canvas, of the frame loop that measured it, and of wall-clock
+time. Every rate is integrated against that delta time, so an interval of game
+time reaches the same state however it was divided into frames, and a step means
+the same thing whatever the frame rate. The dependency runs one way: the
+simulation reads nothing from the renderer. Whether a segment may be added is
+decided from the board and the beams alone, never from anything the renderer
+holds.
 
 ## What the runtime provides instead
 
@@ -173,11 +164,11 @@ clock is already doing.
 
 {{/if}}
 {{#if (eq engine.slug "none")}}
-### `reset(options)`
+### `reset()`
 {{else if (eq engine.slug "simple-2d")}}
-### `reset(state, options)`
+### `reset(state)`
 {{else}}
-### `reset(options)`
+### `reset()`
 {{/if}}
 
 Restores every declared field of the game's state to its title-screen value: the
@@ -185,8 +176,7 @@ title screen with its first menu item highlighted, `mode` back to `"campaign"`, 
 board in play, every beam empty, no trace live, the pointer reported as up,
 `simTime` at `0`, campaign progress cleared, so no board is recorded solved and
 only the opening board is unlocked, and the cascade progression back to its
-opening state, `solvedCount` at `0` and `tier` at `1`. `rngState` becomes
-`options.seed`, or `DEFAULT_SEED` (`1`) when no seed is given.
+opening state, `solvedCount` at `0` and `tier` at `1`.
 
 No pointer target is armed afterwards.
 
@@ -217,8 +207,8 @@ It changes nothing.
 
 Sets `state.mode` to `"campaign"` or `"cascade"`, and sets its own field alone.
 The screen, the board, the beams, the live trace, the progression of both modes,
-`menuIndex`, `selectIndex`, `rngState`, and `simTime` are all left as they are.
-No board is chosen and none is generated.
+`menuIndex`, `selectIndex`, and `simTime` are all left as they are. No board is
+chosen and none is generated.
 
 {{#if (eq engine.slug "none")}}
 ### `setScreen(screen)`
@@ -230,9 +220,9 @@ No board is chosen and none is generated.
 
 Sets `state.screen` to one of the six screen names `specs/state.md` declares, and
 sets its own field alone. The mode, the board, the beams, the live trace, the
-progression of both modes, `menuIndex`, `selectIndex`, `rngState`, and `simTime`
-are all left as they are. No pointer target is armed afterwards, as when a screen
-is left in play. The screen it sets then behaves exactly as `specs/ui.md`,
+progression of both modes, `menuIndex`, `selectIndex`, and `simTime` are all left
+as they are. No pointer target is armed afterwards, as when a screen is left in
+play. The screen it sets then behaves exactly as `specs/ui.md`,
 `specs/modes/campaign.md`, and `specs/modes/cascade.md` state for it.
 
 {{#if (eq engine.slug "none")}}
@@ -245,6 +235,46 @@ is left in play. The screen it sets then behaves exactly as `specs/ui.md`,
 
 Sets `state.menuIndex`, the highlighted item on whichever menu the current screen
 shows, and sets its own field alone.
+
+{{#if (eq engine.slug "none")}}
+### `setSolvedCount(count)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setSolvedCount(state, count)`
+{{else}}
+### `setSolvedCount(count)`
+{{/if}}
+
+Sets `state.solvedCount`, the boards-solved count of the cascade run, to `count`,
+a whole number from `0`, and sets its own field alone. `state.tier` is left as it
+is; the ladder in `specs/modes/cascade.md` recomputes it on the next solve.
+
+{{#if (eq engine.slug "none")}}
+### `setTier(tier)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setTier(state, tier)`
+{{else}}
+### `setTier(tier)`
+{{/if}}
+
+Sets `state.tier`, the tier the next cascade board is generated at, to `tier`, a
+whole number from `1` to `MAX_TIER` (`5`), and sets its own field alone.
+`state.solvedCount` is left as it is.
+
+{{#if (eq engine.slug "none")}}
+### `generateBoard(tier)`
+{{else if (eq engine.slug "simple-2d")}}
+### `generateBoard(state, tier)`
+{{else}}
+### `generateBoard(tier)`
+{{/if}}
+
+Asks the generator in `specs/modes/cascade.md` for one board at `tier`, a whole
+number from `1` to `MAX_TIER` (`5`), and poses it exactly as `loadBoard` poses a
+board: the game moves to `playing` with that board in play, every beam empty, and
+no trace live. The board is a board the generator emits for that tier, so it
+meets every requirement the generator's contract and the tier's rows of the
+ladder and the floor state. `mode`, `solvedCount`, `tier`, and every other field
+are left as they are, so the run's progression is untouched.
 
 {{#if (eq engine.slug "none")}}
 ### `loadBoard(board)`
@@ -372,7 +402,6 @@ emptied and any live trace ends. It applies on the `playing` screen alone.
   ],
   muted: <boolean>,
   simTime: <number>,   // accumulated simulation time, in seconds
-  rngState: <number>,  // the seeded generator's current state
 }
 ```
 
@@ -412,12 +441,6 @@ what the game holds. Four are derived rather than stored:
 A node's `channel` is `null` for a crystal, and its `charges` and `spent` are
 `null` for an emitter and for a lens. `beams` carries one entry per channel
 present on the board and no entry for a channel the board does not use.
-
-`rngState` is the seeded generator state `specs/state.md` declares, reported as
-the game holds it. A `reset` sets it to the seed it was given, and generating a
-Cascade board consumes it and leaves it advanced, as `specs/modes/cascade.md`
-states, so the value fixed for it is the one it carries immediately after a
-`reset`.
 
 A beam's `cells` lists the cells its segments join, **in the order they were
 drawn**, so the last cell is the end the most recent trace worked from and the one

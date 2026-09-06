@@ -144,29 +144,22 @@ A dash means the tier states no bound on that measure. The floor is part of the
 generator's contract: a candidate board that misses any bound is not emitted,
 and the player never sees it.
 
-## Determinism
+## Drawing a board
 
-{{#if (eq engine.slug "none")}}
-All generation runs off the seeded generator state the game's state carries, which
-`specs/state.md` requires of it. It is the whole of the game's generator state.
-{{else if (eq engine.slug "simple-2d")}}
-All generation runs off `state.rngState`, the whole of the game's generator state.
-{{else}}
-All generation runs off `state.rngState`, the whole of the game's generator state.
-{{/if}}
+Boards are generated when they are needed, one at a time: on starting Cascade,
+on `NEXT BOARD`, and on `RESTART`. Nothing about the sequence is decided in
+advance.
 
-- Generating a board consumes that state and leaves it advanced, so the next board
-  follows from the state the previous one left.
-- The sequence is therefore a function of the seed alone. Seeding the generator
-  with a given value and solving boards in order produces the same boards, in the
-  same order, every time, on any machine.
-- Boards are generated when they are needed, one at a time. Nothing about the
-  sequence is decided in advance.
-- The generator is the only consumer of randomness in the game. Presentation and
-  audio read nothing from it, so the sequence a seed produces does not depend on
-  how the board is drawn or how many frames it was drawn over.
+- Each board is drawn at random from the boards its tier admits: its grid size
+  is drawn from the tier's stated range, `cols` and `rows` each drawn
+  independently, and the nodes and the charges on its crystals are drawn within
+  the tier's rows of the ladder and the floor.
+- The generator is the only part of the game that draws at random. Presentation
+  and audio draw nothing.
 
-Seeding the generator is described in `specs/instrumentation.md`.
+The debug surface in `specs/instrumentation.md` poses a generated board at a
+chosen tier through `generateBoard`, and the run's progression through
+`setSolvedCount` and `setTier`.
 
 ## The solved screen
 
@@ -183,8 +176,8 @@ first. The item at `state.menuIndex` is drawn distinctly from the others.
 | `NEXT BOARD` | Generates a board at the current `state.tier` and moves to `playing` with every beam empty. |
 | `RESTART` | Returns `state.solvedCount` to `0` and `state.tier` to `1`, generates a board, and moves to `playing`. |
 
-`RESTART` does not reseed the generator. It carries on from the state it holds, so
-a restart drops the player back to tier `1` on boards they have not seen.
+`RESTART` drops the player back to tier `1` on a freshly generated board, drawn
+like any other.
 
 Menu navigation uses the registered actions and the pointer targets in
 `specs/controls.md`. `up` and `down` move `state.menuIndex` over `SOLVED_ITEMS`,
