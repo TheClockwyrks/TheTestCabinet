@@ -66,8 +66,9 @@
 // clock is this file's own {@link StepClock} rather than the engine's
 // `ConstantClock`: a march run off camera hands the engine several ticks' worth of
 // delta at a time and draws once, which specs/movement.md makes the same
-// simulation. A check that is specifically about the step size
-// (`controls/advances-in-real-time`) builds harnesses with clocks of its own.
+// simulation. A check that is specifically about the step size hands one frame a
+// delta of its own through {@link Harness.frame}, which retunes the same clock for
+// that frame alone.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -251,7 +252,7 @@ const COAST_TICKS = 60;
 
 /**
  * The default clock, whose step {@link Harness.skip} retunes for the length of a
- * march and puts back.
+ * march and {@link Harness.frame} for one frame, and each puts back.
  *
  * It is a constant clock in every respect a check can observe — it ignores the
  * host timestamp and reports the step it was built with — and the only reason
@@ -432,8 +433,17 @@ export interface FathomModel {
    * step it hands the engine is that clock's to decide.
    */
   skip(ticks: number): Promise<void>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
+  /**
+   * Run ONE frame handed `ms` of elapsed time, then put the default clock back.
+   *
+   * This is how a check about the fixed-step core itself states the delta a
+   * frame carries: a frame worth several ticks, a frame worth a fraction of one,
+   * or a frame worth nothing at all. specs/movement.md fixes what the game does
+   * with each, and every frame is a real frame of the engine's loop, drawn and
+   * recorded like any other. The default clock is what it retunes, so a harness
+   * built with a clock of its own has no frame to script and this fails loudly.
+   */
+  frame(ms: number): Promise<void>;
   /**
    * Move the pointer to a logical stage point, and run the frame that reads it.
    *
@@ -596,12 +606,21 @@ const kit = createEngineCaseHarness<
         if (rest > 0) await base.advance(rest);
       },
 
-      async runFor(ms: number) {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((resolve) => setTimeout(resolve, ms));
-        controller.abort();
-        await running;
+      async frame(ms: number) {
+        const clock = stepClocks.get(engine);
+        if (clock === undefined) {
+          throw new Error(
+            "frame(ms) scripts the harness's default clock, and this harness " +
+              "was built with a clock of its own",
+          );
+        }
+        const step = clock.ms;
+        clock.ms = ms;
+        try {
+          await base.advance(1);
+        } finally {
+          clock.ms = step;
+        }
       },
 
       async movePointer(

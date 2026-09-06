@@ -45,9 +45,9 @@
 // the size of a tick itself — `TICK_HZ` is `120` and `advance` counts in whole
 // `TICK_DT`s — so unlike a case that leaves the step to its caller, this harness
 // chooses no schedule: a check asks for a number of ticks and gets exactly that
-// number. Every harness opens by taking the game off the clock. The one check that
-// is ABOUT the loop running itself (`controls/advances-in-real-time`) hands it back
-// with `Harness.runFor`.
+// number. Every harness opens by taking the game off the clock and no check hands
+// it back: a build's own loop runs on real time, which no check reads, so what the
+// clock operations do is what `instrumentation/manual-clock` decides.
 //
 // ADVANCE VERSUS SKIP. Both run real ticks and neither fabricates anything; they
 // differ in what they leave behind for a reviewer. `advance` brackets each tick as
