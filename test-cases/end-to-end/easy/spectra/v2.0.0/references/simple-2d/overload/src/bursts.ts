@@ -6,21 +6,16 @@
 // what plays it, so a burst costs nothing but arithmetic and runs in a host with no
 // canvas at all.
 //
-// Each burst is seeded from the game's own generator, so successive bursts in a run
-// scatter differently while a replay from the same seed reproduces the run exactly.
+// Each burst scatters at random, so successive bursts in a run scatter differently
+// while the flash, the ring and the two-band sparks read the same.
 
 import { BURST_DURATION, MAX_BURSTS } from "./constants";
 import { ParticleSimulator } from "@clockwyrks/particle-runtime";
-import { drawSeed, takeId, type Sim } from "./sim";
+import { randomWord } from "./random";
+import { takeId, type Sim } from "./sim";
 
-/**
- * Start one burst at `(x, y)`, played at `size`.
- *
- * The seed is drawn even where the burst is refused by the cap, so what the
- * generator has produced does not depend on how full the roster was.
- */
+/** Start one burst at `(x, y)`, played at `size`. */
 export function addBurst(sim: Sim, x: number, y: number, size: number): void {
-  const seed = drawSeed(sim);
   if (sim.art.burst === null) return;
   if (sim.bursts.length >= MAX_BURSTS) return;
   sim.bursts.push({
@@ -29,7 +24,7 @@ export function addBurst(sim: Sim, x: number, y: number, size: number): void {
     y,
     size,
     elapsed: 0,
-    sim: new ParticleSimulator(sim.art.burst, { seed }),
+    sim: new ParticleSimulator(sim.art.burst, { seed: randomWord() }),
   });
 }
 

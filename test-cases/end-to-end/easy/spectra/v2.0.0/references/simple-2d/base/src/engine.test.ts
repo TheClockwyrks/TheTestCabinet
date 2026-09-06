@@ -465,27 +465,6 @@ describe("the debug surface", () => {
     expect(snap.simTime).toBe(0);
   });
 
-  it("seeds the wave's whole layout from reset", async () => {
-    /** The stage-1 wave `reset({ seed })` lays out: every kind, slot and band. */
-    const laidOut = async (seed: number): Promise<string[]> => {
-      h.pose((s, d) => d.reset(s, { seed }));
-      h.pose((s, d) => d.setScreen(s, "stageIntro"));
-      h.pose((s, d) => d.setPhaseTimer(s, 0.01));
-      await h.frames(2);
-      return h
-        .snapshot()
-        .drones.map(
-          (drone) =>
-            `${drone.kind}@${drone.slotX},${drone.slotY}:${drone.band}`,
-        );
-    };
-
-    const seven = await laidOut(7);
-    expect(seven.length).toBeGreaterThan(8);
-    expect(await laidOut(7)).toEqual(seven);
-    expect(await laidOut(8)).not.toEqual(seven);
-  });
-
   it("gives every entity a distinct id and appends what it adds", () => {
     startPosed();
     const first = addDrone("shard", 300, 200);

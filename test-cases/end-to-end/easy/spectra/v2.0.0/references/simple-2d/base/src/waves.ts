@@ -15,12 +15,11 @@
 // both bands as the bulk of it; a later stage widens the block, deepens it, and
 // leans further on Fluxes and Prisms.
 //
-// WHICH SLOT OF THAT RECTANGLE HOLDS WHICH KIND IS DRAWN FROM THE GAME'S OWN
-// GENERATOR, as `specs/simulation.md` requires of the wave's layout: the columns
-// the Prisms anchor, the slots the Fluxes take and the phase of the Shards'
-// two-band checkerboard are all drawn. The rectangle itself is not, so the block
-// stays mirror-symmetric and deliberate however the draw falls, and a run
-// replayed from one seed lays out exactly the same wave.
+// WHICH SLOT OF THAT RECTANGLE HOLDS WHICH KIND IS DRAWN AT RANDOM, which
+// `specs/swarm.md` leaves to the build: the columns the Prisms anchor, the slots
+// the Fluxes take and the phase of the Shards' two-band checkerboard are all
+// drawn. The rectangle itself is not, so the block stays mirror-symmetric and
+// deliberate however the draw falls.
 //
 // A CHALLENGE STAGE is not a wave at all. Its five groups of eight fly in from
 // alternate sides as a line abreast — every drone of a group crossing into the
@@ -111,16 +110,12 @@ function rows(stage: number): number[] {
 
 /**
  * Take `count` entries of `pool` at random, without repetition.
- *
- * The draws run off the game's own generator, so a wave laid out after
- * `reset({ seed })` is the same wave every time and two seeds lay out two
- * different ones.
  */
-function drawDistinct<T>(sim: Sim, pool: readonly T[], count: number): T[] {
+function drawDistinct<T>(pool: readonly T[], count: number): T[] {
   const rest = [...pool];
   const taken: T[] = [];
   while (taken.length < count && rest.length > 0) {
-    taken.push(...rest.splice(randomIndex(sim, rest.length), 1));
+    taken.push(...rest.splice(randomIndex(rest.length), 1));
   }
   return taken;
 }
@@ -136,7 +131,7 @@ function prismColumns(sim: Sim, filled: readonly number[]): number[] {
   const wanted = wavePrisms(sim.stage);
   const interior = filled.slice(1, -1);
   const chosen: number[] = [];
-  for (const col of drawDistinct(sim, interior, interior.length)) {
+  for (const col of drawDistinct(interior, interior.length)) {
     if (chosen.length >= wanted) break;
     if (chosen.every((other) => Math.abs(other - col) >= 3)) chosen.push(col);
   }
@@ -161,7 +156,7 @@ function fluxSlots(sim: Sim, filled: readonly number[]): Slot[] {
     if (row === 0) continue;
     for (const col of filled) candidates.push({ col, row });
   }
-  return drawDistinct(sim, candidates, waveFluxes(sim.stage));
+  return drawDistinct(candidates, waveFluxes(sim.stage));
 }
 
 /**
@@ -178,7 +173,7 @@ function fluxSlots(sim: Sim, filled: readonly number[]): Slot[] {
 function standardPlacements(sim: Sim): Placement[] {
   const stage = sim.stage;
   const filled = columns(stage);
-  const phase = randomIndex(sim, 2);
+  const phase = randomIndex(2);
   const prisms = prismColumns(sim, filled);
   const fluxes = fluxSlots(sim, filled);
 
@@ -350,7 +345,7 @@ export function buildWave(sim: Sim): void {
   // do not shimmer in lockstep and a player cannot learn one rhythm for good.
   for (const drone of sim.drones) {
     if (drone.kind !== "flux") continue;
-    drone.bandClock = randomBetween(sim, 0, fluxWindow(sim.stage));
+    drone.bandClock = randomBetween(0, fluxWindow(sim.stage));
   }
 
   sim.entryClock = 0;

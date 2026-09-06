@@ -21,7 +21,7 @@ import {
 import { opposite, shimmering } from "./bands";
 import { addEnemyBulletTo, addFannedEnemyBulletTo } from "./bullets";
 import { addDroneTo, droneHalf, setDronePhase } from "./drones";
-import { random } from "./rng";
+import { random } from "./random";
 import type { FrameCues } from "./audio";
 import type { DroneState, SpectraState } from "./game";
 
@@ -75,7 +75,7 @@ function overloadPrism(state: SpectraState, drone: DroneState): void {
       drone.x + side * ESCORT_OFFSET,
       drone.y,
     );
-    escort.band = random(state) < 0.5 ? "cyan" : "magenta";
+    escort.band = random() < 0.5 ? "cyan" : "magenta";
     escort.phase = "entering";
     escort.slotX = drone.slotX + side * SLOT_DX;
     escort.slotY = drone.slotY;

@@ -32,7 +32,6 @@
 import { droneEffectiveBand, bulletEffectiveBand } from "./bands";
 import { burstParticles } from "./bursts";
 import {
-  DEFAULT_SEED,
   OVERLOAD_AT,
   RESONANCE_MAX,
   SPECTRA_DEBUG_VERSION,
@@ -176,7 +175,7 @@ export interface SpectraDebugApi {
   advance(seconds: number, frames?: number): void;
 
   // The core.
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): SpectraSnapshot;
   menuItemRect(index: number): MenuRect | null;
 
@@ -357,13 +356,12 @@ export function createDebugApi(
     },
 
     /**
-     * Restore every declared field to its title-screen value and reseed the game's
-     * randomness.
+     * Restore every declared field to its title-screen value.
      *
      * It does not touch the clock, and it leaves `muted` exactly as it stands.
      */
-    reset(options) {
-      resetState(state, options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(state);
     },
 
     snapshot() {

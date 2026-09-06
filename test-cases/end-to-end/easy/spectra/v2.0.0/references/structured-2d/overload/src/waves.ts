@@ -34,23 +34,28 @@ import {
 } from "./constants";
 import { fluxWindowAt } from "./bands";
 import { addDroneTo } from "./drones";
-import { random, randomInt, randomRange } from "./rng";
+import { random, randomInt, randomRange } from "./random";
 import { CHALLENGE_MARGIN, CHALLENGE_ROW0, CHALLENGE_ROW_GAP } from "./swarm";
 import type { Band, DroneKind, SpectraState } from "./game";
 
 /** How far above `FIELD_TOP` the leader of an entry group starts. */
 const ENTRY_LEAD = 60;
-/** How far behind the leader each later drone of the same group starts. */
-const ENTRY_STACK = 17;
+/**
+ * How far behind the leader each later drone of the same group starts.
+ *
+ * Ten, so the last of a nine-wide row starts inside `ENTER_SPEED` of the field's
+ * top even with the entrance swerve pulling its heading toward straight down,
+ * and every drone crosses into the field within a second of its release.
+ */
+const ENTRY_STACK = 10;
 /** How far outside the formation's centre a group comes down. */
 const ENTRY_SIDE_X = 320;
 
 /**
  * The row patterns a wave's block is cut from. Every entry is odd and centred, so
  * a row is mirror-symmetric about `FORM_CENTER_X` by construction, and which
- * pattern a wave takes is drawn from the game's own generator — so a run replayed
- * from one seed builds the same block and a run from another builds a different
- * one.
+ * pattern a wave takes is drawn at random, which `specs/swarm.md` leaves to the
+ * build.
  */
 const ROW_PATTERNS: readonly (readonly number[])[] = [
   [5, 7, 9, 9, 7],
@@ -117,15 +122,14 @@ export interface WaveEntry {
  * Draw the wave for the current stage: its block, its Prisms, its Fluxes, the
  * escort either side of its anchor Prism, and the band every Shard carries.
  *
- * Every choice comes off the state's own generator, and the band of a mirror pair
- * is drawn once and mirrored to its opposite, so a formation always holds both
- * bands however the draw fell.
+ * Every choice is a random draw, and the band of a mirror pair is drawn once and
+ * mirrored to its opposite, so a formation always holds both bands however the
+ * draw fell.
  */
 export function composition(state: SpectraState): WaveEntry[] {
   const stage = state.stage;
   const pattern =
-    ROW_PATTERNS[randomInt(state, 0, ROW_PATTERNS.length - 1)] ??
-    ROW_PATTERNS[0];
+    ROW_PATTERNS[randomInt(0, ROW_PATTERNS.length - 1)] ?? ROW_PATTERNS[0];
   const slots = layout(stage, pattern);
   const kinds = new Map<Slot, DroneKind>();
   const bands = new Map<Slot, Band>();
@@ -153,7 +157,7 @@ export function composition(state: SpectraState): WaveEntry[] {
           (slot) =>
             slot.row === anchor.row && Math.abs(slot.col - anchor.col) === 1,
         );
-  const escortLeadsCyan = random(state) < 0.5;
+  const escortLeadsCyan = random() < 0.5;
   escorts.forEach((slot, index) => {
     kinds.set(slot, "shard");
     const cyan = index === 0 ? escortLeadsCyan : !escortLeadsCyan;
@@ -167,7 +171,7 @@ export function composition(state: SpectraState): WaveEntry[] {
     // A Flux is drawn from the slots nearest the centre of the block, so the
     // oscillators sit inside it rather than on its rim.
     const reach = Math.min(open.length, wanted + 3);
-    const [slot] = open.splice(randomInt(state, 0, reach - 1), 1);
+    const [slot] = open.splice(randomInt(0, reach - 1), 1);
     if (slot !== undefined) kinds.set(slot, "flux");
     placed += 1;
   }
@@ -179,7 +183,7 @@ export function composition(state: SpectraState): WaveEntry[] {
       (other) =>
         other.row === slot.row && other.col === FORM_COLS - 1 - slot.col,
     );
-    const cyan = random(state) < 0.5;
+    const cyan = random() < 0.5;
     bands.set(slot, cyan ? "cyan" : "magenta");
     if (mirror !== undefined && mirror !== slot && !bands.has(mirror)) {
       bands.set(mirror, cyan ? "magenta" : "cyan");
@@ -221,10 +225,10 @@ function buildStandardWave(state: SpectraState): void {
     drone.slotX = slotX(slot.col);
     drone.slotY = slotY(slot.row);
     drone.entryGroup = slot.row;
-    // A Flux's starting phase inside its band window is drawn from the game's
-    // own generator, so a wave's Fluxes are not all on the same beat.
+    // A Flux's starting clock is drawn uniformly over its band window
+    // (`specs/drones.md`), so a wave's Fluxes are not all on the same beat.
     if (entry.kind === "flux") {
-      drone.bandClock = randomRange(state, 0, fluxWindowAt(state.stage));
+      drone.bandClock = randomRange(0, fluxWindowAt(state.stage));
     }
   }
 }

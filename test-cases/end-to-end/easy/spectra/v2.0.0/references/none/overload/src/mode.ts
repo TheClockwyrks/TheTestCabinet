@@ -29,7 +29,7 @@ import {
 import { addDrone, addEnemyBullet, addFannedEnemyBullet } from "./entities";
 import { launchDive, returnPath } from "./swarm";
 import { shimmering } from "./drones";
-import { nextFloat } from "./rng";
+import { nextFloat } from "./random";
 import type { CueSink } from "./audio";
 import type { Band, Drone, SpectraState } from "./types";
 
@@ -118,7 +118,7 @@ function burstBothBands(
 /** One Shard beside `parent`, flying in to a slot of its own. */
 function addEscort(state: SpectraState, parent: Drone, index: number): void {
   const side = index % 2 === 0 ? 1 : -1;
-  const band: Band = nextFloat(state) < 0.5 ? "cyan" : "magenta";
+  const band: Band = nextFloat() < 0.5 ? "cyan" : "magenta";
   const x = parent.x + side * SLOT_DX * 0.7;
   const y = parent.y;
   const targetX = parent.slotX + side * SLOT_DX;

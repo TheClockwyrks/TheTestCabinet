@@ -164,7 +164,6 @@ export interface SpectraState {
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 
   /**
    * The seeded art, loaded once by `initialize` and never changed after. It

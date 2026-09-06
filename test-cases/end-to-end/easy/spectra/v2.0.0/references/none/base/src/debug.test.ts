@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  DEFAULT_SEED,
   DIVE_FIRST_DELAY,
   ENEMY_BULLET_SPEED,
   PLAYER_BULLET_SPEED,
@@ -219,24 +218,6 @@ describe("reset", () => {
     d.reset();
     h.advance(1 / 60, 1);
     expect(d.snapshot().muted).toBe(true);
-  });
-
-  it("seeds the game's randomness, defaulting to DEFAULT_SEED", () => {
-    const wave = (seed?: number): string => {
-      d.reset(seed === undefined ? undefined : { seed });
-      d.setScreen("stageIntro");
-      d.setPhaseTimer(0.001);
-      d.setWaveEntry(false);
-      d.setDiveLaunching(false);
-      h.advance(0.002, 1);
-      return JSON.stringify(
-        d.snapshot().drones.map((entry) => [entry.kind, entry.bandClock]),
-      );
-    };
-    const bare = wave();
-    expect(wave(DEFAULT_SEED)).toBe(bare);
-    expect(wave(12345)).not.toBe(bare);
-    expect(wave(12345)).toBe(wave(12345));
   });
 });
 

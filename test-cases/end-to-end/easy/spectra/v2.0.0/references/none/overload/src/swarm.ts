@@ -31,7 +31,7 @@ import {
   droneSpeedScale,
   swayOffset,
 } from "./constants";
-import { nextRange, pick } from "./rng";
+import { nextRange, pick } from "./random";
 import { smoothPath, type Path, type Vec2 } from "./paths";
 import type { Drone, SpectraState } from "./types";
 
@@ -210,7 +210,7 @@ export function enterPhase(drone: Drone, phase: Drone["phase"]): void {
 export function beginDive(state: SpectraState, drone: Drone): void {
   // The swing is away from the ship, so the run opens wide before it closes.
   const away = drone.x <= state.ship.x ? -1 : 1;
-  const swing = away * nextRange(state, 50, 110);
+  const swing = away * nextRange(50, 110);
   drone.pathDist = 0;
   drone.path = divePath({ x: drone.x, y: drone.y }, state.ship.x, swing);
 }
@@ -260,7 +260,7 @@ export function advanceDiveClock(state: SpectraState, h: number): void {
   const standing = state.drones.filter(
     (drone) => drone.phase === "formation" && !drone.challenge,
   );
-  const chosen = pick(state, standing);
+  const chosen = pick(standing);
   // With nothing resting in the formation there is nothing to launch, and the
   // clock stays where it is so the next drone to settle is taken at once.
   if (chosen === undefined) {
@@ -270,7 +270,7 @@ export function advanceDiveClock(state: SpectraState, h: number): void {
   launchDive(state, chosen);
   state.diveClock = 0;
   state.nextDiveGap =
-    nextRange(state, DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(state.stage);
+    nextRange(DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(state.stage);
 }
 
 /** Whether `drone`'s centre has just crossed the fire line travelling downward. */

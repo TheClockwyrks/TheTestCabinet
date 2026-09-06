@@ -6,13 +6,12 @@
 // everything else on the field advances by, and `src/render.ts` draws the
 // particles the simulation reports.
 //
-// Each burst is seeded from the game's own generator, which is what makes two
-// bursts in one run scatter differently while a replay from the same seed
-// reproduces both exactly.
+// Each burst scatters at random, so two bursts in one run scatter differently
+// while the flash, the ring and the two-band sparks read the same.
 
 import { BURST_DURATION, MAX_BURSTS } from "./constants";
 import { ParticleSimulator } from "@clockwyrks/particle-runtime";
-import { randomInt } from "./rng";
+import { randomInt } from "./random";
 import { burstSystem } from "./sprites";
 import type { BurstState, SpectraState } from "./game";
 
@@ -28,7 +27,7 @@ export function startBurst(
   y: number,
   size: number,
 ): BurstState {
-  const seed = randomInt(state, 1, 0x7fffffff);
+  const seed = randomInt(1, 0x7fffffff);
   const burst: BurstState = {
     id: state.nextId,
     x,

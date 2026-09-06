@@ -14,13 +14,12 @@
 //
 // It stands on `src/swarm.ts` for how a drone moves and fires, `src/bands.ts` for
 // the one effective-band definition, `src/waves.ts` for what a wave is made of,
-// and `src/bursts.ts` for the seeded pop. It draws nothing: `src/render.ts` does,
+// and `src/bursts.ts` for the pop. It draws nothing: `src/render.ts` does,
 // from the state this file leaves behind, so what a frame decides never depends
 // on what was drawn.
 
 import {
   CHALLENGE_TOTAL,
-  DEFAULT_SEED,
   DISCHARGE_MAX_R,
   DISCHARGE_TIME,
   DIVE_FIRST_DELAY,
@@ -78,7 +77,6 @@ import { registerDiagnostics } from "./diagnostics";
 import { highlightedItem, itemAt, menuItems, menuOf, type Menu } from "./menus";
 import type { PointerPoint } from "./pointer";
 import { renderSpectra } from "./render";
-import { seedRng } from "./rng";
 import { buildStars } from "./starfield";
 import {
   releaseDueGroups,
@@ -147,22 +145,21 @@ export function createState(art: Art): SpectraState {
     waveRemoved: false,
     simTime: 0,
     muted: false,
-    rngState: seedRng(DEFAULT_SEED),
     nextId: 1,
   };
   return state;
 }
 
 /**
- * Restore every declared field of the state to its title-screen value, and
- * reseed the game's randomness (specs/instrumentation.md).
+ * Restore every declared field of the state to its title-screen value
+ * (specs/instrumentation.md).
  *
  * `muted` is deliberately untouched: muting is a player preference the runtime
  * owns, and a reset is not a reason to start making noise again. The clock is
  * untouched too — whether the game is stepping itself is not a field of the
  * state, and `setAutoStep` is how that is said.
  */
-export function resetState(state: SpectraState, seed = DEFAULT_SEED): void {
+export function resetState(state: SpectraState): void {
   state.screen = "title";
   state.phase = "live";
   state.phaseTimer = 0;
@@ -190,11 +187,9 @@ export function resetState(state: SpectraState, seed = DEFAULT_SEED): void {
   state.stageClearing = true;
   freshWaveClocks(state);
   state.simTime = 0;
-  state.rngState = seedRng(seed);
   // The id counter is declared state too, and its title-screen value is the
-  // first id. Every roster is empty by now, so no live entity's id is reused —
-  // and two seeded replays of the same scenario come out identical down to the
-  // ids they report.
+  // first id. Every roster is empty by now, so no live entity's id is reused,
+  // and the same scenario posed after two resets reports the same ids.
   state.nextId = 1;
   state.cues.clear();
 }

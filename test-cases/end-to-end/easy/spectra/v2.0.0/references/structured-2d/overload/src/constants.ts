@@ -303,9 +303,6 @@ export const BAND_LABELS = { cyan: "CYAN", magenta: "MAGENTA" } as const;
 /** The version the debug surface reports as `version`. */
 export const SPECTRA_DEBUG_VERSION = 1;
 
-/** The seed a run uses when `reset()` is called without one. */
-export const DEFAULT_SEED = 1;
-
 /** The key that toggles the debug overlay. */
 export const OVERLAY_KEY = "Backquote";
 

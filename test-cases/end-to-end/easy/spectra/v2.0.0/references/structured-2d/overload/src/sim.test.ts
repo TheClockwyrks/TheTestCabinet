@@ -19,9 +19,8 @@ import {
   LANE_CENTER,
   MUZZLE_Y,
 } from "./ship";
+import { addEnemyBulletTo, addPlayerBulletTo } from "./bullets";
 import { liveState, poseDrone, run, STEP } from "./fixtures";
-import { buildWave } from "./waves";
-import { seedRandom } from "./rng";
 
 describe("the sub-step rule", () => {
   it("divides an update into whole steps of at most the ceiling", () => {
@@ -33,13 +32,19 @@ describe("the sub-step rule", () => {
   });
 
   it("reaches the same state however a second was divided into frames", () => {
+    // Nothing on this field is drawn at random: a Flux runs its clock, a Shard
+    // rides the sway, and two bullets fly clear of everything.
     const shot = (frames: number) => {
       const state = liveState();
-      seedRandom(state, 11);
       state.stage = 1;
-      state.waveEntry = true;
-      state.diveLaunching = true;
-      buildWave(state);
+      poseDrone(state, "flux", 500, 180, {
+        bandClock: 1.5,
+        oscillation: true,
+        travel: true,
+      });
+      poseDrone(state, "shard", 700, 260, { travel: true });
+      addPlayerBulletTo(state, 300, 640, "cyan");
+      addEnemyBulletTo(state, 900, 100, "magenta");
       const cues = noCues();
       for (let frame = 0; frame < frames; frame += 1) {
         advanceGame(state, 1 / frames, cues);
@@ -55,7 +60,6 @@ describe("the sub-step rule", () => {
           drone.bandClock,
         ]),
         bullets: state.bullets.map((bullet) => [bullet.id, bullet.x, bullet.y]),
-        rngState: state.rngState,
       });
     };
     const one = shot(1);

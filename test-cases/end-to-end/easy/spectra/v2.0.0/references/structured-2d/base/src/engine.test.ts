@@ -207,30 +207,6 @@ describe("the field's actors", () => {
 });
 
 describe("the frames the engine runs", () => {
-  it("reaches the same state from the same seed and the same frames", async () => {
-    const run = async (harness: Harness): Promise<string> => {
-      harness.debug.reset({ seed: 4 });
-      harness.debug.setScreen("stageIntro");
-      harness.debug.setPhaseTimer(0.1);
-      await harness.seconds(3);
-      const snapshot = harness.debug.snapshot();
-      return JSON.stringify({
-        drones: snapshot.drones,
-        bullets: snapshot.bullets,
-        score: snapshot.score,
-        stage: snapshot.stage,
-      });
-    };
-
-    const first = await run(h);
-    const other = await createHarness();
-    try {
-      expect(await run(other)).toBe(first);
-    } finally {
-      other.dispose();
-    }
-  });
-
   it("plays a whole wave without throwing", async () => {
     h.debug.reset();
     h.debug.setScreen("stageIntro");

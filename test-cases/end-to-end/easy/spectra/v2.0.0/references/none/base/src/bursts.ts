@@ -7,10 +7,9 @@
 // leaves the drawing here, where it can be composited additively straight over
 // the field.
 //
-// EACH BURST IS SEEDED FROM THE GAME'S OWN GENERATOR (specs/assets.md), so
-// successive bursts in a run scatter differently while the flash, the ring and
-// the two-band sparks read the same — and a replay from the same seed reproduces
-// the same sequence.
+// EACH BURST SCATTERS AT RANDOM (specs/assets.md), so successive bursts in a run
+// scatter differently while the flash, the ring and the two-band sparks read the
+// same.
 //
 // THE SIMULATION IS STEPPED INSIDE THE SUB-STEP LOOP, by the sub-step's own `h`.
 // It is stepped by game time like everything else, which is what keeps
@@ -19,7 +18,7 @@
 import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 
 import { BURST_DURATION, BURST_FIELD, MAX_BURSTS } from "./constants";
-import { Rng } from "./rng";
+import { word } from "./random";
 import type { Burst, SpectraState } from "./types";
 
 /**
@@ -46,16 +45,13 @@ export function startBurst(
   y: number,
   size: number,
 ): Burst {
-  const rng = new Rng(state.rngState);
-  const seed = rng.word();
-  state.rngState = rng.state;
   const burst: Burst = {
     id: state.nextId++,
     x,
     y,
     size,
     elapsed: 0,
-    sim: new ParticleSimulator(state.art.burst, { seed }),
+    sim: new ParticleSimulator(state.art.burst, { seed: word() }),
   };
   state.bursts.push(burst);
   while (state.bursts.length > MAX_BURSTS) state.bursts.shift();

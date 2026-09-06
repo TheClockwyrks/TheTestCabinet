@@ -419,7 +419,7 @@ export function stepSwarm(sim: Sim, h: number, events: FrameEvents): void {
  * The wave's own dive launching (`specs/swarm.md`).
  *
  * The clock advances only while dive launching runs, and a launch takes one
- * drone resting in the formation, chosen from the game's own generator. The
+ * drone resting in the formation, chosen uniformly at random. The
  * first launch of a wave waits `DIVE_FIRST_DELAY`; each later one waits a fresh
  * draw between `DIVE_GAP_MIN` and `DIVE_GAP_MAX`, scaled for the stage.
  */
@@ -429,10 +429,10 @@ export function stepDiveLaunching(sim: Sim, h: number): void {
   if (sim.diveClock < sim.diveTarget) return;
   const resting = sim.drones.filter((drone) => drone.phase === "formation");
   if (resting.length === 0) return;
-  const chosen = resting[randomIndex(sim, resting.length)];
+  const chosen = resting[randomIndex(resting.length)];
   if (chosen === undefined) return;
   enterPhase(chosen, "diving");
   sim.diveClock = 0;
   sim.diveTarget =
-    randomBetween(sim, DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(sim.stage);
+    randomBetween(DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(sim.stage);
 }

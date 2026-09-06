@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe("a run left to itself", () => {
   it("plays on until the swarm ends it", async () => {
-    h.pose((s, d) => d.reset(s, { seed: 21 }));
+    h.pose((s, d) => d.reset(s));
     h.tap("Enter");
     h.hold("Space");
     let ended = false;
@@ -41,7 +41,7 @@ describe("a run left to itself", () => {
   // A minute of game time, sampled twice a second, is long enough to catch a
   // roster that grows without bound and slow enough to need its own budget.
   it("keeps its field bounded while nothing can touch the ship", async () => {
-    h.pose((s, d) => d.reset(s, { seed: 22 }));
+    h.pose((s, d) => d.reset(s));
     h.pose((s, d) => d.setShipContact(s, false));
     h.tap("Enter");
     h.hold("Space");
@@ -83,7 +83,7 @@ describe("a run left to itself", () => {
   }, 30000);
 
   it("carries a challenge stage through to the stage after it", async () => {
-    h.pose((s, d) => d.reset(s, { seed: 23 }));
+    h.pose((s, d) => d.reset(s));
     h.pose((s, d) => d.setShipContact(s, false));
     await startStage(h, 3);
     expect(h.snapshot().isChallenge).toBe(true);

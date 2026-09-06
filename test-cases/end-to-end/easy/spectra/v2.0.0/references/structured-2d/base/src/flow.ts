@@ -8,9 +8,9 @@
 //
 // `resetToTitle` writes every declared field of the live state back to its
 // title-screen value — the same value each field's initializer on `SpectraState`
-// carries — which is what makes the debug surface's `reset` enough to replay a
-// scenario exactly. `muted` is left exactly as it stands, because muting is a
-// player preference the runtime owns.
+// carries — which is what makes the debug surface's `reset` enough to pose a
+// scenario from a clean field. `muted` is left exactly as it stands, because
+// muting is a player preference the runtime owns.
 
 import {
   DIVE_FIRST_DELAY,
@@ -28,7 +28,6 @@ import {
 } from "./constants";
 import { LANE_CENTER } from "./ship";
 import { award } from "./scoring";
-import { seedState } from "./rng";
 import { buildWave } from "./waves";
 import type { FrameEvents } from "./events";
 import type { Screen, SpectraState } from "./game";
@@ -48,13 +47,12 @@ export function menuLength(screen: Screen): number {
 }
 
 /**
- * Restore every declared field to its title-screen value, seeding the game's
- * randomness from `seed`.
+ * Restore every declared field to its title-screen value.
  *
  * The declaration on `SpectraState` is the list, and this writes the same values
  * over a state that has been played. `muted` is left alone.
  */
-export function resetToTitle(state: SpectraState, seed: number): void {
+export function resetToTitle(state: SpectraState): void {
   state.screen = "title";
   state.phase = "live";
   state.phaseTimer = 0;
@@ -92,16 +90,13 @@ export function resetToTitle(state: SpectraState, seed: number): void {
 
   state.nextId = 1;
   state.simTime = 0;
-  state.rngState = seedState(seed);
 }
 
 /**
  * Open a new run: stage 1, `START_LIVES` lives, a score of `0`, and its intro.
  *
- * The run's own figures go back to their opening values and nothing else does. A
- * new run does not re-seed the generator — seeding is what `reset` is for, so a
- * second run in one session draws on rather than replaying the first — and it
- * does not rewind the accumulated simulation time or the id counter.
+ * The run's own figures go back to their opening values and nothing else does: a
+ * new run does not rewind the accumulated simulation time or the id counter.
  */
 export function startRun(state: SpectraState): void {
   state.score = 0;

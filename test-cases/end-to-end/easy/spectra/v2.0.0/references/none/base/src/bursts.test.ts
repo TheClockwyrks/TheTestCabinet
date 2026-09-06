@@ -122,20 +122,6 @@ describe("the drone-burst", () => {
     expect(positions(first)).not.toBe(positions(second));
   });
 
-  it("reproduces the same scatter from the same seed", () => {
-    const play = (seed: number): string => {
-      const state = createState(stubArt());
-      state.rngState = seed;
-      const burst = startBurst(state, 0, 0, SHARD_SIZE);
-      stepBursts(state, 0.1);
-      return JSON.stringify(
-        burst.sim.capture().map((particle) => particle.position),
-      );
-    };
-    expect(play(4242)).toBe(play(4242));
-    expect(play(4242)).not.toBe(play(99));
-  });
-
   it("plays at most MAX_BURSTS at once", () => {
     const state = createState(stubArt());
     for (let i = 0; i < MAX_BURSTS + 12; i += 1) {

@@ -27,7 +27,6 @@ import {
   ACTIONS,
   BINDINGS,
   CUES,
-  DEFAULT_SEED,
   DIVE_FIRST_DELAY,
   FIELD_BOTTOM,
   FIELD_LEFT,
@@ -68,7 +67,7 @@ import type { Drone, SpectraState } from "./types";
 const BULLET_MARGIN = 40;
 
 /** The title-screen state, as a run has never been played. */
-export function freshState(seed = DEFAULT_SEED): SpectraState {
+export function freshState(): SpectraState {
   return {
     screen: "title",
     phase: "live",
@@ -102,7 +101,6 @@ export function freshState(seed = DEFAULT_SEED): SpectraState {
     waveOpen: false,
     simTime: 0,
     muted: false,
-    rngState: seed >>> 0,
     nextId: 1,
   };
 }
@@ -110,12 +108,12 @@ export function freshState(seed = DEFAULT_SEED): SpectraState {
 /**
  * Restore every declared field of `state` to its title-screen value, in place.
  *
- * What `reset(options)` does. `muted` is left exactly as it stands, because muting
+ * What `reset()` does. `muted` is left exactly as it stands, because muting
  * is a player preference the runtime owns, and the clock is untouched: `reset` is
  * about the game, not about who is stepping it.
  */
-export function resetState(state: SpectraState, seed = DEFAULT_SEED): void {
-  const fresh = freshState(seed);
+export function resetState(state: SpectraState): void {
+  const fresh = freshState();
   const muted = state.muted;
   Object.assign(state, fresh);
   state.muted = muted;

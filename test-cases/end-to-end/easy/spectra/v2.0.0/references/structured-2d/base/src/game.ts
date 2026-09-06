@@ -38,13 +38,7 @@ import type {
 import { syncField } from "./actors";
 import { defineCues, playCues } from "./audio";
 import { loadArt } from "./assets";
-import {
-  DEFAULT_SEED,
-  DIVE_FIRST_DELAY,
-  LEVELS,
-  START_LIVES,
-  TAGS,
-} from "./constants";
+import { DIVE_FIRST_DELAY, LEVELS, START_LIVES, TAGS } from "./constants";
 import { SpectraController } from "./controller";
 import { createDebugApi, type SpectraDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -193,7 +187,6 @@ export class SpectraState extends SpectraStateBase {
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 }
 
 /**

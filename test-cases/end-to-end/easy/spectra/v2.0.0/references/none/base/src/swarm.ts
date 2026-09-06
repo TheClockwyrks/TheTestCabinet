@@ -39,7 +39,7 @@ import {
 import { isShimmering } from "./bands";
 import { raise } from "./cues";
 import { smoothPath, type Vec2 } from "./paths";
-import { Rng } from "./rng";
+import { index, range, unit } from "./random";
 import type { Bullet, Drone, DronePhase, SpectraState } from "./types";
 
 /** How far past `FIELD_BOTTOM` a dive travels before it wraps through it. */
@@ -163,9 +163,7 @@ export function enterPhase(
       // inverts the field, which is the threat the kind exists for. The other two
       // mix a looping dive with one that runs off the bottom and wraps — and a
       // drone already low on the field has no room to loop.
-      const rng = new Rng(state.rngState);
-      const wrap = rng.unit() < 0.4;
-      state.rngState = rng.state;
+      const wrap = unit() < 0.4;
       const forced = drone.kind === "prism" || drone.y >= WRAP_FORCED_BELOW;
       drone.path =
         forced || wrap
@@ -225,11 +223,8 @@ export function runDiveLauncher(state: SpectraState, h: number): void {
     (drone) => drone.phase === "formation" && !drone.dead,
   );
   if (standing.length === 0) return;
-  const rng = new Rng(state.rngState);
-  const chosen = standing[rng.index(standing.length)];
-  state.diveGap =
-    rng.range(DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(state.stage);
-  state.rngState = rng.state;
+  const chosen = standing[index(standing.length)];
+  state.diveGap = range(DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(state.stage);
   if (chosen === undefined) return;
   state.diveClock = 0;
   enterPhase(state, chosen, "diving");

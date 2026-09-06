@@ -45,13 +45,8 @@ import {
 } from "./constants";
 import { droneHalf, opposite, shimmering } from "./bands";
 import { addEnemyBullet, PRISM_MUZZLE_SPREAD, muzzleY } from "./bullets";
-import {
-  drawInt,
-  drawRange,
-  type FrameEvents,
-  type MutDrone,
-  type Sim,
-} from "./sim";
+import { randomInt, randomRange } from "./random";
+import { type FrameEvents, type MutDrone, type Sim } from "./sim";
 
 /**
  * The entry group a drone carries when it arrived through the debug surface
@@ -391,9 +386,9 @@ export function launchDives(sim: Sim, h: number): void {
   if (sim.diveClock < sim.diveTarget) return;
   const resting = sim.drones.filter((drone) => drone.phase === "formation");
   if (resting.length === 0) return;
-  const pick = resting[drawInt(sim, 0, resting.length - 1)];
+  const pick = resting[randomInt(0, resting.length - 1)];
   if (pick !== undefined) enterDive(pick);
   sim.diveClock = 0;
   sim.diveTarget =
-    drawRange(sim, DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(sim.stage);
+    randomRange(DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(sim.stage);
 }

@@ -146,7 +146,7 @@ Every operation acts on the live world at the moment it is called, and every pos
 sets one field:
 
 ```ts
-engine.debug.reset({ seed: 7 });
+engine.debug.reset();
 engine.debug.setWaveEntry(false);
 engine.debug.setDiveLaunching(false);
 engine.debug.setShipContact(false);
@@ -159,7 +159,7 @@ await engine.advance(2);
 const { drones, score } = engine.debug.snapshot();
 ```
 
-The operations are `reset` (seedable) and `snapshot`; the screen and run poses;
+The operations are `reset` and `snapshot`; the screen and run poses;
 the three **world gates** `setWaveEntry`, `setDiveLaunching` and `setShipContact`,
 each holding one faculty of the wave itself so a scenario can pose a field holding
 only what its requirement concerns, beside the wave's own `setDiveClock`; the ship
@@ -269,9 +269,8 @@ src/
   bursts.ts           The seeded particle system, played per destroyed drone
   flow.ts             The seven screens, the run's beats, and the reset
   scoring.ts          Every figure the run is paid, and the one extra life
-  entities.ts         Ids, the generator's draws, and the two lookups
+  entities.ts         Ids, the random draws, and the two lookups
   events.ts           What a frame produced beside the state it advanced
-  rng.ts              The seeded generator, over the state's own field
   input.ts            The registered actions, the layout check, and a frame's
                       resolved input
   audio.ts            The nine engine cues, played once per event per frame

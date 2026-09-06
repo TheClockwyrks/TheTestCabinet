@@ -310,7 +310,7 @@ describe("the cues", () => {
 describe("a whole stage", () => {
   it("flies its wave in, assembles it, and clears when the last drone dies", async () => {
     const h = await createHarness();
-    h.debug.reset({ seed: 3 });
+    h.debug.reset();
     await h.tap("Enter");
     await h.seconds(STAGE_INTRO_HOLD + 0.1);
     expect(h.debug.snapshot().screen).toBe("inWave");

@@ -29,7 +29,7 @@ let h: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
-  h.pose((s, d) => d.reset(s, { seed: 6 }));
+  h.pose((s, d) => d.reset(s));
   startPosed(h);
   h.pose((s, d) => d.setShipContact(s, true));
 });

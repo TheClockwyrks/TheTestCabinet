@@ -3,7 +3,6 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_SEED,
   ENEMY_BULLET_SPEED,
   PLAYER_BULLET_SPEED,
   RESONANCE_MAX,
@@ -448,20 +447,6 @@ describe("the reset", () => {
     expect(s.diveLaunching).toBe(true);
     expect(s.stageClearing).toBe(true);
     expect(s.ship.contact).toBe(true);
-  });
-
-  it("seeds the game's randomness, so a replay reproduces a wave exactly", async () => {
-    const wave = async (seed: number): Promise<string> => {
-      h.debug.reset({ seed });
-      h.debug.setScreen("stageIntro");
-      h.debug.setPhaseTimer(0.05);
-      await h.seconds(1);
-      return JSON.stringify(h.debug.snapshot().drones);
-    };
-
-    const first = await wave(DEFAULT_SEED);
-    expect(await wave(DEFAULT_SEED)).toBe(first);
-    expect(await wave(DEFAULT_SEED + 1)).not.toBe(first);
   });
 
   it("leaves muting exactly as it stands", async () => {

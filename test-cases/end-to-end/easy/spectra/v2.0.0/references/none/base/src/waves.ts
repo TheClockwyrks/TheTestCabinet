@@ -17,8 +17,8 @@
 // non-escort drones are grouped in is derived from what is left rather than
 // fixed: a full grid would otherwise want more groups than a wave may have.
 //
-// Every random choice — the layout's Flux phases among them — is drawn from the
-// state's own generator, so the same seed builds the same wave.
+// A Flux's starting band clock is the one random draw in a wave, as
+// `specs/drones.md` states; the layout itself follows from the stage alone.
 
 import {
   CHALLENGE_GROUPS,
@@ -34,7 +34,7 @@ import {
   type Band,
 } from "./constants";
 import { smoothPath, type Vec2 } from "./paths";
-import { Rng } from "./rng";
+import { unit } from "./random";
 import type { Drone, DroneKind, SpectraState } from "./types";
 
 /** The most entry groups a wave may release its drones in. */
@@ -274,7 +274,6 @@ function makeDrone(
 /** The formation a standard stage sends in, every drone already on the roster. */
 export function buildStandardWave(state: SpectraState): Drone[] {
   const groups = groupLayout(buildLayout(state.stage));
-  const rng = new Rng(state.rngState);
   const window = fluxWindow(state.stage);
   const drones: Drone[] = [];
   const centre = (FORM_COLS - 1) / 2;
@@ -297,13 +296,12 @@ export function buildStandardWave(state: SpectraState): Drone[] {
         index,
       );
       drone.path = path;
-      // A Flux's starting phase is drawn, so a wave's Fluxes are not in lockstep.
-      if (slot.kind === "flux") drone.bandClock = rng.unit() * window;
+      // A Flux's starting clock is drawn, so a wave's Fluxes are not in lockstep.
+      if (slot.kind === "flux") drone.bandClock = unit() * window;
       drones.push(drone);
     }
   });
 
-  state.rngState = rng.state;
   return drones;
 }
 

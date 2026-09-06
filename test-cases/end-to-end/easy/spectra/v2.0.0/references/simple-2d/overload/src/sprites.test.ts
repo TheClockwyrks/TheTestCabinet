@@ -55,7 +55,7 @@ afterAll(() => {
 
 beforeEach(async () => {
   h = await createHarness();
-  h.pose((s, d) => d.reset(s, { seed: 12 }));
+  h.pose((s, d) => d.reset(s));
   startPosed(h);
 });
 
@@ -368,18 +368,25 @@ describe("the drone-burst", () => {
   });
 
   it("scatters differently from one burst to the next", async () => {
-    const capture = async (): Promise<[number, number, number, number]> => {
+    // Where each spark of the burst landed a tenth of a second in, read off the
+    // burst's own simulation rather than off the picture, so the reading is the
+    // scatter itself and not how two scatters happened to average.
+    const capture = async (): Promise<string> => {
       startPosed(h);
       poseDrone(h, "shard", 500, 300, { band: "cyan", phase: "formation" });
       await fireAt(h, 500, 300, "cyan");
       h.pose((s, d) => d.clearDrones(s));
       await h.advance(0.12);
       await draw();
-      return h.average(480, 280, 40, 40);
+      const burst = h.state.bursts[0];
+      expect(burst).toBeDefined();
+      return JSON.stringify(
+        burst?.sim.capture().map((particle) => particle.position) ?? [],
+      );
     };
     const first = await capture();
     const second = await capture();
-    expect(rgbDistance(first, second)).toBeGreaterThan(0.4);
+    expect(first).not.toBe(second);
   });
 
   it("caps how many play at once", async () => {

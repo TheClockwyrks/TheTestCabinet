@@ -177,8 +177,6 @@ export interface SpectraState {
   // The rest.
   simTime: number;
   muted: boolean;
-  /** The whole state of the seeded generator (specs/instrumentation.md). */
-  rngState: number;
   /** The next id a drone, bullet or burst will be handed. */
   nextId: number;
 }

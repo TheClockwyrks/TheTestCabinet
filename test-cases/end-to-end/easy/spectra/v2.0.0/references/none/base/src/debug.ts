@@ -19,7 +19,6 @@
 // which keys are down and owns the backtick key.
 
 import {
-  DEFAULT_SEED,
   ENEMY_BULLET_SPEED,
   RESONANCE_MAX,
   SHIP_X_MAX,
@@ -155,7 +154,7 @@ export interface SpectraSnapshot {
 export interface SpectraDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): SpectraSnapshot;
   menuItemRect(index: number): MenuRect | null;
 
@@ -249,15 +248,14 @@ export function createDebugApi(
     /* ---- The core ------------------------------------------------------- */
 
     /**
-     * Restore every declared field of the state to its title-screen value, and
-     * reseed the game's randomness.
+     * Restore every declared field of the state to its title-screen value.
      *
      * `muted` is left exactly as it stands, because muting is a player
      * preference the runtime owns. The clock is untouched too: whether the game
      * is stepping itself is not a field of the state.
      */
-    reset(options) {
-      resetState(state, options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(state);
     },
 
     /** A pure read of the state. It changes nothing. */

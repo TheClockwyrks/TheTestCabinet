@@ -94,17 +94,6 @@ describe("the burst roster", () => {
     expect(positions(0)).not.toBe(positions(1));
   });
 
-  it("reproduces the same scatter from the same seed", () => {
-    useBurstSystem(SYSTEM);
-    const shot = (): string => {
-      const state = freshState(7);
-      const burst = startBurst(state, 1, 400, 300, 28);
-      stepBursts(state, 0.1);
-      return JSON.stringify(captureBurst(burst).map((p) => p.position));
-    };
-    expect(shot()).toBe(shot());
-  });
-
   it("costs the pops and nothing else where no system could be loaded", () => {
     useBurstSystem(null);
     const state = freshState();

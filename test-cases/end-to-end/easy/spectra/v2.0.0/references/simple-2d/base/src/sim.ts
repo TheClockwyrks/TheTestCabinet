@@ -22,7 +22,7 @@
 // enforced at the one boundary where it matters: the state handed in, and the
 // state handed back.
 
-import { nextState, unit } from "./rng";
+import { unit } from "./random";
 import type { Art } from "./assets";
 import type { CueName } from "./constants";
 import type {
@@ -141,7 +141,6 @@ export interface Sim {
   nextId: number;
   simTime: number;
   muted: boolean;
-  rngState: number;
 
   art: Art;
 }
@@ -224,7 +223,6 @@ export function toSim(state: DeepReadonly<SpectraState>): Sim {
     nextId: state.nextId,
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
 
     // Loaded once and never written, so the art itself is shared.
     art: state.art as Art,
@@ -244,20 +242,19 @@ export function takeId(sim: Sim): number {
   return id;
 }
 
-/** One draw from the game's own generator, in `[0, 1)`. */
-export function random(sim: Sim): number {
-  sim.rngState = nextState(sim.rngState);
-  return unit(sim.rngState);
+/** One random draw, in `[0, 1)`. */
+export function random(): number {
+  return unit();
 }
 
 /** A draw from `[lo, hi)`. */
-export function randomBetween(sim: Sim, lo: number, hi: number): number {
-  return lo + (hi - lo) * random(sim);
+export function randomBetween(lo: number, hi: number): number {
+  return lo + (hi - lo) * random();
 }
 
 /** A whole draw from `[0, count)`. */
-export function randomIndex(sim: Sim, count: number): number {
-  return Math.min(count - 1, Math.floor(random(sim) * count));
+export function randomIndex(count: number): number {
+  return Math.min(count - 1, Math.floor(random() * count));
 }
 
 /** The drone with that id, or `undefined`. */

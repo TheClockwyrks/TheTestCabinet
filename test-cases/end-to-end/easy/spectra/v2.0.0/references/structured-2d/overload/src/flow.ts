@@ -13,7 +13,6 @@
 import {
   CHALLENGE_GROUPS,
   CHALLENGE_TOTAL,
-  DEFAULT_SEED,
   ENTER_GROUP_GAP,
   DIVE_FIRST_DELAY,
   READY_HOLD,
@@ -27,7 +26,6 @@ import {
 import { LANE_CENTER } from "./ship";
 import { addScore } from "./scoring";
 import { buildWave } from "./waves";
-import { seedRandom } from "./rng";
 import type { FrameCues } from "./audio";
 import type { SpectraState } from "./game";
 
@@ -57,11 +55,10 @@ function freshShip(state: SpectraState): void {
 }
 
 /**
- * Restore every declared field to its title-screen value, and seed the game's
- * randomness. `muted` is left exactly as it stands, because muting is a player
- * preference the runtime owns.
+ * Restore every declared field to its title-screen value. `muted` is left exactly
+ * as it stands, because muting is a player preference the runtime owns.
  */
-export function resetState(state: SpectraState, seed = DEFAULT_SEED): void {
+export function resetState(state: SpectraState): void {
   state.screen = "title";
   state.phase = "live";
   state.phaseTimer = 0;
@@ -82,7 +79,6 @@ export function resetState(state: SpectraState, seed = DEFAULT_SEED): void {
   freshWaveClocks(state);
   state.nextId = 1;
   state.simTime = 0;
-  seedRandom(state, seed);
 }
 
 /**

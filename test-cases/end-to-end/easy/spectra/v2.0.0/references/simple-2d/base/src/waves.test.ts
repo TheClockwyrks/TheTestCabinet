@@ -15,10 +15,10 @@ import {
   FORM_ROWS,
   PRISM_ESCORTS,
   SLOT_DX,
+  fluxWindow,
   isChallengeStage,
 } from "./constants";
 import { bareOpeningState } from "./flow";
-import { seedState } from "./rng";
 import { toSim, type Sim } from "./sim";
 import {
   buildWave,
@@ -29,20 +29,15 @@ import {
   waveRows,
 } from "./waves";
 
-/** A wave built for `stage`, on a fresh state seeded with `seed`. */
-function wave(stage: number, seed = 1): Sim {
+/** How many times a rule is checked over freshly drawn waves. */
+const DRAWS = 7;
+
+/** A wave built for `stage`, on a fresh state. */
+function wave(stage: number): Sim {
   const sim = toSim(bareOpeningState());
   sim.stage = stage;
-  sim.rngState = seedState(seed);
   buildWave(sim);
   return sim;
-}
-
-/** What a wave laid out: every drone's kind, slot and band, in roster order. */
-function layout(sim: Sim): string[] {
-  return sim.drones.map(
-    (drone) => `${drone.kind}@${drone.slotX},${drone.slotY}:${drone.band}`,
-  );
 }
 
 /** Every standard stage in `1..last`, which is every stage but the challenges. */
@@ -157,16 +152,10 @@ describe("a standard wave", () => {
     }
   });
 
-  it("lays the same wave out from one seed and a different one from another", () => {
-    expect(layout(wave(1, 7))).toEqual(layout(wave(1, 7)));
-    expect(layout(wave(1, 7))).not.toEqual(layout(wave(1, 8)));
-    expect(layout(wave(4, 7))).not.toEqual(layout(wave(4, 8)));
-  });
-
   it("keeps every rule of a wave whichever way the draw falls", () => {
-    for (const seed of [1, 2, 3, 7, 8, 19, 404]) {
+    for (let draw = 0; draw < DRAWS; draw += 1) {
       for (const stage of standardStages(11)) {
-        const drones = wave(stage, seed).drones;
+        const drones = wave(stage).drones;
         expect(drones.filter((d) => d.kind === "flux").length).toBe(
           waveFluxes(stage),
         );
@@ -192,9 +181,9 @@ describe("a standard wave", () => {
   });
 
   it("starts each Prism's escort within reach of the Prism itself", () => {
-    for (const seed of [1, 2, 3, 7, 8, 19, 404]) {
+    for (let draw = 0; draw < DRAWS; draw += 1) {
       for (const stage of standardStages(11)) {
-        const drones = wave(stage, seed).drones;
+        const drones = wave(stage).drones;
         for (const prism of drones.filter((d) => d.kind === "prism")) {
           // Its own escort is the pair in the slots either side of it; two
           // Prisms stand far enough apart that neither picks up the other's.
@@ -216,15 +205,18 @@ describe("a standard wave", () => {
     }
   });
 
-  it("draws each Flux's starting phase from the game's own generator", () => {
+  it("draws each Flux's starting clock inside its band window", () => {
     const first = wave(1)
       .drones.filter((d) => d.kind === "flux")
       .map((d) => d.bandClock);
     const again = wave(1)
       .drones.filter((d) => d.kind === "flux")
       .map((d) => d.bandClock);
-    expect(first).toEqual(again);
-    expect(new Set(first).size).toBeGreaterThan(1);
+    for (const clock of [...first, ...again]) {
+      expect(clock).toBeGreaterThanOrEqual(0);
+      expect(clock).toBeLessThan(fluxWindow(1));
+    }
+    expect(first).not.toEqual(again);
   });
 
   it("starts an entrance above the field, out to the drone's own side", () => {

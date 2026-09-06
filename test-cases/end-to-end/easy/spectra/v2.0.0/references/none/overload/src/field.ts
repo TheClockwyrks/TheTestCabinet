@@ -6,10 +6,9 @@
 // plus the one thing the specification asks for but leaves entirely to the build:
 // the starfield's layout.
 //
-// THE STARFIELD IS NOT PART OF THE SIMULATION. It is laid out once, from a
-// generator of its own, so it never touches the game's seeded generator and
-// `reset({ seed })` reproduces a run exactly whether or not the field was ever
-// drawn. Its marks are static: `specs/field.md` leaves motion optional and a still
+// THE STARFIELD IS NOT PART OF THE SIMULATION. It is laid out once, from a fixed
+// sequence of its own, so the same sky is drawn on every load and no draw the game
+// makes in play moves it. Its marks are static: `specs/field.md` leaves motion optional and a still
 // field keeps the drones the only moving thing a player has to read.
 
 import {
@@ -63,17 +62,16 @@ export const STARFIELD_COUNT = STARFIELD_MIN * 3;
 /**
  * The starfield's marks, laid out once.
  *
- * The generator is a local one seeded by a fixed value: the layout is the same
- * every load, so two captures of the same posed field are identical, and no draw of
- * the field advances the game's own generator.
+ * The sequence is a local one started from a fixed value: the layout is the same
+ * every load, so two captures of the same posed field are identical.
  */
 export const STARFIELD: readonly Star[] = layOutStarfield();
 
 function layOutStarfield(): Star[] {
-  let seed = 0x5be1a7;
+  let word = 0x5be1a7;
   const next = (): number => {
-    seed = (seed + 0x6d2b79f5) >>> 0;
-    let t = seed;
+    word = (word + 0x6d2b79f5) >>> 0;
+    let t = word;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
