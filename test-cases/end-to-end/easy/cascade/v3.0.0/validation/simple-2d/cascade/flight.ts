@@ -250,10 +250,11 @@ function shrankFoundation(before: number[], after: number[]): number {
  * One frame at a time because a launch's velocity is what the launch gave it: read a
  * few frames later, `vy` has been through gravity. Which clock those frames come off
  * is the caller's: the checks that read a launch VELOCITY step the suite's own
- * (1/240 s), and `launch-takes-top-card`, which reads only which card left which
- * foundation, steps the run-out clock. Both are finer than the launch interval
- * specs/victory.md fixes, so a frame carries at most one launch either way and each
- * is reported on its own.
+ * (1/240 s), `launch-cadence` steps the cadence clock (1/40 s), and
+ * `launch-takes-top-card`, which reads only which card left which foundation, steps
+ * the run-out clock. All three are finer than the launch interval specs/victory.md
+ * fixes, so a frame carries at most one launch whichever it is and each is reported
+ * on its own.
  *
  * `stop` ends the sweep early when it has seen everything the check asked for.
  */

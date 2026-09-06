@@ -3108,10 +3108,20 @@ title = "The Victory Cascade"
 # The mean is the honest figure because the launch rule carries its remainder, so
 # the cadence does not drift; a per-gap tolerance tighter than a frame would only
 # be measuring the validator's own step.
+#
+# THIS IS THE ITEM THAT SAYS OTHERWISE about the group's frame. The launch clock
+# adds each frame's delta and carries what it does not spend, so a card leaves at
+# the same game time however the interval was divided, and a frame decides only
+# which frame the launch is read on. The engine suites therefore watch these three
+# seconds in frames of 1/40 s, which is also what makes the CARRY readable: at
+# 1/240 s the interval is 43.2 frames, so a clock that zeroed its remainder where
+# the specification subtracts the interval launches every forty-fourth frame, a
+# cadence 1.9% wide and still seventeen cards over the window; at 1/40 s it
+# launches every eighth frame, 0.2 s apart, and fifteen cards over the window.
 [[review.categories.items]]
 id = "launch-cadence"
 title = "A card launches every 0.18 s"
-description = "Over three seconds advanced in frames of 1/240 s, exactly floor(3 / LAUNCH_INTERVAL) + 1 (17) cards have launched, and the mean gap between successive launches is within 2% of LAUNCH_INTERVAL."
+description = "Over three seconds of a running cascade, exactly floor(3 / LAUNCH_INTERVAL) + 1 (17) cards have launched, and the mean gap between successive launches is within 2% of LAUNCH_INTERVAL."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/launch-cadence.test.ts", outputs = [

@@ -23,11 +23,14 @@
 //
 // THE CLOCK IS THE GROUP'S, NOT THE SUITE'S. A flight integrates under
 // acceleration, and a quantity under acceleration is not independent of how an
-// interval was divided into frames, so every check in this group builds its
+// interval was divided into frames, so a check that reads a flight builds its
 // harness at `CASCADE_HZ` — 1/240 s frames, fine enough that a figure quantised
 // to a frame boundary still meets the tolerances the checks state.
 // {@link createFlightHarness} is that one call, written once so no check in the
-// group can quietly step at some other rate.
+// group can quietly step at some other rate. The checks that read something OTHER
+// than a flight take their clock from here too and each says why it must:
+// {@link createRunoutHarness} for the three that wait a whole cascade out, and
+// {@link createCadenceHarness} for the one that reads the launch clock.
 
 import { fail } from "../assert";
 import {
@@ -110,6 +113,46 @@ export function createRunoutHarness(): Promise<Harness> {
 /** Whole frames of the run-out clock covering `duration` seconds. */
 export function runoutFrames(duration: number): number {
   return framesFor(duration, RUNOUT_HZ);
+}
+
+/**
+ * The frame the LAUNCH CADENCE is watched in — neither {@link CASCADE_HZ} nor
+ * {@link RUNOUT_HZ}.
+ *
+ * `launch-cadence` reads two facts about the launch clock over three seconds of a
+ * running cascade: how many cards left, and the mean gap between them. Neither is
+ * a frame-rate quantity. specs/victory.md's clock adds each frame's delta and
+ * carries what it does not spend, so the k-th card leaves at
+ * `k * LAUNCH_INTERVAL` however the interval was divided into frames, and a frame
+ * decides only which frame a launch is OBSERVED on. Stepped at
+ * {@link CASCADE_HZ} that one check spends seven hundred and twenty rendered
+ * frames reading seventeen launches.
+ *
+ * A COARSER FRAME ALSO READS THE CARRY, which is half of what the rule states. At
+ * `1 / 240` s the interval is `43.2` frames, so a build that ZEROED its clock
+ * where the specification subtracts the interval launches every forty-fourth
+ * frame: a cadence `1.9` percent wide and a count those three seconds cannot tell
+ * from the requirement. At `1 / 40` s the interval is `7.2` frames, so the same
+ * build launches every eighth — a `0.2` s cadence, and fifteen cards over the
+ * hold rather than seventeen.
+ *
+ * FORTY RATHER THAN {@link RUNOUT_HZ} because of what the observation rounds. A
+ * launch is read at the end of the frame it happened in, so the mean over the
+ * hold's gaps carries that rounding: at `1 / 40` s the seventeenth card's `2.88`
+ * s is read at `2.9`, and the mean lands `0.31` ms under the interval, a twelfth
+ * of the two percent that check allows. The run-out's thirty would spend a
+ * quarter of the same allowance on the same rounding.
+ */
+export const CADENCE_HZ = 40;
+
+/** A harness whose clock steps the frames a launch cadence is watched in. */
+export function createCadenceHarness(): Promise<Harness> {
+  return createHarness({ hz: CADENCE_HZ });
+}
+
+/** Whole frames of the cadence clock covering `duration` seconds. */
+export function cadenceFrames(duration: number): number {
+  return framesFor(duration, CADENCE_HZ);
 }
 
 /**
@@ -354,9 +397,10 @@ function shrankFoundation(before: number[], after: number[]): number {
  * One frame at a time because a launch's velocity is what the launch gave it:
  * read a few frames later, `vy` has been through gravity. Which clock those frames
  * come off is the caller's: the checks that read a launch VELOCITY step this
- * group's own (1/240 s), and `launch-takes-top-card`, which reads only which card
- * left which foundation, steps {@link RUNOUT_HZ}. Both are finer than the launch
- * interval specs/victory.md fixes, so a frame carries at most one launch either way
+ * group's own (1/240 s), `launch-cadence` steps {@link CADENCE_HZ}, and
+ * `launch-takes-top-card`, which reads only which card left which foundation,
+ * steps {@link RUNOUT_HZ}. All three are finer than the launch interval
+ * specs/victory.md fixes, so a frame carries at most one launch whichever it is
  * and each is reported on its own.
  *
  * `stop` ends the sweep early when it has seen everything the check asked for.

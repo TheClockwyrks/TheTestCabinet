@@ -248,7 +248,9 @@ export type CascadeDriver = Driver<CascadeState, CascadeSurface>;
  * interval (`0.18` s) is `43.2` frames, the double-click window (`0.30` s) is `72`,
  * and the half-second the flight items integrate over is `120`. It is also the step
  * the cascade group's timing items are written against, so a figure quantized to a
- * frame boundary still meets the tolerances those items state.
+ * frame boundary still meets the tolerances those items state; the two clocks below
+ * are where a check reading something other than an accelerated figure steps
+ * instead.
  */
 export const TICK_HZ = 240;
 export const TICK_MS = 1000 / TICK_HZ;
@@ -308,6 +310,45 @@ export function runoutFrames(duration: number): number {
 /** A harness whose clock steps the frames a run-out is waited out in. */
 export function createRunoutHarness(): Promise<Harness> {
   return createHarness({ clock: new ConstantClock(1000 / RUNOUT_HZ) });
+}
+
+/**
+ * The frame the LAUNCH CADENCE is watched in.
+ *
+ * `cascade/launch-cadence` reads two facts about the launch clock over three
+ * seconds of a running cascade: how many cards left, and the mean gap between them.
+ * Neither is a frame-rate quantity. specs/victory.md's clock adds each frame's
+ * delta and carries what it does not spend, so the k-th card leaves at
+ * `k * LAUNCH_INTERVAL` however the interval was divided into frames, and what a
+ * frame decides is only which frame a launch is OBSERVED on. Stepped at
+ * {@link TICK_HZ} that check spends seven hundred and twenty rendered frames
+ * reading seventeen launches.
+ *
+ * A COARSER FRAME ALSO READS THE CARRY, which is half of what the rule states. At
+ * `1 / 240` s the interval is `43.2` frames, so a build that ZEROED its clock where
+ * the specification subtracts the interval launches every forty-fourth frame: a
+ * cadence `1.9` percent wide and a count those three seconds cannot tell from the
+ * requirement. At `1 / 40` s the interval is `7.2` frames, so the same build
+ * launches every eighth — a `0.2` s cadence, and fifteen cards over the hold rather
+ * than seventeen.
+ *
+ * FORTY RATHER THAN {@link RUNOUT_HZ} because of what the observation rounds. A
+ * launch is read at the end of the frame it happened in, so the mean over the hold's
+ * gaps carries that rounding: at `1 / 40` s the seventeenth card's `2.88` s is read
+ * at `2.9`, and the mean lands `0.31` ms under the interval, a twelfth of the two
+ * percent that check allows. The run-out's thirty would spend a quarter of the same
+ * allowance on the same rounding.
+ */
+export const CADENCE_HZ = 40;
+
+/** Whole frames of the cadence clock covering at least `duration` seconds. */
+export function cadenceFrames(duration: number): number {
+  return Math.ceil(duration * CADENCE_HZ);
+}
+
+/** A harness whose clock steps the frames a launch cadence is watched in. */
+export function createCadenceHarness(): Promise<Harness> {
+  return createHarness({ clock: new ConstantClock(1000 / CADENCE_HZ) });
 }
 
 /* -------------------------------------------------------------------------- */
