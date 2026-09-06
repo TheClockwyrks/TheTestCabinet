@@ -15,43 +15,39 @@
 // is invisible in play, and it makes a round's opening depend on the round before
 // it — which nothing about the specification does.
 //
-// WHY THIS IS DECIDED DETERMINISTICALLY RATHER THAN BY SAMPLING. One cell out of
-// roughly four hundred and forty is a difference no honest number of rounds
-// separates from chance, and a check that fails one run in a hundred is worse
-// than no check. So the two rounds are made IDENTICAL except for the one thing
-// under test:
-//
-//   1. A round is opened under a seed the ordinary way, and its first pellet `P`
-//      is read.
-//   2. The session is reset under the SAME seed, `P` is placed on the board, and
-//      a round is opened the same way.
-//
-// specs/instrumentation.md makes step 2's placement free of side effects on the
-// draw: "Placing a pellet is not spawning one, so the generator is not drawn from
-// and the seeded sequence is left where it stands". The generator
-// therefore stands in the identical state at both round openings, and a build
-// that lays the round out from an empty board draws `P` again. A build that
-// carries the old pellet across excludes `P` and draws something else.
+// THE DRAW IS POSED RATHER THAN SAMPLED. One cell out of roughly four hundred and
+// forty is a difference no honest number of rounds separates from chance. So a
+// pellet is placed on a cell, that same cell is posed as the next spawn with
+// `setNextPellet`, and a round is opened. specs/instrumentation.md honors the
+// pose "when the cell is in the valid set specs/board.md defines at that moment"
+// and discards it otherwise: a build that lays the round out from an empty board
+// has the cell in its set and places the first pellet there, and a build that
+// carries the old pellet across holds the cell out of its set and draws somewhere
+// else.
 //
 // WHY THE ROUND IS OPENED FROM THE MENU. A round BEGINNING is the thing under
 // test, and specs/instrumentation.md says `setScreen("playing")` is not one: it
 // "runs the tick over the board as it stands rather than laying out a fresh
 // round". The title menu's first item is the mode's own entry (specs/mode.md),
-// so that is the route in both rounds.
+// so that is the route.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual, assertNotNull } from "../assert";
+import { assertDeepEqual, assertEqual } from "../assert";
 import { START_CELLS, type Cell } from "../constants";
 import {
   captureStill,
   chooseItem,
   createHarness,
-  holdsCell,
   type Harness,
 } from "../harness";
 
-/** The one seed both rounds are laid under, so the two draws are the same draw. */
-const SEED = 4242;
+/**
+ * The cell the previous round is left holding its pellet on: on the starting
+ * row, which specs/mode.md keeps clear of every course, and clear of the
+ * starting chain, so it is in the valid set of a round laid from an empty board
+ * under either mode.
+ */
+const LEFTOVER: Cell = { col: 25, row: START_CELLS[0].row };
 
 let h: Harness;
 
@@ -63,35 +59,18 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** Open a round from the title the way a player does, and read its first pellet. */
-async function openRound(): Promise<Cell> {
+it("lays the first pellet on the cell the last round left one on", async () => {
+  h.debug.reset();
+  h.debug.setPellet(LEFTOVER.col, LEFTOVER.row);
+  h.debug.setNextPellet(LEFTOVER.col, LEFTOVER.row);
   await chooseItem(h, 0);
   const opened = h.snapshot();
-  assertEqual(opened.screen, "playing", "the screen the mode entry opened");
-  assertNotNull(opened.pellet, "the first pellet of the opened round");
-  return opened.pellet as Cell;
-}
-
-it("draws the same first cell whether or not a pellet sat there", async () => {
-  h.debug.reset({ seed: SEED });
-  const drawn = await openRound();
-  // The placement below has to be a legal one, and specs/board.md keeps the
-  // first pellet off the starting chain — the point that decides that is
-  // `first-pellet-off-start-chain`, and a build failing it fails there.
-  assertEqual(
-    holdsCell(START_CELLS, drawn),
-    false,
-    "the first pellet clear of the starting chain, so it can be placed again",
-  );
-
-  h.debug.reset({ seed: SEED });
-  h.debug.setPellet(drawn.col, drawn.row);
-  const again = await openRound();
   captureStill(h, "reopened");
 
+  assertEqual(opened.screen, "playing", "the screen the mode entry opened");
   assertDeepEqual(
-    again,
-    drawn,
-    `the first pellet of a round opened with a pellet already on ${drawn.col},${drawn.row}`,
+    opened.pellet,
+    LEFTOVER,
+    `the first pellet of a round opened with a pellet already on ${LEFTOVER.col},${LEFTOVER.row}`,
   );
 });

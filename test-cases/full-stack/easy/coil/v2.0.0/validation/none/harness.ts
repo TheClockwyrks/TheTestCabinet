@@ -1197,8 +1197,6 @@ export async function clearObstacles(h: Harness): Promise<void> {
 
 /** A world to pose, one field per thing on the board or switch over it. */
 export interface Scene {
-  /** The seed `reset` lays the pellet generator with. */
-  seed?: number;
   /**
    * The obstacle course: cleared outright, left as the mode lays it, or laid as
    * exactly these cells. Cleared by default — see {@link poseScene}.
@@ -1210,6 +1208,8 @@ export interface Scene {
   dir?: Dir;
   /** The live pellet, or `null` for a board with none. */
   pellet?: Cell | null;
+  /** The cell the next spawn places the pellet on, posed for one spawn. */
+  nextPellet?: Cell;
   score?: number;
   best?: number;
   /** The multiplier M. */
@@ -1236,7 +1236,7 @@ export interface Scene {
  * a scene starts from is a fresh session, on the title, with the starting chain,
  * no pellet, and every switch on. Then, in this order and for the reasons above:
  * the obstacles, the chain, the direction, an emptied turn buffer, the pellet,
- * the figures, the switches, and finally the screen.
+ * the posed spawn, the figures, the switches, and finally the screen.
  *
  * The turn buffer is emptied whether or not the scene names a direction, because
  * a posed world holds no steering request the scenario did not make.
@@ -1257,9 +1257,7 @@ export async function poseScene(
   h: Harness,
   scene: Scene = {},
 ): Promise<CoilSnapshot> {
-  await h.debug.reset(
-    scene.seed === undefined ? undefined : { seed: scene.seed },
-  );
+  await h.debug.reset();
 
   const obstacles = scene.obstacles ?? "cleared";
   if (obstacles !== "course") {
@@ -1290,6 +1288,9 @@ export async function poseScene(
   if (scene.pellet !== undefined) {
     if (scene.pellet === null) await h.debug.clearPellet();
     else await h.debug.setPellet(scene.pellet.col, scene.pellet.row);
+  }
+  if (scene.nextPellet !== undefined) {
+    await h.debug.setNextPellet(scene.nextPellet.col, scene.nextPellet.row);
   }
 
   if (scene.score !== undefined) await h.debug.setScore(scene.score);

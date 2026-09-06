@@ -130,9 +130,6 @@ export const COMBO_WINDOW_TICKS = COMBO_WINDOW / TICK_SECONDS;
 /** The version the surface reports, and the version the snapshot carries. */
 export const COIL_DEBUG_VERSION = 1;
 
-/** The seed `reset()` uses when its caller names none. */
-export const DEFAULT_SEED = 1;
-
 // ---- The produced assets (specs/assets.md) ----------------------------------
 
 /** Frames in the head sheet: the resting pose and the three of the bite. */
@@ -162,7 +159,12 @@ export const BODY_FILES: readonly string[] = SPRITE_FILES.slice(HEAD_FRAMES);
 
 /** The screen the game is in, as the snapshot reports it. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "gameover" | "cleared";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "gameover"
+  | "cleared";
 
 /** Every screen, in the order `specs/ui.md` tables them. */
 export const SCREENS: readonly Screen[] = [

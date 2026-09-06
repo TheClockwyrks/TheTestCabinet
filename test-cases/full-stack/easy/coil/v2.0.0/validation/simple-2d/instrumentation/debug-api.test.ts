@@ -144,6 +144,11 @@ it("reports the whole documented snapshot shape, off a driven game", async () =>
   assertEqual(typeof s.steering, "boolean", "steering");
   assertEqual(typeof s.travel, "boolean", "travel");
   assertEqual(typeof s.pelletRespawn, "boolean", "pelletRespawn");
+  assertEqual(
+    s.nextPellet === null || typeof s.nextPellet.col === "number",
+    true,
+    "nextPellet",
+  );
   for (const cell of [...s.snake, ...s.obstacles]) {
     assertEqual(typeof cell.col, "number", "a cell's col");
     assertEqual(typeof cell.row, "number", "a cell's row");
@@ -190,6 +195,7 @@ it("poses the running game through each of its operations", async () => {
   debug.setSnakeSteering(false);
   debug.setSnakeTravel(false);
   debug.setPelletRespawn(false);
+  debug.setNextPellet(24, 13);
   debug.setScreen("playing");
 
   const posed = h.snapshot();
@@ -204,6 +210,7 @@ it("poses the running game through each of its operations", async () => {
   assertEqual(posed.steering, false, "setSnakeSteering");
   assertEqual(posed.travel, false, "setSnakeTravel");
   assertEqual(posed.pelletRespawn, false, "setPelletRespawn");
+  assertDeepEqual(posed.nextPellet, { col: 24, row: 13 }, "setNextPellet");
   assertEqual(posed.screen, "playing", "setScreen");
 
   // A pose holds across frames rather than being a one-frame nudge.

@@ -43,7 +43,12 @@ export type Dir = "up" | "down" | "left" | "right";
 
 /** Every screen the state machine moves between. The game opens on `title`. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "gameover" | "cleared";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "gameover"
+  | "cleared";
 
 /** The two modes a variant of this case ships, as the snapshot reports one. */
 export type Mode = "classic" | "maze";
@@ -72,6 +77,7 @@ export const REQUIRED_OPS = [
   "setPellet",
   "clearPellet",
   "setPelletRespawn",
+  "setNextPellet",
 ] as const;
 
 /** The operations a mode that lays obstacle cells adds, and no other mode has. */
@@ -79,7 +85,8 @@ export const OBSTACLE_OPS = ["clearObstacles", "addObstacle"] as const;
 
 /** The name of one operation the surface carries. */
 export type OperationName =
-  (typeof REQUIRED_OPS)[number] | (typeof OBSTACLE_OPS)[number];
+  | (typeof REQUIRED_OPS)[number]
+  | (typeof OBSTACLE_OPS)[number];
 
 /**
  * The operations that READ the running game rather than pose it.
@@ -90,11 +97,6 @@ export type OperationName =
  * and a pose for its effect.
  */
 export const READINGS = ["snapshot", "menuItemRect"] as const;
-
-/** `reset`'s options: the seed the pellet generator is laid with. */
-export interface ResetOptions {
-  seed?: number;
-}
 
 /**
  * The hit region a menu item occupies, in the logical units of
@@ -152,6 +154,8 @@ export interface CoilSnapshot {
   travel: boolean;
   /** Whether an eaten pellet is replaced. */
   pelletRespawn: boolean;
+  /** The cell `setNextPellet` posed for the next spawn; `null` once consumed. */
+  nextPellet: Cell | null;
 }
 
 /**
@@ -173,7 +177,7 @@ export interface CoilDebugApi {
   /** `COIL_DEBUG_VERSION`, a plain number rather than an operation. */
   version: number;
 
-  reset(options?: ResetOptions): void;
+  reset(): void;
   snapshot(): CoilSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows, or
@@ -198,6 +202,8 @@ export interface CoilDebugApi {
   setPellet(col: number, row: number): void;
   clearPellet(): void;
   setPelletRespawn(enabled: boolean): void;
+  /** Poses the cell the next spawn places the pellet on. */
+  setNextPellet(col: number, row: number): void;
 
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(): void;

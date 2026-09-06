@@ -137,9 +137,6 @@ export const COMBO_WINDOW_TICKS = COMBO_WINDOW / TICK_SECONDS;
 /** The version the surface reports, and the version the snapshot carries. */
 export const COIL_DEBUG_VERSION = 1;
 
-/** The seed `reset` uses when its caller names none. */
-export const DEFAULT_SEED = 1;
-
 // ---- The produced assets (specs/assets.md) ----------------------------------
 
 /** Frames in the head sheet: the resting pose and the three of the bite. */

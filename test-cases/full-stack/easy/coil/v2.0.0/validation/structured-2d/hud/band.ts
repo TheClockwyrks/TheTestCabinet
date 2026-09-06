@@ -120,7 +120,7 @@ export function readBand(h: Harness): Rgb[] {
  *
  * The two renders are of the same board under the same fit, so a block that
  * differs at all differs because something was drawn there. The floor is a noise
- * floor and nothing more: well over the nothing a deterministic canvas varies
+ * floor and nothing more: well over the nothing an idle canvas varies
  * by, and far under anything a build meant to draw.
  */
 export function bandDifferences(

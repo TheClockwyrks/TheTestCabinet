@@ -50,7 +50,12 @@ export type Dir = "up" | "down" | "left" | "right";
 
 /** Every screen the state machine moves between. The game opens on `title`. */
 export type Screen =
-  "title" | "howto" | "playing" | "paused" | "gameover" | "cleared";
+  | "title"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "gameover"
+  | "cleared";
 
 /** The two modes a variant of this case ships, as the snapshot reports one. */
 export type Mode = "classic" | "maze";
@@ -79,6 +84,7 @@ export const REQUIRED_OPS = [
   "setPellet",
   "clearPellet",
   "setPelletRespawn",
+  "setNextPellet",
 ] as const;
 
 /** The operations a mode that lays obstacle cells adds, and no other mode has. */
@@ -86,7 +92,8 @@ export const OBSTACLE_OPS = ["clearObstacles", "addObstacle"] as const;
 
 /** The name of one operation the surface carries. */
 export type OperationName =
-  (typeof REQUIRED_OPS)[number] | (typeof OBSTACLE_OPS)[number];
+  | (typeof REQUIRED_OPS)[number]
+  | (typeof OBSTACLE_OPS)[number];
 
 /**
  * The operations that READ the state rather than replace it.
@@ -96,11 +103,6 @@ export type OperationName =
  * shape alone cannot say at runtime, so the specification names them.
  */
 export const READINGS = ["snapshot", "menuItemRect"] as const;
-
-/** `reset`'s options: the seed the pellet generator is laid with. */
-export interface ResetOptions {
-  seed?: number;
-}
 
 /**
  * The hit region a menu item occupies, in the logical units of
@@ -158,6 +160,8 @@ export interface CoilSnapshot {
   travel: boolean;
   /** Whether an eaten pellet is replaced. */
   pelletRespawn: boolean;
+  /** The cell `setNextPellet` posed for the next spawn; `null` once consumed. */
+  nextPellet: Cell | null;
 }
 
 /**
@@ -178,7 +182,7 @@ export interface CoilDebugApi<S = unknown> {
   /** `COIL_DEBUG_VERSION`, a plain number rather than an operation. */
   version: number;
 
-  reset(state: DeepReadonly<S>, options?: ResetOptions): S;
+  reset(state: DeepReadonly<S>): S;
   snapshot(state: DeepReadonly<S>): CoilSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows, or
@@ -203,6 +207,8 @@ export interface CoilDebugApi<S = unknown> {
   setPellet(state: DeepReadonly<S>, col: number, row: number): S;
   clearPellet(state: DeepReadonly<S>): S;
   setPelletRespawn(state: DeepReadonly<S>, enabled: boolean): S;
+  /** Poses the cell the next spawn places the pellet on. */
+  setNextPellet(state: DeepReadonly<S>, col: number, row: number): S;
 
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(state: DeepReadonly<S>): S;
