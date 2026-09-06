@@ -44,9 +44,6 @@ import {
 } from "../harness";
 import { openQuietGame, watchVisits } from "./visits";
 
-/** The seed the game is opened on, so the same visits are watched every run. */
-const SEED = 1;
-
 /** How much game time the slot is watched for, in seconds. */
 const WATCH_SECONDS = 120;
 
@@ -71,7 +68,7 @@ afterEach(() => {
 });
 
 it("never reports one live saucer id giving way to another without a clear tick between", async () => {
-  const opened = await openQuietGame(h, SEED);
+  const opened = await openQuietGame(h);
 
   let filmed = false;
   const watch = await watchVisits(h, ticksFor(WATCH_SECONDS) - opened, {

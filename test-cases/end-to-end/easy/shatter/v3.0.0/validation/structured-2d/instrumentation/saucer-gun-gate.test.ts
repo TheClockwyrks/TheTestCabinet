@@ -24,8 +24,8 @@
 // leg runs a fraction past four intervals so a build that fires on the boundary
 // is not read as one that fired early.
 //
-// THE MIND IS HELD. The gun is the requirement, and a steering saucer draws from
-// the game's generator and moves the shot's own origin; holding the mind leaves
+// THE MIND IS HELD. The gun is the requirement, and a steering saucer draws its
+// weave and moves the shot's own origin; holding the mind leaves
 // the crossing straight and the reading about the gun alone. Travel is left
 // running, because the shot belongs to a crossing (`specs/saucer.md`), and the
 // crossing is posed low and to the left so the saucer stays clear of the star's

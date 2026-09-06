@@ -40,14 +40,17 @@ import { fail } from "./assert";
 /** The surface's version, reported as `version` (`SHATTER_DEBUG_VERSION`). */
 export const SHATTER_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 /** The five screens the game moves between. */
 export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
 
 /** The three rock sizes. */
 export type RockSize = "large" | "medium" | "small";
+
+/** The edge a saucer enters at. */
+export type SaucerEdge = "left" | "right";
+
+/** An edge of the field, where a recycled rock re-enters. */
+export type FieldEdge = "top" | "bottom" | "left" | "right";
 
 /**
  * A menu entry's hit region, in logical field units, with `(x, y)` its top-left
@@ -132,6 +135,8 @@ export interface SaucerSnapshot {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  /** The direction its next reroll takes from rest: `1` down, `-1` up. */
+  weave: 1 | -1;
   /** Seconds until its next aimed shot; `SAUCER_FIRE_INTERVAL` on arrival. */
   fireClock: number;
   /** Seconds until it rerolls its weave; `SAUCER_WEAVE_INTERVAL` on arrival. */
@@ -158,9 +163,9 @@ export interface TorpedoSnapshot {
  * The plain, JSON-serializable view `snapshot()` returns.
  *
  * Every field an operation can set is present, so every operation is verifiable
- * by setting a value and reading it back — except `tickClock`, `nextId` and
- * `rngState`, the bookkeeping `reset` restores and `specs/instrumentation.md`
- * deliberately keeps out of the snapshot. Three entries are built at the call
+ * by setting a value and reading it back — except `tickClock` and `nextId`, the
+ * bookkeeping `reset` restores and `specs/instrumentation.md` deliberately keeps
+ * out of the snapshot. Three entries are built at the call
  * rather than read off a field: `ship.speed` and `rocks[].radius` under both
  * variants, and `torpedoReady` under `warhead`.
  */
@@ -186,6 +191,16 @@ export interface ShatterSnapshot {
   saucerClock: number;
   /** What `saucerClock` must reach for the next saucer to arrive, in seconds. */
   saucerDue: number;
+  /** The posed entry edge of the next arrival, `null` when none stands. */
+  nextSaucerEdge: SaucerEdge | null;
+  /** The posed entry row of the next arrival, `null` when none stands. */
+  nextSaucerRow: number | null;
+  /** The posed aim error of the saucer's next shot, in radians. */
+  nextSaucerAim: number | null;
+  /** The posed base drift speed of the next placement of rocks. */
+  nextRockSpeed: number | null;
+  /** The posed edge the next recycled rock re-enters at. */
+  nextRecycleEdge: FieldEdge | null;
   ship: ShipSnapshot;
   /** Every one of the ship's bullets in flight, in roster order. */
   bullets: BulletSnapshot[];
@@ -221,7 +236,7 @@ export interface ShatterSnapshot {
 export interface ShatterDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): ShatterSnapshot;
   /**
    * The hit region of the entry at `index` on the menu the current screen shows,
@@ -242,6 +257,8 @@ export interface ShatterDebugApi {
 
   setWaveSpawning(enabled: boolean): void;
   setSaucerSpawning(enabled: boolean): void;
+  /** Sets what `saucerClock` must reach for the next arrival, in seconds. */
+  setSaucerDue(seconds: number): void;
 
   setShipPosition(x: number, y: number): void;
   setShipVelocity(vx: number, vy: number): void;
@@ -268,6 +285,19 @@ export interface ShatterDebugApi {
   setSaucerMind(enabled: boolean): void;
   setSaucerGun(enabled: boolean): void;
   setSaucerTravel(enabled: boolean): void;
+  /** Sets the direction the next reroll takes from rest: `1` down, `-1` up. */
+  setSaucerWeave(direction: 1 | -1): void;
+
+  /** Poses the edge the next arrival enters at. */
+  setNextSaucerEdge(edge: SaucerEdge): void;
+  /** Poses the row the next arrival enters at. */
+  setNextSaucerRow(y: number): void;
+  /** Poses the aim error of the saucer's next shot, in radians. */
+  setNextSaucerAim(radians: number): void;
+  /** Poses the base drift speed every rock of the next placement takes. */
+  setNextRockSpeed(speed: number): void;
+  /** Poses the edge the next recycled rock re-enters at. */
+  setNextRecycleEdge(edge: FieldEdge): void;
 
   /** `warhead` only: the rock's remaining hits, `1` to its size's full health. */
   setRockHealth?(id: number, hp: number): void;
@@ -312,6 +342,7 @@ export const REQUIRED_OPS = [
 
   "setWaveSpawning",
   "setSaucerSpawning",
+  "setSaucerDue",
 
   "setShipPosition",
   "setShipVelocity",
@@ -338,6 +369,13 @@ export const REQUIRED_OPS = [
   "setSaucerMind",
   "setSaucerGun",
   "setSaucerTravel",
+  "setSaucerWeave",
+
+  "setNextSaucerEdge",
+  "setNextSaucerRow",
+  "setNextSaucerAim",
+  "setNextRockSpeed",
+  "setNextRecycleEdge",
 ] as const;
 
 /**
@@ -369,12 +407,30 @@ export const REQUIRED_SNAPSHOT_FIELDS = [
   "saucerSpawning",
   "saucerClock",
   "saucerDue",
+  "nextSaucerEdge",
+  "nextSaucerRow",
+  "nextSaucerAim",
+  "nextRockSpeed",
+  "nextRecycleEdge",
   "ship",
   "bullets",
   "rocks",
   "saucer",
   "enemyBullets",
   "simTime",
+] as const;
+
+/**
+ * The posed draws `snapshot()` reports, each `null` until a pose stands, so a
+ * field nothing has posed is checked for presence and for `null` rather than by
+ * a `typeof`.
+ */
+export const POSED_DRAW_FIELDS = [
+  "nextSaucerEdge",
+  "nextSaucerRow",
+  "nextSaucerAim",
+  "nextRockSpeed",
+  "nextRecycleEdge",
 ] as const;
 
 /** Every field of `snapshot().ship`. */

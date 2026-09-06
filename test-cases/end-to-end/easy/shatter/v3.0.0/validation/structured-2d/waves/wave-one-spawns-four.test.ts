@@ -15,8 +15,8 @@
 // passes here and fails there, while a build that spawns `N` rather than `3 + N`
 // fails here and passes nothing.
 //
-// THE ROUTE IS THE GAME'S OWN. `startRun` is `reset` for the title screen and a
-// seeded generator, then `confirm` on the title's highlighted first entry, `PLAY`
+// THE ROUTE IS THE GAME'S OWN. `startRun` is `reset` for the title screen, then
+// `confirm` on the title's highlighted first entry, `PLAY`
 // — the path `specs/ui.md` gives a player. No pose on the debug surface starts a
 // run, and there is not meant to be one: this item is about the wave a real game
 // opens with.
@@ -29,12 +29,12 @@
 // top. What it does NOT accommodate is a build that puts up a different number of
 // them.
 //
-// THREE SEEDS. The positions of a wave's rocks are drawn (`specs/simulation.md`,
-// "Seeded randomness"), and the placement rules `specs/progression.md` states are
+// THREE GAMES. The positions of a wave's rocks are drawn (`specs/simulation.md`,
+// "Random draws"), and the placement rules `specs/progression.md` states are
 // constraints a build satisfies by rejecting and redrawing. A build whose
 // rejection loop gives up after a fixed number of tries and spawns fewer rocks
 // than it owes fails intermittently by construction, so the opening wave is
-// opened three times from three seeds and every one of them has to hold four.
+// opened three times in three games and every one of them has to hold four.
 //
 // WHAT THIS ITEM DOES NOT DECIDE. WHERE the four stand, which is
 // `spawns-clear-of-the-ship`'s and `spawns-clear-of-the-star`'s, and how fast they
@@ -57,13 +57,13 @@ const OPENING_WAVE = 1;
 const OPENING_ROCKS = WAVE_BASE_ROCKS + OPENING_WAVE;
 
 /**
- * The three seeds the opening is flown from.
+ * How many games the opening is flown in.
  *
  * A wave's positions are drawn, and a build that satisfies the placement rules by
  * rejecting and redrawing can run out of tries on one draw and not on another.
  * One opening would grade that build by luck.
  */
-const SEEDS: readonly number[] = [1, 2, 3];
+const GAMES = 3;
 
 /**
  * How long the opening wave is waited for.
@@ -85,14 +85,14 @@ afterEach(() => {
 });
 
 it("opens a game with WAVE_BASE_ROCKS + 1 Large rocks", async () => {
-  for (const seed of SEEDS) {
-    await startRun(h, seed);
+  for (let game = 1; game <= GAMES; game += 1) {
+    await startRun(h);
 
     const opened = h.snapshot();
     assertEqual(
       opened.screen,
       "playing",
-      `seed ${String(seed)}: a game in play after confirming PLAY on the ` +
+      `game ${String(game)}: a game in play after confirming PLAY on the ` +
         `title, which is the route this item's opening wave arrives by ` +
         `(specs/ui.md); a build that does not start a game here is decided by ` +
         `screens/play-starts-a-game`,
@@ -110,7 +110,7 @@ it("opens a game with WAVE_BASE_ROCKS + 1 Large rocks", async () => {
     assertLength(
       rocks,
       OPENING_ROCKS,
-      `seed ${String(seed)}: wave ${String(OPENING_WAVE)} putting up ` +
+      `game ${String(game)}: wave ${String(OPENING_WAVE)} putting up ` +
         `WAVE_BASE_ROCKS + ${String(OPENING_WAVE)} = ` +
         `${String(OPENING_ROCKS)} rocks — wave N spawns WAVE_BASE_ROCKS + N ` +
         `Large rocks (specs/progression.md); read on the first tick the field ` +
@@ -122,7 +122,7 @@ it("opens a game with WAVE_BASE_ROCKS + 1 Large rocks", async () => {
     assertLength(
       wrongSize,
       0,
-      `seed ${String(seed)}: every rock of the opening wave a Large — a wave ` +
+      `game ${String(game)}: every rock of the opening wave a Large — a wave ` +
         `spawns Large rocks (specs/progression.md); found ` +
         `${wrongSize.map((rock) => rock.size).join(", ")}`,
     );

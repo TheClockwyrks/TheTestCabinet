@@ -36,7 +36,6 @@ import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  resetTo,
   startPlaying,
   ticksFor,
   type Harness,
@@ -52,9 +51,6 @@ import type { RockSize } from "../harness";
 /** The three sizes specs/rocks.md gives a rock, each slung through the star. */
 const SIZES: readonly RockSize[] = ["large", "medium", "small"];
 
-/** The seed the run is put on, so the star's draws are reproducible. */
-const SEED = 1;
-
 /** Ticks of the last recycled rock coming in, run after the readings are taken. */
 const AFTERMATH_TICKS = ticksFor(0.5);
 
@@ -69,8 +65,6 @@ afterEach(() => {
 });
 
 it("returns a rock of each size at the size it went into the core", async () => {
-  resetTo(h, SEED);
-
   const passes: [RockSize, Recycle][] = [];
   for (const size of SIZES) {
     startPlaying(h);

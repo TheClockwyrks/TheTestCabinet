@@ -1,4 +1,4 @@
-// saucer/avoids-the-core — across fifty-four whole crossings, the saucer's circle
+// saucer/avoids-the-core — across thirty-six whole crossings, the saucer's circle
 // never overlaps the star's core.
 //
 // THE RULE. `specs/saucer.md`, Geometry: "It is a powered craft... and it steers
@@ -8,7 +8,7 @@
 // build's own." The distance is the whole requirement, and HOW a build keeps it is
 // deliberately not.
 //
-// WHY FIFTY-FOUR CROSSINGS AND NOT ONE. This is the fold-in fix of `changelog.md`
+// WHY THIRTY-SIX CROSSINGS AND NOT ONE. This is the fold-in fix of `changelog.md`
 // carried forward as a design property. The item this replaces lined the saucer up
 // `60` units from the star at cruise — under half a second of warning — and a
 // craft that answers with vertical speed while keeping its crossing speed still
@@ -16,20 +16,21 @@
 // conformant builds for the way they steer rather than for coming too close. What
 // replaces it poses nothing but courses the specification's OWN entry rule
 // produces — a saucer entering at a side, on a row, at cruise — and lets each one
-// fly the whole width of the field with the build steering it. Fifty-four of them,
+// fly the whole width of the field with the build steering it. Thirty-six of them,
 // because avoidance is frequently one-sided (which the rows either side of the
 // star's are for) and a build that rerolls its weave on a timer can have the
 // reroll discard the clearance it had accumulated, which is intermittent by
 // construction and does not respect one tidy sample.
 //
-// THE FIFTY-FOUR. Nine rows, from `80` units below the star's row to `80` above it
+// THE THIRTY-SIX. Nine rows, from `80` units below the star's row to `80` above it
 // in `20`-unit steps, each flown from the left edge and from the right, the whole
-// set repeated under three seeds. The seeds matter because the weave's first
-// direction is a draw (`specs/simulation.md`), so the same row is a different
-// crossing under each.
+// set flown with each weave direction. The weave matters because the direction of
+// the first reroll is a draw (`specs/saucer.md`), and a saucer weaving into the
+// star is a different crossing from one weaving away; `setSaucerWeave` poses that
+// draw (`specs/instrumentation.md`), so the same row is flown both ways.
 //
 // THE VERDICT IS THE CLOSEST APPROACH OF ALL OF THEM, not of the first: one
-// crossing that came too close breaks the rule however the other fifty-three went.
+// crossing that came too close breaks the rule however the other thirty-five went.
 //
 // THE DISTANCE IS MEASURED TO THE PATH, NOT TO THE SAMPLES. A crossing is `1097`
 // ticks and the sweep samples it every eight, and the closest point of an approach
@@ -42,7 +43,7 @@
 // back to the other.
 //
 // THE GUN IS SHUT AND NOTHING ELSE IS ON THE FIELD. `setSaucerGun(false)` means
-// fifty-four crossings produce no rounds at all — the steering is the requirement,
+// thirty-six crossings produce no rounds at all — the steering is the requirement,
 // and a round of the saucer's own has nothing to do with it. `startPlaying` leaves
 // no rock and no other craft, shuts the wave loop and the game's own arrival, and
 // shuts the ship's lethal contact test, so a crossing is the only thing happening.
@@ -50,7 +51,7 @@
 // to be flying to steer.
 //
 // THE RECORDING IS OF THE CLOSEST CROSSING, NOT THE FIRST. The sweep keeps the
-// seed, row and side of the worst approach, and the crossing is then re-posed and
+// weave, row and side of the worst approach, and the crossing is then re-posed and
 // flown again in front of an armed recorder — at one tick a frame, so the playback
 // is the motion rather than a slideshow. Filming the first crossing instead loses
 // the point of the fix: on a failing build the dead-on approach is frequently one
@@ -74,8 +75,8 @@ import {
 } from "../harness";
 import { createMarchHarness, MARCH_TICKS } from "./visits";
 
-/** The three seeds the whole set of crossings is repeated under. */
-const SEEDS = [1, 2, 3] as const;
+/** The two weave directions the whole set of crossings is flown with: down, up. */
+const WEAVES = [1, -1] as const;
 
 /** How far either side of the star's row the entry rows reach, and their step. */
 const ROW_REACH = 80;
@@ -136,20 +137,22 @@ const CHORD_ALLOWANCE = 0.4;
 
 /** One crossing, as the sweep names it. */
 interface Crossing {
-  seed: number;
+  weave: (typeof WEAVES)[number];
   row: number;
   side: (typeof SIDES)[number];
 }
 
 /** Pose one crossing on a harness already playing a quiet, empty game. */
 function poseCrossing(h: Harness, crossing: Crossing): void {
-  resetTo(h, crossing.seed);
+  resetTo(h);
   startPlaying(h);
   poseSaucer(h, crossing.side.x, crossing.row);
   // `addSaucer` brings the craft on travelling RIGHT at cruise; a crossing from
   // the right side is the same course turned round.
   h.debug.setSaucerVelocity(crossing.side.vx, 0);
   h.debug.setSaucerGun(false);
+  // The direction the first reroll takes, which `specs/saucer.md` draws.
+  h.debug.setSaucerWeave(crossing.weave);
 }
 
 let harnesses: Harness[] = [];
@@ -159,22 +162,22 @@ afterEach(() => {
   harnesses = [];
 });
 
-it("keeps every one of 54 crossings clear of CORE_R + SAUCER_R from the star's centre", async () => {
+it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R from the star's centre", async () => {
   const sweep = await createMarchHarness();
   harnesses.push(sweep);
 
   let closest = Infinity;
-  let worst: Crossing = { seed: SEEDS[0], row: ROWS[0], side: SIDES[0] };
+  let worst: Crossing = { weave: WEAVES[0], row: ROWS[0], side: SIDES[0] };
 
   // The sweep runs undrawn: what it reads is a path of centres out of the
-  // snapshot, and fifty-four crossings of twelve seconds each is a hundred
-  // thousand frames nothing looks at. The crossing it ends on is flown again
+  // snapshot, and thirty-six crossings of nine seconds each is forty thousand
+  // ticks nothing looks at. The crossing it ends on is flown again
   // below in front of the recorder, and THAT is what a reviewer sees.
   await sweep.quiet(async () => {
-    for (const seed of SEEDS) {
+    for (const weave of WEAVES) {
       for (const row of ROWS) {
         for (const side of SIDES) {
-          const crossing: Crossing = { seed, row, side };
+          const crossing: Crossing = { weave, row, side };
           poseCrossing(sweep, crossing);
 
           const path: Vec[] = [];
@@ -198,7 +201,7 @@ it("keeps every one of 54 crossings clear of CORE_R + SAUCER_R from the star's c
     }
   });
 
-  // The closest of the 54 crossings, flown again in front of the recorder at one
+  // The closest of the 36 crossings, flown again in front of the recorder at one
   // tick a frame — and before the assertion, so a failing build leaves the
   // approach its verdict rests on behind.
   const film = await createHarness();
@@ -215,12 +218,12 @@ it("keeps every one of 54 crossings clear of CORE_R + SAUCER_R from the star's c
   assertGreaterThan(
     closest,
     CLEARANCE - CHORD_ALLOWANCE,
-    `the closest any of the ${SEEDS.length * ROWS.length * SIDES.length} ` +
+    `the closest any of the ${WEAVES.length * ROWS.length * SIDES.length} ` +
       "crossings brought the saucer's centre to the star's centre, against " +
       `CORE_R + SAUCER_R (${CLEARANCE}) less the ${CHORD_ALLOWANCE} units this ` +
       "sweep's own stride cuts off a curve — at no moment does the saucer's " +
       "circle overlap the core (specs/saucer.md); the worst was the crossing " +
-      `from the ${worst.side.name} edge on row ${worst.row} under seed ` +
-      `${worst.seed}`,
+      `from the ${worst.side.name} edge on row ${worst.row}, weaving ` +
+      `${worst.weave > 0 ? "down" : "up"} first`,
   );
 });

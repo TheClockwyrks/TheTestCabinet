@@ -33,7 +33,7 @@
 // (`specs/instrumentation.md`: "`setWave(n)` sets the current wave number. It
 // spawns no rocks and clears none").
 //
-// THREE SEEDS, for the reason `wave-one-spawns-four` gives: a wave's positions are
+// THREE GAMES, for the reason `wave-one-spawns-four` gives: a wave's positions are
 // drawn, and a build that satisfies `specs/progression.md`'s placement rules by
 // rejecting and redrawing can give up on one draw and not on another. A ten-rock
 // wave crowds those constraints harder than a four-rock one, so this is where such
@@ -55,8 +55,8 @@ import { clearTheWave, openWaveAt, rocksInWave, waitForTheWave } from "./scene";
 /** The wave the field is posed at, so a conformant build then spawns wave 7. */
 const WAVE = 6;
 
-/** The three seeds the wave is spawned from. See the header. */
-const SEEDS: readonly number[] = [1, 2, 3];
+/** How many games the wave is spawned in. See the header. */
+const GAMES = 3;
 
 let h: Harness;
 
@@ -69,8 +69,8 @@ afterEach(() => {
 });
 
 it("puts up WAVE_BASE_ROCKS + N Large rocks for a later wave", async () => {
-  for (const seed of SEEDS) {
-    openWaveAt(h, WAVE, seed);
+  for (let game = 1; game <= GAMES; game += 1) {
+    openWaveAt(h, WAVE);
     await clearTheWave(h);
     const arrival = await waitForTheWave(h);
     // The wave as it arrived, kept before the assertions so a failing build
@@ -84,7 +84,7 @@ it("puts up WAVE_BASE_ROCKS + N Large rocks for a later wave", async () => {
     assertLength(
       arrival.rocks,
       rocksInWave(spawned),
-      `seed ${String(seed)}: wave ${String(spawned)} putting up ` +
+      `game ${String(game)}: wave ${String(spawned)} putting up ` +
         `WAVE_BASE_ROCKS (${String(WAVE_BASE_ROCKS)}) + ${String(spawned)} = ` +
         `${String(rocksInWave(spawned))} rocks — wave N spawns ` +
         `WAVE_BASE_ROCKS + N Large rocks (specs/progression.md); the field was ` +
@@ -98,7 +98,7 @@ it("puts up WAVE_BASE_ROCKS + N Large rocks for a later wave", async () => {
     assertLength(
       wrongSize,
       0,
-      `seed ${String(seed)}: every rock of wave ${String(spawned)} a Large — ` +
+      `game ${String(game)}: every rock of wave ${String(spawned)} a Large — ` +
         `a wave spawns Large rocks (specs/progression.md); found ` +
         `${wrongSize.map((rock) => rock.size).join(", ")}`,
     );

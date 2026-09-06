@@ -21,8 +21,8 @@
 // than a tolerance.
 //
 // THE MIND IS HELD. The gun is named by the item and the travel gate is its
-// requirement; the weave is neither, and a steering saucer draws from the game's
-// generator. Held, the crossing is about the two things the rule names.
+// requirement; the weave is neither, and a steering saucer draws its weave. Held,
+// the crossing is about the two things the rule names.
 //
 // THE PLACE IS QUIET. `(400, 660)` is `384` units from `(STAR_X, STAR_Y)`, so
 // nothing about the star's core can reach the held saucer, and the rounds it

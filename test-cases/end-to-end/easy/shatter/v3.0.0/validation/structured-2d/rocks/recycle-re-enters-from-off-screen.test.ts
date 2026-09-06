@@ -36,7 +36,6 @@ import { assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  resetTo,
   startPlaying,
   ticksFor,
   type Harness,
@@ -50,9 +49,6 @@ import {
 
 /** How near an edge the rock must re-appear, in units, as the review item states. */
 const NEAR_AN_EDGE = 100;
-
-/** The seed the run is put on, so the edge the star draws is reproducible. */
-const SEED = 1;
 
 /** Ticks of the rock coming back in, recorded after the reading is taken. */
 const AFTERMATH_TICKS = ticksFor(1);
@@ -68,7 +64,6 @@ afterEach(() => {
 });
 
 it("re-places a rock the core took at one of the four edges", async () => {
-  resetTo(h, SEED);
   startPlaying(h);
   dropOntoTheStar(h, "large");
 

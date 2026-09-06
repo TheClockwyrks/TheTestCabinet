@@ -42,8 +42,8 @@
 // places a rock the well pulls and the collision pass resolves, `addBullet`
 // places a round the build's own shot code spends, `addSaucer` brings in a
 // saucer its own mind steers, and `reset` gives everything back. Posing through
-// it is how a scenario is reproducible, and it is the seam the case's
-// specification documents. `surface.ts` is that specification as types, and it
+// it is how a scenario is arranged the same way against every build, and it is
+// the seam the case's specification documents. `surface.ts` is that specification as types, and it
 // is the only description of the surface this harness reads: the build's own
 // module for it is never imported.
 //
@@ -539,11 +539,7 @@ export type PointerDevice = "mouse" | "pen" | "touch";
 
 /** The buttons a pointer may hold, as the engine names them. */
 export type PointerButton =
-  | "primary"
-  | "secondary"
-  | "auxiliary"
-  | "back"
-  | "forward";
+  "primary" | "secondary" | "auxiliary" | "back" | "forward";
 
 /** How one dispatched pointer event is shaped. */
 export interface PointerOptions {
@@ -1211,22 +1207,22 @@ export function captureStill(h: Harness, outputId: string): void {
 // about a rock's drift poses no saucer.
 
 /**
- * `reset({seed})`: the title screen, a seeded generator, every declared field at
- * its title-screen value, both world gates back ON.
+ * `reset()`: the title screen, every declared field at its title-screen value,
+ * every posed draw cleared, both world gates back ON.
  *
  * No frame is advanced. A pose acts on the live game at the call under this
  * engine (specs/instrumentation.md), so the state is restored when this returns,
  * and a check about what `reset` restores — `simTime` among them — reads a game
  * that has run no frame since.
  */
-export function resetTo(h: Harness, seed?: number): void {
-  h.debug.reset(seed === undefined ? undefined : { seed });
+export function resetTo(h: Harness): void {
+  h.debug.reset();
 }
 
 /**
  * A NEW RUN, opened the way a player opens one.
  *
- * `reset(seed)` for the title screen and a seeded generator, then `confirm` on
+ * `reset()` for the title screen, then `confirm` on
  * the title's highlighted first entry, `PLAY`, which is what opens a game
  * (specs/ui.md) — and a game opens on wave 1, as specs/progression.md states.
  * No pose on the surface starts a run, and there is not meant to be one: the
@@ -1238,8 +1234,8 @@ export function resetTo(h: Harness, seed?: number): void {
  * way has the game's own wave loop and its own saucer arrival running, which is
  * how a check about either reaches one without turning a gate back on by hand.
  */
-export async function startRun(h: Harness, seed?: number): Promise<void> {
-  resetTo(h, seed);
+export async function startRun(h: Harness): Promise<void> {
+  resetTo(h);
   await tapAction(h, "confirm");
 }
 
@@ -1293,8 +1289,9 @@ export function clearWorld(h: Harness): void {
  * Parking a bystander rock in a harmless corner to hold a wave off is NOT the
  * defence — `setWaveSpawning(false)` is.
  *
- * The generator is left as it stands, so a check that wants a seeded one calls
- * {@link resetTo} first. No frame is advanced: every pose here lands at the call.
+ * The posed draws are left as they stand, so a check that wants them cleared
+ * calls {@link resetTo} first. No frame is advanced: every pose here lands at
+ * the call.
  */
 export function startPlaying(h: Harness): void {
   clearWorld(h);

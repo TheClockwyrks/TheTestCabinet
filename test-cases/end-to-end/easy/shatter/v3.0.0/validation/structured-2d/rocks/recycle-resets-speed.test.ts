@@ -40,7 +40,6 @@ import { pullAt, speedOf } from "../geometry";
 import {
   captureStill,
   createHarness,
-  resetTo,
   startPlaying,
   ticksFor,
   type Harness,
@@ -56,9 +55,6 @@ import {
 
 /** How many trips through the core are read, so "repeated" is really tested. */
 const PASSES = 3;
-
-/** The seed the run is put on, so the speeds the star draws are reproducible. */
-const SEED = 1;
 
 /**
  * How many ticks of the well's pull the re-entry speed is allowed to carry.
@@ -83,7 +79,6 @@ afterEach(() => {
 });
 
 it("returns a Large slung in at 400 units per second at a Large's own drift speed", async () => {
-  resetTo(h, SEED);
   startPlaying(h);
   dropOntoTheStar(h, "large");
 

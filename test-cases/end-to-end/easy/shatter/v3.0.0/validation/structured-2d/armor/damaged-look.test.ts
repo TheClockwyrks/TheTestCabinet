@@ -12,15 +12,17 @@
 // rocks with invisible health — the exact defect `specs/rocks.md` states the rule
 // to prevent, and one no snapshot can see.
 //
-// THE COMPARISON IS BETWEEN TWO RUNS, NOT TWO ROCKS. A rock's drawn outline and its
+// THE SAME ROCK IS READ TWICE, NOT TWO ROCKS ONCE. A rock's drawn outline and its
 // spin are its own — a build is free to derive both from the rock's identity — so
 // two rocks standing side by side differ for reasons that have nothing to do with
-// health, and a check that compared them would pass any build at all. Instead the
-// same arrangement is posed twice, in two harnesses, off the same seed and with the
-// same calls in the same order, and the ONLY difference between the two frames is
-// the health the left rock was posed at. `specs/instrumentation.md` makes that
-// reproducible: given the same seed and the same sequence of calls the game reaches
-// the same state every time.
+// health, and a check that compared them would pass any build at all. Instead one
+// Large is read at full health, its health is posed down to `1` through
+// `setRockHealth`, and it is read again one frame later: `specs/rocks.md` makes
+// the spin slow, so one tick of it shifts the drawing by well under half a pixel,
+// and the ONLY thing that can have changed by more is the look its health gives
+// it. The health is POSED rather than shot on, so what is read is the damaged
+// look and not the hit flash `armor/hit-flash` grades: `setRockHealth` produces
+// no hit.
 //
 // THE SAMPLE IS 441 POINTS INSIDE THE ROCK'S OUTLINE: a 21 by 21 grid over the
 // square INSCRIBED in a Large's collision circle, so every point of it lies inside
@@ -38,14 +40,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { ROCK_HEALTH, ROCK_RADIUS } from "../constants";
-import { DEFAULT_SEED } from "../surface";
 import { assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
   colorDistance,
   createHarness,
   poseRock,
-  resetTo,
   startPlaying,
   type Harness,
   type Rgb,
@@ -77,11 +77,12 @@ const MIN_DIFFERING = 30;
  * How far apart two samples must be to count as differing, on the 0–441 scale
  * `colorDistance` measures in.
  *
- * The two frames are produced by the same build off the same seed with the same
- * calls, so a pixel neither rock's health touched is identical in both and reads
- * `0`. This is a guard against a build that dithers its fill rather than a
- * tolerance for noise: sixteen is about a twentieth of one channel, below which two
- * colours are the same colour to a player.
+ * The two frames are of the same rock one tick apart, so a pixel its health did
+ * not touch is the same colour in both but for the fraction of a pixel its slow
+ * spin moved the drawing. Sixteen is about a twentieth of one channel, well above
+ * what that shift does to an anti-aliased edge and far below the contrast of any
+ * mark a build would draw to say "damaged"; below it two colours are the same
+ * colour to a player.
  */
 const DIFFERENT = 16;
 
@@ -109,36 +110,30 @@ afterEach(() => {
   h?.dispose();
 });
 
-/**
- * Pose the pair of Larges — the left one at `health`, the right one whole — run the
- * frame that draws them, and read the grid off the left one.
- *
- * The same calls in the same order every time, so the two runs this check compares
- * differ in the posed health alone.
- */
-async function paint(target: Harness, health: number): Promise<Rgb[]> {
-  resetTo(target, DEFAULT_SEED);
-  startPlaying(target);
-  const damaged = poseRock(target, "large", DAMAGED_SPOT.x, DAMAGED_SPOT.y);
-  poseRock(target, "large", WHOLE_SPOT.x, WHOLE_SPOT.y);
-  poseHealth(target, damaged, health);
-  await target.advance(1);
+/** The grid, read off the canvas the last frame drew. */
+function readGrid(target: Harness): Rgb[] {
   return SAMPLES.map((point) => {
     const [r, g, b] = target.pixel(point.x, point.y);
     return { r, g, b };
   });
 }
 
-it("draws a Large at health 1 differently from one at full health", async () => {
-  const control = await createHarness();
-  let whole: Rgb[];
-  try {
-    whole = await paint(control, FULL);
-  } finally {
-    control.dispose();
-  }
+it("draws a Large at health 1 differently from the same Large at full health", async () => {
+  startPlaying(h);
+  const rock = poseRock(h, "large", DAMAGED_SPOT.x, DAMAGED_SPOT.y);
 
-  const damaged = await paint(h, DAMAGED);
+  // One frame, so the rock is on the canvas, and the undamaged reading.
+  await h.advance(1);
+  const whole = readGrid(h);
+
+  // The same rock, damaged, one frame later.
+  poseHealth(h, rock, DAMAGED);
+  await h.advance(1);
+  const damaged = readGrid(h);
+
+  // And an undamaged one beside it, for the picture alone.
+  poseRock(h, "large", WHOLE_SPOT.x, WHOLE_SPOT.y);
+  await h.advance(1);
   captureStill(h, "damage");
 
   assertLength(

@@ -27,7 +27,7 @@
 // consecutive rerolls have their relationship fixed whatever the draw was.
 //
 // GUN OFF, TRAVEL ON. The gun is gated because a firing saucer draws its aim
-// error from the game's generator and puts rounds on a field this item is not
+// error and puts rounds on a field this item is not
 // about (`specs/saucer.md`); travel is left running because the weave belongs to
 // a crossing, and holding the craft still would be reading the mind through the
 // travel gate. The crossing is posed low and to the left — from `(60, 660)`,

@@ -24,7 +24,7 @@
 //
 // THE PROBE, AND WHY IT IS A DIFFERENCE. Four Large rocks are posed near the four
 // edges of the field and the canvas is read at the device pixels the fit puts each
-// of them at. The reading is taken against the SAME tick of the SAME seeded game
+// of them at. The reading is taken against the SAME tick of the SAME empty game
 // with no rocks on it (`paint.ts`), so the baseline is whatever the build itself
 // painted there — a gradient, a starfield, a HUD readout — and what is asserted is
 // the rock's own contribution. A build that scaled to COVER the window instead of

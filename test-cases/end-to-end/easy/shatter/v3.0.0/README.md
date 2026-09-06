@@ -161,10 +161,13 @@ emptied, the game's own wave loop and its saucer arrival are held off, the ship'
 lethal contact test is held off, and then exactly the entities the requirement
 concerns are added back, each of the saucer's three faculties held on its own.
 Turning a gate back on is the exception, and the point that does it is the point
-whose requirement that faculty is. No suite reaches a cleared wave with
-`clearRocks`: the wave points shoot the field down for real, through the build's
-own collision and split code. Every expected value a suite asserts comes from a
-figure the specs fix, never from a reference build.
+whose requirement that faculty is. Where a point's requirement touches a draw the
+game makes, the suite poses the outcome through the surface's posed draws, the
+saucer's due and its weave, and reads what the game does with it; a point about
+the draw itself poses nothing and reads the build's own. No suite reaches a
+cleared wave with `clearRocks`: the wave points shoot the field down for real,
+through the build's own collision and split code. Every expected value a suite
+asserts comes from a figure the specs fix, never from a reference build.
 
 Each project's `constants.ts` is where those figures live, transcribed from the
 `specs/` file named in each section heading, and every other file in the project

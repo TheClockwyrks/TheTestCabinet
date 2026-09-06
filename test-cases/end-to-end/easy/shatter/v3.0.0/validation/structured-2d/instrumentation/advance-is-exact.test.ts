@@ -9,10 +9,10 @@
 // each frame covers and hands the game that delta in seconds; it imposes no
 // timestep of its own. The game's own timestep is the one above, so the delta a
 // frame brings is converted into whole ticks with the remainder carried into the
-// next frame." And `specs/instrumentation.md`, A deterministic core: "an
-// interval of game time reaches the same state however it was divided into
-// frames", with `simTime` accumulating "every tick's `TICK_DT`, whatever the
-// screen".
+// next frame." And `specs/instrumentation.md`, A render-free core: "a step means
+// the same thing whatever the frame rate, and the game's state advances from the
+// elapsed time it is handed", with `simTime` accumulating "every tick's
+// `TICK_DT`, whatever the screen".
 //
 // TWO LEGS, AND THE SECOND IS THE ONE WITH TEETH.
 //

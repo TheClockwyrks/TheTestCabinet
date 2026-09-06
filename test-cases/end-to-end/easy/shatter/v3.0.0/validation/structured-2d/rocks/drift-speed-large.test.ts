@@ -12,7 +12,7 @@
 // way only — `specs/progression.md`'s wave — so a check that posed one with
 // `addRock` would be reading a rock `specs/instrumentation.md` places AT REST and
 // grading nothing at all. The run is opened the way a player opens one: `reset` to
-// the title on a chosen seed, then the confirm key on `PLAY`, which `specs/ui.md`
+// the title, then the confirm key on `PLAY`, which `specs/ui.md`
 // makes the entry to a game. `reset` leaves both world gates on, so the opening
 // wave is the build's own.
 //
@@ -23,9 +23,11 @@
 // tick is what keeps the reading close to the spawn: it is the speed the wave gave
 // each rock, not one a second of falling has changed.
 //
-// THREE SEEDS, so the sample is a dozen rocks rather than four. The speeds are
+// THREE GAMES, so the sample is a dozen rocks rather than four. The speeds are
 // draws (`specs/simulation.md`), and a build drawing them from some other range
-// would need to be unlucky to be caught by four samples from one seed.
+// would need to be unlucky to be caught by four samples from one game. Nothing is
+// posed for the speed: `setNextRockSpeed` is how a check that wants a particular
+// one gets it, and this check wants the build's own draws.
 //
 // THE MULTIPLIER IS TAKEN FROM THE WAVE THE BUILD REPORTS, not from the number 1,
 // so this item grades the speed alone: whether the game opens on wave 1 at all is
@@ -58,8 +60,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seeds the opening wave is drawn under, so a dozen rocks are read. */
-const SEEDS = [1, 2, 3];
+/** How many games the opening wave is drawn in, so a dozen rocks are read. */
+const GAMES = 3;
 
 /**
  * How long a wave is waited for, in ticks.
@@ -96,9 +98,9 @@ afterEach(() => {
 });
 
 it("spawns every Large of a wave inside its range scaled by that wave's multiplier", async () => {
-  for (const seed of SEEDS) {
-    // A real opening: the title screen on this seed, then PLAY.
-    await startRun(h, seed);
+  for (let game = 1; game <= GAMES; game += 1) {
+    // A real opening: the title screen, then PLAY.
+    await startRun(h);
 
     const arrival = await h.until((snapshot) => snapshot.rocks.length > 0, {
       maxFrames: WAVE_WINDOW_TICKS,
@@ -108,7 +110,7 @@ it("spawns every Large of a wave inside its range scaled by that wave's multipli
 
     assertTrue(
       arrival.hit,
-      `seed ${seed}: a wave of rocks on the field within ` +
+      `game ${game}: a wave of rocks on the field within ` +
         `${WAVE_BANNER_TIME + 1} seconds of a game opening — wave 1 spawns at ` +
         "once or as its banner ends (specs/progression.md)",
     );
@@ -122,7 +124,7 @@ it("spawns every Large of a wave inside its range scaled by that wave's multipli
     assertGreaterThan(
       spawned.length,
       0,
-      `seed ${seed}: Large rocks in the wave that arrived — a wave spawns ` +
+      `game ${game}: Large rocks in the wave that arrived — a wave spawns ` +
         "Large rocks (specs/progression.md)",
     );
 
@@ -131,7 +133,7 @@ it("spawns every Large of a wave inside its range scaled by that wave's multipli
         speedOf(rock),
         ROCK_SPEED_MIN.large * multiplier * (1 - TOLERANCE),
         ROCK_SPEED_MAX.large * multiplier * (1 + TOLERANCE),
-        `seed ${seed}, rock ${index + 1} of wave ${wave}: the speed it ` +
+        `game ${game}, rock ${index + 1} of wave ${wave}: the speed it ` +
           `spawned drifting at — a Large's base range, ` +
           `${ROCK_SPEED_MIN.large} to ${ROCK_SPEED_MAX.large} ` +
           "(specs/rocks.md), scaled by that wave's multiplier of " +

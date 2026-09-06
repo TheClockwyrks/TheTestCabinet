@@ -110,7 +110,7 @@ export function menuRows(h: Harness, items: readonly string[]): MenuRow[] {
  * met, and only a reading that takes in the entry's whole row sees all four.
  *
  * The two captures must be of the same scene apart from the one thing under
- * test — the point that calls this takes them from the same seeded `reset` — so
+ * test — the point that calls this takes them a tick apart on one game — so
  * a pixel that differs at all differs because of that one thing.
  */
 export function bandChanged(

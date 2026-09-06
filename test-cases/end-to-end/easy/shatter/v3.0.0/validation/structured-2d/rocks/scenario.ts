@@ -648,10 +648,9 @@ export async function slingIntoTheStar(h: Harness): Promise<Recycle> {
  *
  * How the items that want MANY recycles get them — the two `drift-speed-*` entry
  * items read the speed of every rock a recycle re-enters with, and
- * `recycle-resets-speed` reads a rock through the star repeatedly. Each pass draws
- * afresh from the game's own seeded generator (`specs/simulation.md`), so the
- * samples are the draws the build would make in play rather than one draw read
- * several times.
+ * `recycle-resets-speed` reads a rock through the star repeatedly. Each pass is a
+ * fresh draw of the edge and the speed (`specs/rocks.md`), so the samples are the
+ * draws the build would make in play rather than one draw read several times.
  */
 export async function slingAgain(h: Harness): Promise<Recycle> {
   const rock = theOneRock(

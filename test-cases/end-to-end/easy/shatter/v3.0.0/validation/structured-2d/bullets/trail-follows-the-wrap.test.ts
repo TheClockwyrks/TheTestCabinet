@@ -42,7 +42,7 @@
 // THE LANE IS THE BOTTOM OF THE FIELD, `330` units below the star. Nothing of the
 // star is drawn beyond `180` units (specs/field.md), the ship stands `130` units
 // above the lane, and `startPlaying` leaves no rock and no saucer — and the
-// control flight (lane.ts) is the same seeded game flown to the same tick without
+// control flight (lane.ts) is the same empty game flown to the same tick without
 // the round, so whatever else the build paints on that band is painted identically
 // in both and cannot read as tail.
 

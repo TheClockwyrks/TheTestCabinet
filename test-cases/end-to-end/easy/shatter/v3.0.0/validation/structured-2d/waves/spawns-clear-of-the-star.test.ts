@@ -41,7 +41,8 @@
 //
 // THE SHIP IS LEFT AT THE SAFE POINT, because it is not what this item measures
 // and moving it would only change which draws a build's own rejection loop
-// discards.
+// discards. Nothing poses a position: the placement is the build's own draw, read
+// where it lands.
 //
 // THE TOLERANCE IS ONE TICK OF DRIFT, on the same derivation
 // `spawns-clear-of-the-ship` gives.
@@ -62,7 +63,7 @@ import { clearTheWave, openWaveAt, waitForTheWave } from "./scene";
 const WAVE = 19;
 
 /**
- * The twelve seeds the wave is spawned from.
+ * How many games the wave is spawned in.
  *
  * Twelve waves of twenty-three rocks is `276` independent draws put through the
  * rule, and the number is chosen from what a build with a SMALLER exclusion would
@@ -72,7 +73,7 @@ const WAVE = 19;
  * probability under one in ten thousand. Five waves — sixty-five draws — let it
  * through about one time in fifty, which is not a check.
  */
-const SEEDS: readonly number[] = Array.from({ length: 12 }, (_, i) => 1 + i);
+const GAMES = 12;
 
 /**
  * How far short of `WAVE_MIN_STAR_DIST` a reading may fall, in units: one tick of
@@ -95,8 +96,8 @@ it("places every rock of a wave WAVE_MIN_STAR_DIST from the star", async () => {
   let closest = Number.POSITIVE_INFINITY;
   let closestAt = "";
 
-  for (const seed of SEEDS) {
-    openWaveAt(h, WAVE, seed);
+  for (let game = 1; game <= GAMES; game += 1) {
+    openWaveAt(h, WAVE);
     await clearTheWave(h);
     const arrival = await waitForTheWave(h);
     // The wave standing clear of the star.
@@ -107,7 +108,7 @@ it("places every rock of a wave WAVE_MIN_STAR_DIST from the star", async () => {
       if (distance < closest) {
         closest = distance;
         closestAt =
-          `seed ${String(seed)}, rock at ` +
+          `game ${String(game)}, rock at ` +
           `(${rock.x.toFixed(1)}, ${rock.y.toFixed(1)})`;
       }
     }
@@ -120,6 +121,6 @@ it("places every rock of a wave WAVE_MIN_STAR_DIST from the star", async () => {
       `(${String(WAVE_MIN_STAR_DIST)}) from the star's centre by the shortest ` +
       `wrapped separation (specs/progression.md, specs/field.md), less ` +
       `${DRIFT_TOLERANCE.toFixed(2)} for one tick of the fastest drift a wave ` +
-      `can carry; closest of ${String(SEEDS.length)} waves: ${closestAt}`,
+      `can carry; closest of ${String(GAMES)} waves: ${closestAt}`,
   );
 });

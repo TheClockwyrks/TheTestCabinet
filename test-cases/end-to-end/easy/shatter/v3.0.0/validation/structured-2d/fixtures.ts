@@ -7,7 +7,7 @@
 // is load-bearing in a way a later reader would otherwise sand off, and each
 // carries the reason it is what it is.
 //
-// Everything here is GEOMETRY — a position, a drift, a row, a seed. Not one
+// Everything here is GEOMETRY — a position, a drift, a row, a weave. Not one
 // figure below is a bound a check asserts. Every threshold stays in the check
 // that asserts it, derived from the figure specs/ fixes for it.
 //

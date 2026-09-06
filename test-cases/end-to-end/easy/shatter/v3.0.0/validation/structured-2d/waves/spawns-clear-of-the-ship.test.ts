@@ -27,14 +27,15 @@
 // That build passes a Cartesian check and fails this one.
 //
 // WHY THE SWEEP IS AS LARGE AS IT IS. The positions are DRAWN
-// (`specs/simulation.md`, "Seeded randomness"), so this is a containment check
+// (`specs/simulation.md`, "Random draws"), so this is a containment check
 // over draws and what decides it is how much of the field a build with a smaller
 // exclusion leaves open. The annulus between `250` and `300` is nine percent of
 // the field, so a build that excludes `250` escapes one draw with probability
 // `0.91` and the `276` draws below with a probability of about one in ten
 // million. It is also enough that a build which satisfies the rule by rejecting
 // and redrawing, and gives up after a fixed number of tries, shows up rather than
-// being graded by luck.
+// being graded by luck. Nothing poses a position: the placement is the build's own
+// draw, read where it lands.
 //
 // THE TOLERANCE IS ONE TICK OF DRIFT. The rocks are read on the first tick they
 // are on the field, but whether a build spawned them before or after that tick's
@@ -61,12 +62,12 @@ import { clearTheWave, openWaveAt, waitForTheWave } from "./scene";
 const WAVE = 19;
 
 /**
- * The twelve seeds the wave is spawned from.
+ * How many games the wave is spawned in.
  *
  * Twelve waves of twenty-three rocks is `276` independent draws put through the
  * rule. See the header for what that buys.
  */
-const SEEDS: readonly number[] = Array.from({ length: 12 }, (_, i) => 1 + i);
+const GAMES = 12;
 
 /**
  * Where the ship stands: the far corner from the safe point, and `540` units from
@@ -99,8 +100,8 @@ it("places every rock of a wave WAVE_MIN_SHIP_DIST from the ship", async () => {
   let closest = Number.POSITIVE_INFINITY;
   let closestAt = "";
 
-  for (const seed of SEEDS) {
-    openWaveAt(h, WAVE, seed);
+  for (let game = 1; game <= GAMES; game += 1) {
+    openWaveAt(h, WAVE);
     h.debug.setShipPosition(SHIP_X, SHIP_Y);
     await clearTheWave(h);
     const arrival = await waitForTheWave(h);
@@ -113,7 +114,7 @@ it("places every rock of a wave WAVE_MIN_SHIP_DIST from the ship", async () => {
       if (distance < closest) {
         closest = distance;
         closestAt =
-          `seed ${String(seed)}, rock at ` +
+          `game ${String(game)}, rock at ` +
           `(${rock.x.toFixed(1)}, ${rock.y.toFixed(1)}) with the ship at ` +
           `(${ship.x.toFixed(1)}, ${ship.y.toFixed(1)})`;
       }
@@ -129,6 +130,6 @@ it("places every rock of a wave WAVE_MIN_SHIP_DIST from the ship", async () => {
       `${DRIFT_TOLERANCE.toFixed(2)} for one tick of the fastest drift a wave ` +
       `can carry; the ship was posed away from the safe point, so a build ` +
       `measuring from (SAFE_X, SAFE_Y) rather than from the ship reads here; ` +
-      `closest of ${String(SEEDS.length)} waves: ${closestAt}`,
+      `closest of ${String(GAMES)} waves: ${closestAt}`,
   );
 });

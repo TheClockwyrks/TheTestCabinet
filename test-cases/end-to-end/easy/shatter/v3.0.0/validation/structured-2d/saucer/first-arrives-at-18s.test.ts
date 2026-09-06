@@ -26,7 +26,9 @@
 // contact test shut, so nothing can end the run or spawn into it over the twenty
 // seconds. `saucerSpawning` — the one faculty this point is about — is left on,
 // exactly as `reset` left it, and NO saucer is added: what turns up has to be the
-// game's own arrival.
+// game's own arrival. Nothing is posed for the due either — `setSaucerDue` is how
+// a check that wants an arrival at a moment of its own gets one, and this check
+// wants the build's own first delay.
 //
 // WHAT THIS DOES NOT DECIDE. Where the saucer enters (`saucer/enters-at-an-edge`,
 // `saucer/entry-row-inside-the-range`, `saucer/enters-at-a-random-row`), how long
@@ -43,9 +45,6 @@ import {
   marchFrames,
   openQuietGame,
 } from "./visits";
-
-/** The seed the game is opened on, so the arrival is the same one every run. */
-const SEED = 1;
 
 /**
  * The window the arrival has to fall inside, in seconds of game time.
@@ -71,7 +70,7 @@ afterEach(() => {
 });
 
 it("leaves the field clear at 16 s of game time and has a saucer up by 20 s", async () => {
-  const opened = await openQuietGame(h, SEED);
+  const opened = await openQuietGame(h);
 
   await march(h, marchFrames(CLEAR_AT) - opened);
   const early = h.snapshot();

@@ -6,8 +6,8 @@ The two scripts here (re)record each variant's showcase media from that variant'
 `torpedo-run.png` for `warhead` — by playing a REAL game: the title screen is
 opened, `PLAY` is taken with a real key edge, and the ship is then flown for half
 a minute with scripted keyboard input against the build's own rocks, well and
-saucer. Several takes are auditioned, and the most watchable one is replayed under
-the engine's recorder.
+saucer. Several takes are flown, every one under the engine's recorder, and the
+most watchable one is named for the showcase.
 
 A driver is the case's validator harness reused as a recording rig. It is **not a
 validator**: no review item names it, it lives outside `validation/` so a run never
@@ -15,8 +15,8 @@ loads it, and it is staged by hand.
 
 ## Nothing is posed mid-play
 
-The only debug operation a take uses is `reset({ seed })`, which is what makes a
-take reproducible, and it runs before the game is opened. Everything after that is
+The only debug operation a take uses is `reset()`, which puts the game on its
+title screen, and it runs before the game is opened. Everything after that is
 keyboard input through the engine's own registered actions — turn, thrust, fire
 and (under `warhead`) launch — so every rock that breaks, every wave that turns
 over and every saucer that arrives is the build's own rules answering that input.
@@ -33,7 +33,7 @@ that has to curve around the star to reach its rock is found by that search
 exactly as a straight one is, which is why the clips show both.
 
 The trigger is pulled on the live world, never on a plan made earlier: on every
-frame the gun's gate is open, the round the ship would fire *right now* is flown
+frame the gun's gate is open, the round the ship would fire _right now_ is flown
 forward, and the key goes down only if that round lands.
 
 Two rules sit over the aim. A ship at rest is a dull ship, so the pilot holds a
@@ -68,31 +68,34 @@ NODE_OPTIONS=--max-old-space-size=8192 \
     validation/showcase-capture.test.ts
 ```
 
-The outputs land under `$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`;
-copy the replay and the two stills into `showcase/<variant>/`, then delete the
-staged `validation/` copy so the reference stays byte-clean.
+The outputs land under `$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`,
+one set per take under a `take-NN-` prefix: `take-NN-gameplay.json.gz`,
+`take-NN-mid-wave.png` and `take-NN-the-saucer.png` (`take-NN-torpedo-run.png`
+under `warhead`). The run prints a rating for every take and names the best;
+copy that take's replay and two stills into `showcase/<variant>/` without the
+prefix, then delete the staged `validation/` copy so the reference stays
+byte-clean.
 
 ## The knobs
 
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `TCAB_VALIDATION_MEDIA_DIR` | unset | Where the media is written. Unset writes nothing, which is what makes an audition free. |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched by the `sed` above to read this. The game runs at 120 ticks a second, so a cap between half and all of a take's ticks thins it to exactly 60 frames a second; `2200` does that for any take from 18 to 36 seconds. |
-| `TCAB_SHOWCASE_SEEDS` | `1,2,3,4,5,6,7,8` | The seeds auditioned, each crossed with every phase. |
-| `TCAB_SHOWCASE_PHASES` | `0,1,2` | The roam-heading rotations auditioned, so takes differ beyond what the seed varies. |
-| `TCAB_SHOWCASE_MIN_SECONDS` | `26` | The earliest a take may end. |
-| `TCAB_SHOWCASE_MAX_SECONDS` | `36` | The hard ceiling, past which a take ends wherever it stands. |
-| `TCAB_SHOWCASE_TAKE` | unset | `<seed>:<phase>` records that take and auditions nothing, which is how a committed clip is reproduced without paying for the audition. |
-| `TCAB_SHOWCASE_QA_STILLS` | unset | `1` writes a still every three seconds, for eyeballing a take. |
+| Variable                          | Default | What it does                                                                                                                                                                                                                                         |
+| --------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_VALIDATION_MEDIA_DIR`       | unset   | Where the media is written. Unset writes nothing, which is how a rating pass alone is run.                                                                                                                                                           |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`   | The harness's replay cap, patched by the `sed` above to read this. The game runs at 120 ticks a second, so a cap between half and all of a take's ticks thins it to exactly 60 frames a second; `2200` does that for any take from 18 to 36 seconds. |
+| `TCAB_SHOWCASE_TAKES`             | `3`     | How many takes are flown at each phase.                                                                                                                                                                                                              |
+| `TCAB_SHOWCASE_PHASES`            | `0,1,2` | The roam-heading rotations flown, so takes differ beyond what the game's own draws vary.                                                                                                                                                             |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `26`    | The earliest a take may end.                                                                                                                                                                                                                         |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | `36`    | The hard ceiling, past which a take ends wherever it stands.                                                                                                                                                                                         |
+| `TCAB_SHOWCASE_QA_STILLS`         | unset   | `1` writes a still every three seconds, for eyeballing a take.                                                                                                                                                                                       |
 
 ## How a take is judged
 
-A take is auditioned with the recorder off and rated on what makes a watchable
-half-minute: rocks broken, waves turned over, the saucer's visit, lives kept, the
-longest stretch with nothing breaking, and whether it ended on a settled beat —
-the `WAVE N` banner if the take reached one, otherwise a breath after a rock came
-apart. Under `warhead` torpedoes launched and detonations landed count too. The
-winner is then re-run under the recorder.
+Every take is rated on what makes a watchable half-minute: rocks broken, waves
+turned over, the saucer's visit, lives kept, the longest stretch with nothing
+breaking, and whether it ended on a settled beat — the `WAVE N` banner if the
+take reached one, otherwise a breath after a rock came apart. Under `warhead`
+torpedoes launched and detonations landed count too. The winner is named at the
+end of the run.
 
 One rating term is not about how good a take looks. specs/saucer.md puts 25 to
 35 seconds between one saucer leaving and the next arriving, and **the reference
@@ -104,30 +107,24 @@ showcase does not present that defect as the game. The pilot also does not aim a
 the saucer at all — a visit that plays out whole shows the hunt, which is the
 mechanic the clip is for.
 
-## Why it is reproducible
+## Why every take is recorded
 
-The capture is deterministic: `reset({ seed })` seeds the generator every wave
-layout, saucer arrival and aim error is drawn from, and every decision the pilot
-makes is a pure function of the debug snapshot, so a seed and a phase replay the
-identical game. That is what lets a take be auditioned with the recorder off and
-then re-run under it exactly.
-
-One caveat, and it is weaker than identity of the game: a recorded frame carries
-the engine's own frame number and running clock, and both count from when the
-harness was created rather than from when the recorder was armed. Re-recording a
-committed take with `TCAB_SHOWCASE_TAKE` therefore writes the same game with a
-different time origin — byte-identical stills, and a replay whose frames and
-operations match one for one — while a re-run of the whole audition reproduces
-the file exactly. Playback is unaffected either way, because a player paces
-itself off the per-frame deltas.
+The game draws its wave layouts, its saucer's arrivals and its aim errors at
+random, so no take can be flown a second time and come out the same, and a take
+rated with the recorder off could not then be re-run under it. Each take
+therefore runs under the recorder from the start and writes its media under a
+prefix of its own, and the rating decides which set is kept. A recorded frame
+carries the engine's own frame number and running clock, which count from when
+the harness was created rather than from when the take began; playback is
+unaffected, because a player paces itself off the per-frame deltas.
 
 ## The committed media
 
-| Variant | Take | Cap | What it turned out to be |
-| --- | --- | --- | --- |
-| `base` | seed 5, phase 1 | 2200 | 29.9 s. Opens on the title; wave 1 cleared at 15.8 s and the `WAVE 2` banner run over an empty field; the saucer arriving at 18.0 s and hunting to the end. 61 rocks broken for 4 480 points, no ship lost. |
-| `warhead` | seed 2, phase 2 | 2200 | 31.6 s. Opens on the title; four torpedo runs launched and all four detonated; wave 1 cleared at 16.0 s with the banner; the saucer's whole visit, arriving at 18.0 s and leaving at 30.0 s. 48 rocks broken for 3 330 points, one ship lost. |
+| Variant   | Take    | Cap  | What it turned out to be                                                                                                                                                                                                                      |
+| --------- | ------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`    | phase 1 | 2200 | 29.9 s. Opens on the title; wave 1 cleared at 15.8 s and the `WAVE 2` banner run over an empty field; the saucer arriving at 18.0 s and hunting to the end. 61 rocks broken for 4 480 points, no ship lost.                                   |
+| `warhead` | phase 2 | 2200 | 31.6 s. Opens on the title; four torpedo runs launched and all four detonated; wave 1 cleared at 16.0 s with the banner; the saucer's whole visit, arriving at 18.0 s and leaving at 30.0 s. 48 rocks broken for 3 330 points, one ship lost. |
 
-Both were auditioned over the default seeds and phases and recorded at
+Both were chosen from a run over the default phases and recorded at
 `TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2200`, which thins each to 60 frames a second.
 `base`'s replay is 0.9 MB and `warhead`'s 1.4 MB.

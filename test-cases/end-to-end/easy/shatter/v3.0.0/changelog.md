@@ -81,7 +81,7 @@ property as a point of its own.
 What that replaced:
 
 - The patch operations. `setShip(state)`, `setSaucer(state)`, `addRock(size,
-  state)` and `addBullet(state)` each took a partial object and applied every
+state)` and `addBullet(state)` each took a partial object and applied every
   field it carried, which made the case's own state layout a requirement on the
   build. Each is now a set of scalar operations that name what they set.
 - `startGame()`, which entered a screen, opened a run and began a wave at once.
@@ -104,6 +104,17 @@ What that replaced:
   and the build's under `none`, so a check drives real key events at it instead.
 - `setMuted`. Mute is reached the way a player reaches it, through the `mute`
   binding, and `muted` is read back from the snapshot.
+- Seeding. `reset` took an option that fixed every draw the game makes, and the
+  checks on the saucer, the waves and the recycled rocks replayed chosen values of
+  it. `reset` takes no options now: the specification states each draw as the
+  distribution it is drawn from and nothing about how a build draws it, and the
+  surface poses the outcome of every draw a check touches. `setNextSaucerEdge`,
+  `setNextSaucerRow`, `setNextSaucerAim`, `setNextRockSpeed` and
+  `setNextRecycleEdge` each set what the next draw of one kind decides and are
+  consumed by it, `setSaucerDue` sets the figure the gap draw decides, and
+  `setSaucerWeave` the direction of the saucer's first reroll. A check that wants
+  a particular outcome poses it, and a check on the draw itself reads the build's
+  own.
 
 ## A wave is cleared by shooting it, not by emptying the field
 
@@ -142,13 +153,14 @@ build's steering, while claiming to measure whether the saucer overlaps the core
 and it posed a state a conformant build's own flight cannot reach, the steering
 being what keeps it out of there.
 
-`saucer/avoids-the-core` now flies 54 real crossings: nine rows from 80 units
+`saucer/avoids-the-core` now flies 36 real crossings: nine rows from 80 units
 below the star's row to 80 above it in 20-unit steps, each from the left edge and
-from the right, the whole set flown with each weave direction. Every crossing is a
-course the specification's own entry rule produces, the whole approach is left for
-the build to steer through, and the closest approach of all 54 decides the point.
+from the right, the whole set flown with the first weave reroll posed each way.
+Every crossing is a course the specification's own entry rule produces, the whole
+approach is left for the build to steer through, and the closest approach of all
+36 decides the point.
 
-Fifty-four rather than one, because both common faults here are invisible in a
+Thirty-six rather than one, because both common faults here are invisible in a
 single sample. Avoidance is often one-sided, clearing an approach from above and
 driving one from below straight through, which is what the rows either side of the
 star are for. And a build that rerolls its weave on a timer can have the reroll
@@ -156,11 +168,11 @@ discard the avoidance it has accumulated, so whether it clears depends on where
 the reroll lands in the approach rather than on which row it came in on. That one
 is intermittent by construction and does not respect a tidy sample.
 
-The 54 are affordable because the closest approach is read as the star's distance
+The 36 are affordable because the closest approach is read as the star's distance
 to the straight line between two samples rather than to the samples themselves.
 Reading the samples alone at that stride reports the saucer further out than it
 got, which is the wrong direction for a check hunting a build that came too close.
-The saucer's gun is held off for the sweep, so 54 crossings produce no saucer
+The saucer's gun is held off for the sweep, so 36 crossings produce no saucer
 bullets at all, and the recording shows the crossing that came closest, which is
 the one the verdict was decided on.
 

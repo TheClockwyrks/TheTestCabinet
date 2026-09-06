@@ -11,7 +11,7 @@
 // WHAT IS READ. A round is flown along an empty lane at `MUZZLE_SPEED` for long
 // enough to have a full `TRAIL_TICKS` of history behind it, and the band of
 // device rows along that lane is compared against the same band of the same
-// seeded game flown without the round (lane.ts sets out why the control is a
+// empty game flown without the round (lane.ts sets out why the control is a
 // second flight rather than a second reading). Two numbers come out: how far the
 // changed columns run BACK from the round along its travel, and how far they run
 // FORWARD.

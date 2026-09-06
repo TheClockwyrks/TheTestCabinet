@@ -23,6 +23,10 @@
 // names. A ship in motion would spread the bearings by moving, and the point would
 // then pass for a build with no error at all.
 //
+// NOTHING IS POSED FOR THE ERROR. `setNextSaucerAim` is how a check that wants a
+// particular error gets one, and this check wants the build's own draws, sixty of
+// them.
+//
 // THE SCENARIO IS THE ONE `saucer/aims-at-the-ship` POSES, for the same reasons:
 // the craft at rest so the round's velocity is the aim rather than the aim plus a
 // cruise, its mind and travel shut so the bearing to the ship is one number, and
@@ -36,13 +40,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { DEG, SAUCER_AIM_ERROR } from "../constants";
 import { assertGreaterThan, assertLength } from "../assert";
 import { angleDelta } from "../geometry";
-import {
-  captureStill,
-  poseShip,
-  resetTo,
-  startPlaying,
-  type Harness,
-} from "../harness";
+import { captureStill, poseShip, startPlaying, type Harness } from "../harness";
 import {
   collectShots,
   createShotHarness,
@@ -50,9 +48,6 @@ import {
   poseGunner,
   SHOT_TICKS_PER_FRAME,
 } from "./shots";
-
-/** The seed the run is opened on, so the sixty draws are the same every run. */
-const SEED = 1;
 
 /** Where the gunner stands, at rest. See `aims-at-the-ship` for why this corner. */
 const GUN_POSE = { x: 60, y: 60, vx: 0, vy: 0 };
@@ -84,7 +79,6 @@ afterEach(() => {
 });
 
 it("spreads sixty shots at a still ship over more than four degrees", async () => {
-  resetTo(h, SEED);
   startPlaying(h);
   poseShip(h, { x: SHIP_X, y: SHIP_Y, vx: 0, vy: 0 });
   poseGunner(h, GUN_POSE);
