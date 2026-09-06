@@ -38,6 +38,16 @@ function text(
   return call;
 }
 
+/** One `strokeText` call carrying the width the harness measured. */
+function stroked(value: string, x: number, y: number, width: number): DrawCall {
+  return {
+    kind: "call",
+    method: "strokeText",
+    args: [value, x, y],
+    text: { width, textAlign: "start" },
+  };
+}
+
 /** One transform call. */
 function op(method: string, ...args: unknown[]): DrawCall {
   return { kind: "call", method, args };
@@ -186,6 +196,84 @@ it("coalesces a letter-spaced heading into the one run it spells", () => {
   expect(drewText(spaced, "solved")).toBe(true);
 });
 
+it("writes a space where a letter-spaced run skipped the space glyph", () => {
+  // Glyphs 10 wide tracked 4 apart, and the pen advanced 3 further over each
+  // space rather than drawing one: the gap there is 7, still inside the 0.6 of
+  // the run's mean advance that joins it, and past the run's own tracking by
+  // more than 0.2 of a glyph, so the run takes a space there and spells the
+  // copy the screen shows.
+  const glyphs = ["H", "O", "W", "T", "O", "P", "L", "A", "Y"];
+  let x = 100;
+  const spaced = calls(
+    ...glyphs.map((glyph, i) => {
+      const call = text(glyph, x, 40, 10);
+      x += 14 + (i === 2 || i === 4 ? 3 : 0);
+      return call;
+    }),
+  );
+  expect(drawnTextLines(spaced)).toEqual(["HOW TO PLAY"]);
+  expect(drewText(spaced, "how to play")).toBe(true);
+
+  // Two words drawn as two calls a space apart, with no space character in
+  // either, take a space from the first join.
+  const words = calls(text("HOW", 100, 40, 30), text("TO", 135, 40, 20));
+  expect(drawnTextLines(words)).toEqual(["HOW TO"]);
+
+  // A drawn space stays as drawn, and a gap inside the tracking writes nothing.
+  const drawn = calls(
+    text("A", 100, 40, 10),
+    text(" ", 114, 40, 5),
+    text("B", 123, 40, 10),
+  );
+  expect(drawnTextLines(drawn)).toEqual(["A B"]);
+});
+
+it("folds an outline's fill into the glyph it restrikes", () => {
+  // An outlined heading: each glyph stroked, then filled at the same anchor.
+  // The fill repeats the stroke's text and position, so it is the same glyph
+  // struck again rather than the next one, and the run spells the heading
+  // once instead of as overlapping fragments.
+  const glyphs = ["F", "A", "C", "E", "T"];
+  const outlined = calls(
+    ...glyphs.flatMap((glyph, i) => [
+      stroked(glyph, 100 + i * 14, 40, 10),
+      text(glyph, 100 + i * 14, 40, 10),
+    ]),
+  );
+  expect(drawnTextLines(outlined)).toEqual(["FACET"]);
+  expect(drewText(outlined, "facet")).toBe(true);
+
+  // A whole word stroked then filled at one anchor is likewise one run.
+  const word = calls(stroked("FACET", 100, 40, 60), text("FACET", 100, 40, 60));
+  expect(drawnTextLines(word)).toEqual(["FACET"]);
+
+  // But the same text drawn again further along is a second run of its own.
+  const twice = calls(text("GO", 100, 40, 20), text("GO", 200, 40, 20));
+  expect(drawnTextLines(twice)).toEqual(["GO", "GO"]);
+});
+
+it("finds copy whatever the spaces did, along one baseline", () => {
+  // Tracked wide enough that the skipped spaces split the heading into a run
+  // per word: the runs stay apart, and the copy is still found along the
+  // baseline they share, with the whitespace folded out of both sides.
+  const glyphs = ["H", "O", "W", "T", "O", "P", "L", "A", "Y"];
+  let x = 100;
+  const split = calls(
+    ...glyphs.map((glyph, i) => {
+      const call = text(glyph, x, 40, 10);
+      x += 16 + (i === 2 || i === 4 ? 14 : 0);
+      return call;
+    }),
+  );
+  expect(drawnTextLines(split)).toEqual(["HOW", "TO", "PLAY"]);
+  expect(drewText(split, "HOW TO PLAY")).toBe(true);
+  expect(drewText(split, "howtoplay")).toBe(true);
+
+  // Runs on different baselines never read as one line.
+  const stacked = calls(text("HOW TO", 100, 40, 60), text("PLAY", 100, 80, 40));
+  expect(drewText(stacked, "how to play")).toBe(false);
+});
+
 it("keeps a figure a clear gap from its label its own run", () => {
   // The label is 60 wide over 6 characters, so its mean advance is 10 and the
   // rule allows a 6-wide gap. The figure sits 30 past it, which is a HUD's
@@ -215,5 +303,7 @@ it("merges nothing at all when the case never asked to measure", () => {
     ...["H", "I"].map((glyph, i) => text(glyph, 100 + i * 14, 40)),
   );
   expect(drawnTextLines(spaced)).toEqual(["H", "I"]);
-  expect(drewText(spaced, "hi")).toBe(false);
+  // Reading copy along a baseline needs no width, so the words are still found
+  // across the unmerged calls that share one.
+  expect(drewText(spaced, "hi")).toBe(true);
 });

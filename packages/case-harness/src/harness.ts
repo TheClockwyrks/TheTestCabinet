@@ -951,6 +951,12 @@ interface PendingMeasure {
   textAlign: string;
 }
 
+/** The text state a frame began under, as the recorder reports it. */
+interface InheritedTextState {
+  font?: unknown;
+  textAlign?: unknown;
+}
+
 /**
  * Attach a measured width and the alignment in force to every text call of a
  * recorded frame.
@@ -962,17 +968,33 @@ interface PendingMeasure {
  * under the build's own loaded fonts — in ONE crossing, over the distinct
  * (text, font) pairs the frame used, however many calls spelled them.
  *
- * The walk starts from the context's own defaults, because a frame's operation
- * list holds what that frame issued and not what it inherited. A build that sets
- * its font every frame, which is the ordinary render, is measured exactly; one
- * that sets it once and relies on the inheritance is measured against the
- * default font, which under-reports the width and so only ever leaves runs apart
- * that would otherwise have joined.
+ * The walk starts from the state the frame INHERITED, which the recorder reads
+ * off the live context as the frame opens, because a frame's operation list
+ * holds what that frame issued and not what it began under. A build that sets
+ * its font once at start-up and relies on the inheritance issues no `set font`
+ * in any later frame, and measured against the context's default font its
+ * glyphs would come out a fraction of their width — far enough apart that a
+ * letter-spaced heading never merges. A recorder that cannot say what the frame
+ * inherited leaves the walk starting from the defaults, which under-reports the
+ * width and so only ever leaves runs apart that would otherwise have joined.
  */
-async function measureTextCalls(page: Page, calls: DrawCall[]): Promise<void> {
+async function measureTextCalls(
+  page: Page,
+  calls: DrawCall[],
+  inherited: InheritedTextState | null = null,
+): Promise<void> {
   const pending: PendingMeasure[] = [];
   const stack: { font: string; textAlign: string }[] = [];
-  let current = { font: DEFAULT_FONT, textAlign: DEFAULT_TEXT_ALIGN };
+  let current = {
+    font:
+      typeof inherited?.font === "string" && inherited.font.length > 0
+        ? inherited.font
+        : DEFAULT_FONT,
+    textAlign:
+      typeof inherited?.textAlign === "string" && inherited.textAlign.length > 0
+        ? inherited.textAlign
+        : DEFAULT_TEXT_ALIGN,
+  };
 
   for (const call of calls) {
     if (call.kind === "set") {
@@ -1687,15 +1709,30 @@ export function createHarnessFactory<S, D extends object>(
     };
 
     const lastCalls = async (): Promise<DrawCall[]> => {
-      const ops = (await page.evaluate(
-        (rec) =>
-          (window as unknown as Record<string, { last(): unknown[] }>)[
-            rec
-          ]!.last(),
-        resolved.recorderGlobal,
-      )) as RecordedOp[];
-      const calls = ops.map(toDrawCall);
-      if (resolved.measureText) await measureTextCalls(page, calls);
+      // One crossing for both, so no frame can close between the operations and
+      // the state they were drawn under.
+      const read = (await page.evaluate((rec) => {
+        const recorder = (
+          window as unknown as Record<
+            string,
+            { last(): unknown[]; lastInherited?(): unknown }
+          >
+        )[rec]!;
+        return {
+          ops: recorder.last(),
+          inherited:
+            typeof recorder.lastInherited === "function"
+              ? recorder.lastInherited()
+              : null,
+        };
+      }, resolved.recorderGlobal)) as {
+        ops: RecordedOp[];
+        inherited: InheritedTextState | null;
+      };
+      const calls = read.ops.map(toDrawCall);
+      if (resolved.measureText) {
+        await measureTextCalls(page, calls, read.inherited);
+      }
       return calls;
     };
 

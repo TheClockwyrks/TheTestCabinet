@@ -663,18 +663,18 @@ whose package name is `—` is a reading that stays with the case.
 
 #### Text a frame drew
 
-| Package name                | What it is                                                                                                                                                                                                                                         | Bound by                                                                                                                                                                                                                                                                                                 |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `drewText(calls, text)`     | A substring of some LOGICAL RUN: the frame's text calls are merged into the runs they spell FIRST, so a heading drawn a glyph per `fillText` reads as the word it spells                                                                           | carom's and refract's three projects each (their engine ones import it as `spelledText` and re-export it under the shared name); coil's three, which re-export it outright; and the `none` project of cascade, floe, shatter, wireworm, meltdown, volute, wick, arc-foundry and deepcore                 |
-| —                           | The SAME NAME over a RAW draw call — a substring of some single `fillText`/`strokeText` string, with no merging — is a **different question**, and stays with the case                                                                             | cascade's, floe's, wireworm's, meltdown's, volute's, wick's and deepcore's two engine projects; kessler's and spectra's three; shatter's `structured-2d`. Binding the package's here would quietly WIDEN what those points accept, because every run a build split across calls would start passing      |
-| —                           | The same name again as an EXACT match, after `trim()` and upper-casing, over the raw calls — a screen entry that is the copy and not a screen that merely contains it                                                                              | shatter's `simple-2d`. The strictest of the three, and the only one a build cannot satisfy by drawing more                                                                                                                                                                                               |
-| —                           | Facet's `showsText(pieces, wanted)` — FOUR readings tried from the most local to the most permissive: a piece that IS the copy, a piece that CONTAINS it, the frame's whole run of text joined, and that run with all whitespace out of both sides | facet's three projects, whose `drewText` is that function over the raw calls. The last two readings can find a phrase spanning two adjacent draws, so it decides that copy IS on screen and NEVER that two pieces of copy are separate — a bound the case states and the package's reading does not have |
-| `drawnTextRuns(calls)`      | A merged run of text left at its FIRST DRAW's anchor                                                                                                                                                                                               | the engineless half                                                                                                                                                                                                                                                                                      |
-| `reanchoredTextRuns(calls)` | The same run, re-anchored about the whole of what it spells, under that first draw's alignment                                                                                                                                                     | refract's two engine projects, as their own `drawnTextRuns`. The two agree exactly on a run of one draw and on any `start`-aligned run, and disagree on every centred or right-aligned MERGED run                                                                                                        |
-| `textDraws` / `TextDraw`    | ONE ENTRY PER CALL, placed in canvas pixels: `{ text, x, y, left, right, align? }`, where `left`/`right` are the measured extent under `recorder: { measureText: true }` and collapse onto `x` without it                                          | carom's, cascade's, floe's, refract's, wireworm's, meltdown's and deepcore's two engine projects, spectra's, shatter's `structured-2d`, coil's and volute's projects — most under a local `TextSpan` alias                                                                                               |
-| —                           | Wick's `TextDraw` — `{ text, x, y, width, textAlign, fontSize }`, the extent as a WIDTH rather than as two edges, and the font's pixel size beside it, in the call's own space                                                                     | wick's two engine projects. `fontSize` is the slack a reading with only an anchor to go on may allow either side of the glyphs, and the package answers no such figure                                                                                                                                   |
-| —                           | Arc-foundry's `TextDraw` — `{ text, x, y, index }`, carrying the operation's INDEX in the frame's whole call list and NO extent at all                                                                                                             | arc-foundry's three projects, whose recorder is deliberately left unmeasured. `yard-drawing/waypoint-numbers-on-top` decides its point by comparing that index against `order.ts`'s, which is a fact about the ORDER of the render that the package's reading does not carry                             |
-| —                           | Kessler's `TextDraw extends` the package's, adding `width` (`right - left`) and `textAlign` (`align`, defaulted)                                                                                                                                   | kessler's two engine projects. A strict extension rather than a disagreement: it is the package's placement under this case's names, which is what keeps `hud/hud-clear-of-field` reading what it was written to read                                                                                    |
+| Package name                | What it is                                                                                                                                                                                                                                                    | Bound by                                                                                                                                                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `drewText(calls, text)`     | Whether the frame SPELLED `text`: a substring match, ignoring case, with the whitespace folded out of both sides, over the logical runs sharing a baseline joined into one line each — so a heading drawn a glyph per `fillText` reads as the words it spells | carom's and refract's three projects each (their engine ones import it as `spelledText` and re-export it under the shared name); coil's three, which re-export it outright; and the `none` project of cascade, floe, shatter, wireworm, meltdown, volute, wick, arc-foundry and deepcore                 |
+| —                           | The SAME NAME over a RAW draw call — a substring of some single `fillText`/`strokeText` string, with no merging — is a **different question**, and stays with the case                                                                                        | cascade's, floe's, wireworm's, meltdown's, volute's, wick's and deepcore's two engine projects; kessler's and spectra's three; shatter's `structured-2d`. Binding the package's here would quietly WIDEN what those points accept, because every run a build split across calls would start passing      |
+| —                           | The same name again as an EXACT match, after `trim()` and upper-casing, over the raw calls — a screen entry that is the copy and not a screen that merely contains it                                                                                         | shatter's `simple-2d`. The strictest of the three, and the only one a build cannot satisfy by drawing more                                                                                                                                                                                               |
+| —                           | Facet's `showsText(pieces, wanted)` — FOUR readings tried from the most local to the most permissive: a piece that IS the copy, a piece that CONTAINS it, the frame's whole run of text joined, and that run with all whitespace out of both sides            | facet's three projects, whose `drewText` is that function over the raw calls. The last two readings can find a phrase spanning two adjacent draws, so it decides that copy IS on screen and NEVER that two pieces of copy are separate — a bound the case states and the package's reading does not have |
+| `drawnTextRuns(calls)`      | A merged run of text left at its FIRST DRAW's anchor                                                                                                                                                                                                          | the engineless half                                                                                                                                                                                                                                                                                      |
+| `reanchoredTextRuns(calls)` | The same run, re-anchored about the whole of what it spells, under that first draw's alignment                                                                                                                                                                | refract's two engine projects, as their own `drawnTextRuns`. The two agree exactly on a run of one draw and on any `start`-aligned run, and disagree on every centred or right-aligned MERGED run                                                                                                        |
+| `textDraws` / `TextDraw`    | ONE ENTRY PER CALL, placed in canvas pixels: `{ text, x, y, left, right, align? }`, where `left`/`right` are the measured extent under `recorder: { measureText: true }` and collapse onto `x` without it                                                     | carom's, cascade's, floe's, refract's, wireworm's, meltdown's and deepcore's two engine projects, spectra's, shatter's `structured-2d`, coil's and volute's projects — most under a local `TextSpan` alias                                                                                               |
+| —                           | Wick's `TextDraw` — `{ text, x, y, width, textAlign, fontSize }`, the extent as a WIDTH rather than as two edges, and the font's pixel size beside it, in the call's own space                                                                                | wick's two engine projects. `fontSize` is the slack a reading with only an anchor to go on may allow either side of the glyphs, and the package answers no such figure                                                                                                                                   |
+| —                           | Arc-foundry's `TextDraw` — `{ text, x, y, index }`, carrying the operation's INDEX in the frame's whole call list and NO extent at all                                                                                                                        | arc-foundry's three projects, whose recorder is deliberately left unmeasured. `yard-drawing/waypoint-numbers-on-top` decides its point by comparing that index against `order.ts`'s, which is a fact about the ORDER of the render that the package's reading does not carry                             |
+| —                           | Kessler's `TextDraw extends` the package's, adding `width` (`right - left`) and `textAlign` (`align`, defaulted)                                                                                                                                              | kessler's two engine projects. A strict extension rather than a disagreement: it is the package's placement under this case's names, which is what keeps `hud/hud-clear-of-field` reading what it was written to read                                                                                    |
 
 #### Geometry, blits and the pixels they left
 
@@ -810,6 +810,65 @@ Two more disagreements are recorded here as ones the package deliberately does
   decides a point whenever a build's hit radius passes through it, so a case binds
   the one its verdicts were taken under — refract's two engine projects disagree
   here too, and always have.
+
+## How text is read
+
+Two readings of a frame's text ship, and they answer different questions.
+`drawnText` and `textDraws` answer the CALLS — one entry per `fillText` or
+`strokeText`, which is what a check that counts draws or holds one draw clear of
+a region wants. `drawnTextLines` and `drawnTextRuns` answer the LOGICAL RUNS the
+frame spells, which is what a check that reads copy wants: a build that
+letter-spaces a heading draws one glyph per call, because that is the only
+portable way to letter-space canvas text, and every case's specification fixes
+the copy a screen shows while leaving its spacing to the build. `drewText` reads
+the runs, and a case's local `drewText` delegates to it (the table above names
+the few that still read their own way), so copy is matched one way everywhere.
+
+**The merge rule.** A draw joins the run before it when the two share a baseline
+(`|Δy| <= 0.75` px), the draw starts at or after the run's right edge (less
+`0.5` px of backtrack), and the gap between them is at most `0.6` of the run's
+mean advance — its measured width over its character count. The comparison is
+relative, so it is decided in the canvas's own pixels: a heading tracked wider
+than a bare glyph still reads as one run, while a HUD figure a clear gap from
+its label stays its own.
+
+**A word gap writes a space.** A build that letter-spaces its copy may skip the
+space glyph and advance the pen instead, so a join whose gap opens past the run's
+own tracking — the median of the gaps it has crossed so far, plus `0.2` of its
+mean glyph width — takes a space rather than nothing, and `HOW TO PLAY` drawn a
+glyph at a time with no space drawn still spells `HOW TO PLAY`. Two multi-glyph
+draws that far apart on one baseline are two words drawn separately and take a
+space from their first join; a draw that already begins or ends in whitespace
+adds none.
+
+**A restrike is the same glyph.** An outlined heading is drawn twice at one
+anchor, `strokeText` then `fillText` per glyph, so a draw that repeats the run's
+last draw — same text, same anchor within the backtrack slack, on the baseline —
+is folded into it rather than opening a run of its own, and `FACET` outlined a
+glyph at a time spells `FACET` once, not overlapping fragments.
+
+**`drewText` reads along the baseline.** Runs sharing a baseline are joined with
+spaces into one line, and the wanted text is matched as a substring of that line
+with the whitespace folded out of both sides. So copy is found whether its spaces
+were drawn, skipped, or split the run into words, and a match under any stricter
+reading is a match under this one — the merge and the fold can only add a match,
+never take one away.
+
+**Nothing merges without measurement.** The rule works on each draw's extent, so
+every text call has to carry a measured `width` and the `textAlign` in force.
+Under `none` a case asks for it with `measureText: true` in its `CaseConfig`, and
+the harness measures every frame it reads in the page, against an offscreen
+context, under the build's own loaded fonts. A frame is measured under the font
+it INHERITED, not the context's default: the recorder reports the font and
+alignment the frame began under (`lastInherited()`), and the walk over the
+frame's own `set font`/`textAlign` operations starts from there. A build that
+sets its font once at start-up and never again issues no `set font` inside any
+later frame, and measured against the default `10px sans-serif` its glyphs would
+come out a fraction of their width — far enough apart that no heading ever
+merged. The engine harnesses do their measuring in their own recorders, attaching
+`call.text = { width, textAlign }` at each text call, and hand the result to the
+same readers. With no measurement every draw stands as a point, and the runs are
+exactly the calls.
 
 ## What has NOT been extracted yet
 

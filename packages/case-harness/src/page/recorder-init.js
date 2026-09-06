@@ -776,6 +776,19 @@
     return `${typeof src === "string" ? src : ""}|${size.width}x${size.height}`;
   };
 
+  /**
+   * The font and the alignment a context holds right now, as a frame that opens
+   * on it inherits them. Read off the live context rather than reconstructed,
+   * so a font set once at start-up is reported exactly.
+   */
+  const inheritedTextState = (ctx) => {
+    try {
+      return { font: String(ctx.font), textAlign: String(ctx.textAlign) };
+    } catch {
+      return null;
+    }
+  };
+
   class ContextRecorder {
     constructor(target) {
       this.target = target;
@@ -891,6 +904,15 @@
       this.design = { width: 0, height: 0, background: null };
       /** The operations of the last frame CLOSED, whether armed or not. */
       this.lastOps = [];
+      /**
+       * The text state the open frame INHERITED — the font and alignment the
+       * context held when the frame began — and the same for the last frame
+       * closed. A build that sets its font once at start-up and never again
+       * issues no `set font` inside any later frame, so the frame's own operation
+       * list cannot say what its text was drawn in; this can.
+       */
+      this.inherited = null;
+      this.lastInherited = null;
       this.resetPools();
       this.watch();
       this.context = this.wrap(target, false);
@@ -1185,6 +1207,7 @@
       // and a state — carried or live — over shadows the context no longer holds
       // describes a frame that never happened.
       this.checkSurface();
+      this.inherited = inheritedTextState(this.target);
       // Spent here whether or not this frame is armed to use it: a frame that runs
       // leaves the live context as what the frame after it inherits, so a state
       // carried from before this one is answered by the context from now on.
@@ -1307,6 +1330,7 @@
       this.pendingTruncated = false;
       if (calls === null) return;
       this.lastOps = calls;
+      this.lastInherited = this.inherited;
       if (this.frames === null || pooled === null) return;
 
       const index = this.seen;
@@ -2684,6 +2708,15 @@
     last() {
       const recorder = recorderOf();
       return recorder === null ? [] : recorder.lastOps;
+    },
+
+    /**
+     * The font and the alignment the last closed frame BEGAN under, or null
+     * before any frame. What the frame's own `set` operations then move from.
+     */
+    lastInherited() {
+      const recorder = recorderOf();
+      return recorder === null ? null : recorder.lastInherited;
     },
 
     /** Begin keeping frames. `design` is the logical field and its background. */

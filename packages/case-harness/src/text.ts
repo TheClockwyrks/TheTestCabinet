@@ -22,6 +22,14 @@
 // {@link drawnText} keeps is a call whose coordinates are not numbers, which
 // drew no text anywhere a check could point at.
 //
+// AND NEVER OFF THE SPACES EITHER. A build that letter-spaces its copy may skip
+// the space glyph and advance the pen instead, and one that colours a word may
+// draw the words of a line as separate calls a space apart. Both spell the
+// case's words with no space character anywhere in what was drawn, so
+// {@link drewText} compares with the whitespace folded out of both sides, over
+// every run that shares a baseline. A match under the spaced comparison is a
+// match under the folded one, so this too can only add a match.
+//
 // ONE NAME IS TAKEN, AND ONE CASE MEANS SOMETHING ELSE BY IT. `drawnText` here
 // answers the RAW CALLS, as an array of strings. A case whose own `drawnText`
 // answers the runs folded into one string means a different function, and it
@@ -45,17 +53,50 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 }
 
 /**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
+ * Whether the frame spelled `text` somewhere along some baseline, ignoring case
+ * and whitespace.
  *
- * Substring rather than equality, and read off {@link drawnTextLines} rather
- * than off the raw calls, for the two reasons in this module's header.
+ * Substring rather than equality, read off the logical runs rather than off the
+ * raw calls, and compared with the whitespace folded out of both sides across
+ * every run that shares a baseline, for the three reasons in this module's
+ * header. Each run is a substring of its baseline's line, so reading the lines
+ * finds everything reading the runs would have.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnTextLines(calls).some((line) =>
-    line.toLowerCase().includes(wanted),
+  const wanted = foldWhitespace(text).toLowerCase();
+  return baselineLines(drawnTextRuns(calls)).some((line) =>
+    foldWhitespace(line).toLowerCase().includes(wanted),
   );
+}
+
+/** `text` with every run of whitespace removed. */
+function foldWhitespace(text: string): string {
+  return text.replace(/\s+/g, "");
+}
+
+/**
+ * The runs sharing a baseline joined into one line each, in reading order.
+ *
+ * A heading tracked wide enough to split at its skipped spaces comes back from
+ * {@link drawnTextRuns} as one run per word on one baseline; joined, the line
+ * spells the heading again. The runs arrive sorted down the frame and then
+ * across it, so the runs of one baseline are consecutive.
+ */
+function baselineLines(runs: readonly TextDraw[]): string[] {
+  const lines: string[] = [];
+  let baseline: number | undefined;
+  for (const run of runs) {
+    if (
+      baseline !== undefined &&
+      Math.abs(run.y - baseline) <= RUN_BASELINE_SLACK
+    ) {
+      lines[lines.length - 1] += ` ${run.text}`;
+      continue;
+    }
+    lines.push(run.text);
+    baseline = run.y;
+  }
+  return lines;
 }
 
 /** One run of text a frame drew, and where it drew it in canvas pixels. */
@@ -165,6 +206,22 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
 // comparison is RELATIVE, so it is decided where the calls were made, in the
 // canvas's own pixels, and needs no conversion to decide it.
 //
+// A RESTRIKE IS THE SAME GLYPH. An outlined heading is drawn twice at one
+// anchor, `strokeText` then `fillText` per glyph, so the second draw of each
+// glyph sits where the first did rather than after it. A draw whose text and
+// anchor repeat the run's last draw (within the backtrack slack, on the
+// baseline) is folded into that draw instead of opening a run of its own, so
+// the heading spells itself once rather than as overlapping fragments.
+//
+// A WORD GAP WRITES A SPACE. A join whose gap opens past the run's own tracking
+// — wider than the median of the gaps the run has crossed so far by more than
+// `0.2 * meanGlyph`, the run's measured glyph width per character — is a space
+// the build advanced over rather than drew, and the run takes a space there so
+// it spells what the frame shows. Two multi-glyph draws a gap wider than that
+// share apart are two words drawn separately, and take a space between them
+// from the first join. A gap inside the tracking, and a draw on either side
+// that already begins or ends in whitespace, write nothing.
+//
 // WITHOUT `measureText` NOTHING MERGES. Every draw is then a point, so the mean
 // advance is zero and no gap can be inside it: the runs are the calls, which is
 // exactly what a case that never asked to measure was already reading.
@@ -178,12 +235,37 @@ const RUN_BACKTRACK_SLACK = 0.5;
 /** The share of the run's mean advance a gap may reach and still join it. */
 const RUN_GAP_RATIO = 0.6;
 
+/** The share of the run's mean glyph width a gap must open past to be a space. */
+const WORD_GAP_SHARE = 0.2;
+
 /** Whether `next` continues `open`, `chars` long, under the rule stated above. */
 function joinsRun(open: TextDraw, chars: number, next: TextDraw): boolean {
   if (Math.abs(next.y - open.y) > RUN_BASELINE_SLACK) return false;
   if (!(next.left >= open.right - RUN_BACKTRACK_SLACK)) return false;
   const meanAdvance = (open.right - open.left) / chars;
   return next.left - open.right <= RUN_GAP_RATIO * meanAdvance;
+}
+
+/**
+ * Whether a join is a space the build advanced over rather than drew.
+ *
+ * `prior` holds the gaps `open` has crossed so far, `glyph` its measured width
+ * per character, and `before`/`after` the two texts about the join.
+ */
+function wordGap(
+  prior: readonly number[],
+  gap: number,
+  glyph: number,
+  before: string,
+  after: string,
+): boolean {
+  if (/\s$/.test(before) || /^\s/.test(after)) return false;
+  const opening = WORD_GAP_SHARE * glyph;
+  if (before.length > 1 && after.length > 1 && gap > opening) return true;
+  if (prior.length === 0) return false;
+  const sorted = [...prior].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] as number;
+  return gap > median + opening;
 }
 
 /**
@@ -204,22 +286,56 @@ export function drawnTextRuns(calls: readonly DrawCall[]): TextDraw[] {
     .sort((a, b) => a.y - b.y || a.left - b.left);
 
   const runs: TextDraw[] = [];
-  /** How many characters each run spells, for its mean advance. */
+  /** How many characters each run DREW, for its mean advance; never a space written at a word gap. */
   const chars: number[] = [];
+  /** The measured width of each run's glyphs alone, gaps excluded. */
+  const glyphs: number[] = [];
+  /** The gaps each run has crossed, for its tracking. */
+  const gaps: number[][] = [];
+  /** The last draw each run took, for telling a restrike from a new glyph. */
+  const tails: TextDraw[] = [];
 
   for (const draw of draws) {
     const open = runs[runs.length - 1];
     const last = chars.length - 1;
+    const tail = tails[last];
+    if (
+      open !== undefined &&
+      tail !== undefined &&
+      draw.text === tail.text &&
+      Math.abs(draw.y - tail.y) <= RUN_BASELINE_SLACK &&
+      Math.abs(draw.left - tail.left) <= RUN_BACKTRACK_SLACK
+    ) {
+      // The same glyph struck again where it already stands: an outline and
+      // its fill. The run already spells it.
+      open.right = Math.max(open.right, draw.right);
+      continue;
+    }
     if (open !== undefined && joinsRun(open, chars[last] as number, draw)) {
+      const gap = draw.left - open.right;
+      const glyph = (glyphs[last] as number) / (chars[last] as number);
+      const space = wordGap(
+        gaps[last] as number[],
+        gap,
+        glyph,
+        open.text,
+        draw.text,
+      );
       // The anchor holds: the run keeps the placement of its first draw, and
       // only its right edge and the copy it spells grow.
-      open.text += draw.text;
+      open.text += space ? ` ${draw.text}` : draw.text;
       open.right = Math.max(open.right, draw.right);
       chars[last] = (chars[last] as number) + draw.text.length;
+      glyphs[last] = (glyphs[last] as number) + (draw.right - draw.left);
+      (gaps[last] as number[]).push(gap);
+      tails[last] = draw;
       continue;
     }
     runs.push({ ...draw });
     chars.push(draw.text.length);
+    glyphs.push(draw.right - draw.left);
+    gaps.push([]);
+    tails.push(draw);
   }
   return runs;
 }
