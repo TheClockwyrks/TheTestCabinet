@@ -21,6 +21,24 @@ import type { PodKind, Screen } from "./constants";
 export const HANDLE = "__kessler";
 
 /**
+ * How long the surface is waited for before the build is called non-conformant.
+ *
+ * Beside the handle and the operation list because all three are what the
+ * surface probe is made of, and because the probe runs in TWO places that may
+ * not import each other: once for the whole run, in `globalSetup.ts`, and once
+ * per harness. A ceiling stated twice would let the two disagree, and a probe
+ * that waited less than a harness does could call a slow build surfaceless and
+ * have every harness agree with it without looking.
+ *
+ * Generous against a conformant build and cheap against one: the shared probe
+ * takes one look that does not wait at all before it reaches for this, and
+ * `specs/instrumentation.md` has the build install the surface as soon as the
+ * game has initialized. What the ceiling really bounds is the cost of a build
+ * with no surface at all.
+ */
+export const SURFACE_TIMEOUT_MS = 5_000;
+
+/**
  * Every operation the surface carries. All are required of every build: the
  * two clock operations exist under this engine alone (nothing outside an
  * engineless build owns its loop, so `specs/instrumentation.md` puts the clock

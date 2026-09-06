@@ -385,8 +385,9 @@ export function inkedInBand(
 // landed — and the engine's recorder answers that: a `fillText`/`strokeText` call
 // is kept with the transform in force at the call, the width the run measured under
 // the font then set, and the alignment that places the run about its anchor
-// (`TextGeometry`, `harness.ts`). What is reconstructed here is the logical box
-// those three imply, whatever size, alignment and baseline the build chose.
+// (`TextGeometry`, the shared harness's `draw-calls`). What is reconstructed here
+// is the logical box those three imply, whatever size, alignment and baseline the
+// build chose.
 
 /** One run of text the frame drew, as a box in logical field units. */
 export interface TextRun {
@@ -444,24 +445,25 @@ export function textRuns(
     }
     if (call.method !== "fillText" && call.method !== "strokeText") continue;
     const geometry = call.text;
+    const m = geometry?.transform;
     const text = call.args[0];
     const x = call.args[1];
     const y = call.args[2];
     if (
       geometry === undefined ||
+      m === undefined ||
       typeof text !== "string" ||
       typeof x !== "number" ||
       typeof y !== "number"
     ) {
       continue;
     }
-    const m = geometry.transform;
     // The anchor through the transform in force at the call, then back out of the
     // engine's own fit, so the box is in the logical units every spec figure is in.
-    const anchorX = (m.a * x + m.c * y + m.e - view.offsetX) / view.scale;
-    const anchorY = (m.b * x + m.d * y + m.f - view.offsetY) / view.scale;
-    const alongX = Math.hypot(m.a, m.b) / view.scale;
-    const alongY = Math.hypot(m.c, m.d) / view.scale;
+    const anchorX = (m[0] * x + m[2] * y + m[4] - view.offsetX) / view.scale;
+    const anchorY = (m[1] * x + m[3] * y + m[5] - view.offsetY) / view.scale;
+    const alongX = Math.hypot(m[0], m[1]) / view.scale;
+    const alongY = Math.hypot(m[2], m[3]) / view.scale;
     const width = geometry.width * alongX;
     const size = (fontPixels(font) ?? 10) * alongY;
     const left =

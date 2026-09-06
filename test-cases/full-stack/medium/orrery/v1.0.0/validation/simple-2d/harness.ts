@@ -37,17 +37,16 @@
 // `engine.state`.
 //
 // WHY THAT DRIVER IS NOT THE PACKAGE'S `applyDriver`. It is the same strategy and
-// it is NOT the same function, in two ways that both decide points here:
+// it is NOT the same function, in ONE way that decides points here: the package's
+// driver answers a reading's value and a pose's `void` directly, where Orrery's
+// answers a PROMISE from every member, because {@link OrreryDriver} is one
+// interface in all three projects and the engineless one genuinely has to wait.
 //
-//   - The package's reading arm calls `op(engine.state)` and passes NOTHING else,
-//     because the surfaces it was extracted from take no further arguments. Two
-//     of Orrery's four readings do — `menuItemRect(index)` and
-//     `referenceSolution(mode, index)` — and a driver that dropped them would
-//     read item `0` of the menu whichever item a check asked about, silently.
-//   - The package's driver answers a reading's value and a pose's `void`
-//     directly. Orrery's answers a PROMISE from every member, because
-//     {@link OrreryDriver} is one interface in all three projects and the
-//     engineless one genuinely has to wait.
+// It was two ways until the package's reading arm was fixed to forward a call's
+// own arguments past the state. Before that it called `op(engine.state)` and
+// passed nothing else, so `menuItemRect(index)` and `referenceSolution(mode,
+// index)` would have read item `0` whichever one a check asked about, silently.
+// That half of the disagreement is gone; only the promise remains.
 //
 // So this project keeps its own driver, and the README's collision table carries
 // the row. Neither disagreement reaches the `structured-2d` project: its surface

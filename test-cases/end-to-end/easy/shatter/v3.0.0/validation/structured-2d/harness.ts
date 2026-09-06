@@ -1,4 +1,4 @@
-// Shatter — the shared validator harness. CASE-PROVIDED.
+// Shatter — the shared validator harness. CASE-PROVIDED, over the shared package.
 //
 // Every check in this suite is an ordinary vitest test that runs IN THE SAME
 // PROCESS as the build. It imports the engine and the build's own modules,
@@ -6,6 +6,28 @@
 // game with `engine.advance`. Nothing drives a browser, nothing polls, and no
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas its clock supplied.
+//
+// WHAT COMES FROM `@clockwyrks/case-harness`, which the runner stages beside
+// this project at `validation/case-harness/`: the key event, the surface metrics
+// an engine takes its measurements through, the READ of the debug surface and the
+// stand-in for a build that returned none, the identity driver, the device
+// mapping and the pixel read, the colour, draw-call and placed-text readings, the
+// event-loop yield, the evidence writers, and the assertions. A fix landed there
+// reaches Shatter; the copy of it that used to live here drifted from the day it
+// was made.
+//
+// WHAT DOES NOT, AND WHY THIS PROJECT DOES NOT BIND `createEngineCaseHarness`.
+// The kit's frame is one call of `engine.advance` per frame with the recorder
+// always on, and Shatter's frame is neither of those: this case's whole reason
+// for finishing in seconds rather than minutes is that A FRAME NOBODY LOOKS AT IS
+// NOT RASTERIZED AND NOT RECORDED (see below), which needs the gate to sit inside
+// the recording context itself — a place the kit builds for itself and offers no
+// seam into. Bound to the kit, `saucer/at-most-one-at-a-time`'s two minutes of
+// game time sampled every frame would put ink on the canvas fourteen thousand
+// times over and record every operation of every one of those frames, where the
+// suites are written against the last frame's alone. So the FRAME LOOP, the
+// RECORDER and the CANVAS stay here, and every reading and every writer around
+// them is the package's.
 //
 // WHAT A CHECK READS. The game's own state (through the debug surface's
 // `snapshot`), the engine's object model — the open world, its game state — the
@@ -29,13 +51,18 @@
 // instance's `initialize` returns it, the engine holds that same object, and
 // reading it back off the engine is the only way a surface reaches a check —
 // so a build that returned no surface, or a surface missing an operation, fails
-// the checks that reach the game through it. See `readDebugSurface`.
+// the checks that reach the game through it. The package's `readDebugSurface`
+// does that read and stands an `absentSurface` in when there is nothing to read,
+// so the fault lands on the points whose checks reach the game through the
+// surface rather than on the `beforeEach` that built the harness.
 //
-// HOW THE SURFACE IS DRIVEN. Directly, and immediately: under this engine a
-// pose acts on the live game at the moment of the call and a reading is built
-// at the call (specs/instrumentation.md), so a scenario poses and then reads
-// with no frame in between. A frame is advanced when the check wants the game
-// to RUN — a rock to drift, a round to land, a wave to turn over.
+// HOW THE SURFACE IS DRIVEN — the IDENTITY strategy, which is what a structured
+// engine's state model gives. A pose acts on the live game at the moment of the
+// call and a reading is built at the call (specs/instrumentation.md), so the
+// object the build returned IS what a check calls and the package's
+// `identityDriver` is the whole of the wrapping. A scenario poses and then reads
+// with no frame in between; a frame is advanced when the check wants the game to
+// RUN — a rock to drift, a round to land, a wave to turn over.
 //
 // THE HARNESS OWNS EVERY COMPOUND SEQUENCE. The surface is atomic by design:
 // each operation sets one field, so "live play on an empty, quiet field" is a
@@ -54,12 +81,12 @@
 // that is specifically about the step size builds its own harnesses with clocks
 // of its own.
 //
-// NO ASSETS. Shatter seeds none and loads none, so nothing here stands `fetch`
-// or `createImageBitmap` up: the whole picture is drawn in code, and the
+// NO ASSETS. Shatter seeds none and loads none, so nothing here installs the
+// package's asset or audio hosts: the whole picture is drawn in code, and the
 // presentation checks read it off the canvas and off the recorded draw calls.
 //
-// A FRAME THAT NOBODY LOOKS AT IS NOT RASTERIZED. Every tick this harness runs
-// is a real tick: the engine's whole frame runs, the world ticks, and the
+// A FRAME THAT NOBODY LOOKS AT IS NOT RASTERIZED. Every frame this harness runs
+// is a real frame: the engine's whole frame runs, the world ticks, and the
 // rendering pipeline walks the scene exactly as it always does. What a march
 // does without is the RASTER — the handful of calls that actually put ink on the
 // canvas (`fill`, `stroke`, `fillText`, `drawImage` and their kin), which is a
@@ -73,41 +100,62 @@
 // is never a run of blank frames.
 //
 // AND A MARCH THAT WANTS NO PICTURE AT ALL SAYS SO. {@link Harness.skip} and
-// {@link Harness.quiet} run every tick without the raster, for the sweeps that
-// sample the state on EVERY tick and would otherwise draw every one of them.
+// {@link Harness.quiet} run every frame without the raster, for the sweeps that
+// sample the state on EVERY frame and would otherwise draw every one of them.
 // What they leave behind is a canvas holding an older frame, so the harness
 // tracks that: {@link Harness.pixel}, every reading taken off
 // {@link Harness.ctx}, and {@link captureStill} REFUSE while the canvas is stale
-// rather than reading a picture from a tick that is no longer the current one. A
-// check that wants the picture after a quiet sweep advances one drawn tick for
+// rather than reading a picture from a frame that is no longer the current one. A
+// check that wants the picture after a quiet sweep advances one drawn frame for
 // it.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
 import { createCanvas, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
-import { expect } from "vitest";
 import {
   ConstantClock,
   createEngine,
-  type CapturedImage,
   type Clock,
-  type DrawOp,
-  type DrawState,
-  type DrawValue,
   type Engine,
   type GameDefinition,
   type GameInstance,
   type GameState,
-  type PathSegment,
-  type RecordedFrame,
-  type Recording,
-  type Resource,
   type SurfaceMetrics,
   type Viewport,
   type World,
 } from "@clockwyrks/structured-2d";
+import { colorDistance, rgbOf, type Rgb } from "./case-harness/color";
+import {
+  DRAW_METHODS,
+  callsTo,
+  drawOps,
+  setsOf,
+  type DrawCall,
+  type TextGeometry,
+} from "./case-harness/draw-calls";
+import {
+  DEFAULT_MAX_FRAMES,
+  KeyEvent,
+  breathe,
+  captureOutputSync,
+  identityDriver,
+  rasterize,
+  readDebugSurface,
+  surfaceMetrics,
+  type UntilOptions,
+  type UntilResult as SweepResult,
+} from "./case-harness/engine/index";
+import {
+  allInLogical,
+  canvasPixels,
+  deviceOf,
+  makeReplayCapture,
+  pixelAt,
+  pixelsChanged,
+  sampleColor,
+} from "./case-harness/engine/2d";
+import type { Matrix } from "./case-harness/matrix";
+import { drawnText, textDraws, type TextDraw } from "./case-harness/text";
 import {
   BINDINGS,
   BULLET_LIFE,
@@ -144,6 +192,22 @@ export type {
   ShipSnapshot,
   TorpedoSnapshot,
 };
+
+/* The readings over one frame's drawing, and over a colour, that are the
+ * package's — bound here under the names this suite has always called them by,
+ * so every suite next door goes on importing them from `../harness`. */
+export {
+  DRAW_METHODS,
+  callsTo,
+  canvasPixels,
+  colorDistance,
+  drawOps,
+  drawnText,
+  pixelsChanged,
+  sampleColor,
+  setsOf,
+};
+export type { DrawCall, Matrix, Rgb, TextGeometry, UntilOptions };
 
 /** The case's surface, exactly as `surface.ts` specifies it. */
 export type ShatterSurface = ShatterDebugApi;
@@ -192,7 +256,17 @@ export function seconds(ticks: number): number {
   return ticks / TICK_HZ;
 }
 
-/** Frames of the default clock covering `duration` seconds, rounded to whole. */
+/**
+ * Frames of the default clock covering `duration` seconds, rounded to whole.
+ *
+ * ROUNDED TO NEAREST, and not the package's `ticksFor`, which rounds UP. Every
+ * duration this suite poses is a figure specs/ states in seconds against a
+ * 120 Hz tick, so the two agree on every whole-tick span and part company only on
+ * a fraction of a tick — where rounding up would run one frame past the moment a
+ * window closes, which is exactly where the `lives` and `weapons` items measure.
+ * The two spellings are a genuine disagreement, so this one keeps its own name
+ * and body.
+ */
 export function ticksFor(duration: number): number {
   return Math.round(duration * TICK_HZ);
 }
@@ -200,40 +274,6 @@ export function ticksFor(duration: number): number {
 /* -------------------------------------------------------------------------- */
 /* Recording the render                                                       */
 /* -------------------------------------------------------------------------- */
-
-/** A 2D affine transform, as the context held it at the moment of a call. */
-export interface Matrix {
-  a: number;
-  b: number;
-  c: number;
-  d: number;
-  e: number;
-  f: number;
-}
-
-/**
- * Where a `fillText`/`strokeText` call put its text, read off the real context
- * at the moment of the call: the current transform, so the anchor can be mapped
- * to logical units whatever transform the pipeline applied, the measured width
- * under the current font, and the alignment that places the run about its
- * anchor.
- */
-export interface TextGeometry {
-  transform: Matrix;
-  width: number;
-  textAlign: string;
-}
-
-/** One recorded operation on the 2D context, in the order the render made it. */
-export type DrawCall =
-  | {
-      kind: "call";
-      method: string;
-      args: unknown[];
-      text?: TextGeometry;
-      transform?: Matrix;
-    }
-  | { kind: "set"; property: string; value: unknown };
 
 /** One cue the build played, as the engine announced it. */
 export interface PlayedCue {
@@ -268,19 +308,15 @@ export interface HarnessOptions {
   dpr?: number;
 }
 
-/** How far a sweep may run, and how many frames separate two samples. */
-export interface UntilOptions {
-  maxFrames?: number;
-  poll?: number;
-}
-
-/** What a sweep found: whether the predicate ever held, and where it stopped. */
-export interface UntilResult {
-  hit: boolean;
-  /** Frames advanced before the sample that ended the sweep. */
-  frames: number;
-  snapshot: ShatterSnapshot;
-}
+/**
+ * What a sweep found: whether the predicate ever held, and where it stopped.
+ *
+ * The package's shape, bound to this case's snapshot. `frames` and `ticks` are
+ * ONE counter under two names — here a frame IS a tick — and this suite counts
+ * `frames`; the second name is there so a helper written against the shared
+ * vocabulary reads the same number.
+ */
+export type UntilResult = SweepResult<ShatterSnapshot>;
 
 export interface Harness {
   readonly engine: Engine<ShatterSurface>;
@@ -301,8 +337,8 @@ export interface Harness {
   readonly instance: GameInstance<ShatterSurface>;
   /**
    * The debug surface the BUILD's instance returned from `initialize`, read off
-   * `engine.debug` — see {@link readDebugSurface} — and driven directly: each
-   * operation acts on the live game at the moment of the call.
+   * `engine.debug` and driven directly: each operation acts on the live game at
+   * the moment of the call.
    */
   readonly debug: ShatterDriver;
   /** The real 2D context, for `getImageData`. Draw calls also reach it. */
@@ -462,18 +498,6 @@ export interface Harness {
   dispose(): void;
 }
 
-/** A `KeyboardEvent`-shaped event: the engine reads `code` and `repeat`. */
-class KeyEvent extends Event {
-  readonly code: string;
-  readonly repeat: boolean;
-
-  constructor(type: "keydown" | "keyup", code: string, repeat = false) {
-    super(type);
-    this.code = code;
-    this.repeat = repeat;
-  }
-}
-
 /**
  * A logical point's device pixel, through the world's camera and the engine's
  * fit. The camera opens at the defaults — world and logical coordinates
@@ -488,10 +512,7 @@ function toDevice(
   y: number,
 ): { x: number; y: number } {
   const logical = world.camera.worldToLogical({ x, y });
-  return {
-    x: Math.round(view.offsetX + logical.x * view.scale),
-    y: Math.round(view.offsetY + logical.y * view.scale),
-  };
+  return deviceOf(view, logical.x, logical.y);
 }
 
 /* ---- The mouse and the touch contacts ------------------------------------- */
@@ -502,12 +523,16 @@ function toDevice(
 // check asks the build where its entry is, through `menuItemRect`, and dispatches
 // a real pointer event at the middle of what it answered.
 //
-// A SHIM RATHER THAN A `PointerEvent`, for the same reason {@link KeyEvent} is a
-// shim: this suite runs on a canvas with no document behind it, so there is no
-// `PointerEvent` constructor to call and no element to dispatch from. The engine
-// narrows structurally — it reads `clientX`, `clientY`, `pointerId`,
-// `pointerType`, `isPrimary`, `button` and `buttons` off whatever arrives — so an
-// event carrying those drives the pointer exactly as a player's does.
+// A FIFTH POINTER EVENT, AND NOT ONE OF THE PACKAGE'S TWO. `PointerPositionEvent`
+// carries a position and nothing else, and `DevicePointerEvent` states a device
+// and `buttons: 1` on EVERY move — which is a drag. Shatter drives two contacts
+// at once (`touch/landing-selects` lands a finger beside the mouse) and reads a
+// slide-off as a press that ended somewhere else, so what the engine has to be
+// handed is the mask genuinely HELD by that pointer id, per id: a press adds a
+// button, a release drops one, and a move in the middle of a drag reports the
+// press still down. That is a different event from either of the package's, so it
+// stays here — see the README's collision table, where coil's and gantry's are
+// recorded for the same reason.
 
 /** What separates a mouse from a finger on the same three events. */
 export type PointerDevice = "mouse" | "pen" | "touch";
@@ -628,7 +653,7 @@ function toClient(
 }
 
 /**
- * How many frames run back to back before the worker's event loop is given a
+ * How many frames run back to back before the worker's event loop is offered a
  * turn.
  *
  * NOT A PACING FIGURE, AND IT CHANGES NOTHING THE GAME SEES. Every frame either
@@ -636,7 +661,7 @@ function toClient(
  * a trip round node's event loop.
  *
  * WHY THAT IS NEEDED. `engine.advance(n)` is synchronous — it runs all `n`
- * frames before it returns — and a check that steps a tick at a time `await`s a
+ * frames before it returns — and a check that steps a frame at a time `await`s a
  * promise that is already resolved, which is a microtask and never reaches the
  * loop either. So a march of tens of thousands of frames holds the worker's
  * thread from beginning to end. Vitest's worker talks to the runner over an RPC
@@ -645,17 +670,15 @@ function toClient(
  * longer than that makes the worker throw
  * `[vitest-worker]: Timeout calling "onTaskUpdate"` — an unhandled error vitest
  * itself warns "might cause false positive tests", and a fact about how busy the
- * machine was rather than about the build. Two thousand frames is about a
- * fiftieth of that budget even on a host twenty times oversubscribed.
+ * machine was rather than about the build.
+ *
+ * The chunk is what divides the march; whether the loop is actually given a turn
+ * at each boundary is the package's `breathe`, which yields once the run has held
+ * the thread for fifty milliseconds. Two thousand frames is a small enough chunk
+ * that the check happens often, and large enough that a march that never blocks
+ * pays for nothing.
  */
 const YIELD_EVERY = 2_000;
-
-/** Hand the event loop a turn: a real macrotask, not an already-settled await. */
-function breathe(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, 0);
-  });
-}
 
 /**
  * The context calls that put ink on the canvas, as opposed to the ones that move
@@ -685,12 +708,15 @@ const RASTER_OPS: ReadonlySet<string> = new Set([
  * context, so one frame produces both a pixel buffer to sample and a call list
  * to inspect.
  *
+ * NOT THE PACKAGE'S `recordingContext`, and this is the one place that matters:
  * `drawing` is the harness's own gate. On a frame that is not being drawn the
- * raster calls are dropped and nothing is recorded: a march has no picture and
+ * raster calls are dropped and nothing is recorded — a march has no picture and
  * no call list to leave, and keeping either would be tens of thousands of
  * entries from frames no check reads. `requirePainted` is how every reading of
  * the PIXELS — `getImageData`, wherever a check takes it from — is stopped from
- * answering off a canvas a march left behind.
+ * answering off a canvas a march left behind. What it RECORDS is the package's
+ * {@link DrawCall}, measured text and all, so every reading over the list is the
+ * package's.
  */
 function recorder(
   target: SKRSContext2D,
@@ -716,14 +742,10 @@ function recorder(
         ) {
           const m = object.getTransform();
           call.text = {
-            transform: { a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f },
+            transform: [m.a, m.b, m.c, m.d, m.e, m.f] as Matrix,
             width: object.measureText(args[0]).width,
             textAlign: object.textAlign,
           };
-        }
-        if (method === "drawImage") {
-          const m = object.getTransform();
-          call.transform = { a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f };
         }
         calls.push(call);
         return (value as (...rest: unknown[]) => unknown).apply(object, args);
@@ -733,78 +755,6 @@ function recorder(
       if (drawing())
         calls.push({ kind: "set", property: String(property), value });
       return Reflect.set(object, property, value, object);
-    },
-  });
-}
-
-/**
- * The debug surface the BUILD's instance returned from `initialize`, read off
- * the engine that holds it.
- *
- * This is deliberately a READ and never a construction. The surface is the
- * build's deliverable: its instance's `initialize` returns it
- * (specs/instrumentation.md), the engine keeps that same object, and
- * `engine.debug` is the only way it reaches a check. Nothing here could stand
- * in for it, because the build's own module for the surface is never imported.
- *
- * By the time this runs `engine.initialize()` has resolved, which is the one
- * precondition `engine.debug` has: it holds whatever the instance returned. A
- * build whose `initialize` returned `undefined` never gets this far, because
- * the engine rejects `initialize` itself, naming the missing surface, and the
- * rejection fails the suite's `beforeEach` with the engine's own message. Such
- * a build does not run on the engine under any entry point, so it is not this
- * harness's fault to report — which is why every suite's `afterEach` disposes
- * its harness with `?.`: the hook then has nothing to add to that message.
- *
- * What IS decided here is a return that is no surface — a build whose
- * `initialize` returned `null`, or something other than an object. That is a
- * fault in the build and not in this harness, so it must not present as one:
- *
- * - It is NOT thrown from here. Every suite builds its harness in a
- *   `beforeEach`, so a throw at this point would fail the hook and bury the
- *   real verdict under the harness's own stack in the case's own file.
- * - It is NOT swallowed either. {@link missingSurface} stands in for the
- *   missing surface and fails, by assertion, at the moment a check first
- *   reaches for an operation on it — naming the return the build owes.
- *
- * So the harness is built, teardown runs, and the fault lands exactly where
- * specs/instrumentation.md says it should: on the points whose checks reach the
- * game through the surface. A check that needs no surface is decided on its own
- * merits, and `instrumentation/surface-present` names the missing surface
- * outright.
- */
-function readDebugSurface(engine: Engine<ShatterSurface>): ShatterSurface {
-  const surface: unknown = engine.debug;
-  if (typeof surface !== "object" || surface === null) {
-    return missingSurface(
-      `engine.debug holds ${surface === null ? "null" : typeof surface}, ` +
-        `not an object`,
-    );
-  }
-  return surface as ShatterSurface;
-}
-
-/**
- * A stand-in for the surface a build never returned: every operation on it
- * fails the check that reached for it, with the missing return named.
- *
- * A proxy rather than a hand-written stub, so a check that reaches for ANY
- * member — an operation this engine's surface carries, one the `warhead`
- * variant adds, or one a future revision adds — reports the missing surface
- * rather than a `TypeError`.
- *
- * Keys that belong to the MACHINERY rather than to a check are answered with
- * `undefined` instead: awaiting the harness probes `then`, and vitest's own
- * error formatting probes symbols and `constructor`. Failing those would
- * replace the verdict below with noise from the machinery that was trying to
- * report it.
- */
-function missingSurface(reason: string): ShatterSurface {
-  return new Proxy({} as ShatterSurface, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-      return fail(SURFACE_REQUIREMENT, reason);
     },
   });
 }
@@ -855,8 +805,15 @@ export async function createHarness(
   let quietDepth = 0;
   /** Whether the canvas holds the picture of the frame the game is on. */
   let painted = true;
-  /** Frames run since the event loop last had a turn. See {@link YIELD_EVERY}. */
-  let sinceYield = 0;
+  /**
+   * The moment the worker's event loop was last offered a turn.
+   *
+   * Held across every call rather than per march, because a check that steps a
+   * frame at a time makes one call per frame: a deadline that restarted with
+   * each of them would never be reached, and the loop would be held for the
+   * whole of a fourteen-thousand-frame sweep. See {@link YIELD_EVERY}.
+   */
+  let sinceYield = Date.now();
   let live: { recording(): boolean } | null = null;
   const drawingNow = (): boolean =>
     quietDepth === 0 || (live?.recording() ?? false);
@@ -886,12 +843,10 @@ export async function createHarness(
   }) as unknown as HTMLCanvasElement;
 
   const keys = new EventTarget();
-  const surface: SurfaceMetrics = {
-    cssWidth: () => cssWidth,
-    cssHeight: () => cssHeight,
-    dpr: () => dpr,
-    events: () => keys,
-  };
+  const surface: SurfaceMetrics = surfaceMetrics(
+    { cssWidth, cssHeight, dpr },
+    keys,
+  );
 
   const engine = createEngine<ShatterSurface>({
     canvas: element,
@@ -941,21 +896,19 @@ export async function createHarness(
     try {
       let left = frames;
       while (left > 0) {
-        const chunk = Math.max(1, Math.min(left, YIELD_EVERY - sinceYield));
+        const chunk = Math.min(left, YIELD_EVERY);
         await engine.advance(chunk);
         left -= chunk;
-        sinceYield += chunk;
-        if (sinceYield >= YIELD_EVERY) {
-          sinceYield = 0;
-          await breathe();
-        }
+        sinceYield = await breathe(sinceYield);
       }
     } finally {
       if (!draw) quietDepth -= 1;
     }
     painted = drew;
   };
-  const debug = readDebugSurface(engine);
+  const debug = identityDriver(
+    readDebugSurface<ShatterSurface>(engine, SURFACE_REQUIREMENT),
+  );
 
   const dispatch = (type: "keydown" | "keyup", code: string): void => {
     keys.dispatchEvent(new KeyEvent(type, code));
@@ -1093,11 +1046,14 @@ export async function createHarness(
     },
 
     async until(predicate, untilOptions = {}) {
-      const maxFrames = untilOptions.maxFrames ?? 600;
+      const maxFrames =
+        untilOptions.maxFrames ?? untilOptions.maxTicks ?? DEFAULT_MAX_FRAMES;
       const poll = Math.max(1, untilOptions.poll ?? 1);
 
       let snapshot = debug.snapshot();
-      if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
+      if (predicate(snapshot)) {
+        return { hit: true, frames: 0, ticks: 0, snapshot };
+      }
 
       let frames = 0;
       while (frames < maxFrames) {
@@ -1109,9 +1065,11 @@ export async function createHarness(
         await run(1, true);
         frames += step;
         snapshot = debug.snapshot();
-        if (predicate(snapshot)) return { hit: true, frames, snapshot };
+        if (predicate(snapshot)) {
+          return { hit: true, frames, ticks: frames, snapshot };
+        }
       }
-      return { hit: false, frames, snapshot };
+      return { hit: false, frames, ticks: frames, snapshot };
     },
 
     async runFor(ms) {
@@ -1141,9 +1099,7 @@ export async function createHarness(
     client: (x, y) => toClient(engine.viewport(), dpr, x, y),
     pixel: (x, y) => {
       requirePainted("a pixel read");
-      const point = toDevice(engine.world, engine.viewport(), x, y);
-      const { data } = ctx.getImageData(point.x, point.y, 1, 1);
-      return [data[0], data[1], data[2], data[3]];
+      return pixelAt(ctx, toDevice(engine.world, engine.viewport(), x, y));
     },
     drawn: () => painted,
 
@@ -1161,369 +1117,27 @@ export async function createHarness(
 // itself drew while a check drove it, kept as evidence a reviewer can look at
 // and compare against the reference implementation's. `captureStill` keeps one
 // frame; `captureReplay` keeps a stretch of motion, over the engine's own
-// draw-command recorder.
+// draw-command recorder. Both are the package's writers — the thinning, the
+// re-tabling, the gzip and the refusal to raise are the same ones every case's
+// evidence is written under.
 //
-// Four properties are what make capture usable, and each is deliberate:
-//
-// 1. IT RECORDS THE SECTION, NOT THE RUN. The recorder is armed around the
-//    caller's scenario and disarmed the moment that scenario returns, so what is
-//    kept is the part the check is ABOUT and never the setup that got there.
-//    A RECORDING ENDS ON THE OUTCOME, NOT ON THE INSTANT OF MEASUREMENT: arm the
-//    recorder before the scenario's last beat and stop it after the effect has
-//    played out — a second of the fragments coming apart, of the wave arriving,
-//    of the core that took the shot. The reading the verdict rests on is still
-//    taken at the instant the event happened. A clip that cuts on the frame of
-//    the measurement shows the reviewer everything except the thing the item is
-//    named for.
-// 2. IT IS EVIDENCE, NEVER A VERDICT. The scenario's own value comes straight
-//    back, so a check reads it exactly as it did before capture existed, and a
-//    scenario that THROWS still writes what it had recorded before the failure
-//    travels on — a failing check is the one whose replay a reviewer most wants.
-//    Nothing here can turn a passing check into a failing one: a recording that
-//    cannot be written is reported as an output that never turned up, which is a
-//    fact about the host rather than about the build.
-// 3. IT WRITES ONLY WHAT THERE IS TO LOOK AT. A capture that closed no frames
-//    leaves no file, so the run reports the output absent instead of offering the
-//    reviewer a replay of nothing.
-// 4. IT COSTS NOTHING WHEN NOBODY IS COLLECTING. Outside a run — a developer
-//    running this suite from a shell — the media directory is unset, and the whole
-//    thing is a no-op that still runs the scenario. The suite behaves identically
-//    either way, so a check cannot pass in one place and fail in the other.
-
-/**
- * The environment variable the runner names the media directory in.
- *
- * Unset is not an error: it is the normal state of a suite nobody is collecting
- * media from.
- */
-const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
+// AND ONE RULE ABOUT WHERE A CLIP ENDS, which belongs to the CALLER: A RECORDING
+// ENDS ON THE OUTCOME, NOT ON THE INSTANT OF MEASUREMENT. Arm the recorder
+// before the scenario's last beat and stop it after the effect has played out —
+// a second of the fragments coming apart, of the wave arriving, of the core that
+// took the shot. The reading the verdict rests on is still taken at the instant
+// the event happened. A clip that cuts on the frame of the measurement shows the
+// reviewer everything except the thing the item is named for.
 
 /**
  * The directory this harness sits in, which is the validator project's root.
  *
- * Taken from this module's own URL rather than from the working directory,
- * because it has to name the same directory wherever the suite is run from.
+ * Taken from this module's own URL rather than from the shared package's,
+ * because the package is staged one directory DEEPER than the case's files: a
+ * root derived there would address every output one level too far down, and
+ * silently, because the writers are required not to raise.
  */
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
-
-/**
- * The directory the runner stages this project to inside the build's tree.
- *
- * A recording is addressed by the STAGED path of the suite that produced it —
- * `validation/waves/clears-on-last-rock.test.ts` — because that is the path the
- * review item's declared script resolves to, and so the only name the case's
- * manifest and the runner both already agree on.
- */
-const STAGED_PROJECT_DIR = "validation";
-
-/**
- * The most frames a written recording holds.
- *
- * A recording is one JSON operation log per frame, so a section a check drives
- * for half a minute of game time runs to tens of megabytes — a file nobody can
- * serve to a reviewer and nobody wants in a run's artifacts. The cap is what
- * makes `captureReplay` safe to wrap ANY section in: an author arms the
- * recorder around what the check is about and never has to reason about how
- * long that turns out to be.
- *
- * The cap is generous enough that the great majority of this suite's sections —
- * a shot curving around the star, a Large coming apart, a saucer crossing the
- * field — are written whole.
- */
-const MAX_REPLAY_FRAMES = 300;
-
-/**
- * Where the running suite's `outputId` output belongs, or `null` when nothing is
- * collecting media.
- *
- * The suite is the one vitest is currently running rather than one the caller
- * names, because the two must not be able to disagree: a check that named its own
- * path would be free to write its evidence under some other point's address.
- *
- * `extension` is the one the runner collects that OUTPUT KIND under — `json.gz`
- * for a recording (a JSON document stored gzipped: `.json` is what the bytes are
- * and `.gz` is how they are framed), `png` for a still. The suite and the runner
- * agree by both stating the same thing about what the kind is.
- */
-function mediaDestination(outputId: string, extension: string): string | null {
-  const mediaDir = process.env[MEDIA_DIR_ENV];
-  if (mediaDir === undefined || mediaDir === "") return null;
-  const testPath = expect.getState().testPath;
-  if (testPath === undefined) return null;
-  const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
-  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.${extension}`);
-}
-
-/**
- * A value's JSON with object keys in a fixed order, as the key a table
- * deduplicates on.
- *
- * Two entries that mean the same thing have to serialize identically for a table
- * to hold one copy of each, and the key order inside an argument the build passed
- * is the build's own business rather than ours.
- */
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? "null";
-  }
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-    .join(",")}}`;
-}
-
-/** Add `entry` to a table if it is new, and answer where it lives. */
-function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
-  const key = canonical(entry);
-  const found = at.get(key);
-  if (found !== undefined) return found;
-  const index = table.length;
-  table.push(entry);
-  at.set(key, index);
-  return index;
-}
-
-/**
- * `frames` re-expressed against tables holding only what those frames name.
- *
- * DROPPING A FRAME DROPS THE LAST REFERENCE TO WHATEVER ONLY THAT FRAME DREW
- * WITH. The four tables in front of a recording are shared by every frame in it,
- * so carrying them over whole would put operations, states, gradients and images
- * in the file that no surviving frame asks for — dead weight in a document whose
- * whole point is to say each thing once.
- *
- * Every entry here is reached from a kept frame, and every reference inside one
- * is rewritten as it is reached, transitively: a frame names its own state and
- * the states saved under it, whose clip and path segments and inherited fill name
- * operations and resources, whose own creating calls may name images. What is
- * deduplicated is the rewritten entry, so an operation two hundred frames issue
- * identically is written once and named two hundred times, and every index a
- * frame carries addresses the table it was interned into.
- *
- * Exported so the `__proto__` path can be reached directly: a recording carrying
- * an own field named `__proto__` is one the engine's recorder writes and this one
- * has to rewrite as a field rather than as a prototype, and no drawing the
- * reference implementation makes produces one — so nothing that captures a build
- * ever reaches that branch. No suite in this project exercises it at present.
- */
-export function retable(
-  recording: Recording,
-  frames: readonly RecordedFrame[],
-): Recording {
-  const images: CapturedImage[] = [];
-  const imageAt = new Map<number, number>();
-  const resources: Resource[] = [];
-  const resourceAt = new Map<number, number>();
-  const ops: DrawOp[] = [];
-  const opAt = new Map<string, number>();
-  const states: DrawState[] = [];
-  const stateAt = new Map<string, number>();
-
-  const takeImage = (source: number): number => {
-    const found = imageAt.get(source);
-    if (found !== undefined) return found;
-    const index = images.length;
-    images.push(recording.images[source]);
-    imageAt.set(source, index);
-    return index;
-  };
-
-  const takeResource = (source: number): number => {
-    const found = resourceAt.get(source);
-    if (found !== undefined) return found;
-    const recipe = recording.resources[source];
-    // A recipe's own arguments were encoded when the value was used, so they can
-    // only name entries interned before it: rewriting one terminates and cannot
-    // re-enter this resource.
-    const rebuilt: Resource = {
-      make: { method: recipe.make.method, args: recipe.make.args.map(value) },
-      then: recipe.then.map(operation),
-    };
-    const index = resources.length;
-    resources.push(rebuilt);
-    resourceAt.set(source, index);
-    return index;
-  };
-
-  const value = (entry: DrawValue): DrawValue => {
-    if (Array.isArray(entry)) return entry.map(value);
-    if (entry === null || typeof entry !== "object") return entry;
-    const record = entry as Record<string, DrawValue>;
-    if (typeof record.$img === "number") {
-      return { $img: takeImage(record.$img) };
-    }
-    if (typeof record.$res === "number") {
-      return { $res: takeResource(record.$res) };
-    }
-    const rewritten: Record<string, DrawValue> = {};
-    for (const [key, held] of Object.entries(record)) {
-      // Defined rather than assigned: a build's own object may carry a field named
-      // `__proto__`, and assigning that name reaches the prototype setter instead
-      // of writing a field the document carries.
-      Object.defineProperty(rewritten, key, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return rewritten;
-  };
-
-  const operation = (op: DrawOp): DrawOp =>
-    op.op === "call"
-      ? { op: "call", method: op.method, args: op.args.map(value) }
-      : { op: "set", property: op.property, value: value(op.value) };
-
-  const segments = (list: readonly PathSegment[]): PathSegment[] =>
-    list.map((segment) => ({
-      transform: segment.transform,
-      ops: segment.ops.map(operation),
-    }));
-
-  const stateOf = (source: number): number => {
-    const state = recording.states[source];
-    const properties: Record<string, DrawValue> = {};
-    for (const [name, held] of Object.entries(state.properties)) {
-      Object.defineProperty(properties, name, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return intern(states, stateAt, {
-      properties,
-      transform: state.transform,
-      lineDash: state.lineDash,
-      clip: segments(state.clip),
-      // A frame inherits the current path along with the clip: a canvas keeps its
-      // path across a frame boundary, and applying a clip leaves the clip outline
-      // current, so a state that stopped at the clip would leave a bare `fill`
-      // among the frame's operations filling that outline.
-      path: segments(state.path),
-    });
-  };
-
-  return {
-    ...recording,
-    images,
-    resources,
-    ops,
-    states,
-    frames: frames.map((frame) => ({
-      ...frame,
-      state: stateOf(frame.state),
-      stack: frame.stack.map(stateOf),
-      ops: frame.ops.map((op) =>
-        intern(ops, opAt, operation(recording.ops[op])),
-      ),
-    })),
-  };
-}
-
-/**
- * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole of
- * what was captured.
- *
- * An over-long section is THINNED rather than cut short: every nth frame is kept,
- * so the reviewer sees the entire section at a lower frame rate instead of its
- * first — or last — few seconds at the full one. That is the reading that matches
- * what these outputs are named for. A sweep is evidence that the shot curved all
- * the way around the star, and the curve is spread across the whole of it.
- *
- * Thinning is legitimate because every frame in a recording is drawable on its
- * own: a frame names the whole of the state it opened with and reaches everything
- * it draws with through tables the recording shares, so dropping the frames
- * between two kept ones cannot leave a frame undrawable. Each kept frame's
- * `deltaMs` is restated as the time since the frame kept before it, so the deltas
- * still sum to the section's elapsed time and a player pacing itself off them
- * runs at the speed the game really ran at. The frame `count` is left as the host
- * reported it, so a reader can see that frames were skipped rather than being
- * told a smooth lie.
- *
- * The last frame is always kept, whatever the stride lands on: it is the frame the
- * check's sweep stopped at — the fragments apart, the wave up — and it is the one
- * a reviewer looks at first.
- *
- * Keeping it costs a frame rather than the cap. The stride rounds up, so a section
- * whose length is an exact multiple of the cap strides over exactly that many
- * frames and stops one stride short of the end: the last frame still has to come
- * in, and the cap is a ceiling rather than a target. It takes the place of the
- * final strided frame — the frame nearest it, so the swap opens the smallest gap
- * available anywhere in the section — and is measured from where that frame was
- * measured from, which is what keeps the kept deltas summing to the elapsed time.
- *
- * What survives is then re-expressed against tables of its own, because those
- * tables are shared by every frame the recorder kept and a dropped frame takes
- * the last reference to whatever only it drew with.
- */
-function thinReplay(recording: Recording): Recording {
-  const { frames } = recording;
-  if (frames.length <= MAX_REPLAY_FRAMES) return recording;
-
-  const stride = Math.ceil(frames.length / MAX_REPLAY_FRAMES);
-  const kept: RecordedFrame[] = [];
-  // The moment the section started, so the first kept frame's delta is its own
-  // rather than a step measured from nothing.
-  let previousMs = frames[0].timeMs - frames[0].deltaMs;
-  const keep = (frame: RecordedFrame): void => {
-    kept.push({ ...frame, deltaMs: frame.timeMs - previousMs });
-    previousMs = frame.timeMs;
-  };
-
-  for (let i = 0; i < frames.length; i += stride) keep(frames[i]);
-  const last = frames[frames.length - 1];
-  if (kept[kept.length - 1].count !== last.count) {
-    if (kept.length >= MAX_REPLAY_FRAMES) {
-      // The stride spent the whole budget on the way to a frame short of the end.
-      // Drop the frame it stopped on, and put the moment back to the one before
-      // it: a kept frame's restated delta is measured from exactly that moment, so
-      // subtracting it recovers it, and the last frame's own delta then spans the
-      // gap the two of them leave.
-      const displaced = kept[kept.length - 1];
-      kept.length -= 1;
-      previousMs = displaced.timeMs - displaced.deltaMs;
-    }
-    keep(last);
-  }
-
-  return retable(recording, kept);
-}
-
-/**
- * Write a recording out, reporting rather than raising anything that goes wrong.
- *
- * A capture that closed no frames writes nothing. There is no picture in it to
- * draw, and a file holding an empty frame list would be collected as an output
- * that turned up — the run would tell the reviewer there is a replay to watch and
- * the player would open on nothing. A declared output that never turned up is
- * already reported as absent, and that is the truthful reading of a section that
- * drew no frames.
- *
- * What lands on disk is gzip rather than raw JSON. A recording is text made
- * almost entirely of numbers, index lists and field names repeated once per
- * frame, which is close to the shape gzip is best at. That is what keeps a run's
- * whole set of recordings to a few megabytes. Every host that serves one declares
- * the encoding, so the browser inflates it before the player sees it, and the
- * document inside is the same one.
- *
- * Never throws. A directory that cannot be made or a file that cannot be written
- * says something about the machine the validators ran on, and failing the point
- * over it would blame the build for the host's problem. The runner already reads
- * a declared output that never turned up as exactly that.
- */
-function writeReplay(destination: string, recording: Recording): void {
-  if (recording.frames.length === 0) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
-  } catch (error) {
-    console.warn(`shatter: could not write ${destination}: ${String(error)}`);
-  }
-}
 
 /**
  * Record the frames `scenario` draws and keep them as the review item's
@@ -1547,22 +1161,7 @@ function writeReplay(destination: string, recording: Recording): void {
  * the reasons it failed before, and the recording is what a reviewer looks at
  * afterwards to see what the build actually drew while it did.
  */
-export async function captureReplay<T>(
-  h: Harness,
-  outputId: string,
-  scenario: () => T | Promise<T>,
-): Promise<T> {
-  const destination = mediaDestination(outputId, "json.gz");
-  if (destination === null) return scenario();
-
-  h.engine.startRecording();
-  try {
-    return await scenario();
-  } finally {
-    // In a `finally`, so a scenario that failed still leaves its evidence behind.
-    writeReplay(destination, h.engine.stopRecording());
-  }
-}
+export const captureReplay = makeReplayCapture("shatter", PROJECT_ROOT);
 
 /**
  * Keep the frame currently on the canvas as the review item's `outputId` output.
@@ -1592,14 +1191,9 @@ export function captureStill(h: Harness, outputId: string): void {
         "capturing",
     );
   }
-  const destination = mediaDestination(outputId, "png");
-  if (destination === null) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, h.canvas.toBuffer("image/png"));
-  } catch (error) {
-    console.warn(`shatter: could not write ${destination}: ${String(error)}`);
-  }
+  captureOutputSync("shatter", PROJECT_ROOT, outputId, "png", () =>
+    h.canvas.toBuffer("image/png"),
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -2440,55 +2034,19 @@ export function clearCues(h: Harness): void {
 /* Reading the rendered pixels                                                */
 /* -------------------------------------------------------------------------- */
 
-/** A sampled colour, each channel 0–255. */
-export interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-/**
- * The rendered colour at a logical point, averaged over a small cluster: the
- * centre pixel plus four neighbours `4` units out, so one stray anti-aliased
- * pixel cannot swing the reading.
- *
- * The right reading for a body drawn as a solid shape — a bullet, the core, a
- * filled rock — and the wrong one for a sparse figure such as an outlined ship
- * or a wireframe rock, which a five-point cross can miss entirely. Read those
- * with {@link litAround}.
+/*
+ * A SAMPLED COLOUR IS THE PACKAGE'S `Rgb`, and the rendered colour at a logical
+ * point is the package's `sampleColor` — the centre pixel plus four neighbours
+ * `4` units out, averaged, which is byte for byte the reading this suite has
+ * always taken. It is the right reading for a body drawn as a solid shape — a
+ * bullet, the core, a filled rock — and the wrong one for a sparse figure such as
+ * an outlined ship or a wireframe rock, which a five-point cross can miss
+ * entirely. Read those with {@link litAround}, which is this case's own.
  */
-export function sampleColor(h: Harness, x: number, y: number): Rgb {
-  const offsets: readonly (readonly [number, number])[] = [
-    [0, 0],
-    [4, 0],
-    [-4, 0],
-    [0, 4],
-    [0, -4],
-  ];
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [dx, dy] of offsets) {
-    const [pr, pg, pb] = h.pixel(x + dx, y + dy);
-    r += pr;
-    g += pg;
-    b += pb;
-  }
-  return {
-    r: r / offsets.length,
-    g: g / offsets.length,
-    b: b / offsets.length,
-  };
-}
 
 /** How bright a colour is, on the 0–255 scale (Rec. 601). */
 export function luminance(colour: Rgb): number {
   return 0.299 * colour.r + 0.587 * colour.g + 0.114 * colour.b;
-}
-
-/** Euclidean distance between two colours, 0 to about 441. */
-export function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
 /**
@@ -2551,65 +2109,27 @@ export function litAround(
  * same canvas implementation the harness samples with, so a pixel the game
  * never drew over compares against it exactly.
  *
- * The fill is repeated rather than applied once so a translucent colour reads
- * as the engine leaves it: the engine composites its clear over the previous
- * frame every frame, which converges on the colour's own channels, and a single
- * fill over a transparent canvas would not.
+ * The package's `rasterize` repeats the fill rather than applying it once, so a
+ * translucent colour reads as the engine leaves it: the engine composites its
+ * clear over the previous frame every frame, which converges on the colour's own
+ * channels, and a single fill over a transparent canvas would not.
  */
 export function clearColor(): Rgb {
-  const probe = createCanvas(1, 1);
-  const ctx = probe.getContext("2d");
-  ctx.fillStyle = BACKGROUND;
-  for (let i = 0; i < 255; i += 1) ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return { r, g, b };
+  return rgbOf([...rasterize(BACKGROUND), 255]);
 }
 
-/**
- * The canvas's whole backing store, copied — so a check can hold two frames
- * apart and say whether anything the build drew changed between them.
+/*
+ * THE WHOLE-FRAME READINGS ARE THE PACKAGE'S. `canvasPixels` copies the backing
+ * store — copied, so a check can hold two frames apart — and `pixelsChanged`
+ * counts the BYTES two of them differ by, with no tolerance: "did the build draw
+ * anything different at all". The package's other reading, `pixelsDiffering`,
+ * counts PIXELS past a tolerance, and a threshold stated over one is meaningless
+ * over the other; this suite has always counted bytes.
  */
-export function canvasPixels(h: Harness): Uint8ClampedArray {
-  const { width, height } = h.canvas;
-  return Uint8ClampedArray.from(h.ctx.getImageData(0, 0, width, height).data);
-}
-
-/** How many bytes differ between two {@link canvasPixels} captures. */
-export function pixelsChanged(
-  before: Uint8ClampedArray,
-  after: Uint8ClampedArray,
-): number {
-  let changed = 0;
-  const length = Math.min(before.length, after.length);
-  for (let i = 0; i < length; i += 1) {
-    if (before[i] !== after[i]) changed += 1;
-  }
-  return changed + Math.abs(before.length - after.length);
-}
 
 /* -------------------------------------------------------------------------- */
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
-
-/** Every argument list `method` was called with, in order. */
-export function callsTo(
-  calls: readonly DrawCall[],
-  method: string,
-): unknown[][] {
-  return calls.flatMap((call) =>
-    call.kind === "call" && call.method === method ? [call.args] : [],
-  );
-}
-
-/** Every value `property` was set to, in order. */
-export function setsOf(
-  calls: readonly DrawCall[],
-  property: string,
-): unknown[] {
-  return calls.flatMap((call) =>
-    call.kind === "set" && call.property === property ? [call.value] : [],
-  );
-}
 
 /** Forget every call recorded so far, so a check reads one frame's render. */
 export function clearCalls(h: Harness): void {
@@ -2629,14 +2149,6 @@ export async function renderFrame(h: Harness): Promise<DrawCall[]> {
   return [...h.calls];
 }
 
-/** Every string the frame drew, through `fillText` or `strokeText`. */
-export function drawnText(calls: readonly DrawCall[]): string[] {
-  return [
-    ...callsTo(calls, "fillText"),
-    ...callsTo(calls, "strokeText"),
-  ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
-}
-
 /**
  * Whether the frame drew `text` as part of some run of text, ignoring case.
  *
@@ -2650,35 +2162,14 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
   return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
 }
 
-/**
- * The geometry calls a frame made, by name.
- *
- * Enough of a count to compare two frames of the same scene: a frame that drew a
- * thrust flame asked for strictly more of these than the same frame with the
- * thrust released, whatever shape the build chose to draw it as.
+/*
+ * THE COUNT OF GEOMETRY CALLS is the package's `drawOps` over its own
+ * `DRAW_METHODS` — enough of a count to compare two frames of the same scene: a
+ * frame that drew a thrust flame asked for strictly more of these than the same
+ * frame with the thrust released, whatever shape the build chose to draw it as.
+ * The package's list carries `putImageData` where this suite's did not, which is
+ * a call nothing in this game makes.
  */
-export const DRAW_METHODS: readonly string[] = [
-  "arc",
-  "ellipse",
-  "rect",
-  "roundRect",
-  "fillRect",
-  "strokeRect",
-  "moveTo",
-  "lineTo",
-  "quadraticCurveTo",
-  "bezierCurveTo",
-  "fill",
-  "stroke",
-  "drawImage",
-];
-
-/** How many drawing operations the frame issued. */
-export function drawOps(calls: readonly DrawCall[]): number {
-  return calls.filter(
-    (call) => call.kind === "call" && DRAW_METHODS.includes(call.method),
-  ).length;
-}
 
 /**
  * Every point a frame's drawing calls named, in the space the game draws in.
@@ -2729,56 +2220,37 @@ export function drawnPoints(
   return points;
 }
 
-/** One run of text a frame drew, and the logical x range its glyphs span. */
-export interface TextSpan {
-  text: string;
-  /** The anchor, in logical units. */
-  x: number;
-  y: number;
-  /** The horizontal extent of the glyphs, in logical units. */
-  left: number;
-  right: number;
-}
+/**
+ * One run of text a frame drew, placed in logical units.
+ *
+ * The package's {@link TextDraw}: the anchor, the horizontal extent its glyphs
+ * span, and the alignment that placed them about the anchor. Named here because
+ * that is what this suite has always called it.
+ */
+export type TextSpan = TextDraw;
 
 /**
  * Every run of text the frame drew, placed in logical units.
  *
  * A build may anchor its text through any transform the pipeline or its own
- * drawing applies and align it any way it likes, so the anchor is mapped
- * through the transform the context held at the call and the run is extended
- * about it by its measured width and `textAlign`. Which way a `start`/`end`
- * alignment reads is the page's direction; this game draws no right-to-left
- * text, so they are left and right.
+ * drawing applies and align it any way it likes, so the anchor is mapped through
+ * the transform the context held at the call and the run is extended about it by
+ * its measured width and `textAlign` — which is the package's `textDraws`, in
+ * CANVAS pixels because that is where the calls were made. `allInLogical` takes
+ * it back through the engine's own fit into the logical units every figure
+ * specs/ fixes is stated in.
  *
- * The OVERLAY's text is in here too when the overlay is up: the engine draws
- * it through the same context, in device pixels under an identity transform,
- * which this mapping carries back to logical units like any other run.
+ * ONE ENTRY PER CALL. The package also ships a reading that coalesces the calls
+ * a letter-spaced heading is drawn by into one logical run; this suite reads the
+ * calls, because `screens/reading.ts` matches an entry's own draw against the
+ * region `menuItemRect` reports for it.
+ *
+ * The OVERLAY's text is in here too when the overlay is up: the engine draws it
+ * through the same context, in device pixels under an identity transform, which
+ * this mapping carries back to logical units like any other run.
  */
 export function drawnTextSpans(h: Harness): TextSpan[] {
-  const view = h.engine.viewport();
-  const spans: TextSpan[] = [];
-  for (const call of h.calls) {
-    if (call.kind !== "call" || call.text === undefined) continue;
-    const [text, ax, ay] = call.args;
-    if (typeof text !== "string" || typeof ax !== "number") continue;
-    if (typeof ay !== "number") continue;
-    const { transform: m, width, textAlign } = call.text;
-    // Device-space anchor, then back through the engine's fit to logical units.
-    const deviceX = m.a * ax + m.c * ay + m.e;
-    const deviceY = m.b * ax + m.d * ay + m.f;
-    const x = (deviceX - view.offsetX) / view.scale;
-    const y = (deviceY - view.offsetY) / view.scale;
-    // The run's width under the same horizontal scale the anchor took.
-    const w = (width * Math.hypot(m.a, m.b)) / view.scale;
-    const before =
-      textAlign === "center"
-        ? w / 2
-        : textAlign === "right" || textAlign === "end"
-          ? w
-          : 0;
-    spans.push({ text, x, y, left: x - before, right: x - before + w });
-  }
-  return spans;
+  return allInLogical(h.engine.viewport(), textDraws(h.calls));
 }
 
 /* -------------------------------------------------------------------------- */

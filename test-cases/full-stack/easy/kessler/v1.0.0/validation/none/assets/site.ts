@@ -17,6 +17,10 @@ import { existsSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { inject } from "vitest";
 import type { Browser, Page } from "playwright";
+// The endpoint key is the shared harness's and fixed there: a per-case key
+// could not be declared once for a program that type-checks two cases together,
+// which is exactly what the per-case keys were trying to avoid.
+import { PROVIDE_WS_KEY } from "../case-harness/config";
 import { connectChromium } from "../chromium";
 import { WORKSPACE } from "./media-out";
 
@@ -114,7 +118,7 @@ export async function openSite(options: SiteOptions = {}): Promise<Site> {
   }
   const origin = `http://127.0.0.1:${address.port}`;
 
-  const browser: Browser = await connectChromium(inject("kesslerBrowserWs"), {
+  const browser: Browser = await connectChromium(inject(PROVIDE_WS_KEY), {
     slug: SLUG,
   });
   const context = await browser.newContext({

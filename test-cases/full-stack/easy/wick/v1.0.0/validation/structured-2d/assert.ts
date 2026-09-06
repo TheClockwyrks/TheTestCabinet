@@ -1,19 +1,19 @@
-// Wick — the suite's assertions. CASE-PROVIDED.
+// Wick — the suite's assertions. CASE-PROVIDED, over the shared harness.
 //
-// Every check in this project asserts through these helpers rather than through
-// vitest's `expect`, because of where a failure ends up: the runner stores each
-// failed check as an expected/actual pair and the console renders that pair to
-// the reviewer. A chai message ("expected 9.097… to be less than or equal to 8",
-// trailed by a stack) makes a poor pair; these helpers throw a message of
-// exactly the shape the runner extracts —
+// Most of these are the shared validator harness's
+// (`@clockwyrks/case-harness`), because what they are FOR is the runner's
+// contract rather than this case's: the runner stores each failed check as an
+// expected/actual pair and the console renders that pair to the reviewer, so
+// every check in every validator project throws a message of exactly the shape
+// the runner extracts —
 //
 //   Expected: at most 8
 //   Actual: 9.097252332435328
 //
-// — so the reviewer reads the bound the case set beside the value the build
-// produced, and nothing else. The first line names what the check required, the
-// second the value it measured. Keep new helpers to that shape: one `Expected:`
-// line, one `Actual:` line, no file paths and no prose around them.
+// — and the reviewer reads the bound the case set beside the value the build
+// produced, and nothing else. A case that wrote its own set would be restating
+// that contract, and a case that drifted from it would report a verdict the
+// console could not render.
 //
 // Every helper takes an optional trailing `context`: what a check that runs the
 // same comparison many times over says to tell one failure from another
@@ -21,10 +21,59 @@
 // requirement the build missed. It lands on the `Expected:` line, after the
 // bound, in parentheses:
 //
-//   Expected: at most 0.01 (moth 3 after tick 12: hp)
+//   Expected: within 0.01 of 4 (moth 3 after tick 12: hp)
 //   Actual: 0.4
 //
 // so the pair stays two lines and the runner still reads it as one.
+//
+// WHY THE RE-EXPORT IS WRITTEN OUT NAME BY NAME. Two of the shared names ask a
+// DIFFERENT question here, and one whole family of them rests on a structural
+// comparison this case reads differently — see the two sections below. A star
+// re-export would leave which of each pair a suite gets to a rule about module
+// resolution, where nearly thirteen hundred call sites deserve to see the choice
+// stated. What is imported below is exactly what this project means to take.
+//
+// This file stays because the suites next door say `from "../assert"`, and that
+// is the right thing for them to say: an assertion is the vocabulary a check
+// states its verdict in, not a package a check depends on.
+
+export {
+  fail,
+  assertEqual,
+  assertNotEqual,
+  assertCloseTo,
+  assertLessThan,
+  assertLessThanOrEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertBetween,
+  assertLength,
+  assertHasProperty,
+  assertNull,
+  assertNotNull,
+  assertUndefined,
+  assertDefined,
+  assertTrue,
+  assertTruthy,
+  assertMatches,
+  assertThrows,
+  assertDoesNotThrow,
+  assertNearFraction,
+  assertAngleNear,
+  assertEachIn,
+} from "./case-harness/assert";
+
+import { fail } from "./case-harness/assert";
+
+/* -------------------------------------------------------------------------- */
+/* Rendering a failure                                                        */
+/* -------------------------------------------------------------------------- */
+//
+// The package does not export the two renderers its own messages are built from
+// — they are private to it, and rightly so: they are the shape of the runner's
+// contract rather than an extension point. So the helpers below carry their own
+// three-line copies, which is the whole of what "one `Expected:` line, one
+// `Actual:` line" costs to restate.
 
 /** The `Expected:` phrase, with the check's own context after it when it gave one. */
 function phrase(expected: string, context?: string): string {
@@ -45,62 +94,27 @@ function show(value: unknown): string {
   }
 }
 
-/**
- * Throw the failure the runner extracts: what was required, what was measured.
- *
- * Exported for the one reading no comparison states — a harness that found the
- * build's surface missing names what the specification requires as `expected`
- * and what it found as `actual`.
- */
-export function fail(expected: string, actual: unknown): never {
-  throw new Error(`Expected: ${expected}\nActual: ${show(actual)}`);
-}
-
-/** `actual` is `expected`, by `Object.is`. For deep structure, `assertDeepEqual`. */
-export function assertEqual(
-  actual: unknown,
-  expected: unknown,
-  context?: string,
-): void {
-  if (!Object.is(actual, expected))
-    fail(phrase(show(expected), context), actual);
-}
-
-/** `actual` is not `unwanted`, by `Object.is`. */
-export function assertNotEqual(
-  actual: unknown,
-  unwanted: unknown,
-  context?: string,
-): void {
-  if (Object.is(actual, unwanted)) {
-    fail(phrase(`not ${show(unwanted)}`, context), actual);
-  }
-}
-
-/** `actual` and `expected` are structurally equal (JSON-comparable values). */
-export function assertDeepEqual(
-  actual: unknown,
-  expected: unknown,
-  context?: string,
-): void {
-  if (!deepEquals(actual, expected)) {
-    fail(phrase(show(expected), context), actual);
-  }
-}
-
-/** `actual` and `unwanted` are structurally different (JSON-comparable values). */
-export function assertNotDeepEqual(
-  actual: unknown,
-  unwanted: unknown,
-  context?: string,
-): void {
-  if (deepEquals(actual, unwanted)) {
-    fail(phrase(`not ${show(unwanted)}`, context), actual);
-  }
-}
+/* -------------------------------------------------------------------------- */
+/* The structural comparison, and the three helpers that rest on it           */
+/* -------------------------------------------------------------------------- */
+//
+// THIS CASE READS A FIELD THAT IS PRESENT AND `undefined` AS A FIELD THAT IS NOT
+// THERE, and the shared harness's `deepEquals` does not: it counts the key and
+// fails on the length. That is not a nicety here. `specs/instrumentation.md`
+// leaves several snapshot fields OPTIONAL — a zone reports a `width` and a
+// `height` only for the kinds that have them — so a build that spells an absent
+// field `width: undefined` rather than leaving it out has reported exactly what
+// the specification asks for. Under the shared reading every such snapshot would
+// fail its comparison against `IDLE_RUN` and against every expected entity in the
+// project, on a distinction JSON itself does not draw.
+//
+// The comparison is private, and `assertDeepEqual`, `assertContains` and
+// `assertNotContains` are re-declared here rather than re-exported, because each
+// of them closes over whichever comparison its own module declared — taking the
+// shared ones would take the shared reading with them, silently.
 
 /** Structural equality over the JSON-shaped values the suites compare. */
-export function deepEquals(a: unknown, b: unknown): boolean {
+function deepEquals(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (Array.isArray(a) && Array.isArray(b)) {
     return (
@@ -128,28 +142,78 @@ export function deepEquals(a: unknown, b: unknown): boolean {
   return false;
 }
 
-/**
- * `actual` is within half a unit of the `digits`-th decimal place of
- * `expected` — the same reading as vitest's `toBeCloseTo(expected, digits)`.
- * Two equal infinities are close; nothing else infinite is.
- */
-export function assertCloseTo(
-  actual: number,
-  expected: number,
-  digits = 2,
+/** `actual` and `expected` are structurally equal (JSON-comparable values). */
+export function assertDeepEqual(
+  actual: unknown,
+  expected: unknown,
   context?: string,
 ): void {
-  if (actual === expected) return;
-  const tolerance = 0.5 * 10 ** -digits;
-  if (!(Math.abs(actual - expected) < tolerance)) {
-    fail(phrase(`within ${tolerance} of ${expected}`, context), actual);
+  if (!deepEquals(actual, expected)) {
+    fail(phrase(show(expected), context), actual);
   }
 }
+
+/** `actual` and `unwanted` are structurally different (JSON-comparable values). */
+export function assertNotDeepEqual(
+  actual: unknown,
+  unwanted: unknown,
+  context?: string,
+): void {
+  if (deepEquals(actual, unwanted)) {
+    fail(phrase(`not ${show(unwanted)}`, context), actual);
+  }
+}
+
+/** A string contains `needle`, or an array contains an equal element. */
+export function assertContains(
+  container: string | readonly unknown[],
+  needle: unknown,
+  context?: string,
+): void {
+  const holds =
+    typeof container === "string"
+      ? typeof needle === "string" && container.includes(needle)
+      : container.some((item) => deepEquals(item, needle));
+  if (!holds) fail(phrase(`containing ${show(needle)}`, context), container);
+}
+
+/** A string does not contain `needle`, or an array holds no equal element. */
+export function assertNotContains(
+  container: string | readonly unknown[],
+  needle: unknown,
+  context?: string,
+): void {
+  const holds =
+    typeof container === "string"
+      ? typeof needle === "string" && container.includes(needle)
+      : container.some((item) => deepEquals(item, needle));
+  if (holds) fail(phrase(`not containing ${show(needle)}`, context), container);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The tolerance this case states its figures with                            */
+/* -------------------------------------------------------------------------- */
 
 /**
  * `|actual − expected| <= tolerance`, an absolute bound: the spelling for a
  * figure the specification fixes with one of the suite's stated tolerances
  * (`REAL_EPS`, `MOTION_EPS`, `ANGLE_EPS` in `constants.ts`).
+ *
+ * A NAME THE SHARED SET ALSO CARRIES, FOR A DIFFERENT READING, and this is the
+ * one this project is bound to. The two differ twice over, and both differences
+ * are visible:
+ *
+ *   - The shared `assertNear` fails on ANY non-finite `actual`. This one returns
+ *     early on `actual === expected`, so two equal infinities are within every
+ *     tolerance, which is what the twelve hundred call sites here were written
+ *     against.
+ *   - It phrases the bound `expected +/- tolerance`; this one phrases it
+ *     `within tolerance of expected`, which is the `Expected:` line every
+ *     reviewer of this case has read.
+ *
+ * Folding them would rewrite every failure message in the project and quietly
+ * move the verdict on any figure that reached infinity, so the shared one is
+ * deliberately not re-exported above and this one stands under the name.
  */
 export function assertNear(
   actual: number,
@@ -182,101 +246,9 @@ export function assertPointNear(
   }
 }
 
-/** `actual < bound`. */
-export function assertLessThan(
-  actual: number,
-  bound: number,
-  context?: string,
-): void {
-  if (!(actual < bound)) fail(phrase(`less than ${bound}`, context), actual);
-}
-
-/** `actual <= bound`. */
-export function assertLessThanOrEqual(
-  actual: number,
-  bound: number,
-  context?: string,
-): void {
-  if (!(actual <= bound)) fail(phrase(`at most ${bound}`, context), actual);
-}
-
-/** `actual > bound`. */
-export function assertGreaterThan(
-  actual: number,
-  bound: number,
-  context?: string,
-): void {
-  if (!(actual > bound)) fail(phrase(`greater than ${bound}`, context), actual);
-}
-
-/** `actual >= bound`. */
-export function assertGreaterThanOrEqual(
-  actual: number,
-  bound: number,
-  context?: string,
-): void {
-  if (!(actual >= bound)) fail(phrase(`at least ${bound}`, context), actual);
-}
-
-/** `min <= actual <= max`, both ends in. */
-export function assertBetween(
-  actual: number,
-  min: number,
-  max: number,
-  context?: string,
-): void {
-  if (!(actual >= min && actual <= max)) {
-    fail(phrase(`between ${min} and ${max}`, context), actual);
-  }
-}
-
-/** A string contains `needle`, or an array contains an equal element. */
-export function assertContains(
-  container: string | readonly unknown[],
-  needle: unknown,
-  context?: string,
-): void {
-  const holds =
-    typeof container === "string"
-      ? typeof needle === "string" && container.includes(needle)
-      : container.some((item) => deepEquals(item, needle));
-  if (!holds) fail(phrase(`containing ${show(needle)}`, context), container);
-}
-
-/** A string does not contain `needle`, or an array holds no equal element. */
-export function assertNotContains(
-  container: string | readonly unknown[],
-  needle: unknown,
-  context?: string,
-): void {
-  const holds =
-    typeof container === "string"
-      ? typeof needle === "string" && container.includes(needle)
-      : container.some((item) => deepEquals(item, needle));
-  if (holds) fail(phrase(`not containing ${show(needle)}`, context), container);
-}
-
-/** A string or array has exactly `length` elements. */
-export function assertLength(
-  actual: string | readonly unknown[],
-  length: number,
-  context?: string,
-): void {
-  if (actual.length !== length) {
-    fail(phrase(`length ${length}`, context), actual.length);
-  }
-}
-
-/** The object has a `key` property, own or inherited, whatever its value. */
-export function assertHasProperty(
-  actual: object,
-  key: string,
-  context?: string,
-): void {
-  if (!(key in actual)) {
-    fail(phrase(`a ${show(key)} property`, context), Object.keys(actual));
-  }
-}
+/* -------------------------------------------------------------------------- */
+/* Two the shared set does not carry at all                                   */
+/* -------------------------------------------------------------------------- */
 
 /** `typeof actual` is `type`. */
 export function assertTypeOf(
@@ -289,74 +261,7 @@ export function assertTypeOf(
   }
 }
 
-/** The value is `null`. */
-export function assertNull(actual: unknown, context?: string): void {
-  if (actual !== null) fail(phrase("null", context), actual);
-}
-
-/** The value is anything but `null`. */
-export function assertNotNull(actual: unknown, context?: string): void {
-  if (actual === null) fail(phrase("not null", context), actual);
-}
-
-/** The value is `undefined`. */
-export function assertUndefined(actual: unknown, context?: string): void {
-  if (actual !== undefined) fail(phrase("undefined", context), actual);
-}
-
-/** The value is neither `null` nor `undefined`. */
-export function assertDefined(actual: unknown, context?: string): void {
-  if (actual === null || actual === undefined) {
-    fail(phrase("a value", context), actual);
-  }
-}
-
-/** The condition holds. The blunt one; prefer a comparison that names values. */
-export function assertTrue(condition: boolean, context?: string): void {
-  if (!condition) fail(phrase("true", context), condition);
-}
-
 /** The condition does not hold. */
 export function assertFalse(condition: boolean, context?: string): void {
   if (condition) fail(phrase("false", context), condition);
-}
-
-/** The value is truthy: a reading that is there at all, whatever it holds. */
-export function assertTruthy(actual: unknown, context?: string): void {
-  if (!actual) fail(phrase("a truthy value", context), actual);
-}
-
-/** The string matches `pattern` (a regular expression, or a substring). */
-export function assertMatches(
-  actual: string,
-  pattern: RegExp | string,
-  context?: string,
-): void {
-  const holds =
-    typeof pattern === "string"
-      ? actual.includes(pattern)
-      : pattern.test(actual);
-  if (!holds) fail(phrase(`matching ${String(pattern)}`, context), actual);
-}
-
-/** Calling `run` throws. */
-export function assertThrows(run: () => unknown, context?: string): void {
-  try {
-    run();
-  } catch {
-    return;
-  }
-  fail(phrase("a thrown error", context), "no error thrown");
-}
-
-/** Calling `run` returns without throwing. */
-export function assertDoesNotThrow(run: () => unknown, context?: string): void {
-  try {
-    run();
-  } catch (error) {
-    fail(
-      phrase("no thrown error", context),
-      error instanceof Error ? error.message : error,
-    );
-  }
 }

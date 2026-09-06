@@ -10,28 +10,33 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator resolves the
-// build's modules by the same relative paths the build itself uses. It is derived
-// from this file's own URL rather than from the working directory, so the command
-// above works from anywhere.
+// Everything but the root is the shared validator harness's, because everything
+// but the root is what makes a staged validator project one shape the runner can
+// drive: the project's name, the suites it collects, the environment they run
+// in, and the refusal to pass a run that collected nothing.
 //
-// The environment is `node`. Every measurement comes from the engine's own
-// surfaces and from the draw commands it records, so these suites need no DOM.
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator resolves the
+// build's modules by the same relative paths the build itself uses. It is
+// computed HERE, from this file's own URL, rather than inside the package: the
+// package is staged one directory deeper than this file, so anything derived
+// from its own location would name the wrong tree.
+//
+// Imported from its own module rather than through the package's barrel: it is
+// loaded by vite's config path before the test runtime exists, and it is the
+// file whose failure mode is "the project would not load at all".
 
-import { defineConfig } from "vitest/config";
+import { defineEngineValidationConfig } from "./case-harness/engine/vitest-config";
 
-export default defineConfig({
+// NO DIALS. The minute this project used to name for `testTimeout` was sized
+// against a healthy machine, and the package's five is sized against the worst
+// load these projects have been measured under — a scenario that drains the
+// whole combo window, or fills the board to reach the cleared ending, is
+// thousands of ticks of the real simulation, and on a busy host that is exactly
+// the shape of check that loses a point to the clock rather than to the build.
+// The hook allowance matters more here than the raise does: this project named
+// none, so it sat on vitest's TEN-SECOND default, and a `beforeEach` that
+// constructs an engine and awaits a game that loads seven produced sprites can
+// cross that on load alone. The package's 120 s is the fix.
+export default defineEngineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // A scenario that drains the whole combo window, or fills the board to reach
-    // the cleared ending, is thousands of ticks of the real simulation; generous
-    // here, and a fraction of a second in practice.
-    testTimeout: 60_000,
-  },
 });

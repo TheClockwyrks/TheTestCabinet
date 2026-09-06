@@ -9,11 +9,11 @@
 // the obstacles, the pellet, the HUD, the screens, the overlay — and the snake is
 // not on it.
 //
-// WHAT IS READ. Whether an image draw landed on the head's cell. `image-init.js`
-// wraps `drawImage`, the one door a bitmap reaches a 2D canvas through, and logs
-// the destination rectangle mapped through whatever transform the build drew
-// under, so a build that translates to the cell and blits at the origin is read
-// at the cell. Nothing here asks WHICH file was painted: `specs/assets.md` fixes
+// WHAT IS READ. Whether an image draw landed on the head's cell. The harness
+// reads `drawImage` — the one door a bitmap reaches a 2D canvas through — off
+// the frame's recorded operations, and maps the destination rectangle through
+// the transform in force at the call, so a build that translates to the cell and
+// blits at the origin is read at the cell. Nothing here asks WHICH file was painted: `specs/assets.md` fixes
 // the files but leaves a build free to name and order the images it loads them
 // into, and the head's own sheet is decided by `presentation/head-frames-*`.
 //

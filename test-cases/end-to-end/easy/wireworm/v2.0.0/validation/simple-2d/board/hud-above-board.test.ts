@@ -188,7 +188,11 @@ function textBoxes(calls: readonly DrawCall[]): TextBox[] {
     if (typeof text !== "string" || typeof ax !== "number") continue;
     if (typeof ay !== "number") continue;
 
-    const m = call.text.transform;
+    // The transform the context held at the call, stamped beside it by the
+    // harness's recorder (`harness.ts`) — the anchor a `fillText` names is only
+    // where the run landed once that transform is applied.
+    const m = call.transform;
+    if (m === undefined) continue;
     const deviceY = m.b * ax + m.d * ay + m.f;
     const y = (deviceY - view.offsetY) / view.scale;
     const size = (fontPx(font) * Math.hypot(m.c, m.d)) / view.scale;

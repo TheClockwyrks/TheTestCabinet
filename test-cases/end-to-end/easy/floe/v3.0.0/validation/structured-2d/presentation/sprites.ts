@@ -31,7 +31,9 @@
 // turn on. So the walk below is the harness's, widened by the source rectangle
 // the call carried, and everything else about it — the transform-mapped
 // destination centre, the reflected-determinant reading of `mirrored` — is the
-// same reading taken the same way.
+// same reading taken the same way. Both start from the harness's `imageCalls`,
+// which is the one place a frame's operations are replayed for the transform in
+// force at each blit, so the two cannot disagree about where a sprite landed.
 //
 // Local to this group rather than on the shared harness: reading the BITMAP a
 // draw was handed is the presentation group's own business, and every other group
@@ -40,6 +42,7 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { SPRITE_TILE, TILE, tileTop } from "../constants";
 import {
+  imageCalls,
   seededFrames,
   type DrawCall,
   type Facing,
@@ -365,19 +368,21 @@ function placeOf(
   dh: number,
 ): Pick<Sprite, "x" | "y" | "w" | "h" | "mirrored"> {
   // The destination rectangle's centre, through the transform the call was made
-  // under and then back through the engine's fit to stage units.
+  // under and then back through the engine's fit to stage units. The transform
+  // is the canvas's own `[a, b, c, d, e, f]` tuple, which is how the harness
+  // carries it.
   const localX = dx + dw / 2;
   const localY = dy + dh / 2;
-  const deviceX = m.a * localX + m.c * localY + m.e;
-  const deviceY = m.b * localX + m.d * localY + m.f;
+  const deviceX = m[0] * localX + m[2] * localY + m[4];
+  const deviceY = m[1] * localX + m[3] * localY + m[5];
   return {
     x: (deviceX - view.offsetX) / view.scale,
     y: (deviceY - view.offsetY) / view.scale,
-    w: (Math.abs(dw) * Math.hypot(m.a, m.b)) / view.scale,
-    h: (Math.abs(dh) * Math.hypot(m.c, m.d)) / view.scale,
+    w: (Math.abs(dw) * Math.hypot(m[0], m[1])) / view.scale,
+    h: (Math.abs(dh) * Math.hypot(m[2], m[3])) / view.scale,
     // A negative determinant is a reflection, which is the only way an axis is
     // flipped: a rotation alone leaves it positive.
-    mirrored: m.a * m.d - m.b * m.c < 0,
+    mirrored: m[0] * m[3] - m[1] * m[2] < 0,
   };
 }
 
@@ -393,13 +398,11 @@ export async function spritesOf(
   let nextKey = 0;
   const sprites: Sprite[] = [];
 
-  for (const call of calls) {
-    if (call.kind !== "call") continue;
-    if (call.method !== "drawImage" || call.transform === undefined) continue;
-    const source = call.args[0];
+  for (const blit of imageCalls(calls)) {
+    const source = blit.args[0];
     if (naturalSize(source) === null) continue;
 
-    const numbers = call.args
+    const numbers = blit.args
       .slice(1)
       .map((value) => (typeof value === "number" ? value : NaN));
     const rect = sourceRectOf(numbers);
@@ -444,7 +447,7 @@ export async function spritesOf(
     }
 
     sprites.push({
-      ...placeOf(call.transform, view, dx, dy, dw, dh),
+      ...placeOf(blit.transform, view, dx, dy, dw, dh),
       matches: drawn === null ? [] : matchesOf(table, drawn),
     });
   }

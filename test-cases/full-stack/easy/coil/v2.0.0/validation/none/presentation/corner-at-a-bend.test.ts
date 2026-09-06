@@ -10,10 +10,10 @@
 // than as a staircase."
 //
 // WHAT IS READ, AND WHAT IS NOT. That the image painted on the bend is not the
-// image painted on the straight. `image-init.js` numbers a blit's source by the
-// URL it came from, so two blits carry the same identity exactly when they
-// painted the same file, and a build that loaded one file into two `Image`
-// objects still reads as one sprite. It is deliberately NOT read that the bend
+// image painted on the straight. The harness's blit reading names a source by
+// the identity the injected recorder gives it — one per bitmap the page holds —
+// so two blits carry the same identity exactly when they painted the same
+// picture. It is deliberately NOT read that the bend
 // took `assets/snake/corner.png` by name: `specs/assets.md` fixes the files, but
 // how a build names and orders the images it loads them into is the build's, and
 // the file's own existence is `presentation/corner-sprite-produced`.

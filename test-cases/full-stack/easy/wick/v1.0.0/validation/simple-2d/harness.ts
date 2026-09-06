@@ -1,4 +1,4 @@
-// Wick — the shared validator harness, under the Simple 2D engine.
+// Wick — the case's half of the validator harness, under the Simple 2D engine.
 // CASE-PROVIDED.
 //
 // Every check in this project is an ordinary vitest test that runs IN THE SAME
@@ -8,6 +8,17 @@
 // `playing` CONSUMES EXACTLY ONE TICK, which is the pairing
 // `specs/instrumentation.md` itself prescribes for a scenario. Nothing drives a
 // browser, nothing polls, and no wall-clock time passes.
+//
+// THE MACHINERY THAT DOES THAT IS NOT WICK'S. The canvas and its draw-command
+// recorder, the surface metrics, the frame the kit drives, the driver that
+// threads a PURE surface through `engine.apply`, the host that serves the
+// build's own produced files to the engine's loader, the `.wav` decode under
+// it, and the writers a review item's evidence lands through — every
+// engine-backed case needs exactly that, and it lives once, in
+// `@clockwyrks/case-harness`, staged beside this file as `./case-harness/`.
+// What is left HERE is what is genuinely Wick's: its types, its cue and sound
+// log, its blit reading, its geometry, and every scenario helper that poses
+// this game.
 //
 // WHAT A CHECK READS. The game's own state (through the case's `snapshot`), the
 // engine's frame counter, the cue events it broadcast, the sounds those cues
@@ -34,9 +45,11 @@
 // HOW THE SURFACE IS DRIVEN. The engine holds the state by value and hands it out
 // read-only, so the surface is pure: a pose takes the current state and returns
 // the next, a reading takes the current state and returns what it read. A check
-// still writes `h.debug.setHp(40)` and `h.snapshot()`, because `h.debug` is a
-// {@link Driver} over the raw surface: it runs each pose through `engine.apply`
-// and hands each reading `engine.state`.
+// still writes `h.debug.setHp(40)` and `h.snapshot()`, because `h.debug` is the
+// package's {@link applyDriver} over the raw surface: it runs each pose through
+// `engine.apply` and hands each reading `engine.state`, and `READINGS` in
+// `surface.ts` is what tells the two apart — nothing about a pure surface does
+// so at run time.
 //
 // WHAT THE HARNESS OWNS THAT THE SURFACE MUST NOT. The surface is ATOMIC by
 // design, one field per operation, so every compound sequence lives here:
@@ -52,42 +65,73 @@
 // reads a page-relative path, no `createImageBitmap`, and no `AudioContext`, so
 // a check running here would see a build's every produced file fail to load and
 // every presentation point would fail a conformant build for a fact about the
-// host. {@link installAssetHost} is what closes that: the engine's asset root is
-// served off the build's own tree and images are decoded with the canvas library
-// the workspace already ships, so the build loads exactly the files it
-// committed, by exactly the paths it wrote.
+// host. The package's {@link installAssetHost} closes the first two; the third is
+// this case's own, for the reason the next paragraph gives.
+//
+// WHY THE AUDIO CONTEXT IS STILL WICK'S. The package ships one, and its graph is
+// deliberately INERT: every node answers every member and none of them records
+// anything. This project's whole {@link SoundStart} log is an observation OF a
+// node's `start()` — which cue the bus announced a moment before it, and which
+// produced file the buffer it was handed came from — and that is how
+// `assets/cues-bound-to-their-files` decides that a cue plays the file of its own
+// name. A bus that binds a name to a decoded buffer INSIDE the engine makes the
+// buffer's source observable in exactly one place, and that place is where the
+// source is started. So the stub below stays with the case, and only the DECODE
+// under it is the package's.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gzipSync } from "node:zlib";
 import {
   createCanvas,
-  Image,
   loadImage,
   type Canvas,
+  type Image,
   type SKRSContext2D,
 } from "@napi-rs/canvas";
-import { expect } from "vitest";
 import {
   ConstantClock,
   createEngine,
-  type CapturedImage,
   type Clock,
   type DiagnosticReading,
-  type DrawOp,
-  type DrawState,
-  type DrawValue,
   type Engine,
   type Game,
-  type PathSegment,
-  type RecordedFrame,
-  type Recording,
-  type Resource,
   type SurfaceMetrics,
   type Viewport,
 } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
+import {
+  applyDriver,
+  breathe,
+  captureOutputSync,
+  createEngineCaseHarness,
+  decodeWavChannels,
+  installAssetHost,
+  resolveAsset,
+  DEFAULT_MAX_FRAMES,
+  type AssetHost,
+  type EngineHarness,
+  type PureDriver,
+} from "./case-harness/engine/index";
+import { deviceOf, makeReplayCapture } from "./case-harness/engine/2d";
+import {
+  callsTo,
+  setsOf,
+  drawOps,
+  DRAW_METHODS,
+  type DrawCall,
+} from "./case-harness/draw-calls";
+import { drawnText } from "./case-harness/text";
+import { colorDistance, type Rgb } from "./case-harness/color";
+import {
+  IDENTITY,
+  numbers,
+  transformed,
+  apply as applyMatrix,
+  type Matrix,
+} from "./case-harness/matrix";
+import type { PixelRect } from "./case-harness/pixels";
+import { distance, type Point } from "./case-harness/point";
 // The build's own module, for the game object the engine is stood up over and
 // for the state type. Every FIGURE a point is decided against, and the one
 // value the specification leaves to the build, come from `./constants`.
@@ -104,6 +148,7 @@ import {
   STAGE_H,
   STAGE_W,
   TICK_DT,
+  TICK_HZ,
   TICK_MS,
   UNBOUND_KEY,
   WHEEL_ROW,
@@ -164,8 +209,33 @@ export type {
 };
 export { READINGS, REQUIRED_OPS, SWITCH_NAMES, SWITCH_OPS };
 
+/**
+ * The two shared primitives this case states its geometry in, re-exported so a
+ * suite reaches them where it always did.
+ *
+ * Both are the package's, because both were declared here identically to it: a
+ * `{ x, y }` pair, and the Euclidean distance between two of them. A second,
+ * structurally identical declaration is exactly the drift the package exists to
+ * stop.
+ */
+export type { Point };
+export { distance };
+
+/** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
+export type { Matrix };
+
+/** A rectangle of the canvas, read back as RGBA bytes in row order. */
+export type { PixelRect };
+
+/** A sampled colour, each channel 0–255. */
+export type { Rgb };
+export { colorDistance };
+
 /** The case's surface, bound to the state type the build declared. */
 export type WickSurface = WickDebugApi<WickState>;
+
+/** The engine this project stands the build's game up on. */
+export type WickEngine = Engine<WickState, WickSurface>;
 
 /**
  * The build's game, typed against the surface the CASE specifies.
@@ -184,26 +254,18 @@ const game = build as unknown as Game<WickState, WickSurface>;
 /* -------------------------------------------------------------------------- */
 
 /**
- * A member of a pure surface, as a check calls it.
- *
- * A pose `(state, ...args) => S` becomes `(...args) => void`: the driver runs it
- * through `engine.apply`, so the state it returns is the state the next frame
- * receives. A reading `(state) => R` becomes `() => R`: the driver hands it
- * `engine.state`. A plain property, `version`, stays what it is.
- */
-type Driven<S, M> = M extends (state: DeepReadonly<S>, ...args: infer A) => S
-  ? (...args: A) => void
-  : M extends (state: DeepReadonly<S>) => infer R
-    ? () => R
-    : M;
-
-/**
  * The imperative reading of a pure surface: every member of `D`, minus its
  * state argument, over the engine that holds the state.
+ *
+ * The package's {@link PureDriver} under this case's own two-parameter name,
+ * because the two faces of the state — the deep-readonly view the engine hands
+ * out and the value a transition returns — are always this case's `WickState`
+ * here, and every call site in the tree already says `Driver<WickState, …>`.
+ * The mapping is the same one this file used to spell for itself; the package's
+ * reading branch additionally FORWARDS a reading's own arguments past the state,
+ * which changes nothing for Wick, whose three readings take none.
  */
-export type Driver<S, D> = {
-  [K in keyof D]: Driven<S, NonNullable<D[K]>>;
-};
+export type Driver<S, D> = PureDriver<DeepReadonly<S>, S, D>;
 
 /** The surface as every check drives it. */
 export type WickDriver = Driver<WickState, WickSurface>;
@@ -230,6 +292,14 @@ export function failSurface(fault: string): never {
  * `undefined` instead: awaiting the harness probes `then`, and vitest's own
  * error formatting probes symbols and `constructor`. Failing those would
  * replace the verdict with noise from the machinery trying to report it.
+ *
+ * NOT THE PACKAGE'S `absentSurface`, and the difference is load-bearing in two
+ * places. That one fails at the property ACCESS, where this answers a FUNCTION
+ * that fails when it is CALLED; and it stands in only for a `debug` that is no
+ * object at all, where this stands in for ANY surface short of what
+ * `specs/instrumentation.md` requires. Both differences are visible to a build
+ * that shipped a partial surface — `typeof h.debug.setHp` reads `"function"`
+ * here and throws there — so this case keeps its own.
  */
 function unusableSurface(reason: string): WickDriver {
   return new Proxy({} as WickDriver, {
@@ -267,65 +337,9 @@ function readDebugSurface(surface: unknown): string | null {
   return null;
 }
 
-/**
- * The imperative reading of the raw surface, over the engine that holds the
- * state.
- *
- * A lazy proxy: the member is read off the raw surface at the moment a check
- * reaches for it. A reading is called with `engine.state` and its result handed
- * back; a pose is run through `engine.apply`, so the engine stores what it
- * returned and the next frame's `update` receives it. A pose that throws, which
- * is what the specification requires of an argument outside its domain, throws
- * out of the driver untouched, and `engine.apply` leaves the state as it was.
- */
-function driveSurface(
-  engine: Engine<WickState, WickSurface>,
-  raw: WickSurface,
-): WickDriver {
-  const readings: readonly string[] = READINGS;
-  return new Proxy({} as WickDriver, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-      const member = (raw as unknown as Record<string, unknown>)[property];
-      if (typeof member !== "function") return member;
-      const op = member as (
-        state: DeepReadonly<WickState>,
-        ...args: unknown[]
-      ) => unknown;
-      if (readings.includes(property)) {
-        return (): unknown => op.call(raw, engine.state);
-      }
-      return (...args: unknown[]): void => {
-        engine.apply((state) => op.call(raw, state, ...args) as WickState);
-      };
-    },
-  });
-}
-
 /* -------------------------------------------------------------------------- */
 /* Readings taken off one frame's render                                      */
 /* -------------------------------------------------------------------------- */
-
-/** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
-export type Matrix = [number, number, number, number, number, number];
-
-/**
- * Where a call was issued, read off the real context at the moment of the call:
- * the transform in force, whether image smoothing was on, and, for a run of
- * text, its measured width and the alignment that places it about its anchor.
- */
-export interface CallGeometry {
-  transform: Matrix;
-  smoothing: boolean;
-  width?: number;
-  textAlign?: string;
-}
-
-/** One recorded operation on the 2D context, in the order the render made it. */
-export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[]; at?: CallGeometry }
-  | { kind: "set"; property: string; value: unknown };
 
 /**
  * One bitmap the build blitted.
@@ -412,8 +426,11 @@ export interface AssetLoaded {
 // a `fetch` that reads the very file the build committed, a `createImageBitmap`
 // that decodes one, and an `AudioContext` that decodes a produced PCM `.wav` far
 // enough for `api.audio.load` to bind the cue and then records what the bus
-// starts. Each falls through to whatever the platform already had for anything
-// it does not recognize.
+// starts.
+//
+// The first two are the package's {@link installAssetHost}, bound to the roots
+// and the missing-file policy this project has always served under. The third is
+// this case's, for the reason the module header gives.
 //
 // WHAT WOULD HAPPEN WITHOUT IT. Every produced file would fail to load, and
 // every point about a produced sprite or a bound cue would fail every build
@@ -427,7 +444,9 @@ export interface AssetLoaded {
  * Taken from this module's own URL rather than from the working directory,
  * because it has to name the same directory in both layouts this file lives in:
  * the case's own `validation/<engine>/`, and the `validation/` the runner
- * stages that directory to inside the build's tree.
+ * stages that directory to inside the build's tree. Never derived inside the
+ * package, which is staged one directory DEEPER than this file and would
+ * address every produced output one level too far down.
  */
 export const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
@@ -443,11 +462,6 @@ export const WORKSPACE = resolve(PROJECT_ROOT, "..");
  */
 const ASSET_ROOTS = [".", "public", "dist"] as const;
 
-/** A page-relative URL with its leading `./` dropped. */
-function normalizeUrl(url: string): string {
-  return url.replace(/^\.\//, "");
-}
-
 /** The URL the engine's loader asks for a produced file by, under its root. */
 export function assetPath(path: string): string {
   return `assets/${path}`;
@@ -455,39 +469,27 @@ export function assetPath(path: string): string {
 
 /** The committed file a produced path names, or `null` when the build shipped none. */
 export function producedFile(path: string): string | null {
-  return assetFile(assetPath(path));
+  const resolved = resolveAsset(assetPath(path), WORKSPACE, ASSET_ROOTS);
+  return resolved.kind === "served" ? resolved.file : null;
 }
-
-/** Where a fetched body came from, so a decoded image can carry its source. */
-const blobSource = new WeakMap<object, string>();
 
 /** Where a fetched body's bytes came from, so a decoded sound can carry its source. */
 const bufferSource = new WeakMap<ArrayBuffer, string>();
 
-/** Where a decoded image came from, or absent for one the build painted. */
-const imageSource = new WeakMap<object, string>();
-
 /** Where a decoded sound came from, or absent for one the build synthesized. */
 const audioSource = new WeakMap<object, string>();
 
-/** The file a page-relative URL names, or `null` when no root holds it. */
-function assetFile(url: string): string | null {
-  const path = normalizeUrl(url);
-  if (
-    path === "" ||
-    path.startsWith("/") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(path)
-  ) {
-    return null;
-  }
-  for (const root of ASSET_ROOTS) {
-    const candidate = resolve(WORKSPACE, root, path);
-    if (candidate.startsWith(resolve(WORKSPACE)) && existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
+/**
+ * The figures a `.wav` with no usable `fmt ` chunk is read under.
+ *
+ * This harness's own decoder defaulted to these and read the file anyway, where
+ * the package's throws unless a case says what it is falling back ON. Naming
+ * them here is what keeps the decode below exactly as strict as it has always
+ * been, and no stricter.
+ */
+const WAV_DEFAULTS = {
+  defaults: { sampleRate: 44100, channels: 1, bitsPerSample: 16 },
+} as const;
 
 /**
  * One PCM `.wav` as the channel data an `AudioBuffer` reports.
@@ -498,79 +500,26 @@ function assetFile(url: string): string | null {
  * 24 and 32 bits and IEEE floats at 32 and 64 are read, in the plain and the
  * `WAVE_FORMAT_EXTENSIBLE` containers, which are the spellings the asset tools
  * write. Nothing here sounds.
+ *
+ * IT THROWS ON A BODY THAT IS NOT A WAVE, AND THAT IS DELIBERATE. A file with
+ * no RIFF/WAVE magic, or one carrying no `data` chunk, throws out of
+ * `decodeAudioData` and the engine's loader announces `asset:failed` — which is
+ * a verdict about ONE produced file. The alternative, answering silence for a
+ * malformed body, would bind the cue and cost the build nothing at all where it
+ * shipped a broken `.wav`. (The opposite mistake is the expensive one and is
+ * worth stating beside it: under an engine a REJECTED decode leaves the cue
+ * undeclared, so a later `play` of that name throws from inside the build's own
+ * `update` and takes every point in the project with it. This project has always
+ * thrown here and its cues are declared from `initialize` against files it
+ * serves, so nothing about that changes — but the strictness is a decision, not
+ * an accident, and folding it either way would move a verdict.)
  */
 export function decodeWav(bytes: Uint8Array): {
   sampleRate: number;
   channels: number;
   frames: Float32Array[];
 } {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (
-    bytes.byteLength < 12 ||
-    view.getUint32(0, false) !== 0x52494646 ||
-    view.getUint32(8, false) !== 0x57415645
-  ) {
-    throw new Error("not a RIFF/WAVE file");
-  }
-  let sampleRate = 44100;
-  let channels = 1;
-  let bits = 16;
-  let format = 1;
-  let data: Uint8Array | null = null;
-  let at = 12;
-  while (at + 8 <= bytes.byteLength) {
-    const id = view.getUint32(at, false);
-    const size = view.getUint32(at + 4, true);
-    const body = at + 8;
-    if (id === 0x666d7420) {
-      format = view.getUint16(body, true);
-      channels = view.getUint16(body + 2, true);
-      sampleRate = view.getUint32(body + 4, true);
-      bits = view.getUint16(body + 14, true);
-      // WAVE_FORMAT_EXTENSIBLE carries the real format in its sub-format GUID.
-      if (format === 0xfffe && size >= 26)
-        format = view.getUint16(body + 24, true);
-    } else if (id === 0x64617461) {
-      data = bytes.subarray(body, Math.min(body + size, bytes.byteLength));
-    }
-    at = body + size + (size % 2);
-  }
-  if (data === null) throw new Error("the file carries no data chunk");
-  const bytesPerSample = Math.max(1, bits >> 3);
-  const count = Math.floor(data.byteLength / (bytesPerSample * channels));
-  const frames = Array.from(
-    { length: channels },
-    () => new Float32Array(count),
-  );
-  const samples = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const read = (offset: number): number => {
-    if (format === 3) {
-      return bits === 64
-        ? samples.getFloat64(offset, true)
-        : samples.getFloat32(offset, true);
-    }
-    switch (bits) {
-      case 8:
-        return (samples.getUint8(offset) - 128) / 128;
-      case 16:
-        return samples.getInt16(offset, true) / 32768;
-      case 24: {
-        const low = samples.getUint16(offset, true);
-        const high = samples.getInt8(offset + 2);
-        return (high * 65536 + low) / 8388608;
-      }
-      case 32:
-        return samples.getInt32(offset, true) / 2147483648;
-      default:
-        return 0;
-    }
-  };
-  for (let i = 0; i < count; i += 1) {
-    for (let c = 0; c < channels; c += 1) {
-      frames[c][i] = read((i * channels + c) * bytesPerSample);
-    }
-  }
-  return { sampleRate, channels, frames };
+  return decodeWavChannels(bytes, WAV_DEFAULTS);
 }
 
 /**
@@ -692,79 +641,74 @@ class StubAudioContext {
   }
 }
 
-let assetHostInstalled = false;
+/** The package's host, once installed: what {@link sourceId} asks. */
+let assetHost: AssetHost | null = null;
 
 /**
  * Give this process the three things a browser gives the engine's asset
  * loader. Idempotent, and installed the first time a harness is built.
+ *
+ * `onMissing: "upstream"` is the policy this project has always served under: a
+ * relative URL no root carries goes to the platform's own `fetch`, which rejects
+ * on it, so the load fails with a parse error rather than with a status. The
+ * roots are the repository first, for the reason {@link ASSET_ROOTS} states.
+ *
+ * THE THIRD SHIM IS BUILT HERE RATHER THAN TAKEN FROM THE PACKAGE, and the
+ * fourth thing installed alongside it is a two-line wrapper over the `fetch` the
+ * package just stood up. `AssetHost.sourceOf` names a decoded IMAGE's source and
+ * nothing else, and this project has to name a decoded SOUND's — the engine loads
+ * a cue as `decodeAudioData(await (await response.blob()).arrayBuffer())`, so the
+ * one place the URL and the bytes are both in hand is the body being read out.
+ * The buffer is tagged by IDENTITY rather than by a digest of its content,
+ * deliberately: two produced cues that happen to hold identical bytes must each
+ * still name their own file, which is what this project has always reported.
  */
-function installAssetHost(): void {
-  if (assetHostInstalled) return;
-  assetHostInstalled = true;
+function installHost(): void {
+  if (assetHost !== null) return;
+  assetHost = installAssetHost({
+    workspaceRoot: WORKSPACE,
+    roots: ASSET_ROOTS,
+    onMissing: "upstream",
+    images: true,
+    label: "wick",
+  });
 
-  const platformFetch = globalThis.fetch?.bind(globalThis);
+  const served = globalThis.fetch;
+  const tagged = new WeakSet<Blob>();
   globalThis.fetch = (async (
-    input: unknown,
-    init?: unknown,
+    input: RequestInfo | URL,
+    init?: RequestInit,
   ): Promise<Response> => {
-    const url = typeof input === "string" ? input : String(input);
-    const file = assetFile(url);
-    if (file === null) {
-      if (platformFetch === undefined) {
-        throw new Error(`wick harness: nothing to fetch "${url}" with`);
-      }
-      return platformFetch(input as RequestInfo, init as RequestInit);
-    }
-    const bytes = readFileSync(file);
-    const source = normalizeUrl(url);
-    const blob = new Blob([bytes]);
-    blobSource.set(blob, source);
-    // The bytes a decode is handed carry their source, so a decoded sound can
-    // be named by the file it came from at the moment the bus starts it.
-    const bufferOf = (): ArrayBuffer => {
-      const copy = bytes.buffer.slice(
-        bytes.byteOffset,
-        bytes.byteOffset + bytes.byteLength,
-      ) as ArrayBuffer;
-      bufferSource.set(copy, source);
-      return copy;
-    };
-    Object.defineProperty(blob, "arrayBuffer", {
-      value: (): Promise<ArrayBuffer> => Promise.resolve(bufferOf()),
+    const response = await served(input, init);
+    const url = String(input).replace(/^\.\//, "");
+    const blobOf = response.blob.bind(response);
+    Object.defineProperty(response, "blob", {
+      value: async (): Promise<Blob> => {
+        const blob = await blobOf();
+        // The host answers ONE blob per response, so a second `blob()` hands
+        // back the same object; tagging it once keeps a re-read from nesting a
+        // second wrapper inside the first.
+        if (tagged.has(blob)) return blob;
+        tagged.add(blob);
+        const bytesOf = blob.arrayBuffer.bind(blob);
+        Object.defineProperty(blob, "arrayBuffer", {
+          value: async (): Promise<ArrayBuffer> => {
+            const bytes = await bytesOf();
+            bufferSource.set(bytes, url);
+            return bytes;
+          },
+          writable: true,
+          configurable: true,
+        });
+        return blob;
+      },
+      writable: true,
       configurable: true,
     });
-    return {
-      ok: true,
-      status: 200,
-      blob: () => Promise.resolve(blob),
-      arrayBuffer: () => Promise.resolve(bufferOf()),
-    } as unknown as Response;
+    return response;
   }) as typeof fetch;
 
-  const host = globalThis as {
-    createImageBitmap?: unknown;
-    AudioContext?: unknown;
-    ImageBitmap?: unknown;
-  };
-
-  // The type name the engine's own recorder looks a drawable source up under.
-  // It shadows every `drawImage` a frame issues so a replay can carry the
-  // picture the build actually drew, and it recognizes a source by `instanceof`
-  // against the host's own constructors, of which a bare Node process has
-  // none. Naming the canvas library's decoded image as `ImageBitmap`, which is
-  // exactly what `createImageBitmap` hands back here, is what lets a produced
-  // sprite reach a recording as its pixels rather than as an opaque marker.
-  // Nothing else in this process reads the name.
-  host.ImageBitmap ??= Image;
-
-  host.createImageBitmap = async (blob: Blob): Promise<ImageBitmap> => {
-    const bytes = Buffer.from(await blob.arrayBuffer());
-    const image = await loadImage(bytes);
-    const from = blobSource.get(blob);
-    if (from !== undefined) imageSource.set(image, from);
-    return image as unknown as ImageBitmap;
-  };
-
+  const host = globalThis as { AudioContext?: unknown };
   host.AudioContext = StubAudioContext;
 }
 
@@ -775,7 +719,7 @@ function installAssetHost(): void {
  */
 export function sourceId(source: unknown): string {
   if (source === null || typeof source !== "object") return "";
-  return imageSource.get(source) ?? "";
+  return assetHost?.sourceOf(source) ?? "";
 }
 
 /* -------------------------------------------------------------------------- */
@@ -811,8 +755,17 @@ export interface HarnessOptions {
    * has initialized, so the sounds the bus starts are recorded from the first
    * frame on. Defaults to `true`; the gesture is a key bound to no action, so
    * it changes no game state.
+   *
+   * SPELLED `armAudio` RATHER THAN `unlockAudio`, which is what this project
+   * called it. Wick spelled one concept two ways inside one case — `unlockAudio`
+   * here and `armAudio` in `structured-2d` — while `Harness.armAudio()` was the
+   * method's name in both, and the case's engineless project spells the option
+   * `armAudio` too, as the package's engineless `HarnessOptions` does. No suite
+   * in either engine project passes either spelling and both defaulted to
+   * `true`, so the fold costs no call site and the case now says one thing once
+   * across all three of its projects.
    */
-  unlockAudio?: boolean;
+  armAudio?: boolean;
 }
 
 /** How far a sweep may run, in whole ticks. */
@@ -834,15 +787,8 @@ export interface FrameDraw {
   blits: Blit[];
 }
 
-/** A rectangle of the canvas, read back as RGBA bytes in row order. */
-export interface PixelRect {
-  width: number;
-  height: number;
-  data: Uint8ClampedArray;
-}
-
 export interface Harness {
-  readonly engine: Engine<WickState, WickSurface>;
+  readonly engine: WickEngine;
   /** The engine's current state, read fresh on every access. */
   readonly state: DeepReadonly<WickState>;
   /**
@@ -966,13 +912,13 @@ export interface Harness {
   /** How the stage is mapped onto this harness's canvas. */
   viewport(): Viewport;
   /** Where a logical stage point lands in the canvas's backing store. */
-  device(x: number, y: number): { x: number; y: number };
+  device(x: number, y: number): Point;
   /**
    * Where a world point is drawn on the stage under the camera formula of
    * specs/world.md, read against the lamplighter's current position:
    * `(wx − player.x + STAGE_CX, wy − player.y + STAGE_CY)`.
    */
-  stagePoint(wx: number, wy: number): { x: number; y: number };
+  stagePoint(wx: number, wy: number): Point;
   /** The device pixel under a logical stage point, as `[r, g, b, a]`. */
   pixel(x: number, y: number): [number, number, number, number];
   /**
@@ -1046,6 +992,15 @@ export interface PointerInit {
  * ends it carries `button` `0` and an empty mask. A contact travelling across
  * the stage is a move with the primary mask held, which is what a finger in
  * contact reports.
+ *
+ * NEITHER OF THE PACKAGE'S TWO IS THIS EVENT. `PointerPositionEvent` names no
+ * device, and `specs/controls.md` separates a touch contact from a mouse press;
+ * `DevicePointerEvent` states `buttons` `1` on EVERY move, where this states an
+ * EMPTY mask on a move unless the caller asks for the held one. That difference
+ * is the whole of how this case tells a hover from a travelling contact — "a
+ * touch contact never hovers: only a device reporting a position while out of
+ * contact moves the highlight this way" — so every pointer verdict here was
+ * taken under this event and it stays with the case.
  */
 class PointerEventShape extends Event {
   readonly pointerId = 1;
@@ -1089,58 +1044,160 @@ class WheelEventShape extends Event {
   }
 }
 
-function toDevice(
-  view: Viewport,
-  x: number,
-  y: number,
-): { x: number; y: number } {
-  return {
-    x: Math.round(view.offsetX + x * view.scale),
-    y: Math.round(view.offsetY + y * view.scale),
-  };
+/**
+ * Everything one engine's own subscriptions collected, kept per ENGINE.
+ *
+ * Subscribed inside `createEngine` below rather than after the harness came
+ * back, because construction runs no game code and `initialize` does: a build is
+ * free to load its produced files and start its title bed from `initialize`, and
+ * a log opened afterwards would have missed all of it. The kit calls
+ * `createEngine` before it awaits `initialize`, so this is the same moment this
+ * harness has always subscribed at.
+ */
+interface EngineRecord {
+  readonly cues: TimedCue[];
+  readonly sinks: TimedCue[][];
+  readonly loops: string[];
+  loopStarts: number;
+  readonly assetsLoaded: AssetLoaded[];
+  readonly assetFailures: AssetFailure[];
+  readonly sounds: SoundStart[];
+  fault: string | null;
 }
 
-/** The methods whose position only means something once the transform applies. */
-const PLACED_METHODS = ["drawImage", "fillText", "strokeText"];
+const records = new WeakMap<object, EngineRecord>();
 
 /**
- * A proxy that records every call and property set on its way to the real
- * context, so one frame produces both a pixel buffer to sample and a call list
- * to inspect. The transform and the smoothing flag are read off the real
- * context at the moment of a PLACED call, because the build is free to draw
- * under any transform it likes and the context itself is the authority on
- * where that put it.
+ * The asset root the next engine the kit builds is given, or `undefined` for the
+ * engine's own `assets/`.
+ *
+ * A module-level slot because the kit's `createEngine` is handed the canvas, the
+ * clock and the metrics and nothing of the case's own options — and it runs
+ * SYNCHRONOUSLY inside `kit.createHarness`, before the first `await`, so a slot
+ * set immediately before the call is still the caller's when it is read. The
+ * same shape the sound sink below has always used, and cleared in a `finally` so
+ * one check's root cannot leak into the next harness.
  */
-function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
-  return new Proxy(target, {
-    get(object, property) {
-      const value = Reflect.get(object, property, object) as unknown;
-      if (typeof value !== "function") return value;
-      return (...args: unknown[]): unknown => {
-        const method = String(property);
-        const call: DrawCall = { kind: "call", method, args };
-        if (PLACED_METHODS.includes(method)) {
-          const m = object.getTransform();
-          const at: CallGeometry = {
-            transform: [m.a, m.b, m.c, m.d, m.e, m.f],
-            smoothing: object.imageSmoothingEnabled,
-          };
-          if (method !== "drawImage" && typeof args[0] === "string") {
-            at.width = object.measureText(args[0]).width;
-            at.textAlign = object.textAlign;
-          }
-          call.at = at;
+let nextAssetRoot: string | undefined;
+
+/**
+ * The package's engine machinery, bound to Wick on this engine.
+ *
+ * `recorder: { measureText: true }` and nothing else: a text draw's transform,
+ * its measured width and its alignment are what {@link textDraws} reports, and
+ * `internImages` is deliberately NOT asked for — {@link sourceId} names a
+ * produced file off the asset host that served it, which is a fact about the
+ * FILE rather than about a per-page bitmap identity.
+ *
+ * `cueEvents` names BOTH firings, because `specs/assets.md` gives this case a
+ * music bed beside its one-shot cues and a bed is announced as a loop. The kit's
+ * own `cues` list is not what a check reads, though: {@link Harness.cues} is
+ * this case's own log, stamped in the same handler that fills the live sinks
+ * {@link onCue} opens, tracks the loops the bus is running, and leaves the
+ * `announced` slot that names the sound started a moment later.
+ *
+ * `pointerPrecision: "exact"` maps a logical point straight through the fit, and
+ * is here only for the kit's own `pointer` member, which this case does not use:
+ * every gesture goes through {@link Harness.movePointer} and its neighbours,
+ * which dispatch this case's own {@link PointerEventShape} at the UNROUNDED
+ * client point the engine's fit inverts to.
+ */
+const kit = createEngineCaseHarness<WickSnapshot, WickDriver, WickEngine>({
+  slug: "wick",
+  projectRoot: PROJECT_ROOT,
+  stage: { width: STAGE_W, height: STAGE_H },
+  tickHz: TICK_HZ,
+  surfaceRequirement: SURFACE_REQUIREMENT,
+  recorder: { measureText: true },
+  cueEvents: ["cue:played", "cue:looped"],
+  defaultClock: () => new ConstantClock(TICK_MS),
+  createEngine: ({ canvas, clock, surface }) => {
+    const engine = createEngine<WickState, WickSurface>({
+      canvas,
+      width: STAGE_W,
+      height: STAGE_H,
+      game,
+      // The build's own stage background and the seeded layout, handed to the
+      // engine exactly as the seeded `src/main.ts` hands them.
+      background: BACKGROUND,
+      layout: LAYOUT,
+      clock: clock as Clock,
+      surface: surface as SurfaceMetrics,
+      ...(nextAssetRoot === undefined ? {} : { assetRoot: nextAssetRoot }),
+    });
+
+    const record: EngineRecord = {
+      cues: [],
+      sinks: [],
+      loops: [],
+      loopStarts: 0,
+      assetsLoaded: [],
+      assetFailures: [],
+      sounds: [],
+      fault: null,
+    };
+    records.set(engine, record);
+
+    // The audio context the engine builds lazily records into this harness's
+    // own list; the class reads these two slots at construction, and the engine
+    // builds its context during the game's initialization or at the arming
+    // gesture, both of which come after this.
+    nextSoundSink = record.sounds;
+    nextFrameOf = (): number => engine.frame().count;
+
+    engine.events.on("asset:loaded", ({ path, url }) => {
+      record.assetsLoaded.push({ path, url });
+    });
+    engine.events.on("asset:failed", ({ path, url, reason }) => {
+      record.assetFailures.push({ path, url: url ?? "", reason });
+    });
+    const noteCue =
+      (loop: boolean) => (played: { cue: string; t: number; gain: number }) => {
+        const timed: TimedCue = {
+          frame: engine.frame().count,
+          t: played.t,
+          name: played.cue,
+          loop,
+          gain: played.gain,
+        };
+        announced = { cue: played.cue, loop };
+        if (loop) {
+          record.loopStarts += 1;
+          if (!record.loops.includes(played.cue)) record.loops.push(played.cue);
         }
-        calls.push(call);
-        return (value as (...rest: unknown[]) => unknown).apply(object, args);
+        record.cues.push(timed);
+        for (const sink of record.sinks) sink.push(timed);
       };
-    },
-    set(object, property, value) {
-      calls.push({ kind: "set", property: String(property), value });
-      return Reflect.set(object, property, value, object);
-    },
-  });
-}
+    engine.events.on("cue:played", noteCue(false));
+    engine.events.on("cue:looped", noteCue(true));
+    engine.events.on("cue:stopped", ({ cue }) => {
+      const at = record.loops.indexOf(cue);
+      if (at >= 0) record.loops.splice(at, 1);
+    });
+
+    return engine;
+  },
+  // The raw surface the kit read is deliberately not taken: its stand-in for a
+  // `debug` that is no object fails at the property ACCESS, and probing it for
+  // the operations `specs/instrumentation.md` requires would throw inside the
+  // `beforeEach` that built the harness rather than inside the check that needed
+  // one. So the surface is read off the engine here, exactly as it always was.
+  driver: (engine, _raw) => {
+    const raw: unknown = engine.debug;
+    const fault = readDebugSurface(raw);
+    const record = records.get(engine);
+    if (record !== undefined) record.fault = fault;
+    return fault === null
+      ? applyDriver<DeepReadonly<WickState>, WickState, WickDriver>(
+          engine,
+          raw as object,
+          { readings: READINGS },
+        )
+      : unusableSurface(fault);
+  },
+  snapshot: (debug) => debug.snapshot(),
+  pointerPrecision: "exact",
+});
 
 /**
  * Build an engine over a canvas of the harness's own, initialize the build's
@@ -1152,107 +1209,47 @@ function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
  * is reset: the state handed back is the one the build booted into, and a
  * check that wants a known seed calls {@link Harness.reset} or one of the
  * scenario helpers, every one of which resets first.
+ *
+ * A WRAPPER OVER THE KIT'S HARNESS RATHER THAN ITS `extend`, for one reason:
+ * this project's vocabulary is `h.tick(n)` for a DRIVE that answers a snapshot,
+ * where the kit's harness spells a drive `advance(n)` and spells a frame COUNTER
+ * `tick()`. Intersecting the two types would leave `h.tick()` answering a
+ * number across six hundred and fifty call sites. So the kit's harness is the
+ * machinery underneath, and what a check holds is this case's own shape over it.
  */
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  installAssetHost();
+  installHost();
 
-  const cssWidth = options.cssWidth ?? STAGE_W;
-  const cssHeight = options.cssHeight ?? STAGE_H;
-  const dpr = options.dpr ?? 1;
+  // Resolved here rather than left to the kit's `defaultClock`, because
+  // `frameOf` swaps a clock in for one frame and has to put THIS one back.
   const baseClock = options.clock ?? new ConstantClock(TICK_MS);
 
-  const canvas = createCanvas(
-    Math.round(cssWidth * dpr),
-    Math.round(cssHeight * dpr),
-  );
-  const ctx = canvas.getContext("2d");
-  const calls: DrawCall[] = [];
-  const recorded = recorder(ctx, calls);
-  const element = Object.assign(canvas, {
-    style: {} as CSSStyleDeclaration,
-    getContext: (): SKRSContext2D => recorded,
-  }) as unknown as HTMLCanvasElement;
+  nextAssetRoot = options.assetRoot;
+  let base: EngineHarness<WickSnapshot, WickDriver, WickEngine>;
+  try {
+    base = await kit.createHarness({
+      clock: baseClock,
+      ...(options.cssWidth === undefined ? {} : { cssWidth: options.cssWidth }),
+      ...(options.cssHeight === undefined
+        ? {}
+        : { cssHeight: options.cssHeight }),
+      ...(options.dpr === undefined ? {} : { dpr: options.dpr }),
+    });
+  } finally {
+    nextAssetRoot = undefined;
+  }
 
-  const keys = new EventTarget();
-  const surface: SurfaceMetrics = {
-    cssWidth: () => cssWidth,
-    cssHeight: () => cssHeight,
-    dpr: () => dpr,
-    events: () => keys,
-  };
-
-  // The audio context the engine builds lazily records into this harness's own
-  // list; the factory reads the module-level slot at construction, and the
-  // engine builds its context during the game's initialization or at the
-  // unlock below, both inside this call.
-  const sounds: SoundStart[] = [];
-  nextSoundSink = sounds;
-
-  const engine = createEngine<WickState, WickSurface>({
-    canvas: element,
-    width: STAGE_W,
-    height: STAGE_H,
-    game,
-    // The build's own stage background and the seeded layout, handed to the
-    // engine exactly as the seeded `src/main.ts` hands them.
-    background: BACKGROUND,
-    layout: LAYOUT,
-    clock: baseClock,
-    surface,
-    ...(options.assetRoot === undefined
-      ? {}
-      : { assetRoot: options.assetRoot }),
-  });
-  nextFrameOf = (): number => engine.frame().count;
-
-  // Subscribed BEFORE `initialize`, which is what makes the game's own loading
-  // and its opening sounds observable: construction runs no game code.
-  const assetsLoaded: AssetLoaded[] = [];
-  const assetFailures: AssetFailure[] = [];
-  const cues: TimedCue[] = [];
-  const sinks: TimedCue[][] = [];
-  const loops: string[] = [];
-  let loopStarts = 0;
-  engine.events.on("asset:loaded", ({ path, url }) => {
-    assetsLoaded.push({ path, url });
-  });
-  engine.events.on("asset:failed", ({ path, url, reason }) => {
-    assetFailures.push({ path, url, reason });
-  });
-  const noteCue =
-    (loop: boolean) => (played: { cue: string; t: number; gain: number }) => {
-      const timed: TimedCue = {
-        frame: engine.frame().count,
-        t: played.t,
-        name: played.cue,
-        loop,
-        gain: played.gain,
-      };
-      announced = { cue: played.cue, loop };
-      if (loop) {
-        loopStarts += 1;
-        if (!loops.includes(played.cue)) loops.push(played.cue);
-      }
-      cues.push(timed);
-      for (const sink of sinks) sink.push(timed);
-    };
-  engine.events.on("cue:played", noteCue(false));
-  engine.events.on("cue:looped", noteCue(true));
-  engine.events.on("cue:stopped", ({ cue }) => {
-    const at = loops.indexOf(cue);
-    if (at >= 0) loops.splice(at, 1);
-  });
-
-  await engine.initialize();
-
-  const raw: unknown = engine.debug;
-  const surfaceFault = readDebugSurface(raw);
-  const debug =
-    surfaceFault === null
-      ? driveSurface(engine, raw as WickSurface)
-      : unusableSurface(surfaceFault);
+  const engine = base.engine;
+  const ctx = base.ctx;
+  const canvas = base.canvas;
+  const keys = base.events;
+  const calls = base.calls;
+  const debug = base.debug;
+  const dpr = base.shape.dpr;
+  const record = records.get(engine) as EngineRecord;
+  const surfaceFault = record.fault;
   const boot = surfaceFault === null ? debug.snapshot() : null;
 
   const dispatch = (
@@ -1272,8 +1269,8 @@ export async function createHarness(
    * so a stage point IS its client point; a check that built its harness with a
    * `cssWidth`, `cssHeight`, or `dpr` of its own still lands where it aimed.
    */
-  const clientOf = (x: number, y: number): { x: number; y: number } => {
-    const view = engine.viewport();
+  const clientOf = (x: number, y: number): Point => {
+    const view = base.viewport();
     return {
       x: (view.offsetX + x * view.scale) / dpr,
       y: (view.offsetY + y * view.scale) / dpr,
@@ -1294,7 +1291,7 @@ export async function createHarness(
   /** Wheel travel, in stage units, as the CSS-pixel deltas an event carries. */
   const dispatchWheel = (x: number, y: number): void => {
     announced = null;
-    const { scale } = engine.viewport();
+    const { scale } = base.viewport();
     keys.dispatchEvent(
       new WheelEventShape((x * scale) / dpr, (y * scale) / dpr),
     );
@@ -1303,12 +1300,21 @@ export async function createHarness(
   let lastFrameStart = 0;
   let lastFrameEnd = 0;
 
-  /** Run `frames` frames, keeping the boundary of the last one's operations. */
+  /**
+   * Run `frames` frames, keeping the boundary of the last one's operations.
+   *
+   * ONE CALL PER FRAME rather than one call for the span. `engine.advance(n)` is
+   * exactly `n` calls of `advance(1)` — its loop ticks the clock `n` times and
+   * nothing else — so this changes nothing about what the build runs, and it is
+   * what {@link Harness.lastCalls} needs a boundary from and what clears the
+   * `announced` slot at each frame edge, so a cue announced on one frame cannot
+   * lend its name to a sound started on the next.
+   */
   const drive = async (frames: number): Promise<void> => {
     for (let i = 0; i < frames; i += 1) {
       announced = null;
       const start = calls.length;
-      await engine.advance(1);
+      await base.advance(1);
       lastFrameStart = start;
       lastFrameEnd = calls.length;
     }
@@ -1342,6 +1348,17 @@ export async function createHarness(
     };
   };
 
+  /**
+   * The image smoothing in force as a frame OPENS.
+   *
+   * Read off the real context before the frame runs, because the flag is
+   * ordinary context state that survives every frame boundary: a build is free
+   * to set it once when it starts and never again, and a walk of one frame's
+   * operations would then find no `set` to start from.
+   * `presentation/pixel-art-sampled-nearest` is decided on exactly this.
+   */
+  const smoothingAtOpen = (): boolean => ctx.imageSmoothingEnabled;
+
   const harness: Harness = {
     engine,
     get state() {
@@ -1354,17 +1371,17 @@ export async function createHarness(
     canvas,
     keys,
     calls,
-    cues,
-    sounds,
-    assetsLoaded,
-    assetFailures,
+    cues: record.cues,
+    sounds: record.sounds,
+    assetsLoaded: record.assetsLoaded,
+    assetFailures: record.assetFailures,
 
-    looping: (name) => loops.includes(name),
-    loopingCues: () => [...loops],
-    loopStarts: () => loopStarts,
+    looping: (name) => record.loops.includes(name),
+    loopingCues: () => [...record.loops],
+    loopStarts: () => record.loopStarts,
 
-    frame: () => engine.frame().count,
-    timeMs: () => engine.frame().timeMs,
+    frame: () => base.frame(),
+    timeMs: () => base.timeMs(),
 
     snapshot: () => debug.snapshot(),
     reset: (seed) => {
@@ -1388,14 +1405,21 @@ export async function createHarness(
       return debug.snapshot();
     },
 
+    // Written here rather than delegated to the kit's sweep, so every frame of a
+    // sweep crosses the same boundary every other drive does: the kit advances a
+    // whole poll's worth in one call, which would leave `lastCalls` and the
+    // `announced` slot reading a span rather than a frame. The event loop is let
+    // turn the same way the kit's is, through the package's `breathe`.
     async until(predicate, untilOptions = {}) {
-      const maxTicks = untilOptions.maxTicks ?? 600;
+      const maxTicks = untilOptions.maxTicks ?? DEFAULT_MAX_FRAMES;
       let snapshot = debug.snapshot();
       if (predicate(snapshot)) return { hit: true, ticks: 0, snapshot };
+      let since = Date.now();
       for (let ticks = 1; ticks <= maxTicks; ticks += 1) {
         await drive(1);
         snapshot = debug.snapshot();
         if (predicate(snapshot)) return { hit: true, ticks, snapshot };
+        since = await breathe(since);
       }
       return { hit: false, ticks: maxTicks, snapshot };
     },
@@ -1423,9 +1447,10 @@ export async function createHarness(
       calls.length = 0;
     },
     async frameDraw() {
+      const smoothing = smoothingAtOpen();
       calls.length = 0;
       await drive(1);
-      return { calls: [...calls], blits: blitsOf(calls) };
+      return { calls: [...calls], blits: blitsOf(calls, smoothing) };
     },
     async frameCalls() {
       calls.length = 0;
@@ -1433,25 +1458,26 @@ export async function createHarness(
       return [...calls];
     },
     async frameBlits() {
+      const smoothing = smoothingAtOpen();
       calls.length = 0;
       await drive(1);
-      return blitsOf(calls);
+      return blitsOf(calls, smoothing);
     },
     lastCalls: () => calls.slice(lastFrameStart, lastFrameEnd),
 
-    viewport: () => engine.viewport(),
-    device: (x, y) => toDevice(engine.viewport(), x, y),
+    viewport: () => base.viewport(),
+    device: (x, y) => deviceOf(base.viewport(), x, y),
     stagePoint(wx, wy) {
       const { player } = debug.snapshot().run;
       return { x: wx - player.x + STAGE_CX, y: wy - player.y + STAGE_CY };
     },
     pixel(x, y) {
-      const point = toDevice(engine.viewport(), x, y);
+      const point = deviceOf(base.viewport(), x, y);
       return this.devicePixel(point.x, point.y);
     },
     pixelRect(x, y, width, height) {
-      const view = engine.viewport();
-      const origin = toDevice(view, x, y);
+      const view = base.viewport();
+      const origin = deviceOf(view, x, y);
       return readRect(
         origin.x,
         origin.y,
@@ -1473,12 +1499,12 @@ export async function createHarness(
       dispatch("keyup", UNBOUND_KEY);
     },
 
-    dispose: () => engine.destroy(),
+    dispose: () => base.dispose(),
   };
 
-  if (options.unlockAudio ?? true) harness.armAudio();
+  if (options.armAudio ?? true) harness.armAudio();
 
-  cueSinks.set(harness, sinks);
+  cueSinks.set(harness, record.sinks);
   return harness;
 }
 
@@ -1610,7 +1636,7 @@ export function tabRects(h: Harness): readonly WickRect[] {
  * The middle of a rectangle: the one point inside it that no build's padding,
  * border, or rounding can put outside it.
  */
-export function centerOf(rect: WickRect): { x: number; y: number } {
+export function centerOf(rect: WickRect): Point {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 
@@ -2255,18 +2281,8 @@ export function runFields(run: RunSnapshot): RunFields {
 // Angles are in degrees, 0 along +x and positive toward +y, which is clockwise
 // on screen (specs/weapons.md, The nearest enemy).
 
-export interface Point {
-  x: number;
-  y: number;
-}
-
 /** Degrees to radians. */
 const RAD = Math.PI / 180;
-
-/** The Euclidean distance between two points. */
-export function distance(a: Point, b: Point): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
 
 /** The unit vector of `(x, y)`; `(0, 0)` for a zero vector. */
 export function unit(x: number, y: number): Point {
@@ -2325,60 +2341,46 @@ export function worldToStage(player: Point, wx: number, wy: number): Point {
 /* -------------------------------------------------------------------------- */
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
+//
+// `callsTo`, `setsOf`, `drawOps` and `DRAW_METHODS` are the package's: every
+// one of them was declared here identically to it, and the package's
+// `DRAW_METHODS` carries one method more — `putImageData` — which is additive
+// over a frame that draws none and is genuinely a drawing operation over a frame
+// that does. Every reading in this project compares two frames of the same
+// scene, so a method counted in both moves no comparison.
 
-/** Every argument list `method` was called with, in order. */
-export function callsTo(
-  calls: readonly DrawCall[],
-  method: string,
-): unknown[][] {
-  return calls.flatMap((call) =>
-    call.kind === "call" && call.method === method ? [call.args] : [],
-  );
-}
+export { callsTo, setsOf, drawOps, DRAW_METHODS };
 
-/** Every value `property` was set to, in order. */
-export function setsOf(
-  calls: readonly DrawCall[],
-  property: string,
-): unknown[] {
-  return calls.flatMap((call) =>
-    call.kind === "set" && call.property === property ? [call.value] : [],
-  );
-}
-
-/** A point mapped through a transform. */
-function through(m: Matrix, x: number, y: number): Point {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
+/** One recorded operation on the 2D context, in the order the render made it. */
+export type { DrawCall };
 
 /**
  * The destination rectangle of a `drawImage` call, in the space it was issued
  * in, or `null` for a call whose arguments are not one of the three forms. A
  * two-argument placement takes its size from the source.
  */
-function destinationOf(args: unknown[]): {
+function destinationOf(args: readonly unknown[]): {
   x: number;
   y: number;
   w: number;
   h: number;
 } | null {
   const source = args[0];
-  const numbers = args.slice(1);
-  if (!numbers.every((value) => typeof value === "number")) return null;
-  const at = numbers as number[];
-  if (at.length === 8) {
-    return { x: at[4], y: at[5], w: at[6], h: at[7] };
+  const rest = args.slice(1);
+  const nine = numbers(rest, 8);
+  if (nine !== null && rest.length === 8) {
+    return { x: nine[4], y: nine[5], w: nine[6], h: nine[7] };
   }
-  if (at.length === 4) {
-    return { x: at[0], y: at[1], w: at[2], h: at[3] };
+  const five = numbers(rest, 4);
+  if (five !== null && rest.length === 4) {
+    return { x: five[0], y: five[1], w: five[2], h: five[3] };
   }
-  if (at.length === 2) {
-    const size = source as { width?: unknown; height?: unknown } | null;
-    const w = typeof size?.width === "number" ? size.width : 0;
-    const h = typeof size?.height === "number" ? size.height : 0;
-    return { x: at[0], y: at[1], w, h };
-  }
-  return null;
+  const two = numbers(rest, 2);
+  if (two === null || rest.length !== 2) return null;
+  const size = source as { width?: unknown; height?: unknown } | null;
+  const w = typeof size?.width === "number" ? size.width : 0;
+  const h = typeof size?.height === "number" ? size.height : 0;
+  return { x: two[0], y: two[1], w, h };
 }
 
 /**
@@ -2387,20 +2389,64 @@ function destinationOf(args: unknown[]): {
  * transform in force at the call, and the box taken around them, so a sprite
  * drawn under a rotation or a mirror still reports the square of the canvas
  * it covered.
+ *
+ * THE FRAME IS WALKED, CARRYING THE TRANSFORM AND THE SMOOTHING FLAG. Both are
+ * ordinary context state: `save`/`restore` stack them together, the engine's own
+ * frame preparation issues the letterbox fit as a `setTransform` the recorder
+ * sees, and the build's renderer draws each sprite under whatever translate,
+ * scale and rotate it likes inside a `save`. Neither engine ever resets the
+ * context outside those calls, so the state in force at a call is recovered
+ * exactly by replaying the operations the frame issued.
+ *
+ * `smoothingAtOpen` is the flag in force when the FRAME OPENED, not the canvas's
+ * own default: a build is free to set `imageSmoothingEnabled` once when it starts
+ * and never again, and the flag is context state that survives every frame
+ * boundary after it. {@link Harness.frameDraw} and {@link Harness.frameBlits}
+ * read that value off the real context before they run the frame, which is what
+ * `presentation/pixel-art-sampled-nearest` is decided on; a caller reading
+ * {@link Harness.lastCalls} and asking about geometry alone leaves it at the
+ * canvas's own default.
  */
-export function blitsOf(calls: readonly DrawCall[]): Blit[] {
+export function blitsOf(
+  calls: readonly DrawCall[],
+  smoothingAtOpen = true,
+): Blit[] {
   const blits: Blit[] = [];
+  const stack: { matrix: Matrix; smoothing: boolean }[] = [];
+  let matrix: Matrix = IDENTITY;
+  let smoothing = smoothingAtOpen;
+
   for (const call of calls) {
-    if (call.kind !== "call" || call.method !== "drawImage") continue;
-    const at = call.at;
-    if (at === undefined) continue;
-    const box = destinationOf(call.args);
+    if (call.kind === "set") {
+      if (call.property === "imageSmoothingEnabled") {
+        smoothing = call.value !== false;
+      }
+      continue;
+    }
+    const { method, args } = call;
+    if (method === "save") {
+      stack.push({ matrix, smoothing });
+      continue;
+    }
+    if (method === "restore") {
+      const held = stack.pop();
+      matrix = held?.matrix ?? IDENTITY;
+      smoothing = held?.smoothing ?? smoothingAtOpen;
+      continue;
+    }
+    const moved = transformed(matrix, method, args);
+    if (moved !== null) {
+      matrix = moved;
+      continue;
+    }
+    if (method !== "drawImage") continue;
+    const box = destinationOf(args);
     if (box === null) continue;
     const corners = [
-      through(at.transform, box.x, box.y),
-      through(at.transform, box.x + box.w, box.y),
-      through(at.transform, box.x, box.y + box.h),
-      through(at.transform, box.x + box.w, box.y + box.h),
+      applyMatrix(matrix, box.x, box.y),
+      applyMatrix(matrix, box.x + box.w, box.y),
+      applyMatrix(matrix, box.x, box.y + box.h),
+      applyMatrix(matrix, box.x + box.w, box.y + box.h),
     ];
     const xs = corners.map((corner) => corner.x);
     const ys = corners.map((corner) => corner.y);
@@ -2408,15 +2454,15 @@ export function blitsOf(calls: readonly DrawCall[]): Blit[] {
     const y = Math.min(...ys);
     // The transform mirrors horizontally when its x axis and y axis have
     // opposite handedness: a negative determinant.
-    const [a, b, c, d] = at.transform;
+    const [a, b, c, d] = matrix;
     blits.push({
-      id: sourceId(call.args[0]),
+      id: sourceId(args[0]),
       x,
       y,
       w: Math.max(...xs) - x,
       h: Math.max(...ys) - y,
-      smoothing: at.smoothing,
-      transform: at.transform,
+      smoothing,
+      transform: matrix,
       mirrored: a * d - b * c < 0,
     });
   }
@@ -2478,7 +2524,7 @@ export function blitsNear(
   within: number,
 ): Blit[] {
   const view = h.viewport();
-  const at = toDevice(view, x, y);
+  const at = deviceOf(view, x, y);
   const limit = within * view.scale;
   return blits.filter((blit) => {
     const center = blitCenter(blit);
@@ -2502,13 +2548,13 @@ export function spriteNear(
   return found.length === 0 ? null : found[found.length - 1].id;
 }
 
-/** Every string the frame drew, through `fillText` or `strokeText`. */
-export function drawnText(calls: readonly DrawCall[]): string[] {
-  return [
-    ...callsTo(calls, "fillText"),
-    ...callsTo(calls, "strokeText"),
-  ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
-}
+/**
+ * Every string the frame drew, through `fillText` or `strokeText`.
+ *
+ * The package's, which answers the RAW calls as an array of strings — exactly
+ * what this project has always read.
+ */
+export { drawnText };
 
 /**
  * Whether the frame drew `text` as part of some run of text, ignoring case.
@@ -2516,6 +2562,15 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
  * commonly drawn with a selection marker or padding around it.
+ *
+ * A DIFFERENT QUESTION FROM THE PACKAGE'S `drewText`, which spells the frame
+ * into merged LOGICAL RUNS first and matches inside those. This matches inside
+ * one RAW call, which is narrower: a heading drawn a glyph per `fillText` reads
+ * as a run there and as single glyphs here. Every `screens` point in this
+ * project was taken under the narrow reading — the wide one is reached
+ * deliberately, through {@link drewPhrase}, which admits a split across calls
+ * and states so — so binding the package's here would quietly widen what those
+ * points accept.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
   const wanted = text.trim().toLowerCase();
@@ -2562,22 +2617,51 @@ export interface TextDraw {
   textAlign: string;
 }
 
-/** Every run of text the frame drew, with its anchor in device pixels. */
+/**
+ * Every run of text the frame drew, with its anchor in device pixels.
+ *
+ * ONE ENTRY PER CALL, and the four numbers a check reads are the ones the
+ * recorder took AT the call: the transform in force, the run's measured width
+ * under the font in force, and the alignment that places it about its anchor.
+ * The package's own `textDraws` answers a different shape — a run's `left` and
+ * `right` edges rather than its width and its alignment — and this project's
+ * `hud` and `instrumentation` readings are stated over the width and the
+ * alignment, so this one stays with the case. The transform is walked as a
+ * fallback for a call the measurement pass never reached, which is a call the
+ * frame issued with something other than a string.
+ */
 export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
   const draws: TextDraw[] = [];
+  const stack: Matrix[] = [];
+  let current: Matrix = IDENTITY;
   for (const call of calls) {
-    if (call.kind !== "call" || call.at === undefined) continue;
-    if (call.method !== "fillText" && call.method !== "strokeText") continue;
-    const [text, x, y] = call.args;
+    if (call.kind !== "call") continue;
+    const { method, args } = call;
+    if (method === "save") {
+      stack.push(current);
+      continue;
+    }
+    if (method === "restore") {
+      current = stack.pop() ?? IDENTITY;
+      continue;
+    }
+    const moved = transformed(current, method, args);
+    if (moved !== null) {
+      current = moved;
+      continue;
+    }
+    if (method !== "fillText" && method !== "strokeText") continue;
+    const [text, x, y] = args;
     if (typeof text !== "string") continue;
     if (typeof x !== "number" || typeof y !== "number") continue;
-    const anchor = through(call.at.transform, x, y);
+    const placed = call.text?.transform ?? current;
+    const anchor = applyMatrix(placed, x, y);
     draws.push({
       text,
       x: anchor.x,
       y: anchor.y,
-      width: call.at.width ?? 0,
-      textAlign: call.at.textAlign ?? "start",
+      width: call.text?.width ?? 0,
+      textAlign: call.text?.textAlign ?? "start",
     });
   }
   return draws;
@@ -2682,33 +2766,6 @@ export function hasToken(lines: readonly string[], value: string): boolean {
   });
 }
 
-/**
- * The geometry calls a frame made, by name. Enough of a count to compare two
- * frames of the same scene, whatever shape the build chose to draw as.
- */
-export const DRAW_METHODS: readonly string[] = [
-  "arc",
-  "ellipse",
-  "rect",
-  "roundRect",
-  "fillRect",
-  "strokeRect",
-  "moveTo",
-  "lineTo",
-  "quadraticCurveTo",
-  "bezierCurveTo",
-  "fill",
-  "stroke",
-  "drawImage",
-];
-
-/** How many drawing operations the frame issued. */
-export function drawOps(calls: readonly DrawCall[]): number {
-  return calls.filter(
-    (call) => call.kind === "call" && DRAW_METHODS.includes(call.method),
-  ).length;
-}
-
 /* -------------------------------------------------------------------------- */
 /* Colour and pixels                                                          */
 /* -------------------------------------------------------------------------- */
@@ -2718,18 +2775,6 @@ export function drawOps(calls: readonly DrawCall[]): number {
 // assert is PRESENCE and DISTINGUISHABILITY, and the readings below are what
 // that is decided with: a colour at a point, the pixels of a rectangle, and how
 // many of two rectangles' pixels differ.
-
-/** A sampled colour, each channel 0–255. */
-export interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-/** Euclidean distance between two colours, 0 to about 441. */
-export function colorDistance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
-}
 
 /** The colour rendered at the logical stage point `(x, y)`. */
 export function samplePoint(h: Harness, x: number, y: number): Rgb {
@@ -2745,7 +2790,16 @@ export function parseHex(color: string): Rgb | null {
   return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
 }
 
-/** How many pixels of two equally sized rectangles differ in any channel. */
+/**
+ * How many pixels of two equally sized rectangles differ in any channel.
+ *
+ * EXACT, WITH NO TOLERANCE, and that is why this stays with the case: the
+ * package's reading of the same name takes a tolerance and DEFAULTS IT TO EIGHT,
+ * so binding it would loosen every frame comparison in this project by eight
+ * levels a channel without a call site changing. Two rectangles of different
+ * shapes differ by the whole of the larger, which is the honest answer to "are
+ * these the same picture" for a check that compared frames at two sizes.
+ */
 export function pixelsDiffering(a: PixelRect, b: PixelRect): number {
   if (a.width !== b.width || a.height !== b.height) {
     return Math.max(a.width * a.height, b.width * b.height);
@@ -2880,267 +2934,15 @@ export function soundsOf(h: Harness, name: string): SoundStart[] {
 // scrub and compare against the reference implementation's. `captureReplay` is
 // how a check produces one; `captureStill` keeps one picture instead.
 //
-// Four properties, each deliberate:
-//
-// 1. IT RECORDS THE SECTION, NOT THE RUN. The recorder is armed around the
-//    caller's scenario and disarmed the moment that scenario returns, so what
-//    is kept is the part the check is ABOUT and never the setup.
-// 2. IT IS EVIDENCE, NEVER A VERDICT. The scenario's own value comes straight
-//    back, and a scenario that THROWS still writes what it had recorded before
-//    the failure travels on. Nothing here can change a verdict.
-// 3. IT WRITES ONLY WHAT THERE IS TO LOOK AT. A capture that closed no frames
-//    leaves no file, so the run reports the output absent instead of offering
-//    the reviewer a replay of nothing.
-// 4. IT COSTS NOTHING WHEN NOBODY IS COLLECTING. Outside a run the media
-//    directory is unset, and the whole thing is a no-op that still runs the
-//    scenario, so a check cannot pass in one place and fail in the other.
-
-/** The environment variable the runner names the media directory in. */
-export const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
-
-/**
- * The directory the runner stages this project to inside the build's tree.
- *
- * A recording is addressed by the STAGED path of the suite that produced it,
- * `validation/<suite>.test.ts`, because that is the path the review item's
- * declared script resolves to, and so the only name the case's manifest and the
- * runner both already agree on. Stating the prefix here is what keeps that
- * address the same when this suite is run in place against a reference
- * implementation, where the project root is `validation/<engine>/` instead.
- */
-const STAGED_PROJECT_DIR = "validation";
-
-/**
- * The most frames a written recording holds.
- *
- * A recording is one JSON operation log per frame, so a section a check drives
- * for many seconds of game time runs to tens of megabytes, a file nobody can
- * serve to a reviewer. The cap is what makes `captureReplay` safe to wrap ANY
- * section in; an over-long capture is thinned, not truncated.
- */
-const MAX_REPLAY_FRAMES = 300;
-
-/**
- * Where the running suite's `outputId` output belongs, or `null` when nothing
- * is collecting media.
- *
- * The suite is the one vitest is currently running rather than one the caller
- * names, because the two must not be able to disagree: a check that named its
- * own path would be free to write its evidence under some other point's
- * address. `extension` is `json.gz` for a recording, `png` for a still.
- */
-function mediaDestination(outputId: string, extension: string): string | null {
-  const mediaDir = process.env[MEDIA_DIR_ENV];
-  if (mediaDir === undefined || mediaDir === "") return null;
-  const testPath = expect.getState().testPath;
-  if (testPath === undefined) return null;
-  const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
-  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.${extension}`);
-}
-
-/**
- * A value's JSON with object keys in a fixed order, as the key a table
- * deduplicates on.
- */
-function canonical(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? "null";
-  }
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-    .join(",")}}`;
-}
-
-/** Add `entry` to a table if it is new, and answer where it lives. */
-function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
-  const key = canonical(entry);
-  const found = at.get(key);
-  if (found !== undefined) return found;
-  const index = table.length;
-  table.push(entry);
-  at.set(key, index);
-  return index;
-}
-
-/**
- * `frames` re-expressed against tables holding only what those frames name.
- *
- * Dropping a frame drops the last reference to whatever only that frame drew
- * with, so the four shared tables are rebuilt from the kept frames alone,
- * every reference rewritten as it is reached, transitively, and the rewritten
- * entries deduplicated.
- */
-function retable(
-  recording: Recording,
-  frames: readonly RecordedFrame[],
-): Recording {
-  const images: CapturedImage[] = [];
-  const imageAt = new Map<number, number>();
-  const resources: Resource[] = [];
-  const resourceAt = new Map<number, number>();
-  const ops: DrawOp[] = [];
-  const opAt = new Map<string, number>();
-  const states: DrawState[] = [];
-  const stateAt = new Map<string, number>();
-
-  const takeImage = (source: number): number => {
-    const found = imageAt.get(source);
-    if (found !== undefined) return found;
-    const index = images.length;
-    images.push(recording.images[source]);
-    imageAt.set(source, index);
-    return index;
-  };
-
-  const takeResource = (source: number): number => {
-    const found = resourceAt.get(source);
-    if (found !== undefined) return found;
-    const recipe = recording.resources[source];
-    // A recipe's own arguments were encoded when the value was used, so they
-    // can only name entries interned before it: rewriting one terminates and
-    // cannot re-enter this resource.
-    const rebuilt: Resource = {
-      make: { method: recipe.make.method, args: recipe.make.args.map(value) },
-      then: recipe.then.map(operation),
-    };
-    const index = resources.length;
-    resources.push(rebuilt);
-    resourceAt.set(source, index);
-    return index;
-  };
-
-  const value = (entry: DrawValue): DrawValue => {
-    if (Array.isArray(entry)) return entry.map(value);
-    if (entry === null || typeof entry !== "object") return entry;
-    const record = entry as Record<string, DrawValue>;
-    if (typeof record.$img === "number") {
-      return { $img: takeImage(record.$img) };
-    }
-    if (typeof record.$res === "number") {
-      return { $res: takeResource(record.$res) };
-    }
-    const rewritten: Record<string, DrawValue> = {};
-    for (const [key, held] of Object.entries(record)) {
-      // Defined rather than assigned: a build's own object may carry a field
-      // named `__proto__`, and assigning that name reaches the prototype
-      // setter instead of writing a field the document carries.
-      Object.defineProperty(rewritten, key, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return rewritten;
-  };
-
-  const operation = (op: DrawOp): DrawOp =>
-    op.op === "call"
-      ? { op: "call", method: op.method, args: op.args.map(value) }
-      : { op: "set", property: op.property, value: value(op.value) };
-
-  const segments = (list: readonly PathSegment[]): PathSegment[] =>
-    list.map((segment) => ({
-      transform: segment.transform,
-      ops: segment.ops.map(operation),
-    }));
-
-  const stateOf = (source: number): number => {
-    const state = recording.states[source];
-    const properties: Record<string, DrawValue> = {};
-    for (const [name, held] of Object.entries(state.properties)) {
-      Object.defineProperty(properties, name, {
-        value: value(held),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
-    }
-    return intern(states, stateAt, {
-      properties,
-      transform: state.transform,
-      lineDash: state.lineDash,
-      clip: segments(state.clip),
-      // A frame inherits the current path along with the clip: a canvas keeps
-      // its path across a frame boundary, and applying a clip leaves the clip
-      // outline current.
-      path: segments(state.path),
-    });
-  };
-
-  return {
-    ...recording,
-    images,
-    resources,
-    ops,
-    states,
-    frames: frames.map((frame) => ({
-      ...frame,
-      state: stateOf(frame.state),
-      stack: frame.stack.map(stateOf),
-      ops: frame.ops.map((op) =>
-        intern(ops, opAt, operation(recording.ops[op])),
-      ),
-    })),
-  };
-}
-
-/**
- * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole
- * of what was captured.
- *
- * An over-long section is THINNED rather than cut short: every nth frame is
- * kept, so the reviewer sees the entire section at a lower frame rate. Each
- * kept frame's `deltaMs` is restated as the time since the frame kept before
- * it, so the deltas still sum to the section's elapsed time. The last frame is
- * always kept, it is the frame the check's sweep stopped at, and takes the
- * place of the final strided frame rather than exceeding the cap.
- */
-function thinReplay(recording: Recording): Recording {
-  const { frames } = recording;
-  if (frames.length <= MAX_REPLAY_FRAMES) return recording;
-
-  const stride = Math.ceil(frames.length / MAX_REPLAY_FRAMES);
-  const kept: RecordedFrame[] = [];
-  let previousMs = frames[0].timeMs - frames[0].deltaMs;
-  const keep = (frame: RecordedFrame): void => {
-    kept.push({ ...frame, deltaMs: frame.timeMs - previousMs });
-    previousMs = frame.timeMs;
-  };
-
-  for (let i = 0; i < frames.length; i += stride) keep(frames[i]);
-  const last = frames[frames.length - 1];
-  if (kept[kept.length - 1].count !== last.count) {
-    if (kept.length >= MAX_REPLAY_FRAMES) {
-      const displaced = kept[kept.length - 1];
-      kept.length -= 1;
-      previousMs = displaced.timeMs - displaced.deltaMs;
-    }
-    keep(last);
-  }
-
-  return retable(recording, kept);
-}
-
-/**
- * Write a recording out, reporting rather than raising anything that goes
- * wrong. A capture that closed no frames writes nothing; what lands on disk is
- * gzip, which every host that serves one declares as the encoding. Never
- * throws: a file that cannot be written says something about the machine, and
- * the runner already reads a declared output that never turned up as absent.
- */
-function writeReplay(destination: string, recording: Recording): void {
-  if (recording.frames.length === 0) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, gzipSync(JSON.stringify(thinReplay(recording))));
-  } catch (error) {
-    console.warn(`wick: could not write ${destination}: ${String(error)}`);
-  }
-}
+// ALL THREE ARE THE PACKAGE'S WRITERS, and the four properties they are built
+// around are unchanged: a capture records the SECTION rather than the run, it is
+// evidence and never a verdict (the scenario's own value comes straight back and
+// a scenario that THREW still leaves what it had recorded), it writes only what
+// there is to look at, and outside a run it costs nothing at all. What the case
+// still supplies is the one thing the package cannot derive — `PROJECT_ROOT`,
+// which addresses an output by the STAGED path of the suite that produced it and
+// which, taken from inside the package, would name a directory one level too
+// deep and put every file where nothing will look.
 
 /**
  * Record the frames `act` draws and keep them as the review item's `outputId`
@@ -3157,22 +2959,7 @@ function writeReplay(destination: string, recording: Recording): void {
  * capture sits BESIDE them, and a scenario that failed still leaves its
  * evidence behind.
  */
-export async function captureReplay<T>(
-  h: Harness,
-  outputId: string,
-  act: () => T | Promise<T>,
-): Promise<T> {
-  const destination = mediaDestination(outputId, "json.gz");
-  if (destination === null) return act();
-
-  h.engine.startRecording();
-  try {
-    return await act();
-  } finally {
-    // In a `finally`, so a scenario that failed still leaves its evidence.
-    writeReplay(destination, h.engine.stopRecording());
-  }
-}
+export const captureReplay = makeReplayCapture("wick", PROJECT_ROOT);
 
 /**
  * Keep the frame currently on the canvas as the review item's `outputId`
@@ -3182,14 +2969,9 @@ export async function captureReplay<T>(
  * assertions, so a check that fails still leaves the picture that shows why.
  */
 export function captureStill(h: Harness, outputId: string): void {
-  const destination = mediaDestination(outputId, "png");
-  if (destination === null) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, h.canvas.toBuffer("image/png"));
-  } catch (error) {
-    console.warn(`wick: could not write ${destination}: ${String(error)}`);
-  }
+  captureOutputSync("wick", PROJECT_ROOT, outputId, "png", () =>
+    h.canvas.toBuffer("image/png"),
+  );
 }
 
 /**
@@ -3198,12 +2980,7 @@ export function captureStill(h: Harness, outputId: string): void {
  * by side, an icon set over a checkerboard.
  */
 export function captureCanvas(canvas: Canvas, outputId: string): void {
-  const destination = mediaDestination(outputId, "png");
-  if (destination === null) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, canvas.toBuffer("image/png"));
-  } catch (error) {
-    console.warn(`wick: could not write ${destination}: ${String(error)}`);
-  }
+  captureOutputSync("wick", PROJECT_ROOT, outputId, "png", () =>
+    canvas.toBuffer("image/png"),
+  );
 }

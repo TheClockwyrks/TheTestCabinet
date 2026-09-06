@@ -45,12 +45,24 @@
  * on the tick the sheet says it should, and never that a particular object was
  * painted with a particular file name.
  *
+ * WHAT A DRIVEN TICK'S BLITS ARE, AND WHY THE BRACKET IS IN HERE, AND WHY
+ * NOTHING ELSE IS LOGGED. The build's
+ * own animation frame keeps rendering while the simulation is held off the wall
+ * clock (`specs/instrumentation.md`), so a window opened by reading the log's
+ * length, driving a tick across a crossing, and reading it again would take in
+ * whatever those frames drew as well. So this brackets on the SHARED RECORDER's
+ * own frame instead — the `begin`/`end` pair `@clockwyrks/case-harness` closes
+ * each driven tick with, inside one synchronous evaluation — and `lastFrame()`
+ * answers exactly the tick `__tcabRec.last()` reports the operations of. This
+ * script is injected after the package's own, so that recorder is standing by
+ * the time this runs; a page where it is not simply leaves `lastFrame()` empty
+ * rather than failing, because a blit probe may never decide a point. A blit
+ * issued outside a driven tick is drawn and not kept: there is no tick to
+ * attribute it to, and no check asks about one.
+ *
  * Exposed as `window.__kesslerImages`. Nothing here is ever seeded into a run.
  */
 (() => {
-  /** Every blit the page has issued since it loaded, oldest first. */
-  const blits = [];
-
   /** Ids handed out per source URL, so one file is one identity. */
   const byUrl = new Map();
 
@@ -144,40 +156,70 @@
     };
   };
 
+  /** The blits of the driven tick currently open, or `null` outside one. */
+  let framing = null;
+
+  /** The blits of the last driven tick that closed. */
+  let lastFrame = [];
+
   window.__kesslerImages = {
-    /** How many blits the build has issued since the page loaded. */
-    count: () => blits.length,
-    /** The blits issued since the log held `from` of them, oldest first. */
-    since: (from) => blits.slice(from),
+    /** The blits of the last DRIVEN tick, bracketed on the recorder's frame. */
+    lastFrame: () => lastFrame.slice(),
   };
+
+  // The bracket. Wrapping the two members rather than subscribing to something
+  // is what the recorder offers: it exposes the frame boundary as the pair the
+  // harness calls, and a wrapper around them sees exactly the same window.
+  const rec = window.__tcabRec;
+  if (rec && typeof rec.begin === "function" && typeof rec.end === "function") {
+    const begin = rec.begin;
+    const end = rec.end;
+    rec.begin = function (...args) {
+      framing = [];
+      return begin.apply(this, args);
+    };
+    rec.end = function (...args) {
+      if (framing !== null) {
+        lastFrame = framing;
+        framing = null;
+      }
+      return end.apply(this, args);
+    };
+  }
 
   const proto = window.CanvasRenderingContext2D?.prototype;
   if (proto && typeof proto.drawImage === "function") {
     const drawImage = proto.drawImage;
     proto.drawImage = function (...args) {
-      try {
-        const source = args[0];
-        const { dx, dy, dw, dh } = destination(source, args);
-        // The transform in force, applied by hand: a destination rectangle is
-        // given in user space, and where it LANDS is that rectangle under the
-        // matrix. `x`/`y` are the mapped top-left corner and `w`/`h` the mapped
-        // edge vectors, which is what a rotation needs: a rotated blit's
-        // `w` and `h` are the mapped edge vectors rather than plain sizes.
-        // The one reading a check wants is the CENTER, and `(x + w/2, y + h/2)`
-        // is exactly the mapped center under any affine transform whatever.
-        const m = this.getTransform();
-        blits.push({
-          id: identify(source),
-          x: m.a * dx + m.c * dy + m.e,
-          y: m.b * dx + m.d * dy + m.f,
-          w: m.a * dw + m.c * dh,
-          h: m.b * dw + m.d * dh,
-          smoothing: this.imageSmoothingEnabled === true,
-          quarterTurns: quarterTurnsOf(m),
-        });
-      } catch {
-        // Watching a blit can never change one: a source the probe cannot read
-        // is still drawn, and simply goes unlogged.
+      // Outside a driven tick — the build's own animation frame, which keeps
+      // rendering while the simulation is held — there is nothing to attribute
+      // the blit to, so it is drawn and not logged.
+      if (framing !== null) {
+        try {
+          const source = args[0];
+          const { dx, dy, dw, dh } = destination(source, args);
+          // The transform in force, applied by hand: a destination rectangle
+          // is given in user space, and where it LANDS is that rectangle under
+          // the matrix. `x`/`y` are the mapped top-left corner and `w`/`h` the
+          // mapped edge vectors, which is what a rotation needs: a rotated
+          // blit's `w` and `h` are the mapped edge vectors rather than plain
+          // sizes. The one reading a check wants is the CENTER, and
+          // `(x + w/2, y + h/2)` is exactly the mapped center under any affine
+          // transform whatever.
+          const m = this.getTransform();
+          framing.push({
+            id: identify(source),
+            x: m.a * dx + m.c * dy + m.e,
+            y: m.b * dx + m.d * dy + m.f,
+            w: m.a * dw + m.c * dh,
+            h: m.b * dw + m.d * dh,
+            smoothing: this.imageSmoothingEnabled === true,
+            quarterTurns: quarterTurnsOf(m),
+          });
+        } catch {
+          // Watching a blit can never change one: a source the probe cannot
+          // read is still drawn, and simply goes unlogged.
+        }
       }
       return drawImage.apply(this, args);
     };

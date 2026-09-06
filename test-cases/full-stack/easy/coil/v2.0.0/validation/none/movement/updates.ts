@@ -15,7 +15,7 @@
 // as the harness's own driver does, so a section driven this way is kept as
 // evidence like any other.
 
-import { HANDLE, type Harness } from "../harness";
+import { HANDLE, RECORDER_GLOBAL, type Harness } from "../harness";
 
 /**
  * Hand the game `seconds` of game time as `updates` equal updates.
@@ -31,7 +31,7 @@ export async function deliver(
   updates: number,
 ): Promise<void> {
   await h.page.evaluate(
-    ([handle, total, count]) => {
+    ([handle, recorder, total, count]) => {
       const api = (
         window as unknown as Record<
           string,
@@ -39,10 +39,11 @@ export async function deliver(
         >
       )[handle];
       const rec = (
-        window as unknown as {
-          __coilRec: { begin(): void; end(deltaMs: number): void };
-        }
-      ).__coilRec;
+        window as unknown as Record<
+          string,
+          { begin(): void; end(deltaMs: number): void }
+        >
+      )[recorder];
       const each = total / count;
       for (let i = 0; i < count; i += 1) {
         rec.begin();
@@ -50,6 +51,6 @@ export async function deliver(
         rec.end(each * 1000);
       }
     },
-    [HANDLE, seconds, updates] as const,
+    [HANDLE, RECORDER_GLOBAL, seconds, updates] as const,
   );
 }
