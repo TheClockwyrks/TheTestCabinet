@@ -1141,7 +1141,6 @@ export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 /** The version the debug surface reports as `version`. */
 export const DEEPCORE_DEBUG_VERSION = 1;
 
-
 /* ---- What the specification leaves to the build -------------------------- */
 //
 // Read to drive the build or to locate what it drew, NEVER compared against a

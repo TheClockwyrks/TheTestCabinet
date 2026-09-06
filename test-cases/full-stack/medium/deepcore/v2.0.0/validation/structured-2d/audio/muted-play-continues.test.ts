@@ -42,20 +42,27 @@ import {
 } from "../harness";
 import { audibleIn, playsIn, watchAudio } from "./cues";
 
-const ROW = 300;
+/** A topsoil cell, so the cut is the shortest a band allows. */
+const ROW = 12;
 const COL = PLAYABLE_COL_MIN + 8;
 const ORE = "voltite" as const;
 
-/** How long the scenario runs on after the cut, and in how many frames. */
-const AFTER_SECONDS = 2;
-const AFTER_FRAMES = 120;
+/**
+ * How long the scenario runs on after the cut, and in how many frames.
+ *
+ * One second is enough to read: a build whose clock stood still while muted is
+ * off by the whole span, and the cut before it already holds the world under
+ * the mute for as long as the ore takes to break.
+ */
+const AFTER_SECONDS = 1;
+const AFTER_FRAMES = 60;
 
 /**
  * Decimal places the clock is held to over that span.
  *
  * `simTime` is a sum of the frames' deltas, so two correct builds can differ by
- * the rounding of a hundred and twenty additions; a build whose clock stood
- * still while muted is off by the whole span.
+ * the rounding of sixty additions; a build whose clock stood still while muted
+ * is off by the whole span.
  */
 const CLOCK_DIGITS = 3;
 

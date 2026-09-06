@@ -49,9 +49,6 @@ const STEP_MS = 16;
 /** How long a system is given to produce a particle, in milliseconds. */
 const PLAY_MS = 2000;
 
-/** A fixed seed, so a system that emits is seen to emit every time. */
-const SEED = 1;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -74,7 +71,7 @@ it("parses all twelve produced systems and plays each to particles", async () =>
     let live = 0;
     try {
       const system = JSON.parse(text) as ParticleSystem;
-      const simulator = new ParticleSimulator(system, { seed: SEED });
+      const simulator = new ParticleSimulator(system);
       if (!simulator.isNonEmpty) {
         faults.push(`${file}: declares no emitter that emits`);
         continue;

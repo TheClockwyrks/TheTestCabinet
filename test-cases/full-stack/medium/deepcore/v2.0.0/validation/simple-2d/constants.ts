@@ -1175,7 +1175,6 @@ export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 /** "The surface carries `version` (`DEEPCORE_DEBUG_VERSION`, `1`)". */
 export const DEEPCORE_DEBUG_VERSION = 1;
 
-
 /* ---- What the specification leaves to the build --------------------------- */
 //
 // Read to drive the build or to locate what it drew, never compared against.

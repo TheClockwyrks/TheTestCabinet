@@ -18,6 +18,9 @@
 // build that mutes by declining to start one is as conformant as one that mutes
 // through a master gain. So what is decided here is the half that is readable, and
 // it is the half that matters to a player who turns the sound back on mid-descent.
+// Nothing here waits on the build's audio to start, either: the mute is posed
+// through `setMuted`, and whether the build produces sound at all is what the
+// audio items around this one decide.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual } from "../assert";
@@ -33,22 +36,36 @@ import {
   standOn,
   type Harness,
 } from "../harness";
-import { armAudio } from "./probe";
 
-const ROW = 300;
+/** A topsoil cell, so the cut is the shortest a band allows. */
+const ROW = 12;
 const COL = PLAYABLE_COL_MIN + 8;
 const ORE = "voltite" as const;
 
-/** How long the scenario runs on after the cut, and in how many frames. */
-const AFTER_SECONDS = 2;
-const AFTER_FRAMES = 120;
+/**
+ * How long the scenario runs on after the cut, and in how many frames.
+ *
+ * One second is enough to read: a build whose clock stood still while muted is
+ * off by the whole span, and the cut before it already holds the world under
+ * the mute for as long as the ore takes to break.
+ */
+const AFTER_SECONDS = 1;
+const AFTER_FRAMES = 60;
+
+/**
+ * Frames the recording settles for past the break, so the reviewer sees the
+ * cell open and the ore banked. The clock's span runs after the recorder is
+ * disarmed: a second of a miner standing still is nothing to watch, and the
+ * frames a recording holds are what an engineless replay costs.
+ */
+const SETTLE_FRAMES = 15;
 
 /**
  * Decimal places the clock is held to over that span.
  *
  * `simTime` is a sum of the frames' deltas, so two correct builds can differ by
- * the rounding of a hundred and twenty additions; a build whose clock stood
- * still while muted is off by the whole span.
+ * the rounding of sixty additions; a build whose clock stood still while muted
+ * is off by the whole span.
  */
 const CLOCK_DIGITS = 3;
 
@@ -63,7 +80,6 @@ afterEach(async () => {
 });
 
 it("breaks the cell, banks the ore and runs the clock on while muted", async () => {
-  const armed = await armAudio(h);
   await openScene(h);
   await h.debug.setMuted(true);
   await layFloor(h, ROW);
@@ -72,13 +88,16 @@ it("breaks the cell, banks the ore and runs the clock on while muted", async () 
   await pinMiner(h);
   const muted = (await h.snapshot()).muted;
 
-  const run = await captureReplay(h, "muted", async () => {
-    const cut = await driveCut(h, "down", { col: COL, row: ROW });
-    await h.advanceSeconds(AFTER_SECONDS, AFTER_FRAMES);
-    return { cut, after: await h.snapshot() };
+  const cut = await captureReplay(h, "muted", async () => {
+    const result = await driveCut(h, "down", { col: COL, row: ROW });
+    await h.advance(SETTLE_FRAMES);
+    return result;
   });
+  // The span the clock is held to opens after the break has settled.
+  const rested = (await h.snapshot()).simTime;
+  await h.advanceSeconds(AFTER_SECONDS, AFTER_FRAMES);
+  const run = { cut, rested, after: await h.snapshot() };
 
-  assertEqual(armed, true, "specs/assets.md");
   assertEqual(muted, true, "specs/instrumentation.md");
   assertEqual(run.cut.broke, true, "specs/character.md");
   assertEqual(run.cut.tile.kind, "tunnel", "specs/character.md");
@@ -86,7 +105,7 @@ it("breaks the cell, banks the ore and runs the clock on while muted", async () 
   assertEqual(run.after.cargo.slotsUsed, 1, "specs/mining.md");
   assertEqual(run.after.cargo.loadKg, ORES[ORE].weight, "specs/mining.md");
   assertCloseTo(
-    run.after.simTime - run.cut.snapshot.simTime,
+    run.after.simTime - run.rested,
     AFTER_SECONDS,
     CLOCK_DIGITS,
     "specs/instrumentation.md: simTime accumulates the delta of every update, muted or not",
