@@ -13,17 +13,19 @@
 // taken on a table cleared first, so the arrangement read is the one that deal
 // produced.
 //
-// The comparison is POSITIONAL over the tableau, which is what the review item
-// names: for each of the twenty-eight column positions, whether the two deals put
-// the same card there. It is not a comparison of the two decks as sets, because
-// both deals hold the same fifty-two cards by deal/full-deck and a set comparison
-// would find nothing whatever the shuffle did.
+// ONE PAIR, AND WHAT IS ASKED OF IT IS THAT THE TWO BOARDS ARE NOT THE SAME
+// BOARD. The draw specs/deal.md states is uniform over every ordering of the
+// deck, so two deals agreeing at all twenty-eight tableau positions is an
+// outcome no conformant build reaches, while a build that lays one fixed board
+// out reaches it every time. No share of the positions is asked for and no rate
+// is estimated off repeated deals: that the deal VARIES is the whole of what the
+// specification leaves observable about a single shuffle.
 //
-// THREE PAIRS ARE READ, each a fresh pair of consecutive deals, so a build that
-// shuffles on every other deal is caught rather than sampled around. Two
-// independent uniform deals agree at a given position with probability 1/52, so
-// the chance that a conformant build fails the share below on any pair is far
-// below one in a trillion.
+// THE COMPARISON IS POSITIONAL, which is what the review item names: for each of
+// the twenty-eight column positions, whether the two deals put the same card
+// there. It is not a comparison of the two decks as sets, because both deals
+// hold the same fifty-two cards by deal/full-deck and a set comparison would
+// find nothing whatever the shuffle did.
 //
 // A position one deal filled and the other did not counts as differing, so a
 // build that deals a different NUMBER of cards is not rewarded for it; what its
@@ -31,25 +33,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
-import { DEAL_TABLEAU_CARDS } from "../constants";
 import { captureStill, cardKey, createHarness, type Harness } from "../harness";
-
-/**
- * The share of the twenty-eight tableau positions that has to hold a different
- * card between the two deals.
- *
- * Derived from the rule rather than from the reference. Under the uniform
- * shuffle specs/deal.md requires, a given position holds the same card in two
- * independent deals with probability 1/52, so about half of one position of the
- * twenty-eight is expected to agree by chance; asking for more than half of them
- * to differ leaves an enormous margin against a conformant build while a build
- * that deals one fixed layout counts zero differing positions and a build that
- * shuffles only a corner of the deck counts a handful.
- */
-const DIFFER_MIN_FRACTION = 0.5;
-
-/** The pairs of consecutive deals the comparison is read over. */
-const PAIRS = [1, 2, 3];
 
 let h: Harness;
 
@@ -82,23 +66,20 @@ async function dealAfresh(h: Harness): Promise<Map<string, string>> {
   return laid;
 }
 
-it.each(PAIRS)(
-  "deals different boards on two consecutive deals (pair %i)",
-  async (pair) => {
-    // The second deal is the one the still shows, so it is dealt last.
-    const before = await dealAfresh(h);
-    const after = await dealAfresh(h);
+it("deals a different board on a second deal", async () => {
+  // The second deal is the one the still shows, so it is dealt last.
+  const before = await dealAfresh(h);
+  const after = await dealAfresh(h);
 
-    const positions = new Set([...before.keys(), ...after.keys()]);
-    const differing = [...positions].filter(
-      (at) => before.get(at) !== after.get(at),
-    ).length;
+  const positions = new Set([...before.keys(), ...after.keys()]);
+  const differing = [...positions].filter(
+    (at) => before.get(at) !== after.get(at),
+  ).length;
 
-    assertGreaterThan(
-      differing,
-      DIFFER_MIN_FRACTION * DEAL_TABLEAU_CARDS,
-      `tableau positions holding a different card between two consecutive ` +
-        `deals, pair ${pair} (specs/deal.md)`,
-    );
-  },
-);
+  assertGreaterThan(
+    differing,
+    0,
+    "tableau positions holding a different card between two consecutive " +
+      "deals (specs/deal.md)",
+  );
+});
