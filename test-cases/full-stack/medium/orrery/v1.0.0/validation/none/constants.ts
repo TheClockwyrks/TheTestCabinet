@@ -799,6 +799,19 @@ export const TICK_HZ = 60;
 /** The collision threshold, in logical units: two motes closer than this collide. */
 export const COLLIDE_DISTANCE = 2 * MOTE_COLLIDE_R;
 
+/**
+ * The separation worked example A of specs/simulation.md "Collision" freezes at:
+ * "`36.10` at `t = 3/8`", the first sample within `38`.
+ */
+export const EXAMPLE_A_FROZEN_SEPARATION = 36.1;
+
+/**
+ * How near a separation must land on a figure the worked examples print. The
+ * table's "distances are in logical units rounded to two decimals", so half a
+ * hundredth either side of the printed figure is the rule's own precision.
+ */
+export const EXAMPLE_DISTANCE_TOLERANCE = 0.005;
+
 /** The sample fractions collision is evaluated at, `k / 8` for `k` of `1..8`. */
 export const COLLISION_FRACTIONS: readonly number[] = Array.from(
   { length: COLLISION_SAMPLES },

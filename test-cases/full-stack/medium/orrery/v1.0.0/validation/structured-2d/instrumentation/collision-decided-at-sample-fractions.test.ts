@@ -2,10 +2,10 @@
 // fractions decide a collision, and the frames that covered the cycle do not.
 //
 // THE RULE. "Collision is decided at the sample fractions `specs/simulation.md`
-// fixes, never at rendered frames" (`specs/instrumentation.md`, A deterministic
+// fixes, never at rendered frames" (`specs/instrumentation.md`, A render-free
 // core), which the same section places under the property the whole surface rests
 // on: "an interval of game time reaches the same state however it was divided into
-// frames ... the fault [comes out identical whatever the division]". The rule
+// frames ... the fault [comes out the same whatever the division]". The rule
 // itself is `specs/simulation.md`, Collision: "every mote's position is evaluated
 // at the sample fractions `t = k / 8` for `k` from `1` to `8`, in order. If at any
 // sample the distance between the centers of two motes is strictly less than
@@ -24,13 +24,17 @@
 // so a build that evaluated collision at its rendered frames sees `t = 1` alone and
 // misses `3/8` entirely. Eight frames land a frame boundary on every sample, which
 // is the division a frame-driven build agrees with by accident. Sixty land on none
-// of them. The three agreeing is what says the samples decided it.
+// of them. All three landing on the specification's figures is what says the
+// samples decided it.
 //
-// THE VERDICT reads the freeze twice over: the fraction is `3/8` in all three, and
-// so is the SEPARATION the two named motes were frozen at — the distance between
-// the drawn positions the snapshot reports, which are "derived from ...
-// `sim.fraction`". A build that froze at its own nearest frame would report a
-// different separation even where it happened to name the same cycle.
+// THE VERDICT reads the freeze twice over, each division against the worked
+// example rather than against another division: the fraction is `3/8`, and the
+// SEPARATION the two named motes were frozen at — the distance between the drawn
+// positions the snapshot reports, which are "derived from ... `sim.fraction`" —
+// is the table's `36.10`, to the two decimals the table prints plus the rounding
+// a drawn position inherits from the fraction. A build that froze at its own
+// nearest frame reports a different separation even where it happens to name the
+// same sample.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -42,6 +46,8 @@ import {
 } from "../assert";
 import {
   COLLIDE_DISTANCE,
+  EXAMPLE_A_FROZEN_SEPARATION,
+  EXAMPLE_DISTANCE_TOLERANCE,
   FRACTION_TOLERANCE,
   HEX_PITCH,
   sampleFraction,
@@ -64,6 +70,14 @@ import {
 
 /** See `frame-division-independent`: the drawn positions follow `sim.fraction`. */
 const POSITION_TOLERANCE = 2 * Math.PI * HEX_PITCH * FRACTION_TOLERANCE;
+
+/**
+ * How near the frozen separation must land on the table's figure: the two
+ * decimals the table prints, plus what the two drawn positions may each carry
+ * from the rounding of the fraction.
+ */
+const SEPARATION_TOLERANCE =
+  EXAMPLE_DISTANCE_TOLERANCE + 2 * POSITION_TOLERANCE;
 
 /** The sample example A first comes within `38` at. */
 const FROZEN_AT = sampleFraction(3);
@@ -114,12 +128,12 @@ async function exampleA(frames: number): Promise<Frozen> {
   assertEqual(
     snapshot.sim?.status,
     "faulted",
-    `example A comes within 38, so a cycle covered by ${frames} frame(s) faults`,
+    `example A comes within 38, so a cycle covered by ${String(frames)} frame(s) faults`,
   );
   assertEqual(
     snapshot.sim?.fault?.kind,
     "collision",
-    `and it faults as collision, whatever the ${frames} frame(s) that crossed the cycle`,
+    `and it faults as collision, whatever the ${String(frames)} frame(s) that crossed the cycle`,
   );
   assertLength(
     snapshot.sim?.fault?.motes ?? [],
@@ -132,7 +146,7 @@ async function exampleA(frames: number): Promise<Frozen> {
   };
 }
 
-it("freezes at the same sample fraction and separation however the cycle is divided", async () => {
+it("freezes at the sample fraction and separation the worked example fixes, however the cycle is divided", async () => {
   const finest = DIVISIONS[DIVISIONS.length - 1];
   const frozen: Frozen[] = [];
   for (const frames of DIVISIONS) {
@@ -150,24 +164,18 @@ it("freezes at the same sample fraction and separation however the cycle is divi
       read.fraction,
       FROZEN_AT,
       FRACTION_TOLERANCE,
-      `a cycle covered by ${division} frame(s) freezes at t = 3/8, the first sample within 38`,
+      `a cycle covered by ${String(division)} frame(s) freezes at t = 3/8, the first sample within 38`,
     );
     assertLessThan(
       read.separation,
       COLLIDE_DISTANCE,
-      `and the pair it froze on is within 38 there, covered by ${division} frame(s)`,
+      `and the pair it froze on is within 38 there, covered by ${String(division)} frame(s)`,
     );
-  }
-
-  const first = frozen[0] ?? { fraction: -1, separation: Number.NaN };
-  for (const [i, division] of DIVISIONS.entries()) {
-    if (i === 0) continue;
-    const read = frozen[i] ?? { fraction: -1, separation: Number.NaN };
     assertNear(
       read.separation,
-      first.separation,
-      POSITION_TOLERANCE,
-      `${division} frames freeze the pair at the separation one frame did: the sample fractions decided it, not the frames`,
+      EXAMPLE_A_FROZEN_SEPARATION,
+      SEPARATION_TOLERANCE,
+      `${String(division)} frame(s) freeze the pair at the table's 36.10: the sample fractions decided it, not the frames`,
     );
   }
 });

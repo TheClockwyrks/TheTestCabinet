@@ -10,8 +10,9 @@
 // and not the other.
 //
 // HOW ONE RUN IS BOTH. The same machine banks the same hexes and takes the same
-// cycles every time — "The simulation is a function of the machine and the
-// elapsed simulated time" (`specs/simulation.md`, Determinism) — so the two
+// cycles every time — "A cycle's outcome, collisions included, is computed from
+// the machine's parts, their tapes, and the sample fractions"
+// (`specs/simulation.md`, Cycles and the clock) — so the two
 // RECORDS are moved instead, through "`setRecord(mode, index, metric, value)`
 // Sets one record of one challenge" (`specs/instrumentation.md`): the area record
 // one BELOW what the run banks, so the completion is the wider of the two, and

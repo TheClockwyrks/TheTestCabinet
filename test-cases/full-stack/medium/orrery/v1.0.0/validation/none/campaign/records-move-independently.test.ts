@@ -14,8 +14,9 @@
 // the run reaches, its cycles and its area one BELOW — through "`setRecord(mode,
 // index, metric, value)` Sets one record of one challenge"
 // (`specs/instrumentation.md`). The same machine is completed again, and because
-// "The simulation is a function of the machine and the elapsed simulated time"
-// (`specs/simulation.md`, Determinism) it reaches the same three figures: the
+// "A cycle's outcome, collisions included, is computed from the machine's parts,
+// their tapes, and the sample fractions" (`specs/simulation.md`, Cycles and the
+// clock) it reaches the same three figures: the
 // cheapest cost yet, and more cycles and more area than the records standing.
 //
 // THE VERDICT. `cost` moved to the run's figure; `cycles` and `area` are still the

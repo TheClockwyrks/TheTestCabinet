@@ -10,8 +10,9 @@
 // and not the other.
 //
 // HOW A RUN IS MADE THE LONGER ONE. The same machine takes the same number of
-// cycles every time — "The simulation is a function of the machine and the elapsed
-// simulated time" (`specs/simulation.md`, Determinism) — so the RECORD is lowered
+// cycles every time — "A cycle's outcome, collisions included, is computed from
+// the machine's parts, their tapes, and the sample fractions"
+// (`specs/simulation.md`, Cycles and the clock) — so the RECORD is lowered
 // instead, one below what any run of it reaches, through "`setRecord(mode, index,
 // metric, value)` Sets one record of one challenge" (`specs/instrumentation.md`).
 // A completed run's `cycles` is "`sim.cycle + 1` at the completing boundary", so

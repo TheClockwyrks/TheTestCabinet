@@ -21,7 +21,7 @@
 // `sim.fraction` IS NEVER READ FOR EQUALITY. It is one of "the three figures
 // carried as running sums of the frames' own delta times", which "agree to within
 // the rounding of that sum rather than bit for bit"
-// (`specs/instrumentation.md`, A deterministic core), so both reads go through the
+// (`specs/instrumentation.md`, A render-free core), so both reads go through the
 // case's own `FRACTION_TOLERANCE`.
 //
 // AND THE FIELD IS STILL DRAWN. `specs/editor.md` has the run drawn "on the field

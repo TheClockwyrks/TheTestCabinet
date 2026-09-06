@@ -7,8 +7,9 @@
 // run completes" (`specs/simulation.md`, Completion and metrics).
 //
 // HOW A RUN IS MADE THE TIGHTER ONE. The same machine banks the same hexes every
-// time — "The simulation is a function of the machine and the elapsed simulated
-// time" (`specs/simulation.md`, Determinism) — so the RECORD is raised instead, one
+// time — "A cycle's outcome, collisions included, is computed from the machine's
+// parts, their tapes, and the sample fractions" (`specs/simulation.md`, Cycles and
+// the clock) — so the RECORD is raised instead, one
 // above what the run reaches, through "`setRecord(mode, index, metric, value)`
 // Sets one record of one challenge" (`specs/instrumentation.md`). The completion
 // that follows is then strictly the tighter of the two.

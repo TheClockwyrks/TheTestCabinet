@@ -24,7 +24,7 @@
 // `particles-played-through-runtime`. Where the fault effect is fired, and on which
 // boundary, is the presentation category's.
 //
-// THE EVIDENCE is the fullest moment of one seeded play, plotted from the runtime's
+// THE EVIDENCE is the fullest moment of one play, plotted from the runtime's
 // own captured particles. A file the runtime would not take leaves an empty ground
 // with the file's name on it, which is the reading this point then fails with.
 

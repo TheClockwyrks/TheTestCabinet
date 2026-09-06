@@ -50,13 +50,13 @@ export interface SystemRead {
   /** Why not, worded for the point to fail with. */
   reason: string | null;
   /**
-   * The fullest moment of a seeded play, for the evidence plot: the captured
+   * The fullest moment of one play, for the evidence plot: the captured
    * frame of the simulation that held the most live particles. Empty when the
    * file never reached the simulator.
    */
   particles: RenderParticle[];
   /**
-   * How many particles were live at the END of one full seeded play, at the
+   * How many particles were live at the END of one full play, at the
    * system's own duration.
    *
    * What the `*-one-shot` points read: `specs/assets.md` authors each system
@@ -116,7 +116,7 @@ export async function readSystem(file: string): Promise<SystemRead> {
     };
   }
 
-  // One full seeded play at the system's own frame rate, keeping the fullest
+  // One full play at the system's own frame rate, keeping the fullest
   // captured frame as the evidence and the last as the decay reading. The sweep is
   // bounded so a system that never settles cannot stall the suite.
   const system = simulator.system;

@@ -4,7 +4,7 @@
 //
 // THE RULE. "Render-free core. Game state advances from the elapsed time the game
 // is handed, independent of a canvas, of the frame loop that measured it, and of
-// wall-clock time" (`specs/instrumentation.md`, A deterministic core). Under no
+// wall-clock time" (`specs/instrumentation.md`, A render-free core). Under no
 // engine the switch that does the holding is the surface's own: "`setAutoStep(false)`
 // stops the frame loop advancing the simulation from the wall clock, so the game
 // changes only when `advance` says so. `setAutoStep(true)` returns it to running

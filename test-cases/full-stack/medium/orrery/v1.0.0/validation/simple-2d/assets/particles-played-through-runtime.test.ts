@@ -15,7 +15,7 @@
 // own would be showing a picture its `system.json` does not describe, and every
 // point that reads a produced system as the thing the game plays would be reading
 // a file the game ignores. "Each play of a system varies, and that variation is
-// correct" is the runtime's seeded randomness, not the build's.
+// correct" is the runtime's own random draws, not the build's.
 //
 // WHAT IT READS. The build's own source, for the bare specifier
 // `@clockwyrks/particle-runtime/canvas` in any of the forms an import takes —

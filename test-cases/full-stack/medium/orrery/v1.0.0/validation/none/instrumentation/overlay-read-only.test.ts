@@ -1,5 +1,5 @@
-// instrumentation/overlay-read-only — watching the overlay leaves the game exactly
-// where an unwatched session leaves it.
+// instrumentation/overlay-read-only — watching the overlay leaves the game where
+// the frames put it.
 //
 // THE RULE, from Diagnostics in `specs/instrumentation.md`: "keep every source a
 // pure read, so watching the overlay leaves the game as it is." Under either
@@ -9,47 +9,56 @@
 // and "reads the game without changing it". The surface's own rule says the same
 // of a reading: it "returns plain data built at the call and changes nothing".
 //
-// THE CHECK IS TWO IDENTICAL SESSIONS, DIFFERING ONLY IN THE KEY THAT WAS PRESSED.
-// Each opens the same bare run on the same machine with the same mote, presses one
-// key, and advances the same three cycles. The watched session presses the
-// backtick key, which shows the panel and has it read every source on every one of
-// those frames; the unwatched session presses `KeyO`, which `specs/controls.md`
-// binds to nothing on any screen under any focus, so the two sessions differ in
-// the panel and in nothing else — the same number of frames pass, the same key
-// events are delivered, and the same simulated time elapses.
+// THE CHECK IS ONE SESSION, WATCHED, HELD TO THE FIGURES THE RULES FIX. The
+// panel is shown with the backtick key while the challenge is open in the
+// editor, where a frame advances nothing, so the run that then starts opens on a
+// clock at zero with the panel already reading every source on every frame. It
+// runs the carrying machine three cycles, and what three cycles of `grab`,
+// `rotate-cw`, `drop` leave is stated outright: the mote carried from `(1, 0)` to
+// `(0, 1)` and let go there, the gripper open, `sim.cycle` at `3`, the fraction
+// back at `0`, and the mote drawn on its hex's center, where "at `t = 1` every
+// mote lands exactly" (`specs/simulation.md`, Motion and carrying). A source that
+// advanced a cursor, consumed a queue, or nudged a figure it was only meant to
+// read leaves the run somewhere else.
 //
-// THE VERDICT IS THE WHOLE SNAPSHOT, deep-equalled between the two sessions: the
-// build's own reading of itself against itself, so a source that advanced a cursor,
-// consumed a queue, memoised into the state or nudged a figure it was only meant to
-// read is caught wherever it put the change. Nothing is excluded, because nothing
-// in it is allowed to differ: `simTime` accumulates the same frames in both, and
-// the pointer is never moved in either.
-//
-// THE SESSIONS MUST HAVE SOMETHING TO GET WRONG, so the run is not a still one: an
+// THE SESSION MUST HAVE SOMETHING TO GET WRONG, so the run is not a still one: an
 // arm grabs a mote, carries it a step and drops it over three cycles, which leaves
-// a cycle count, a fraction, a live pose, a grip and a moved mote in the snapshot
-// for the comparison to bite on. The check reads back that the run really advanced
-// before it compares the two.
+// a cycle count, a fraction, a live pose, a grip and a moved mote for the sources
+// to report. The backtick key is the documented toggle, and that it shows the
+// panel is `overlay-shows-on-the-backtick-key`'s point rather than this one's.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  assertDeepEqual,
   assertEqual,
-  assertGreaterThan,
+  assertLength,
+  assertNear,
   assertNotNull,
+  assertNull,
 } from "../assert";
-import { ARM_MIN_LEN, INERT_KEY, OVERLAY_KEY } from "../constants";
+import { ARM_MIN_LEN, FRACTION_TOLERANCE, HEX_PITCH } from "../constants";
+import { at, hexCenter } from "../field";
 import { BARE, CARRY_MACHINE, ORIGIN } from "../fixtures";
 import { gripperHex } from "../parts";
 import {
   advanceCycles,
   captureReplay,
   createHarness,
-  openBareRun,
+  heldBy,
+  moteAt,
+  partIds,
   spawnMote,
+  toggleOverlay,
   type Harness,
-  type OrrerySnapshot,
 } from "../harness";
+
+/** See `frame-division-independent`: the drawn positions follow `sim.fraction`. */
+const POSITION_TOLERANCE = 2 * Math.PI * HEX_PITCH * FRACTION_TOLERANCE;
+
+/** How many cycles the session runs with the panel reading every frame. */
+const CYCLES = 3;
+
+/** Where `rotate-cw` about ORIGIN carries the mote the gripper starts over. */
+const CARRIED_TO = at(0, 1);
 
 let h: Harness;
 
@@ -61,46 +70,60 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** How many cycles each session runs with the panel deciding nothing. */
-const CYCLES = 3;
+it("leaves the run where three cycles put it while the overlay reads every frame", async () => {
+  await h.debug.reset();
+  await h.debug.loadChallenge(BARE);
+  await h.debug.clearMachine();
+  await h.debug.loadSolution(CARRY_MACHINE);
+  await h.debug.setCompletion(false);
+  await toggleOverlay(h);
+  await h.debug.startRun();
+  await h.debug.clearMotes();
+  const started = gripperHex(ORIGIN, 0, ARM_MIN_LEN);
+  await spawnMote(h, started, "sol");
+  const [arm] = await partIds(h);
 
-/**
- * One session: the same world, the same frames, and one key press whose only
- * difference is whether the panel is open across them.
- */
-async function session(watching: boolean): Promise<OrrerySnapshot> {
-  await openBareRun(h, { challenge: BARE, machine: CARRY_MACHINE });
-  await spawnMote(h, gripperHex(ORIGIN, 0, ARM_MIN_LEN), "sol");
-  await h.tap(watching ? OVERLAY_KEY : INERT_KEY);
-  await advanceCycles(h, CYCLES);
-  return h.snapshot();
-}
+  await captureReplay(h, "watched", () => advanceCycles(h, CYCLES));
+  const watched = await h.snapshot();
 
-it("reaches the same state watched as unwatched", async () => {
-  const unwatched = await session(false);
-  const watched = await captureReplay(h, "watched", () => session(true));
-
-  assertNotNull(unwatched.sim, "the unwatched session ran a live run");
-  assertNotNull(watched.sim, "and so did the watched one");
+  assertNotNull(watched.sim, "the run is live after the three cycles");
   assertEqual(
-    unwatched.sim?.cycle,
+    watched.sim?.cycle,
     CYCLES,
-    "each session advanced the run it opened, so there is a moving game to compare",
+    "the run advanced exactly the cycles it was given",
   );
-  assertGreaterThan(
-    unwatched.sim?.poses.length ?? 0,
+  assertNear(
+    watched.sim?.fraction ?? -1,
     0,
-    "with a part on the field carrying a live pose",
+    FRACTION_TOLERANCE,
+    "and stands on the boundary, to the rounding of the fraction's sum",
+  );
+  assertLength(watched.sim?.poses ?? [], 1, "the arm carries a live pose");
+  assertLength(
+    watched.sim?.motes ?? [],
+    1,
+    "the mote it was given is on the field",
   );
   assertEqual(
-    unwatched.sim?.motes.length,
-    1,
-    "and the mote it was given still on it",
+    moteAt(watched, CARRIED_TO)?.type,
+    "sol",
+    "grab, rotate-cw and drop carried it from (1, 0) to (0, 1) and let it go",
   );
-
-  assertDeepEqual(
-    watched,
-    unwatched,
-    "showing the overlay and letting it report across every frame changes nothing: every source is a pure read",
+  assertNull(
+    moteAt(watched, started),
+    "so nothing rests on the hex it started on",
   );
+  assertNull(
+    heldBy(watched, arm ?? -1, 0),
+    "and the gripper that carried it is open again",
+  );
+  const drawn = moteAt(watched, CARRIED_TO) ?? { x: NaN, y: NaN };
+  const center = hexCenter(CARRIED_TO);
+  assertNear(
+    drawn.x,
+    center.x,
+    POSITION_TOLERANCE,
+    "at the boundary the mote is drawn at its hex's center: x",
+  );
+  assertNear(drawn.y, center.y, POSITION_TOLERANCE, "and y");
 });

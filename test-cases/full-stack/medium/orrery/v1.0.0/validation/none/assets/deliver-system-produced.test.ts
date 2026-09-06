@@ -22,7 +22,7 @@
 // settling into a steady state" — is the point after this one, and whether the build
 // PLAYS it through the runtime is `particles-played-through-runtime`.
 //
-// THE EVIDENCE is the fullest moment of one seeded play, plotted from the runtime's
+// THE EVIDENCE is the fullest moment of one play, plotted from the runtime's
 // own captured particles. A file the runtime would not take leaves an empty ground
 // with the file's name on it, which is the reading this point then fails with.
 

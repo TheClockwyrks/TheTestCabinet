@@ -7,8 +7,9 @@ opened, `EXTRAS` is chosen with a key press, a challenge is taken off its select
 screen, a machine is built on the field with pointer drags out of the tray and
 instruction keys into the tape panel, and the machine is then run until it has
 delivered its product six times and the challenge completes. Several takes are
-auditioned, one per challenge, and the most watchable is replayed under the
-engine's recorder. Nothing is posed mid-play.
+auditioned, one per challenge, each recorded under the engine's recorder and
+written under its own name, and the driver names the most watchable, whose
+files are the ones kept. Nothing is posed mid-play.
 
 A driver is the validator harness reused as a recording rig. It is not a
 validator: no review item names it, it lives outside `validation/` so a run never
@@ -96,8 +97,10 @@ TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
 ```
 
 The outputs land under
-`$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`; copy the
-replay and the three stills into `showcase/base/`. Nothing above writes into
+`$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`, one replay
+and three stills per auditioned take, each prefixed `<mode>-<number>-`. The
+driver's last log line names the take to keep; copy its replay and its three
+stills into `showcase/base/` without the prefix. Nothing above writes into
 `references/`, so there is no staged copy to remove afterwards — `git status`
 over the reference tree is the check.
 
@@ -111,40 +114,18 @@ engine's.
 
 ## The knobs
 
-| Variable                          | Default                                    | What it does                                                                                                                                                                                        |
-| --------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TCAB_VALIDATION_MEDIA_DIR`       | unset                                      | Where the media is written. Unset writes nothing, which is what makes an audition free.                                                                                                             |
-| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`                                      | The harness's replay cap, patched to read this. A take is driven at 60 frames a second, so this is roughly `60 × seconds`; `2400` holds a forty-second take whole.                                  |
-| `TCAB_SHOWCASE_TAKE`              | unset                                      | `<mode>:<number>`, one-based, as the select screen numbers a challenge. Naming one records it and auditions nothing, which is how the committed take is reproduced without paying for the audition. |
-| `TCAB_SHOWCASE_TAKES`             | `campaign:1` and all nine reachable Extras | The takes auditioned when none is named.                                                                                                                                                            |
-| `TCAB_SHOWCASE_MIN_SECONDS`       | `20`                                       | The shortest a take may be and still be considered.                                                                                                                                                 |
-| `TCAB_SHOWCASE_MAX_SECONDS`       | `40`                                       | The longest.                                                                                                                                                                                        |
-| `TCAB_SHOWCASE_SPEED_TAPS`        | `0`                                        | How many times `speed-up` is pressed once the run is under way. `0` leaves the whole run at the three cycles a second a run opens at, which is the pace an arm's swing reads at.                    |
-| `TCAB_SHOWCASE_SPEED_AFTER`       | `12`                                       | Which cycle those presses land on.                                                                                                                                                                  |
-| `TCAB_SHOWCASE_QA_STILLS`         | unset                                      | `1` writes a still every `TCAB_SHOWCASE_QA_EVERY` frames, across the whole take, for eyeballing one.                                                                                                |
-| `TCAB_SHOWCASE_QA_EVERY`          | `120`                                      | How often that is.                                                                                                                                                                                  |
+| Variable                          | Default                                    | What it does                                                                                                                                                                     |
+| --------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TCAB_VALIDATION_MEDIA_DIR`       | unset                                      | Where the media is written. Unset writes nothing, which turns an audition into a dry run that only measures.                                                                     |
+| `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`                                      | The harness's replay cap, patched to read this. A take is driven at 60 frames a second, so this is roughly `60 × seconds`; `2400` holds a forty-second take whole.               |
+| `TCAB_SHOWCASE_TAKE`              | unset                                      | `<mode>:<number>`, one-based, as the select screen numbers a challenge. Naming one records it alone, under the showcase's own file names, and auditions nothing.                 |
+| `TCAB_SHOWCASE_TAKES`             | `campaign:1` and all nine reachable Extras | The takes auditioned when none is named, each recorded under its own prefix.                                                                                                     |
+| `TCAB_SHOWCASE_MIN_SECONDS`       | `20`                                       | The shortest a take may be and still be considered.                                                                                                                              |
+| `TCAB_SHOWCASE_MAX_SECONDS`       | `40`                                       | The longest.                                                                                                                                                                     |
+| `TCAB_SHOWCASE_SPEED_TAPS`        | `0`                                        | How many times `speed-up` is pressed once the run is under way. `0` leaves the whole run at the three cycles a second a run opens at, which is the pace an arm's swing reads at. |
+| `TCAB_SHOWCASE_SPEED_AFTER`       | `12`                                       | Which cycle those presses land on.                                                                                                                                               |
+| `TCAB_SHOWCASE_QA_STILLS`         | unset                                      | `1` writes a still every `TCAB_SHOWCASE_QA_EVERY` frames, across the whole take, for eyeballing one.                                                                             |
+| `TCAB_SHOWCASE_QA_EVERY`          | `120`                                      | How often that is.                                                                                                                                                               |
 
-The audition runs every take in its own harness inside one process, so give it
-`NODE_OPTIONS=--max-old-space-size=8192`.
-
-## Why it is reproducible
-
-The capture is deterministic. The field, the shelf and every challenge on it are
-fixed data in the build; the machine comes from the build's own reference
-solution; and every gesture the driver makes is a pure function of that document
-and of the snapshot, at a fixed frame length. So a take auditioned with the
-recorder off replays identically under it — which is what makes an audition worth
-anything — and the three committed stills come back byte-identical run to run.
-
-One caveat on byte-identity, which is weaker than identity of the sitting: a
-recorded frame carries the engine's own frame number and its running clock, and
-both count from when the harness was created rather than from when the recorder
-was armed. Each take gets a fresh harness here, so the recorded file is the same
-whether or not an audition ran before it; a driver changed to reuse one would
-write the same sitting with a different time origin. Playback is unaffected,
-because a player paces itself off the per-frame deltas.
-
-The committed media: `extras:8`, Aetherfall, chosen by the default audition,
-recorded against `references/structured-2d/base` at cap `2400` — a 30.9 s sitting
-held whole at 60 frames a second, 1857 frames and 248 KB, ending on the solved
-panel.
+The audition runs every take in its own harness inside one process, each under
+the recorder, so give it `NODE_OPTIONS=--max-old-space-size=8192`.

@@ -8,7 +8,9 @@
 // more hexes than the record standing changes nothing.
 //
 // HOW A RUN IS MADE THE WIDER ONE. The same machine banks the same hexes every time
-// (`specs/simulation.md`, Determinism), so the RECORD is lowered instead, one below
+// ("A cycle's outcome, collisions included, is computed from the machine's parts,
+// their tapes, and the sample fractions", `specs/simulation.md`, Cycles and the
+// clock), so the RECORD is lowered instead, one below
 // what the run reaches, through "`setRecord(mode, index, metric, value)`", whose
 // `value` is "a whole number of at least `0`" (`specs/instrumentation.md`). One
 // below is always such a number: "A run whose machine holds no set never

@@ -3,7 +3,7 @@
 //
 // THE RULE. "Audio belongs to the frames. A pose changes the state alone and
 // SOUNDS NOTHING, the pointer operations included; the cues a scenario hears come
-// from the frames advanced after it" (`specs/instrumentation.md`, A deterministic
+// from the frames advanced after it" (`specs/instrumentation.md`, A render-free
 // core). `placePart`, `placeRise`, `placeSet`, `placeTrack` and `loadSolution` are
 // five rows of that surface's machine group, and every one of them is a pose: "A
 // pose sets one thing, and the game's own editor rules, simulation, sigils, and
