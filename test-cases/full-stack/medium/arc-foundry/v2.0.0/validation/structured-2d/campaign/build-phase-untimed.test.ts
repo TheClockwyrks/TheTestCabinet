@@ -44,7 +44,7 @@ const HZ = 5;
 /** Half a minute of simulation, in seconds. */
 const WAIT = 30;
 
-/** Frames between two readings of the phase: `0.2` seconds of simulation. */
+/** Frames between two readings of the phase: `0.4` seconds of simulation. */
 const POLL = 2;
 
 let h: Harness;

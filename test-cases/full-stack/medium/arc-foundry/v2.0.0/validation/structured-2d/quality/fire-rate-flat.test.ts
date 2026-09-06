@@ -13,10 +13,9 @@
 // structure changes between the two drives.
 //
 // Shots are counted as distinct projectile identities rather than as impacts,
-// because the requirement is about how often a structure FIRES. The samples are
-// taken every thirty milliseconds of simulation, which is far shorter than a
-// shot's flight over this range, so no projectile can appear and be gone between
-// two of them.
+// because the requirement is about how often a structure FIRES. A sample is taken
+// on every frame of the rate below, which is under a quarter of a shot's flight
+// over this range, so no projectile can appear and be gone between two of them.
 //
 // THE CLOCK IS THE CHECK'S. What these frames are spent on is a SPAN — two
 // counted intervals — rather than a reading, and specs/instrumentation.md
@@ -44,13 +43,13 @@ const ANCHOR = { col: 10, row: 10 };
 const TARGET_RANGE = 80;
 
 /** The counted interval, in seconds of simulation time. */
-const SECONDS = 2;
+const SECONDS = 5;
 
 /** The rate the counted intervals are covered at. */
-const COUNT_HZ = 60;
+const COUNT_HZ = 30;
 
-/** Frames between samples: well inside one shot's flight at this range. */
-const SAMPLE_FRAMES = 2;
+/** Frames between samples: every one, well inside a shot's flight at this range. */
+const SAMPLE_FRAMES = 1;
 
 /** The Emitter's cadence, flat across the ladder. */
 const FIRE_RATE = componentFireRate("emitter");

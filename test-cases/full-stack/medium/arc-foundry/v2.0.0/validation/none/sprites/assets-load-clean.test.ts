@@ -11,7 +11,12 @@
 // So the served build is driven through the three phases `specs/campaign.md` has
 // — a build phase, a wave, and the finale — with something of every kind on the
 // yard: a component firing, a rock stamped, six of the seven Load types walking,
-// and the Overload Dynamo. Anything the page asked the origin for and did not get
+// one of them burning and dying inside the wave, and the Overload Dynamo. The
+// death is POSED rather than waited for: one Load is stood up on a single point
+// of health under a burn, so a build that loads its burn art or its death burst
+// on the first death reaches for them here rather than on whether the standing
+// component happened to finish something off in time. Anything the page asked the
+// origin for and did not get
 // is a console error the browser raises on its own, and the harness has been
 // listening since before the page loaded, so a file the build never bundled shows
 // up here whatever the build does about it afterwards.
@@ -28,12 +33,20 @@ import {
   createHarness,
   holdWaveOpen,
   openYard,
+  parkUnit,
   pressAction,
   releaseUnit,
   standComponent,
   type Harness,
 } from "../harness";
-import { LOAD_TYPES, structureCenter } from "../constants";
+import { LOAD_TYPES, structureCenter, tileCenter } from "../constants";
+
+/** Clear ground, away from the map's waypoint platforms and its chain. */
+const BURNING = { col: 21, row: 18 };
+
+/** The burn the posed Load dies under: enough to take a point of health at once. */
+const BURN_DPS = 500;
+const BURN_SECONDS = 3;
 
 /** What a browser says when the origin had nothing at the path it was asked for. */
 const MISSING =
@@ -65,9 +78,14 @@ it("asks the site for nothing it does not carry, across all three phases", async
     await standComponent(h, "capacitor", 4, 10, 10);
     await h.advanceSeconds(1);
 
-    // A wave: every Load type the roster carries, walking and being shot at.
+    // A wave: every Load type the roster carries, walking and being shot at, and
+    // one of them burning to death on clear ground away from the chain.
     await holdWaveOpen(h);
     for (const type of LOAD_TYPES) await releaseUnit(h, type);
+    await parkUnit(h, "mote", tileCenter(BURNING.col, BURNING.row), {
+      hp: 1,
+      burn: { dps: BURN_DPS, seconds: BURN_SECONDS },
+    });
     await h.advanceSeconds(4);
 
     // The finale: the Overload Dynamo, which no wave carries.

@@ -32,9 +32,16 @@
 //
 // The drive is the three phases `specs/campaign.md` has — a build phase, a wave,
 // and the finale — with something of every kind on the yard: a component firing, a
-// rock stamped, six of the seven Load types walking, and the Overload Dynamo. A
-// build that loads a file lazily is what it is for, and it is the replay this
-// point keeps as evidence.
+// rock stamped, six of the seven Load types walking, one of them burning and dying
+// inside the wave, and the Overload Dynamo. A build that loads a file lazily is
+// what it is for, and it is the replay this point keeps as evidence.
+//
+// THE DEATH IS POSED RATHER THAN WAITED FOR. What makes a build reach for its
+// burn art and its death burst is a Load burning and dying, and waiting for the
+// standing component to finish one off makes whether those files are asked for a
+// question of how long the wave window happens to run. One Load is stood up on a
+// single point of health under a burn instead, so the death lands inside the
+// window on every build and the window is only as long as the phase needs.
 //
 // THE CLOCK IS THE CHECK'S. What the drive spends its frames on is reaching the
 // three phases rather than reading anything positional, and
@@ -55,12 +62,18 @@ import {
   type Harness,
   holdWaveClear,
   openYard,
+  parkUnit,
   pressAction,
   putAwayHeld,
   releaseUnit,
   standComponent,
 } from "../harness";
-import { ASSET_ROOT, LOAD_TYPES, structureCenter } from "../constants";
+import {
+  ASSET_ROOT,
+  LOAD_TYPES,
+  structureCenter,
+  tileCenter,
+} from "../constants";
 
 /** The repository this project sits in, which is where `assets/` is rooted. */
 const REPOSITORY = fileURLToPath(new URL("../../", import.meta.url));
@@ -73,6 +86,13 @@ const NO_AUDIO_CONTEXT = /this host has no AudioContext/;
 
 /** The rate the three phases are driven at. */
 const DRIVE_HZ = 60;
+
+/** Clear ground, away from the map's waypoint platforms and its chain. */
+const BURNING = { col: 21, row: 18 };
+
+/** The burn the posed Load dies under: enough to take a point of health at once. */
+const BURN_DPS = 500;
+const BURN_SECONDS = 3;
 
 /** Seconds spent in each of the three phases. */
 const BUILD_SECONDS = 0.5;
@@ -113,9 +133,14 @@ it("asks the site for nothing it does not carry, across all three phases", async
     standComponent(h, "capacitor", 4, 10, 10);
     await h.advanceSeconds(STANDING_SECONDS);
 
-    // A wave: every Load type the roster carries, walking and being shot at.
+    // A wave: every Load type the roster carries, walking and being shot at, and
+    // one of them burning to death on clear ground away from the chain.
     holdWaveClear(h);
     for (const type of LOAD_TYPES) releaseUnit(h, type);
+    parkUnit(h, "mote", tileCenter(BURNING.col, BURNING.row), {
+      hp: 1,
+      burn: { dps: BURN_DPS, seconds: BURN_SECONDS },
+    });
     await h.advanceSeconds(WAVE_SECONDS);
 
     // The finale: the Overload Dynamo, which no wave carries.

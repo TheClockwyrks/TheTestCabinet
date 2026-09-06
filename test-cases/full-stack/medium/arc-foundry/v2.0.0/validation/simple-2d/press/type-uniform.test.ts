@@ -14,9 +14,16 @@
 // through the placement path. The rate is the spec's, `0.125` a type, and the
 // band each type's count is held to is derived from that figure alone: its
 // expected count over the sample, six standard deviations either side. A press
-// rolling at the stated rate never falls outside a band that wide by chance, and
-// the alternatives the spec makes meaningful — a type never rolled, a type
-// rolled at twice its share — sit outside it.
+// rolling at the stated rate never falls outside a band that wide by chance.
+//
+// WHAT A BAND THAT WIDE SEPARATES, AND WHAT IT DOES NOT. Four hundred draws put a
+// type's expected count at fifty and its standard deviation under seven, so a type
+// never rolled and a type rolled at twice its share both land outside the band and
+// fail. A type rolled at HALF its share lands at twenty-five, which is inside it:
+// telling that lean from the stated figure at six standard deviations takes over a
+// thousand draws, which is past what a bounded sample is. So a lean that small is
+// left to the reviewer, off the yard of rolled types this point writes, rather
+// than being chased with a sample sized to catch it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

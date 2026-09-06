@@ -103,6 +103,11 @@ const ROUND_FRAMES = ticks(0.25);
  * takes is a fact about the machine rather than about the build. An ask is a
  * failure cap and never a measurement: nothing reads how many were spent, and the
  * whole budget is paid only by a build that has not opened its audio at all.
+ *
+ * The worst case is worth naming, because it is what the number costs: a build
+ * that never opens its audio spends {@link ROUNDS} times this many crossings into
+ * the page here — two thousand, none of them moving the simulation — and then the
+ * points that listen for a cue fail on their own terms.
  */
 const ASKS = 1000;
 
