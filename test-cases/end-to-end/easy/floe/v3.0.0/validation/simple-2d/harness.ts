@@ -700,9 +700,9 @@ const kit = createEngineCaseHarness<
  * Installed and released per harness rather than once for the process, because
  * that is what this project has always done: the shim is what the HOST lacks
  * while a harness is alive, and `dispose` puts it back. The package's host counts
- * references, so two harnesses alive at once — a check that compares two seeds
- * builds a second — share one installation and the globals go back when the last
- * one goes.
+ * references, so two harnesses alive at once — a check that builds a second while
+ * the first is still standing — share one installation and the globals go back
+ * when the last one goes.
  */
 function serveSeededAssets(): AssetHost {
   return installAssetHost({

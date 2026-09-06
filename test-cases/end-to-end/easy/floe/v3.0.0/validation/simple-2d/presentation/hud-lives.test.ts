@@ -49,9 +49,11 @@
 // frames are posed identically by `startCrossing` and each is read one tick after
 // its own `reset`, so the game time, the score, the level, the timer and the five
 // open bays are the same in all three and `lives` is the only thing that differs
-// between them — a difference in the bar cannot be the clock, and `reset` seeds
-// the randomness (specs/instrumentation.md) so it cannot be a randomly placed
-// ornament either.
+// between them — a difference in the bar cannot be the clock, and it cannot be
+// anything the game draws at random either, because all of that is the strait's
+// (the lanes' phases, specs/ice.md and specs/water.md; the bonus bay,
+// specs/bays.md) and nothing drawn on the strait is drawn inside the HUD bar
+// (specs/ui.md).
 //
 // WHAT THIS POINT DOES NOT DECIDE. That a fresh run HAS three lives, and that a
 // death takes one, are `progression`'s: `progression/three-lives` and the death
