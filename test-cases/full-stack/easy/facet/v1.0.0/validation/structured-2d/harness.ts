@@ -609,16 +609,15 @@ function toClient(
 }
 
 /**
- * Rounds of {@link Harness.warmAudio}, and the real time each one waits.
+ * How many frames {@link Harness.warmAudio} drives before it gives up.
  *
- * NOT specification figures. specs/assets.md fixes only that a produced sound is
- * decoded asynchronously, never how long that takes, so these are the suite's own
- * patience: sixteen rounds of 25 ms is 0.4 s of real time, far longer than a
- * handful of small `.wav`s take to decode off disk, and bounded so a build that
- * makes no sound at all is reported rather than waited on.
+ * NOT a specification figure. specs/assets.md fixes only that a produced sound is
+ * decoded asynchronously, never how many frames that takes, so this is the
+ * suite's own patience: a failure cap counted in frames rather than measured in
+ * real time, and wide enough that a build that makes no sound at all is reported
+ * rather than waited on.
  */
-const WARM_ROUNDS = 16;
-const WARM_ROUND_MS = 25;
+const AUDIO_WARM_FRAMES = 240;
 
 /* -------------------------------------------------------------------------- */
 /* The two roots, and the platform a headless run stands in for               */
@@ -1036,26 +1035,19 @@ export interface FacetModel {
    */
   armAudio(): Promise<void>;
   /**
-   * Open the audio and wait, in REAL time, until a sound has actually gone out;
-   * answer whether anything was ever heard.
+   * Open the audio and drive frames until a sound has actually gone out; answer
+   * whether anything was ever heard.
    *
    * specs/assets.md has a build DECODE its produced `.wav`s asynchronously, so a
    * conformant build's first frames are silent and a cue check that read the very
-   * first event would be reading the decoder. This waits for the decode instead
-   * of hanging on it, and answers `false` so a check can say the build made no
-   * sound at all.
+   * first event would be reading the decoder. This drives one frame at a time,
+   * yielding between frames so the decode can land, and answers `false` after a
+   * counted number of frames so a check can say the build made no sound at all.
+   * The frames are counted, never timed.
    *
    * It DRIVES FRAMES. Call it while arranging, and read `frame()` after.
    */
   warmAudio(): Promise<boolean>;
-  /**
-   * Let `ms` of REAL time pass while the game stands still.
-   *
-   * For work a build does OFF the frame loop — decoding a sound, resolving a
-   * fetch, decoding an image. Never for something the simulation does; that is
-   * `advance`.
-   */
-  settle(ms: number): Promise<void>;
 
   /**
    * Run `frames` frames back to back, at the harness clock's delta, recording
@@ -1226,8 +1218,8 @@ const kit = createEngineCaseHarness<
     const firings = base.cues;
     // What `base` BECOMES the moment the object below is defined onto it. The
     // members that reach forward to one of this case's own — the wrapped
-    // `advance`, `frameCalls`, `settle`, the patch reading — go through this
-    // name, which is the same object under the type it ends up with.
+    // `advance`, `frameCalls`, the patch reading — go through this name, which
+    // is the same object under the type it ends up with.
     const whole = base as unknown as Harness;
 
     /** Where the last real pointer event was, so a release needs no position. */
@@ -1333,16 +1325,14 @@ const kit = createEngineCaseHarness<
       armAudio: () => Promise.resolve(),
       async warmAudio() {
         const heard = (): boolean => firings.length + box.loops.length > 0;
-        for (let round = 0; round < WARM_ROUNDS && !heard(); round += 1) {
-          await whole.settle(WARM_ROUND_MS);
+        for (let frame = 0; frame < AUDIO_WARM_FRAMES && !heard(); frame += 1) {
+          // A frame, so the build asks for the screen's bed and for anything else
+          // it plays from `update`. The drive is awaited, so a decode the frame
+          // kicked off lands before the next one is driven.
           await whole.advance(1);
         }
         return heard();
       },
-      settle: (ms) =>
-        new Promise((done) => {
-          setTimeout(done, ms);
-        }),
 
       dispose: () => {
         halt();

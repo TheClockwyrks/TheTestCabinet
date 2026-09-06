@@ -16,7 +16,7 @@
 // four rows above are both conformant, and they fill a column with visibly
 // different timing. So an exact expectation written against a refill would fail a
 // conforming build for a choice the specification gave it. `board.ts` is what
-// makes that impossible to write by accident: `settle` gives a refilled cell an
+// makes that impossible to write by accident: `settleBoard` gives a refilled cell an
 // `{ atLeast }` rather than an `{ exactly }`, and `assertFell` reads the union it
 // is handed, so this check asserts the floor because the floor is the only shape
 // the oracle offers.
@@ -57,7 +57,7 @@ import {
   parseToken,
   quietBoard,
   quietRowsWith,
-  settle,
+  settleBoard,
   showFell,
   swapped,
   tokenAt,
@@ -248,7 +248,7 @@ function stepOf(
       );
     }
   }
-  return settle(resolved, cleared);
+  return settleBoard(resolved, cleared);
 }
 
 /**

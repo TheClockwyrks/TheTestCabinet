@@ -57,7 +57,7 @@ import {
   clearSetFromRuns,
   maximalRuns,
   quietRowsWithEscape,
-  settle,
+  settleBoard,
   stepHold,
   swapIsLegal,
   swapped,
@@ -100,7 +100,7 @@ const SWAP_B: CellRef = { col: 5, row: 6 };
  *
  * Column 4 loses its bottom three cells, so every survivor above them falls
  * three rows and the three cells R9 refills come in from above row 0, 1 and 2 —
- * a `fell` of at least `1`, `2` and `3`. `board.ts`'s `settle` is what says so,
+ * a `fell` of at least `1`, `2` and `3`. `board.ts`'s `settleBoard` is what says so,
  * and the check reads it rather than taking this comment's word.
  */
 const FALL_ROWS = 3;
@@ -131,7 +131,7 @@ it("holds past STEP_SECONDS and resolves step 2 only at its own hold", async () 
   // And the arithmetic this point turns on, read off R9 rather than asserted by
   // hand: the step's fall is at least FALL_ROWS, so a conforming hold is longer
   // than the flat STEP_SECONDS a wrong build would use.
-  const settlement = settle(exchanged, cleared);
+  const settlement = settleBoard(exchanged, cleared);
   const fell =
     "exactly" in settlement.fall
       ? settlement.fall.exactly

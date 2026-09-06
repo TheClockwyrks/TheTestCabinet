@@ -53,16 +53,6 @@ import {
   type Viewport,
 } from "../harness";
 
-/**
- * Real milliseconds the produced art is given before the round begins.
- *
- * specs/assets.md has a build ship its gems as produced files, and a file is
- * decoded off the frame loop rather than inside it, so a board read before they
- * arrive could be drawn from placeholders in one frame and from sprites in the
- * next. This spends REAL time only: the simulation stands still through it.
- */
-const ART_SETTLE_MS = 250;
-
 let h: Harness;
 
 /**
@@ -149,8 +139,6 @@ afterEach(async () => {
 });
 
 it("draws the frame a board is dealt on apart from the same board once it has landed", async () => {
-  await h.settle(ART_SETTLE_MS);
-
   const dealt = await captureReplay(h, "fall", async () => {
     // The round begins, and one frame draws the deal the build made.
     const round = await startRound(h);

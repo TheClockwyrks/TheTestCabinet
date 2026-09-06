@@ -472,13 +472,12 @@ format = 2
 # is the `moves` items, `setScreen` and `dealBoard` are the `screens` and
 # `levels` items, and so on).
 #
-# The clock is checked here too, as two separate points, because the two claims
-# come apart. `delta-time-independent` asks that one interval of game time reach
-# one outcome however it is divided, which is the build's integration under every
-# engine; `advances-in-real-time` asks that the game carry itself forward when
-# nothing outside it is stepping, which is the build's work only under `none`,
-# where specs/overview.md hands it the frame loop. Under an engine that loop and
-# its scheduling are the engine's, so the point carries `engines = ["none"]`.
+# The clock is checked here too. `delta-time-independent` asks that one interval
+# of game time reach one outcome however it is divided, which is the build's
+# integration under every engine. That the game carries itself forward on a real
+# wall clock is not a point: under an engine the loop and its scheduling are the
+# engine's, and under `none` it can only be decided by real time elapsing on the
+# host that ran the check, which no validator measures.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -647,23 +646,6 @@ failure_cap = "scuffed"
 # validation/<engine>/instrumentation/delta-time-independent.test.ts.
 validation = { script = "instrumentation/delta-time-independent.test.ts", outputs = [
   { id = "drive", name = "The chain driven under a coarse clock", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances itself in real time"
-description = "Under `none`, on a real wall clock and with nothing stepping the game from outside, a resolving chain's simTime and stepTimer advance over a stretch of real time."
-domains = ["gameplay"]
-failure_cap = "broken"
-# Automated validation: pose a board, accept a swap and let its animation run so
-# a chain is resolving, then let real time pass with nothing advancing the game
-# and assert simTime grew and the chain moved on. Scoped to `none`, where
-# specs/overview.md gives the build "the frame loop and its delta time": under an
-# engine the loop, its scheduling and the delta time it hands each update belong
-# to the engine, so the same check would return one verdict for every build. See
-# validation/none/instrumentation/advances-in-real-time.test.ts.
-validation = { script = "instrumentation/advances-in-real-time.test.ts", engines = ["none"], outputs = [
-  { id = "before", name = "The instant the chain begins", kind = "image" },
-  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
 ] }
 
 # --- The Board ----------------------------------------------------------------

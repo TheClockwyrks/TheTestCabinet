@@ -26,7 +26,7 @@
 // WHAT THE CELLS HOLD AFTERWARDS IS THE ORACLE'S ANSWER, NOT A GUESS. R9 refills
 // from the top of each column, and each of the three columns loses exactly one
 // cell, so what lands in a run cell is the survivor from the row above it and
-// never a refill — `board.ts`'s `settle` says which gem that is for each of the
+// never a refill — `board.ts`'s `settleBoard` says which gem that is for each of the
 // three, and the check reads the KIND alone, because R7 raises the strain of the
 // gems that were standing beside the clear set and that strain is R7's point
 // rather than this one's.
@@ -50,7 +50,7 @@ import {
   parseToken,
   quietRowsWith,
   renderCell,
-  settle,
+  settleBoard,
   swapIsLegal,
   swapped,
   tokenAt,
@@ -105,7 +105,7 @@ it("holds through SWAP_SECONDS and resolves step 1 the moment it is spent", asyn
 
   // What R9 leaves standing at each of those three cells: the survivor from the
   // row above, which the oracle names and the refill cannot reach.
-  const settlement = settle(exchanged, cleared);
+  const settlement = settleBoard(exchanged, cleared);
 
   const before = await loadBoard(h, posed);
 

@@ -91,16 +91,6 @@ const CELLS: readonly PlacedToken[] = [
 const SAMPLES = 17;
 const FRAMES_BETWEEN = 4;
 
-/**
- * Real milliseconds the produced files are given before the sweep begins.
- *
- * specs/assets.md has the systems loaded at run time and decoded off the frame
- * loop, so a sweep begun before the aura's own `system.json` arrives would be
- * watching a stone the build has nothing to run at yet. This spends REAL time
- * only: the simulation stands still through it.
- */
-const ART_SETTLE_MS = 500;
-
 /** How far the widest pair of samples of one cell stands apart. */
 function spread(samples: readonly Patch[]): number {
   let widest = 0;
@@ -136,7 +126,6 @@ it("keeps a cut stone moving on a settled board", async () => {
     "idle",
     "the phase a run-free posed board rests in",
   );
-  await h.settle(ART_SETTLE_MS);
 
   const samples = await captureReplay(h, "aura", async () => {
     // One frame first, so the canvas is holding the board that was posed rather

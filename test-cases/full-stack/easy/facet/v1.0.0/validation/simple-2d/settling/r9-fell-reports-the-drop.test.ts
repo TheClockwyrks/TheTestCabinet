@@ -29,7 +29,7 @@
 // WHAT IS NOT READ. The strain of the survivor that stood against the clear set,
 // which R7 raises and which is R7's point; and the `fell` of the three refilled
 // cells at the top of the column, which R9 fixes only as a floor and which
-// `settling/r9-refill-falls-from-above` decides. `board.ts`'s `settle` is the
+// `settling/r9-refill-falls-from-above` decides. `board.ts`'s `settleBoard` is the
 // oracle for both, and its `Fell` union is what keeps an exact expectation off a
 // refill: only the five survivors are read here, and each of them carries an
 // `exactly`.
@@ -50,7 +50,7 @@ import {
   maximalRuns,
   parseToken,
   quietRowsWith,
-  settle,
+  settleBoard,
   showFell,
   swapped,
   tokenAt,
@@ -149,7 +149,7 @@ it("reports each fallen gem's drop as its new row less its old row", async () =>
   // R9 as `board.ts` restates it, over the board the swap produced and the cells
   // the removal emptied. It is the oracle for what each cell owes, so no figure
   // below is written down twice.
-  const settlement = settle(resolved, CLEAR_SET);
+  const settlement = settleBoard(resolved, CLEAR_SET);
 
   /**
    * Each survivor of the column: where it was posed, where R9 leaves it, the

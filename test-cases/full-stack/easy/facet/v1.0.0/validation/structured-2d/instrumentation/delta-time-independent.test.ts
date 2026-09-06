@@ -100,7 +100,7 @@ import {
   maximalRuns,
   quietRowsWithEscape,
   renderBoard,
-  settle,
+  settleBoard,
   swapIsLegal,
   swapped,
   WILDCARD,
@@ -180,7 +180,7 @@ const REFILL: readonly (readonly [col: number, kinds: string])[] = [
   [5, "C"],
 ];
 
-/** The refill pose in the snapshot's own shape, for `settle`. */
+/** The refill pose in the snapshot's own shape, for `settleBoard`. */
 const REFILL_KINDS: readonly string[] = Array.from(
   { length: GRID_COLS },
   (_, col) => REFILL.find(([at]) => at === col)?.[1] ?? "",
@@ -211,7 +211,7 @@ function boardAfter(steps: number): string[] {
   for (let step = 0; step < steps; step += 1) {
     const cleared = clearSetFromRuns(rows);
     assertLength(cleared, 3, `cells step ${step + 1} clears`);
-    rows = settle(rows, cleared, REFILL_KINDS).rows;
+    rows = settleBoard(rows, cleared, REFILL_KINDS).rows;
   }
   return rows;
 }

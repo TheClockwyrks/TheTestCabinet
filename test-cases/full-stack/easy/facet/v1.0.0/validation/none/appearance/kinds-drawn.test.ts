@@ -59,16 +59,6 @@ const PROBE_ROW = 3;
 /** The board every reading is taken over: the run-free filler, with its escape. */
 const BOARD = quietRowsWithEscape([]);
 
-/**
- * Real milliseconds the produced art is given before the first reading.
- *
- * specs/assets.md has a build ship its gems as produced files, and a file is
- * decoded off the frame loop rather than inside it, so a sweep begun before they
- * arrive could read a placeholder. This spends REAL time only: the simulation
- * stands still through it.
- */
-const ART_SETTLE_MS = 250;
-
 /** The seven side by side in one row, posed for the `kinds` output alone. */
 const KINDS_ROW = withCells(
   BOARD,
@@ -92,7 +82,6 @@ afterEach(async () => {
 it("draws a gem at the cell for each of the seven kinds", async () => {
   await loadBoard(h, BOARD);
   await h.debug.clearSelection();
-  await h.settle(ART_SETTLE_MS);
   await h.advance(1);
 
   // One kind after another into the same cell, a frame each so the build draws

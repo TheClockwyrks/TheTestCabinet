@@ -44,11 +44,12 @@
 // the frames the further piece is read on. A `confirm` on the title menu would
 // additionally raise whatever a build plays for a menu choice.
 //
-// THE WAIT IS REAL TIME AS WELL AS FRAMES. specs/assets.md has the produced
-// `.wav`s decoded with the Web Audio API, which is asynchronous, so a build is
-// entitled to reach for the play bed on the frame the screen changes and start
-// it once the decode lands. The poll below drives frames and lets real time
-// pass between them, and gives up rather than hanging.
+// THE WAIT IS COUNTED IN FRAMES. specs/assets.md has the produced `.wav`s
+// decoded with the Web Audio API, which is asynchronous, so a build is entitled
+// to reach for the play bed on the frame the screen changes and start it once
+// the decode lands. The rounds below drive frames, each drive awaited so a
+// decode lands between one and the next, and give up after a counted number of
+// rounds rather than hanging or measuring the host.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
@@ -63,17 +64,16 @@ import {
 } from "../harness";
 
 /**
- * How the further piece is waited for: rounds of frames, and the real time each
- * round allows a decode.
+ * How the further piece is waited for: rounds of frames.
  *
  * NOT specification figures. specs/assets.md fixes only that a produced sound is
- * decoded asynchronously, never how long that takes, so these are the suite's own
- * patience — long enough that a decode kicked off by the screen change lands, and
- * bounded so a build that never starts a second piece fails instead of hanging.
+ * decoded asynchronously, never how many frames that takes, so these are the
+ * suite's own patience — a failure cap counted in frames rather than measured in
+ * real time, and bounded so a build that never starts a second piece fails
+ * instead of hanging.
  */
 const MUSIC_ROUNDS = 20;
 const MUSIC_FRAMES = 4;
-const MUSIC_POLL_MS = 50;
 
 /**
  * Rounds driven after the pause, so a build that answers a screen change on the
@@ -100,20 +100,18 @@ function watchRunningLoops(): Set<string> {
   return running;
 }
 
-/** Drive frames in short rounds, with real time between them, until `sink` fills. */
+/** Drive frames in short rounds until `sink` fills, or the rounds run out. */
 async function waitForLoop(sink: TimedCue[]): Promise<void> {
   for (let round = 0; round < MUSIC_ROUNDS; round += 1) {
     await h.advance(MUSIC_FRAMES);
     if (sink.length > 0) return;
-    await h.settle(MUSIC_POLL_MS);
   }
 }
 
-/** Drive a short stretch of frames, with real time between them, waiting on nothing. */
+/** Drive a short stretch of frames, waiting on nothing. */
 async function letTheScreenSettle(): Promise<void> {
   for (let round = 0; round < PAUSE_ROUNDS; round += 1) {
     await h.advance(MUSIC_FRAMES);
-    await h.settle(MUSIC_POLL_MS);
   }
 }
 
@@ -130,10 +128,10 @@ it("starts the play bed at the round and keeps it under a pause", async () => {
   assertEqual(h.snapshot().screen, "title", "the screen the game opens on");
   const running = watchRunningLoops();
 
-  // Open the build's audio and wait, in real time, until it has actually made a
-  // sound. This is the ROUTE, not the point — that the title carries a piece is
-  // `audio/music-title`'s — and it is what gives the build its gesture and real
-  // time to decode before the boundary is crossed.
+  // Open the build's audio and drive frames until it has actually made a sound.
+  // This is the ROUTE, not the point — that the title carries a piece is
+  // `audio/music-title`'s — and it is what gives the build its gesture and the
+  // frames to decode over before the boundary is crossed.
   assertEqual(await h.warmAudio(), true, "the build ever made a sound");
   assertEqual(
     h.snapshot().screen,

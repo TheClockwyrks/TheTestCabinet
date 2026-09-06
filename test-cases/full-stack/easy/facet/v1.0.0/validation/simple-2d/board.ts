@@ -104,7 +104,7 @@ export interface Gem {
    *
    * The notation carries no `fell` — "every gem of a board written in it is
    * standing still in the cell it is written at" — so a gem read out of a token
-   * carries `0`, and {@link settle} is what puts any other figure on one.
+   * carries `0`, and {@link settleBoard} is what puts any other figure on one.
    */
   fell: number;
 }
@@ -1040,7 +1040,7 @@ export interface Settlement {
  * is written as that kind, plain at strain `0`; every other refilled cell is
  * {@link WILDCARD}.
  */
-export function settle(
+export function settleBoard(
   rows: BoardRows,
   emptied: readonly CellRef[],
   refillKinds: readonly string[] = [],

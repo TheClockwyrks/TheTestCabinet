@@ -54,7 +54,7 @@ import {
   maximalRuns,
   quietRowsWithEscape,
   renderBoard,
-  settle,
+  settleBoard,
   swapIsLegal,
   swapped,
   WILDCARD,
@@ -96,7 +96,7 @@ const REFILL: readonly (readonly [col: number, kinds: string])[] = [
   [5, "M"],
 ];
 
-/** The refill pose in the snapshot's own shape, for `settle`. */
+/** The refill pose in the snapshot's own shape, for `settleBoard`. */
 const REFILL_KINDS: readonly string[] = Array.from(
   { length: GRID_COLS },
   (_, col) => REFILL.find(([at]) => at === col)?.[1] ?? "",
@@ -162,7 +162,7 @@ it("reaches the board, score, phase and figures the rules give with sound muted"
   assertLength(maximalRuns(exchanged), 1, "maximal runs the exchange produces");
   const cleared = clearSetFromRuns(exchanged);
   assertLength(cleared, 3, "cells the one step clears");
-  const settled = settle(exchanged, cleared, REFILL_KINDS);
+  const settled = settleBoard(exchanged, cleared, REFILL_KINDS);
   assertTrue(
     settled.rows.every((row) => !row.includes(WILDCARD)),
     "every refilled cell is posed",
