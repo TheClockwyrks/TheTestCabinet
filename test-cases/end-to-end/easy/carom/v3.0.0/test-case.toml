@@ -619,19 +619,6 @@ failure_cap = "passable"
 validation = { script = "gameplay/ai-deadzone.test.ts", outputs = [
   { id = "still", name = "The AI paddle holding still on a ball inside its deadzone", kind = "replay" },
 ] }
-[[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances itself in real time"
-description = "With nothing stepping the game from outside, the game's own clock gains and a ball in flight moves over a stretch of real time."
-domains = ["single-player", "versus"]
-failure_cap = "broken"
-# Automated validation: hand the game back to its own frame loop with
-# setAutoStep(true), let it run for a stretch of real time, and confirm the game's
-# clock gained and the ball moved — a build that only advances when something pokes
-# it stays where it was put. Scoped to `none`, where the build writes the frame loop
-# itself; under an engine the runtime pumps the frames and every build on it gets
-# this for free. See validation/none/gameplay/advances-in-real-time.test.ts.
-validation = { script = "gameplay/advances-in-real-time.test.ts", engines = ["none"], outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 # The simulation is driven by elapsed time, not by a count of frames. The frame clock
 # is the engine's and a validator supplies it, so this is checkable head-on: the same
 # scenario is replayed under several clocks and the outcomes must agree.

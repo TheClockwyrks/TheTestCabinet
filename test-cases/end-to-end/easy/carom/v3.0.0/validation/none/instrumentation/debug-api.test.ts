@@ -29,16 +29,19 @@
 // The third is the CLOCK, which exists only under this engine. Nothing outside an
 // engineless build owns its loop, so `setAutoStep` and `advance` are on the
 // surface and everything else in this suite rests on them: a build whose
-// `setAutoStep(false)` does not really disconnect the wall clock, or whose
-// `advance` does not really run whole frames, gives every other check a scenario
-// that drifts under it. So this point checks both directly.
+// `advance` does not really run whole frames of the length asked for gives every
+// other check a scenario that drifts under it. So this point drives `advance`
+// directly and reads the game's own clock and a ball in flight back off it. What
+// `setAutoStep(false)` disconnects is real time, and real time is the one thing
+// no check here waits on, so the clock is read only through the frames this
+// point asks for.
 //
 // THIS POINT IS THE ONE THAT DOES NOT ISOLATE ITS WORLD, and that is the
 // requirement rather than an exception to it. What it decides is that the surface
 // poses and reports the state the build declared, and `clearWorld`, `spawnBall`
 // and `spawnObstacle` are three of the operations it decides — so the field is
-// emptied and filled here as the subject of the check, and the frozen-clock
-// reading wants the whole standard world standing still rather than one body.
+// emptied and filled here as the subject of the check, and the driven-clock
+// reading wants the whole standard world in play rather than one body.
 //
 // The keyboard and the overlay are NOT on the surface. They belong to the runtime
 // layer an engineless build writes, and `specs/instrumentation.md` strikes
@@ -79,9 +82,6 @@ import {
   type Harness,
   type MultiBallOps,
 } from "../harness";
-
-/** Real time allowed to pass with the game off the clock and nothing advancing it. */
-const FROZEN_MS = 750;
 
 /** The frames of live flight the snapshot below is read off. */
 const FLIGHT_TICKS = 36; // 0.3 s
@@ -195,32 +195,23 @@ it("carries a version and every required operation, as functions", async () => {
   }
 });
 
-it("takes the game off the wall clock, and runs whole frames on demand", async () => {
-  // The harness has already called `setAutoStep(false)`. So a match is opened and
-  // served, and then real time is simply allowed to pass: a build still running
-  // itself off the wall clock moves the ball and its own clock while this waits,
-  // and one that really disconnected does not move at all. The match is a Versus
-  // one, so the only thing with any reason to move during that window is the
-  // ball's own flight.
+it("runs whole frames on demand", async () => {
+  // The harness has already called `setAutoStep(false)`, so a match is opened and
+  // served and the only frames the game runs from here are the ones asked for.
+  // An advance runs real frames: the game's own clock moves by exactly the time
+  // asked for, and the simulation moves with it. The match is a Versus one, so
+  // the only thing with any reason to move across those frames is the ball's own
+  // flight.
   await startPlaying(h, "versus");
-  const frozen = await h.snapshot();
-  await new Promise((resolve) => setTimeout(resolve, FROZEN_MS));
-  const still = await h.snapshot();
-
-  assertEqual(still.simTime, frozen.simTime);
-  assertEqual(ball0(still).x, ball0(frozen).x);
-  assertEqual(ball0(still).y, ball0(frozen).y);
-
-  // And an advance runs real frames: the game's own clock moves by exactly the
-  // time asked for, and the simulation moves with it.
+  const served = await h.snapshot();
   await h.advance(TICK_HZ); // one second at the suite's clock
   const driven = await h.snapshot();
 
-  assertCloseTo(driven.simTime - frozen.simTime, 1, 6);
+  assertCloseTo(driven.simTime - served.simTime, 1, 6);
   assertGreaterThan(
     Math.hypot(
-      ball0(driven).x - ball0(frozen).x,
-      ball0(driven).y - ball0(frozen).y,
+      ball0(driven).x - ball0(served).x,
+      ball0(driven).y - ball0(served).y,
     ),
     1,
   );

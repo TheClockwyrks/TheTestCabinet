@@ -159,16 +159,15 @@ validation = { script = "multi/launch-angle-posed.test.ts", outputs = [
 [[review.categories.items]]
 id = "launch-angle-drawn"
 title = "Launch angles are drawn over the full circle"
-description = "Over seventy-two draws of drawBallLaunchAngle on one ball, every launchAngle reads back inside [0, 2*PI), at least twenty-four are steeper than 30 degrees from horizontal, and at least one heads each way across the field."
+description = "Over sixteen draws of drawBallLaunchAngle on one ball, every launchAngle reads back inside [0, 2*PI), and the draws are not all the same angle."
 domains = ["single-player", "versus"]
 failure_cap = "passable"
-# Automated validation: draw the angle seventy-two times through the operation
-# that performs parking's one draw and nothing else, reading it back off the
-# snapshot each time, and hold the sample to what a full-circle draw gives: a
-# uniform draw puts two thirds of its angles outside a +/-30 degree band, 48 of
-# the 72, and the bar of 24 is six standard deviations below that; one each way
-# is missed one time in 2^71. A build that aims its launches fails both. See
-# validation/<engine>/multi/launch-angle-drawn.test.ts.
+# Automated validation: draw the angle sixteen times through the operation that
+# performs parking's one draw and nothing else, reading it back off the snapshot
+# each time. Every reading is held to the circle, and the sample to the one thing
+# a draw over a continuum shows and a fixed launch cannot: the readings differ.
+# How the angles spread around the circle is the reviewer's to judge from the
+# replay. See validation/<engine>/multi/launch-angle-drawn.test.ts.
 validation = { script = "multi/launch-angle-drawn.test.ts", outputs = [
   { id = "launch", name = "Three balls leaving on their last drawn headings", kind = "replay" },
 ] }

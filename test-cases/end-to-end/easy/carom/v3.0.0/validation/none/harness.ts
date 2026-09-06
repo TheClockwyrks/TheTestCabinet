@@ -65,10 +65,9 @@
 // takes the game off real time and `advance(seconds, frames)` runs whole frames
 // of a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of frames and gets exactly that number — no polling, no
-// waiting, and no measurement of the machine it ran on. The one check that is
-// ABOUT the loop running itself (`gameplay/advances-in-real-time`) hands it back
-// with `runUntil`, which watches the game's OWN clock while real time passes
-// rather than measuring one against the other.
+// waiting, and no measurement of the machine it ran on. No check in this project
+// hands the loop back or lets real time pass: a frame lands here because a check
+// asked for it, on any machine alike.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
