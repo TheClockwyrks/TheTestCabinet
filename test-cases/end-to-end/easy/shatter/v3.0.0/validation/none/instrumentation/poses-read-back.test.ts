@@ -71,6 +71,14 @@ const POSED_ROCK_VELOCITY = { vx: 77, vy: -44 } as const;
 /** Where the saucer whose faculties are posed hangs. */
 const SAUCER_PLACE = { x: 1000, y: 140 } as const;
 
+/** The cadence's posed due, in seconds: neither the first delay nor a gap. */
+const POSED_DUE = 7.5;
+
+/** The posed draws: each a value the draw could decide, and none a default. */
+const POSED_ENTRY_ROW = 333;
+const POSED_AIM = 0.05;
+const POSED_ROCK_SPEED = 95;
+
 /**
  * The saucer's posed velocity, in units per second.
  *
@@ -138,9 +146,41 @@ it("reports every value the surface poses", async () => {
     POSED_SAUCER_VELOCITY.vx,
     POSED_SAUCER_VELOCITY.vy,
   );
+  // Up, which is the opposite of the `1` addSaucer brings a saucer on with.
+  await h.debug.setSaucerWeave(-1);
+
+  // The cadence's due, and the five posed draws.
+  await h.debug.setSaucerDue(POSED_DUE);
+  await h.debug.setNextSaucerEdge("right");
+  await h.debug.setNextSaucerRow(POSED_ENTRY_ROW);
+  await h.debug.setNextSaucerAim(POSED_AIM);
+  await h.debug.setNextRockSpeed(POSED_ROCK_SPEED);
+  await h.debug.setNextRecycleEdge("top");
 
   await captureStill(h, "posed");
   const s = await h.snapshot();
+
+  assertCloseTo(s.saucerDue, POSED_DUE, READ_BACK_DIGITS, "setSaucerDue");
+  assertEqual(s.nextSaucerEdge, "right", "setNextSaucerEdge");
+  assertCloseTo(
+    s.nextSaucerRow ?? Number.NaN,
+    POSED_ENTRY_ROW,
+    READ_BACK_DIGITS,
+    "setNextSaucerRow",
+  );
+  assertCloseTo(
+    s.nextSaucerAim ?? Number.NaN,
+    POSED_AIM,
+    READ_BACK_DIGITS,
+    "setNextSaucerAim",
+  );
+  assertCloseTo(
+    s.nextRockSpeed ?? Number.NaN,
+    POSED_ROCK_SPEED,
+    READ_BACK_DIGITS,
+    "setNextRockSpeed",
+  );
+  assertEqual(s.nextRecycleEdge, "top", "setNextRecycleEdge");
 
   assertEqual(s.score, POSED_SCORE, "setScore");
   assertEqual(s.lives, POSED_LIVES, "setLives");
@@ -196,6 +236,7 @@ it("reports every value the surface poses", async () => {
   assertEqual(saucer.mind, true, "setSaucerMind(true)");
   assertEqual(saucer.gun, true, "setSaucerGun(true)");
   assertEqual(saucer.travel, true, "setSaucerTravel(true)");
+  assertEqual(saucer.weave, -1, "setSaucerWeave(-1)");
 
   // The three clocks `addSaucer` fixes on arrival, read before a tick has run:
   // all three move once the game is stepped, so a reading taken after an advance
@@ -254,6 +295,7 @@ it("reports every gate and faculty in both directions", async () => {
   await h.debug.setSaucerMind(true);
   await h.debug.setSaucerGun(true);
   await h.debug.setSaucerTravel(true);
+  await h.debug.setSaucerWeave(1);
 
   const open = await h.snapshot();
   assertEqual(open.waveSpawning, true, "setWaveSpawning(true)");
@@ -263,6 +305,7 @@ it("reports every gate and faculty in both directions", async () => {
   assertEqual(running.mind, true, "setSaucerMind(true)");
   assertEqual(running.gun, true, "setSaucerGun(true)");
   assertEqual(running.travel, true, "setSaucerTravel(true)");
+  assertEqual(running.weave, 1, "setSaucerWeave(1)");
 });
 
 it("reports the screen and the menu entry it poses", async () => {

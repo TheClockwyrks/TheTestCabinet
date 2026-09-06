@@ -23,12 +23,13 @@
 // when the wave arrives; reading it live rather than from the pose is what keeps
 // the check honest against a build that moves it anyway.
 //
-// TEN SEEDS, BECAUSE THE PLACEMENT IS A DRAW. `specs/simulation.md` lists "a wave's
-// rock positions" among the game's seeded draws, so one wave is one sample of a
+// TEN GAMES, BECAUSE THE PLACEMENT IS A DRAW. `specs/simulation.md` lists "a wave's
+// rock positions" among the draws the game makes, so one wave is one sample of a
 // random layout: a build that places rocks anywhere at all satisfies the rule on
-// some waves by luck. Ten games at wave 10 is a hundred and thirty independent placements,
-// and the verdict is the CLOSEST of all of them — one rock inside the exclusion on
-// any of the ten fails the item, and names which.
+// some waves by luck. Ten games at wave 10 is a hundred and thirty independent
+// placements, and the verdict is the CLOSEST of all of them — one rock inside the
+// exclusion on any of the ten fails the item, and names which. Nothing poses a
+// position: the placement is the build's own draw, read where it lands.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
@@ -61,8 +62,8 @@ const SHIP_AT = { x: 300, y: 180 };
 const POSED_WAVE = 9;
 const ARRIVING_WAVE = POSED_WAVE + 1;
 
-/** The seeds the placement is sampled on. `specs/simulation.md` seeds the draw. */
-const SEEDS = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+/** How many games the placement is sampled on. */
+const GAMES = 10;
 
 /**
  * How far inside the stated clearance a rock may read: two logical units.
@@ -94,10 +95,10 @@ afterEach(async () => {
 it("spawns every rock of a wave at least 300 from the ship", async () => {
   // Named so the failure below can say which of the ten games it came from, and
   // so the reading is the closest approach of all of them rather than the last.
-  let closest = { seed: -1, distance: Number.POSITIVE_INFINITY, what: "" };
+  let closest = { game: -1, distance: Number.POSITIVE_INFINITY, what: "" };
 
-  for (const seed of SEEDS) {
-    await h.debug.reset({ seed });
+  for (let game = 1; game <= GAMES; game += 1) {
+    await h.debug.reset();
     await poseLiveWave(h, { wave: POSED_WAVE });
     // Before the clear, not after it: the ship is out here for the whole of the
     // banner as well as for the tick the wave turned over, so a build that fixes
@@ -112,7 +113,7 @@ it("spawns every rock of a wave at least 300 from the ship", async () => {
       const distance = shipClearance(arrival, rock);
       if (distance < closest.distance) {
         closest = {
-          seed,
+          game,
           distance,
           what:
             `${describeRock(rock)}, with the ship at ` +
@@ -127,10 +128,10 @@ it("spawns every rock of a wave at least 300 from the ship", async () => {
     closest.distance,
     FLOOR,
     `the shortest wrapped separation from the ship of the closest rock of ` +
-      `${SEEDS.length} wave-${ARRIVING_WAVE} spawns, which ` +
+      `${GAMES} wave-${ARRIVING_WAVE} spawns, which ` +
       `specs/progression.md puts at WAVE_MIN_SHIP_DIST ` +
-      `(${WAVE_MIN_SHIP_DIST}); the closest was ${closest.what} on seed ` +
-      `${closest.seed}`,
+      `(${WAVE_MIN_SHIP_DIST}); the closest was ${closest.what} in game ` +
+      `${closest.game}`,
   );
 });
 

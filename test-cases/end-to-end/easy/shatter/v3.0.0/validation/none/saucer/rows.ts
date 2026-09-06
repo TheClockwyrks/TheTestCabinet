@@ -1,58 +1,63 @@
-// Shatter — the sixteen arrivals the two entry-row checks read. CASE-PROVIDED.
+// Shatter — the forty arrivals the two entry-row checks read. CASE-PROVIDED.
 //
 // `specs/saucer.md` has a saucer enter "at a `y` drawn uniformly from `SAUCER_R` to
 // `FIELD_H - SAUCER_R`", and that one sentence carries two separable properties: a
 // row lies INSIDE the range, and rows drawn over and over SPREAD across it. Each is
 // an item of its own, because a build that always enters dead centre and a build
 // that enters half a craft off the top are different faults and must grade
-// differently. What both share is the GATHER — four games opened at four seeds,
-// four consecutive arrivals read from each — so it is run once, here, and each
-// check reads its own thing off it.
+// differently. What both share is the GATHER — four games opened, ten consecutive
+// arrivals read from each — so it is run once, here, and each check reads its own
+// thing off it.
+//
+// THE ROW IS THE GAME'S OWN DRAW. Nothing here poses a row: `setNextSaucerRow` is
+// how a check that wants a particular row gets one, and these two checks want the
+// build's draw. What IS posed is the cadence's due, through `setSaucerDue`, so an
+// arrival follows the departure before it within a quarter of a second rather
+// than after a gap of twenty-five to thirty-five; the draw of the row is the same
+// draw either way.
 //
 // IT LIVES IN THE GROUP because nothing outside `saucer` reads an entry row, and it
 // sits beside `cadence.ts` rather than inside it because `cadence.ts` is the routes
 // every `saucer` check shares and this is one scenario two of them share.
 //
-// NOT ONE FIGURE BELOW IS A BOUND. The seeds, the sample size and the stride are
-// the scenario and its cost; every tolerance stays in the check that asserts it,
-// derived there from the figure `specs/saucer.md` fixes for it.
+// NOT ONE FIGURE BELOW IS A BOUND. The game count, the sample size and the stride
+// are the scenario and its cost; every tolerance stays in the check that asserts
+// it, derived there from the figure `specs/saucer.md` fixes for it.
 
 import { TICK_HZ } from "../constants";
 import { captureStill, type Harness } from "../harness";
-import { nextArrival, openSaucerGame } from "./cadence";
+import { awaitDeparture, closeUpArrival, openSaucerGame } from "./cadence";
 
-/** The four games the arrivals are read from. */
-export const SEEDS = [1, 2, 3, 4] as const;
+/** How many games the arrivals are read from. */
+export const GAMES = 4;
 
-/** How many consecutive visits are read from each of them. Four each, sixteen in all. */
-export const ARRIVALS_PER_SEED = 4;
+/** How many consecutive visits are read from each of them. Ten each, forty in all. */
+export const ARRIVALS_PER_GAME = 10;
 
 /**
- * Half a `SAUCER_WEAVE_INTERVAL`, the stride the arrivals are caught with.
+ * Half a `SAUCER_WEAVE_INTERVAL`, the stride a departure is watched for with.
  *
- * NOT A TOLERANCE. `specs/saucer.md` has the saucer enter "with no vertical
- * component" and reroll its weave "every `SAUCER_WEAVE_INTERVAL`, STARTING ONE FULL
- * INTERVAL after it enters", so the row a saucer entered on is still the row it is
- * on for a whole second afterwards — and this stride is half of that second at its
- * widest, so a sample inside it reads the entry row exactly.
+ * NOT A TOLERANCE. A departure is watched for, not read: the row is read on the
+ * tick the arrival is caught, and {@link closeUpArrival} catches it tick by tick.
  */
 export const STRIDE = TICK_HZ / 2;
 
 /** One arrival's entry row, with the game and the visit it was read from. */
 export interface EntryRow {
-  seed: number;
+  game: number;
   id: number;
   y: number;
 }
 
 /**
- * Open four games and read four consecutive arrivals from each, sixteen in all.
+ * Open four games and read ten consecutive arrivals from each, forty in all.
  *
- * FOUR SEEDS AND FOUR VISITS APIECE, so the reading covers LATER arrivals as well
- * as first ones rather than four copies of one game's opening draw. The draw is the
+ * FOUR GAMES AND TEN VISITS APIECE, so the reading covers LATER arrivals as well
+ * as first ones rather than copies of one game's opening draw. The draw is the
  * game's own, so each game is really opened and left to run: `openSaucerGame`
- * resets at the seed, empties the field and turns the arrival gate back on, and
- * nothing else can put a saucer up.
+ * resets, empties the field and turns the arrival gate back on, and nothing else
+ * can put a saucer up. Each visit runs out on its own clock before the next is
+ * brought on.
  *
  * The first arrival is drawn once into `still`, for the picture each item carries.
  */
@@ -62,13 +67,14 @@ export async function readEntryRows(
 ): Promise<EntryRow[]> {
   const rows: EntryRow[] = [];
 
-  for (const seed of SEEDS) {
-    await openSaucerGame(h, seed);
+  for (let game = 0; game < GAMES; game += 1) {
+    await openSaucerGame(h);
     let previous: number | null = null;
-    for (let visit = 0; visit < ARRIVALS_PER_SEED; visit += 1) {
-      const arrival = await nextArrival(h, previous, { stride: STRIDE });
+    for (let visit = 0; visit < ARRIVALS_PER_GAME; visit += 1) {
+      if (previous !== null) await awaitDeparture(h, previous, STRIDE);
+      const arrival = await closeUpArrival(h, previous);
       if (rows.length === 0) await captureStill(h, still);
-      rows.push({ seed, id: arrival.saucer.id, y: arrival.saucer.y });
+      rows.push({ game, id: arrival.saucer.id, y: arrival.saucer.y });
       previous = arrival.saucer.id;
     }
   }

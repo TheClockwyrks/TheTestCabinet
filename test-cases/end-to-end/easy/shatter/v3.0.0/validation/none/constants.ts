@@ -373,8 +373,3 @@ export const OVERLAY_KEY = "Backquote";
  * interacted with the page — without touching a thing the game answers to.
  */
 export const UNBOUND_KEY = "KeyZ";
-
-/* ---- The debug surface (specs/instrumentation.md) ------------------------- */
-
-/** The seed `reset()` uses when its caller names none. */
-export const DEFAULT_SEED = 1;

@@ -8,12 +8,13 @@
 // reported on — never from one arrival to the next, which would fold the twelve
 // seconds of `SAUCER_LIFETIME` into a figure that does not include them.
 //
-// THREE SEEDS, BECAUSE THE GAP IS A DRAW. One seed reads one sample of a uniform
-// draw over a ten-second range, which cannot tell a build that draws correctly from
-// one that always waits the same legal time; three read three, and every one of
-// them has to lie inside the range. The range itself is the assertion, not the
-// spread across the three: how widely a build's draws scatter inside a legal range
-// is not something `specs/saucer.md` fixes.
+// THREE GAMES, BECAUSE THE GAP IS A DRAW. One game reads one sample of a uniform
+// draw over a ten-second range; three read three, and every one of them has to
+// lie inside the range. The range itself is the assertion, not the spread across
+// the three: how widely a build's draws scatter inside a legal range is not
+// something `specs/saucer.md` fixes. Nothing is posed for the gap — `setSaucerDue`
+// is how a check that wants a particular due gets one, and this check wants the
+// build's own draw.
 //
 // WHY FOUR TENTHS OF A SECOND. The sweep samples every `STRIDE` ticks, so the tick
 // it reports a departure on and the tick it reports the next arrival on are each up
@@ -34,8 +35,8 @@ import {
 } from "../harness";
 import { nextArrival, openSaucerGame } from "./cadence";
 
-/** The seeds the three draws are read from. Any three distinct games. */
-const SEEDS = [1, 2, 3] as const;
+/** How many games the draw is read from. */
+const GAMES = 3;
 
 /** How often the sweep samples: every fifth of a second. */
 const STRIDE = TICK_HZ / 5;
@@ -60,8 +61,8 @@ afterEach(async () => {
 });
 
 it("waits SAUCER_GAP_MIN to SAUCER_GAP_MAX after a saucer leaves", async () => {
-  for (const seed of SEEDS) {
-    await openSaucerGame(h, seed);
+  for (let game = 1; game <= GAMES; game += 1) {
+    await openSaucerGame(h);
 
     const first = await nextArrival(h, null, { stride: STRIDE });
 
@@ -74,11 +75,11 @@ it("waits SAUCER_GAP_MIN to SAUCER_GAP_MAX after a saucer leaves", async () => {
     );
     assertTrue(
       left.hit,
-      `seed ${seed}: the first saucer leaving the field within 30 s of game time (specs/saucer.md)`,
+      `game ${game}: the first saucer leaving the field within 30 s of game time (specs/saucer.md)`,
     );
 
     const next = await nextArrival(h, first.saucer.id, { stride: STRIDE });
-    if (seed === SEEDS[0]) {
+    if (game === 1) {
       await h.advance(SETTLE_TICKS);
       await captureStill(h, "gap");
     }
@@ -87,7 +88,7 @@ it("waits SAUCER_GAP_MIN to SAUCER_GAP_MAX after a saucer leaves", async () => {
       secondsFor(next.ticks),
       SAUCER_GAP_MIN - GAP_TOLERANCE,
       SAUCER_GAP_MAX + GAP_TOLERANCE,
-      `seed ${seed}: the seconds between the first saucer leaving and the next arriving (specs/saucer.md)`,
+      `game ${game}: the seconds between the first saucer leaving and the next arriving (specs/saucer.md)`,
     );
   }
 });

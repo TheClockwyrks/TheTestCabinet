@@ -113,11 +113,11 @@ single game, rated on the same four domains, `gravity`, `flight`, `arcade` and
 
 - `base` — the endless arcade game: a rock is destroyed by a single hit and the
   ship carries only its gun. It adds no review point of its own, so a base run is
-  rated on the 236 common points. The reference ruleset.
+  rated on the 240 common points. The reference ruleset.
 - `warhead` — the same game with armored rocks, so a Large takes three hits, and
   a homing torpedo: one guided munition on a ten-second recharge that flies true
   through the well and destroys any rock outright, blasting its fragments outward
-  far harder than the gun does. It adds 54 points, so a warhead run is rated on 290.
+  far harder than the gun does. It adds 54 points, so a warhead run is rated on 294.
 
 Only the engine-backed project differs by variant, because its `src/constants.ts`
 carries the armor and torpedo figures and binds the torpedo key. The engineless
@@ -136,7 +136,7 @@ scenario still writes what it recorded.
 
 ## Validation
 
-This case is validator-rated: every one of the 290 checklist points carries a
+This case is validator-rated: every one of the 294 checklist points carries a
 Vitest suite, and the validators decide the functional rating through each point's
 failure cap. A reviewer rates the run's aesthetics through the four domains and
 may override a verdict.
@@ -190,7 +190,7 @@ lives and grace around it), `arcade` (the rocks, the waves, the saucer and the
 score) and `presentation` (the screens, the HUD, the legibility of what was drawn,
 and the audio) — and its overall rating is the worst of the four.
 
-The 236 common points sit in eighteen categories. The warhead ruleset adds 54
+The 240 common points sit in eighteen categories. The warhead ruleset adds 54
 across six blocks: four fold into the common `Instrumentation`, `The rocks`,
 `Screens and menus` and `Look and readouts` categories by id, and two are
 categories of its own, `Homing torpedo` and `Detonation`. Each point names the

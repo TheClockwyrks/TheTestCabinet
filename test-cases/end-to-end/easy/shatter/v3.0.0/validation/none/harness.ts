@@ -189,9 +189,10 @@ export const REQUIRED_OPS = [
   "setLives",
   "setWave",
   "setWaveBanner",
-  // The world gates.
+  // The world gates, and the saucer cadence.
   "setWaveSpawning",
   "setSaucerSpawning",
+  "setSaucerDue",
   // The ship.
   "setShipPosition",
   "setShipVelocity",
@@ -218,6 +219,13 @@ export const REQUIRED_OPS = [
   "setSaucerMind",
   "setSaucerGun",
   "setSaucerTravel",
+  "setSaucerWeave",
+  // The posed draws.
+  "setNextSaucerEdge",
+  "setNextSaucerRow",
+  "setNextSaucerAim",
+  "setNextRockSpeed",
+  "setNextRecycleEdge",
 ] as const;
 
 /**
@@ -285,6 +293,12 @@ export interface RockView {
 }
 
 /** The saucer, as a snapshot reports it, or `null` when none is up. */
+/** The edge a saucer enters at. */
+export type SaucerEdge = "left" | "right";
+
+/** An edge of the field, where a recycled rock re-enters. */
+export type FieldEdge = "top" | "bottom" | "left" | "right";
+
 export interface SaucerView {
   /** Fresh on each arrival; never reused while a live entity holds it. */
   id: number;
@@ -298,6 +312,8 @@ export interface SaucerView {
   gun: boolean;
   /** Its locomotion. */
   travel: boolean;
+  /** The direction its next reroll takes from rest: `1` down, `-1` up. */
+  weave: 1 | -1;
   /** Seconds until its next aimed shot; `SAUCER_FIRE_INTERVAL` on arrival. */
   fireClock: number;
   /** Seconds until it rerolls its weave; `SAUCER_WEAVE_INTERVAL` on arrival. */
@@ -324,9 +340,9 @@ export interface TorpedoView {
  * The state a snapshot reports, exactly as `specs/instrumentation.md` shapes it.
  *
  * Every field an operation can set is here, which is what makes every pose
- * verifiable by set-then-read — except `tickClock`, `nextId` and `rngState`, the
- * bookkeeping `reset` restores and `specs/instrumentation.md` deliberately keeps
- * out of the snapshot. `muted` is the exception in the other direction: no
+ * verifiable by set-then-read — except `tickClock` and `nextId`, the bookkeeping
+ * `reset` restores and `specs/instrumentation.md` deliberately keeps out of the
+ * snapshot. `muted` is the exception in the other direction: no
  * operation sets it, and it is the game's copy of the runtime's own mute bit,
  * reached the way a player reaches it through `KeyM`.
  *
@@ -356,6 +372,16 @@ export interface ShatterSnapshot {
   saucerClock: number;
   /** What `saucerClock` must reach for the next saucer to arrive, in seconds. */
   saucerDue: number;
+  /** The posed entry edge of the next arrival, `null` when none stands. */
+  nextSaucerEdge: SaucerEdge | null;
+  /** The posed entry row of the next arrival, `null` when none stands. */
+  nextSaucerRow: number | null;
+  /** The posed aim error of the saucer's next shot, in radians. */
+  nextSaucerAim: number | null;
+  /** The posed base drift speed of the next placement of rocks. */
+  nextRockSpeed: number | null;
+  /** The posed edge the next recycled rock re-enters at. */
+  nextRecycleEdge: FieldEdge | null;
   /** `none` only: whether the frame loop advances the simulation. */
   autoStep: boolean;
   ship: ShipView;
@@ -399,7 +425,7 @@ export interface Rect {
 export interface ShatterDebugApi {
   setAutoStep(enabled: boolean): Promise<void>;
   advance(ticks: number): Promise<void>;
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<ShatterSnapshot>;
   menuItemRect(index: number): Promise<Rect | null>;
 
@@ -412,6 +438,7 @@ export interface ShatterDebugApi {
 
   setWaveSpawning(enabled: boolean): Promise<void>;
   setSaucerSpawning(enabled: boolean): Promise<void>;
+  setSaucerDue(seconds: number): Promise<void>;
 
   setShipPosition(x: number, y: number): Promise<void>;
   setShipVelocity(vx: number, vy: number): Promise<void>;
@@ -438,6 +465,13 @@ export interface ShatterDebugApi {
   setSaucerMind(enabled: boolean): Promise<void>;
   setSaucerGun(enabled: boolean): Promise<void>;
   setSaucerTravel(enabled: boolean): Promise<void>;
+  setSaucerWeave(direction: 1 | -1): Promise<void>;
+
+  setNextSaucerEdge(edge: SaucerEdge): Promise<void>;
+  setNextSaucerRow(y: number): Promise<void>;
+  setNextSaucerAim(radians: number): Promise<void>;
+  setNextRockSpeed(speed: number): Promise<void>;
+  setNextRecycleEdge(edge: FieldEdge): Promise<void>;
 
   /** `warhead` only. */
   setRockHealth(id: number, hp: number): Promise<void>;
@@ -1175,11 +1209,8 @@ export async function startPlaying(
  * gate table: a check reaching a real opening wave this way is reaching it the way a
  * player does.
  */
-export async function startGameFromTitle(
-  h: Harness,
-  options: { seed?: number } = {},
-): Promise<void> {
-  await h.debug.reset(options.seed === undefined ? undefined : options);
+export async function startGameFromTitle(h: Harness): Promise<void> {
+  await h.debug.reset();
   await h.debug.setMenuIndex(0);
   await h.tap("Enter");
   await h.advance(1);

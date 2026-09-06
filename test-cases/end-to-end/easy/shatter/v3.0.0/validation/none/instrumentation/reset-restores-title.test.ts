@@ -10,9 +10,13 @@
 // body on every roster — and then the whole list is read back. A build that resets
 // four of the fields and forgets the fifth fails on the fifth.
 //
-// AND WHY MUTE AND THE CLOCK ARE THE EXCEPTIONS. `specs/instrumentation.md` says `options.seed`
-// seeds the randomness and that "`muted` is left exactly as it stands; muting is
-// the runtime's". So the sound is turned off through the key `specs/controls.md`
+// THE POSED DRAWS ARE DECLARED FIELDS TOO. `specs/instrumentation.md` has `reset`
+// return every one of them to `null`, so each is posed before the reset and read
+// back empty after it, beside the rest of the declared state.
+//
+// AND WHY MUTE AND THE CLOCK ARE THE EXCEPTIONS. `specs/instrumentation.md` says
+// that "`muted` is left exactly as it stands; muting is the runtime's". So the
+// sound is turned off through the key `specs/controls.md`
 // binds — the way a player turns it off — before the reset, and it is still off
 // after it. The reading is taken a tick later as well as at once, because the
 // snapshot's `muted` is the game's copy of the RUNTIME's bit, refreshed in every
@@ -97,6 +101,11 @@ const POSED_COOLDOWN = 17;
  */
 const TITLE_DIGITS = 6;
 
+/** The posed draws the run is dressed in: none of them a value a fresh run holds. */
+const POSED_ROW = 333;
+const POSED_AIM = 0.05;
+const POSED_ROCK_SPEED = 95;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -133,11 +142,22 @@ it("puts every declared field back to its title value", async () => {
     gun: false,
     travel: false,
   });
+  await h.debug.setNextSaucerEdge("right");
+  await h.debug.setNextSaucerRow(POSED_ROW);
+  await h.debug.setNextSaucerAim(POSED_AIM);
+  await h.debug.setNextRockSpeed(POSED_ROCK_SPEED);
+  await h.debug.setNextRecycleEdge("top");
   await h.advance(1);
 
   await h.debug.reset();
   await captureStill(h, "reset");
   const s = await h.snapshot();
+
+  assertEqual(s.nextSaucerEdge, null, "reset clears the posed entry edge");
+  assertEqual(s.nextSaucerRow, null, "reset clears the posed entry row");
+  assertEqual(s.nextSaucerAim, null, "reset clears the posed aim error");
+  assertEqual(s.nextRockSpeed, null, "reset clears the posed rock speed");
+  assertEqual(s.nextRecycleEdge, null, "reset clears the posed re-entry edge");
 
   assertEqual(s.screen, "title", "reset restores the screen");
   assertEqual(
