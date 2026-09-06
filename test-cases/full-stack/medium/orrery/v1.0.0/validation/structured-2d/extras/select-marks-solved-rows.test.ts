@@ -69,10 +69,12 @@ import {
 const SOLVED_INDEX = 2;
 const PINNED_ROW = 0;
 
-/** The fastest speed step, which is how few frames the reference's budget costs. */
+/** The fastest speed step, which is the shortest span of game time the
+ * reference's cycle budget can be driven as. */
 const FAST_SPEED = SPEEDS.length - 1;
 
-/** How many cycles one call to the clock covers while the reference is run out. */
+/** How many cycles one call to the clock covers, in ONE frame, while the
+ * reference is run out; "the span is the same however it is divided". */
 const CYCLES_PER_STEP = 25;
 
 let h: Harness;
@@ -161,7 +163,7 @@ async function settle(): Promise<OrrerySnapshot> {
     covered < CAMPAIGN_REFERENCE_CYCLES && snapshot.sim?.status === "running";
     covered += CYCLES_PER_STEP
   ) {
-    await advanceCycles(h, CYCLES_PER_STEP, CYCLES_PER_STEP);
+    await advanceCycles(h, CYCLES_PER_STEP, 1);
     snapshot = await h.snapshot();
   }
   return snapshot;

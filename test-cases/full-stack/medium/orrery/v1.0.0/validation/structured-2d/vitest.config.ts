@@ -40,9 +40,10 @@ export default defineEngineValidationConfig({
   // Orrery's pointer operations take effect the moment they are called, so a
   // whole machine is placed without advancing the game. The ceiling is for the
   // checks that RUN a machine: a reference solution is allowed
-  // `CAMPAIGN_REFERENCE_CYCLES` (600) cycles to complete, and a cycle is a dozen
-  // frames, so a course walk is thousands of frames of a real simulation. This is
-  // the figure those checks were measured against; the factory's own default is
-  // higher, and the hook allowance it fixes is the 120 s this project already set.
+  // `CAMPAIGN_REFERENCE_CYCLES` (600) cycles to complete, and a course walk
+  // spends that budget once per challenge the build ships. It is a failure cap on
+  // a build whose runs never end, not a figure a passing check approaches; the
+  // factory's own default is higher, and the hook allowance it fixes is the 120 s
+  // this project already set.
   testTimeout: 120_000,
 });

@@ -59,18 +59,24 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** How many cycles of the budget one drive spends before the run is read. */
+/**
+ * How many cycles of the budget one drive spends before the run is read, and it
+ * spends them in ONE frame: "a frame may complete several cycles; each runs in
+ * full, in order" (`specs/simulation.md`), and "an interval of game time reaches
+ * the same state however it was divided into frames"
+ * (`specs/instrumentation.md`).
+ */
 const CHUNK = 20;
 
 /**
  * How many cycles at the head of a recorded run take the watchable division.
  *
  * The recording opens on the machine moving rather than on a stop-motion of it,
- * and the budget after them runs at a frame a cycle: "a frame may complete
- * several cycles; each runs in full, in order" (`specs/simulation.md`), and "an
- * interval of game time reaches the same state however it was divided into
- * frames" (`specs/instrumentation.md`). A run no recording is taken of is driven
- * at a frame a cycle throughout.
+ * and the budget after them runs a whole chunk to the frame: "a frame may
+ * complete several cycles; each runs in full, in order" (`specs/simulation.md`),
+ * and "an interval of game time reaches the same state however it was divided
+ * into frames" (`specs/instrumentation.md`). A run no recording is taken of is
+ * driven a chunk to the frame throughout.
  */
 const WATCHED_CYCLES = 2;
 
@@ -96,7 +102,7 @@ async function faultsWithinTheBudget(
     if (sim.status !== "running") return seen;
     if (spent >= CAMPAIGN_REFERENCE_CYCLES) return seen;
     const run = Math.min(CHUNK, CAMPAIGN_REFERENCE_CYCLES - spent);
-    await advanceCycles(h, run, run);
+    await advanceCycles(h, run, 1);
     spent += run;
   }
 }

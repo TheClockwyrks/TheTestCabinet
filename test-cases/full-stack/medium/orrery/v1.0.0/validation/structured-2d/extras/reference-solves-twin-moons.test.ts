@@ -35,8 +35,8 @@
 // reading a metric back afterwards: a run still running when the budget is gone
 // has not completed within it, whatever it reports. The opening cycles are
 // divided into the frames a cycle is watchable at, so the recording opens on the
-// machine moving, and the budget after them runs at a frame a cycle: "a frame
-// may complete several cycles; each runs in full, in order"
+// machine moving, and the budget after them runs a whole chunk to the frame: "a
+// frame may complete several cycles; each runs in full, in order"
 // (`specs/simulation.md`), and "an interval of game time reaches the same state
 // however it was divided into frames" (`specs/instrumentation.md`), so the
 // division decides nothing.
@@ -70,15 +70,21 @@ import {
 /** Which Extra this is, from `0`: challenge 2, Twin Moons. */
 const INDEX = 1;
 
-/** How many cycles of the budget one drive spends before the status is read. */
+/**
+ * How many cycles of the budget one drive spends before the status is read, and
+ * it spends them in ONE frame: "a frame may complete several cycles; each runs
+ * in full, in order" (`specs/simulation.md`), and "an interval of game time
+ * reaches the same state however it was divided into frames"
+ * (`specs/instrumentation.md`).
+ */
 const CHUNK = 20;
 
 /**
  * How many cycles at the head of the run are driven at the watchable division.
  *
  * The recording this drive is wrapped in opens on the machine moving rather than
- * on a stop-motion of it. The budget after them runs at a frame a cycle, which
- * reaches the same state on a twelfth of the frames.
+ * on a stop-motion of it. The budget after them runs a whole chunk to the frame,
+ * which reaches the same state on a small fraction of the frames.
  */
 const WATCHED_CYCLES = 2;
 
@@ -103,7 +109,7 @@ async function runWithinTheBudget(): Promise<void> {
     const sim = (await h.snapshot()).sim;
     if (sim === null || sim.status !== "running") return;
     const run = Math.min(CHUNK, CAMPAIGN_REFERENCE_CYCLES - spent);
-    await advanceCycles(h, run, run);
+    await advanceCycles(h, run, 1);
     spent += run;
   }
 }

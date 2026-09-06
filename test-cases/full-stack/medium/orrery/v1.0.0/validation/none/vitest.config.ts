@@ -33,9 +33,9 @@ export default defineValidationConfig({
   // whole machine is placed without advancing the game and most checks are a few
   // dozen crossings into the page. The ceiling is for the checks that RUN a
   // machine: a reference solution is allowed `CAMPAIGN_REFERENCE_CYCLES` (600)
-  // cycles to complete, and a cycle is a dozen driven frames, so a course walk is
-  // thousands of frames. Two minutes is generous against a healthy build and
-  // still bounds a hung one.
+  // cycles to complete, and a course walk spends that budget once per challenge
+  // the build ships. Two minutes is generous against a healthy build and still
+  // bounds a hung one.
   testTimeout: 120_000,
   hookTimeout: 120_000,
 });
