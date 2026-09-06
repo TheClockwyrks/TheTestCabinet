@@ -86,20 +86,21 @@ pub async fn upload_run_tree(
     // Build the tarball on DISK and stream it, rather than assembling it in memory.
     //
     // This is the driver's single largest allocation and the reason its memory
-    // ceiling used to be unsizeable. A run tree is bounded only by the case that
+    // footprint used to be unsizeable. A run tree is bounded only by the case that
     // produced it — source, a static build, and proof/asset media — so buffering the
     // whole archive made peak driver memory a function of the heaviest case rather
     // than of the driver's own work: measured peaks ran ~475MiB against a 512Mi
-    // request, i.e. right at the ceiling. Every other moment in a driver's life costs
-    // under 10MiB.
+    // request, i.e. right at what the node had reserved. Every other moment in a
+    // driver's life costs under 10MiB.
     //
     // The timing is what makes that dangerous rather than merely untidy. This upload
     // happens AFTER the harness session has finished and BEFORE the terminal status
     // is posted, so a driver killed here loses a run that has already paid for every
     // one of its API calls — strictly the most expensive way for a run to die. Reading
-    // the archive off disk a chunk at a time makes the ceiling a property of the
-    // driver instead, which is what lets the deployment give it a real memory limit
-    // (see the dispatcher's `DEFAULT_DRIVER_MEMORY_LIMIT`).
+    // the archive off disk a chunk at a time makes the driver's footprint a property
+    // of the driver instead of the case, which is what lets its memory request be a
+    // real reservation (see the dispatcher's `DEFAULT_DRIVER_MEMORY_REQUEST`; the
+    // driver carries no memory limit, deliberately).
     //
     // Tarring is a blocking filesystem walk, so it runs on the blocking pool: the same
     // task is still streaming harness events and heartbeating status, and stalling the

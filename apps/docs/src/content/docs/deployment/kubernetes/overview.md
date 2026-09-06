@@ -180,12 +180,23 @@ Their egress is the model APIs and package registries a run needs.
 
 ## Memory ceilings
 
-Every container a deployment creates carries a memory limit equal to its memory
-request. The sum of a node's limits is then knowable, which is what lets the
-deployment guarantee that no pod is killed to satisfy another's growth, and one
-unbounded container gives that guarantee up. The sandbox pod and driver ceilings
-are sized in
-[Run plane](/deployment/kubernetes/run-plane/#sizing-sandbox-pods).
+Memory is sized by two opposite rules, chosen by what a kill costs.
+
+The pods a run needs, the driver and its sandbox, carry a memory **request and no
+limit**. A memory limit is a cgroup ceiling the kernel enforces by `SIGKILL`, and a
+run pod that reaches it is dead that instant, however much memory the node still
+has free, destroying a run that may have been spending money on API calls for
+hours. The request is the node's reservation, and it must cover the real peak of
+the heaviest case, because a run pod that outgrows it on a full node is still the
+first thing evicted; it is sized in
+[Run plane](/deployment/kubernetes/run-plane/#sizing-sandbox-pods). The publisher
+`Job` keeps a limit, because a failed publish loses no spend and is retried.
+
+Every always-on service carries a memory limit **equal to its request**. For a
+service a kill is a restart, not lost spend, and a bounded service can never be
+what crowds a run pod off its node: the sum of the services' limits on a node is
+knowable, so a run pod that grows past its request is contending only with
+headroom the scheduler left, never with another tenant's unbounded growth.
 
 | Container | Ceiling | Why |
 | --- | --- | --- |

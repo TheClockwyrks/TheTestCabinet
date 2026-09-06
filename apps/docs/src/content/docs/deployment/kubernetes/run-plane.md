@@ -76,9 +76,9 @@ work.
 | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | Queue-admission cap on concurrent runs | `8` |
 | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | Back-off after an empty claim or a full cap | `2` |
 | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | TTL after which a finished `Job` is garbage-collected | `300` |
-| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container, there to keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first, taking its sandbox cleanup with it | `100m` / `2Gi` |
-| `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | The memory limit on the driver container, defaulting to its own request so a node reserves exactly what a driver may use. A blank value leaves the container unbounded | `2Gi` |
-| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU limit on the driver container. It is what makes the memory ceiling above portable: the post-run toolchain sizes its worker pools from the CPU the container is allowed, so without a limit a large node multiplies the driver's memory footprint. A blank value leaves the CPU unbounded | `2` |
+| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container. They keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first, and the memory request is the node's reservation for the driver | `100m` / `2Gi` |
+| `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | A memory limit on the driver container. Unset by default, deliberately: a memory limit is enforced by `SIGKILL`, and a driver OOM-killed mid-run destroys a run that has already paid for its API calls. Set it only when a namespace `LimitRange` or quota forces one | — |
+| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU limit on the driver container. The post-run toolchain sizes its worker pools from the CPU the container is allowed, so without a limit a large node multiplies the driver's memory footprint. Over-limit CPU is throttled, never killed. A blank value leaves the CPU unbounded | `2` |
 | `TCAB_DISPATCHER_DRIVER_SECRETS` | no | Comma-separated `Secret` names mounted into each driver `Job` with `envFrom`, carrying the harness API keys | — |
 | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET` | no | `Secret` of harness subscription credential files, mounted read-only into each driver `Job` | — |
 | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` | no | Where that Secret is mounted, forwarded to the driver | `/var/run/tcab/subscription` |
@@ -123,25 +123,51 @@ API-key-only driver pods.
 ### Sizing sandbox pods
 
 `TCAB_K8S_RUN_CPU_*` and `TCAB_K8S_RUN_MEMORY_*` scope each sandbox pod so the
-scheduler can place it and one heavy run cannot starve a node. The shipped values
-are `500m`/`2` for CPU and `4Gi` for both memory quantities.
+scheduler can place it and one heavy run cannot monopolise a node's CPU. The
+shipped values are `500m`/`2` for CPU and a `4Gi` memory request with **no memory
+limit**.
 
-Set the memory request equal to the memory limit. The scheduler packs a node by
-requests and ignores limits, so a gap between the two is memory the node has
-promised more than once, and the kubelet settles the shortfall by evicting
-whichever pod sits furthest above its memory request. That selects the sandbox
-pod that grew, ahead of every system pod on the node, and killing a sandbox pod
-mid-run destroys a run that has already paid for its harness API calls. Equal
-values make the scheduler's own arithmetic the guarantee: a node admits the pod
-only when the whole ceiling is free, so the pod stays out of the eviction ranking
-entirely. See [memory ceilings](/deployment/kubernetes/overview/#memory-ceilings)
-for the rest of the cluster.
+A run pod is never given a memory limit. A memory limit is a cgroup ceiling the
+kernel enforces by `SIGKILL`: a sandbox that reaches it is dead that instant,
+deterministically, however much memory the node still has free. A run may hold a
+sandbox for hours and spend real money on harness API calls the whole time, so a
+sandbox OOM-killed mid-run destroys a run that has already paid for every one of
+them. That is the one failure the deployment must never produce, and a limit on a
+run pod is precisely the mechanism that produces it. An earlier revision set the
+limit equal to the request so a node's arithmetic was exact; the first run to
+outgrow that ceiling was OOM-killed (`exit 137`) by its own cgroup, the outcome
+the ceiling existed to prevent.
+
+The request does the work instead, and it must be sized to the real peak of the
+heaviest case the deployment runs:
+
+- The scheduler packs a node by requests, so a node admits a sandbox only when
+  the whole `4Gi` is actually there.
+- A request keeps the pod out of `BestEffort`, where it would be the first thing
+  the kubelet evicts and the kernel OOM-kills.
+- A sandbox that grows past its request is not killed for doing so. It spends
+  memory the node was not holding for it, and survives whenever the node actually
+  has that memory spare.
+
+Removing the limit does not make node memory pressure harmless. If the node
+itself runs short, the kubelet evicts the pod furthest above its request first,
+and the kernel's OOM killer weighs a large resident set heavily, so a sandbox that
+has outgrown its request on a full node is still the likely victim: `Evicted`
+rather than `OOMKilled`, and just as dead. The limit was a certain kill at a fixed
+ceiling regardless of node headroom; what remains is a kill only when the node is
+genuinely out of memory. Closing that gap is a sizing job. The request must cover
+the real peak so the scheduler never seats a run on a node that cannot hold it.
+Size it from `container_memory_max_usage_bytes`, which the observability
+component's cAdvisor scrape keeps, over a window wide enough to contain the rare
+heavy case. The always-on services take the opposite treatment, memory request
+equal to limit, because for them a kill is a restart rather than lost spend; see
+[memory ceilings](/deployment/kubernetes/overview/#memory-ceilings).
 
 CPU is oversubscribed deliberately. A container over its CPU limit is throttled
 rather than killed, so the failure mode is a slower run, which is worth the
 density.
 
-The memory ceiling is charged in whole nodes. Node allocatable is what remains
+The memory request is charged in whole nodes. Node allocatable is what remains
 after the kubelet's reservation, and the DaemonSets take a further slice: an AKS
 `Standard_D2ps_v6` offers 5766Mi allocatable of 7.7Gi capacity and the DaemonSets
 request around 984Mi of it, leaving roughly 4782Mi schedulable and seating
@@ -153,36 +179,46 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,ALLOCATABLE:.status.allo
 ```
 
 The heaviest cases need more than `4Gi`, and a dual-contouring `double` variant
-wants around `8Gi`, which the `local` overlay's `patch-dispatcher.yaml` supplies.
-Raise the request and the limit together, and only to a value one node can still
-seat, since a request no node can satisfy queues forever.
+wants around `8Gi`, which the `local` overlay's `patch-dispatcher.yaml` reserves.
+Those cases do not fit an `8Gi` node whatever the manifest says: they no longer
+die at the `4Gi` ceiling, but they are still evicted when the node runs short.
+Running them needs nodes that can seat an `8Gi` request, and the request raised to
+match. Raise it only to a value one node can still seat, since a request no node
+can satisfy queues forever.
 
-### Driver pod ceiling
+`TCAB_K8S_RUN_MEMORY_LIMIT` is honoured when set, for a namespace whose
+`LimitRange` or `ResourceQuota` refuses pods without one. Set it far above any
+real peak.
 
-The driver runs in its own pod and takes the same treatment:
-`TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` and
-`TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` both default to `2Gi`.
+### Driver pod reservation
 
-The ceiling is sized against the post-run work, not against relaying the session.
+The driver runs in its own pod and follows the same rule:
+`TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` defaults to `2Gi` and
+`TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` is unset. A driver killed after the harness
+session has finished but before it reports terminal status destroys a run that
+has already paid for every one of its API calls, so nothing on the driver may be
+a mechanism that kills it.
+
+The request is sized against the post-run work, not against relaying the session.
 Once the sandbox is gone the driver runs the case's own toolchain over the
 collected tree on its own filesystem: the `[build]` install, the
 [toolchain commands](/testing/end-to-end/manifests/), the build the smoke check
 serves, and a headless Chromium for that smoke check and for every scripted
 [validation](/components/core/validation/) item. Those are Node and browser
-processes in the driver's own cgroup, and they are what the ceiling has to cover.
-It is sized generously because a driver killed after the harness session has
-finished destroys a run that has already paid for every one of its API calls.
+processes in the driver's own cgroup, and they are what the reservation has to
+cover.
 
-`TCAB_DISPATCHER_DRIVER_CPU_LIMIT` defaults to `2` and is what keeps that ceiling
-true on any node. Node sizes a worker pool from the CPU its cgroup is allowed, so
-an unlimited driver container on a large node fans `vitest`, `tsc` and the bundler
-out across every core the node has and multiplies its own memory footprint. The
-limit makes the driver's peak a property of the pod rather than of the machine it
-landed on. Raise the two together, never one alone.
+`TCAB_DISPATCHER_DRIVER_CPU_LIMIT` defaults to `2` and is what keeps that
+footprint predictable on any node. Node sizes a worker pool from the CPU its
+cgroup is allowed, so an unlimited driver container on a large node fans `vitest`,
+`tsc` and the bundler out across every core the node has and multiplies its own
+memory footprint. The limit makes the driver's peak a property of the pod rather
+than of the machine it landed on, and over-limit CPU is throttled rather than
+killed, which is why the driver carries a CPU limit and no memory limit.
 
-That ceiling is charged in nodes as well. A `4Gi` sandbox pod plus a `2Gi` driver
-exceeds what an 8Gi node can schedule, so the driver lands on a different node
-than the sandbox it drives and the two ceilings can never contend for one node's
+The reservation is charged in nodes as well. A `4Gi` sandbox pod plus a `2Gi`
+driver exceeds what an 8Gi node can schedule, so the driver lands on a different
+node than the sandbox it drives and the two can never contend for one node's
 memory.
 
 ### Queueing when the cluster is full

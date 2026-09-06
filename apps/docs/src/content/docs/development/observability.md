@@ -54,7 +54,9 @@ service name: the CLI, the desktop app, or the driver.
 
 Everything in the table above is telemetry our own processes *push*. It says
 nothing about what a container actually consumed — and that is the data needed to
-decide whether a run pod's memory limit is a safe ceiling or a scheduled OOM kill.
+size a run pod's memory request to its real peak (run pods carry no memory limit;
+see [memory ceilings](/deployment/kubernetes/overview/#memory-ceilings)) and to
+check that a service's limit is a safe ceiling rather than a scheduled OOM kill.
 
 So in a Kubernetes deployment the LGTM stack's Prometheus also **scrapes** each
 node's kubelet cAdvisor endpoint. This is configured in
@@ -73,7 +75,7 @@ queries. What is kept, and why:
 | --- | --- |
 | `container_memory_max_usage_bytes` | The **cgroup's own high-water mark**, maintained continuously by the kernel — so it catches a spike that happened between two scrapes. This is the sizing number. |
 | `container_memory_working_set_bytes` | What the kubelet actually evicts on. |
-| `container_spec_memory_limit_bytes` | What the pod was configured with, so peaks can be compared to the ceiling without cross-referencing manifests. |
+| `container_spec_memory_limit_bytes` | The configured limit, so a service's peaks can be compared to its ceiling without cross-referencing manifests. Run pods have no limit, so for them this series reports the cgroup's `max` sentinel and is meaningless. |
 | `container_cpu_usage_seconds_total` | Real CPU draw. |
 | `container_cpu_cfs_{periods,throttled_periods,throttled_seconds}_total` | Whether CPU oversubscription is actually costing anything. |
 | `container_spec_cpu_{quota,shares}` | The configured CPU limit and request. |
@@ -97,15 +99,21 @@ a window wide enough to contain the rare heavy test case.
 Useful queries, in Grafana *Explore* against the Prometheus datasource:
 
 ```promql
-# The largest memory any run pod has ever reached — what a global limit must clear.
+# The largest memory any run pod has ever reached — what the sandbox memory
+# REQUEST (TCAB_K8S_RUN_MEMORY_REQUEST) must cover.
 max_over_time(container_memory_max_usage_bytes{container="run"}[30d])
 
 # The distribution of per-run peaks, to see how far the tail really goes.
 quantile(0.99, max_over_time(container_memory_max_usage_bytes{container="run"}[30d]))
 
-# How close runs come to their configured ceiling (1.0 would be an OOM kill).
-max_over_time(container_memory_working_set_bytes{container="run"}[30d])
-  / on(pod) container_spec_memory_limit_bytes{container="run"}
+# How far past its request a run has gone. The request is not among the scraped
+# series, so substitute the configured value (4Gi here); above 1.0 the run was
+# using memory the node had not reserved for it.
+max_over_time(container_memory_working_set_bytes{container="run"}[30d]) / (4 * 1024^3)
+
+# How close a SERVICE comes to its ceiling (1.0 would be an OOM kill).
+max_over_time(container_memory_working_set_bytes{container="backend"}[30d])
+  / on(pod) container_spec_memory_limit_bytes{container="backend"}
 
 # Whether CPU oversubscription is actually throttling runs.
   rate(container_cpu_cfs_throttled_periods_total{container="run"}[5m])

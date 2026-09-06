@@ -168,9 +168,15 @@ pub struct KubernetesConfig {
     pub cpu_request: Option<String>,
     /// CPU limit applied to each run pod (e.g. `2`).
     pub cpu_limit: Option<String>,
-    /// Memory request applied to each run pod (e.g. `1Gi`).
+    /// Memory request applied to each run pod (e.g. `4Gi`). This is the node's
+    /// reservation for the sandbox and the only memory figure the shipped manifests
+    /// set on it.
     pub memory_request: Option<String>,
-    /// Memory limit applied to each run pod (e.g. `4Gi`).
+    /// Memory limit applied to each run pod. The shipped manifests leave this unset,
+    /// deliberately: a memory limit is a cgroup ceiling enforced by `SIGKILL`, and a
+    /// sandbox OOM-killed mid-run destroys a run that has already paid for its API
+    /// calls (see the dispatcher's `DEFAULT_DRIVER_MEMORY_REQUEST`). Honoured when
+    /// set, for a namespace whose `LimitRange` or quota insists on one.
     pub memory_limit: Option<String>,
     /// How long to wait, **once the pod has been scheduled onto a node**, for it
     /// to reach `Running` before failing the run. This bounds startup work (image
