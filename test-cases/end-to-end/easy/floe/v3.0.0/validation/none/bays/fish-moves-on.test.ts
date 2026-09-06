@@ -1,8 +1,8 @@
 // bays/fish-moves-on — the catch that follows one that lingered out is in a
 // DIFFERENT open bay.
 //
-// specs/bays.md: "The bay a bonus catch appears in is drawn from the game's own
-// seeded randomness, among the bays that are open at that moment other than the
+// specs/bays.md: "The bay a bonus catch appears in is drawn at random when it
+// appears, uniformly among the bays that are open at that moment other than the
 // bay the previous bonus catch occupied."
 //
 // A catch is posed into a bay with `setFishBay`, its linger is run out, and the

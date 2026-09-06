@@ -142,7 +142,6 @@ export interface Sim {
 
   simTime: number;
   muted: boolean;
-  rngState: number;
 
   frameCarry: number;
   animTime: number;
@@ -233,7 +232,6 @@ export function toSim(state: DeepReadonly<FloeState>): Sim {
 
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
 
     frameCarry: state.frameCarry,
     animTime: state.animTime,

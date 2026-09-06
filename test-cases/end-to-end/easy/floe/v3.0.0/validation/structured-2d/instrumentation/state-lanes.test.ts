@@ -51,13 +51,28 @@
 // tiles is fixed by `specs/ice.md` and `specs/water.md`, which `ice/lane-lengths`
 // and `water/lane-lengths` grade.
 
+//
+// THE RELAID LANE IS READ AS AN ARRANGEMENT. `setLanePhase` replaces a lane's
+// items rather than setting one field, so what reads back is what
+// specs/instrumentation.md says it lays: the lane's own kind at the level's
+// spacing, one left edge at the posed phase, and a pattern reaching both edges
+// of the strait. Every other roster entry is left where it stood.
 import { afterEach, beforeEach, it } from "vitest";
-import { ICE_LANES, WATER_LANES } from "../constants";
+import {
+  ICE_LANES,
+  ITEM_LEN,
+  STRAIT_W,
+  TILE,
+  WATER_LANES,
+  laneGap,
+} from "../constants";
 import {
   assertContains,
   assertEqual,
   assertGreaterThan,
+  assertGreaterThanOrEqual,
   assertLength,
+  assertLessThanOrEqual,
 } from "../assert";
 import {
   captureStill,
@@ -86,6 +101,22 @@ const DIRECTIONS: readonly number[] = [1, -1];
 
 /** The column each band's posed item is laid at, one item per lane. */
 const ITEM_COL = 8;
+
+/**
+ * The lane `setLanePhase` relays, and the phase it is relayed at: a plow lane,
+ * so the kind read back differs from the car posed in it first, and a left edge
+ * no tile boundary lands on.
+ */
+const PHASED_ROW = 14;
+const PHASE_X = 401.5;
+
+/**
+ * How far a relaid item's left edge may sit from where the spacing puts it, in
+ * stage units. The lane is posed rather than integrated, so this is arithmetic
+ * room and nothing more: a build that lays the lane a whole tile out misses it
+ * by `32`.
+ */
+const PHASE_TOLERANCE = 1e-6;
 
 /** Every field of one reported lane is of its documented kind. */
 function assertLane(
@@ -233,5 +264,65 @@ it("reports the sixteen lanes and their items and reads every pose of them back"
     WATER_DIR,
     `the direction snapshot() reports for the lane on row ${FLOE_ROW} after ` +
       `setLaneDirection(${FLOE_ROW}, ${WATER_DIR})`,
+  );
+
+  // ---- A lane relaid at a posed phase ----------------------------------
+
+  h.debug.setLanePhase(PHASED_ROW, PHASE_X);
+  const relaid = h.snapshot();
+  const phased = relaid.vehicles
+    .filter((item) => item.row === PHASED_ROW)
+    .sort((a, b) => a.x - b.x);
+  const phasedSpec = ICE_LANES.find((lane) => lane.row === PHASED_ROW);
+  const phasedKind = phasedSpec?.kind ?? "plow";
+  const phasedGap = laneGap(PHASED_ROW, 1) * TILE;
+  const phasedPeriod = ITEM_LEN[phasedKind] * TILE + phasedGap;
+
+  assertGreaterThan(
+    phased.length,
+    1,
+    `the vehicles snapshot() reports on row ${PHASED_ROW} after ` +
+      `setLanePhase(${PHASED_ROW}, ${PHASE_X}), which lays the lane's own ` +
+      `pattern along the whole row (specs/instrumentation.md)`,
+  );
+  for (const item of phased) {
+    assertEqual(
+      item.kind,
+      phasedKind,
+      `the kind of vehicle ${item.id} on row ${PHASED_ROW} after ` +
+        `setLanePhase, which lays the lane's own kind (specs/ice.md)`,
+    );
+  }
+  assertLessThanOrEqual(
+    Math.min(...phased.map((item) => Math.abs(item.x - PHASE_X))),
+    PHASE_TOLERANCE,
+    `the nearest LEFT EDGE on row ${PHASED_ROW} to the phase ` +
+      `setLanePhase(${PHASED_ROW}, ${PHASE_X}) posed`,
+  );
+  for (let i = 1; i < phased.length; i += 1) {
+    assertLessThanOrEqual(
+      Math.abs(phased[i].x - phased[i - 1].x - phasedPeriod),
+      PHASE_TOLERANCE,
+      `the spacing between vehicles ${i - 1} and ${i} on the relaid row ` +
+        `${PHASED_ROW}, away from one period of ${phasedPeriod} units`,
+    );
+  }
+  assertLessThanOrEqual(
+    phased[0].x,
+    phasedGap + PHASE_TOLERANCE,
+    `the leftmost left edge on the relaid row ${PHASED_ROW}, which one gap of ` +
+      `${phasedGap} units bounds so the pattern reaches the left edge`,
+  );
+  assertGreaterThanOrEqual(
+    phased[phased.length - 1].x + ITEM_LEN[phasedKind] * TILE,
+    STRAIT_W - phasedGap - PHASE_TOLERANCE,
+    `the rightmost right edge on the relaid row ${PHASED_ROW}, which is at ` +
+      `most one gap of ${phasedGap} units short of the strait's right edge`,
+  );
+  assertEqual(
+    relaid.vehicles.filter((item) => item.row !== PHASED_ROW).length,
+    ICE_LANES.length - 1,
+    `the vehicles on every other ice row after setLanePhase(${PHASED_ROW}, ` +
+      `${PHASE_X}), which relays that row alone`,
   );
 });

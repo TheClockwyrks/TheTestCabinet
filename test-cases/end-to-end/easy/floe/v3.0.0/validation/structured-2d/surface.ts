@@ -31,9 +31,6 @@
 /** The surface's version, reported as `version`. */
 export const FLOE_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 /** The six screens the game moves between. */
 export type Screen =
   "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
@@ -223,7 +220,7 @@ export interface FloeDebugApi {
   version: number;
 
   // The core.
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): FloeSnapshot;
   /**
    * A pure read of the hit region of item `index` on the menu the current screen
@@ -281,6 +278,7 @@ export interface FloeDebugApi {
   setFloeX(id: number, x: number): void;
   setLaneSpeed(row: number, speed: number): void;
   setLaneDirection(row: number, dir: LaneDir): void;
+  setLanePhase(row: number, x: number): void;
 
   // The bays and the bonus catch.
   setBay(index: number, filled: boolean): void;
@@ -354,6 +352,7 @@ export const REQUIRED_OPS = [
   "setFloeX",
   "setLaneSpeed",
   "setLaneDirection",
+  "setLanePhase",
 
   "setBay",
   "clearBays",

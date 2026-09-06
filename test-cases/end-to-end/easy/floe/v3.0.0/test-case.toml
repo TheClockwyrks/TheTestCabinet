@@ -374,8 +374,8 @@ source = "specs/assets.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; an API to drive and inspect the game from code through its own
+# The debugging and automation surface every build must expose: a render-free
+# core; an API to drive and inspect the game from code through its own
 # real input path, including the four world gates and the three per-bear gates;
 # the snapshot shape; and a read-only debug overlay. Framed as an ordinary
 # developer affordance of the game. It branches on the engine for how the surface
@@ -539,7 +539,7 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These items check that it is really there, really
-# wired to the running game, really deterministic, and that each pose reads back —
+# wired to the running game, really stepped, and that each pose reads back —
 # a surface that reports a plausible-looking object unconnected to what is on
 # screen is the failure mode worth naming, and it also shows up as every other
 # suite failing to run.
@@ -577,7 +577,7 @@ format = 2
 # `setAutoStep` and `advance` pose no game state — they move time — so there is no
 # field for the snapshot to report and `autoStep` is not a snapshot field. They are
 # decided by their effect instead: `advances-in-real-time` decides `setAutoStep`,
-# and `deterministic-core` and `tick-length` decide `advance`.
+# and `tick-length` decides `advance`.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -620,7 +620,7 @@ validation = { script = "instrumentation/state-bears.test.ts", outputs = [
 [[review.categories.items]]
 id = "state-lanes"
 title = "The lanes and their items read back"
-description = "With a vehicle in every ice lane and a floe in every water lane, each item's position reads back as addVehicle, setVehicleX, addFloe and setFloeX posed it and each lane's speed and direction as setLaneSpeed and setLaneDirection posed them, and every roster entry's id, row, kind and len is present with the documented type beside them."
+description = "With a vehicle in every ice lane and a floe in every water lane, each item's position reads back as addVehicle, setVehicleX, addFloe and setFloeX posed it, each lane's speed and direction as setLaneSpeed and setLaneDirection posed them, a lane laid out by setLanePhase reads back as the lane's own kind evenly spaced with one left edge at the posed phase, and every roster entry's id, row, kind and len is present with the documented type beside them."
 domains = ["hunter", "crossing", "run", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/state-lanes.test.ts", outputs = [
@@ -688,28 +688,6 @@ domains = ["hunter", "crossing", "run", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
   { id = "title", name = "The title values reset restored", kind = "image" },
-] }
-[[review.categories.items]]
-id = "reset-seeds-randomness"
-title = "reset seeds the game's randomness"
-description = "Two runs started after reset({ seed: 7 }) lay the sixteen lanes at identical phases and put the first bonus catch in the same bay; a run after reset({ seed: 8 }) differs in at least one of them."
-domains = ["hunter", "crossing", "run", "presentation"]
-failure_cap = "passable"
-# Seeded randomness is what makes a lane layout reproducible without fixing it, so
-# the assertion is that two runs of ONE seed agree and two runs of DIFFERENT seeds
-# do not. Asserting a particular layout would fix the generator rather than the
-# seeding.
-validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
-  { id = "seeded", name = "Two runs of one seed, laid the same", kind = "image" },
-] }
-[[review.categories.items]]
-id = "deterministic-core"
-title = "The simulation advances on stepped time alone"
-description = "One second of game time covered as one call of 120 ticks and as 120 calls of one tick adds 1.0 to simTime either way and leaves every vehicle within a tenth of a unit of the same x, so the simulation reads nothing from the renderer."
-domains = ["hunter", "crossing", "run", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
-  { id = "after", name = "The strait after one second of stepped time", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "tick-length"

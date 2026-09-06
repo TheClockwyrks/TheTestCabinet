@@ -100,10 +100,10 @@ function coveredColumn(
 /**
  * Lay one band out for a level: its eight lanes, and the roster that fills them.
  *
- * Where each lane's pattern sits along its row is drawn from the game's own
- * generator. The draw is then checked against the staggering rule and one lane's
- * phase is redrawn until it holds, so the band never lays down a wall the critter
- * cannot pass — which is a rule of the specification rather than a lucky seed.
+ * Where each lane's pattern sits along its row is drawn uniformly over one
+ * period of its spacing. The draw is then checked against the staggering rule
+ * and one lane's phase is redrawn until it holds, so the band never lays down a
+ * wall the critter cannot pass — which is a rule of the specification.
  */
 function layoutBand(
   state: FloeState,
@@ -113,7 +113,7 @@ function layoutBand(
   const rings = specs.map((spec) =>
     ringFor(spec.kind, laneGap(spec.row, level)),
   );
-  const phases = rings.map((ring) => random(state) * ring.period);
+  const phases = rings.map((ring) => random() * ring.period);
 
   for (
     let attempt = 0;
@@ -121,7 +121,7 @@ function layoutBand(
     attempt += 1
   ) {
     const lane = attempt % specs.length;
-    phases[lane] = random(state) * rings[lane].period;
+    phases[lane] = random() * rings[lane].period;
   }
 
   const lanes: Lane[] = [];
@@ -165,6 +165,38 @@ export function layoutLevel(state: FloeState, level: number): void {
   state.vehicles = ice.items;
   state.waterLanes = water.lanes;
   state.floes = water.items;
+}
+
+/**
+ * Lay one lane out afresh at a posed phase (`specs/instrumentation.md`'s
+ * `setLanePhase`): every item of the row is replaced by the lane's own kind at
+ * the current level's spacing, one left edge at `x` and the rest one period
+ * apart around the ring, each with a fresh id. The lane's motion, its ring, and
+ * every other lane are left exactly as they stand.
+ */
+export function layoutLane(state: FloeState, row: number, x: number): void {
+  const spec =
+    ICE_LANES.find((entry) => entry.row === row) ??
+    WATER_LANES.find((entry) => entry.row === row);
+  const lane = laneAt(state, row);
+  if (spec === undefined || lane === null) return;
+  const ring = ringFor(spec.kind, laneGap(spec.row, state.level));
+  const phase = mod(x - ring.wrapMin, ring.period);
+  const roster = spec.row >= ICE_LANES[0].row ? state.vehicles : state.floes;
+  const kept = roster.filter((item) => item.row !== row);
+  for (let i = 0; i < ring.count; i += 1) {
+    const left = ring.wrapMin + phase + i * ring.period;
+    kept.push({
+      id: state.nextId++,
+      row,
+      kind: spec.kind,
+      x: left,
+      prevX: left,
+      len: ITEM_LEN[spec.kind],
+    });
+  }
+  if (roster === state.vehicles) state.vehicles = kept;
+  else state.floes = kept;
 }
 
 /** The lane at a strait row, or `null` where the row carries none. */

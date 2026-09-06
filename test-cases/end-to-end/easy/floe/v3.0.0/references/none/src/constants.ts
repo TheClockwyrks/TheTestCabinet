@@ -350,8 +350,6 @@ export const HUD_LEVEL_LABEL = "LEVEL";
 
 /** The version `window.__floe.version` reports. */
 export const FLOE_DEBUG_VERSION = 1;
-/** The seed `reset()` uses when it is given none. */
-export const DEFAULT_SEED = 1;
 
 // ---- Input (specs/controls.md) -------------------------------------------
 //

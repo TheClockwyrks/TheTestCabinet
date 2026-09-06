@@ -28,7 +28,6 @@
 // sets it and the snapshot reports it).
 
 import {
-  DEFAULT_SEED,
   FISH_INTERVAL,
   FLOE_DEBUG_VERSION,
   ITEM_LEN,
@@ -44,7 +43,7 @@ import {
   commitStep,
   reconcileSlots,
 } from "./hunter";
-import { layOutStrait } from "./lanes";
+import { layOutLane, layOutStrait } from "./lanes";
 import { menuItemRect, type MenuRect } from "./menus";
 import { snapshotOf, type FloeSnapshot } from "./snapshot";
 import {
@@ -74,7 +73,7 @@ type Pose = (state: DeepReadonly<FloeState>) => FloeState;
 export interface FloeDebugApi {
   version: number;
 
-  reset(state: DeepReadonly<FloeState>, options?: { seed?: number }): FloeState;
+  reset(state: DeepReadonly<FloeState>): FloeState;
   snapshot(state: DeepReadonly<FloeState>): FloeSnapshot;
   menuItemRect(state: DeepReadonly<FloeState>, index: number): MenuRect | null;
 
@@ -179,6 +178,11 @@ export interface FloeDebugApi {
     row: number,
     dir: number,
   ): FloeState;
+  setLanePhase(
+    state: DeepReadonly<FloeState>,
+    row: number,
+    x: number,
+  ): FloeState;
 
   setBay(
     state: DeepReadonly<FloeState>,
@@ -219,9 +223,9 @@ export function createDebugApi(): FloeDebugApi {
 
     // ---- The core ---------------------------------------------------------
 
-    reset: (state, options) =>
+    reset: (state) =>
       pose((sim) => {
-        resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
+        resetToTitle(sim);
       })(state),
 
     snapshot: (state) => snapshotOf(state, FLOE_DEBUG_VERSION),
@@ -495,6 +499,12 @@ export function createDebugApi(): FloeDebugApi {
       pose((sim) => {
         const lane = laneAt(sim, row);
         if (lane !== undefined) lane.dir = dir < 0 ? -1 : 1;
+      })(state),
+
+    /** Relays one lane at a phase; its speed and direction are untouched. */
+    setLanePhase: (state, row, x) =>
+      pose((sim) => {
+        layOutLane(sim, row, x);
       })(state),
 
     // ---- The bays and the bonus catch ---------------------------------------

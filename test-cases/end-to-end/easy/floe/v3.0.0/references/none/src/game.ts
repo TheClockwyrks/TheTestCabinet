@@ -24,7 +24,6 @@ import {
   CLEAR_PAUSE,
   CUES,
   DEATH_PAUSE,
-  DEFAULT_SEED,
   FISH_INTERVAL,
   FISH_LINGER,
   HOP_COOLDOWN,
@@ -152,7 +151,7 @@ export const NO_INTENTS: Intents = {
 // ---- Building and resetting ---------------------------------------------
 
 /** The state a freshly loaded build holds: the title screen, level 1 laid out. */
-export function createState(seed = DEFAULT_SEED): FloeState {
+export function createState(): FloeState {
   const state: FloeState = {
     screen: "title",
     menuIndex: 0,
@@ -180,11 +179,10 @@ export function createState(seed = DEFAULT_SEED): FloeState {
     timerRunning: true,
     simTime: 0,
     muted: false,
-    rngState: seed,
     nextId: 1,
     effects: [],
   };
-  resetState(state, seed);
+  resetState(state);
   return state;
 }
 
@@ -200,13 +198,12 @@ function freshSlots(level: number): FloeState["slots"] {
 }
 
 /**
- * Restore every field to its title-screen value and reseed the generator
- * (specs/instrumentation.md).
+ * Restore every field to its title-screen value (specs/instrumentation.md).
  *
  * `muted` is deliberately untouched: muting is a player preference the runtime
  * owns, and a reset is not a reason to start making noise again.
  */
-export function resetState(state: FloeState, seed = DEFAULT_SEED): void {
+export function resetState(state: FloeState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.phase = "crossing";
@@ -228,7 +225,6 @@ export function resetState(state: FloeState, seed = DEFAULT_SEED): void {
   state.fishCadence = true;
   state.timerRunning = true;
   state.simTime = 0;
-  state.rngState = seed;
   state.nextId = 1;
   state.effects = [];
   layoutLevel(state, 1);
@@ -596,7 +592,7 @@ function stepFish(state: FloeState, dt: number): void {
     state.fishTimer = FISH_INTERVAL;
     return;
   }
-  const bay = pick(state, open) ?? open[0];
+  const bay = pick(open) ?? open[0];
   state.fishBay = bay;
   state.lastFishBay = bay;
   state.fishTimer = FISH_LINGER;

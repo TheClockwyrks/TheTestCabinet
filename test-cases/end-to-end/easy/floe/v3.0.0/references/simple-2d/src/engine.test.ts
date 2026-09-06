@@ -710,8 +710,8 @@ describe("the ice", () => {
   });
 
   it("leaves no column covered in all eight rows of a band", () => {
-    for (let seed = 1; seed <= 12; seed += 1) {
-      h.pose((s) => h.debug.reset(s, { seed }));
+    for (let draw = 1; draw <= 12; draw += 1) {
+      h.pose((s) => h.debug.reset(s));
       const s = h.snapshot();
       for (const band of [
         { lanes: s.iceLanes, items: s.vehicles },
@@ -1818,27 +1818,31 @@ describe("the debug surface", () => {
     expect(s.muted).toBe(true);
   });
 
-  it("reproduces a seeded run, and differs on another seed", async () => {
-    const phasesFor = async (seed: number): Promise<number[]> => {
-      h.pose((s) => h.debug.reset(s, { seed }));
-      const laid = h.snapshot();
-      h.pose((s) => h.debug.setScreen(s, "playing"));
-      h.pose((s) => h.debug.addCritter(s, 20, ROW_MEDIAN));
-      h.pose((s) => h.debug.setTimerRunning(s, false));
-      h.pose((s) => h.debug.setBearEmergence(s, false));
-      await h.advance(FISH_INTERVAL);
-      const fish = h.snapshot().fishBay ?? -1;
-      return [
-        ...laid.vehicles.map((item) => item.x),
-        ...laid.floes.map((item) => item.x),
-        fish,
-      ];
-    };
-    const first = await phasesFor(7);
-    const again = await phasesFor(7);
-    const other = await phasesFor(8);
-    expect(again).toEqual(first);
-    expect(other).not.toEqual(first);
+  it("relays one lane at a posed phase and leaves its motion alone", () => {
+    h.pose((s) => h.debug.reset(s));
+    h.pose((s) => h.debug.setLaneSpeed(s, 12, 0.5));
+    h.pose((s) => h.debug.setLaneDirection(s, 12, -1));
+    h.pose((s) => h.debug.clearVehicles(s));
+    h.pose((s) => h.debug.addVehicle(s, 12, "plow", 100));
+    h.pose((s) => h.debug.setLanePhase(s, 12, 700));
+    const s = h.snapshot();
+    const lane = s.iceLanes.find((entry) => entry.row === 12);
+    expect(lane?.speed).toBe(0.5);
+    expect(lane?.dir).toBe(-1);
+    const items = s.vehicles
+      .filter((item) => item.row === 12)
+      .sort((a, b) => a.x - b.x);
+    expect(items.every((item) => item.kind === "car")).toBe(true);
+    expect(items.some((item) => Math.abs(item.x - 700) < 1e-9)).toBe(true);
+    const period = (2 + 7) * TILE;
+    for (let i = 1; i < items.length; i += 1) {
+      expect(items[i].x - items[i - 1].x).toBeCloseTo(period, 9);
+    }
+    expect(items[0].x).toBeLessThanOrEqual(7 * TILE);
+    expect(items[items.length - 1].x + 2 * TILE).toBeGreaterThanOrEqual(
+      1280 - 7 * TILE,
+    );
+    expect(s.vehicles.filter((item) => item.row !== 12)).toHaveLength(0);
   });
 
   it("grants no bonus life for a posed score", () => {

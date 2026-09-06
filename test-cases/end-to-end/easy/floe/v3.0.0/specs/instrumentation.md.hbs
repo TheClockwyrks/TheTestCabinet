@@ -59,24 +59,14 @@ they do in play. `src/game.ts` declares and exports its type, `FloeDebugApi`.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic: every rate integrated in
-whole `TICK_DT` ticks, as `specs/overview.md` fixes, so an interval of game time
-reaches the same state however it was divided into frames. Two more properties
-make it driveable from code:
-
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer.
-- Seeded randomness. The randomness the game uses runs off a generator seeded by
-  `reset`, and the generator keeps its whole state in the game's own state, so
-  reseeding and replaying the same calls reproduces the same result exactly. The
-  lanes' phases and the bay each bonus catch appears in are drawn from it.
-
-Given the same seed and the same sequence of calls and elapsed game time, the
-game reaches the same state every time.
+The surface rests on the simulation being render-free and fixed-step: game state
+advances from the elapsed simulation time the game is handed, in whole `TICK_DT`
+ticks as `specs/overview.md` fixes, with no canvas and no wall clock, so a step
+means the same thing whatever the frame rate. The dependency runs one way: the
+simulation reads nothing from the renderer, and an interval of game time reaches
+the same state however it was divided into frames.
 
 ## What the runtime provides instead
 
@@ -138,7 +128,7 @@ game at that moment. A pose returns nothing; a reading returns what it read.
 
 | Operation | Effect |
 | --- | --- |
-| `reset(options)` | Restores every field of the state to its title-screen value: `screen` `title`, `menuIndex` `0`, `phase` `crossing`, `phaseTimer` `0`, `score` `0`, `lives` `START_LIVES` (`3`), `level` `1`, `reachedLevel` `1`, `timer` at `crossingTimer(1)`, the sixteen lanes laid out as level `1` lays them out, no critter, no bears, five open bays, no bonus catch, `simTime` `0`, and the four world gates back on. `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's randomness. `muted` is left as it stands, because muting is a player preference the runtime owns. |
+| `reset()` | Restores every field of the state to its title-screen value: `screen` `title`, `menuIndex` `0`, `phase` `crossing`, `phaseTimer` `0`, `score` `0`, `lives` `START_LIVES` (`3`), `level` `1`, `reachedLevel` `1`, `timer` at `crossingTimer(1)`, the sixteen lanes laid out as level `1` lays them out, no critter, no bears, five open bays, no bonus catch, `simTime` `0`, and the four world gates back on. `muted` is left as it stands, because muting is a player preference the runtime owns. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 | `menuItemRect(index)` | A pure read of the hit region of item `index` on the menu the current screen shows, as `{ x, y, w, h }`. It changes nothing. |
 
@@ -227,6 +217,7 @@ carries an `id`, and one added through the surface is appended to its roster.
 | `setFloeX(id, x)` | Sets that floe's left edge to stage `x`. |
 | `setLaneSpeed(row, speed)` | Sets the speed of the lane at strait `row`, in tiles per second, a number at or above `0`. A speed of `0` holds the lane where it stands. Every item of the lane keeps its exact position. |
 | `setLaneDirection(row, dir)` | Sets the direction of the lane at strait `row`: `1` rightward, `-1` leftward. Every item of the lane keeps its exact position. |
+| `setLanePhase(row, x)` | Lays the lane at strait `row` out afresh at the phase `x`, a stage position from `0` to below `STRAIT_W`: every item of that lane is replaced by items of the lane's own kind at the current level's spacing, one of them with its left edge at `x` and the rest following the spacing rule `specs/ice.md` and `specs/water.md` fix from it, enough to reach both edges of the strait, each taking a fresh id. The lane's speed and direction, every other lane, and everything else on the strait are untouched. |
 
 ### The bays and the bonus catch
 

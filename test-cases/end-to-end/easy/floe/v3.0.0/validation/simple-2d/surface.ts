@@ -43,9 +43,6 @@ import type { DeepReadonly } from "ts-essentials";
 /** The surface's version, reported as `version` (`FLOE_DEBUG_VERSION`). */
 export const FLOE_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
-
 /** The six screens the game moves between. */
 export type Screen =
   "title" | "howto" | "playing" | "paused" | "victory" | "gameover";
@@ -234,7 +231,7 @@ export interface FloeDebugApi<S = unknown> {
   // ---- The core ----------------------------------------------------------
 
   /** Restore every declared field to its title-screen value. `muted` is left. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): FloeSnapshot;
   /**
@@ -327,6 +324,11 @@ export interface FloeDebugApi<S = unknown> {
   setLaneSpeed(state: DeepReadonly<S>, row: number, speed: number): S;
   /** Sets a lane's direction. It repopulates nothing. */
   setLaneDirection(state: DeepReadonly<S>, row: number, dir: number): S;
+  /**
+   * Relays a lane at phase `x`: the lane's own kind at the level's spacing, one
+   * left edge at `x`, fresh ids. Its speed and direction are untouched.
+   */
+  setLanePhase(state: DeepReadonly<S>, row: number, x: number): S;
 
   // ---- The bays and the bonus catch --------------------------------------
 
@@ -409,6 +411,7 @@ export const REQUIRED_OPS = [
   "setFloeX",
   "setLaneSpeed",
   "setLaneDirection",
+  "setLanePhase",
 
   "setBay",
   "clearBays",

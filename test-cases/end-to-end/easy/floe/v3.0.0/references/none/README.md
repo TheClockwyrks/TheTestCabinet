@@ -139,9 +139,8 @@ so every pose is verifiable by setting it and reading it back.
   loop advancing the simulation from the wall clock, and `advance(ticks)` runs
   that many whole simulation ticks, each exactly `TICK_DT`. Drawing is unaffected
   either way, so the canvas always shows the state the last tick left.
-- **The core** — `reset({ seed })` returns the game to its title values and
-  reseeds the generator the lane phases and the bonus catch are drawn from;
-  `snapshot()` reads the whole state back as plain JSON.
+- **The core** — `reset()` returns the game to its title values, level 1 laid
+  out afresh; `snapshot()` reads the whole state back as plain JSON.
 - **The screen and the run** — `setScreen`, `setPhase`, `setPhaseTimer`,
   `setMenuIndex`, `setScore`, `setLives`, `setLevel`, `setReachedLevel` and
   `setTimer`. `setLevel(n)` lays the strait out for that level, because the
@@ -157,8 +156,9 @@ so every pose is verifiable by setting it and reading it back.
   `setBearRouting` and `setBearTravel`.
 - **The two bands** — `addVehicle`, `removeVehicle`, `clearVehicles`,
   `setVehicleX`, `addFloe`, `removeFloe`, `clearFloes`, `setFloeX`,
-  `setLaneSpeed` and `setLaneDirection`. Posing an item and posing a lane's
-  motion are independent.
+  `setLaneSpeed`, `setLaneDirection` and `setLanePhase`. Posing an item and
+  posing a lane's motion are independent, and `setLanePhase` relays one lane
+  at a chosen phase without touching its motion.
 - **The bays** — `setBay`, `clearBays`, `setFishBay` and `clearFish`.
 
 Every operation but the two clock calls arranges the strait and lets the game's
@@ -248,7 +248,7 @@ src/
   lanes.ts            The two bands, the ring their items wrap around, covering
   entities.ts         The critter and the bears: placing, footing, removal
   grid.ts             The strait's geometry, as questions the rest of it asks
-  rng.ts              The seeded generator, over FloeState.rngState
+  rng.ts              The game's random source, behind three helpers
   debug.ts            The window.__floe surface over the live state
   snapshot.ts         The snapshot shape, as a pure read
   diagnostics.ts      The values the overlay shows

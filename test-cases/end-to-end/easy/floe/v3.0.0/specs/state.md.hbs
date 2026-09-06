@@ -29,7 +29,6 @@ when the debugging surface's `reset` is called.
 | The four world gates | `bearEmergence`, `catchTest`, `fishCadence`, and `timerRunning`, each `true` at a fresh start. |
 | `simTime` | Accumulated simulation time in seconds. Every tick adds `TICK_DT`, whatever the screen. |
 | `muted` | The runtime's mute bit, refreshed from the runtime in every update. |
-| The generator | The state of the seeded random generator the lanes' phases and the bonus catch are drawn from. |
 
 Every entity id is a number, unique among the entities live at any moment. An
 entity keeps its id for as long as it is on the strait, its lanes wrapping at an
@@ -139,7 +138,6 @@ export interface FloeState {
 
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 }
 ```
 {{else}}
@@ -192,7 +190,6 @@ export class FloeState extends GameState {
   timerRunning = true;
 
   simTime = 0;
-  rngState = DEFAULT_SEED;
 }
 ```
 
@@ -245,10 +242,9 @@ whatever the state holds:
   of them is optional.
 - Anything the build keeps beyond the facts above is refreshed by every operation
   that could invalidate it, so posing one field leaves the game consistent.
-- A `reset` restores the facts above to their title-screen values and reseeds the
-  game's random generator, leaving the game indistinguishable from one freshly
-  started, so anything else the build keeps across ticks follows from what a
-  reset restores.
+- A `reset` restores the facts above to their title-screen values, leaving the
+  game indistinguishable from one freshly started, so anything else the build
+  keeps across ticks follows from what a reset restores.
 {{#if (eq engine.slug "simple-2d")}}
 - The state is handed over read-only, as `DeepReadonly<FloeState>`, to `update`,
   to `render`, to every diagnostic source, and to every operation of the

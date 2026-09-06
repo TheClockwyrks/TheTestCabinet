@@ -218,7 +218,7 @@ with `engine.advance` against a `ConstantClock` whose step is one simulation
 tick, poses it through `engine.debug`, and reads the result back from the
 world's tagged actors, the game state, the engine's events, and the pixels the
 pipeline produced. No browser is involved. The pure modules — the tile map, the
-seeded generator — are called directly by the tests beside them.
+random source — are called directly by the tests beside them.
 
 ## Project layout
 
@@ -251,7 +251,7 @@ src/
   sprites.ts          Loading the seven folders, and the frame layouts
   audio.ts            The ten cue definitions, and the per-tick cue bag
   input.ts            Action registration
-  rng.ts              The seeded generator, whose state lives on the game state
+  rng.ts              The game's random source, behind three helpers
   harness.test-support.ts
                       The engine harness the build's own tests stand up
   *.test.ts           The build's own tests, beside what they test

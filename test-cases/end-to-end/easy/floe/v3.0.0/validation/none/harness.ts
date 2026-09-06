@@ -202,6 +202,7 @@ export const REQUIRED_OPS = [
   "setFloeX",
   "setLaneSpeed",
   "setLaneDirection",
+  "setLanePhase",
   // The bays and the bonus catch.
   "setBay",
   "clearBays",
@@ -322,7 +323,7 @@ export interface FloeDebugApi {
   advance(ticks: number): Promise<void>;
 
   // The core.
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<FloeSnapshot>;
   menuItemRect(index: number): Promise<MenuRect | null>;
 
@@ -375,6 +376,7 @@ export interface FloeDebugApi {
   setFloeX(id: number, x: number): Promise<void>;
   setLaneSpeed(row: number, speed: number): Promise<void>;
   setLaneDirection(row: number, dir: LaneDir): Promise<void>;
+  setLanePhase(row: number, x: number): Promise<void>;
 
   // The bays and the bonus catch.
   setBay(index: number, filled: boolean): Promise<void>;
@@ -394,10 +396,10 @@ export interface FloeDebugApi {
 // way in: every duration the specification states is a count of ticks, exactly.
 //
 // What a suite still chooses is HOW an interval is divided into calls, and that
-// is what the clocks below supply. `instrumentation/deterministic-core` is the
-// item about the division: the same second of game time, driven as one call and
-// as a hundred and twenty, must reach the same state, and a jittered division
-// must reach it too.
+// is what the clocks below supply: the same second of game time may be driven as
+// one call, as a hundred and twenty, or as a jittered division, and every rate
+// the specification states is integrated in whole ticks whichever way it is
+// divided (specs/instrumentation.md).
 
 /**
  * The whole ticks covering `duration` seconds.
@@ -662,8 +664,8 @@ const WORKSPACE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  *
  * `advance` and `skip` are RESTATED rather than inherited, because Floe means
  * something of its own by each. `advance(ticks, clock)` divides the interval
- * into calls the way `instrumentation/deterministic-core` varies, and
- * `skip(duration)` takes SECONDS of game time rather than a count of ticks,
+ * into calls of the clock's own sizes, and `skip(duration)` takes SECONDS of
+ * game time rather than a count of ticks,
  * which is how every cadence in `specs/bays.md` is stated.
  */
 export interface Harness extends Omit<
@@ -692,7 +694,8 @@ export interface Harness extends Omit<
    * Run `ticks` whole simulation ticks, one recorded tick at a time.
    *
    * `clock` divides the interval into `advance` calls of its own sizes instead,
-   * which is what `instrumentation/deterministic-core` varies. Each such call is
+   * which is how a check drives the frame lengths a real host delivers. Each
+   * such call is
    * one crossing into the page and closes no recorded tick, so a capture running
    * across it keeps nothing — a check that wants both a division and a recording
    * is asking two different questions.
@@ -1658,11 +1661,8 @@ export async function startCrossing(h: Harness, level = 1): Promise<void> {
  * Nothing here is posed: `reset` is the surface's own, and the rest is a real
  * key through Chromium's input pipeline.
  */
-export async function startRunFromTitle(
-  h: Harness,
-  options: { seed?: number } = {},
-): Promise<void> {
-  await h.debug.reset(options.seed === undefined ? undefined : options);
+export async function startRunFromTitle(h: Harness): Promise<void> {
+  await h.debug.reset();
   await h.debug.setMenuIndex(0);
   await h.tap(BINDINGS.confirm[0]);
   await h.advance(1);

@@ -9,8 +9,8 @@ import { describe, expect, it } from "vitest";
 import {
   BAY_COUNT,
   BONUS_LIFE_EVERY,
-  DEFAULT_SEED,
   FISH_INTERVAL,
+  ITEM_LEN,
   FISH_LINGER,
   FLOE_DEBUG_VERSION,
   ICE_TOP,
@@ -22,6 +22,7 @@ import {
   TILE,
   WATER_TOP,
   crossingTimer,
+  laneGap,
   laneSpeed,
   tileCX,
   tileCY,
@@ -78,6 +79,7 @@ const OPERATIONS: readonly (keyof FloeDebugApi)[] = [
   "setFloeX",
   "setLaneSpeed",
   "setLaneDirection",
+  "setLanePhase",
   "setBay",
   "clearBays",
   "setFishBay",
@@ -369,29 +371,47 @@ describe("the core", () => {
     );
   });
 
-  it("seeds the randomness, and defaults to the stated seed", () => {
-    const phases = (seed?: number): number[] => {
-      const h = harness();
-      h.api.reset(seed === undefined ? undefined : { seed });
-      return h.api.snapshot().vehicles.map((item) => item.x);
-    };
-    expect(phases(7)).toEqual(phases(7));
-    expect(phases(7)).not.toEqual(phases(8));
-    expect(phases()).toEqual(phases(DEFAULT_SEED));
+  it("puts the first bonus catch in an open bay an interval after the layout", () => {
+    const h = harness();
+    h.api.reset();
+    h.api.setScreen("playing");
+    h.api.addCritter(START_COL, ROW_NEAR);
+    h.api.setTimerRunning(false);
+    h.api.setBay(0, true);
+    h.api.setBay(1, true);
+    h.api.setBay(3, true);
+    h.api.setBay(4, true);
+    h.seconds(FISH_INTERVAL + 0.1);
+    expect(h.api.snapshot().fishBay).toBe(2);
   });
 
-  it("puts the same bonus catch in the same bay for the same seed", () => {
-    const firstBay = (seed: number): number | null => {
-      const h = harness();
-      h.api.reset({ seed });
-      h.api.setScreen("playing");
-      h.api.addCritter(START_COL, ROW_NEAR);
-      h.api.setTimerRunning(false);
-      h.seconds(FISH_INTERVAL + 0.1);
-      return h.api.snapshot().fishBay;
-    };
-    expect(firstBay(7)).toBe(firstBay(7));
-    expect(firstBay(7)).not.toBe(null);
+  it("relays one lane at a posed phase and leaves its motion alone", () => {
+    const h = harness();
+    startCrossing(h);
+    h.api.setLaneSpeed(12, 0.5);
+    h.api.setLaneDirection(12, -1);
+    h.api.addVehicle(12, "plow", 100);
+    h.api.setLanePhase(12, 700);
+    const s = h.api.snapshot();
+    const lane = s.iceLanes.find((entry) => entry.row === 12);
+    expect(lane?.speed).toBe(0.5);
+    expect(lane?.dir).toBe(-1);
+    const items = s.vehicles
+      .filter((item) => item.row === 12)
+      .sort((a, b) => a.x - b.x);
+    expect(items.every((item) => item.kind === "car")).toBe(true);
+    expect(items.some((item) => Math.abs(item.x - 700) < 1e-9)).toBe(true);
+    const period = (ITEM_LEN.car + laneGap(12, 1)) * TILE;
+    for (let i = 1; i < items.length; i += 1) {
+      expect(items[i].x - items[i - 1].x).toBeCloseTo(period, 9);
+    }
+    // The pattern reaches both edges: the clear ice at either edge is at most
+    // one gap.
+    expect(items[0].x).toBeLessThanOrEqual(laneGap(12, 1) * TILE);
+    expect(items[items.length - 1].x + TILE * 2).toBeGreaterThanOrEqual(
+      1280 - laneGap(12, 1) * TILE,
+    );
+    expect(s.vehicles.filter((item) => item.row !== 12)).toHaveLength(0);
   });
 
   it("lays the level's own roster out on setLevel and touches nothing else", () => {

@@ -29,7 +29,6 @@ import {
   CLEAR_PAUSE,
   CUES,
   DEATH_PAUSE,
-  DEFAULT_SEED,
   FISH_INTERVAL,
   FISH_LINGER,
   HOP_COOLDOWN,
@@ -200,18 +199,13 @@ function openBays(): boolean[] {
 }
 
 /**
- * Restore every field to its title-screen value and reseed the generator
- * (specs/instrumentation.md).
+ * Restore every field to its title-screen value (specs/instrumentation.md).
  *
  * `muted` is deliberately untouched, and it could not be touched from here in
  * any case: the mute bit is the engine's own and a reset is not a reason to start
  * making noise again.
  */
-export function resetGame(
-  world: World,
-  state: FloeState,
-  seed = DEFAULT_SEED,
-): void {
+export function resetGame(world: World, state: FloeState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.phase = "crossing";
@@ -230,7 +224,6 @@ export function resetGame(
   state.fishCadence = true;
   state.timerRunning = true;
   state.simTime = 0;
-  state.rngState = seed;
   state.nextId = 1;
   state.effects = [];
   state.slots = freshSlots(1);
@@ -614,7 +607,7 @@ function stepFish(state: FloeState, dt: number): void {
     state.fishTimer = FISH_INTERVAL;
     return;
   }
-  const bay = pick(state, open) ?? open[0];
+  const bay = pick(open) ?? open[0];
   state.fishBay = bay;
   state.lastFishBay = bay;
   state.fishTimer = FISH_LINGER;

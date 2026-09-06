@@ -1,38 +1,30 @@
-// Floe — water/phases-staggered: the eight water lanes never line up into a
-// column of floes.
+// water/phases-staggered — the eight water lanes never line up into a solid
+// bridge.
 //
-// specs/water.md leaves WHERE each lane's pattern sits along its row to the
-// game's own seeded randomness, and then constrains the draw: "The phases drawn
-// leave the band staggered: no column of the strait carries a floe in all eight
-// water rows at once." It is the one property of the phases the specification
-// fixes.
+// specs/water.md draws WHERE each lane's pattern sits along its row when a
+// level is laid out, and then constrains the draw: "A draw that leaves some
+// column of the strait carrying a floe in all eight water rows is drawn again,
+// so the band is always staggered: no column of the strait carries a floe in
+// all eight water rows at once." It is the one property of the phases the
+// specification fixes beyond their distribution: a column carrying a floe in
+// every water row is a solid bridge the critter walks straight up, and the
+// crossing is meant to be timed floe to floe.
 //
-// It is worth being precise about what it forbids, because the water band is the
-// mirror image of the ice band here. On the ice a covered column is a wall; on
-// the water a covered column is the only thing that is SAFE, and a column carried
-// in all eight rows would be a free ladder across the band that a critter could
-// climb without ever standing on open water. Either way the rule is the same
-// arithmetic and the same reading.
+// THE READING IS THE COVERING RULE, NOTHING ELSE. specs/ice.md, which
+// specs/water.md reads for a floe: an item covers a tile of its row when "that
+// tile's center is covered". So for each of the forty columns the eight rows are
+// counted, and no column may reach eight.
 //
-// THE READING IS THE COVERING RULE, NOTHING ELSE. specs/water.md carries a floe
-// over a body whose centre it covers, and the covering rule specs/ice.md fixes
-// for both bands puts that at `[x, x + TILE * len)`, so `itemCoversTile` is a
-// column's centre tested against that span. For each of the forty columns the
-// eight rows are counted, and no column may reach eight.
-//
-// MANY SEEDS, NOT ONE. The phases are drawn from the generator `reset` seeds, so
-// a single draw grades one draw, and a build that stated the rule and never
-// enforced it still lays a staggered band most of the time. How often it does
-// not follows from the lane table itself: a lane carries a floe over
-// `len / (len + gap)` of its row, which the eight rows of specs/water.md put at
-// `3/6, 4/7, 3/6, 1/3, 4/7, 3/6, 1/3, 4/7`, so an unconstrained draw covers any
-// one column in all eight rows about once in four hundred, and some column of
-// the forty in perhaps one draw in twenty. `SEEDS` is therefore a sample large
-// enough that such a build is caught rather than sampled past — at one draw in
-// twenty, ninety-six of them miss it with a probability near one in a hundred
-// and fifty — while a build that enforces the rule lands no wall on any draw and
-// passes at any sample size. Nothing else varies between them: level 1, laid out
-// the same way each time.
+// MANY DRAWS, NOT ONE. The phases are drawn when a level is laid out, and
+// `setLevel` lays the level out again on a fresh draw (specs/instrumentation.md),
+// so a single layout grades one draw. The rule is a property of the DRAW, so
+// this takes many of them — a build that stated the rule and never enforced it
+// lands a bridge on some draws and not others, and a build that enforces it
+// lands none on any. The water band's gaps are narrow, so an unenforced draw
+// bridges one of the forty columns in perhaps one draw in twenty, and `DRAWS`
+// is a sample large enough to reach one. Nothing else varies between the draws:
+// level 1, laid out the same way each time, and the draw and the column are
+// named where one fails.
 //
 // A LANE HAS TO CARRY SOMETHING for the count to mean anything: a band with no
 // floes at all carries no column in eight rows, and would pass a reading that
@@ -48,27 +40,27 @@ import {
   itemCoversTile,
   type Harness,
 } from "../harness";
-import { floesAlong, layOutLevel } from "./harness";
+import { floesAlong, layOutLevel, relayLevel } from "./harness";
 
 /** The level laid out. The staggering rule holds at every level. */
 const LEVEL = 1;
 
-/** The seeds the phases are drawn from, one fresh draw of the band each. */
-const SEEDS = Array.from({ length: 96 }, (_unused, index) => index + 1);
+/** How many times the band is laid out, one fresh draw of the phases each. */
+const DRAWS = 96;
 
 /** How many water rows a column may carry a floe in: fewer than all eight. */
 const ROWS_CARRYING_LIMIT = WATER_LANES.length;
 
 /** One column of one draw: how many of the eight water rows carried a floe. */
 interface ColumnReading {
-  seed: number;
+  draw: number;
   col: number;
   carrying: number;
 }
 
 /** How many floes one lane carried on one draw. */
 interface LaneReading {
-  seed: number;
+  draw: number;
   row: number;
   count: number;
 }
@@ -87,15 +79,16 @@ it("leaves no column carrying a floe in all eight water rows, on every draw of t
   const columns: ColumnReading[] = [];
   const lanes: LaneReading[] = [];
 
-  for (const seed of SEEDS) {
-    const laid = await layOutLevel(h, LEVEL, { seed });
+  for (let draw = 1; draw <= DRAWS; draw += 1) {
+    const laid =
+      draw === 1 ? await layOutLevel(h, LEVEL) : relayLevel(h, LEVEL);
     const rows = WATER_LANES.map((lane) => floesAlong(laid, lane.row));
     rows.forEach((carried, index) => {
-      lanes.push({ seed, row: WATER_LANES[index].row, count: carried.length });
+      lanes.push({ draw, row: WATER_LANES[index].row, count: carried.length });
     });
     for (let col = 0; col < COLS; col += 1) {
       columns.push({
-        seed,
+        draw,
         col,
         carrying: rows.filter((carried) =>
           carried.some((floe) => itemCoversTile(floe, col)),
@@ -109,7 +102,7 @@ it("leaves no column carrying a floe in all eight water rows, on every draw of t
     assertGreaterThanOrEqual(
       lane.count,
       1,
-      `seed ${lane.seed}, row ${lane.row}: a lane carries floes at all ` +
+      `draw ${lane.draw}, row ${lane.row}: a lane carries floes at all ` +
         `(specs/water.md)`,
     );
   }
@@ -117,7 +110,7 @@ it("leaves no column carrying a floe in all eight water rows, on every draw of t
     assertLessThan(
       reading.carrying,
       ROWS_CARRYING_LIMIT,
-      `seed ${reading.seed}, column ${reading.col}: the water rows carrying a ` +
+      `draw ${reading.draw}, column ${reading.col}: the water rows carrying a ` +
         `floe over it, of ${ROWS_CARRYING_LIMIT}`,
     );
   }

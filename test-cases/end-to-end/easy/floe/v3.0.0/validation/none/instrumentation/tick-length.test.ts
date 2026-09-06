@@ -31,10 +31,8 @@
 // edge and travels two more, so nothing about where a lane wraps — which the
 // specification leaves to the build — can reach this reading.
 //
-// WHAT THIS DOES NOT DECIDE. Not that the same interval divided differently
-// arrives in the same place, which is `instrumentation/deterministic-core`'s, and
-// not that the game advances itself at all, which is
-// `instrumentation/advances-in-real-time`'s.
+// WHAT THIS DOES NOT DECIDE. Not that the game advances itself at all, which
+// is `instrumentation/advances-in-real-time`'s.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";

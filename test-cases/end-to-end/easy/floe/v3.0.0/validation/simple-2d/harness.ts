@@ -30,7 +30,7 @@
 // settled bear with its three faculties on, `setLevel` lays the sixteen lanes out
 // for the level, a world gate stays off until something turns it back on, and
 // `reset` gives everything back. Posing through it is how a scenario is
-// reproducible, and it is the seam the case's specification documents.
+// arranged, and it is the seam the case's specification documents.
 // `surface.ts` is that specification as types, and it is the only description of
 // the surface this harness reads: the build's own module for it is never imported.
 //
@@ -431,8 +431,8 @@ export interface FloeModel {
    *
    * The same ticks run — the simulation advances by the whole `TICK_DT` ticks a
    * frame's delta completes, which is what specs/overview.md fixes and what
-   * `instrumentation/deterministic-core` decides — and only the pictures between
-   * them are skipped. It leaves the clock at one tick a frame, so what follows
+   * `instrumentation/tick-length` decides — and only the pictures between them
+   * are skipped. It leaves the clock at one tick a frame, so what follows
    * steps tick by tick again.
    *
    * Not for a measurement stated per frame or per picture: use

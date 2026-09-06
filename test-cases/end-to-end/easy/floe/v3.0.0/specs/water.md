@@ -50,9 +50,13 @@ strait's edges included: a floe carried off one edge returns at the other so the
 run of floe and open water continues unbroken, and a lane always carries enough
 floes to reach both edges of the strait.
 
-Where a lane's pattern sits along its row when a level is laid out is drawn from
-the game's own seeded randomness. The phases drawn leave the band staggered: no
-column of the strait carries a floe in all eight water rows at once.
+Where a lane's pattern sits along its row is drawn at random when a level is laid
+out. A lane's phase is the left edge of one of its floes, drawn uniformly from one
+period of its spacing, `[0, (len + gap) * TILE)`, independently for each lane;
+the rest of the lane follows the spacing rule from it. A draw that leaves some
+column of the strait carrying a floe in all eight water rows is drawn again, so
+the band is always staggered: no column of the strait carries a floe in all eight
+water rows at once.
 
 ## The per-level scaling
 

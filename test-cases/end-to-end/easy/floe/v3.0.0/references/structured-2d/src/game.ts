@@ -40,14 +40,7 @@ import type {
 } from "@clockwyrks/structured-2d";
 import { CueBag, defineCues } from "./audio";
 import { Critter } from "./bodies";
-import {
-  DEFAULT_SEED,
-  LEVELS,
-  START_LIVES,
-  TAGS,
-  TICK_DT,
-  crossingTimer,
-} from "./constants";
+import { LEVELS, START_LIVES, TAGS, TICK_DT, crossingTimer } from "./constants";
 import { FloeController } from "./controller";
 import { createDebugApi, type FloeDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -208,7 +201,6 @@ export class FloeState extends CrossingState {
   timerRunning = true;
 
   simTime = 0;
-  rngState = DEFAULT_SEED;
 
   // ---- What the run keeps between ticks beyond the contract above ----
   //

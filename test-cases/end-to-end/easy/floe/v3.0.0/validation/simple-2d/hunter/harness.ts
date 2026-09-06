@@ -115,7 +115,7 @@ export async function stepAcross(
  * the checks state them in, and the same ticks run either way: specs/overview.md
  * has the simulation advance by the whole `TICK_DT` ticks a frame's delta
  * completes, so a minute reaches the same strait however it was divided into
- * frames, and `instrumentation/deterministic-core` is the point that decides it.
+ * frames, and `instrumentation/tick-length` is the point that decides the tick.
  * What the pace changes is the number of PICTURES drawn between two readings, and
  * nothing here is read from a picture: the roster is read every `poll` ticks of
  * GAME time, whatever the pace. The clock is put back to one tick a frame in a

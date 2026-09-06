@@ -23,7 +23,6 @@
 
 import {
   BAY_COUNT,
-  DEFAULT_SEED,
   FISH_INTERVAL,
   FISH_LINGER,
   FLOE_DEBUG_VERSION,
@@ -47,7 +46,7 @@ import {
 } from "./entities";
 import { commitStep, settleBear } from "./hunter";
 import { menuItemRect, type MenuRect } from "./menus";
-import { addItem, layoutLevel } from "./lanes";
+import { addItem, layoutLane, layoutLevel } from "./lanes";
 import { resetState } from "./game";
 import { snapshot, type FloeSnapshotShape } from "./snapshot";
 import type { Facing, FloeState, Phase, Screen } from "./types";
@@ -77,7 +76,7 @@ export interface FloeDebugApi {
   advance(ticks: number): void;
 
   // The core.
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): FloeSnapshotShape;
   menuItemRect(index: number): MenuRect | null;
 
@@ -130,6 +129,7 @@ export interface FloeDebugApi {
   setFloeX(id: number, x: number): void;
   setLaneSpeed(row: number, speed: number): void;
   setLaneDirection(row: number, dir: LaneDir): void;
+  setLanePhase(row: number, x: number): void;
 
   // The bays and the bonus catch.
   setBay(index: number, filled: boolean): void;
@@ -206,8 +206,8 @@ export function createDebugApi(
 
     // ---- The core ----
 
-    reset(options) {
-      resetState(state, options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(state);
     },
 
     snapshot() {
@@ -444,6 +444,11 @@ export function createDebugApi(
         state.waterLanes.find((entry) => entry.row === row);
       if (lane === undefined) return;
       lane.dir = dir < 0 ? -1 : 1;
+    },
+
+    /** Relays one lane at a phase; its speed and direction are untouched. */
+    setLanePhase(row, x) {
+      layoutLane(state, row, x);
     },
 
     // ---- The bays and the bonus catch ----

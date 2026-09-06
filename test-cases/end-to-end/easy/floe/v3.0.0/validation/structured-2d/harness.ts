@@ -31,7 +31,7 @@
 // `addVehicle` puts a vehicle the covering rule reads unchanged, `addBear`
 // builds a bear the hunt's own routing drives, `setLaneSpeed` sets the figure
 // the lane integrates, and `reset` gives everything back. Posing through it is
-// how a scenario is reproducible, and it is the seam the case's specification
+// how a scenario is arranged, and it is the seam the case's specification
 // documents. `surface.ts` is that specification as types, and it is the only
 // description of the surface this harness reads: the build's own module for it
 // is never imported.
@@ -68,9 +68,8 @@
 // `[instrumentation]` carries no `tick_hz`: under an engine the clock is the
 // engine's, a validator supplies its own, and the size of a step is stated in
 // the validator that takes it. A check that is specifically about the step
-// (instrumentation/deterministic-core, instrumentation/tick-length) builds its
-// own harnesses with clocks of its own, or paces this one with {@link
-// FloeModel.pace}.
+// (instrumentation/tick-length) builds its own harnesses with clocks of its own,
+// or paces this one with {@link FloeModel.pace}.
 //
 // SPRITES, HEADLESS. The suite runs in `node`, where `fetch` and
 // `createImageBitmap` do not exist, and the game loads its seeded art through
@@ -683,8 +682,8 @@ export interface FloeModel {
    *
    * The same ticks run — the simulation advances by the whole ticks a frame's
    * elapsed time completes, which is what specs/overview.md fixes and what
-   * `instrumentation/deterministic-core` decides — and only the pictures
-   * between them are skipped. It leaves the clock at one tick a frame, so what
+   * `instrumentation/tick-length` decides — and only the pictures between them
+   * are skipped. It leaves the clock at one tick a frame, so what
    * follows steps tick by tick again.
    *
    * Not for a measurement stated per frame or per picture: use
@@ -1012,7 +1011,7 @@ export const captureStill = kit.captureStill;
 // about a lane poses no bear.
 
 /**
- * `reset({seed})`: the title screen, a seeded generator, every declared field at
+ * `reset()`: the title screen, level 1 laid out afresh, every declared field at
  * its title-screen value. Every suite's opening move.
  *
  * No frame is advanced. A pose acts on the live game at the call under this
@@ -1020,15 +1019,15 @@ export const captureStill = kit.captureStill;
  * and a check about what `reset` restores — `simTime` among them — reads a game
  * that has run no frame since.
  */
-export function resetTo(h: Harness, seed?: number): void {
-  h.debug.reset(seed === undefined ? undefined : { seed });
+export function resetTo(h: Harness): void {
+  h.debug.reset();
 }
 
 /**
  * A NEW RUN, opened the way a player opens one.
  *
- * `reset(seed)` for the title screen and a seeded generator, then `confirm` on
- * the title's highlighted first item, `CROSS`, which is what starts a run and
+ * `reset()` for the title screen, then `confirm` on the title's highlighted
+ * first item, `CROSS`, which is what starts a run and
  * opens `playing` (specs/ui.md) — and a run opens at level 1 with three lives,
  * a score of `0`, five open bays and a fresh crossing (specs/progression.md).
  * No pose on the surface starts a run, and there is not meant to be one: the
@@ -1039,8 +1038,8 @@ export function resetTo(h: Harness, seed?: number): void {
  * opens with — the sixteen lanes at their level-1 phases, the four world gates
  * on, the timer at `crossingTimer(1)` — is the build's, not the harness's.
  */
-export async function startRun(h: Harness, seed?: number): Promise<void> {
-  resetTo(h, seed);
+export async function startRun(h: Harness): Promise<void> {
+  resetTo(h);
   await tapAction(h, "confirm");
 }
 
@@ -1075,12 +1074,10 @@ export async function startRun(h: Harness, seed?: number): Promise<void> {
  * and only that one. A check that finds itself needing a gate for any other
  * reason has been mis-posed.
  *
- * The generator is reseeded by the `reset` this opens with, to `seed` where the
- * caller named one and to `DEFAULT_SEED` otherwise. No frame is advanced: every
- * pose here lands at the call.
+ * No frame is advanced: every pose here lands at the call.
  */
-export function startCrossing(h: Harness, level = 1, seed?: number): void {
-  resetTo(h, seed);
+export function startCrossing(h: Harness, level = 1): void {
+  resetTo(h);
   h.debug.setLevel(level);
 
   h.debug.clearVehicles();

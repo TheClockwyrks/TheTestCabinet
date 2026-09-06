@@ -193,6 +193,7 @@ const SURFACE_MEMBERS = [
   "setFloeX",
   "setLaneSpeed",
   "setLaneDirection",
+  "setLanePhase",
   "setBay",
   "clearBays",
   "setFishBay",
@@ -455,10 +456,16 @@ describe("the fixed step", () => {
   it("reaches the same state however the interval was divided into frames", async () => {
     const other = await createHarness();
     try {
+      // Both straits are posed identically by hand, since a layout is drawn.
       for (const h of [harness, other]) {
-        h.debug.reset({ seed: 12 });
+        h.debug.reset();
         h.debug.setScreen("playing");
         h.debug.setBearEmergence(false);
+        h.debug.clearVehicles();
+        h.debug.clearFloes();
+        h.debug.addVehicle(12, "car", 200);
+        h.debug.addVehicle(15, "car", 900);
+        h.debug.addFloe(5, "pan", 400);
         h.debug.addCritter(20, ROW_MEDIAN);
         h.debug.addBear(10, ROW_MEDIAN);
       }
@@ -498,24 +505,32 @@ describe("the fixed step", () => {
   });
 });
 
-describe("the deterministic core", () => {
-  it("reproduces a run from the same seed and differs from another", () => {
-    harness.debug.reset({ seed: 7 });
-    const first = harness.snapshot();
-    harness.debug.reset({ seed: 7 });
-    const again = harness.snapshot();
-    expect(again.vehicles.map((item) => item.x)).toEqual(
-      first.vehicles.map((item) => item.x),
+describe("the core", () => {
+  it("relays one lane at a posed phase and leaves its motion alone", () => {
+    harness.debug.reset();
+    harness.debug.setLaneSpeed(12, 0.5);
+    harness.debug.setLaneDirection(12, -1);
+    harness.debug.clearVehicles();
+    harness.debug.addVehicle(12, "plow", 100);
+    harness.debug.setLanePhase(12, 700);
+    const s = harness.snapshot();
+    const lane = s.iceLanes.find((entry) => entry.row === 12);
+    expect(lane?.speed).toBe(0.5);
+    expect(lane?.dir).toBe(-1);
+    const items = s.vehicles
+      .filter((item) => item.row === 12)
+      .sort((a, b) => a.x - b.x);
+    expect(items.every((item) => item.kind === "car")).toBe(true);
+    expect(items.some((item) => Math.abs(item.x - 700) < 1e-9)).toBe(true);
+    const period = (2 + 7) * TILE;
+    for (let i = 1; i < items.length; i += 1) {
+      expect(items[i].x - items[i - 1].x).toBeCloseTo(period, 9);
+    }
+    expect(items[0].x).toBeLessThanOrEqual(7 * TILE);
+    expect(items[items.length - 1].x + 2 * TILE).toBeGreaterThanOrEqual(
+      1280 - 7 * TILE,
     );
-    expect(again.floes.map((item) => item.x)).toEqual(
-      first.floes.map((item) => item.x),
-    );
-
-    harness.debug.reset({ seed: 8 });
-    const other = harness.snapshot();
-    expect(other.vehicles.map((item) => item.x)).not.toEqual(
-      first.vehicles.map((item) => item.x),
-    );
+    expect(s.vehicles.filter((item) => item.row !== 12)).toHaveLength(0);
   });
 
   it("restores every field to its title-screen value", async () => {
