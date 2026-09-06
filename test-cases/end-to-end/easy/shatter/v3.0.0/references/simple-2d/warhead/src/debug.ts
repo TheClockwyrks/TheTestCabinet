@@ -29,7 +29,6 @@
 
 import {
   BULLET_LIFE,
-  DEFAULT_SEED,
   ROCK_HEALTH,
   ROCK_RADIUS,
   SAUCER_BULLET_LIFE,
@@ -49,7 +48,7 @@ import {
   type MutBullet,
   type Sim,
 } from "./sim";
-import type { Screen, ShatterState } from "./game";
+import type { FieldEdge, SaucerEdge, Screen, ShatterState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The plain, JSON-serializable view `snapshot` returns. */
@@ -66,6 +65,11 @@ export interface ShatterSnapshot {
   saucerSpawning: boolean;
   saucerClock: number;
   saucerDue: number;
+  nextSaucerEdge: SaucerEdge | null;
+  nextSaucerRow: number | null;
+  nextSaucerAim: number | null;
+  nextRockSpeed: number | null;
+  nextRecycleEdge: FieldEdge | null;
   ship: {
     x: number;
     y: number;
@@ -105,6 +109,7 @@ export interface ShatterSnapshot {
     mind: boolean;
     gun: boolean;
     travel: boolean;
+    weave: 1 | -1;
     fireClock: number;
     weaveClock: number;
     age: number;
@@ -136,10 +141,7 @@ export interface ShatterSnapshot {
 export interface ShatterDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<ShatterState>,
-    options?: { seed?: number },
-  ): ShatterState;
+  reset(state: DeepReadonly<ShatterState>): ShatterState;
   snapshot(state: DeepReadonly<ShatterState>): ShatterSnapshot;
   menuItemRect(state: DeepReadonly<ShatterState>, index: number): Rect | null;
 
@@ -254,6 +256,32 @@ export interface ShatterDebugApi {
     state: DeepReadonly<ShatterState>,
     enabled: boolean,
   ): ShatterState;
+  setSaucerWeave(
+    state: DeepReadonly<ShatterState>,
+    direction: number,
+  ): ShatterState;
+  setSaucerDue(
+    state: DeepReadonly<ShatterState>,
+    seconds: number,
+  ): ShatterState;
+
+  setNextSaucerEdge(
+    state: DeepReadonly<ShatterState>,
+    edge: SaucerEdge,
+  ): ShatterState;
+  setNextSaucerRow(state: DeepReadonly<ShatterState>, y: number): ShatterState;
+  setNextSaucerAim(
+    state: DeepReadonly<ShatterState>,
+    radians: number,
+  ): ShatterState;
+  setNextRockSpeed(
+    state: DeepReadonly<ShatterState>,
+    speed: number,
+  ): ShatterState;
+  setNextRecycleEdge(
+    state: DeepReadonly<ShatterState>,
+    edge: FieldEdge,
+  ): ShatterState;
 
   setTorpedoCharge(
     state: DeepReadonly<ShatterState>,
@@ -278,6 +306,12 @@ export interface ShatterDebugApi {
   removeTorpedo(state: DeepReadonly<ShatterState>, id: number): ShatterState;
   clearTorpedoes(state: DeepReadonly<ShatterState>): ShatterState;
 }
+
+/** The two edges a saucer enters at. */
+const SAUCER_EDGES: readonly SaucerEdge[] = ["left", "right"];
+
+/** The four edges a recycled rock re-enters at. */
+const FIELD_EDGES: readonly FieldEdge[] = ["top", "bottom", "left", "right"];
 
 /** Run `pose` over a writable copy of the state, and return the copy. */
 function pose(
@@ -306,8 +340,7 @@ export function createDebugApi(): ShatterDebugApi {
   return {
     version: SHATTER_DEBUG_VERSION,
 
-    reset: (state, options) =>
-      titleState(options?.seed ?? DEFAULT_SEED, state.muted),
+    reset: (state) => titleState(state.muted),
 
     // Where the build laid the entry out, which `specs/ui.md` leaves to the
     // build and a pointer check has to be told (`specs/instrumentation.md`).
@@ -326,6 +359,11 @@ export function createDebugApi(): ShatterDebugApi {
       saucerSpawning: state.saucerSpawning,
       saucerClock: state.saucerClock,
       saucerDue: state.saucerDue,
+      nextSaucerEdge: state.nextSaucerEdge,
+      nextSaucerRow: state.nextSaucerRow,
+      nextSaucerAim: state.nextSaucerAim,
+      nextRockSpeed: state.nextRockSpeed,
+      nextRecycleEdge: state.nextRecycleEdge,
       ship: {
         x: state.ship.x,
         y: state.ship.y,
@@ -368,6 +406,7 @@ export function createDebugApi(): ShatterDebugApi {
               mind: state.saucer.mind,
               gun: state.saucer.gun,
               travel: state.saucer.travel,
+              weave: state.saucer.weave,
               fireClock: state.saucer.fireClock,
               weaveClock: state.saucer.weaveClock,
               age: state.saucer.age,
@@ -551,6 +590,44 @@ export function createDebugApi(): ShatterDebugApi {
       pose(state, (sim) => {
         if (sim.saucer === null) return;
         sim.saucer.travel = enabled;
+      }),
+    setSaucerWeave: (state, direction) =>
+      pose(state, (sim) => {
+        if (sim.saucer === null) return;
+        sim.saucer.weave = direction < 0 ? -1 : 1;
+      }),
+    // The figure the gap draw decides; the clock itself stands where it is.
+    setSaucerDue: (state, seconds) =>
+      pose(state, (sim) => {
+        if (Number.isFinite(seconds)) sim.saucerDue = Math.max(0, seconds);
+      }),
+
+    // ---- The posed draws -------------------------------------------------
+    //
+    // Each sets the outcome the game's next draw of one kind would decide, and
+    // the draw that takes it returns the field to `null`
+    // (`specs/instrumentation.md`). A value outside what the draw could decide
+    // is ignored, so a field only ever holds an outcome the rule accepts.
+
+    setNextSaucerEdge: (state, edge) =>
+      pose(state, (sim) => {
+        if (SAUCER_EDGES.includes(edge)) sim.nextSaucerEdge = edge;
+      }),
+    setNextSaucerRow: (state, y) =>
+      pose(state, (sim) => {
+        if (Number.isFinite(y)) sim.nextSaucerRow = y;
+      }),
+    setNextSaucerAim: (state, radians) =>
+      pose(state, (sim) => {
+        if (Number.isFinite(radians)) sim.nextSaucerAim = radians;
+      }),
+    setNextRockSpeed: (state, speed) =>
+      pose(state, (sim) => {
+        if (Number.isFinite(speed) && speed >= 0) sim.nextRockSpeed = speed;
+      }),
+    setNextRecycleEdge: (state, edge) =>
+      pose(state, (sim) => {
+        if (FIELD_EDGES.includes(edge)) sim.nextRecycleEdge = edge;
       }),
 
     // ---- The torpedoes ---------------------------------------------------

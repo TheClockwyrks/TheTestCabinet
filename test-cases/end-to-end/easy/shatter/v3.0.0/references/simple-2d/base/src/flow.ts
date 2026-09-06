@@ -17,7 +17,6 @@
 import {
   FACE_UP,
   CUES,
-  DEFAULT_SEED,
   GAMEOVER_ITEMS,
   INVULN_TIME,
   PAUSE_ITEMS,
@@ -64,11 +63,16 @@ export function openingState(): ShatterState {
     saucerClock: 0,
     saucerDue: SAUCER_FIRST_DELAY,
 
+    nextSaucerEdge: null,
+    nextSaucerRow: null,
+    nextSaucerAim: null,
+    nextRockSpeed: null,
+    nextRecycleEdge: null,
+
     tickClock: 0,
     nextId: 1,
     simTime: 0,
     muted: false,
-    rngState: DEFAULT_SEED,
 
     extraLifeNotice: 0,
     pointerPresses: [],
@@ -76,12 +80,12 @@ export function openingState(): ShatterState {
 }
 
 /**
- * Every declared field back to its title-screen value, seeded afresh.
+ * Every declared field back to its title-screen value, every posed draw cleared.
  *
  * `muted` is deliberately untouched: muting is the runtime's, and a player who
  * silenced the game does not expect a reset to turn the sound back on.
  */
-export function resetToTitle(sim: Sim, seed: number): void {
+export function resetToTitle(sim: Sim): void {
   const opening = openingState();
 
   sim.screen = opening.screen;
@@ -102,10 +106,15 @@ export function resetToTitle(sim: Sim, seed: number): void {
   sim.saucerClock = 0;
   sim.saucerDue = SAUCER_FIRST_DELAY;
 
+  sim.nextSaucerEdge = null;
+  sim.nextSaucerRow = null;
+  sim.nextSaucerAim = null;
+  sim.nextRockSpeed = null;
+  sim.nextRecycleEdge = null;
+
   sim.tickClock = 0;
   sim.nextId = 1;
   sim.simTime = 0;
-  sim.rngState = seed;
   sim.extraLifeNotice = 0;
   sim.pointerPresses = [];
 }

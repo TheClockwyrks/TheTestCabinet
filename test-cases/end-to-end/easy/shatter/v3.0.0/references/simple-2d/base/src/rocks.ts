@@ -29,7 +29,8 @@ import {
   type RockSize,
 } from "./constants";
 import { wrapX, wrapY } from "./field";
-import { nextInt, nextRange } from "./rng";
+import { range, rangeInt } from "./rng";
+import type { FieldEdge } from "./game";
 import { takeId, type MutRock, type Sim } from "./sim";
 
 /** The collision radius of a rock of that size. */
@@ -49,15 +50,14 @@ export function spinRate(id: number): number {
   return (0.25 + fraction * 0.75) * (id % 2 === 0 ? 1 : -1);
 }
 
-/** A base drift speed for that size, drawn uniformly from its own range. */
+/**
+ * A base drift speed for that size: the one the debug surface posed for the
+ * next placement, which this consumes, or a draw from the size's own range.
+ */
 export function drawBaseSpeed(sim: Sim, size: RockSize): number {
-  const [speed, next] = nextRange(
-    sim.rngState,
-    ROCK_SPEED_MIN[size],
-    ROCK_SPEED_MAX[size],
-  );
-  sim.rngState = next;
-  return speed;
+  const posed = sim.nextRockSpeed;
+  sim.nextRockSpeed = null;
+  return posed ?? range(ROCK_SPEED_MIN[size], ROCK_SPEED_MAX[size]);
 }
 
 /** Put one rock on the field, appended to the roster with a fresh id. */
@@ -130,25 +130,26 @@ export function splitKickAcross(
  * rock count are all unchanged, and nothing scores.
  */
 export function recycleRock(sim: Sim, rock: MutRock): void {
-  const [edge, afterEdge] = nextInt(sim.rngState, 0, 3);
-  sim.rngState = afterEdge;
+  // The posed edge where the debug surface posed one, consumed here; else a
+  // draw, each edge a quarter of the time.
+  const edge = sim.nextRecycleEdge ?? FIELD_EDGES[rangeInt(0, 3)];
+  sim.nextRecycleEdge = null;
 
   const speed = drawBaseSpeed(sim, rock.size);
 
-  if (edge === 0 || edge === 1) {
-    const [y, next] = nextRange(sim.rngState, 0, FIELD_H);
-    sim.rngState = next;
-    rock.y = wrapY(y);
-    rock.x = edge === 0 ? 0 : FIELD_W - 1;
-    rock.vx = edge === 0 ? speed : -speed;
+  if (edge === "left" || edge === "right") {
+    rock.y = wrapY(range(0, FIELD_H));
+    rock.x = edge === "left" ? 0 : FIELD_W - 1;
+    rock.vx = edge === "left" ? speed : -speed;
     rock.vy = 0;
     return;
   }
 
-  const [x, next] = nextRange(sim.rngState, 0, FIELD_W);
-  sim.rngState = next;
-  rock.x = wrapX(x);
-  rock.y = edge === 2 ? 0 : FIELD_H - 1;
-  rock.vy = edge === 2 ? speed : -speed;
+  rock.x = wrapX(range(0, FIELD_W));
+  rock.y = edge === "top" ? 0 : FIELD_H - 1;
+  rock.vy = edge === "top" ? speed : -speed;
   rock.vx = 0;
 }
+
+/** The four edges, in the order a drawn index names them. */
+const FIELD_EDGES: readonly FieldEdge[] = ["left", "right", "top", "bottom"];

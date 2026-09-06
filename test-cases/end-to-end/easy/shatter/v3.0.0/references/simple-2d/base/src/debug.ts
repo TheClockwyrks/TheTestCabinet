@@ -28,18 +28,14 @@
 // the panel and owns the backtick key), and no `setMuted` (the engine owns the
 // mute bit; the `mute` binding sets it and the snapshot reports it).
 
-import {
-  DEFAULT_SEED,
-  SHATTER_DEBUG_VERSION,
-  type RockSize,
-} from "./constants";
+import { SHATTER_DEBUG_VERSION, type RockSize } from "./constants";
 import { addBullet, addEnemyBullet } from "./bullets";
 import { resetToTitle } from "./flow";
 import { menuItemRect, type Rect } from "./menus";
 import { addRock, rockRadius } from "./rocks";
 import { addSaucer } from "./saucer";
 import { rockById, toSim, type MutBullet, type Sim } from "./sim";
-import type { Screen, ShatterState } from "./game";
+import type { FieldEdge, SaucerEdge, Screen, ShatterState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The plain, JSON-serializable view `snapshot` returns. */
@@ -56,6 +52,11 @@ export interface ShatterSnapshot {
   saucerSpawning: boolean;
   saucerClock: number;
   saucerDue: number;
+  nextSaucerEdge: SaucerEdge | null;
+  nextSaucerRow: number | null;
+  nextSaucerAim: number | null;
+  nextRockSpeed: number | null;
+  nextRecycleEdge: FieldEdge | null;
   ship: {
     x: number;
     y: number;
@@ -94,6 +95,7 @@ export interface ShatterSnapshot {
     mind: boolean;
     gun: boolean;
     travel: boolean;
+    weave: 1 | -1;
     fireClock: number;
     weaveClock: number;
     age: number;
@@ -113,10 +115,7 @@ export interface ShatterSnapshot {
 export interface ShatterDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<ShatterState>,
-    options?: { seed?: number },
-  ): ShatterState;
+  reset(state: DeepReadonly<ShatterState>): ShatterState;
   snapshot(state: DeepReadonly<ShatterState>): ShatterSnapshot;
   menuItemRect(state: DeepReadonly<ShatterState>, index: number): Rect | null;
 
@@ -137,6 +136,10 @@ export interface ShatterDebugApi {
   setSaucerSpawning(
     state: DeepReadonly<ShatterState>,
     enabled: boolean,
+  ): ShatterState;
+  setSaucerDue(
+    state: DeepReadonly<ShatterState>,
+    seconds: number,
   ): ShatterState;
 
   setShipPosition(
@@ -226,7 +229,35 @@ export interface ShatterDebugApi {
     state: DeepReadonly<ShatterState>,
     enabled: boolean,
   ): ShatterState;
+  setSaucerWeave(
+    state: DeepReadonly<ShatterState>,
+    direction: number,
+  ): ShatterState;
+
+  setNextSaucerEdge(
+    state: DeepReadonly<ShatterState>,
+    edge: SaucerEdge,
+  ): ShatterState;
+  setNextSaucerRow(state: DeepReadonly<ShatterState>, y: number): ShatterState;
+  setNextSaucerAim(
+    state: DeepReadonly<ShatterState>,
+    radians: number,
+  ): ShatterState;
+  setNextRockSpeed(
+    state: DeepReadonly<ShatterState>,
+    speed: number,
+  ): ShatterState;
+  setNextRecycleEdge(
+    state: DeepReadonly<ShatterState>,
+    edge: FieldEdge,
+  ): ShatterState;
 }
+
+/** The two edges a saucer enters at. */
+const SAUCER_EDGES: readonly SaucerEdge[] = ["left", "right"];
+
+/** The four edges a recycled rock re-enters at. */
+const FIELD_EDGES: readonly FieldEdge[] = ["top", "bottom", "left", "right"];
 
 /** One pose: the state in, the state the pose left out. */
 function pose(
@@ -262,9 +293,9 @@ export function createDebugApi(): ShatterDebugApi {
   return {
     version: SHATTER_DEBUG_VERSION,
 
-    reset: (state, options) =>
+    reset: (state) =>
       pose(state, (sim) => {
-        resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
+        resetToTitle(sim);
       }),
 
     // Where the build laid the entry out, which `specs/ui.md` leaves to the
@@ -286,6 +317,11 @@ export function createDebugApi(): ShatterDebugApi {
         saucerSpawning: state.saucerSpawning,
         saucerClock: state.saucerClock,
         saucerDue: state.saucerDue,
+        nextSaucerEdge: state.nextSaucerEdge,
+        nextSaucerRow: state.nextSaucerRow,
+        nextSaucerAim: state.nextSaucerAim,
+        nextRockSpeed: state.nextRockSpeed,
+        nextRecycleEdge: state.nextRecycleEdge,
         ship: {
           x: state.ship.x,
           y: state.ship.y,
@@ -320,6 +356,7 @@ export function createDebugApi(): ShatterDebugApi {
                 mind: saucer.mind,
                 gun: saucer.gun,
                 travel: saucer.travel,
+                weave: saucer.weave,
                 fireClock: saucer.fireClock,
                 weaveClock: saucer.weaveClock,
                 age: saucer.age,
@@ -363,6 +400,11 @@ export function createDebugApi(): ShatterDebugApi {
     setSaucerSpawning: (state, enabled) =>
       pose(state, (sim) => {
         sim.saucerSpawning = enabled;
+      }),
+    // The figure the gap draw decides; the clock itself stands where it is.
+    setSaucerDue: (state, seconds) =>
+      pose(state, (sim) => {
+        if (Number.isFinite(seconds)) sim.saucerDue = Math.max(0, seconds);
       }),
 
     setShipPosition: (state, x, y) =>
@@ -469,6 +511,36 @@ export function createDebugApi(): ShatterDebugApi {
       pose(state, (sim) => {
         if (sim.saucer === null) return;
         sim.saucer.travel = enabled;
+      }),
+    setSaucerWeave: (state, direction) =>
+      pose(state, (sim) => {
+        if (sim.saucer === null) return;
+        sim.saucer.weave = direction < 0 ? -1 : 1;
+      }),
+
+    // The posed draws: each sets the outcome the game's next draw of one kind
+    // would decide, and the draw that takes it returns the field to `null`
+    // (`specs/instrumentation.md`). A value outside what the draw could decide
+    // is ignored, so a field only ever holds an outcome the rule accepts.
+    setNextSaucerEdge: (state, edge) =>
+      pose(state, (sim) => {
+        if (SAUCER_EDGES.includes(edge)) sim.nextSaucerEdge = edge;
+      }),
+    setNextSaucerRow: (state, y) =>
+      pose(state, (sim) => {
+        if (Number.isFinite(y)) sim.nextSaucerRow = y;
+      }),
+    setNextSaucerAim: (state, radians) =>
+      pose(state, (sim) => {
+        if (Number.isFinite(radians)) sim.nextSaucerAim = radians;
+      }),
+    setNextRockSpeed: (state, speed) =>
+      pose(state, (sim) => {
+        if (Number.isFinite(speed) && speed >= 0) sim.nextRockSpeed = speed;
+      }),
+    setNextRecycleEdge: (state, edge) =>
+      pose(state, (sim) => {
+        if (FIELD_EDGES.includes(edge)) sim.nextRecycleEdge = edge;
       }),
   };
 }

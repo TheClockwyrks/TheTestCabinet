@@ -35,7 +35,7 @@ import type { FrameInput } from "./input";
 import type { Sim } from "./sim";
 
 /** Every declared field at its title-screen value, with `muted` as handed in. */
-export function titleState(seed: number, muted: boolean): Sim {
+export function titleState(muted: boolean): Sim {
   return {
     screen: "title",
     menuIndex: 0,
@@ -72,7 +72,12 @@ export function titleState(seed: number, muted: boolean): Sim {
     nextId: 1,
     simTime: 0,
     muted,
-    rngState: seed | 0,
+
+    nextSaucerEdge: null,
+    nextSaucerRow: null,
+    nextSaucerAim: null,
+    nextRockSpeed: null,
+    nextRecycleEdge: null,
 
     trails: [],
     extraLifeFlash: 0,
@@ -82,16 +87,10 @@ export function titleState(seed: number, muted: boolean): Sim {
 
 /** The state the game opens on, before any frame has run. */
 export function openingState(): ShatterState {
-  return titleState(1, false);
+  return titleState(false);
 }
 
-/**
- * Open a new game: the field cleared, three ships, no score, and wave 1 up.
- *
- * The generator is deliberately NOT reseeded, so a second game in one session
- * draws a different layout, while a session reseeded through `reset({ seed })`
- * and played again reaches exactly the same one.
- */
+/** Open a new game: the field cleared, three ships, no score, and wave 1 up. */
 export function startNewGame(sim: Sim): void {
   sim.screen = "playing";
   sim.menuIndex = 0;

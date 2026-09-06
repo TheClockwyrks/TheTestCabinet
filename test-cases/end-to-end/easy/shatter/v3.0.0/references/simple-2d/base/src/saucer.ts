@@ -37,7 +37,7 @@ import {
 } from "./constants";
 import { separation, wrapX, wrapY } from "./field";
 import { addEnemyBullet } from "./bullets";
-import { nextRandom, nextRange, nextSign } from "./rng";
+import { random, range, sign } from "./rng";
 import {
   countDown,
   takeId,
@@ -66,6 +66,8 @@ export function addSaucer(sim: Sim, x: number, y: number): MutSaucer {
     mind: true,
     gun: true,
     travel: true,
+    // Down, for a saucer posed onto the field; an arrival draws its own.
+    weave: 1,
     fireClock: SAUCER_FIRE_INTERVAL,
     weaveClock: SAUCER_WEAVE_INTERVAL,
     age: 0,
@@ -74,17 +76,21 @@ export function addSaucer(sim: Sim, x: number, y: number): MutSaucer {
   return saucer;
 }
 
-/** The game's own arrival: a random edge, a random row, heading into the field. */
+/**
+ * The game's own arrival: an edge, a row, a weave direction, heading into the
+ * field. A posed edge or row is taken in place of its draw and consumed
+ * (`specs/instrumentation.md`).
+ */
 export function arriveSaucer(sim: Sim, ev: TickEvents): void {
-  const [side, afterSide] = nextRandom(sim.rngState);
-  sim.rngState = afterSide;
-  const fromLeft = side < 0.5;
-
-  const [y, afterRow] = nextRange(sim.rngState, SAUCER_R, FIELD_H - SAUCER_R);
-  sim.rngState = afterRow;
+  const edge = sim.nextSaucerEdge ?? (random() < 0.5 ? "left" : "right");
+  sim.nextSaucerEdge = null;
+  const y = sim.nextSaucerRow ?? range(SAUCER_R, FIELD_H - SAUCER_R);
+  sim.nextSaucerRow = null;
+  const fromLeft = edge === "left";
 
   const saucer = addSaucer(sim, fromLeft ? SAUCER_R : FIELD_W - SAUCER_R, y);
   saucer.vx = fromLeft ? SAUCER_SPEED : -SAUCER_SPEED;
+  saucer.weave = sign();
   ev.cues.add(CUES.saucer);
 }
 
@@ -92,9 +98,7 @@ export function arriveSaucer(sim: Sim, ev: TickEvents): void {
 export function departSaucer(sim: Sim): void {
   sim.saucer = null;
   sim.saucerClock = 0;
-  const [gap, next] = nextRange(sim.rngState, SAUCER_GAP_MIN, SAUCER_GAP_MAX);
-  sim.rngState = next;
-  sim.saucerDue = gap;
+  sim.saucerDue = range(SAUCER_GAP_MIN, SAUCER_GAP_MAX);
 }
 
 /**
@@ -110,15 +114,9 @@ export function saucerMind(sim: Sim): void {
 
   saucer.weaveClock = countDown(saucer.weaveClock, TICK_DT);
   if (saucer.weaveClock === 0) {
-    let sign: 1 | -1;
-    if (saucer.vy > 0) sign = -1;
-    else if (saucer.vy < 0) sign = 1;
-    else {
-      const [drawn, next] = nextSign(sim.rngState);
-      sim.rngState = next;
-      sign = drawn;
-    }
-    saucer.vy = sign * SAUCER_WEAVE_SPEED;
+    // Opposite the way it is going; from rest, the direction it carries.
+    const direction = saucer.vy > 0 ? -1 : saucer.vy < 0 ? 1 : saucer.weave;
+    saucer.vy = direction * SAUCER_WEAVE_SPEED;
     saucer.weaveClock = SAUCER_WEAVE_INTERVAL;
   }
 
@@ -165,12 +163,10 @@ export function saucerGun(sim: Sim): void {
   saucer.fireClock = SAUCER_FIRE_INTERVAL;
 
   const [dx, dy] = separation(saucer.x, saucer.y, sim.ship.x, sim.ship.y);
-  const [error, next] = nextRange(
-    sim.rngState,
-    -SAUCER_AIM_ERROR,
-    SAUCER_AIM_ERROR,
-  );
-  sim.rngState = next;
+  // Drawn afresh for every shot, or the error the debug surface posed for this
+  // one, which the shot consumes.
+  const error = sim.nextSaucerAim ?? range(-SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+  sim.nextSaucerAim = null;
 
   const bearing = Math.atan2(dy, dx) + error;
   addEnemyBullet(

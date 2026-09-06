@@ -18,9 +18,15 @@
 // at the one boundary where it matters, the state handed in and the state handed
 // back.
 
-import { nextInt, nextRandom, nextRange, nextSign } from "./rng";
 import type { CueName, RockSize } from "./constants";
-import type { BulletState, PointerPress, Screen, ShatterState } from "./game";
+import type {
+  BulletState,
+  FieldEdge,
+  PointerPress,
+  SaucerEdge,
+  Screen,
+  ShatterState,
+} from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /**
@@ -89,6 +95,7 @@ export interface MutSaucer {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  weave: 1 | -1;
   fireClock: number;
   weaveClock: number;
   age: number;
@@ -166,7 +173,12 @@ export interface Sim {
   nextId: number;
   simTime: number;
   muted: boolean;
-  rngState: number;
+
+  nextSaucerEdge: SaucerEdge | null;
+  nextSaucerRow: number | null;
+  nextSaucerAim: number | null;
+  nextRockSpeed: number | null;
+  nextRecycleEdge: FieldEdge | null;
 
   trails: MutTrail[];
   extraLifeFlash: number;
@@ -223,6 +235,7 @@ export function toSim(state: DeepReadonly<ShatterState>): Sim {
             mind: state.saucer.mind,
             gun: state.saucer.gun,
             travel: state.saucer.travel,
+            weave: state.saucer.weave,
             fireClock: state.saucer.fireClock,
             weaveClock: state.saucer.weaveClock,
             age: state.saucer.age,
@@ -249,7 +262,12 @@ export function toSim(state: DeepReadonly<ShatterState>): Sim {
     nextId: state.nextId,
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
+
+    nextSaucerEdge: state.nextSaucerEdge,
+    nextSaucerRow: state.nextSaucerRow,
+    nextSaucerAim: state.nextSaucerAim,
+    nextRockSpeed: state.nextRockSpeed,
+    nextRecycleEdge: state.nextRecycleEdge,
 
     trails: state.trails.map((t) => ({
       id: t.id,
@@ -285,37 +303,4 @@ export function rockById(sim: Sim, id: number): MutRock | undefined {
 /** The torpedo with that id, or `undefined`. */
 export function torpedoById(sim: Sim, id: number): MutTorpedo | undefined {
   return sim.torpedoes.find((torpedo) => torpedo.id === id);
-}
-
-// ---- Draws off the state's generator -------------------------------------
-//
-// Every one of them advances `rngState`, which is the whole of the generator, so
-// a scenario reseeded by `reset({ seed })` replays exactly (`specs/simulation.md`).
-
-/** A draw in `[0, 1)`. */
-export function rand(sim: Sim): number {
-  const [value, state] = nextRandom(sim.rngState);
-  sim.rngState = state;
-  return value;
-}
-
-/** A draw in `[lo, hi)`. */
-export function randRange(sim: Sim, lo: number, hi: number): number {
-  const [value, state] = nextRange(sim.rngState, lo, hi);
-  sim.rngState = state;
-  return value;
-}
-
-/** A whole draw in `[lo, hi]`. */
-export function randInt(sim: Sim, lo: number, hi: number): number {
-  const [value, state] = nextInt(sim.rngState, lo, hi);
-  sim.rngState = state;
-  return value;
-}
-
-/** A coin flip as a sign. */
-export function randSign(sim: Sim): 1 | -1 {
-  const [value, state] = nextSign(sim.rngState);
-  sim.rngState = state;
-  return value;
 }

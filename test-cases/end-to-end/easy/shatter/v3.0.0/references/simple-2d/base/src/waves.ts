@@ -28,7 +28,7 @@ import {
   TICK_DT,
 } from "./constants";
 import { distance } from "./field";
-import { nextRange } from "./rng";
+import { range } from "./rng";
 import { addRock } from "./rocks";
 import { countDown, type Sim, type TickEvents } from "./sim";
 
@@ -59,10 +59,8 @@ function pickSpawnPoint(sim: Sim): readonly [number, number] {
   let bestClearance = -1;
 
   for (let tries = 0; tries < PLACEMENT_TRIES; tries += 1) {
-    const [x, afterX] = nextRange(sim.rngState, 0, FIELD_W);
-    sim.rngState = afterX;
-    const [y, afterY] = nextRange(sim.rngState, 0, FIELD_H);
-    sim.rngState = afterY;
+    const x = range(0, FIELD_W);
+    const y = range(0, FIELD_H);
 
     const fromShip = distance(x, y, sim.ship.x, sim.ship.y);
     const fromStar = distance(x, y, STAR_X, STAR_Y);
@@ -88,18 +86,16 @@ function pickSpawnPoint(sim: Sim): readonly [number, number] {
 export function spawnWave(sim: Sim, n: number): void {
   const scale = waveSpeedScale(n);
   const count = waveRockCount(n);
+  // A posed `nextRockSpeed` is the base speed of every rock of this placement,
+  // and the placement consumes it (`specs/instrumentation.md`).
+  const posed = sim.nextRockSpeed;
+  sim.nextRockSpeed = null;
 
   for (let i = 0; i < count; i += 1) {
     const [x, y] = pickSpawnPoint(sim);
 
-    const [bearing, afterBearing] = nextRange(sim.rngState, 0, Math.PI * 2);
-    sim.rngState = afterBearing;
-    const [base, afterSpeed] = nextRange(
-      sim.rngState,
-      ROCK_SPEED_MIN.large,
-      ROCK_SPEED_MAX.large,
-    );
-    sim.rngState = afterSpeed;
+    const bearing = range(0, Math.PI * 2);
+    const base = posed ?? range(ROCK_SPEED_MIN.large, ROCK_SPEED_MAX.large);
 
     const speed = base * scale;
     addRock(

@@ -19,7 +19,13 @@
 // state handed back.
 
 import type { CueName, RockSize } from "./constants";
-import type { PointerPress, Screen, ShatterState } from "./game";
+import type {
+  FieldEdge,
+  PointerPress,
+  SaucerEdge,
+  Screen,
+  ShatterState,
+} from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
 /**
@@ -83,6 +89,7 @@ export interface MutSaucer {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  weave: 1 | -1;
   fireClock: number;
   weaveClock: number;
   age: number;
@@ -109,11 +116,16 @@ export interface Sim {
   saucerClock: number;
   saucerDue: number;
 
+  nextSaucerEdge: SaucerEdge | null;
+  nextSaucerRow: number | null;
+  nextSaucerAim: number | null;
+  nextRockSpeed: number | null;
+  nextRecycleEdge: FieldEdge | null;
+
   tickClock: number;
   nextId: number;
   simTime: number;
   muted: boolean;
-  rngState: number;
 
   extraLifeNotice: number;
   pointerPresses: PointerPress[];
@@ -164,6 +176,7 @@ export function toSim(state: DeepReadonly<ShatterState>): Sim {
             mind: saucer.mind,
             gun: saucer.gun,
             travel: saucer.travel,
+            weave: saucer.weave,
             fireClock: saucer.fireClock,
             weaveClock: saucer.weaveClock,
             age: saucer.age,
@@ -175,11 +188,16 @@ export function toSim(state: DeepReadonly<ShatterState>): Sim {
     saucerClock: state.saucerClock,
     saucerDue: state.saucerDue,
 
+    nextSaucerEdge: state.nextSaucerEdge,
+    nextSaucerRow: state.nextSaucerRow,
+    nextSaucerAim: state.nextSaucerAim,
+    nextRockSpeed: state.nextRockSpeed,
+    nextRecycleEdge: state.nextRecycleEdge,
+
     tickClock: state.tickClock,
     nextId: state.nextId,
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
 
     extraLifeNotice: state.extraLifeNotice,
     pointerPresses: state.pointerPresses.map((press) => ({

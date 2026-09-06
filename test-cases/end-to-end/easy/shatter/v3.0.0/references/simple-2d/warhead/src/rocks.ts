@@ -39,17 +39,11 @@ import {
   WAVE_SPEED_STEP,
   type RockSize,
 } from "./constants";
+import type { FieldEdge } from "./game";
 import { wrappedDistance } from "./geometry";
-import { hashed } from "./rng";
+import { hashed, range, rangeInt } from "./rng";
 import { award } from "./scoring";
-import {
-  randInt,
-  randRange,
-  takeId,
-  type FrameEvents,
-  type MutRock,
-  type Sim,
-} from "./sim";
+import { takeId, type FrameEvents, type MutRock, type Sim } from "./sim";
 import {
   ROCK_SPIN_RATE,
   WAVE_PLACEMENT_MARGIN,
@@ -93,7 +87,7 @@ export function addRock(
     vx: 0,
     vy: 0,
     size,
-    spin: randRange(sim, 0, Math.PI * 2),
+    spin: range(0, Math.PI * 2),
     health: ROCK_HEALTH[size],
     flash: 0,
   };
@@ -101,9 +95,14 @@ export function addRock(
   return rock;
 }
 
-/** A fresh base drift speed for that size, drawn from its own range. */
+/**
+ * A base drift speed for that size: the one the debug surface posed for the
+ * next placement, which this consumes, or a draw from the size's own range.
+ */
 export function baseSpeed(sim: Sim, size: RockSize): number {
-  return randRange(sim, ROCK_SPEED_MIN[size], ROCK_SPEED_MAX[size]);
+  const posed = sim.nextRockSpeed;
+  sim.nextRockSpeed = null;
+  return posed ?? range(ROCK_SPEED_MIN[size], ROCK_SPEED_MAX[size]);
 }
 
 /** How much faster than the plain range wave `n` drifts. */
@@ -125,8 +124,8 @@ function wavePosition(sim: Sim): readonly [number, number] {
   let bestSlack = -Infinity;
 
   for (let i = 0; i < WAVE_PLACEMENT_TRIES; i += 1) {
-    const x = randRange(sim, 0, FIELD_W);
-    const y = randRange(sim, 0, FIELD_H);
+    const x = range(0, FIELD_W);
+    const y = range(0, FIELD_H);
     const fromShip = wrappedDistance(x, y, sim.ship.x, sim.ship.y);
     const fromStar = wrappedDistance(x, y, STAR_X, STAR_Y);
     const slack = Math.min(
@@ -147,12 +146,16 @@ function wavePosition(sim: Sim): readonly [number, number] {
 export function spawnWave(sim: Sim, n: number): void {
   const count = WAVE_BASE_ROCKS + n;
   const scale = waveSpeedScale(n);
+  // A posed `nextRockSpeed` is the base speed of every rock of this placement,
+  // and the placement consumes it (`specs/instrumentation.md`).
+  const posed = sim.nextRockSpeed;
+  sim.nextRockSpeed = null;
 
   for (let i = 0; i < count; i += 1) {
     const [x, y] = wavePosition(sim);
     const rock = addRock(sim, "large", x, y);
-    const heading = randRange(sim, 0, Math.PI * 2);
-    const speed = baseSpeed(sim, "large") * scale;
+    const heading = range(0, Math.PI * 2);
+    const speed = (posed ?? baseSpeed(sim, "large")) * scale;
     rock.vx = Math.cos(heading) * speed;
     rock.vy = Math.sin(heading) * speed;
   }
@@ -199,28 +202,31 @@ export function destroyRock(
  * it came in at.
  */
 export function recycleRock(sim: Sim, rock: MutRock): void {
-  const edge = randInt(sim, 0, 3);
+  // The posed edge where the debug surface posed one, consumed here; else a
+  // draw, each edge a quarter of the time.
+  const edge = sim.nextRecycleEdge ?? FIELD_EDGES[rangeInt(0, 3)];
+  sim.nextRecycleEdge = null;
   let inward: number;
 
-  if (edge === 0) {
+  if (edge === "left") {
     rock.x = 1;
-    rock.y = randRange(sim, 150, FIELD_H - 150);
+    rock.y = range(150, FIELD_H - 150);
     inward = 0;
-  } else if (edge === 1) {
+  } else if (edge === "right") {
     rock.x = FIELD_W - 1;
-    rock.y = randRange(sim, 150, FIELD_H - 150);
+    rock.y = range(150, FIELD_H - 150);
     inward = Math.PI;
-  } else if (edge === 2) {
-    rock.x = randRange(sim, 200, FIELD_W - 200);
+  } else if (edge === "top") {
+    rock.x = range(200, FIELD_W - 200);
     rock.y = 1;
     inward = Math.PI / 2;
   } else {
-    rock.x = randRange(sim, 200, FIELD_W - 200);
+    rock.x = range(200, FIELD_W - 200);
     rock.y = FIELD_H - 1;
     inward = -Math.PI / 2;
   }
 
-  const heading = inward + randRange(sim, -Math.PI / 3, Math.PI / 3);
+  const heading = inward + range(-Math.PI / 3, Math.PI / 3);
   const speed = baseSpeed(sim, rock.size);
   rock.vx = Math.cos(heading) * speed;
   rock.vy = Math.sin(heading) * speed;
@@ -230,3 +236,6 @@ export function recycleRock(sim: Sim, rock: MutRock): void {
 export function radiusOf(size: RockSize): number {
   return ROCK_RADIUS[size];
 }
+
+/** The four edges, in the order a drawn index names them. */
+const FIELD_EDGES: readonly FieldEdge[] = ["left", "right", "top", "bottom"];

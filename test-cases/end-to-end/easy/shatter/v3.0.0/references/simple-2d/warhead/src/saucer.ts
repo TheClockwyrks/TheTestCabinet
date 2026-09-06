@@ -41,14 +41,8 @@ import {
   TICK_DT,
 } from "./constants";
 import { deltaX, deltaY } from "./geometry";
-import {
-  randRange,
-  randSign,
-  takeId,
-  type FrameEvents,
-  type MutSaucer,
-  type Sim,
-} from "./sim";
+import { random, range, sign } from "./rng";
+import { takeId, type FrameEvents, type MutSaucer, type Sim } from "./sim";
 import { SAUCER_AVOID_R } from "./tuning";
 
 /** Bring a saucer onto the field at `(x, y)`, travelling right at cruise. */
@@ -62,6 +56,8 @@ export function addSaucerAt(sim: Sim, x: number, y: number): MutSaucer {
     mind: true,
     gun: true,
     travel: true,
+    // Down, for a saucer posed onto the field; an arrival draws its own.
+    weave: 1,
     fireClock: SAUCER_FIRE_INTERVAL,
     weaveClock: SAUCER_WEAVE_INTERVAL,
     age: 0,
@@ -79,7 +75,7 @@ export function addSaucerAt(sim: Sim, x: number, y: number): MutSaucer {
 export function saucerLeft(sim: Sim): void {
   sim.saucer = null;
   sim.saucerClock = 0;
-  sim.saucerDue = randRange(sim, SAUCER_GAP_MIN, SAUCER_GAP_MAX);
+  sim.saucerDue = range(SAUCER_GAP_MIN, SAUCER_GAP_MAX);
 }
 
 /** The control step for the saucer: the weave reroll, then the core standoff. */
@@ -90,10 +86,10 @@ export function steerSaucer(sim: Sim): void {
   saucer.weaveClock -= TICK_DT;
   if (saucer.weaveClock <= 1e-9) {
     saucer.weaveClock += SAUCER_WEAVE_INTERVAL;
-    // The reroll reverses the vertical direction it is travelling in; the very
-    // first one, taken from no vertical motion at all, draws its direction.
-    const sign = saucer.vy > 0 ? -1 : saucer.vy < 0 ? 1 : randSign(sim);
-    saucer.vy = sign * SAUCER_WEAVE_SPEED;
+    // The reroll reverses the vertical direction it is travelling in; from no
+    // vertical motion at all it takes the direction the saucer carries.
+    const direction = saucer.vy > 0 ? -1 : saucer.vy < 0 ? 1 : saucer.weave;
+    saucer.vy = direction * SAUCER_WEAVE_SPEED;
   }
 
   if (!saucer.travel) return;
@@ -124,9 +120,13 @@ export function fireSaucer(sim: Sim): void {
   if (saucer.fireClock > 1e-9) return;
   saucer.fireClock += SAUCER_FIRE_INTERVAL;
 
+  // Drawn afresh for every shot, or the error the debug surface posed for this
+  // one, which the shot consumes.
+  const error = sim.nextSaucerAim ?? range(-SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+  sim.nextSaucerAim = null;
   const bearing =
     Math.atan2(deltaY(saucer.y, sim.ship.y), deltaX(saucer.x, sim.ship.x)) +
-    randRange(sim, -SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+    error;
 
   sim.enemyBullets.push({
     id: takeId(sim),
@@ -151,10 +151,16 @@ export function runSaucerCadence(sim: Sim, events: FrameEvents): void {
   sim.saucerClock += TICK_DT;
   if (!sim.saucerSpawning || sim.saucerClock < sim.saucerDue) return;
 
-  const fromLeft = randSign(sim) > 0;
-  const y = randRange(sim, SAUCER_R, FIELD_H - SAUCER_R);
+  // A posed edge or row is taken in place of its draw and consumed
+  // (`specs/instrumentation.md`).
+  const edge = sim.nextSaucerEdge ?? (random() < 0.5 ? "left" : "right");
+  sim.nextSaucerEdge = null;
+  const y = sim.nextSaucerRow ?? range(SAUCER_R, FIELD_H - SAUCER_R);
+  sim.nextSaucerRow = null;
+  const fromLeft = edge === "left";
   const saucer = addSaucerAt(sim, fromLeft ? SAUCER_R : FIELD_W - SAUCER_R, y);
   if (!fromLeft) saucer.vx = -SAUCER_SPEED;
+  saucer.weave = sign();
 
   sim.saucerClock = 0;
   events.cues.add(CUES.saucer);
