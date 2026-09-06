@@ -11,18 +11,15 @@
 // figure below is a bound a check asserts. Every threshold stays in the check
 // that asserts it, derived from the figure specs/ fixes for it.
 //
-// Two of these encode a repair the previous version of this case needed, and
-// they are the ones not to quietly move:
+// One of these encodes a repair the previous version of this case needed, and it
+// is the one not to quietly move:
 //
 //   FRAGMENT_FAN   a parent rock far enough out that the well cannot build the
 //                  drift the item reads, drifting DIAGONALLY against a
 //                  HORIZONTAL shot so the two kick conventions differ by
 //                  construction
-//   SAUCER_SWEEP   54 real crossings rather than one dead-on approach, because
-//                  avoidance is often one-sided and a weave reroll can discard
-//                  it intermittently
 
-import { FIELD_H, FIELD_W, SAUCER_R, SAUCER_SPEED, STAR_Y } from "./constants";
+import { FIELD_H, FIELD_W, SAUCER_SPEED } from "./constants";
 import { driftOver, pullAt, type Vec } from "./geometry";
 
 /* -------------------------------------------------------------------------- */
@@ -112,89 +109,6 @@ export const FRAGMENT_FAN_DRIFT_PER_SECOND: number = driftOver(
 /* -------------------------------------------------------------------------- */
 /* The saucer's approach to the core                                          */
 /* -------------------------------------------------------------------------- */
-
-/**
- * One crossing of the field by a saucer: which row it enters on, which edge it
- * enters from, and the seed the game's randomness was reset to first.
- */
-export interface Crossing {
-  /** The row it enters on, in logical units. */
-  y: number;
-  /** The edge it enters from. */
-  edge: "left" | "right";
-  /** The seed the run was reset to, so its weave rerolls are reproducible. */
-  seed: number;
-  /** Where its centre starts: just inside the edge it enters from. */
-  x: number;
-  /** The velocity it enters with: cruising across, with no vertical component. */
-  vx: number;
-  vy: number;
-}
-
-/**
- * The nine rows the sweep flies, from `80` units below the star's row to `80`
- * above it in `20`-unit steps.
- *
- * The star's own row is in the set, and so are four either side of it, because
- * a build's avoidance is frequently ONE-SIDED: it steers down out of the way
- * and never up, so a sweep that flew the star's row alone would grade half the
- * behaviour.
- */
-export const SAUCER_SWEEP_ROWS: readonly number[] = [
-  STAR_Y - 80,
-  STAR_Y - 60,
-  STAR_Y - 40,
-  STAR_Y - 20,
-  STAR_Y,
-  STAR_Y + 20,
-  STAR_Y + 40,
-  STAR_Y + 60,
-  STAR_Y + 80,
-];
-
-/** Both edges, because a build may steer clear crossing one way and not the other. */
-export const SAUCER_SWEEP_EDGES = ["left", "right"] as const;
-
-/**
- * Three seeds, so the whole set is flown three times over.
- *
- * specs/saucer.md has the saucer reroll its vertical weave every
- * `SAUCER_WEAVE_INTERVAL`, and a reroll is free to discard whatever avoidance
- * the saucer had accumulated. That failure is intermittent BY CONSTRUCTION and
- * does not respect a tidy sample: it depends on where in the crossing the
- * reroll lands, which is the seeded generator's business. Three seeds is what
- * turns "the build got away with it once" into a sweep.
- */
-export const SAUCER_SWEEP_SEEDS: readonly number[] = [1, 2, 3];
-
-/**
- * Every crossing `saucer/avoids-the-core` flies: nine rows, from both edges,
- * across three seeds. Fifty-four in all.
- *
- * Each is a course the specification's own entry rule produces — a saucer
- * entering at an edge, on a row, cruising across at `SAUCER_SPEED` with no
- * vertical component — so the whole of the approach is left for the build to
- * steer through. Nothing here clamps or nudges the saucer; the check reads the
- * closest the star's centre came to the path it chose.
- *
- * The item is decided on the CLOSEST APPROACH OF ALL of them, and its recording
- * is of the crossing that produced it rather than of the first one flown: on a
- * failing build the dead-on approach is frequently one it handles cleanly, so a
- * recording of the first reads as a false positive to anyone watching it.
- */
-export const SAUCER_SWEEP: readonly Crossing[] = SAUCER_SWEEP_SEEDS.flatMap(
-  (seed) =>
-    SAUCER_SWEEP_ROWS.flatMap((y) =>
-      SAUCER_SWEEP_EDGES.map((edge): Crossing => ({
-        y,
-        edge,
-        seed,
-        x: edge === "left" ? SAUCER_R : FIELD_W - SAUCER_R,
-        vx: edge === "left" ? SAUCER_SPEED : -SAUCER_SPEED,
-        vy: 0,
-      })),
-    ),
-);
 
 /**
  * How many whole crossings of the field a saucer at cruise makes in a second,

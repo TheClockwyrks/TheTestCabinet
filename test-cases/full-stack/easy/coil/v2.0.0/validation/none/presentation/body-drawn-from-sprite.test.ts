@@ -9,9 +9,10 @@
 // hold the snake.
 //
 // WHAT IS READ. Whether an image draw landed on a body cell of a straight run.
-// `image-init.js` wraps `drawImage` and maps each destination rectangle through
-// the transform in force, so the cell a blit belongs to is the cell its centre
-// falls in whatever transform or quarter turn the build drew under. Which file
+// The harness reads each `drawImage` off the frame's recorded operations and
+// maps its destination rectangle through the transform in force, so the cell a
+// blit belongs to is the cell its centre falls in whatever transform or quarter
+// turn the build drew under. Which file
 // was painted is not read here: that a bend and a straight are painted with
 // DIFFERENT files is `presentation/corner-at-a-bend`, and that the last cell is
 // painted with another is `presentation/tail-at-the-last-cell`.

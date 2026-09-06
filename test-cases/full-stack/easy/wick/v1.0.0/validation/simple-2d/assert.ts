@@ -1,19 +1,17 @@
-// Wick — the suite's assertions. CASE-PROVIDED.
+// Wick — the suite's assertions. CASE-PROVIDED, over the shared harness.
 //
-// Every check in this project asserts through these helpers rather than through
-// vitest's `expect`, because of where a failure ends up: the runner stores each
-// failed check as an expected/actual pair and the console renders that pair to
-// the reviewer. A chai message ("expected 9.097… to be less than or equal to 8",
-// trailed by a stack) makes a poor pair; these helpers throw a message of
-// exactly the shape the runner extracts —
+// The assertions themselves are the shared validator harness's
+// (`@clockwyrks/case-harness`), because what they are FOR is the runner's
+// contract rather than this case's: the runner stores each failed check as an
+// expected/actual pair and the console renders that pair to the reviewer, so
+// every check in every validator project throws a message of exactly the shape
+// the runner extracts —
 //
 //   Expected: at most 8
 //   Actual: 9.097252332435328
 //
-// — so the reviewer reads the bound the case set beside the value the build
-// produced, and nothing else. The first line names what the check required, the
-// second the value it measured. Keep new helpers to that shape: one `Expected:`
-// line, one `Actual:` line, no file paths and no prose around them.
+// A case that wrote its own set would be restating that contract, and a case
+// that drifted from it would report a verdict the console could not render.
 //
 // Every helper takes an optional trailing `context`: what a check that runs the
 // same comparison many times over says to tell one failure from another
@@ -25,6 +23,21 @@
 //   Actual: 5
 //
 // so the pair stays two lines and the runner still reads it as one.
+//
+// THREE ARE THIS PROJECT'S OWN, and each is a reading the package does not
+// carry rather than a second spelling of one it does. They are declared below,
+// and the two private helpers they need — the `Expected:` phrase and the
+// one-line rendering of a value — are written out here rather than imported,
+// because the package exports neither: `fail` is its whole public seam, and
+// both helpers are three lines.
+//
+// This file stays because the suites next door say `from "../assert"`, and that
+// is the right thing for them to say: an assertion is the vocabulary a check
+// states its verdict in, not a package a check depends on.
+
+import { fail } from "./case-harness/assert";
+
+export * from "./case-harness/assert";
 
 /** The `Expected:` phrase, with the check's own context after it when it gave one. */
 function phrase(expected: string, context?: string): string {
@@ -45,46 +58,57 @@ function show(value: unknown): string {
   }
 }
 
-/**
- * Throw the failure the runner extracts: what was required, what was measured.
- *
- * Exported for the one reading no comparison states — a harness that found the
- * build's surface missing names what the specification requires as `expected`
- * and what it found as `actual`.
- */
-export function fail(expected: string, actual: unknown): never {
-  throw new Error(`Expected: ${expected}\nActual: ${show(actual)}`);
-}
-
-/** `actual` is `expected`, by `Object.is`. For deep structure, `assertDeepEqual`. */
-export function assertEqual(
-  actual: unknown,
-  expected: unknown,
-  context?: string,
-): void {
-  if (!Object.is(actual, expected))
-    fail(phrase(show(expected), context), actual);
-}
-
-/** `actual` is not `unwanted`, by `Object.is`. */
-export function assertNotEqual(
-  actual: unknown,
-  unwanted: unknown,
-  context?: string,
-): void {
-  if (Object.is(actual, unwanted)) {
-    fail(phrase(`not ${show(unwanted)}`, context), actual);
+/** Structural equality over the JSON-shaped values the suites compare. */
+function deepEquals(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return (
+      a.length === b.length && a.every((item, i) => deepEquals(item, b[i]))
+    );
   }
+  if (
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    a === null ||
+    b === null ||
+    Array.isArray(a) ||
+    Array.isArray(b)
+  ) {
+    return false;
+  }
+  const left = Object.entries(a as Record<string, unknown>);
+  const right = Object.entries(b as Record<string, unknown>);
+  return (
+    left.length === right.length &&
+    left.every(
+      ([key, value]) =>
+        key in b && deepEquals(value, (b as Record<string, unknown>)[key]),
+    )
+  );
 }
 
-/** `actual` and `expected` are structurally equal (JSON-comparable values). */
-export function assertDeepEqual(
-  actual: unknown,
-  expected: unknown,
+/**
+ * `actual` is within `tolerance` of `expected`, both ends in — the reading
+ * every real-valued figure in this case is compared by, with the tolerance
+ * named in `constants.ts` beside the reason it is honest. Two equal
+ * infinities are within any tolerance; nothing else infinite is.
+ *
+ * A DIFFERENT NAME AND A DIFFERENT READING FROM THE PACKAGE'S `assertNear`,
+ * which this project therefore does not shadow. That one fails any non-finite
+ * `actual` outright and phrases its bound `E +/- T`; this one lets two equal
+ * infinities through and phrases it `within T of E`. Every one of this
+ * project's eight hundred-odd real-valued comparisons was written against this
+ * wording, and both readings ship under names that say which is which.
+ */
+export function assertWithin(
+  actual: number,
+  expected: number,
+  tolerance: number,
   context?: string,
 ): void {
-  if (!deepEquals(actual, expected)) {
-    fail(phrase(show(expected), context), actual);
+  if (actual === expected) return;
+  if (!(Math.abs(actual - expected) <= tolerance)) {
+    fail(phrase(`within ${tolerance} of ${expected}`, context), actual);
   }
 }
 
@@ -99,129 +123,16 @@ export function assertNotDeepEqual(
   }
 }
 
-/** Structural equality over the JSON-shaped values the suites compare. */
-export function deepEquals(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true;
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return (
-      a.length === b.length && a.every((item, i) => deepEquals(item, b[i]))
-    );
-  }
-  if (
-    typeof a === "object" &&
-    typeof b === "object" &&
-    a !== null &&
-    b !== null &&
-    !Array.isArray(a) &&
-    !Array.isArray(b)
-  ) {
-    const left = Object.entries(a).filter(([, v]) => v !== undefined);
-    const right = Object.entries(b).filter(([, v]) => v !== undefined);
-    return (
-      left.length === right.length &&
-      left.every(
-        ([key, value]) =>
-          key in b && deepEquals(value, (b as Record<string, unknown>)[key]),
-      )
-    );
-  }
-  return false;
-}
-
 /**
- * `actual` is within `tolerance` of `expected`, both ends in — the reading
- * every real-valued figure in this case is compared by, with the tolerance
- * named in `constants.ts` beside the reason it is honest. Two equal
- * infinities are within any tolerance; nothing else infinite is.
+ * `condition` is `false`.
+ *
+ * The package carries `assertTrue` and `assertTruthy` and no negative of
+ * either, so this stays with the case: a check that reads "the build did NOT
+ * open the overlay" states that directly rather than as `assertEqual(x, false)`,
+ * whose failure pair would name the value twice over.
  */
-export function assertWithin(
-  actual: number,
-  expected: number,
-  tolerance: number,
-  context?: string,
-): void {
-  if (actual === expected) return;
-  if (!(Math.abs(actual - expected) <= tolerance)) {
-    fail(phrase(`within ${tolerance} of ${expected}`, context), actual);
-  }
-}
-
-/**
- * `actual` is within half a unit of the `digits`-th decimal place of
- * `expected` — the same reading as vitest's `toBeCloseTo(expected, digits)`.
- */
-export function assertCloseTo(
-  actual: number,
-  expected: number,
-  digits = 2,
-  context?: string,
-): void {
-  if (actual === expected) return;
-  const tolerance = 0.5 * 10 ** -digits;
-  if (!(Math.abs(actual - expected) < tolerance)) {
-    fail(phrase(`within ${tolerance} of ${expected}`, context), actual);
-  }
-}
-
-/** `actual < bound`. */
-export function assertLessThan(
-  actual: number,
-  bound: number,
-  context?: string,
-): void {
-  if (!(actual < bound)) fail(phrase(`less than ${bound}`, context), actual);
-}
-
-/** `actual <= bound`. */
-export function assertLessThanOrEqual(
-  actual: number,
-  bound: number,
-  context?: string,
-): void {
-  if (!(actual <= bound)) fail(phrase(`at most ${bound}`, context), actual);
-}
-
-/** `actual > bound`. */
-export function assertGreaterThan(
-  actual: number,
-  bound: number,
-  context?: string,
-): void {
-  if (!(actual > bound)) fail(phrase(`greater than ${bound}`, context), actual);
-}
-
-/** `actual >= bound`. */
-export function assertGreaterThanOrEqual(
-  actual: number,
-  bound: number,
-  context?: string,
-): void {
-  if (!(actual >= bound)) fail(phrase(`at least ${bound}`, context), actual);
-}
-
-/** `min <= actual <= max`, both ends in. */
-export function assertBetween(
-  actual: number,
-  min: number,
-  max: number,
-  context?: string,
-): void {
-  if (!(actual >= min && actual <= max)) {
-    fail(phrase(`between ${min} and ${max}`, context), actual);
-  }
-}
-
-/** A string contains `needle`, or an array contains an equal element. */
-export function assertContains(
-  container: string | readonly unknown[],
-  needle: unknown,
-  context?: string,
-): void {
-  const holds =
-    typeof container === "string"
-      ? typeof needle === "string" && container.includes(needle)
-      : container.some((item) => deepEquals(item, needle));
-  if (!holds) fail(phrase(`containing ${show(needle)}`, context), container);
+export function assertFalse(condition: boolean, context?: string): void {
+  if (condition) fail(phrase("false", context), condition);
 }
 
 /** A string does not contain `needle`, or an array holds no equal element. */
@@ -235,98 +146,4 @@ export function assertNotContains(
       ? typeof needle === "string" && container.includes(needle)
       : container.some((item) => deepEquals(item, needle));
   if (holds) fail(phrase(`not containing ${show(needle)}`, context), container);
-}
-
-/** A string or array has exactly `length` elements. */
-export function assertLength(
-  actual: string | readonly unknown[],
-  length: number,
-  context?: string,
-): void {
-  if (actual.length !== length) {
-    fail(phrase(`length ${length}`, context), actual.length);
-  }
-}
-
-/** The object has a `key` property, own or inherited, whatever its value. */
-export function assertHasProperty(
-  actual: object,
-  key: string,
-  context?: string,
-): void {
-  if (!(key in actual)) {
-    fail(phrase(`a ${show(key)} property`, context), Object.keys(actual));
-  }
-}
-
-/** The value is `null`. */
-export function assertNull(actual: unknown, context?: string): void {
-  if (actual !== null) fail(phrase("null", context), actual);
-}
-
-/** The value is anything but `null`. */
-export function assertNotNull(actual: unknown, context?: string): void {
-  if (actual === null) fail(phrase("not null", context), actual);
-}
-
-/** The value is `undefined`. */
-export function assertUndefined(actual: unknown, context?: string): void {
-  if (actual !== undefined) fail(phrase("undefined", context), actual);
-}
-
-/** The value is neither `null` nor `undefined`. */
-export function assertDefined(actual: unknown, context?: string): void {
-  if (actual === null || actual === undefined) {
-    fail(phrase("a value", context), actual);
-  }
-}
-
-/** The condition holds. The blunt one; prefer a comparison that names values. */
-export function assertTrue(condition: boolean, context?: string): void {
-  if (!condition) fail(phrase("true", context), condition);
-}
-
-/** The condition does not hold. */
-export function assertFalse(condition: boolean, context?: string): void {
-  if (condition) fail(phrase("false", context), condition);
-}
-
-/** The value is truthy: a reading that is there at all, whatever it holds. */
-export function assertTruthy(actual: unknown, context?: string): void {
-  if (!actual) fail(phrase("a truthy value", context), actual);
-}
-
-/** The string matches `pattern` (a regular expression, or a substring). */
-export function assertMatches(
-  actual: string,
-  pattern: RegExp | string,
-  context?: string,
-): void {
-  const holds =
-    typeof pattern === "string"
-      ? actual.includes(pattern)
-      : pattern.test(actual);
-  if (!holds) fail(phrase(`matching ${String(pattern)}`, context), actual);
-}
-
-/** Calling `run` throws. */
-export function assertThrows(run: () => unknown, context?: string): void {
-  try {
-    run();
-  } catch {
-    return;
-  }
-  fail(phrase("a thrown error", context), "no error thrown");
-}
-
-/** Calling `run` returns without throwing. */
-export function assertDoesNotThrow(run: () => unknown, context?: string): void {
-  try {
-    run();
-  } catch (error) {
-    fail(
-      phrase("no thrown error", context),
-      error instanceof Error ? error.message : error,
-    );
-  }
 }

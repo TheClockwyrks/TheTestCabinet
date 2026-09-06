@@ -42,6 +42,7 @@ import { dirname } from "node:path";
 import { gzipSync } from "node:zlib";
 import { inject } from "vitest";
 import type { Page } from "playwright";
+import { fail } from "./assert";
 import { ConstantClock, type Clock } from "./clock";
 import {
   PROVIDE_SURFACE_ABSENT_KEY,
@@ -151,6 +152,141 @@ export interface UntilResult<S> {
   snapshot: S;
 }
 
+/* ---- Batched surface calls ------------------------------------------------ */
+//
+// WHAT THESE FOUR TYPES ARE FOR. A crossing into the page is a round trip to the
+// browser, and what a round trip costs is a fact about how busy the HOST is
+// rather than about the build — 6 ms on an idle machine and 90 ms on one running
+// a model's build beside it. A scenario that poses forty drones one call at a
+// time, or sweeps a hundred frames one round trip apart, has therefore made its
+// own verdict a reading of the load average. The batched members below
+// (`arrange`, `sweep`, `samples`, `trials`) each do the whole of such a scenario
+// in ONE crossing, and these are the shapes they carry.
+//
+// THE CALL TUPLE IS TYPED AGAINST THE CASE'S OWN SURFACE, operation by operation,
+// so a batched call is checked exactly as the direct `h.debug.x(…)` it replaces
+// would be. That is the whole reason it is a mapped type rather than
+// `[string, ...unknown[]]`: a batch is where a typo in an operation name or a
+// missing argument would otherwise reach the page as a raw `TypeError` several
+// frames into a scenario.
+//
+// WHY THE BATCH IS `arrange` AND NOT `pose`. Two cases mean different things by
+// the word, and this package's rule is to NEVER SILENTLY PICK A WINNER. Cascade
+// already carries a `pose(calls)` of its own — `{ op, args }` objects, answering
+// what each call RETURNED — and its `Harness` extends this one, so a member named
+// `pose` here would not merely shadow that reading, it would stop cascade
+// compiling. The reading below is the other one: a TUPLE checked against the
+// case's own surface, answering the SNAPSHOT the calls left. So both ship, under
+// names that say which is which, and a case binds the one it has always meant.
+// {@link PoseOperation} keeps the word because a type-level name collides with
+// nothing and "the operations that pose the game" is exactly what it names.
+
+/**
+ * The operations of a case's debug surface `D` that a batch may carry.
+ *
+ * `snapshot` is excluded by default because it is not an arrangement: a batch
+ * hands the state back already, and a `snapshot` inside one would be a reading
+ * thrown away.
+ *
+ * THE STEP OPERATION IS NOT EXCLUDED HERE, AND CANNOT BE. Its name is the case's
+ * and arrives through `CaseConfig.step` as a VALUE, which no type in this package
+ * can see — refract, carom and fathom spell it `advance` and volute spells it
+ * `step`, which is the same disagreement `BASE_REQUIRED_OPS` stops short of. So
+ * `Excluded` is a parameter: a case that wants its own step operation kept out of
+ * its batches names it (`SurfaceCall<SpectraDebugApi, "snapshot" | "advance">`),
+ * and the package's default excludes only the one name every case shares. A batch
+ * that does step the game is not rejected — it is simply a batch whose frames the
+ * harness did not count, which is why a case is better off naming the exclusion.
+ */
+export type PoseOperation<
+  D,
+  Excluded extends PropertyKey = "snapshot",
+> = Exclude<Extract<keyof D, string>, Excluded>;
+
+/**
+ * One call into the build's surface: the operation's name, then its arguments.
+ *
+ * A discriminated union over the surface, so `["setDroneBand", 3, "low"]` type
+ * checks against `setDroneBand(id: number, band: Band)` and
+ * `["setDroneBand", 3]` does not. A member of `D` that is not a function
+ * contributes nothing to the union rather than contributing a broken tuple.
+ */
+export type SurfaceCall<D, Excluded extends PropertyKey = "snapshot"> = {
+  [K in PoseOperation<D, Excluded>]: D[K] extends (...args: never[]) => unknown
+    ? readonly [K, ...Parameters<D[K]>]
+    : never;
+}[PoseOperation<D, Excluded>];
+
+/**
+ * How far an in-page sweep may run, and what it arranges before it opens.
+ *
+ * Generic in the CALL rather than in the surface, like every other batched shape
+ * here — see {@link Harness}'s third type parameter for why that matters.
+ */
+export interface SweepOptions<Call> extends UntilOptions {
+  /** Surface calls run before the first reading, in the sweep's own crossing. */
+  arrange?: readonly Call[];
+}
+
+/** What an in-page sweep found, and the state its `arrange` left before it ran. */
+export interface SweepResult<S> extends UntilResult<S> {
+  /** The state the sweep's own `arrange` left, read before the first frame. */
+  arranged: S;
+}
+
+/** What a per-frame reading run reads, and when it stops early. */
+export interface SamplesOptions<S, Sample, Argument> {
+  /** The reading taken off each state. Carried into the page AS SOURCE. */
+  project: (snapshot: S, argument: Argument) => Sample;
+  /** Everything from the suite the two functions may see. Crosses as JSON. */
+  argument: Argument;
+  /** Ends the run early, on the reading it held for. Carried in AS SOURCE. */
+  stop?: (sample: Sample, taken: Sample[], argument: Argument) => boolean;
+}
+
+/** What a per-frame reading run found. */
+export interface SamplesResult<S, Sample> {
+  /** The opening reading, then one per frame that ran. */
+  samples: Sample[];
+  /** The state the last frame left. */
+  snapshot: S;
+  /** How many frames actually ran, which `stop` may have cut short. */
+  frames: number;
+}
+
+/** How a probing run arranges each of its rounds, and what it reads back. */
+export interface TrialsOptions<Call, S, Reading, Argument> {
+  /**
+   * The calls that arrange one round, from its index and the previous round's
+   * reading. Carried into the page AS SOURCE.
+   */
+  stage: (
+    round: number,
+    last: Reading | null,
+    argument: Argument,
+  ) => readonly Call[];
+  /** The reading taken off the state a round's frame left. Carried in AS SOURCE. */
+  read: (snapshot: S, argument: Argument) => Reading;
+  /** Everything from the suite the two functions may see. Crosses as JSON. */
+  argument: Argument;
+  /**
+   * Every surface operation `stage` may issue, checked before the crossing opens.
+   *
+   * A build missing one then fails by assertion naming the operation rather than
+   * with a raw `TypeError` from inside the page. A call to an operation not named
+   * here is not checked, so name them all.
+   */
+  operations: readonly string[];
+}
+
+/** What a probing run found. */
+export interface TrialsResult<S, Reading> {
+  /** One reading per round, in order. */
+  readings: Reading[];
+  /** The state the last round's frame left. */
+  snapshot: S;
+}
+
 /**
  * How long a free-running watch may last, and how often it reads.
  *
@@ -194,8 +330,32 @@ export interface TimedCue {
   t: number;
 }
 
-/** Everything a check reads off one page running one build. */
-export interface Harness<S, D> {
+/**
+ * Everything a check reads off one page running one build.
+ *
+ * `S` is the case's snapshot and `D` its debug surface, neither of which this
+ * file ever interprets. `Call` is DERIVED from `D` and is never written by a
+ * case: `Harness<RefractSnapshot, RefractDebugApi>` is what a case binds, exactly
+ * as it always was, and the third parameter fills itself in.
+ *
+ * WHY IT IS A PARAMETER RATHER THAN `SurfaceCall<D>` WRITTEN AT EACH USE. The
+ * batched members take a batch of calls, so `D` would appear both covariantly
+ * (`debug: D`, the surface a check reaches through) and contravariantly (a
+ * parameter position, in `SurfaceCall<D>`). TypeScript measures a type
+ * parameter's variance once for the whole interface and compares two
+ * instantiations by it, so `D` would come out INVARIANT — and every free helper
+ * the cases write over `Harness<unknown, object>` would stop accepting a harness
+ * bound to a real surface, with an error about `{}` missing that surface's
+ * operations. Naming the call type separately keeps `D` covariant and leaves
+ * `Call` purely contravariant, which is the truth about both: a surface is read
+ * OUT of the harness and a batch is passed IN. `SurfaceCall<object>` is `never`,
+ * which is why such a helper goes on accepting every case's batch.
+ *
+ * A case that wants to write the call type down names it off its own surface
+ * (`type SpectraCall = SurfaceCall<SpectraDebugApi, "snapshot" | "advance">`)
+ * rather than reaching for this parameter.
+ */
+export interface Harness<S, D, Call = SurfaceCall<D>> {
   /** The page the build is running in. For a check that needs Playwright itself. */
   readonly page: Page;
   /** The case this harness was built for, with every default filled in. */
@@ -293,6 +453,62 @@ export interface Harness<S, D> {
    * looks at.
    */
   skip(count?: number): Promise<void>;
+  /**
+   * Run `span` seconds of simulated time, divided into `frames` frames, in ONE
+   * call to the build's step operation.
+   *
+   * THE POINT IS WHO DIVIDES THE INTERVAL. {@link advance} runs `n` frames by
+   * making `n` calls of one frame each, so the harness fixes every boundary; this
+   * makes a single `op(span, frames)` and leaves the division to the BUILD. That
+   * is the only way to pose `advanceSeconds(1, 1)` against `advanceSeconds(1, 60)`
+   * — the same second of game time as one frame and as sixty — which is exactly
+   * what a specification requiring delta-time independence says must reach the
+   * same state.
+   *
+   * ONLY MEANINGFUL FOR A `"seconds-frames"` STEP, and it THROWS for the other.
+   * A `"count"`-step build is never told a duration: its step operation runs whole
+   * ticks of the build's own fixed length, so there is no interval for it to
+   * divide and nothing to vary the division of. Handing one a span would either
+   * silently run the wrong number of ticks or be silently ignored, and both leave
+   * a check that is ABOUT the division passing without having posed anything. It
+   * throws rather than failing by assertion because it is not a fault of the
+   * build: it is a case whose config and whose suite disagree, which no build can
+   * cause and none can fix.
+   *
+   * THE WHOLE SPAN IS ONE RECORDED FRAME. The recorder brackets the single call,
+   * which is the honest reading — the harness cannot see where the build put its
+   * own frame boundaries inside a step it did not drive. {@link skipSeconds} is
+   * the same call with no frame kept.
+   *
+   * THE CLOCK IS NOT ASKED, and no delta is drawn from it. Every other drive
+   * takes the length of a frame from `HarnessOptions.clock`, because it is the
+   * harness that decides where the boundaries fall; here the CALLER names the
+   * interval and the build divides it, so there is nothing for a clock to say. A
+   * stepping or jittered clock is therefore left exactly where it stood, and the
+   * simulated time this adds is the span itself.
+   *
+   * Answers nothing, exactly as {@link advance} does: a suite that wants the
+   * state reads it with {@link snapshot}.
+   *
+   * `frames` is ASSERTED to be at least 1 and a whole number. A count of zero or
+   * a fraction is a mistake in the fixture, and it fails as one rather than being
+   * quietly repaired into a drive the check did not ask for.
+   */
+  advanceSeconds(span: number, frames?: number): Promise<void>;
+  /**
+   * {@link advanceSeconds}, closing no recorded frame.
+   *
+   * The pair {@link advance} and {@link skip} already are, in the seconds
+   * vocabulary: the same real update the build runs, the same one crossing, but
+   * off camera, so a capture running across it keeps nothing and a section that
+   * has to sit through a stage's entrance costs a replay nothing. Use it for the
+   * wait; use {@link advanceSeconds} for the part a check is about.
+   *
+   * Sounds emitted anywhere inside the span are attributed to the frame it ended
+   * on, which is the whole of what an undivided call can honestly say about when
+   * a sound happened.
+   */
+  skipSeconds(span: number, frames?: number): Promise<void>;
   /** Advance until `predicate` holds, sampling every `poll` frames. */
   until(
     predicate: (snapshot: S) => boolean,
@@ -308,6 +524,109 @@ export interface Harness<S, D> {
     predicate: (snapshot: S) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult<S>>;
+
+  /* ---- One crossing instead of N -------------------------------------- */
+  //
+  // Four members that do in the page what the members above do a round trip
+  // apart. Nothing here changes what the build runs, what a recording keeps or
+  // what a cue watch sees: the frames are the same frames {@link advance} runs,
+  // one step of the build's surface each, opened and closed on the recorder and
+  // accounted to the cue sinks the same way. What changes is that a scenario
+  // pays for ONE round trip rather than one per call, and a round trip's cost is
+  // a fact about how busy the host is — so a check that spent a hundred of them
+  // had made its verdict a reading of the load average.
+  //
+  // WHAT A CASE GIVES UP FOR THAT. Every function below is carried into the page
+  // AS SOURCE, so each must stand on its own: it sees the parameters it is handed
+  // and nothing else, and anything from the suite reaches it through `argument`,
+  // which crosses as JSON. A function that reaches for a binding of the suite's
+  // fails IN THE PAGE and the check reports it, so the mistake is loud.
+  //
+  // AND WHERE `CaseConfig.projectSnapshot` STOPS. A case's narrowing is a node-
+  // side function, so it cannot run in the page: the `S` values these hand back —
+  // a sweep's `snapshot` and `arranged`, a run's final `snapshot` — are projected
+  // exactly as every other snapshot is, but the `Sample` and `Reading` values are
+  // the check's OWN readings, taken in the page off an unprojected state. A case
+  // that narrows a field should not read that field in a `project` or a `read`.
+
+  /**
+   * Run several of the build's surface operations, in order, in ONE crossing,
+   * and read the state they left.
+   *
+   * The same calls the build would receive one at a time, in the same order,
+   * against the same game: the surface is synchronous inside the page, so a batch
+   * and a run of separate calls leave the game in the same arrangement. Nothing
+   * here advances it, so no frame is opened and the recorder keeps nothing — a
+   * pose is an arrangement, and {@link advance} is what runs it.
+   *
+   * NOT SPELLED `pose`, AND THAT IS DELIBERATE: cascade's harness already binds
+   * that name to a different reading of its own, which answers what each call
+   * RETURNED rather than the state they left. See the section header above.
+   */
+  arrange(calls: readonly Call[]): Promise<S>;
+  /**
+   * {@link until}, with the predicate decided INSIDE the page, so the whole sweep
+   * is one crossing.
+   *
+   * Identical in what it drives and what it reports: the same frames, the
+   * predicate read before the first and after every `poll` of them, and the sweep
+   * stopping on the frame it first holds. What changes is that the frames and the
+   * readings happen in the page rather than a round trip apart.
+   *
+   * `options.arrange` runs surface calls first, in the same crossing, exactly as
+   * {@link arrange} would; the state they left is read once and handed to the
+   * predicate as its third parameter and back to the caller as
+   * {@link SweepResult.arranged}. That is what lets a shot be fired and followed
+   * to its contact with no round trip in between.
+   *
+   * THE UNUSED DELTAS GO BACK TO THE CLOCK. A sweep asks for every delta it might
+   * run before it crosses, because the frames run in the page; a sweep that
+   * stopped early hands the rest back through `Clock.rewind`, so a stepping or
+   * jittered clock is left exactly where the frames that actually ran put it.
+   */
+  sweep<Argument>(
+    predicate: (snapshot: S, argument: Argument, arranged: S) => boolean,
+    argument: Argument,
+    options?: SweepOptions<Call>,
+  ): Promise<SweepResult<S>>;
+  /**
+   * Run `frames` frames, reading `project` off the state before the first and
+   * after every one of them, in ONE crossing.
+   *
+   * What a check that MEASURES A PATH runs: it wants a reading per frame rather
+   * than a stopping point, and taking those readings a round trip apart makes
+   * what the check costs a fact about how busy the host is. Keeping a reading to
+   * the fields the check uses is what keeps the one crossing small.
+   *
+   * The array holds `frames + 1` readings: the state as the run opened, then one
+   * after each frame — or fewer, when `stop` ends it early. The reading `stop`
+   * held on is KEPT, so a caller reads the pair a change sits between.
+   */
+  samples<Sample, Argument>(
+    frames: number,
+    options: SamplesOptions<S, Sample, Argument>,
+  ): Promise<SamplesResult<S, Sample>>;
+  /**
+   * Run `rounds` rounds of "pose, drive ONE frame, read" inside the page, in ONE
+   * crossing.
+   *
+   * The sweep a check that PROBES runs. {@link sweep} poses once and then drives,
+   * and {@link samples} drives without posing at all; a trial is the shape left
+   * over, where each round has to be arranged from what the round before it left
+   * — a timer posted just under a bound and the one frame that settles whether
+   * the build acted on it, a hundred times over.
+   *
+   * `stage` is handed the round's index and the PREVIOUS round's reading, and
+   * returns the calls that arrange the round, exactly the batch {@link arrange}
+   * would run. `read` projects the state the round's frame left; a reading is
+   * handed straight to the next round's `stage` inside the page and every one of
+   * them comes back at the end, so a reading must be JSON.
+   */
+  trials<Reading, Argument>(
+    rounds: number,
+    options: TrialsOptions<Call, S, Reading, Argument>,
+  ): Promise<TrialsResult<S, Reading>>;
+
   /**
    * Run one frame at a time, handing each frame's snapshot to `watch`, and stop
    * when it answers `true`.
@@ -437,6 +756,31 @@ export interface Harness<S, D> {
   /** The canvas's backing store size, as the build sized it. */
   surface(): Promise<{ width: number; height: number; dpr: number }>;
 
+  /**
+   * Give the build a real, browser-trusted gesture, so its audio can open — at
+   * whatever moment the check has reached.
+   *
+   * THE SAME GESTURE `HarnessOptions.armAudio` DELIVERS, AND NOT THE SAME THING.
+   * The option fires it in the one place the harness controls: before the opening
+   * `reset`, with settling frames after it, so the restore erases whatever the
+   * gesture moved and a check is handed a game nothing has touched. That is the
+   * safe position, and it is why the option exists — but it is a position only
+   * the harness can occupy, because it is inside `createHarness`.
+   *
+   * This method is the gesture and nothing else: no settling frames and no
+   * reset, because it is called at a moment the harness arranged nothing about
+   * and repairing the state afterwards would erase the check's own arrangement
+   * along with the gesture's. A case reaching for it is stating that its gesture
+   * is inert where it stands — a key its specification binds to nothing, pressed
+   * on a screen that reads no keys — or that it wants what the gesture did. A
+   * case that only needs its audio open before the checks begin should use the
+   * option instead, which cannot leave a mark.
+   *
+   * Which gesture it is, is the case's ({@link ArmGesture}), and a press is made
+   * at the case's own LOGICAL point taken through the fit, so it lands where the
+   * case says it does whatever shape the window is.
+   */
+  armAudio(): Promise<void>;
   /** How many sounds the build has emitted since the page loaded, in total. */
   sounds(): Promise<number>;
   /**
@@ -843,11 +1187,60 @@ export function createHarnessFactory<S, D extends object>(
     );
     const refuse = (): never => failSurface(surfaceFault ?? "");
 
+    /**
+     * Which of the case's OPTIONAL operations this build does not carry.
+     *
+     * `surfaceFault` already covers everything every build owes; what this adds
+     * is the handful a VARIANT owes (`CaseConfig.optionalOps`). Read once per
+     * page, and only for a case that declared any — a case with none pays no
+     * crossing at all, which is every case that has no variants to differ over.
+     *
+     * WHAT IT IS FOR is the failure a check lands on. An overload build with no
+     * `setDroneCharge` should fail its overload points with the expected/actual
+     * pair a reviewer reads, naming the operation the specification required;
+     * without this it fails with a raw `TypeError` from inside the page, several
+     * calls into a scenario, which names nothing. It is NEVER a surface fault:
+     * the probe that decides whether a build is conformant at all does not look
+     * at this list, so a base build missing every one of them is conformant.
+     */
+    const missingOptional = new Set<string>();
+    if (surfaceFault === null && resolved.optionalOps.length > 0) {
+      const carried = new Set(
+        await page.evaluate(
+          ([handle, names]) => {
+            const target =
+              (window as unknown as Record<string, Record<string, unknown>>)[
+                handle
+              ] ?? {};
+            return names.filter((name) => typeof target[name] === "function");
+          },
+          [resolved.handle, [...resolved.optionalOps]] as const,
+        ),
+      );
+      for (const name of resolved.optionalOps) {
+        if (!carried.has(name)) missingOptional.add(name);
+      }
+    }
+
+    /**
+     * Fail the running check if `operation` is one the build was allowed to omit
+     * and did.
+     *
+     * Applied at every route into the surface a check can take, so no route can
+     * reach a missing optional operation and land on a `TypeError` instead.
+     */
+    const requireOperation = (operation: string): void => {
+      if (missingOptional.has(operation)) {
+        failSurface(`window.${resolved.handle} carries no ${operation}()`);
+      }
+    };
+
     const call = async (
       operation: string,
       args: unknown[],
     ): Promise<unknown> => {
       if (surfaceFault !== null) refuse();
+      requireOperation(operation);
       const returned = await page.evaluate(
         ([handle, name, rest]) =>
           (window as unknown as PageGlobals)[handle]![name]!(...rest),
@@ -965,6 +1358,73 @@ export function createHarnessFactory<S, D extends object>(
     let timeMs = 0;
 
     /**
+     * Count `upTo` of the frames a batched run was handed deltas for, and stamp
+     * every sound it emitted with the frame that produced it.
+     *
+     * The accounting the driven loop does inline, lifted out because the batched
+     * members below each hand back a sound count per frame and a number of frames
+     * that actually ran — which is not always the number they asked for, since a
+     * sweep stops on its predicate. Only the frames that RAN move the counters,
+     * so `h.frame()` and `h.timeMs()` mean the same thing across a batched sweep
+     * as across a driven one.
+     */
+    const accountFrames = (
+      deltas: readonly number[],
+      sounds: readonly number[],
+      upTo: number,
+    ): void => {
+      for (let index = 0; index < upTo; index += 1) {
+        frameCount += 1;
+        timeMs += deltas[index] as number;
+        const emitted = sounds[index] ?? 0;
+        for (let n = 0; n < emitted; n += 1) {
+          for (const sink of cueSinks) {
+            sink.push({ frame: frameCount, tick: frameCount, t: timeMs });
+          }
+        }
+      }
+    };
+
+    /* ---- The page's own names, as source ---------------------------------- */
+    //
+    // The batched members carry the check's own functions into the page AS
+    // SOURCE, so their bodies are assembled as text rather than passed as
+    // arguments — which means the handle, the two instrumentation globals and the
+    // step operation have to be written into that text. Each is interned once
+    // here, through `JSON.stringify`, so a name is quoted exactly as a string
+    // literal however it is spelled and no name is ever concatenated raw into a
+    // script.
+
+    /** `window.<handle>`, as an expression. */
+    const apiSource = `window[${JSON.stringify(resolved.handle)}]`;
+    /** The injected recorder, as an expression. */
+    const recSource = `window[${JSON.stringify(resolved.recorderGlobal)}]`;
+    /** The injected audio probe, as an expression. */
+    const audioSource = `window[${JSON.stringify(resolved.audioGlobal)}]`;
+    /**
+     * ONE frame of the build's own length, as a statement, given a `dt` in ms.
+     *
+     * The two step shapes `specs/instrumentation.md` fixes, written out here
+     * rather than branched on in the page: a `"seconds-frames"` build is told the
+     * length of the frame and a `"count"` build is not, and handing either the
+     * other's arguments would run hundreds of ticks for one or integrate a frame
+     * of a whole second.
+     */
+    const stepOneSource =
+      resolved.step.kind === "seconds-frames"
+        ? `api[${JSON.stringify(resolved.step.op)}](dt / 1000, 1)`
+        : `api[${JSON.stringify(resolved.step.op)}](1)`;
+    /** The three page globals a batched script opens with, as statements. */
+    const preludeSource = `const api = ${apiSource}; const rec = ${recSource}; const audio = ${audioSource};`;
+    /** One recorded frame, bracketed and accounted, given `dt` and `sounds`. */
+    const recordedFrameSource = `
+      const before = audio.started();
+      rec.begin();
+      ${stepOneSource};
+      rec.end(dt);
+      sounds.push(audio.started() - before);`;
+
+    /**
      * Run `count` frames and read the state they left, in one crossing.
      *
      * Each frame is opened and closed around a single step of the build's
@@ -1068,6 +1528,93 @@ export function createHarnessFactory<S, D extends object>(
       frameCount += count;
       timeMs += totalMs;
       return project(snapshot);
+    };
+
+    /**
+     * Run `span` seconds as `frames` frames, in ONE call to the step operation.
+     *
+     * The body behind {@link Harness.advanceSeconds} and
+     * {@link Harness.skipSeconds}: the same crossing and the same single call,
+     * differing only in whether the recorder brackets it. `who` names the member
+     * the caller reached for, so a fixture error names the call the check wrote
+     * rather than the helper both share.
+     */
+    const runSpan = async (
+      who: string,
+      span: number,
+      frames: number,
+      keep: boolean,
+    ): Promise<void> => {
+      if (surfaceFault !== null) refuse();
+      // NOT a surface fault and not an assertion about the build: a `"count"`
+      // step is never told a duration, so there is no interval for the build to
+      // divide and nothing this call could mean. It is a case whose config and
+      // whose suite disagree — no build can cause it and none can fix it — so it
+      // throws rather than deciding a point either way. See the declaration.
+      if (resolved.step.kind !== "seconds-frames") {
+        throw new TypeError(
+          `${resolved.slug}: ${who} needs a "seconds-frames" step, but this case's ` +
+            `step operation is ${resolved.step.op}(count), which runs whole ticks of ` +
+            "the build's own length — use advance/skip, which count in those ticks",
+        );
+      }
+      // A fixture error fails as one: a count below one, or a fractional count,
+      // is a mistake in the check, and repairing it silently would run a drive
+      // nobody asked for.
+      if (!Number.isInteger(frames) || frames < 1) {
+        fail(`${who} to be given a whole number of frames, at least 1`, frames);
+      }
+      const spanMs = span * 1000;
+      const emitted = (await page.evaluate(
+        ([handle, recName, audioName, op, seconds, count, deltaMs, record]) => {
+          const globals = window as unknown as PageGlobals;
+          const api = globals[handle]!;
+          const rec = globals[recName]!;
+          const audio = globals[audioName] as unknown as {
+            started(): number;
+          };
+          const before = audio.started();
+          if (record) rec.begin!();
+          api[op]!(seconds, count);
+          // The whole span closes as ONE kept frame, which is the honest
+          // reading: the harness cannot see where the build put its own frame
+          // boundaries inside a step it did not drive.
+          if (record) rec.end!(deltaMs);
+          return audio.started() - before;
+        },
+        [
+          resolved.handle,
+          resolved.recorderGlobal,
+          resolved.audioGlobal,
+          resolved.step.op,
+          span,
+          frames,
+          spanMs,
+          keep,
+        ] as const,
+      )) as number;
+      // Every frame of the span is counted, but only the frame it ENDED on can
+      // carry a cue: an undivided call says nothing about when inside it a sound
+      // happened, and spreading them over the span would be an invention.
+      frameCount += frames;
+      timeMs += spanMs;
+      for (let n = 0; n < emitted; n += 1) {
+        for (const sink of cueSinks) {
+          sink.push({ frame: frameCount, tick: frameCount, t: timeMs });
+        }
+      }
+    };
+
+    /**
+     * Check a batch's operations before the crossing opens.
+     *
+     * A batch is where a missing optional operation would otherwise reach the
+     * page as a raw `TypeError` in the middle of a scenario, taking the rest of
+     * the batch with it; checked here, the check fails naming the operation the
+     * specification required.
+     */
+    const requireBatch = (calls: readonly (readonly unknown[])[]): void => {
+      for (const entry of calls) requireOperation(String(entry[0]));
     };
 
     /**
@@ -1184,12 +1731,191 @@ export function createHarnessFactory<S, D extends object>(
         await skipBy(count);
       },
 
+      // The seconds-denominated pair, which differ from each other in exactly
+      // what `advance` and `skip` differ in: whether the recorder keeps it.
+      advanceSeconds: (span, frames = 1) =>
+        runSpan("advanceSeconds", span, frames, true),
+      skipSeconds: (span, frames = 1) =>
+        runSpan("skipSeconds", span, frames, false),
+
       until: (predicate, untilOptions = {}) =>
         sweep(readSnapshot, stepBy, predicate, untilOptions),
       stepUntil: (predicate, untilOptions = {}) =>
         sweep(readSnapshot, stepBy, predicate, untilOptions),
       skipUntil: (predicate, untilOptions = {}) =>
         sweep(readSnapshot, skipBy, predicate, untilOptions),
+
+      /* ---- One crossing instead of N ------------------------------------ */
+
+      async arrange(calls) {
+        if (surfaceFault !== null) refuse();
+        requireBatch(calls as readonly (readonly unknown[])[]);
+        // No function is carried here, so this is an ordinary evaluation with
+        // its arguments passed as values rather than a script assembled as
+        // text: an arrangement has nothing of the suite's to carry into the page.
+        const arranged = (await page.evaluate(
+          ([handle, batch]) => {
+            const api = (window as unknown as PageGlobals)[handle]!;
+            for (const entry of batch) {
+              const [name, ...args] = entry as [string, ...unknown[]];
+              api[name]!(...args);
+            }
+            return api.snapshot!();
+          },
+          [resolved.handle, calls as readonly (readonly unknown[])[]] as const,
+        )) as S;
+        return project(arranged);
+      },
+
+      async sweep(predicate, argument, sweepOptions = {}) {
+        if (surfaceFault !== null) refuse();
+        const calls = (sweepOptions.arrange ??
+          []) as readonly (readonly unknown[])[];
+        requireBatch(calls);
+        const max =
+          sweepOptions.maxFrames ?? sweepOptions.maxTicks ?? DEFAULT_MAX_FRAMES;
+        const bound = Math.max(0, max);
+        const poll = Math.max(1, sweepOptions.poll ?? 1);
+        // Every delta the sweep MIGHT run, drawn before the crossing opens
+        // because the frames run inside it. What it does not use goes back
+        // below, through `Clock.rewind`.
+        const deltas: number[] = [];
+        for (let i = 0; i < bound; i += 1) deltas.push(clock.delta());
+
+        const script = `((predicate, batch, dts, poll, argument) => {
+  ${preludeSource}
+  const sounds = [];
+  for (const entry of batch) api[entry[0]](...entry.slice(1));
+  const arranged = api.snapshot();
+  let snapshot = arranged;
+  if (predicate(snapshot, argument, arranged) === true) {
+    return { hit: true, frames: 0, snapshot: snapshot, arranged: arranged, sounds: sounds };
+  }
+  let frames = 0;
+  while (frames < dts.length) {
+    const stride = Math.min(poll, dts.length - frames);
+    for (let i = 0; i < stride; i += 1) {
+      const dt = dts[frames + i];${recordedFrameSource}
+    }
+    frames += stride;
+    snapshot = api.snapshot();
+    if (predicate(snapshot, argument, arranged) === true) {
+      return { hit: true, frames: frames, snapshot: snapshot, arranged: arranged, sounds: sounds };
+    }
+  }
+  return { hit: false, frames: frames, snapshot: snapshot, arranged: arranged, sounds: sounds };
+})(${String(predicate)}, ${JSON.stringify(calls)}, ${JSON.stringify(
+          deltas,
+        )}, ${JSON.stringify(poll)}, ${JSON.stringify(argument)})`;
+
+        const result = (await page.evaluate(script)) as {
+          hit: boolean;
+          frames: number;
+          snapshot: S;
+          arranged: S;
+          sounds: number[];
+        };
+
+        // Only the frames that RAN are the harness's, and the deltas the sweep
+        // asked for and did not use go back to the clock — see `Clock.rewind`.
+        clock.rewind?.(deltas.length - result.frames);
+        accountFrames(deltas, result.sounds, result.frames);
+        return {
+          ...swept(result.hit, result.frames, project(result.snapshot)),
+          arranged: project(result.arranged),
+        };
+      },
+
+      async samples(frames, sampleOptions) {
+        if (surfaceFault !== null) refuse();
+        const whole = Math.max(0, Math.floor(frames));
+        const deltas: number[] = [];
+        for (let i = 0; i < whole; i += 1) deltas.push(clock.delta());
+
+        const script = `((project, stop, dts, argument) => {
+  ${preludeSource}
+  const sounds = [];
+  const taken = [project(api.snapshot(), argument)];
+  let frames = 0;
+  const held = (sample) => stop !== null && stop(sample, taken, argument) === true;
+  if (!held(taken[0])) {
+    for (const dt of dts) {${recordedFrameSource}
+      frames += 1;
+      const sample = project(api.snapshot(), argument);
+      taken.push(sample);
+      if (held(sample)) break;
+    }
+  }
+  return { samples: taken, frames: frames, snapshot: api.snapshot(), sounds: sounds };
+})(${String(sampleOptions.project)}, ${
+          sampleOptions.stop === undefined ? "null" : String(sampleOptions.stop)
+        }, ${JSON.stringify(deltas)}, ${JSON.stringify(
+          sampleOptions.argument,
+        )})`;
+
+        const result = (await page.evaluate(script)) as {
+          samples: unknown[];
+          frames: number;
+          snapshot: S;
+          sounds: number[];
+        };
+
+        clock.rewind?.(deltas.length - result.frames);
+        accountFrames(deltas, result.sounds, result.frames);
+        return {
+          // The readings are the CHECK's own, taken in the page off states this
+          // package never saw; only the state that crosses back out as `S` goes
+          // through the case's narrowing.
+          samples: result.samples as never[],
+          snapshot: project(result.snapshot),
+          frames: result.frames,
+        };
+      },
+
+      async trials(rounds, trialOptions) {
+        if (surfaceFault !== null) refuse();
+        // `stage` builds its calls in the page, so the operations it may issue
+        // cannot be read off a batch here — the case names them instead, and
+        // they are checked before the crossing opens exactly as an `arrange` is.
+        for (const operation of trialOptions.operations) {
+          requireOperation(operation);
+        }
+        const whole = Math.max(0, Math.floor(rounds));
+        const deltas: number[] = [];
+        for (let i = 0; i < whole; i += 1) deltas.push(clock.delta());
+
+        const script = `((stage, read, dts, argument) => {
+  ${preludeSource}
+  const sounds = [];
+  const readings = [];
+  let last = null;
+  for (let round = 0; round < dts.length; round += 1) {
+    for (const entry of stage(round, last, argument)) api[entry[0]](...entry.slice(1));
+    const dt = dts[round];${recordedFrameSource}
+    last = read(api.snapshot(), argument);
+    readings.push(last);
+  }
+  return { readings: readings, snapshot: api.snapshot(), sounds: sounds };
+})(${String(trialOptions.stage)}, ${String(
+          trialOptions.read,
+        )}, ${JSON.stringify(deltas)}, ${JSON.stringify(
+          trialOptions.argument,
+        )})`;
+
+        const result = (await page.evaluate(script)) as {
+          readings: unknown[];
+          snapshot: S;
+          sounds: number[];
+        };
+
+        // Every round ran a frame — a trial has no early stop — so nothing goes
+        // back to the clock.
+        accountFrames(deltas, result.sounds, deltas.length);
+        return {
+          readings: result.readings as never[],
+          snapshot: project(result.snapshot),
+        };
+      },
 
       async stepWatching(count, watch) {
         const seen: S[] = [];
@@ -1518,6 +2244,13 @@ export function createHarnessFactory<S, D extends object>(
             dpr: window.devicePixelRatio,
           };
         }, resolved.slug),
+
+      // The gesture, and nothing else. It reaches the page as a real browser
+      // event rather than through the surface, so it is not refused on a surface
+      // fault: a build that installed no surface can still be handed a press,
+      // and the check that reads what it SOUNDED fails on its own reading rather
+      // than on the arming.
+      armAudio: () => armGesture(),
 
       sounds: () =>
         page.evaluate(

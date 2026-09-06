@@ -14,7 +14,9 @@ folder, `validation/structured-2d/`, holding one `.test.ts` file per verdict
 item and a shared harness module. The file path mirrors the item's id, so
 `validation/structured-2d/gameplay/scoring-p1.test.ts` is the check behind the
 `gameplay/scoring-p1` item, and the item declares it as
-`gameplay/scoring-p1.test.ts`, relative to this directory.
+`gameplay/scoring-p1.test.ts`, relative to this directory. Every `.test.ts` the
+directory holds maps to an item that way, because a run loads exactly the suites
+its variant's items name.
 
 That directory is placed into the built workspace at `validation/` when the run
 is validated, alongside the `src/` the build wrote. A suite therefore reaches

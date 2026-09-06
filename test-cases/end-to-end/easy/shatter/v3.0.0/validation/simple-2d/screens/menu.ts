@@ -84,19 +84,19 @@ export function textRuns(h: Harness, calls: readonly DrawCall[]): TextRun[] {
     const ax = call.args[1];
     const ay = call.args[2];
     const placed = call.text;
+    const m = placed?.transform;
     if (typeof raw !== "string") continue;
     if (typeof ax !== "number" || typeof ay !== "number") continue;
-    if (placed === undefined) continue;
+    if (placed === undefined || m === undefined) continue;
 
-    const m = placed.transform;
-    const deviceX = m.a * ax + m.c * ay + m.e;
-    const deviceY = m.b * ax + m.d * ay + m.f;
+    const deviceX = m[0] * ax + m[2] * ay + m[4];
+    const deviceY = m[1] * ax + m[3] * ay + m[5];
     const x = (deviceX - view.offsetX) / view.scale;
     const y = (deviceY - view.offsetY) / view.scale;
 
     // The measured width is in the build's user space; the same transform's own
     // horizontal scale carries it to device pixels and the viewport's to logical.
-    const width = (placed.width * Math.hypot(m.a, m.b)) / view.scale;
+    const width = (placed.width * Math.hypot(m[0], m[1])) / view.scale;
     const align = placed.textAlign;
     const left =
       align === "center"

@@ -13,6 +13,31 @@
 export interface Clock {
   /** The next frame's delta, in ms. */
   delta(): number;
+  /**
+   * Put `frames` deltas back, so the next one handed out is the one that was
+   * handed out `frames` calls ago.
+   *
+   * WHY A CLOCK CAN BE ASKED TO GO BACKWARDS AT ALL. A sweep that decides its
+   * predicate INSIDE the page — {@link Harness.sweep}, {@link Harness.samples} —
+   * runs its frames there, so it has to hand over every delta it MIGHT run before
+   * the crossing opens. An early stop then leaves the clock further along than
+   * the frames that actually ran, and the next sweep steps differently for it:
+   * a `SequenceClock` would resume mid-pattern and a `JitterClock` at the wrong
+   * index, so a check that replays would not replay. Handing the unused deltas
+   * back is what keeps a sweep's cost invisible to the schedule.
+   *
+   * OPTIONAL, AND DELIBERATELY SO. `HarnessOptions.clock` accepts any object of
+   * this shape, and the cases already write their own — deepcore's `PacedClock`,
+   * meltdown's `CoastClock`, orrery's `TunableClock` are each a class of a
+   * dozen lines that implements `delta` and nothing else. Making this a required
+   * member would stop every one of them compiling for a member most of them
+   * would implement as a no-op, so the harness calls it as `clock.rewind?.(n)`
+   * and a clock that does not carry it simply keeps the deltas it handed out.
+   * A clock whose `delta` depends on nothing but its arguments — the constant
+   * one below — genuinely has nothing to put back, which is why implementing it
+   * is a decision rather than an obligation.
+   */
+  rewind?(frames: number): void;
 }
 
 /** Every frame the same length. */
@@ -20,6 +45,13 @@ export class ConstantClock implements Clock {
   constructor(private readonly ms: number) {}
   delta(): number {
     return this.ms;
+  }
+  rewind(): void {
+    // Every frame is the same length, so where the clock stands decides nothing:
+    // the delta handed out after a rewind is the delta that would have been
+    // handed out without one. Declared rather than left off so that the shape a
+    // case copies from carries the member, and a clock swapped for a stepping one
+    // needs no call site changed.
   }
 }
 
@@ -37,6 +69,12 @@ export class SequenceClock implements Clock {
     const step = this.stepsMs[this.index % this.stepsMs.length] as number;
     this.index += 1;
     return step;
+  }
+  rewind(frames: number): void {
+    // Floored at the start of the pattern, so a sweep that was handed more
+    // deltas than this clock had ever produced cannot wind it past its opening
+    // step and into a negative index the modulus would answer strangely for.
+    this.index = Math.max(0, this.index - frames);
   }
 }
 
@@ -83,6 +121,14 @@ export class JitterClock implements Clock {
     return (
       this.minMs + (hash32(this.seed, index) / 0x1_0000_0000) * this.spanMs
     );
+  }
+  rewind(frames: number): void {
+    // The draw is a pure function of the seed and the index, so winding the
+    // index back is exactly as strong as never having drawn: the next delta is
+    // the one the unused draw would have been. That is what makes the claim a
+    // jittered check rests on — that the failing case replays — survive a sweep
+    // that stopped early.
+    this.index = Math.max(0, this.index - frames);
   }
 }
 

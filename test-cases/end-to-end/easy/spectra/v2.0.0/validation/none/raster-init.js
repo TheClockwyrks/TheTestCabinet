@@ -54,8 +54,9 @@
  * that works and leave a build that opens its frame inside a `save` paying the
  * whole bill. The rule the three implementations enforce is one rule; what a
  * clear is worth differs by platform, and each is written to the platform it
- * runs on. `raster-init.test.ts` holds this one to that difference, scene for
- * scene against the other two.
+ * runs on. Nothing holds the two to each other, so a change to the depth rule
+ * here is answered by measuring this scene on Chromium again, the way the
+ * figures above were taken.
  *
  * A build that opens its frames some other way — an opaque background IMAGE, say
  * — is not covered by any of this and pays what the browser charges. Nothing here

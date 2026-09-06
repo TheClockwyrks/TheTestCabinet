@@ -63,7 +63,6 @@ export function tileCenter(tx: number, ty: number): { x: number; y: number } {
  */
 export const TICK_HZ = 120;
 export const TICK_DT = 1 / TICK_HZ;
-export const TICK_MS = 1000 / TICK_HZ;
 
 /** Whole ticks covering `seconds` of simulated time, rounded up. */
 export function ticksFor(seconds: number): number {

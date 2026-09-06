@@ -10,17 +10,26 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator resolves the
-// build's modules by the same relative paths the build itself uses. It is derived
-// from this file's own URL rather than from the working directory, so the command
-// above works from anywhere.
+// Everything but the dials below is the shared validator harness's, because
+// everything but the dials is what makes a staged validator project one shape the
+// runner can drive: the project's name, the suites it collects, the `node`
+// environment every engine measures through, and the refusal to pass a run that
+// collected nothing.
 //
-// The environment is `node`. The engine takes every measurement from the
-// `SurfaceMetrics` the harness supplies, so these suites need no DOM.
+// THE ROOT IS THE WORKSPACE, NOT THIS DIRECTORY, so a validator resolves the
+// build's modules by the same relative paths the build itself uses. It is
+// computed HERE, from this file's own URL, rather than inside the package: the
+// package is staged one directory deeper than this file, so anything derived from
+// its own location would name the wrong tree.
 //
-// WHAT ONE FULL RUN COSTS, MEASURED. Against `references/structured-2d/base`,
-// on an idle developer machine with cores to spare, the whole of a base run's
-// checklist — 156 suites, every one of the points a base dive is rated on —
+// Imported from its own module rather than through the package's barrel: it is
+// loaded by vite's own config path, before the test runtime exists, and reaching
+// it through the barrel would drag the kit, `@napi-rs/canvas` and the whole vite
+// graph into every worker for one function no suite ever calls.
+//
+// WHAT ONE FULL RUN COSTS, MEASURED. Against `references/structured-2d/base`, on an
+// idle developer machine with cores to spare, the whole of a base run's
+// checklist — 158 suites, every one of the points a base dive is rated on —
 // finished in under half a minute of wall clock, and the kindle checklist, four
 // suites longer, in about the same. An engine-backed suite runs in process
 // rather than over a browser, which is why it costs a fraction of what the
@@ -29,38 +38,24 @@
 // build is competing with the suites for those two cores, so the honest reading
 // of the figure is margin rather than a prediction.
 
-import { defineConfig } from "vitest/config";
+import { defineEngineValidationConfig } from "./case-harness/engine/vitest-config";
 
-export default defineConfig({
+export default defineEngineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // A dive driven out to a game over is tens of thousands of ticks of real
-    // simulation, and the heaviest check here — a minute of wandering measured at
-    // both ends, which specs/predators/gloamfin.md states in exactly that unit —
-    // drives some seven and a half thousand of them. The march between the two
-    // readings is run off camera through the harness's `skip`, which spends it
-    // several ticks a frame rather than one, so what it costs the wall clock is a
-    // fraction of a second; what it costs on a loaded host is still the host's to
-    // decide, so a budget sized to a quiet machine would turn an honest
-    // measurement into a coin flip. This is many times the slowest check observed
-    // on an idle machine, which costs a passing suite nothing and still stops a
-    // validator that hangs. What it is NOT is a budget for the measurement: every
-    // check here decides its verdict on frames and on the state they left, all of
-    // it deterministic; what varies is the wall clock the same work takes, and
-    // that is a property of the machine.
-    testTimeout: 300_000,
-    // The same ceiling on a hook as on a check, rather than vitest's own 10 s
-    // default. `beforeEach` here constructs the engine, loads every seeded sheet
-    // and runs the build's `initialize` — real work, and work that competes with
-    // whatever else the host is running. A hook budget sized for a quiet machine
-    // fails a perfectly good build as "hook timed out", which says nothing about
-    // the build at all.
-    hookTimeout: 300_000,
-  },
+  // ONE DIAL, AND IT IS THE HOOK'S. The package's five minutes for a check is
+  // already what this case measured for itself: the longest checks here are
+  // minutes of GAME time — `gloamfin/wander-speed` reads a patrol a minute apart
+  // because specs/predators/gloamfin.md states the claim in that unit, which is
+  // 7,200 ticks of real simulation — and a march like that is run off camera
+  // through the harness's `skip`, which spends it several ticks a frame, so the
+  // minute costs a fraction of a second of wall clock. The ceiling exists to stop
+  // a build that never terminates, not to time the host.
+  //
+  // The HOOK is raised from the package's two minutes to the same five, because
+  // `beforeEach` here constructs the engine, loads every seeded sheet and runs
+  // the build's `initialize` — real work, and work that competes with whatever
+  // else the host is running. A hook budget sized for a quiet machine fails a
+  // perfectly good build as "hook timed out", which says nothing about the build
+  // at all.
+  hookTimeout: 300_000,
 });

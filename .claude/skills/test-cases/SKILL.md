@@ -69,6 +69,13 @@ engine's. The checklist is decided by the validators, and a reviewer overriding
 a verdict is the exception. Reviewers rate visuals, polish, and feel through the
 scoring domains; behavior is never left to a reviewer to decide.
 
+The converse holds as well: a case's `validation/` tree carries no suite beyond
+the ones its review items name, so nothing there is written that a run never
+loads. The harness those suites drive the build through is the shared
+`@clockwyrks/case-harness` package, and the tests that prove the harness itself
+works live in that package as `test/*.spec.ts`. A case writes no harness
+self-check of its own.
+
 ### One Behavior Per Review Item
 
 A review item asserts exactly one observable behavior. "The paddle moves up and

@@ -10,11 +10,11 @@
 // at every scale the stage is fitted to."
 //
 // WHAT IS READ. `imageSmoothingEnabled` as it stood at each blit that painted a
-// cell of the snake. The harness reads it off the real context at the `drawImage`
-// itself rather than from the frame's operations, because a build is free to set
-// it once when it builds its context and never mention it again — a frame's
-// operation log would then show the flag being set nowhere at all, and a check
-// reading the log could not tell that build from one that left smoothing on.
+// cell of the snake. The harness walks the frame's own operations for it, and
+// starts that walk from the flag in force when the FRAME OPENED rather than from
+// the canvas's own default — a build is free to set it once when it builds its
+// context and never mention it again, and a walk that began at the default would
+// report every one of that build's blits as smoothed.
 //
 // WHY IT IS READ AT TWO SIZES. The requirement is worded "at every scale the
 // stage is fitted to", and at the stage's own size the flag changes nothing a

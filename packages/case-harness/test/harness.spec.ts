@@ -2,10 +2,10 @@
 // readings a check makes off it.
 //
 // Everything here is checked against the fixture build rather than against a
-// game, so a failure names the harness. The four cases' own `harness.test.ts`
-// files could only ever ask "did the reference do something plausible"; these ask
-// "did the harness do exactly what it says", against a build whose answers are
-// arithmetic.
+// game, so a failure names the harness. The per-case self-check suites this one
+// replaced could only ever ask "did the reference do something plausible"; these
+// ask "did the harness do exactly what it says", against a build whose answers
+// are arithmetic.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { callsTo, type DrawCall } from "../src/index";

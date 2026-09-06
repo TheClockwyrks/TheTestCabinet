@@ -193,6 +193,31 @@ export interface CaseConfig<S = unknown> {
   readonly handle: string;
   /** Every operation the case's specification requires on that surface. */
   readonly requiredOps: readonly string[];
+  /**
+   * Operations the surface MAY carry, which a build is not faulted for missing.
+   *
+   * The second list exists because a case can have VARIANTS whose specifications
+   * differ in what they instrument. Spectra's overload variant declares
+   * `setDroneCharge`, and a base build conforms perfectly without it — but one
+   * validator project decides both, so a single `requiredOps` carrying that name
+   * would have the surface probe report every conforming base build as missing
+   * an operation and leave every point in the run undecided, and a list that left
+   * it out would let an overload build with no `setDroneCharge` fail its overload
+   * points with a raw `TypeError` from inside the page rather than with a pair a
+   * reviewer can read.
+   *
+   * So these are probed but never required. The surface fault never mentions
+   * them; instead the harness reads ONCE, per page, which of them the build
+   * carries, and a call that reaches one the build does not carry fails by
+   * assertion NAMING that operation. A case that declares none pays nothing — the
+   * probe is skipped entirely rather than made against an empty list.
+   *
+   * The reading covers every route into the surface a check can take: `h.debug.x`,
+   * {@link Harness.pose}, {@link Harness.sweep}'s `pose`, and the `operations` a
+   * {@link Harness.trials} names. An operation in NEITHER list is not checked at
+   * all, which is the honest answer — the harness was never told it should exist.
+   */
+  readonly optionalOps?: readonly string[];
   /** How that surface is asked to run one frame of the simulation. */
   readonly step: StepCall;
   /** The logical drawing surface the case's coordinates are stated in. */
@@ -296,6 +321,27 @@ export interface CaseConfig<S = unknown> {
    * Declared as a METHOD so a case may hand in one typed over its own snapshot.
    */
   projectSnapshot?(snapshot: S): S;
+  /**
+   * Init scripts to inject BEFORE the package's own, resolved against
+   * {@link projectRoot}.
+   *
+   * The order is the whole of the difference between this and
+   * {@link extraInitScripts}, and it is load-bearing rather than cosmetic. The
+   * package's `recorder-init.js` REPLACES `HTMLCanvasElement.prototype.getContext`
+   * with one that hands back a recording proxy, so a case script that needs the
+   * page's real `getContext` — spectra's `raster-init.js` takes it for the probe
+   * it measures a fill's opacity on — has to run first or it measures through the
+   * proxy, or installs nothing at all. Run in the other order the script is not
+   * broken loudly; it is broken quietly, and what it costs is a filtered build's
+   * `captureStill` going from 269 ms to 15.5 s and the check being cut short.
+   *
+   * A script that only wants to be there before the BUILD is — which is what
+   * every case using {@link extraInitScripts} today wants — belongs in that list
+   * instead: both run before a line of the build's own script, and only this one
+   * also runs before the harness's instrumentation, which is the more fragile
+   * position to stand in.
+   */
+  readonly preInitScripts?: readonly string[];
   /** Further init scripts to inject, resolved against {@link projectRoot}. */
   readonly extraInitScripts?: readonly string[];
   /** The recorder's page global. Defaults to {@link RECORDER_GLOBAL}. */
@@ -309,6 +355,7 @@ export interface ResolvedConfig {
   readonly slug: string;
   readonly handle: string;
   readonly requiredOps: readonly string[];
+  readonly optionalOps: readonly string[];
   readonly step: StepCall;
   readonly stage: Stage;
   readonly projectRoot: string;
@@ -322,6 +369,7 @@ export interface ResolvedConfig {
   readonly surfaceTimeoutMs: number;
   readonly hasTouch: boolean;
   readonly measureText: boolean;
+  readonly preInitScripts: readonly string[];
   readonly extraInitScripts: readonly string[];
   readonly recorderGlobal: string;
   readonly audioGlobal: string;
@@ -333,6 +381,7 @@ export function resolveConfig(config: CaseConfig): ResolvedConfig {
     slug: config.slug,
     handle: config.handle,
     requiredOps: config.requiredOps,
+    optionalOps: config.optionalOps ?? [],
     step: config.step,
     stage: config.stage,
     projectRoot: config.projectRoot,
@@ -346,6 +395,7 @@ export function resolveConfig(config: CaseConfig): ResolvedConfig {
     surfaceTimeoutMs: config.surfaceTimeoutMs ?? DEFAULT_SURFACE_TIMEOUT_MS,
     hasTouch: config.hasTouch ?? false,
     measureText: config.measureText ?? false,
+    preInitScripts: config.preInitScripts ?? [],
     extraInitScripts: config.extraInitScripts ?? [],
     recorderGlobal: config.recorderGlobal ?? RECORDER_GLOBAL,
     audioGlobal: config.audioGlobal ?? AUDIO_GLOBAL,

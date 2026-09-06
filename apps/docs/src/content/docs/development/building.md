@@ -84,6 +84,15 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   driver script the [validator](/components/core/validation/) shells out to,
   used to render reference mockups and to drive and screenshot a produced
   implementation.
+- `packages/case-harness`: `@clockwyrks/case-harness`. The shared harness every
+  engineless (`none`) validator project is built on: the browser lifecycle, the
+  driven-frame loop, the injected draw-command recorder and audio probe, and the
+  readings a check makes over them. It ships TypeScript source rather than a built
+  `dist/`, because the validator stages it beside a case's own validator files,
+  where nothing compiles. Its own suite lives in `test/` as `*.spec.ts` files, held
+  outside the `files` the package publishes, so the harness's tests stay with the
+  harness while a case's `validation/` tree carries only the suites its review
+  items name.
 - `packages/ui`: `@clockwyrks/ui`. The shared
   [UI library](/components/ui/overview/) hosting the routed gallery application
   and the presentational primitives; the site, web console, and desktop UI are

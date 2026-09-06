@@ -10,42 +10,25 @@
 //   npx vitest run                                       # the build's own tests
 //   npx vitest run --config validation/vitest.config.ts  # the case's validators
 //
-// The root is the workspace, not this directory, so a validator addresses the
+// The shape of the project — its name, the suites it collects, the `globalSetup`
+// that stands up the one server and the one Chromium, the `setupFiles` that
+// returns each worker's pages, and the refusal to pass a run that collected
+// nothing — is the same for every engineless case, so it comes from
+// `@clockwyrks/case-harness`. Kessler states the root, and nothing else: the
+// package's measured allowances are wider than the ones this project had chosen
+// for itself, and they are set against the worst load these projects have been
+// run under rather than against a quiet box.
+//
+// The root is the WORKSPACE, not this directory, so a validator addresses the
 // build's output by the same relative path the build itself produced it at. It is
 // derived from this file's own URL rather than from the working directory, so the
 // command above works from anywhere.
 //
-// WHY THIS PROJECT NEEDS SCAFFOLDING THE ENGINE-BACKED ONES DO NOT. An engineless
-// build is a static site with nothing to import, so every check drives it in a
-// real browser. `globalSetup` starts the one server and the one Chromium the whole
-// project shares, before any suite runs; `setupFiles` gives each suite worker the
-// teardown that returns its page when the file is done. The environment stays
-// `node`: the suites drive a browser, they do not run in one.
+// Imported by its own specifier rather than through the package's barrel: this
+// file is loaded by vite's own config path, before the test runtime exists.
 
-import { defineConfig } from "vitest/config";
+import { defineValidationConfig } from "./case-harness/vitest-config";
 
-export default defineConfig({
+export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  test: {
-    name: "validation",
-    include: ["validation/**/*.test.ts"],
-    environment: "node",
-    globalSetup: ["validation/globalSetup.ts"],
-    setupFiles: ["validation/setup.ts"],
-    // A missing validator is a broken suite, not a passing one.
-    passWithNoTests: false,
-    coverage: { enabled: false },
-    // Each suite file holds a page of the shared browser while it runs, so the
-    // ceiling on files in flight is the ceiling on pages, and a suite spends
-    // almost all of its time waiting on a crossing into one. Capped rather than
-    // left to the core count because the cost of a page is memory in one shared
-    // browser process rather than a core, and the host running this is running a
-    // model's build under it.
-    maxWorkers: 4,
-    // A scenario that drains a whole 600-tick effect timer, or watches a wave
-    // clear through its 180-tick interstitial, is hundreds of ticks driven a
-    // crossing at a time.
-    testTimeout: 120_000,
-    hookTimeout: 60_000,
-  },
 });

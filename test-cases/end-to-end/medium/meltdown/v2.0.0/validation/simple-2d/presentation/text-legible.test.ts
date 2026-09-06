@@ -59,6 +59,7 @@ import {
   drawFrame,
   drawnTextSpans,
   startRun,
+  transformsInForce,
   type DrawCall,
   type Harness,
   type Rgb,
@@ -122,18 +123,24 @@ const SCREENS: readonly Screen[] = [
 /** The screen whose frame is kept as the point's picture: the panel's readouts. */
 const SHOWN_SCREEN: Screen = "playing";
 
-/** The index of the last call that covered essentially the whole stage. */
+/**
+ * The index of the last call that covered essentially the whole stage.
+ *
+ * The transform in force at each call comes from `harness.ts`'s
+ * {@link transformsInForce}, which carries it through the frame's own operations;
+ * it is a `[a, b, c, d, e, f]` tuple, in the order a canvas states one.
+ */
 function lastWash(h: Harness, calls: readonly DrawCall[]): number {
   const view = h.engine.viewport();
+  const inForce = transformsInForce(calls);
   let found = -1;
   calls.forEach((call, index) => {
     if (call.kind !== "call" || call.method !== "fillRect") return;
-    const m = call.transform;
-    if (m === undefined) return;
+    const m = inForce[index];
     const [, , w, height] = call.args;
     if (typeof w !== "number" || typeof height !== "number") return;
-    const wide = (Math.abs(w) * Math.hypot(m.a, m.b)) / view.scale;
-    const tall = (Math.abs(height) * Math.hypot(m.c, m.d)) / view.scale;
+    const wide = (Math.abs(w) * Math.hypot(m[0], m[1])) / view.scale;
+    const tall = (Math.abs(height) * Math.hypot(m[2], m[3])) / view.scale;
     if (wide * tall >= WASH_SHARE * STAGE_W * STAGE_H) found = index;
   });
   return found;

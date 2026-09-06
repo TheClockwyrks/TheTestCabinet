@@ -76,7 +76,7 @@ it("reports where a run landed, through the transform in force", () => {
   // Drawn at the origin under a translate: the anchor a check reads is where the
   // text ACTUALLY landed, not the zero the call named.
   expect(textDraws(calls(op("translate", 30, 40), text("HUD", 0, 0)))).toEqual([
-    { text: "HUD", x: 30, y: 40, left: 30, right: 30 },
+    { text: "HUD", x: 30, y: 40, left: 30, right: 30, align: "start" },
   ]);
 
   // `save`/`restore` bracket it, so what follows is unaffected.
@@ -91,14 +91,14 @@ it("reports where a run landed, through the transform in force", () => {
       ),
     ),
   ).toEqual([
-    { text: "IN", x: 30, y: 40, left: 30, right: 30 },
-    { text: "OUT", x: 1, y: 2, left: 1, right: 1 },
+    { text: "IN", x: 30, y: 40, left: 30, right: 30, align: "start" },
+    { text: "OUT", x: 1, y: 2, left: 1, right: 1, align: "start" },
   ]);
 
   // A scale multiplies the anchor; `setTransform` replaces the lot; and
   // `resetTransform` puts it back to the identity.
   expect(textDraws(calls(op("scale", 2, 3), text("S", 10, 10)))).toEqual([
-    { text: "S", x: 20, y: 30, left: 20, right: 20 },
+    { text: "S", x: 20, y: 30, left: 20, right: 20, align: "start" },
   ]);
   expect(
     textDraws(
@@ -108,12 +108,12 @@ it("reports where a run landed, through the transform in force", () => {
         text("T", 0, 0),
       ),
     ),
-  ).toEqual([{ text: "T", x: 9, y: 9, left: 9, right: 9 }]);
+  ).toEqual([{ text: "T", x: 9, y: 9, left: 9, right: 9, align: "start" }]);
   expect(
     textDraws(
       calls(op("translate", 5, 5), op("resetTransform"), text("R", 0, 0)),
     ),
-  ).toEqual([{ text: "R", x: 0, y: 0, left: 0, right: 0 }]);
+  ).toEqual([{ text: "R", x: 0, y: 0, left: 0, right: 0, align: "start" }]);
 
   // A run whose coordinates are not numbers is not a positioned draw, so it is
   // dropped rather than reported at `NaN`.
@@ -130,7 +130,7 @@ it("reads the words a real frame drew, at the point the build drew them", async 
     expect(drawnText(frame)).toEqual(["TITLE"]);
     expect(drewText(frame, "title")).toBe(true);
     expect(textDraws(frame)).toEqual([
-      { text: "TITLE", x: 8, y: 20, left: 8, right: 8 },
+      { text: "TITLE", x: 8, y: 20, left: 8, right: 8, align: "start" },
     ]);
   } finally {
     await h.dispose();
@@ -143,21 +143,21 @@ it("places a run about its anchor under the alignment in force", () => {
   // says. Left-aligned it starts at the anchor; centred it straddles it; right-
   // aligned it ends there.
   expect(textDraws(calls(text("HP", 10, 5, 30)))).toEqual([
-    { text: "HP", x: 10, y: 5, left: 10, right: 40 },
+    { text: "HP", x: 10, y: 5, left: 10, right: 40, align: "start" },
   ]);
   expect(textDraws(calls(text("HP", 10, 5, 30, "center")))).toEqual([
-    { text: "HP", x: 10, y: 5, left: -5, right: 25 },
+    { text: "HP", x: 10, y: 5, left: -5, right: 25, align: "center" },
   ]);
   expect(textDraws(calls(text("HP", 10, 5, 30, "right")))).toEqual([
-    { text: "HP", x: 10, y: 5, left: -20, right: 10 },
+    { text: "HP", x: 10, y: 5, left: -20, right: 10, align: "right" },
   ]);
   expect(textDraws(calls(text("HP", 10, 5, 30, "end")))).toEqual([
-    { text: "HP", x: 10, y: 5, left: -20, right: 10 },
+    { text: "HP", x: 10, y: 5, left: -20, right: 10, align: "end" },
   ]);
 
   // The width takes the same horizontal scale the anchor took.
   expect(textDraws(calls(op("scale", 2, 2), text("HP", 10, 5, 30)))).toEqual([
-    { text: "HP", x: 20, y: 10, left: 20, right: 80 },
+    { text: "HP", x: 20, y: 10, left: 20, right: 80, align: "start" },
   ]);
 });
 
@@ -172,8 +172,10 @@ it("coalesces a letter-spaced heading into the one run it spells", () => {
   expect(drawnTextLines(spaced)).toEqual(["SOLVED"]);
   expect(drawnTextRuns(spaced)).toEqual([
     // The run keeps the placement of its first draw, and only its right edge
-    // grows: 100 through the last glyph's own right edge at 170 + 10.
-    { text: "SOLVED", x: 100, y: 40, left: 100, right: 180 },
+    // grows: 100 through the last glyph's own right edge at 170 + 10. It carries
+    // that first draw's ALIGNMENT too, which is what `reanchoredTextRuns` — the
+    // other placement of the same merge — puts the anchor back under.
+    { text: "SOLVED", x: 100, y: 40, left: 100, right: 180, align: "start" },
   ]);
   // The raw readings are untouched: one entry per call, either way.
   expect(drawnText(spaced)).toHaveLength(6);

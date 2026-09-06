@@ -19,7 +19,7 @@
 // is about the fit a build reaches on load.
 //
 // The second is WHERE THE BUILD DREW. `specs/assets.md` has the snake drawn from
-// produced sprites, and `image-init.js` logs each blit's rectangle mapped through
+// produced sprites, and the harness reads each blit's rectangle mapped through
 // the transform in force at the call — so the centre of every blit of a frame is
 // a device-space reading of a point the build placed in logical space. One scene
 // is posed at the stage's own size, where the specified fit is the identity and

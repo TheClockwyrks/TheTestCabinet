@@ -9,9 +9,10 @@
 // end rather than as a tube stopping.
 //
 // WHAT IS READ, AND WHAT IS NOT. That the image painted on the last cell is not
-// the image painted on a middle cell of the same straight run. `image-init.js`
-// numbers a blit's source by the URL it came from, so two blits carry the same
-// identity exactly when they painted the same file. It is deliberately NOT read
+// the image painted on a middle cell of the same straight run. The harness's
+// blit reading names a source by the identity the injected recorder gives it —
+// one per bitmap the page holds — so two blits carry the same identity exactly
+// when they painted the same picture. It is deliberately NOT read
 // that the cell took `assets/snake/tail.png` by name — how a build names the
 // images it loads its produced files into is the build's, and the file's own
 // existence is `presentation/tail-sprite-produced`.

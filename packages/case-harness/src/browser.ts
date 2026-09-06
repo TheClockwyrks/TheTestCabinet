@@ -81,18 +81,52 @@ export const openPages = new Set<Page>();
  * as well as the shape's, and a key that named only the shape would hand a second
  * case's harness a context instrumented for the first.
  */
-function shapeKey(slug: string, shape: WindowShape, hasTouch: boolean): string {
+function shapeKey(
+  slug: string,
+  shape: WindowShape,
+  hasTouch: boolean,
+  scripts: readonly string[],
+): string {
   const touch = hasTouch ? "+touch" : "";
-  return `${slug}:${shape.cssWidth}x${shape.cssHeight}@${shape.dpr}${touch}`;
+  // THE SCRIPTS ARE PART OF THE KEY, not just the slug and the shape. A context
+  // is instrumented once, when it is opened, and every later harness of that key
+  // gets the one already standing — so two kits of one case that differ only in
+  // what they inject would silently share the first one's instrumentation, and
+  // the second kit's script would never run while everything looked exactly like
+  // it had. That is the shape the package's own suite takes (one fixture build,
+  // several kits, one option each) and the shape a case takes when a variant
+  // injects something the base does not. For every case in the repository the
+  // list is the same for one slug, so this only ever lengthens the key.
+  return `${slug}:${shape.cssWidth}x${shape.cssHeight}@${shape.dpr}${touch}|${scripts.join("|")}`;
 }
 
-/** Every script a context injects, in the order it injects them. */
+/**
+ * Every script a context injects, in the order it injects them.
+ *
+ * THE ORDER IS THREE POSITIONS, AND THE MIDDLE ONE IS THE PACKAGE'S. Playwright
+ * runs init scripts in the order they were added, so this list is the order they
+ * run in, and the two boundaries mean different things:
+ *
+ *   - `preInitScripts` run BEFORE the harness's own instrumentation. The only
+ *     reason to stand here is to need something the instrumentation replaces —
+ *     `recorder-init.js` swaps `HTMLCanvasElement.prototype.getContext` for one
+ *     that hands back a recording proxy, so a case script that must hold the
+ *     page's real `getContext` has to have taken it first.
+ *   - `extraInitScripts` run AFTER it, which is where everything that only needs
+ *     to be there before the BUILD belongs. Nothing about that position changed:
+ *     the list, and where it lands, are exactly what they were.
+ *
+ * The package's own two stay in the middle rather than always first, because
+ * being first is not what they need — they need to be ahead of the build, and
+ * both case lists are too.
+ */
 function initScripts(config: ResolvedConfig): string[] {
+  const caseScript = (name: string): string =>
+    isAbsolute(name) ? name : join(config.projectRoot, name);
+  const pre = config.preInitScripts.map(caseScript);
   const own = PAGE_SCRIPTS.map((name) => join(PACKAGE_DIR, "page", name));
-  const extra = config.extraInitScripts.map((name) =>
-    isAbsolute(name) ? name : join(config.projectRoot, name),
-  );
-  return [...own, ...extra];
+  const extra = config.extraInitScripts.map(caseScript);
+  return [...pre, ...own, ...extra];
 }
 
 /** The context for a window of this shape, opened and instrumented on demand. */
@@ -100,7 +134,8 @@ export async function contextFor(
   shape: WindowShape,
   config: ResolvedConfig,
 ): Promise<BrowserContext> {
-  const key = shapeKey(config.slug, shape, config.hasTouch);
+  const scripts = initScripts(config);
+  const key = shapeKey(config.slug, shape, config.hasTouch, scripts);
   const existing = contexts.get(key);
   if (existing !== undefined) return existing;
 
@@ -110,7 +145,7 @@ export async function contextFor(
     deviceScaleFactor: shape.dpr,
     hasTouch: config.hasTouch,
   });
-  for (const path of initScripts(config)) {
+  for (const path of scripts) {
     await context.addInitScript(readFileSync(path, "utf8"));
   }
   contexts.set(key, context);

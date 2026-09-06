@@ -175,7 +175,12 @@ export const DEFAULT_SEED = 1;
 
 /** The screens the state machine moves between. */
 export type Screen =
-  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
+  | "title"
+  | "howto"
+  | "countdown"
+  | "playing"
+  | "paused"
+  | "matchover";
 
 /** The two screens a pause can resume to, which `resumeScreen` holds. */
 export type ResumeScreen = "countdown" | "playing";
@@ -740,8 +745,8 @@ export {
 /**
  * The ground a replay of this case is composited over.
  *
- * The shared harness's default, under the name this project's own checks read it
- * by: `index.html` paints the page black and the build draws over it, so a
+ * The shared harness's default, under the name this project gives it:
+ * `index.html` paints the page black and the build draws over it, so a
  * recording replayed on anything else shows a picture the build never made.
  */
 export { DEFAULT_REPLAY_BACKGROUND as REPLAY_BACKGROUND } from "./case-harness/index";

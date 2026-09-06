@@ -17,6 +17,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1",
     "@types/node": "^26",
     "playwright": "1.63.0",
     "typescript": "^6",

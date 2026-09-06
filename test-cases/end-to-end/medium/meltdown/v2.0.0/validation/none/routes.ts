@@ -32,7 +32,7 @@ import {
   type TowerType,
   type Vent,
 } from "./constants";
-import type { TowerView, UnitView } from "./harness";
+import type { UnitView } from "./harness";
 
 const SQRT2 = Math.SQRT2;
 const TILE_COUNT = COLS * ROWS;
@@ -95,11 +95,6 @@ export function blockedSet(
     for (const tile of blockedBy(tower)) blocked.add(idx(tile.col, tile.row));
   }
   return blocked;
-}
-
-/** The blocked set a snapshot's towers make. */
-export function blockedFrom(towers: readonly TowerView[]): Set<number> {
-  return blockedSet(towers);
 }
 
 function isOpen(

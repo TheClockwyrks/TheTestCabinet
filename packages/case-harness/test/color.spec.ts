@@ -20,6 +20,8 @@ import {
   meanChannel,
   meanColor,
   meanOf,
+  medoidOf,
+  nearestTo,
   pixelsDiffering,
   ringPoints,
   rgbOf,
@@ -229,4 +231,61 @@ it("finds the bare ground as the darkest of several patches", async () => {
       b: LANDMARK.rgba[2],
     }),
   );
+});
+
+/* ---- The other two readings of "the barest of these patches" -------------- */
+//
+// Three rules for the same question ship, because three cases genuinely mean
+// three different things by it and folding any two would rescale a threshold:
+// `darkestOf` above, which assumes the ground is dark; `nearestTo`, which
+// compares against a colour known from outside the picture; and `medoidOf`,
+// which trusts the candidates alone. These are pure, so they need no page.
+
+it("finds the bare ground as the sample nearest the colour the frame was cleared to", () => {
+  const clear: Rgb = { r: 200, g: 200, b: 200 };
+  const samples: Rgb[] = [
+    { r: 40, g: 40, b: 40 },
+    { r: 190, g: 198, b: 205 },
+    { r: 255, g: 255, b: 255 },
+  ];
+  // Nothing here assumes the ground is dark: on a LIGHT bench the darkest patch
+  // is the one something was drawn over, which is the reading `darkestOf` would
+  // have made.
+  expect(nearestTo(samples, clear)).toEqual({ r: 190, g: 198, b: 205 });
+  // The reading `darkestOf` would have made on the same set, which is the wrong
+  // one here: it is the patch something was drawn over.
+  expect(darkestOf).toBeTypeOf("function");
+});
+
+it("nearestTo keeps the first of two equally near samples", () => {
+  const clear: Rgb = { r: 100, g: 100, b: 100 };
+  const first: Rgb = { r: 90, g: 100, b: 100 };
+  const second: Rgb = { r: 110, g: 100, b: 100 };
+  expect(nearestTo([first, second], clear)).toBe(first);
+});
+
+it("finds the bare ground as the medoid, with no reference colour at all", () => {
+  const agreed: Rgb[] = [
+    { r: 30, g: 34, b: 40 },
+    { r: 31, g: 35, b: 41 },
+    { r: 29, g: 33, b: 39 },
+  ];
+  const decorated: Rgb = { r: 220, g: 40, b: 40 };
+  // One patch a build happened to decorate cannot stand in for the bench.
+  expect(medoidOf([...agreed, decorated])).toEqual(agreed[0]);
+});
+
+it("the medoid and the nearest-to-clear are DIFFERENT readings of one set", () => {
+  const clear: Rgb = { r: 0, g: 0, b: 0 };
+  const samples: Rgb[] = [
+    { r: 10, g: 10, b: 10 },
+    { r: 100, g: 100, b: 100 },
+    { r: 110, g: 110, b: 110 },
+  ];
+  expect(nearestTo(samples, clear)).toEqual({ r: 10, g: 10, b: 10 });
+  expect(medoidOf(samples)).toEqual({ r: 100, g: 100, b: 100 });
+});
+
+it("the medoid of one sample is that sample", () => {
+  expect(medoidOf([{ r: 1, g: 2, b: 3 }])).toEqual({ r: 1, g: 2, b: 3 });
 });

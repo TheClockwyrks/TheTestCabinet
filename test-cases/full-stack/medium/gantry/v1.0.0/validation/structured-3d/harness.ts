@@ -8,13 +8,28 @@
 // wall-clock time passes: a check asks for a number of ticks and gets exactly
 // that number, at exactly the deltas its clock supplied.
 //
+// THE MACHINERY OF THAT PARAGRAPH IS NOT GANTRY'S. Building an engine over a
+// canvas the harness owns, recording what the screen pass drew on it, reading the
+// debug surface back off the engine, driving that surface, stamping the cues the
+// engine announced, serving the build's produced files to the engine's loader,
+// decoding a produced `.wav`, standing a WebGL2 context up for three's renderer,
+// and writing the evidence a review item declares — every ENGINE-backed case needs
+// exactly that, and it lives once, in `@clockwyrks/case-harness`, staged beside
+// this file as `./case-harness/`. What is left here is what is genuinely Gantry's:
+// the operations its specification requires, its snapshot and surface types, its
+// stage and tick rate, its cue vocabulary, its three-engine `Harness` shape, and
+// the compound sequences below.
+//
 // ONE API, THREE ENGINES. This file exports the same `Harness` interface as
 // `validation/none/harness.ts` and `validation/simple-3d/harness.ts`, with every
 // operation `async`, so a `<category>/<id>.test.ts` file is byte-identical in all
 // three directories. The asynchrony is REAL under `none` — each of its calls
 // crosses into Chromium — and vacuous here, which costs this project nothing and
 // buys one suite instead of three. Where a member below returns an
-// already-resolved promise, that is why.
+// already-resolved promise, that is why. It is also why this file holds a
+// `Harness` of its own rather than handing out the package's `EngineHarness`: the
+// shared one is the right shape for a case whose suites are written per engine,
+// and Gantry's are written once for three.
 //
 // WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here. The game
 // instance's `initialize` returns it, the engine holds that same object, and
@@ -23,18 +38,19 @@
 // `engine.debug`, and it is reached that way alone: nothing is installed on the
 // page"). So a build that returned no surface, or a surface missing an operation,
 // fails the checks that reach the game through it rather than crashing them. See
-// {@link readDebugSurface}.
+// {@link readSurface}.
 //
-// HOW THE SURFACE IS DRIVEN. Thinly. Under this engine the framework's state is
-// LIVE — the world holds one `GantryState` and an operation acts on it at the
-// moment of the call — so a pose is one call and a reading is one call, with no
-// state threading in between and nothing to await. The DRIVER below is therefore
-// the surface with each operation wrapped in a resolved promise and nothing else:
-// `h.debug.setTool("cable")` is `debug.setTool("cable")`, awaited for the sake of
-// the file that will also run under `none`. Gantry runs in ONE world for the whole
-// session and every screen is a value of the state's `screen` field, so a pose
-// that changes the screen takes effect at the call rather than riding a level
-// transition, and a check poses and reads with no frame between them.
+// HOW THE SURFACE IS DRIVEN — the PROMISE-WRAP strategy, which is one of the
+// three the package ships. Under this engine the framework's state is LIVE — the
+// world holds one `GantryState` and an operation acts on it at the moment of the
+// call — so a pose is one call and a reading is one call, with no state threading
+// in between and nothing to await. The driver is therefore the surface with each
+// operation wrapped in a resolved promise and nothing else: `h.debug.setTool(
+// "cable")` is `debug.setTool("cable")`, awaited for the sake of the file that
+// will also run under `none`. Gantry runs in ONE world for the whole session and
+// every screen is a value of the state's `screen` field, so a pose that changes
+// the screen takes effect at the call rather than riding a level transition, and a
+// check poses and reads with no frame between them.
 //
 // THE CLOCK IS THE ENGINE'S, AND SO IS THE INPUT, AND SO IS THE PROJECTION.
 // `specs/instrumentation.md` puts no clock, no input and no projection operation
@@ -47,6 +63,13 @@
 // A validator reaches all of them by the same names it uses under `none`, where
 // the surface carries them, and never learns which side of the seam they came
 // from.
+//
+// AND `project` IS NOT THE KIT'S `toLogical`. The package takes a case's logical
+// projection as one config value, for mapping a POINTER's logical point onto the
+// canvas; Gantry's `project` maps a WORLD position — three coordinates — onto the
+// stage, which is a different reading of a different space. So `toLogical` is left
+// at the identity, which is what a logical stage point already is here, and
+// `project` stays a member of this harness.
 //
 // THE CLOCK IS ONE TICK PER FRAME, AND THAT IS THE WHOLE OF WHY IT IS CONSTANT.
 // `specs/program.md` fixes Gantry's simulation at `TICK_HZ`, and the mode
@@ -70,14 +93,15 @@
 // scenario is about in one line and say it the same way. A check that needs only
 // part of a sequence calls the operations it needs.
 //
-// AND ONE THING `validation/host.ts` DOES NOT STAND IN FOR: A RECORDING.
+// AND ONE THING NOTHING STANDS IN FOR: A RECORDING.
 // `engines/structured-3d` records a scene as VP9 video, which wants a browser's
 // encoder, and `emitReplay` is a browser command — so a project that runs in Node
-// reaches neither. Every point this case declares is therefore backed by a STILL,
-// including the ones whose subject is a stretch of motion rather than a posed
-// arrangement: a swing, a cable snapping, a breakage cascading into a collapse. A
-// reviewer would rather watch those than read one frame of them, and here there is
-// one frame.
+// reaches neither, and the package says the same thing about every 3D case in the
+// header of `case-harness/engine/3d`. Every point this case declares is therefore
+// backed by a STILL, including the ones whose subject is a stretch of motion
+// rather than a posed arrangement: a swing, a cable snapping, a breakage cascading
+// into a collapse. A reviewer would rather watch those than read one frame of
+// them, and here there is one frame.
 //
 // WHAT IT WOULD TAKE, stated so the next reader does not have to work it out
 // again: browser mode with the Playwright provider, and then the canvases, the
@@ -87,8 +111,8 @@
 // would then pay a browser's wall clock against the budget the node choice was
 // made for. It is left undone deliberately rather than half-done.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -109,8 +133,6 @@ import {
   type Transform,
   type World,
 } from "@clockwyrks/structured-3d";
-import type { Canvas } from "@napi-rs/canvas";
-import { expect } from "vitest";
 
 // The BUILD's own module, and the only one of its modules this project imports.
 // It is imported for its VALUE — the `GameDefinition` the engine is created over,
@@ -123,6 +145,23 @@ import { game as build } from "../src/game";
 
 import { fail } from "./assert";
 import {
+  breathe,
+  KeyEvent,
+  createEngineCaseHarness,
+  installAssetHost,
+  installAudioContext,
+  missingOps,
+  promiseDriver,
+  silentAudioBuffer,
+  type AssetHost,
+  type AssetRequest,
+  type AudioBufferLike,
+  type EngineCaseKit,
+  type EngineHarness,
+  type TimedCue,
+} from "./case-harness/engine/index";
+import type { DrawCall } from "./case-harness/draw-calls";
+import {
   ASSET_ROOT,
   CUES,
   LAYOUT,
@@ -130,14 +169,7 @@ import {
   STAGE_W,
   TICK_HZ,
 } from "./constants";
-import {
-  assetRequests,
-  createEngineSurface,
-  defineAudioContext,
-  serveWorkspaceAssets,
-  type AssetRequest,
-  type EngineSurface,
-} from "./host";
+import { createEngineSurface } from "./host";
 import type {
   DrawnEntry,
   AxisName,
@@ -252,53 +284,22 @@ export function failSurface(fault: string): never {
 }
 
 /* -------------------------------------------------------------------------- */
-/* The figures a drive is counted in                                          */
-/* -------------------------------------------------------------------------- */
-
-export { TICK_HZ };
-
-/** Seconds one tick covers, and milliseconds. */
-export const TICK_DT = 1 / TICK_HZ;
-export const TICK_MS = 1000 / TICK_HZ;
-
-/** Seconds of run clock in `count` ticks. */
-export function seconds(count: number): number {
-  return count / TICK_HZ;
-}
-
-/** Whole ticks covering `duration` seconds of run clock. */
-export function ticks(duration: number): number {
-  return Math.ceil(duration * TICK_HZ);
-}
-
-/** The same reading under the name the shared harness also gives it. */
-export const ticksFor = ticks;
-
-/** A speed in units per second from a displacement measured over `count` ticks. */
-export function speedOverTicks(distance: number, count: number): number {
-  return (Math.abs(distance) * TICK_HZ) / count;
-}
-
-/** A rate per second from a gain measured over `count` ticks. */
-export function gainOverTicks(gain: number, count: number): number {
-  return (gain * TICK_HZ) / count;
-}
-
-/* -------------------------------------------------------------------------- */
 /* Where this project sits                                                    */
 /* -------------------------------------------------------------------------- */
 
-/** This module's own directory: the case's validator project. */
+/**
+ * This module's own directory: the case's validator project.
+ *
+ * Taken from THIS module's URL and never from the package's, which is staged one
+ * directory deeper: a still is addressed by the running suite's path relative to
+ * the project root, so a root taken from inside the package would address every
+ * output one level too deep — and silently, because a writer that raised on a
+ * failed write would be blaming the build for the host's problem.
+ */
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /** The build's workspace: the tree `src/`, `assets/` and `dist/` sit in. */
 const WORKSPACE_ROOT = dirname(PROJECT_ROOT);
-
-/** The environment variable the runner names the media directory in. */
-const MEDIA_DIR_ENV = "TCAB_VALIDATION_MEDIA_DIR";
-
-/** The directory the runner stages this project to inside the build's tree. */
-const STAGED_PROJECT_DIR = "validation";
 
 /* -------------------------------------------------------------------------- */
 /* The harness                                                                */
@@ -316,19 +317,19 @@ const STAGED_PROJECT_DIR = "validation";
  */
 const game = build as unknown as GameDefinition<GantryDebugApi>;
 
-/** One cue the build announced, as the engine reported it. */
-export interface TimedCue {
-  /** The cue's name, one of the twelve `CUES` fixes (`specs/ui.md`). */
-  cue: string;
-  /** The frame loop's simulated time when it sounded, in milliseconds. */
-  t: number;
-  /** The cue's gain: zero while the bus is muted, positive otherwise. */
-  gain: number;
-  /** The frame it sounded on, 1-based, as `engine.frame().count` reports. */
-  frame: number;
-  /** Whether it started a loop rather than played once. */
-  looped: boolean;
-}
+/** The engine this project stands a build up on. */
+type GantryEngine = Engine<GantryDebugApi>;
+
+/**
+ * One cue the build announced, stamped with the frame it sounded on.
+ *
+ * The package's, which is a SUPERSET of what this project used to declare and of
+ * what `validation/simple-3d/harness.ts` declares: the two disagreed about
+ * whether a cue carries `looped` at all, and the package carries it plus the same
+ * count under both `frame` and `tick`. Nothing that read the old shape reads
+ * differently through this one.
+ */
+export type { TimedCue };
 
 /** One asset the build asked for and did not get. */
 export interface AssetFailure {
@@ -480,7 +481,7 @@ export interface Harness {
   /** Why the build's surface cannot be driven, or `null` when it can. */
   readonly surfaceFault: string | null;
   /** The engine this harness built, for a check that is about the engine. */
-  readonly engine: Engine<GantryDebugApi>;
+  readonly engine: GantryEngine;
   /** The world currently open, read fresh on every access. */
   readonly world: World;
   /** The open world's game state: the live `GantryState` the build declared. */
@@ -499,8 +500,8 @@ export interface Harness {
    * Every request this build has made since this harness was built.
    *
    * The engine's loader and anything the build fetched for itself both go
-   * through the one transport `validation/host.ts` installs, so this is the whole
-   * of what the built site asks for at run time.
+   * through the one transport the package's asset host installs, so this is the
+   * whole of what the built site asks for at run time.
    */
   requests(): readonly AssetRequest[];
   /** What the build stood the game up in, before this harness reset it. */
@@ -520,9 +521,9 @@ export interface Harness {
    * Every operation the last CLOSED frame made on the screen layer, in order.
    *
    * What the engineless project reads back out of its injected recorder over
-   * `h.page`, read here off the context this harness wrapped. The document is the
-   * same, so a check turns it into draw calls with `toDrawCall` and reads it with
-   * `drawnText` or `textDraws` the same way in both projects.
+   * `h.page`, read here off the package's recorder over the screen canvas. The
+   * document is the same, so a check turns it into draw calls with `toDrawCall`
+   * and reads it with `drawnText` or `textDraws` the same way in both projects.
    *
    * IT IS THE SCREEN LAYER AND NOT THE WHOLE FRAME. The yard is drawn through
    * WebGL, and nothing of that pass appears here — a check about the 3D picture
@@ -543,190 +544,6 @@ export interface Harness {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Reaching the build's surface                                               */
-/* -------------------------------------------------------------------------- */
-
-/**
- * A stand-in for a surface the build never returned, or returned incomplete:
- * every operation on it fails the check that reached for it, naming the fault.
- *
- * A proxy rather than a hand-written stub, so an operation a check reaches for by
- * name reports the build's missing surface rather than looking like a harness
- * bug. Keys that belong to the MACHINERY rather than to a check are answered with
- * `undefined` instead: awaiting a value probes `then`, and vitest's own error
- * formatting probes symbols and `constructor`. Failing those would replace the
- * verdict with noise from the machinery that was trying to report it.
- */
-function missingDriver(fault: string): GantryDriver {
-  return new Proxy({} as GantryDriver, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-      // Async, like every operation the driver carries when there IS one, so a
-      // check that awaits the call reads a rejected promise rather than a
-      // synchronous throw the shape of its own `await` did not expect.
-      return async () => failSurface(fault);
-    },
-  });
-}
-
-/**
- * The build's surface, wrapped so every operation is `async`.
- *
- * THE WHOLE OF THE DIFFERENCE BETWEEN THE THREE PROJECTS' DRIVERS, and it is one
- * line of behaviour: call the operation, hand back its answer as a resolved
- * promise. Under `none` the promise is real, because the call crosses into a
- * page; under `simple-3d` the driver also threads the state through
- * `engine.apply`; here the world is live and the surface acts on it at the call,
- * so there is nothing to do but await nothing. A validator writes
- * `await h.debug.setTool("cable")` in all three.
- *
- * An operation the build did not supply fails the check that reached for it, at
- * the moment it reaches, rather than at construction: a build missing one
- * operation should fail the items that need it and decide the rest.
- */
-function driverFor(surface: GantryDebugApi): GantryDriver {
-  const held = surface as unknown as Record<string, unknown>;
-  const wrapped = new Map<string, (...args: unknown[]) => Promise<unknown>>();
-
-  return new Proxy({} as GantryDriver, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-
-      const memoized = wrapped.get(property);
-      if (memoized !== undefined) return memoized;
-
-      const operation = held[property];
-      if (typeof operation !== "function") {
-        return async () =>
-          failSurface(
-            `engine.debug carries no \`${property}\` operation (it holds ` +
-              `${operation === undefined ? "nothing" : typeof operation})`,
-          );
-      }
-
-      const method = async (...args: unknown[]): Promise<unknown> =>
-        (operation as (...rest: unknown[]) => unknown).apply(held, args);
-      wrapped.set(property, method);
-      return method;
-    },
-  });
-}
-
-/**
- * The debug surface the BUILD's instance returned, read off the engine that holds
- * it, or `null` with the fault named.
- *
- * This is deliberately a READ and never a construction. The surface is the
- * build's deliverable: its game instance's `initialize` returns it, the engine
- * keeps that same object, and `engine.debug` is the only way it reaches a check.
- * What is decided here is a return that is no surface, or one missing an
- * operation the specification requires. That is a fault in the build and not in
- * this harness, so it must not present as one: it is neither thrown from here —
- * which would bury the verdict under the harness's own stack — nor swallowed.
- */
-function readDebugSurface(engine: Engine<GantryDebugApi>): {
-  surface: GantryDebugApi | null;
-  fault: string | null;
-} {
-  let held: unknown;
-  try {
-    held = engine.debug;
-  } catch (error) {
-    return {
-      surface: null,
-      fault: `reading engine.debug threw: ${describe(error)}`,
-    };
-  }
-
-  if (typeof held !== "object" || held === null) {
-    return {
-      surface: null,
-      fault: `engine.debug holds ${held === null ? "null" : typeof held}, not an object`,
-    };
-  }
-
-  const carried = held as Record<string, unknown>;
-  const missing = REQUIRED_OPS.filter(
-    (name) => typeof carried[name] !== "function",
-  );
-  return {
-    surface: held as GantryDebugApi,
-    fault:
-      missing.length === 0
-        ? null
-        : `engine.debug is missing ${String(missing.length)} required ` +
-          `operation${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`,
-  };
-}
-
-/** An error's message, for a fault a reviewer reads. */
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/* -------------------------------------------------------------------------- */
-/* The events this harness dispatches                                         */
-/* -------------------------------------------------------------------------- */
-
-/** A `KeyboardEvent`-shaped event: the engine reads `code` and `repeat`. */
-class KeyEvent extends Event {
-  readonly code: string;
-  readonly repeat: boolean;
-
-  constructor(type: "keydown" | "keyup", code: string, repeat = false) {
-    super(type);
-    this.code = code;
-    this.repeat = repeat;
-  }
-}
-
-/**
- * A `PointerEvent`-shaped event.
- *
- * The engine reads `clientX`, `clientY`, `pointerId`, `isPrimary`, `pointerType`,
- * `button` and `buttons`, and maps the position through the same fit the game
- * draws under: the client position, times the device pixel ratio, through the
- * inverse viewport map. At the default shape — the stage's own size at one device
- * pixel per CSS pixel — that map is the identity, so a logical point is
- * dispatched directly.
- *
- * `button` and `buttons` say which button the sample is about and which are held
- * once it has been applied. A move reports `-1`, which is the field saying the
- * event is about position rather than about a button, exactly as a browser's is.
- */
-class PointerEvt extends Event {
-  readonly clientX: number;
-  readonly clientY: number;
-  readonly pointerId: number;
-  readonly isPrimary = true;
-  readonly pointerType: "mouse" | "touch";
-  readonly button: number;
-  readonly buttons: number;
-
-  constructor(
-    type: "pointerdown" | "pointermove" | "pointerup",
-    x: number,
-    y: number,
-    button: number,
-    buttons: number,
-    device: "mouse" | "touch" = "mouse",
-  ) {
-    super(type);
-    this.clientX = x;
-    this.clientY = y;
-    this.button = button;
-    this.buttons = buttons;
-    this.pointerType = device;
-    // A finger is a pointer of its own, so it carries an id the mouse never
-    // does: `input.md` tracks each pointer by `id` and "among touches the first
-    // one down is" the primary.
-    this.pointerId = device === "touch" ? 2 : 1;
-  }
-}
-
-/* -------------------------------------------------------------------------- */
 /* Reading what the screen layer drew                                         */
 /* -------------------------------------------------------------------------- */
 
@@ -737,92 +554,209 @@ class PointerEvt extends Event {
  * THE SAME DOCUMENT THE ENGINELESS PROJECT'S INJECTED RECORDER WRITES
  * (`RecordedOp` in `@clockwyrks/case-harness`), so a check reads a frame's
  * drawing through the same helpers — `toDrawCall`, `drawnText`, `textDraws` —
- * whichever project it is running in.
+ * whichever project it is running in. It is spelled here rather than imported
+ * because it is the shape the SUITES declare and cast to, in all three
+ * directories.
  */
 export type RecordedOp =
   | { op: "call"; method: string; args: unknown[] }
   | { op: "set"; property: string; value: unknown };
 
-/** The frames a screen recorder has closed, and the one it is filling. */
-interface ScreenRecorder {
-  /** Start a frame: what follows belongs to it. */
-  begin(): void;
-  /** Close the frame `begin` opened, and make it the one `last` answers. */
-  end(): void;
-  /** Every operation the last CLOSED frame issued, in order. */
-  last(): RecordedOp[];
+/**
+ * One call the package's recorder wrote, as the engineless recorder would have
+ * written it.
+ *
+ * The two records hold the same facts under two spellings — `kind` here, `op`
+ * there — because the engineless recorder is injected into a page and writes the
+ * console player's replay format. Renaming the discriminant is the whole of the
+ * difference; the `text` geometry an engine recorder can also take is dropped,
+ * because this project never asks for it (see `recorder` in the kit below).
+ */
+function recordedOp(call: DrawCall): RecordedOp {
+  return call.kind === "call"
+    ? { op: "call", method: call.method, args: call.args }
+    : { op: "set", property: call.property, value: call.value };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reaching the build's surface                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What one harness learned about the build's surface, filled in as it learned it.
+ *
+ * Three separate things can be wrong and each is the BUILD's rather than this
+ * harness's: `initialize` may reject, `engine.debug` may hold no surface or one
+ * missing an operation, and the surface's own `snapshot` may throw the first time
+ * it is read. They are learned at three different moments — inside the kit's
+ * initialization, inside its surface read, and after the harness is built — and
+ * the driver has to answer for all three, so it reads this record rather than
+ * closing over a verdict that was not available when it was made. Keyed by the
+ * ENGINE, so two harnesses in one worker never share a record.
+ */
+interface SurfaceRead {
+  /** The surface the build returned, or `null` when there is none to drive. */
+  raw: GantryDebugApi | null;
+  /** Why it cannot be driven, or `null` when it can. */
+  fault: string | null;
+  /** That surface with every operation wrapped in a promise. */
+  driven: GantryDriver | null;
+  /** What the engine's `initialize` resolved to, or `null` when it rejected. */
+  instance: GameInstance<GantryDebugApi> | null;
+  /**
+   * Every asset the build asked for and got, oldest first.
+   *
+   * Subscribed the moment the engine exists and BEFORE `initialize`, which is
+   * what makes the game's own loading observable: construction runs no game code,
+   * so nothing has happened yet. That is a moment only the kit's engine factory
+   * is standing in, so the list is recorded here rather than in `createHarness`.
+   */
+  readonly loads: AssetLoad[];
+}
+
+/** The record for each engine this worker has built. */
+const reads = new WeakMap<object, SurfaceRead>();
+
+/** This engine's record, minted empty the first time it is asked for. */
+function readOf(engine: object): SurfaceRead {
+  const held = reads.get(engine);
+  if (held !== undefined) return held;
+  const fresh: SurfaceRead = {
+    raw: null,
+    fault: null,
+    driven: null,
+    instance: null,
+    loads: [],
+  };
+  reads.set(engine, fresh);
+  return fresh;
+}
+
+/** An error's message, for a fault a reviewer reads. */
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
- * Record every operation the engine's screen pass makes on the screen layer.
+ * The debug surface the BUILD's instance returned, read off the engine that holds
+ * it, and recorded on `read`.
  *
- * WHY THIS EXISTS AT ALL. Gantry's readouts, menus, tape listing and fail copy
- * are drawn on the screen layer, and a review point about what a screen SAYS is a
- * point about what the frame drew rather than about what the snapshot holds — a
- * title screen that draws none of its copy is exactly the miss those points are
- * about. Under `none` the shared harness injects a recorder into the page before
- * a line of the build runs and a check reads it back over `h.page`. There is no
- * page here, so the recorder is this: the 2D context the engine hands the screen
- * pass, wrapped so every call and every property write is written down as it goes
- * through.
+ * This is deliberately a READ and never a construction. The surface is the
+ * build's deliverable: its game instance's `initialize` returns it, the engine
+ * keeps that same object, and `engine.debug` is the only way it reaches a check.
+ * What is decided here is a return that is no surface, or one missing an
+ * operation the specification requires. That is a fault in the build and not in
+ * this harness, so it must not present as one: it is neither thrown from here —
+ * which would bury the verdict under the harness's own stack — nor swallowed.
  *
- * IT IS A WRAPPER AND NOT A STUB. Every operation is forwarded to the real
- * `@napi-rs/canvas` context and its answer handed back untouched, so the screen
- * layer is genuinely drawn — `measureText` measures, a still written by
- * `captureStill` is the picture the frame made — and the recording is a record of
- * that drawing rather than a substitute for it.
- *
- * A frame is `begin` to `end`, which {@link createHarness}'s driver puts around
- * each single frame it advances, so `last()` means what it means under `none`:
- * every operation the last CLOSED frame issued.
+ * A SURFACE MISSING ONE OPERATION IS AN UNUSABLE SURFACE HERE, and that is this
+ * project's own reading rather than the package's: `missingOps` is documented as
+ * a reading a case decides where to land, and Gantry lands it at the harness, so
+ * every point the surface would have decided reports the same fault rather than
+ * one point reporting a missing operation and the rest grading a half-driven
+ * build. `validation/simple-3d/harness.ts` lands the same reading per operation,
+ * which is the other legitimate design, and the two are recorded as differing.
  */
-function recordScreenLayer(canvas: Canvas): ScreenRecorder {
-  const context = canvas.getContext("2d");
-  let filling: RecordedOp[] = [];
-  let closed: RecordedOp[] = [];
+function readSurface(engine: GantryEngine, read: SurfaceRead): void {
+  let held: unknown;
+  try {
+    held = engine.debug;
+  } catch (error) {
+    read.fault = `reading engine.debug threw: ${describe(error)}`;
+    return;
+  }
 
-  const held = context as unknown as Record<string, unknown>;
-  const methods = new Map<string, (...args: unknown[]) => unknown>();
-  const recording = new Proxy(held, {
+  if (typeof held !== "object" || held === null) {
+    read.fault = `engine.debug holds ${held === null ? "null" : typeof held}, not an object`;
+    return;
+  }
+
+  const missing = missingOps(held, REQUIRED_OPS);
+  if (missing.length > 0) {
+    read.fault =
+      `engine.debug is missing ${String(missing.length)} required ` +
+      `operation${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`;
+    return;
+  }
+
+  read.raw = held as GantryDebugApi;
+  read.driven = promiseDriver<GantryDebugApi, GantryDriver>(read.raw);
+}
+
+/**
+ * The surface a check drives: the promise-wrapped one when there is one, and an
+ * operation that fails the check that reached for it when there is not.
+ *
+ * IT READS THE RECORD ON EVERY ACCESS rather than closing over a decision, because
+ * the last of the three faults — a `snapshot` that throws — is only known after
+ * the harness has been built, and a driver made before that would hand a check a
+ * surface this harness has already decided is unusable.
+ *
+ * THE STAND-IN ANSWERS AN ASYNC FUNCTION, which is where this differs from the
+ * package's `absentSurface` (it fails at the property ACCESS) and from its
+ * `unexposedSurface` (it fails when a SYNCHRONOUS member is called). Gantry's
+ * contract is that every member of `h.debug` answers a promise, in all three
+ * directories, so a check that awaits the call reads a rejection rather than a
+ * synchronous throw the shape of its own `await` did not expect.
+ *
+ * ON A SURFACE THAT IS USABLE, A MEMBER THAT IS NOT A FUNCTION COMES BACK AS IT
+ * IS — the `version` a build reports, or a plain property it added. This project's
+ * own driver used to answer a failing function for those too, which was the
+ * missing-operation fault applied to something that is not an operation; the
+ * package's `promiseDriver` passes them through, which is what every other engine
+ * project reads and what lets a `typeof` probe read the same through the driver as
+ * through the raw surface. Nothing in this suite reads one either way:
+ * {@link Harness.probe} reflects the RAW surface.
+ */
+function driverOver(read: SurfaceRead): GantryDriver {
+  return new Proxy({} as GantryDriver, {
     get: (_target, property): unknown => {
-      if (typeof property === "symbol") return held[property as never];
-      const value = held[property];
-      if (typeof value !== "function") return value;
-      const memoized = methods.get(property);
-      if (memoized !== undefined) return memoized;
-      const method = (...args: unknown[]): unknown => {
-        filling.push({ op: "call", method: property, args });
-        return (value as (...rest: unknown[]) => unknown).apply(held, args);
-      };
-      methods.set(property, method);
-      return method;
-    },
-    set: (_target, property, value): boolean => {
-      if (typeof property !== "symbol") {
-        filling.push({ op: "set", property, value });
+      // Keys that belong to the MACHINERY rather than to a check: awaiting a
+      // value probes `then`, and vitest's own error formatting probes symbols and
+      // `constructor`. Failing those would replace the verdict with noise from
+      // the machinery that was trying to report it.
+      if (typeof property === "symbol") return undefined;
+      if (property === "then" || property === "constructor") return undefined;
+      const { fault, driven } = read;
+      if (driven === null || fault !== null) {
+        const reason = fault ?? "engine.debug holds no surface";
+        return async (): Promise<never> => failSurface(reason);
       }
-      held[property as string] = value;
-      return true;
+      return (driven as unknown as Record<string, unknown>)[property];
     },
   });
-
-  // The context the engine is handed, shadowing the canvas's own accessor. An own
-  // property on an ordinary object, so `captureStill` — which encodes the CANVAS
-  // rather than a context — is untouched by it.
-  (canvas as unknown as { getContext: (id: string) => unknown }).getContext = (
-    id: string,
-  ): unknown => (id === "2d" ? recording : null);
-
-  return {
-    begin() {
-      filling = [];
-    },
-    end() {
-      closed = filling;
-    },
-    last: () => closed,
-  };
 }
+
+/* -------------------------------------------------------------------------- */
+/* What the host does not carry                                               */
+/* -------------------------------------------------------------------------- */
+//
+// Node gives an engine none of what a browser gives it, and the package supplies
+// all of it. Both installations below are per WORKER, reference counted and
+// idempotent, so a second harness joins the first's rather than standing up its
+// own — and neither is ever taken down, because a worker that simply exits leaves
+// them standing and nothing outside this project can tell they were there.
+
+/**
+ * How a produced `.wav` becomes the buffer the engine's loader is handed.
+ *
+ * THE HEADER AND NOT THE SAMPLES. Nothing in this project listens: the engine's
+ * bus only ever hands the buffer to a source node the package's inert graph
+ * silences, and what a check reads about sound is the cue EVENTS, which are the
+ * engine's own record rather than the graph's. So decoding eleven cues per harness
+ * for nobody would be the most expensive thing the project did, and everything a
+ * caller can observe about a decoded buffer — the rate, the channel count, the
+ * frame count and the duration — is still read out of the file the build
+ * committed. A body that is not a PCM `.wav` throws, which is what a browser's
+ * `decodeAudioData` does and what the item about that file should see.
+ *
+ * Held as ONE function rather than written at the call site because the package
+ * refuses a second installation whose `decode` is not the same function: two
+ * harnesses in one worker must agree about whether a cue's samples were decoded,
+ * or one of them would read silence off every channel with nothing to say so.
+ */
+const decodeCue = (bytes: Uint8Array): AudioBufferLike =>
+  silentAudioBuffer(bytes);
 
 /* -------------------------------------------------------------------------- */
 /* Building one                                                               */
@@ -840,9 +774,175 @@ function recordScreenLayer(canvas: Canvas): ScreenRecorder {
  */
 const ZERO_CLOCK: Clock = { delta: () => 0 };
 
-/** How long a drive may hold the worker's event loop before it lets a turn by. */
-const YIELD_AFTER_MS = 100;
+/**
+ * When this worker last let its event loop turn.
+ *
+ * WHY A DRIVE HANDS THE EVENT LOOP A TURN. `engine.advance(n)` returns a promise,
+ * but the `n` frames have already run by the time it does: the engine steps them
+ * synchronously and resolves after the last one. So a check that drives a tape to
+ * its end holds this worker's event loop for as long as that simulation takes, and
+ * awaiting an already-settled promise does not give the loop back — it queues a
+ * microtask, which runs before the loop is reached at all. Vitest reports a
+ * running file to its runner over a socket served by that same loop, and a report
+ * left unanswered for long enough is abandoned, which spoils the RUN over a check
+ * that passed. The package's `breathe` lets one real turn through whenever the
+ * frames just run have held the loop long enough. Nothing measured here depends on
+ * wall-clock time — every check supplies its own clock and the engine reads no
+ * other — so the turn changes no reading.
+ *
+ * Per WORKER rather than per harness, because the loop it is letting turn is.
+ */
 let yieldedAt = Date.now();
+
+/**
+ * The package's engine machinery, bound to Gantry on this engine.
+ *
+ * The four config members where the engines really differ are each answered here
+ * from what THIS engine is:
+ *
+ *  - `createEngine` stands the engine up over TWO canvases. The kit owns and
+ *    records one of them, and it is the SCREEN layer — the readouts, menus, tape
+ *    and fail copy are what this project reads and what a still keeps, and they
+ *    are drawn on a real 2D context. The stage canvas, whose `webgl2` context is
+ *    the package's stub, is built beside it in `./host`.
+ *  - `initialize` catches, because a rejected initialization is a VERDICT here
+ *    rather than a crash: `engine.initialize` rejects when the instance's
+ *    `initialize`, the level's `load`, or a `beginPlay` throws, and every one of
+ *    those is the build's code.
+ *  - `driver` is the PROMISE-WRAP strategy, over the surface this file reads off
+ *    the engine itself rather than off the kit's stand-in — see {@link readSurface}
+ *    on why this project needs the fault and the raw surface and not a stand-in.
+ *  - `toLogical` is left at the identity: a pointer's logical stage point IS the
+ *    engine's logical point here, and the WORLD projection a check reaches for is
+ *    `Harness.project`, which takes three coordinates and is not this.
+ *
+ * `cueEvents` names both firings, because `loopingCues` has to know every name the
+ * build has used and a bed that only ever LOOPS would otherwise never be named.
+ */
+const kit: EngineCaseKit<GantrySnapshot, GantryDriver, GantryEngine, unknown> =
+  createEngineCaseHarness<GantrySnapshot, GantryDriver, GantryEngine>({
+    slug: "gantry",
+    projectRoot: PROJECT_ROOT,
+    stage: { width: STAGE_W, height: STAGE_H },
+    tickHz: TICK_HZ,
+    surfaceRequirement: SURFACE_REQUIREMENT,
+    // No `measureText`: every check that reads the frame's copy walks the operation
+    // list and composes the transforms itself, exactly as it does under `none`,
+    // where the injected recorder carries no measurement either.
+    recorder: {},
+    cueEvents: ["cue:played", "cue:looped"],
+    defaultClock: () => new ConstantClock(TICK_MS),
+    createEngine: ({ canvas, clock, surface, shape }) => {
+      const stage = createEngineSurface(
+        Math.round(shape.cssWidth * shape.dpr),
+        Math.round(shape.cssHeight * shape.dpr),
+        surface.events(),
+      );
+      const engine = createEngine<GantryDebugApi>({
+        canvas: stage,
+        // The kit's own canvas, with its recorder already between the engine's
+        // screen pass and the pixels.
+        screen: canvas,
+        // The logical design size of `specs/overview.md`, which is what every figure
+        // a check states a stage position in is measured in.
+        width: STAGE_W,
+        height: STAGE_H,
+        game,
+        // The two `src/main.ts` passes that decide how the game is stood up rather
+        // than how it looks: the keyboard vocabulary the touch layout brings with
+        // it, and the one root every produced file resolves under
+        // (`specs/assets.md`).
+        layout: LAYOUT,
+        assetRoot: ASSET_ROOT,
+        // Shadow maps, which can only be asked for at construction. A light casts
+        // and a surface receives only where the game says so, so this costs a build
+        // that wants none of it nothing, and a build that declared a caster would
+        // draw differently without it.
+        shadows: true,
+        clock,
+        surface: surface as SurfaceMetrics,
+      });
+      // Before `initialize`, so what the game loads on the way up is recorded. The
+      // kit subscribes `asset:failed` and the cue events here for the same reason;
+      // this is the one event it does not carry, because it is the one only this
+      // case reads.
+      const loads = readOf(engine).loads;
+      engine.events.on("asset:loaded", ({ path, url }) => {
+        loads.push({ path, url });
+      });
+      return engine;
+    },
+    async initialize(engine) {
+      const read = readOf(engine);
+      try {
+        read.instance = await engine.initialize();
+      } catch (error) {
+        read.fault = `engine.initialize() rejected: ${describe(error)}`;
+        // The engine refuses `engine.debug` outright until `initialize` has
+        // resolved, and the kit reads it next. Shadowing it with `null` is what
+        // turns that refusal into the stand-in the kit is written to answer with,
+        // so a build whose game did not come up fails every point it should have
+        // decided instead of taking the suite's `beforeEach` down with it.
+        Object.defineProperty(engine, "debug", {
+          value: null,
+          configurable: true,
+        });
+      }
+      return read.instance;
+    },
+    driver: (engine) => {
+      const read = readOf(engine);
+      if (read.fault === null) readSurface(engine, read);
+      return driverOver(read);
+    },
+    snapshot: (_debug, engine) => {
+      const { raw, fault } = readOf(engine);
+      if (raw === null)
+        return failSurface(fault ?? "engine.debug holds no surface");
+      return raw.snapshot();
+    },
+  });
+
+/** Seconds of run clock in `count` ticks, and the ticks covering a duration. */
+export const {
+  TICK_DT,
+  TICK_MS,
+  seconds,
+  ticks,
+  ticksFor,
+  speedOverTicks,
+  gainOverTicks,
+} = kit;
+
+export { TICK_HZ };
+
+/**
+ * The shared harness underneath each Gantry harness.
+ *
+ * Held here rather than exposed on {@link Harness}, because the engineless project
+ * has no such thing and a helper that reached for it would stop being one file in
+ * three directories. What it carries that this file's own members cannot is the
+ * recorded screen layer, the canvas a still is encoded from, and the engine's
+ * driven frame.
+ */
+const bases = new WeakMap<
+  Harness,
+  EngineHarness<GantrySnapshot, GantryDriver, GantryEngine>
+>();
+
+/** The shared harness under `h`, or a loud failure if it was not built here. */
+function baseOf(
+  h: Harness,
+): EngineHarness<GantrySnapshot, GantryDriver, GantryEngine> {
+  const base = bases.get(h);
+  if (base === undefined) {
+    throw new Error(
+      "gantry: this harness was not built by createHarness(), so the shared " +
+        "harness underneath it is missing",
+    );
+  }
+  return base;
+}
 
 /**
  * Stand an engine up over canvases of the harness's own, initialize the build's
@@ -858,14 +958,13 @@ let yieldedAt = Date.now();
  * against as little of the build as it can: the clear colour reaches nothing a
  * validator can read, so making the harness fail to compile over it would trade a
  * decided item for an undecided run. And the page's canvas, because there is no
- * page; the two this harness makes are described in `./host.ts`.
+ * page; the two this harness makes are the kit's screen layer and `./host`'s
+ * stage.
  *
- * A FAILED INITIALIZATION IS A VERDICT, NOT A CRASH. `engine.initialize` rejects
- * when the instance's `initialize`, the level's `load`, or a `beginPlay` throws,
- * and every one of those is the build's code. The rejection is caught and kept as
- * {@link Harness.surfaceFault}, so each check that reaches the game fails with
- * that cause beside what the specification requires, and the run reaches a
- * verdict on every item rather than reporting a broken suite.
+ * A FAILED INITIALIZATION IS A VERDICT, NOT A CRASH — see `initialize` in the kit
+ * above. So is a surface that is missing or incomplete, and so is a `snapshot`
+ * that throws the first time it is read: each becomes a FAULT a check fails on
+ * rather than an exception a suite dies of.
  *
  * THE OPENING SNAPSHOT IS READ BEFORE THE RESET. `specs/ui.md` says of the title
  * screen "The game opens on `title`", which is a fact about what a FRESH game
@@ -876,129 +975,59 @@ let yieldedAt = Date.now();
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  // Two of the three gaps Node leaves, filled before a line of the engine or the
-  // build runs: the produced files answerable over `fetch`, and an audio context
-  // to decode them through. Both are idempotent and both are per worker; the
-  // third — the canvases and the WebGL2 context — is `createEngineSurface` below.
-  serveWorkspaceAssets(WORKSPACE_ROOT);
-  defineAudioContext();
-
-  const cssWidth = options.cssWidth ?? STAGE_W;
-  const cssHeight = options.cssHeight ?? STAGE_H;
-  const dpr = options.dpr ?? 1;
-
-  const host: EngineSurface = createEngineSurface(
-    Math.round(cssWidth * dpr),
-    Math.round(cssHeight * dpr),
-  );
-  // Before the engine is built, so the context the screen pass is handed is the
-  // recording one from its very first frame.
-  const screenRecorder = recordScreenLayer(host.screenCanvas);
-  const metrics: SurfaceMetrics = {
-    cssWidth: () => cssWidth,
-    cssHeight: () => cssHeight,
-    dpr: () => dpr,
-    events: () => host.events,
-  };
-
-  const engine = createEngine<GantryDebugApi>({
-    canvas: host.stage,
-    screen: host.screen,
-    // The logical design size of `specs/overview.md`, which is what every figure
-    // a check states a stage position in is measured in.
-    width: STAGE_W,
-    height: STAGE_H,
-    game,
-    // The two `src/main.ts` passes that decide how the game is stood up rather
-    // than how it looks: the keyboard vocabulary the touch layout brings with it,
-    // and the one root every produced file resolves under (`specs/assets.md`).
-    layout: LAYOUT,
-    assetRoot: ASSET_ROOT,
-    // Shadow maps, which can only be asked for at construction. A light casts and
-    // a surface receives only where the game says so, so this costs a build that
-    // wants none of it nothing, and a build that declared a caster would draw
-    // differently without it.
-    shadows: true,
-    clock: options.clock ?? new ConstantClock(TICK_MS),
-    surface: metrics,
+  // The two gaps Node leaves that the engine reaches for on its own account: the
+  // produced files answerable over `fetch`, and an audio context to decode them
+  // through. The third — the canvases and the WebGL2 context — is the kit's and
+  // `./host`'s. `workspaceRoot` comes from THIS file for the same reason
+  // `projectRoot` does: the package is staged one directory deeper, so a root
+  // derived there would address a tree one level too far down and every produced
+  // file would quietly 404 — and a 404 is a verdict about the build.
+  const assets: AssetHost = installAssetHost({
+    workspaceRoot: WORKSPACE_ROOT,
+    // The committed tree first — "every produced file is committed under
+    // `ASSET_ROOT`" — then Vite's `public/` and the built `dist/`, which are the
+    // two ways `specs/assets.md` leaves a build to arrange for the built site to
+    // carry them.
+    roots: [".", "public", "dist"],
+    label: "gantry",
   });
+  installAudioContext({ decode: decodeCue });
 
-  // Subscribed BEFORE `initialize`, which is what makes the game's own loading
-  // and its opening cues observable: construction runs no game code, so nothing
-  // has happened yet.
-  const played: TimedCue[] = [];
-  const assetFailures: AssetFailure[] = [];
-  const assetLoads: AssetLoad[] = [];
   // Where this harness came in: what the worker requested before it was built
   // belongs to whatever harness came before it.
-  const requestsBefore = assetRequests().length;
-  let drained = 0;
-  /** Every cue name a reading may ask the bus about: see `loopingCues`. */
-  const cueNames = new Set<string>(CUES);
-  engine.events.on("asset:failed", ({ path, reason }) => {
-    assetFailures.push({ path, reason });
-  });
-  engine.events.on("asset:loaded", ({ path, url }) => {
-    assetLoads.push({ path, url });
-  });
-  engine.events.on("cue:played", ({ cue, t, gain }) => {
-    cueNames.add(cue);
-    played.push({ cue, t, gain, frame: engine.frame().count, looped: false });
-  });
-  engine.events.on("cue:looped", ({ cue, t, gain }) => {
-    cueNames.add(cue);
-    played.push({ cue, t, gain, frame: engine.frame().count, looped: true });
-  });
+  const requestsFrom = assets.mark();
 
-  // EVERYTHING THE BUILD COULD GET WRONG IS SETTLED HERE, ONCE, and then frozen
-  // into the constants the readings below close over. `engine.initialize` rejects
-  // when the instance's `initialize`, the level's `load`, or a `beginPlay` throws,
-  // and every one of those is the build's code; `engine.debug` may hold no
-  // surface, or one missing an operation; and the surface's own `snapshot` may
-  // throw the first time it is read. Each of those is the build's fault and none
-  // of them is this harness's, so each becomes a FAULT a check fails on rather
-  // than an exception a suite dies of.
-  let started: GameInstance<GantryDebugApi> | null = null;
-  let found: GantryDebugApi | null = null;
-  let problem: string | null = null;
-  let opening: GantrySnapshot | null = null;
-
-  try {
-    started = await engine.initialize();
-  } catch (error) {
-    problem = `engine.initialize() rejected: ${describe(error)}`;
-  }
-
-  if (problem === null) {
-    const read = readDebugSurface(engine);
-    found = read.surface;
-    problem = read.fault;
-  }
+  const base = await kit.createHarness(options);
+  const engine = base.engine;
+  const read = readOf(engine);
 
   // The game as the BUILD stood it up, before anything here touched it. Read only
   // where the surface can be read at all; a build with no surface has no opening
   // state to report, and every check about one fails on the surface instead.
-  if (problem === null && found !== null) {
+  let openingSnapshot: GantrySnapshot | null = null;
+  if (read.raw !== null) {
     try {
-      opening = found.snapshot();
+      openingSnapshot = read.raw.snapshot();
     } catch (error) {
-      problem = `engine.debug.snapshot() threw: ${describe(error)}`;
+      read.fault = `engine.debug.snapshot() threw: ${describe(error)}`;
     }
   }
 
-  const fault = problem;
-  const surface = fault === null ? found : null;
-  const instance = fault === null ? started : null;
-  const openingSnapshot = opening;
-
-  const debug =
-    surface === null
-      ? missingDriver(fault ?? "engine.debug holds no surface")
-      : driverFor(surface);
+  const usable = read.fault === null && read.raw !== null;
+  const surface = usable ? read.raw : null;
+  const fault = read.fault;
 
   /** Fail whatever a check asked of a build whose game did not come up. */
   const refuse: () => never = () =>
     failSurface(fault ?? "the engine did not start");
+
+  /** Every cue name a reading may ask the bus about: see `loopingCues`. */
+  const cueNames = (): string[] => [
+    ...new Set<string>([...CUES, ...base.cues.map((one) => one.cue)]),
+  ];
+
+  // How much of `base.cues` `h.cues()` has already reported.
+  let drained = 0;
 
   // The pointer's last position, in logical stage units, because
   // `specs/instrumentation.md` states a release as happening "at the position the
@@ -1011,49 +1040,31 @@ export async function createHarness(
 
   const dispatch = (event: Event): void => {
     if (surface === null) refuse();
-    host.events.dispatchEvent(event);
+    base.events.dispatchEvent(event);
   };
 
   const step = async (count: number): Promise<void> => {
     if (surface === null) refuse();
-    // WHY A DRIVE HANDS THE EVENT LOOP A TURN. `engine.advance(n)` returns a
-    // promise, but the `n` frames have already run by the time it does: the
-    // engine steps them synchronously and resolves after the last one. So a check
-    // that drives a tape to its end holds this worker's event loop for as long as
-    // that simulation takes, and awaiting an already-settled promise does not give
-    // the loop back — it queues a microtask, which runs before the loop is reached
-    // at all. Vitest reports a running file to its runner over a socket served by
-    // that same loop, and a report left unanswered for long enough is abandoned,
-    // which spoils the RUN over a check that passed. So one real turn of the loop
-    // is let through whenever the frames just run have held it for
-    // `YIELD_AFTER_MS`. Nothing measured here depends on wall-clock time — every
-    // check supplies its own clock and the engine reads no other — so the turn
-    // changes no reading.
-    //
     // THE FRAMES ARE ADVANCED ONE AT A TIME, and that is what puts a boundary
-    // around each of them for the screen recorder: `h.screenOps()` answers the
-    // last CLOSED frame, exactly as the engineless project's injected recorder
-    // does, and a boundary only exists where one is drawn. `engine.advance(n)`
-    // runs the same `n` frames off the same clock either way.
+    // around each of them for the recorder: `h.screenOps()` answers the last
+    // CLOSED frame, exactly as the engineless project's injected recorder does,
+    // and a boundary only exists where one is drawn. Emptying the recorder's list
+    // at each boundary is that boundary, and it is also what keeps a thousand-tick
+    // run from carrying a million operations nothing will read.
+    // `engine.advance(n)` runs the same `n` frames off the same clock either way.
     for (let frame = 0; frame < count; frame += 1) {
-      screenRecorder.begin();
-      await engine.advance(1);
-      screenRecorder.end();
+      base.calls.length = 0;
+      await base.advance(1);
     }
-    if (Date.now() - yieldedAt >= YIELD_AFTER_MS) {
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
-      yieldedAt = Date.now();
-    }
+    yieldedAt = await breathe(yieldedAt);
   };
 
   const harness: Harness = {
     async dispose() {
-      engine.destroy();
+      base.dispose();
     },
 
-    debug,
+    debug: base.debug,
 
     async snapshot() {
       if (surface === null) refuse();
@@ -1166,8 +1177,8 @@ export async function createHarness(
 
     async cues() {
       if (surface === null) refuse();
-      const names = played.slice(drained).map((entry) => entry.cue);
-      drained = played.length;
+      const names = base.cues.slice(drained).map((entry) => entry.cue);
+      drained = base.cues.length;
       return names;
     },
     async loopingCues() {
@@ -1184,7 +1195,7 @@ export async function createHarness(
       // announced, which is how the bed reaches a reading here the way the
       // engineless project's cue probe reaches it there: by naming whatever the
       // build actually sounded rather than only what the case enumerated.
-      return [...cueNames].filter((cue) => audio.looping(cue));
+      return cueNames().filter((cue) => audio.looping(cue));
     },
 
     async releasePaint() {
@@ -1209,19 +1220,19 @@ export async function createHarness(
       return engine.world.state;
     },
     get instance() {
-      if (instance === null) refuse();
-      return instance;
+      if (read.instance === null) refuse();
+      return read.instance;
     },
     surface,
-    played,
-    assetFailures,
-    assetLoads,
-    requests: () => assetRequests().slice(requestsBefore),
+    played: base.cues,
+    assetFailures: base.assetFailures,
+    assetLoads: read.loads,
+    requests: () => assets.requestsSince(requestsFrom),
     openingSnapshot,
-    tick: () => engine.frame().count,
+    tick: () => base.tick(),
 
     probe(names) {
-      const target = (found ?? {}) as Record<string, unknown>;
+      const target = (read.raw ?? {}) as Record<string, unknown>;
       const ops: Record<string, string> = {};
       for (const op of names) ops[op] = typeof target[op];
       return { version: target.version, ops };
@@ -1229,16 +1240,16 @@ export async function createHarness(
 
     async screenOps() {
       if (surface === null) refuse();
-      return screenRecorder.last();
+      return base.calls.map(recordedOp);
     },
 
     async screenPng() {
       if (surface === null) refuse();
-      return host.screenCanvas.toBuffer("image/png");
+      return base.canvas.toBuffer("image/png");
     },
   };
 
-  screens.set(harness, host.screenCanvas);
+  bases.set(harness, base);
 
   // The opening reset, so every check starts from the state
   // `specs/instrumentation.md` says a `reset` leaves: the title screen, site `0`
@@ -1280,36 +1291,73 @@ export async function createHarness(
   // build's camera to `specs/controls.md` rather than to this harness.
   if (surface !== null) {
     engine.setClock(ZERO_CLOCK);
-    screenRecorder.begin();
-    await engine.advance(1);
-    screenRecorder.end();
+    base.calls.length = 0;
+    await base.advance(1);
     engine.setClock(options.clock ?? new ConstantClock(TICK_MS));
-    drained = played.length;
+    drained = base.cues.length;
   }
 
   return harness;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Evidence for the reviewer                                                  */
+/* The events this harness dispatches                                         */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Where the running suite's `outputId` output belongs, or `null` when nothing is
- * collecting media.
+ * A `PointerEvent`-shaped event.
  *
- * The suite is the one vitest is currently running rather than one the caller
- * names, because the two must not be able to disagree: a check that named its own
- * path would be free to write its evidence under some other point's address.
+ * THE CASE'S OWN, and not the package's `DevicePointerEvent`, which is the same
+ * event with one field decided differently: it reports `buttons` `1` on a MOVE,
+ * where this reports the mask that is really held — `0` for a move with no press
+ * live. The engine's chord tracking reads that mask, so a move dispatched with a
+ * button it does not hold is an orbit drag the caller never made, and every check
+ * that moves the pointer over a menu without pressing turns on it.
+ *
+ * The engine reads `clientX`, `clientY`, `pointerId`, `isPrimary`, `pointerType`,
+ * `button` and `buttons`, and maps the position through the same fit the game
+ * draws under: the client position, times the device pixel ratio, through the
+ * inverse viewport map. At the default shape — the stage's own size at one device
+ * pixel per CSS pixel — that map is the identity, so a logical point is
+ * dispatched directly.
+ *
+ * `button` and `buttons` say which button the sample is about and which are held
+ * once it has been applied. A move reports `-1`, which is the field saying the
+ * event is about position rather than about a button, exactly as a browser's is.
  */
-function mediaDestination(outputId: string, extension: string): string | null {
-  const mediaDir = process.env[MEDIA_DIR_ENV];
-  if (mediaDir === undefined || mediaDir === "") return null;
-  const testPath = expect.getState().testPath;
-  if (testPath === undefined) return null;
-  const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
-  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.${extension}`);
+class PointerEvt extends Event {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly pointerId: number;
+  readonly isPrimary = true;
+  readonly pointerType: "mouse" | "touch";
+  readonly button: number;
+  readonly buttons: number;
+
+  constructor(
+    type: "pointerdown" | "pointermove" | "pointerup",
+    x: number,
+    y: number,
+    button: number,
+    buttons: number,
+    device: "mouse" | "touch" = "mouse",
+  ) {
+    super(type);
+    this.clientX = x;
+    this.clientY = y;
+    this.button = button;
+    this.buttons = buttons;
+    this.pointerType = device;
+    // A finger is a pointer of its own, so it carries an id the mouse never
+    // does: `input.md` tracks each pointer by `id` and "among touches the first
+    // one down is" the primary.
+    this.pointerId = device === "touch" ? 2 : 1;
+  }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Evidence for the reviewer                                                  */
+/* -------------------------------------------------------------------------- */
 
 /**
  * Keep the frame currently drawn as the review item's `outputId` output.
@@ -1323,43 +1371,26 @@ function mediaDestination(outputId: string, extension: string): string | null {
  * half, and a review item whose verdict rests on the 3D picture wants a reviewer
  * looking at the built site rather than at this.
  *
+ * THE STILL AND NOT A RECORDING, and the same on all three engines: an output is
+ * declared ONCE per point and every engine has to produce it, and neither 3D
+ * project can encode video in Node. `case-harness/engine/3d`'s header says the
+ * same thing about every 3D case.
+ *
+ * SYNCHRONOUS, because a `@napi-rs/canvas` is already rasterized and `toBuffer`
+ * answers now. `validation/simple-3d/harness.ts` encodes the same picture through
+ * the async writer, because its screen canvas is encoded rather than buffered, and
+ * the package ships both writers for exactly that reason.
+ *
  * What is written is whatever the last frame that RAN left behind, so call it
  * after the frame that poses the thing under test — an `advance(1)` following the
  * arrangement — and before the assertions, so a check that fails still leaves the
- * picture that shows why.
+ * picture that shows why. A capture that cannot be written is reported as an
+ * output that never turned up, which is a fact about the host rather than about
+ * the build, so it warns rather than raising.
  */
 export function captureStill(h: Harness, outputId: string): void {
-  const destination = mediaDestination(outputId, "png");
-  if (destination === null) return;
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, screenOf(h).toBuffer("image/png"));
-  } catch (error) {
-    console.warn(`gantry: could not write ${destination}: ${describe(error)}`);
-  }
+  kit.captureStill(baseOf(h), outputId);
 }
-
-/** The screen layer this harness handed its engine. */
-function screenOf(h: Harness): Canvas {
-  const held = screens.get(h);
-  if (held === undefined) {
-    throw new Error(
-      "gantry: this harness was not built by createHarness(), so the screen " +
-        "layer it drew on is missing",
-    );
-  }
-  return held;
-}
-
-/**
- * The screen canvas behind each harness.
- *
- * Held here rather than exposed on {@link Harness}, because the engineless
- * project has no such thing and a helper that reached for it would stop being one
- * file in three directories.
- */
-const screens = new WeakMap<Harness, Canvas>();
-
 /* -------------------------------------------------------------------------- */
 /* The reference cranes and tapes                                             */
 /* -------------------------------------------------------------------------- */
@@ -2579,7 +2610,14 @@ export async function drawnFromModel(
 /* What a suite reads from here                                               */
 /* -------------------------------------------------------------------------- */
 
-export type { AssetRequest } from "./host";
+/**
+ * One request the build made through the harness's transport.
+ *
+ * The package's, which is a SUPERSET of the record this project used to declare —
+ * `url`, `offOrigin` and `status`, member for member — plus the file that
+ * answered it.
+ */
+export type { AssetRequest };
 
 export type {
   AxisName,

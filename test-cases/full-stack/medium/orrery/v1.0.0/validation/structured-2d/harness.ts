@@ -8,21 +8,42 @@
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas it named.
 //
-// WHAT A SUITE HOLDS IS ORRERY'S {@link Harness}, NOT THE ENGINE'S. Orrery ships
+// THE MACHINERY THAT DOES THAT IS NOT ORRERY'S. Standing an engine up over a
+// canvas the harness owns, recording what a frame drew, reading the debug surface
+// off the engine and standing in for one the build never returned, serving the
+// build's produced files to the engine's loader, decoding a produced `.wav` far
+// enough for a cue to bind, and writing the evidence a review point declares —
+// every engine-backed case needs exactly that, and it lives once, in
+// `@clockwyrks/case-harness`, staged beside this file as `./case-harness/`. The
+// engine half of it is reached through `./case-harness/engine/index`, plus
+// `./case-harness/engine/2d` for the replay stack, which is 2D-only.
+//
+// WHAT A SUITE HOLDS IS ORRERY'S {@link Harness}, NOT THE KIT'S. Orrery ships
 // three validator projects and one review item's suite is the SAME TEXT in all
 // three, so every member below carries the same name, the same arguments and the
 // same return shape as `validation/none/harness.ts` and
 // `validation/structured-2d/harness.ts` expose. That is why every one of them
 // answers a PROMISE even where nothing here has anything to wait for: a suite
 // that awaited under one engine and did not under another would be two suites.
+// The kit is what most of them are implemented over; a suite cannot tell.
 //
 // THE WORLD IS LIVE, AND THAT IS WHY THE DRIVER IS THIN.
 // `specs/instrumentation.md` under this engine has every operation act "on the
 // live game at the moment it is called": a pose takes only the arguments its row
-// names and returns nothing, and a reading returns plain data. So
-// {@link driveSurface} adds exactly one thing — the promise every member of
-// {@link OrreryDriver} answers in all three projects — and nothing else stands
-// between a check and the object the build returned.
+// names and returns nothing, and a reading returns plain data. So the driver adds
+// exactly one thing — the promise every member of {@link OrreryDriver} answers in
+// all three projects — and nothing else stands between a check and the object the
+// build returned. That is the package's `promiseDriver`, member for member, and
+// it is bound rather than rewritten: `READINGS` is not consulted here for the
+// reason it never was, that the two kinds are called identically under this
+// engine and only what they answer differs.
+//
+// (The `simple-2d` project has no such luck and keeps a driver of its own. Its
+// engine holds the state by value, so the surface there is PURE and every member
+// needs the state threaded through `engine.apply`. The package's `applyDriver`
+// does exactly that — but it passes a reading no arguments beyond the state, and
+// two of Orrery's readings take arguments, and it answers a value where a suite
+// awaits a promise. The README's collision table carries the row.)
 //
 // Orrery runs in ONE WORLD for the whole session. The game registers a single
 // level, never opens another, and every screen is a value of `state.screen`
@@ -36,27 +57,27 @@
 // build that returned no surface, or one missing an operation, fails the checks
 // that reach the game through it. `surface.ts` is the specification as types, and
 // it is the only description of the surface this project reads: the build's own
-// module for it is never imported.
+// module for it is never imported. The kit's `readDebugSurface` does the read and
+// stands an `absentSurface` in when there is nothing to read, so the fault lands
+// on the points whose checks reach the game through the surface rather than on
+// the `beforeEach` that built the harness.
 //
 // THE PRODUCED FILES REALLY LOAD. A bare Node process cannot fetch or decode one,
 // so without help every produced sprite and every cue would fail to load and every
 // point about them would fail every build ever written — a fact about Node rather
-// than about the build. {@link installAssetHost} supplies the three things a
-// browser gives the engine's loader: a `fetch` that reads the file the build
-// committed, a `createImageBitmap` that decodes one, and an `AudioContext` that
-// decodes a produced `.wav` far enough for the cue to bind. Every request the
-// loader makes is recorded and then served, so a check that needs to know WHICH
-// file the build asked for reads {@link Harness.assetRequests} and the load still
-// succeeds.
+// than about the build. {@link installAssetHost} supplies what a browser gives the
+// engine's loader: a `fetch` that reads the file the build committed, a
+// `createImageBitmap` that decodes one, and the `document.createElement("canvas")`
+// a build composing on a scratch surface reaches for; {@link installAudioContext}
+// supplies the `AudioContext` that decodes a produced `.wav` far enough for the
+// cue to bind. Every request the loader makes is recorded and then served, so a
+// check that needs to know WHICH file the build asked for reads
+// {@link Harness.assetRequests} and the load still succeeds.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { gzipSync } from "node:zlib";
 import {
   createCanvas,
-  Image,
-  loadImage,
   type Canvas,
+  type Image,
   type SKRSContext2D,
 } from "@napi-rs/canvas";
 import {
@@ -66,20 +87,29 @@ import {
   type GameDefinition,
   type GameInstance,
   type GameState,
-  type RecordedFrame,
-  type Recording,
   type SurfaceMetrics,
   type World,
 } from "@clockwyrks/structured-2d";
+import {
+  DevicePointerEvent,
+  absentSurface,
+  breathe,
+  captureOutput,
+  createEngineCaseHarness,
+  installAssetHost,
+  installAudioContext,
+  promiseDriver,
+  wavAudioBuffer,
+} from "./case-harness/engine/index";
+import { makeReplayCapture } from "./case-harness/engine/2d";
 import { BACKGROUND, game as build } from "../src/game";
-import { fail } from "./assert";
 import { INERT_KEY, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "./constants";
 import type { OrreryDriver } from "./driver";
 import type { StagePoint } from "./field";
-import { mediaDestination, WORKSPACE } from "./media";
+import { PROJECT_ROOT, WORKSPACE } from "./media";
 import type { OrrerySnapshot } from "./snapshot";
 import { REQUIRED_OPS, type OrrerySurface } from "./surface";
-import type { DrawCall, ImageRef } from "./drawing";
+import type { DrawCall } from "./drawing";
 import type { Pixel, PixelRect } from "./color";
 import { fitViewport, toCss, toDevice, type Viewport } from "./viewport";
 import type { TimedCue, UntilOptions, UntilResult } from "./scenario";
@@ -96,6 +126,9 @@ export { REQUIRED_OPS };
 /** The case's surface, exactly as `surface.ts` specifies it. */
 export type OrrerySurfaceOf = OrrerySurface;
 
+/** The engine this project stands a build up on. */
+type OrreryEngine = Engine<OrrerySurfaceOf>;
+
 /**
  * The build's game definition, typed against the surface the CASE specifies.
  *
@@ -111,296 +144,49 @@ const game = build as unknown as GameDefinition<OrrerySurfaceOf>;
 /* -------------------------------------------------------------------------- */
 
 /**
- * Where a page-relative asset URL is looked for, in order: the repository root
- * first, because `specs/assets.md` puts every produced file under `assets/` at
- * the root and the loader asks for `assets/<path>`; `public/` and `dist/` follow
- * so a build that staged its tree for Vite is still loading its own committed
- * files rather than nothing.
- */
-const ASSET_ROOTS = [".", "public", "dist"] as const;
-
-/** Where a fetched body came from, so a decoded image can carry its source. */
-const blobSource = new WeakMap<object, string>();
-
-/** Where a decoded image came from, or absent for one the build painted itself. */
-const imageSource = new WeakMap<object, string>();
-
-/**
- * Every page-relative URL the build's loader has asked for, oldest first.
+ * The transport the engine's asset loader fetches through, and the two decoders
+ * behind it.
  *
- * The transport below records each request and then serves it. Reset as a harness
- * is built, because the shim is installed once per process and a check reads what
- * THIS run of the build reached for.
- */
-let requested: string[] = [];
-
-/** The file a page-relative URL names, or `null` when no root holds it. */
-function assetFile(url: string): string | null {
-  const path = url.replace(/^\.\//, "");
-  if (
-    path === "" ||
-    path.startsWith("/") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(path)
-  ) {
-    return null;
-  }
-  for (const root of ASSET_ROOTS) {
-    const candidate = resolve(WORKSPACE, root, path);
-    if (candidate.startsWith(resolve(WORKSPACE)) && existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-/**
- * One 16-bit PCM `.wav` as the channel data an `AudioBuffer` reports.
+ * `workspaceRoot` comes from `media.ts` and must never come from the package's
+ * own module: the package is staged one directory DEEPER than this file, so a
+ * root derived there would address a tree one level too far down and every
+ * produced file would quietly 404 — and a 404 is a verdict about the build.
  *
- * Enough of a decode to satisfy the engine's `api.audio.load`, which binds a cue
- * name only once its file decodes. Nothing here sounds, so what the samples are
- * worth never reaches a verdict; what matters is that the produced cues BIND,
- * exactly as they do on a page, and the cue bus then announces every play.
- */
-function decodeWavChannels(bytes: Uint8Array): {
-  sampleRate: number;
-  channels: number;
-  frames: Float32Array[];
-} {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (bytes.byteLength < 12 || view.getUint32(0, false) !== 0x52494646) {
-    throw new Error("not a RIFF file");
-  }
-  let sampleRate = 44100;
-  let channels = 1;
-  let bits = 16;
-  let data: Uint8Array | null = null;
-  let at = 12;
-  while (at + 8 <= bytes.byteLength) {
-    const id = view.getUint32(at, false);
-    const size = view.getUint32(at + 4, true);
-    const body = at + 8;
-    if (id === 0x666d7420) {
-      channels = view.getUint16(body + 2, true);
-      sampleRate = view.getUint32(body + 4, true);
-      bits = view.getUint16(body + 14, true);
-    } else if (id === 0x64617461) {
-      data = bytes.subarray(body, Math.min(body + size, bytes.byteLength));
-    }
-    at = body + size + (size % 2);
-  }
-  if (data === null) throw new Error("the file carries no data chunk");
-  const bytesPerSample = Math.max(1, bits >> 3);
-  const count = Math.floor(data.byteLength / (bytesPerSample * channels));
-  const frames = Array.from(
-    { length: channels },
-    () => new Float32Array(count),
-  );
-  const samples = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (let i = 0; i < count; i += 1) {
-    for (let c = 0; c < channels; c += 1) {
-      const offset = (i * channels + c) * bytesPerSample;
-      const channel = frames[c] as Float32Array;
-      channel[i] = bits === 16 ? samples.getInt16(offset, true) / 32768 : 0;
-    }
-  }
-  return { sampleRate, channels, frames };
-}
-
-let assetHostInstalled = false;
-
-/**
- * Give this process the three things a browser gives the engine's asset loader.
- * Idempotent, and installed the first time a harness is built.
- */
-function installAssetHost(): void {
-  if (assetHostInstalled) return;
-  assetHostInstalled = true;
-
-  const platformFetch = globalThis.fetch?.bind(globalThis);
-  globalThis.fetch = (async (
-    input: unknown,
-    init?: unknown,
-  ): Promise<Response> => {
-    const url = typeof input === "string" ? input : String(input);
-    requested.push(url);
-    const file = assetFile(url);
-    if (file === null) {
-      if (platformFetch === undefined) {
-        throw new Error(`orrery harness: nothing to fetch "${url}" with`);
-      }
-      return platformFetch(input as RequestInfo, init as RequestInit);
-    }
-    const bytes = readFileSync(file);
-    const blob = new Blob([bytes]);
-    blobSource.set(blob, url);
-    return {
-      ok: true,
-      status: 200,
-      blob: () => Promise.resolve(blob),
-      arrayBuffer: () => Promise.resolve(bytes.buffer.slice(0)),
-    } as unknown as Response;
-  }) as typeof fetch;
-
-  const host = globalThis as {
-    createImageBitmap?: unknown;
-    AudioContext?: unknown;
-    ImageBitmap?: unknown;
-  };
-
-  // The type name the engine's own recorder looks a drawable source up under. It
-  // shadows every `drawImage` a frame issues so a replay can carry the picture the
-  // build actually drew, and it recognizes a source by `instanceof` against the
-  // host's own constructors — of which a bare Node process has none. Naming the
-  // canvas library's decoded image as `ImageBitmap`, which is exactly what
-  // `createImageBitmap` hands back here, is what lets a produced sprite reach a
-  // recording as its pixels rather than as an opaque marker.
-  host.ImageBitmap ??= Image;
-
-  host.createImageBitmap = async (blob: Blob): Promise<ImageBitmap> => {
-    const bytes = Buffer.from(await blob.arrayBuffer());
-    const image = await loadImage(bytes);
-    const from = blobSource.get(blob);
-    if (from !== undefined) imageSource.set(image, from);
-    return image as unknown as ImageBitmap;
-  };
-
-  // A build is free to compose a picture on a scratch canvas of its own before
-  // it blits that canvas over the frame — `document.createElement("canvas")` is
-  // how a browser hands one out, and a bare Node process has no `document` at
-  // all. That is a fact about Node rather than about the build, exactly as the
-  // absent `fetch`, `createImageBitmap` and `AudioContext` above are, so the
-  // harness supplies the one operation: a canvas backed by the same library the
-  // stage itself is drawn on, whose context and pixels the recorder already
-  // reads. Nothing else of a document is provided, because nothing else is
-  // something the engine's own runtime would give a build either.
-  const documented = globalThis as { document?: unknown };
-  documented.document ??= {
-    createElement(tag: string): unknown {
-      if (String(tag).toLowerCase() !== "canvas") {
-        throw new Error(
-          `orrery harness: this process has no document element "${tag}"`,
-        );
-      }
-      return createCanvas(1, 1);
-    },
-  };
-
-  host.AudioContext = class {
-    readonly currentTime = 0;
-    readonly destination = {};
-    resume(): Promise<void> {
-      return Promise.resolve();
-    }
-    decodeAudioData(buffer: ArrayBuffer): Promise<AudioBuffer> {
-      const { sampleRate, channels, frames } = decodeWavChannels(
-        new Uint8Array(buffer),
-      );
-      const first = frames[0];
-      return Promise.resolve({
-        sampleRate,
-        numberOfChannels: channels,
-        length: first?.length ?? 0,
-        duration: (first?.length ?? 0) / sampleRate,
-        getChannelData: (channel: number): Float32Array =>
-          frames[channel] ?? new Float32Array(0),
-      } as unknown as AudioBuffer);
-    }
-  };
-}
-
-/* -------------------------------------------------------------------------- */
-/* Recording what a frame drew                                                */
-/* -------------------------------------------------------------------------- */
-
-/** Every source this process has drawn, by the id the harness gave it. */
-const sourcesById = new Map<number, unknown>();
-
-/** The id a source carries, so the same sprite drawn twice is one source. */
-const sourceIds = new WeakMap<object, number>();
-
-let nextSourceId = 0;
-
-/** Whether a value is something a canvas can draw. */
-function drawable(value: unknown): value is object {
-  if (value === null || typeof value !== "object") return false;
-  const shaped = value as { width?: unknown; height?: unknown };
-  return typeof shaped.width === "number" && typeof shaped.height === "number";
-}
-
-/** A stable, short hash of a string, so two sources can be paired by origin. */
-function hashString(value: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
-}
-
-/**
- * The {@link ImageRef} a drawn source carries, minting one the first time it is
- * seen.
+ * The root ORDER is the case's: `specs/assets.md` puts every produced file under
+ * `assets/` at the REPOSITORY root and the loader asks for `assets/<path>`, so
+ * the workspace itself is looked in first; `public/` and `dist/` follow so a
+ * build that staged its tree for Vite is still loading its own committed files
+ * rather than nothing.
  *
- * A source is identified by this id and by its natural size, never by a path: a
- * bundler is free to inline a produced PNG, and that is still the committed file.
- * What settles the question is {@link Harness.imagePixels}, which reads the
- * source's own pixels back.
- */
-function refFor(value: object): ImageRef {
-  let id = sourceIds.get(value);
-  if (id === undefined) {
-    nextSourceId += 1;
-    id = nextSourceId;
-    sourceIds.set(value, id);
-    sourcesById.set(id, value);
-  }
-  const shaped = value as { width: number; height: number };
-  const from = imageSource.get(value) ?? null;
-  return {
-    id,
-    kind: "bitmap",
-    name: value.constructor?.name ?? "object",
-    width: shaped.width,
-    height: shaped.height,
-    src: from,
-    srcHash: from === null ? null : hashString(from),
-  };
-}
-
-/**
- * A proxy that records every call and property set on its way to the real
- * context, so one frame produces both a pixel buffer to sample and a call list to
- * inspect.
+ * `onMissing: "upstream"` hands a relative URL no root carries to the platform's
+ * own `fetch`, which is what this harness has always done — Node then rejects the
+ * relative URL, so the load fails with a parse error rather than with a status.
+ * `images` and `documentElement` are the two shims a 2D build that draws produced
+ * sprites, and may compose them on a scratch canvas, actually needs.
  *
- * A bitmap argument is replaced in the RECORD by its {@link ImageRef} — the real
- * object goes on to the real context untouched — so the list this produces is the
- * same shape the engineless project's injected recorder produces, and
- * `drawing.ts`'s readings work over both.
+ * INSTALLED ONCE PER WORKER, and never taken down: the shims go onto
+ * `globalThis`, the package reference-counts them, and a worker that simply exits
+ * leaves them standing. {@link Harness.dispose} clears the REQUEST LOG rather
+ * than uninstalling, so a second harness in the same worker still has a transport
+ * to load through.
  */
-function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
-  return new Proxy(target, {
-    get(object, property) {
-      const value = Reflect.get(object, property, object) as unknown;
-      if (typeof value !== "function") return value;
-      return (...args: unknown[]): unknown => {
-        const method = String(property);
-        calls.push({
-          kind: "call",
-          method,
-          args:
-            method === "drawImage" && drawable(args[0])
-              ? [{ $src: refFor(args[0]) }, ...args.slice(1)]
-              : args,
-        });
-        return (value as (...rest: unknown[]) => unknown).apply(object, args);
-      };
-    },
-    set(object, property, value) {
-      calls.push({ kind: "set", property: String(property), value });
-      return Reflect.set(object, property, value, object);
-    },
-  });
-}
+const host = installAssetHost({
+  workspaceRoot: WORKSPACE,
+  roots: [".", "public", "dist"],
+  onMissing: "upstream",
+  images: true,
+  documentElement: true,
+  label: "orrery",
+});
+
+// The samples themselves never reach a verdict — nothing here sounds — but the
+// decode has to SUCCEED, because the engine's `api.audio.load` binds a cue name
+// only once its file decodes, and the cue bus then announces every play.
+// `wavAudioBuffer` decodes the channels; `silentAudioBuffer` would bind the same
+// names off the header alone and read zero from every sample, and Orrery's audio
+// checks read files rather than buffers, so the honest one is the one that really
+// decoded what the build committed.
+installAudioContext({ decode: wavAudioBuffer });
 
 /* -------------------------------------------------------------------------- */
 /* Driving the surface                                                        */
@@ -414,72 +200,8 @@ export const SURFACE_REQUIREMENT =
   "the debug surface src/game.ts's instance returns from initialize, which the " +
   "engine hands back from engine.debug (specs/instrumentation.md)";
 
-/**
- * The surface the BUILD's instance returned from `initialize`, read off the
- * engine.
- *
- * Deliberately a READ and never a construction: the surface is the build's
- * deliverable, and `engine.debug` is the only way it reaches a check. A return
- * that is no surface is a fault in the build and not in this harness, so it is
- * neither thrown from here — every suite builds its harness in a `beforeEach`, and
- * a throw would bury the real verdict under the harness's own stack — nor
- * swallowed: {@link missingSurface} stands in and fails, by assertion, at the
- * moment a check first reaches for an operation.
- */
-function readDebugSurface(engine: Engine<OrrerySurfaceOf>): OrrerySurfaceOf {
-  const surface: unknown = engine.debug;
-  if (typeof surface !== "object" || surface === null) {
-    return missingSurface(
-      `engine.debug holds ${surface === null ? "null" : typeof surface}, not an object`,
-    );
-  }
-  return surface as OrrerySurfaceOf;
-}
-
-/** A stand-in for a surface the build never returned. */
-function missingSurface(reason: string): OrrerySurfaceOf {
-  return new Proxy({} as OrrerySurfaceOf, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-      return fail(SURFACE_REQUIREMENT, reason);
-    },
-  });
-}
-
-/**
- * The one shape a suite calls, over the live game the engine holds.
- *
- * A proxy, and a lazy one, for the same reason {@link missingSurface} is: the
- * member is read off the raw surface at the moment a check reaches for it, so a
- * missing operation fails the check that needed it and never the `beforeEach` that
- * built the harness.
- *
- * Under this engine the raw surface is ALREADY imperative — a pose takes only its
- * own arguments and returns nothing, a reading returns plain data — so the one
- * thing this adds is the promise every member of {@link OrreryDriver} answers in
- * all three projects. `READINGS` is not consulted here for that reason: the two
- * kinds are called identically, and only what they answer differs.
- */
-function driveSurface(raw: OrrerySurfaceOf): OrreryDriver {
-  return new Proxy({} as OrreryDriver, {
-    get: (_target, property): unknown => {
-      if (typeof property === "symbol") return undefined;
-      if (property === "then" || property === "constructor") return undefined;
-      const name = String(property);
-      const member = (raw as unknown as Record<string, unknown>)[name];
-      if (typeof member !== "function") {
-        return member === undefined ? undefined : () => Promise.resolve(member);
-      }
-      const op = member as (...args: unknown[]) => unknown;
-      return (...args: unknown[]): Promise<unknown> =>
-        Promise.resolve(op.call(raw, ...args));
-    },
-  });
-}
-
 /* -------------------------------------------------------------------------- */
-/* Events a frame raises                                                      */
+/* What one harness keeps as its frames run                                   */
 /* -------------------------------------------------------------------------- */
 
 /** One asset the build asked for and did not get. */
@@ -490,40 +212,237 @@ export interface AssetFailure {
   reason: string;
 }
 
-/** A `KeyboardEvent`-shaped event: the engine reads `code` and `repeat`. */
-class KeyEvent extends Event {
-  readonly code: string;
-  readonly repeat: boolean;
+/**
+ * Everything one harness accumulates while its engine runs, kept beside the
+ * engine that produced it.
+ *
+ * WHY IT IS NOT SIMPLY A CLOSURE OF {@link createHarness}. The engine's events
+ * have to be subscribed BEFORE `initialize`, so that the build's own loading is
+ * observable — construction runs no game code, so nothing has happened yet — and
+ * the kit reaches `initialize` from inside its own `createHarness`, before this
+ * project's has anything to close over. The engine is the one object both sides
+ * hold, so it is what the ledger hangs off; a `WeakMap` rather than a field, so
+ * nothing of this project's is written onto the engine the build is running on.
+ */
+interface Ledger {
+  /** Where `watchCues` attaches: one array per watcher. */
+  readonly cues: TimedCue[][];
+  readonly assetFailures: AssetFailure[];
+  readonly pageErrors: string[];
+  /** Which cues are looping now, and how many loops have ever started. */
+  readonly loops: { running: Set<string>; starts: number };
+  /** How many cues have sounded in total since the game stood up. */
+  played: number;
+  /** Frames CLOSED so far, so the frame now running is `frames + 1`. */
+  frames: number;
+  /** The simulated time those closed frames covered, in milliseconds. */
+  timeMs: number;
+  /** Why the build's engine could not be initialized, or `null`. */
+  surfaceFault: string | null;
+  /** The surface the build returned, for the kit's synchronous read of it. */
+  raw: OrrerySurfaceOf | null;
+}
 
-  constructor(type: "keydown" | "keyup", code: string, repeat = false) {
-    super(type);
-    this.code = code;
-    this.repeat = repeat;
+const ledgers = new WeakMap<object, Ledger>();
+
+/**
+ * What this project's harness carries past the kit's neutral contract: this
+ * engine's own object model, which a simple engine has none of.
+ */
+interface WorldModel {
+  readonly world: World;
+  readonly state: GameState;
+  readonly instance: GameInstance<OrrerySurfaceOf> | null;
+}
+
+/** The ledger kept beside `engine`, which the kit's own callbacks fill in. */
+function ledgerOf(engine: OrreryEngine): Ledger {
+  const held = ledgers.get(engine as object);
+  if (held === undefined) {
+    throw new Error("orrery harness: this engine was built without a ledger");
   }
+  return held;
 }
 
 /**
- * A `PointerEvent`-shaped event: the engine's pointer input reads `clientX`,
- * `clientY` and `isPrimary` structurally, so a plain `Event` carrying them drives
- * it exactly as a browser's does.
+ * Record a cue the bus announced, stamped with the frame of the drive it sounded
+ * on.
+ *
+ * A cue raised from INSIDE the frame the harness is running belongs to that
+ * frame, which is `frames + 1` while a frame is open because a frame is closed
+ * only after `engine.advance` returns. One raised BETWEEN frames belongs to the
+ * next one advanced — which is the same expression, and is what `specs/ui.md`
+ * requires of an edit a pointer pose committed: "an event raised outside one
+ * sounds on the next frame advanced rather than at the call".
+ *
+ * THIS IS WHY THE KIT'S OWN CUE STAMPING IS NOT USED (`cueEvents: []` below). The
+ * kit stamps a cue with the ENGINE's frame counter, which between frames is the
+ * frame just CLOSED rather than the next one to open, and it stamps `t` from the
+ * engine's accumulated time, which is the time at the END of the running frame
+ * rather than at its start. Both are defensible readings and neither is Orrery's,
+ * and a check that reads `cuesOnFrame` would move by one frame under either.
  */
-class PointerLikeEvent extends Event {
-  readonly clientX: number;
-  readonly clientY: number;
-  readonly isPrimary = true;
-  readonly pointerId = 1;
-  readonly pointerType = "mouse";
-  readonly button: number;
-  readonly buttons: number;
-
-  constructor(type: string, clientX: number, clientY: number) {
-    super(type);
-    this.clientX = clientX;
-    this.clientY = clientY;
-    this.button = type === "pointermove" ? -1 : 0;
-    this.buttons = type === "pointerup" ? 0 : 1;
-  }
+function stamp(ledger: Ledger, cue: string, looping: boolean): void {
+  ledger.played += 1;
+  const entry: TimedCue = {
+    frame: ledger.frames + 1,
+    t: ledger.timeMs,
+    cue,
+    looping,
+  };
+  for (const sink of ledger.cues) sink.push(entry);
 }
+
+/* -------------------------------------------------------------------------- */
+/* The shared kit, bound to Orrery on this engine                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The package's engine machinery, bound to Orrery on the simple 2D engine.
+ *
+ * `projectRoot` comes from `media.ts` and must never come from the package's own
+ * module, for the reason the asset host's `workspaceRoot` must not: a produced
+ * replay or still is addressed by the running suite's path relative to the
+ * project root, and taken from the package it would address every output one
+ * level too deep — silently, because a writer that raised on a failed write would
+ * be blaming the build for the host's problem.
+ */
+const kit = createEngineCaseHarness<
+  OrrerySnapshot,
+  OrreryDriver,
+  OrreryEngine,
+  WorldModel
+>({
+  slug: "orrery",
+  projectRoot: PROJECT_ROOT,
+  stage: { width: STAGE_W, height: STAGE_H },
+  tickHz: TICK_HZ,
+  surfaceRequirement: SURFACE_REQUIREMENT,
+  // A drawn sprite is identified by the SOURCE it was drawn from rather than by a
+  // path — a bundler is free to inline a produced PNG, and that is still the
+  // committed file — so a bitmap argument is replaced in the record by an
+  // `ImageRef` naming it, and `Harness.imagePixels` reads that source's own pixels
+  // back. Text is NOT measured: nothing this project reads places a run about its
+  // anchor, so measuring every text call would be paid for on every frame of every
+  // check for a reading no suite takes.
+  recorder: { internImages: true },
+  // Deliberately EMPTY: this project stamps its own cues, on the frame Orrery
+  // attributes them to and at the time Orrery measures. See {@link stamp}.
+  cueEvents: [],
+  // Never reached: `createHarness` always names the clock it built, because
+  // `advanceSeconds` retunes it between drives. Declared because the kit requires
+  // a default, and declared as the same rate so a harness built any other way
+  // steps at `specs/`'s own tick.
+  defaultClock: () => new TunableClock(1000 / TICK_HZ),
+  createEngine: ({ canvas, clock, surface }) => {
+    const engine = createEngine<OrrerySurfaceOf>({
+      canvas,
+      width: STAGE_W,
+      height: STAGE_H,
+      game,
+      // The build's own stage background and the four-way layout, handed to the
+      // factory exactly as the seeded `src/main.ts` hands them, so one harness
+      // serves every build of this case.
+      background: BACKGROUND,
+      layout: LAYOUT,
+      clock,
+      surface: surface as SurfaceMetrics,
+    });
+    ledgers.set(engine as object, {
+      cues: [],
+      assetFailures: [],
+      pageErrors: [],
+      loops: { running: new Set(), starts: 0 },
+      played: 0,
+      frames: 0,
+      timeMs: 0,
+      surfaceFault: null,
+      raw: null,
+    });
+    return engine;
+  },
+  initialize: async (engine) => {
+    const ledger = ledgerOf(engine);
+
+    // Subscribed BEFORE `initialize`, which is what makes the game's own loading
+    // observable: construction ran no game code, so nothing has happened yet.
+    engine.events.on("asset:failed", ({ path, reason }) => {
+      ledger.assetFailures.push({ path, reason });
+      ledger.pageErrors.push(`asset "${path}": ${reason}`);
+    });
+    engine.events.on("cue:played", ({ cue }) => stamp(ledger, cue, false));
+    engine.events.on("cue:looped", ({ cue }) => {
+      ledger.loops.running.add(cue);
+      ledger.loops.starts += 1;
+      stamp(ledger, cue, true);
+    });
+    engine.events.on("cue:stopped", ({ cue }) => {
+      ledger.loops.running.delete(cue);
+    });
+
+    // A build whose `initialize` throws — because it is unimplemented, or because
+    // its own loading raised — is a build no check can drive, and that is a fault
+    // to REPORT rather than a hook to fail: the message becomes the surface fault
+    // every operation then fails with, so the points whose checks reach the game
+    // through the surface carry it and the points that do not are decided on
+    // their own merits.
+    try {
+      return await engine.initialize();
+    } catch (error) {
+      ledger.surfaceFault =
+        error instanceof Error ? error.message : String(error);
+      ledger.pageErrors.push(ledger.surfaceFault);
+      return null;
+    }
+  },
+  driver: (engine, raw) => {
+    const ledger = ledgerOf(engine);
+    // The kit already stands an `absentSurface` in for a `debug` that is no
+    // object. What it cannot know is that this project turned a REJECTED
+    // `initialize` into a fault rather than letting it fail the hook, so the
+    // stand-in for that case is built here, naming what the build's own error
+    // said instead of naming an absent property.
+    const surface =
+      ledger.surfaceFault === null
+        ? (raw as OrrerySurfaceOf)
+        : absentSurface<OrrerySurfaceOf>(
+            SURFACE_REQUIREMENT,
+            ledger.surfaceFault,
+          );
+    ledger.raw = surface;
+    // The whole of the driver: the raw surface is already imperative, and what a
+    // suite needs added to it is the promise it awaits under all three engines.
+    return promiseDriver<OrrerySurfaceOf, OrreryDriver>(surface);
+  },
+  // The kit's own synchronous read, off the raw surface rather than through the
+  // driver: every member of {@link OrreryDriver} answers a promise, and the kit's
+  // contract is a value. Nothing in this project calls it — `Harness.snapshot` is
+  // the promise-answering one every suite drives — and it is answered honestly
+  // rather than left to throw, because the kit's sweep is entitled to it.
+  snapshot: (_debug, engine) => {
+    const raw = ledgerOf(engine).raw as OrrerySurfaceOf;
+    return raw.snapshot();
+  },
+  // Left at the identity, and at "exact". Orrery's one world never moves its
+  // camera — `specs/overview.md` fits the whole stage into the surface and the
+  // game draws in stage units — so a logical point is the engine's, and a raised
+  // gesture lands exactly where the caller asked rather than on the nearest
+  // device pixel.
+  pointerPrecision: "exact",
+  // Where this harness reaches PAST the neutral contract into this engine's own
+  // object model, which a simple engine has none of. Getters, so `h.world` reads
+  // fresh on every access rather than freezing the world open at the moment the
+  // harness was built.
+  extend: (_base, engine, initialized) => ({
+    get world() {
+      return engine.world;
+    },
+    get state() {
+      return engine.world.state;
+    },
+    instance: initialized as GameInstance<OrrerySurfaceOf> | null,
+  }),
+});
 
 /* -------------------------------------------------------------------------- */
 /* The harness                                                                */
@@ -676,8 +595,8 @@ export interface Harness {
    * Open the build's audio.
    *
    * Under this engine the unlock is the engine's and a headless process has no
-   * gesture to give it, so this raises a real pointer event at a point the editor
-   * does not read and lets the engine unlock from it. It changes no game state.
+   * gesture to give it, so this raises the key event the engine unlocks from. It
+   * changes no game state.
    */
   armAudio(): Promise<void>;
   /** How many cues the build has played since the game stood up, in total. */
@@ -697,7 +616,7 @@ export interface Harness {
   /* -- This project's own, past the portable core -------------------------- */
 
   /** The engine this harness built. */
-  readonly engine: Engine<OrrerySurfaceOf>;
+  readonly engine: OrreryEngine;
   /** The world currently open, read fresh on every access. */
   readonly world: World;
   /**
@@ -713,7 +632,17 @@ export interface Harness {
   readonly ctx: SKRSContext2D;
 }
 
-/** A clock whose frame length this harness retunes between drives. */
+/**
+ * A clock whose frame length this harness retunes between drives.
+ *
+ * ORRERY'S OWN, AND NOT THE PACKAGE'S `ConstantClock`. {@link
+ * Harness.advanceSeconds} names a SPAN of game time and a number of frames to
+ * cover it with, so the delta a frame is worth is decided per drive rather than
+ * per harness — which is what makes a check about a fraction of a cycle exact at
+ * any speed step. `rewind` is not implemented: nothing here replays a delta, and
+ * the package's `Clock` makes it optional for exactly the cases that write their
+ * own like this.
+ */
 class TunableClock implements Clock {
   constructor(private ms: number) {}
   set(ms: number): void {
@@ -724,136 +653,46 @@ class TunableClock implements Clock {
   }
 }
 
-/** Which cues are looping now, kept as the bus announces them. */
-interface LoopLedger {
-  running: Set<string>;
-  starts: number;
+/** Whether a value is something a canvas can draw. */
+function drawable(value: unknown): value is object {
+  if (value === null || typeof value !== "object") return false;
+  const shaped = value as { width?: unknown; height?: unknown };
+  return typeof shaped.width === "number" && typeof shaped.height === "number";
 }
 
 /**
  * Build an engine over a canvas of the harness's own, initialize the build's
  * game, and hand back everything a check reads.
- *
- * The options handed to the factory are the ones the seeded `src/main.ts` hands
- * it — the design size, the build's exported `BACKGROUND`, and the four-way
- * layout — so one harness serves every build of this case. Everything else the
- * build decided lives inside `src/game.ts`.
  */
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  installAssetHost();
-  requested = [];
+  // A check reads what THIS run of the build reached for, and the transport is
+  // installed once per worker, so the log is emptied as a harness is built.
+  host.clear();
 
   const frameMs = options.frameMs ?? 1000 / TICK_HZ;
-  const cssWidth = options.cssWidth ?? STAGE_W;
-  const cssHeight = options.cssHeight ?? STAGE_H;
-  const dpr = options.dpr ?? 1;
-
-  const canvas = createCanvas(
-    Math.round(cssWidth * dpr),
-    Math.round(cssHeight * dpr),
-  );
-  const ctx = canvas.getContext("2d");
-  const calls: DrawCall[] = [];
-  const recorded = recorder(ctx, calls);
-  const element = Object.assign(canvas, {
-    style: {} as CSSStyleDeclaration,
-    getContext: (): SKRSContext2D => recorded,
-  }) as unknown as HTMLCanvasElement;
+  const clock = new TunableClock(frameMs);
+  const base = await kit.createHarness({
+    clock,
+    cssWidth: options.cssWidth,
+    cssHeight: options.cssHeight,
+    dpr: options.dpr,
+  });
+  const engine = base.engine;
+  const ledger = ledgerOf(engine);
 
   /** The calls the last CLOSED frame's render issued. */
   let lastFrameCalls: DrawCall[] = [];
   /** Where the real pointer was last put, so a release lands where it was held. */
   let lastPointer: StagePoint = { x: 0, y: 0 };
 
-  const events = new EventTarget();
-  const metrics: SurfaceMetrics = {
-    cssWidth: () => cssWidth,
-    cssHeight: () => cssHeight,
-    dpr: () => dpr,
-    events: () => events,
-  };
+  const view = fitViewport(
+    base.shape.cssWidth,
+    base.shape.cssHeight,
+    base.shape.dpr,
+  );
 
-  const clock = new TunableClock(frameMs);
-  const engine = createEngine<OrrerySurfaceOf>({
-    canvas: element,
-    width: STAGE_W,
-    height: STAGE_H,
-    game,
-    background: BACKGROUND,
-    layout: LAYOUT,
-    clock,
-    surface: metrics,
-  });
-
-  // Subscribed BEFORE `initialize`, which is what makes the game's own loading
-  // observable: construction runs no game code, so nothing has happened yet.
-  const assetFailures: AssetFailure[] = [];
-  const pageErrors: string[] = [];
-  const cues: TimedCue[][] = [];
-  const loops: LoopLedger = { running: new Set(), starts: 0 };
-  let played = 0;
-  let frameCount = 0;
-  let timeMs = 0;
-  let framesDrawn = 0;
-
-  const stamp = (cue: string, looping: boolean): void => {
-    played += 1;
-    // A cue raised from INSIDE the frame the harness is running belongs to that
-    // frame, which `framesDrawn` names while a frame is open. One raised between
-    // frames belongs to the next one advanced, which is what
-    // `specs/ui.md` requires of an edit a pointer pose committed: "an event
-    // raised outside one sounds on the next frame advanced rather than at the
-    // call".
-    const entry: TimedCue = {
-      frame: framesDrawn > frameCount ? framesDrawn : frameCount + 1,
-      t: timeMs,
-      cue,
-      looping,
-    };
-    for (const sink of cues) sink.push(entry);
-  };
-
-  engine.events.on("asset:failed", ({ path, reason }) => {
-    assetFailures.push({ path, reason });
-    pageErrors.push(`asset "${path}": ${reason}`);
-  });
-  engine.events.on("cue:played", ({ cue }) => stamp(cue, false));
-  engine.events.on("cue:looped", ({ cue }) => {
-    loops.running.add(cue);
-    loops.starts += 1;
-    stamp(cue, true);
-  });
-  engine.events.on("cue:stopped", ({ cue }) => {
-    loops.running.delete(cue);
-  });
-
-  // A build whose `initialize` throws — because it is unimplemented, or because
-  // its own loading raised — is a build no check can drive, and that is a fault
-  // to report rather than a hook to fail: the message becomes the surface fault
-  // every operation then fails with, so the points whose checks reach the game
-  // through the surface carry it and the points that do not are decided on their
-  // own merits.
-  let surfaceFault: string | null = null;
-  let instance: GameInstance<OrrerySurfaceOf> | null = null;
-  try {
-    instance = await engine.initialize();
-  } catch (error) {
-    surfaceFault = error instanceof Error ? error.message : String(error);
-    pageErrors.push(surfaceFault);
-  }
-  const raw =
-    surfaceFault === null
-      ? readDebugSurface(engine)
-      : missingSurface(surfaceFault);
-  const debug = driveSurface(raw);
-
-  const view = fitViewport(cssWidth, cssHeight, dpr);
-
-  const dispatchKey = (type: "keydown" | "keyup", code: string): void => {
-    events.dispatchEvent(new KeyEvent(type, code));
-  };
   const dispatchPointer = (
     type: "pointerdown" | "pointermove" | "pointerup",
     x: number,
@@ -861,20 +700,31 @@ export async function createHarness(
   ): void => {
     lastPointer = { x, y };
     const at = toCss(view, x, y);
-    events.dispatchEvent(new PointerLikeEvent(type, at.x, at.y));
+    // Raised on the target the kit handed the engine, through the package's
+    // DEVICE-bearing event, which is the one this project has always dispatched:
+    // it names `pointerId`, `pointerType`, `button` and `buttons`, and an engine
+    // that reads them takes a different path than it does for an event carrying a
+    // position alone. Placed through ORRERY's own fit rather than the engine's,
+    // so a gesture lands exactly where `Harness.css` says it does.
+    base.events.dispatchEvent(
+      new DevicePointerEvent(type, at.x, at.y, "mouse"),
+    );
   };
 
   /**
    * Run one frame, counting it and the time it was worth, and keep the
    * operations its render issued as the last closed frame's.
+   *
+   * THE RECORDER'S LOG IS EMPTIED PER FRAME rather than let grow: a sweep of
+   * several hundred frames would otherwise hold every operation of every one of
+   * them, and what a check reads is one frame's worth.
    */
   const oneFrame = async (ms: number): Promise<void> => {
-    framesDrawn = frameCount + 1;
-    calls.length = 0;
-    await engine.advance(1);
-    lastFrameCalls = [...calls];
-    frameCount += 1;
-    timeMs += ms;
+    base.calls.length = 0;
+    await base.advance(1);
+    lastFrameCalls = [...base.calls];
+    ledger.frames += 1;
+    ledger.timeMs += ms;
   };
 
   const advance = async (frames = 1): Promise<void> => {
@@ -882,20 +732,20 @@ export async function createHarness(
     for (let i = 0; i < count; i += 1) await oneFrame(clock.delta());
   };
 
-  const readSnapshot = (): Promise<OrrerySnapshot> => debug.snapshot();
+  const readSnapshot = (): Promise<OrrerySnapshot> => base.debug.snapshot();
 
   const scratch = createCanvas(1, 1);
 
   const harness: Harness = {
-    debug,
-    surfaceFault,
-    cues,
-    assetFailures,
-    assetRequests: () => Promise.resolve([...requested]),
-    pageErrors,
+    debug: base.debug,
+    surfaceFault: ledger.surfaceFault,
+    cues: ledger.cues,
+    assetFailures: ledger.assetFailures,
+    assetRequests: () => Promise.resolve([...host.urls()]),
+    pageErrors: ledger.pageErrors,
 
-    frame: () => frameCount,
-    timeMs: () => timeMs,
+    frame: () => ledger.frames,
+    timeMs: () => ledger.timeMs,
 
     snapshot: readSnapshot,
     advance,
@@ -921,12 +771,17 @@ export async function createHarness(
       let snapshot = await readSnapshot();
       if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
       let frames = 0;
+      let since = Date.now();
       while (frames < maxFrames) {
         const run = Math.min(poll, maxFrames - frames);
         await advance(run);
         frames += run;
         snapshot = await readSnapshot();
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
+        // A sweep of several hundred frames runs inside one `await`, and the
+        // reporter, the timers and every socket read live on the loop it is
+        // holding. Nothing observable changes; the host stops looking hung.
+        since = await breathe(since);
       }
       return { hit: false, frames, snapshot };
     },
@@ -951,28 +806,29 @@ export async function createHarness(
     },
 
     hold: (code) => {
-      dispatchKey("keydown", code);
+      base.hold(code);
       return Promise.resolve();
     },
     release: (code) => {
-      dispatchKey("keyup", code);
+      base.release(code);
       return Promise.resolve();
     },
     async tap(code) {
       // Down, ONE frame, up. The frame between the two is what makes this a press
       // the game can see: the engine closes the input frame after the frame
-      // renders and an edge is consumed once.
-      dispatchKey("keydown", code);
+      // renders and an edge is consumed once. Not the kit's own `tap`, which
+      // presses and releases before the frame rather than across it.
+      base.hold(code);
       await advance(1);
-      dispatchKey("keyup", code);
+      base.release(code);
       return readSnapshot();
     },
     async holdFor(code, frames) {
-      dispatchKey("keydown", code);
+      base.hold(code);
       try {
         await advance(frames);
       } finally {
-        dispatchKey("keyup", code);
+        base.release(code);
       }
       return readSnapshot();
     },
@@ -1001,14 +857,14 @@ export async function createHarness(
     css: (x, y) => toCss(view, x, y),
     pixel: (x, y) => {
       const at = toDevice(view, x, y);
-      const { data } = ctx.getImageData(at.x, at.y, 1, 1);
+      const { data } = base.ctx.getImageData(at.x, at.y, 1, 1);
       return Promise.resolve([data[0], data[1], data[2], data[3]] as Pixel);
     },
     pixels: (points) =>
       Promise.resolve(
         points.map((point) => {
           const at = toDevice(view, point.x, point.y);
-          const { data } = ctx.getImageData(at.x, at.y, 1, 1);
+          const { data } = base.ctx.getImageData(at.x, at.y, 1, 1);
           return [data[0], data[1], data[2], data[3]] as Pixel;
         }),
       ),
@@ -1016,7 +872,7 @@ export async function createHarness(
       const origin = toDevice(view, x, y);
       const wide = Math.max(1, Math.round(width * view.scale));
       const high = Math.max(1, Math.round(height * view.scale));
-      const read = ctx.getImageData(origin.x, origin.y, wide, high);
+      const read = base.ctx.getImageData(origin.x, origin.y, wide, high);
       return Promise.resolve({
         width: read.width,
         height: read.height,
@@ -1024,7 +880,10 @@ export async function createHarness(
       });
     },
     imagePixels: (id) => {
-      const source = sourcesById.get(id);
+      // The source's OWN pixels, at its own natural size, rather than the corner
+      // of the stage it landed on — which is what settles which committed file a
+      // frame drew, a path being the wrong key when a bundler may inline one.
+      const source = base.images.get(id);
       if (!drawable(source)) return Promise.resolve(null);
       const shaped = source as { width: number; height: number };
       scratch.width = shaped.width;
@@ -1040,7 +899,11 @@ export async function createHarness(
       });
     },
     surface: () =>
-      Promise.resolve({ width: canvas.width, height: canvas.height, dpr }),
+      Promise.resolve({
+        width: base.canvas.width,
+        height: base.canvas.height,
+        dpr: base.shape.dpr,
+      }),
 
     async armAudio() {
       // A KEY rather than a pointer press, and the same one the engineless
@@ -1049,16 +912,16 @@ export async function createHarness(
       // would not be: "a press anywhere else on the editor screen sets [the
       // focus] to `field`" (`specs/controls.md`), which is a state change a check
       // did not ask for.
-      dispatchKey("keydown", INERT_KEY);
-      dispatchKey("keyup", INERT_KEY);
+      base.hold(INERT_KEY);
+      base.release(INERT_KEY);
       await advance(1);
     },
-    sounds: () => Promise.resolve(played),
-    loopingSounds: () => Promise.resolve(loops.running.size),
-    loopStarts: () => Promise.resolve(loops.starts),
+    sounds: () => Promise.resolve(ledger.played),
+    loopingSounds: () => Promise.resolve(ledger.loops.running.size),
+    loopStarts: () => Promise.resolve(ledger.loops.starts),
     probe: (names) => {
       const ops: Record<string, string> = {};
-      if (surfaceFault !== null) {
+      if (ledger.surfaceFault !== null) {
         for (const name of names) ops[name] = "undefined";
         return Promise.resolve({ version: undefined, ops });
       }
@@ -1068,21 +931,23 @@ export async function createHarness(
     },
 
     dispose: () => {
-      engine.destroy();
-      requested = [];
+      base.dispose();
+      // The LOG, not the transport: the shims are installed once per worker and
+      // a second harness in the same worker still has to be able to load.
+      host.clear();
       return Promise.resolve();
     },
 
     engine,
     get world() {
-      return engine.world;
+      return base.world;
     },
     get state() {
-      return engine.world.state;
+      return base.state;
     },
-    instance,
-    canvas,
-    ctx,
+    instance: base.instance,
+    canvas: base.canvas,
+    ctx: base.ctx,
   };
 
   return harness;
@@ -1092,54 +957,15 @@ export async function createHarness(
 /* Media                                                                      */
 /* -------------------------------------------------------------------------- */
 //
-// Both helpers carry the same name and the same shape in all three projects. Both
-// are EVIDENCE, never a verdict: the scenario's own value comes straight back, a
-// scenario that throws still leaves what it recorded, and outside a run — the
-// media directory unset — the whole thing is a no-op that still runs the scenario.
-
-/** The most frames a written recording holds. */
-const MAX_REPLAY_FRAMES = 300;
-
-/**
- * A recording of at most {@link MAX_REPLAY_FRAMES} frames, covering the whole of
- * what was captured.
- *
- * An over-long section is THINNED rather than cut short: every nth frame is kept,
- * each kept frame's `deltaMs` is restated as the time since the frame kept before
- * it, and the last frame is always kept — it is the frame the check's sweep
- * stopped at, and the one a reviewer looks at first.
- *
- * The four tables in front of the recording are carried WHOLE rather than rebuilt
- * over the survivors. A frame names its images, resources, operations and states
- * by index, so keeping the tables intact keeps every surviving frame drawable; the
- * file is larger by whatever only a dropped frame named, and the document a player
- * reads is the same one.
- */
-function thinReplay(recording: Recording): Recording {
-  const { frames } = recording;
-  if (frames.length <= MAX_REPLAY_FRAMES) return recording;
-
-  const stride = Math.ceil(frames.length / MAX_REPLAY_FRAMES);
-  const kept: RecordedFrame[] = [];
-  const first = frames[0] as RecordedFrame;
-  let previousMs = first.timeMs - first.deltaMs;
-  const keep = (frame: RecordedFrame): void => {
-    kept.push({ ...frame, deltaMs: frame.timeMs - previousMs });
-    previousMs = frame.timeMs;
-  };
-  for (let i = 0; i < frames.length; i += stride) {
-    keep(frames[i] as RecordedFrame);
-  }
-  const last = frames[frames.length - 1] as RecordedFrame;
-  if ((kept[kept.length - 1] as RecordedFrame).count !== last.count) {
-    if (kept.length >= MAX_REPLAY_FRAMES) {
-      const displaced = kept.pop() as RecordedFrame;
-      previousMs = displaced.timeMs - displaced.deltaMs;
-    }
-    keep(last);
-  }
-  return { ...recording, frames: kept };
-}
+// Both writers are the package's, bound here to this case's slug and to THIS
+// directory — the project root may never be derived inside the package, which is
+// staged one level deeper than this file, or every output would be addressed one
+// directory too far down. Both carry the same name and the same shape in all
+// three of Orrery's projects, and both are EVIDENCE, never a verdict: the
+// scenario's own value comes straight back, a scenario that throws still leaves
+// what it recorded, a capture that closed no frames writes nothing, and outside a
+// run — the media directory unset — the whole thing is a no-op that still runs
+// the scenario.
 
 /**
  * Record the frames `scenario` drives and keep them as the review item's
@@ -1150,38 +976,19 @@ function thinReplay(recording: Recording): Recording {
  * ```ts
  * const measured = await captureReplay(h, "carried", () => carryOneMote(h));
  * ```
+ *
+ * A section longer than the format's cap is THINNED rather than cut short — every
+ * nth frame kept, each kept frame's delta restated as the time since the frame
+ * kept before it, and the last frame always kept — and what survives is then
+ * re-expressed against tables of only what it still names. That re-tabling is the
+ * package's, and it is what this project's own writer was reaching for when it
+ * carried the four tables WHOLE: the property that mattered was that every
+ * surviving frame stays drawable, and the package's rewrite reaches every image,
+ * resource, operation and state a kept frame names, transitively, so the document
+ * a player reads is the same one and the file no longer carries what only a
+ * dropped frame drew with.
  */
-export async function captureReplay<T>(
-  h: Harness,
-  outputId: string,
-  scenario: () => T | Promise<T>,
-): Promise<T> {
-  const destination = mediaDestination(outputId, "json.gz");
-  if (destination === null) return scenario();
-  h.engine.startRecording();
-  try {
-    return await scenario();
-  } finally {
-    // In a `finally`, so a scenario that failed still leaves its evidence. A
-    // capture that closed no frames writes nothing: a declared output that never
-    // turned up is already reported as absent, and that is the truthful reading
-    // of a section that drew no frames.
-    const recording = h.engine.stopRecording();
-    if (recording.frames.length > 0) {
-      try {
-        mkdirSync(dirname(destination), { recursive: true });
-        writeFileSync(
-          destination,
-          gzipSync(JSON.stringify(thinReplay(recording))),
-        );
-      } catch (error) {
-        console.warn(
-          `orrery: could not write ${destination}: ${String(error)}`,
-        );
-      }
-    }
-  }
-}
+export const captureReplay = makeReplayCapture("orrery", PROJECT_ROOT);
 
 /**
  * Keep the picture currently on the canvas as the review item's `outputId`
@@ -1190,15 +997,13 @@ export async function captureReplay<T>(
  * What is written is whatever the last frame that RAN left behind, so call it
  * after the frame that poses the thing under test and before the assertions, so a
  * check that fails still leaves the picture that shows why.
+ *
+ * ASYNCHRONOUS, which is the half of the package's pair this project binds: its
+ * suites `await` it, and the package ships a synchronous `captureStill` beside it
+ * for the cases whose suites do not.
  */
 export function captureStill(h: Harness, outputId: string): Promise<void> {
-  const destination = mediaDestination(outputId, "png");
-  if (destination === null) return Promise.resolve();
-  try {
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, h.canvas.toBuffer("image/png"));
-  } catch (error) {
-    console.warn(`orrery: could not write ${destination}: ${String(error)}`);
-  }
-  return Promise.resolve();
+  return captureOutput("orrery", PROJECT_ROOT, outputId, "png", () =>
+    h.canvas.toBuffer("image/png"),
+  );
 }
