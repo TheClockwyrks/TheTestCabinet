@@ -111,6 +111,6 @@ specification fixes. Everything else is this build's.
 | `game.ts` | The three functions the engine drives. |
 
 The simulation touches no canvas, no clock, and no input, which is what lets the unit
-tests drive it in Node and what lets a driven scenario reproduce exactly. The renderer
+tests drive it in Node and what lets a driven scenario be posed and read there. The renderer
 reads the state and returns nothing, so the compiler is what says drawing changes
 nothing.

@@ -148,7 +148,7 @@ export class Game {
   // plays one kill cue rather than one per unit.
   private cuesThisStep = new Set<Cue>();
 
-  // Internal, deterministic state (not part of the read surface).
+  // Internal state the read surface derives from rather than reports.
   private activeWave: Wave | null = null;
   // The driver's hold on the spawner (specs/instrumentation.md). While it is engaged the run
   // is in a live wave whose spawn schedule is empty, so nothing arrives that the debug
@@ -508,7 +508,7 @@ export class Game {
 
   // Order two in-range units under `mode`, best first (specs/components.md). A negative
   // result puts `a` first. Every priority breaks its ties toward the unit further along the
-  // chain, so the choice is deterministic and does not depend on spawn order.
+  // chain, so the choice does not depend on spawn order.
   private rank(
     mode: TargetingMode,
     a: Unit,

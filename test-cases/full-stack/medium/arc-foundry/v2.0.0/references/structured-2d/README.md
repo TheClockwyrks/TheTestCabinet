@@ -121,6 +121,6 @@ specification fixes. Everything else is this build's.
 | `harness.ts` | A real engine over a canvas with no document, for the tests below. |
 
 The simulation touches no canvas, no clock, and no input, which is what lets the unit
-tests drive it in Node and what lets a driven scenario reproduce exactly. The renderer
+tests drive it in Node and what lets a driven scenario be posed and read there. The renderer
 takes the state and returns nothing, and writes no field of it, so the picture a frame
 draws cannot move the game.

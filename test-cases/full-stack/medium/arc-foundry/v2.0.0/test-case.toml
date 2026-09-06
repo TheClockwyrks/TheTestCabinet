@@ -141,7 +141,7 @@ variants = [
 #                     two case-owned modules; the build writes its game module — the
 #                     game definition, its mode, its state and its actors — and the
 #                     debug surface its instance's `initialize` returns.
-# Neither engine supplies pathfinding, collision response, or a seeded random
+# Neither engine supplies pathfinding, collision response, or a random
 # source, so the maze router, the never-seal test, the projectile flight and the
 # scrap-press roll are the build's own work under every one of the three. The game
 # they describe is the same one, so the review items are the same for every engine
