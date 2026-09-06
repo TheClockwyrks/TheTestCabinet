@@ -29,9 +29,9 @@ export default defineEngineValidationConfig({
   // works from anywhere.
   root: new URL("..", import.meta.url).pathname,
   // Every scenario is posed and stepped in process, so a suite costs
-  // milliseconds; the ceiling is for the few that run a minute of game time.
-  // Wireworm's own measurement, kept rather than taking the factory's more
-  // generous default.
+  // milliseconds; the ceiling is a failure cap for a build whose update stalls,
+  // never a span a check waits out. Wireworm's own measurement, kept rather than
+  // taking the factory's more generous default.
   testTimeout: 60_000,
   // The hook allowance is deliberately NOT set: vitest defaults an unset one to
   // TEN SECONDS, which is the tightest wall clock this project had and the one

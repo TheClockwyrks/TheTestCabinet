@@ -11,9 +11,9 @@
 // Every node of the field is held against the scatter rows, `SCATTER_TOP_ROW`
 // (`1`) to `SCATTER_BOTTOM_ROW` (`17`) inclusive, which is exactly the board's
 // twenty rows less the entry row and the two band rows. How many nodes there are
-// is `board/scatter-density`'s requirement and is not read here; that a field was
-// laid at all is, because a run that laid none could not be said to have kept out
-// of anything.
+// is a share of a generated world, which no point counts; that a field was laid
+// at all is read here, because a run that laid none could not be said to have
+// kept out of anything.
 //
 // Read over three runs, each its own case, so a failure names the draw that
 // strayed.

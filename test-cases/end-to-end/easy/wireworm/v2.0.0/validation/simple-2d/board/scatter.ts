@@ -1,6 +1,6 @@
-// board/scatter — opening a run, for the four starting-scatter points.
+// board/scatter — opening a run, for the three starting-scatter points.
 //
-// Private to the board category, because the four points that read the starting
+// Private to the board category, because the three points that read the starting
 // field are the only ones in this suite whose scenario IS a run opening: every
 // other check poses the board it wants through the debug surface.
 //
@@ -14,7 +14,7 @@
 // item, and `confirm` takes `DESCEND`, which specs/ui.md states "Opens a new run,
 // as specs/progression.md states".
 //
-// Each run opened is a fresh draw of the scatter, so the four points below read
+// Each run opened is a fresh draw of the scatter, so the three points below read
 // several runs for the same requirement, and each names the run that missed.
 //
 // The reading is taken on the frame the run opens on, while the phase is still

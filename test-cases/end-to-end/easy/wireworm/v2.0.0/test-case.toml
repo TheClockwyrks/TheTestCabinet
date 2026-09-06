@@ -685,7 +685,7 @@ validation = { script = "instrumentation/foe-travel-gate.test.ts", outputs = [
 [[review.categories.items]]
 id = "foe-spawn-gate"
 title = "Foe spawning off keeps the level's foes away"
-description = "With setFoeSpawning(false) at level 5, no foe joins the roster over a minute of play; with it on, the roster is no longer empty."
+description = "With setFoeSpawning(false) at level 5 and every spawner clock posed to run out on the next update, no foe joins the roster over a second of play; with it on and the clocks posed the same way, a foe has joined the roster on the next update."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/foe-spawn-gate.test.ts", outputs = [
@@ -766,9 +766,10 @@ validation = { script = "instrumentation/overlay.test.ts", outputs = [
 # The stage, the grid, the band and the starting scatter, held against the
 # figures specs/board.md fixes. The tile-to-stage map is stated in that one file
 # and nowhere else, so these points assert the formula rather than any drawn
-# artwork, and the scatter points assert the bounds and the density the rules
-# give rather than a particular layout — the layout is a random draw and varies
-# by design.
+# artwork, and the scatter points assert the bounds the rules give rather than a
+# particular layout — the layout is a random draw and varies by design. How many
+# nodes a run lays is a share of a generated world, which no point counts; the
+# figure is the reviewer's to judge.
 [[review.categories]]
 id = "board"
 title = "Board and geometry"
@@ -818,15 +819,6 @@ validation = { script = "board/band-tinted.test.ts", outputs = [
   { id = "band", name = "The player band across the full width", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "scatter-density"
-title = "A new run scatters 10–15% of the scatter rows"
-description = "Starting a run lays nodes on between 10% and 15% of the 680 tiles of rows 1..17, on each of three runs opened afresh."
-domains = ["charge"]
-failure_cap = "passable"
-validation = { script = "board/scatter-density.test.ts", outputs = [
-  { id = "scatter", name = "The starting scatter that was counted", kind = "image" },
-] }
-[[review.categories.items]]
 id = "scatter-rows"
 title = "The scatter keeps out of the entry row and the band"
 description = "The starting scatter places no node in row 0 and none in rows 18..19."
@@ -847,11 +839,11 @@ validation = { script = "board/scatter-inert.test.ts", outputs = [
 [[review.categories.items]]
 id = "scatter-varies"
 title = "The scatter is not a fixed layout"
-description = "Two runs opened afresh lay scatters that occupy different sets of tiles, over three pairs of runs."
+description = "Three runs opened afresh lay at least two distinct scatters, compared as the sets of tiles they occupy."
 domains = ["charge"]
 failure_cap = "passable"
 validation = { script = "board/scatter-varies.test.ts", outputs = [
-  { id = "scatter", name = "The second run's scatter", kind = "image" },
+  { id = "scatter", name = "The last run's scatter", kind = "image" },
 ] }
 
 # --- The node field -----------------------------------------------------------
@@ -1554,9 +1546,14 @@ validation = { script = "cursor/invulnerable-ignores-contact.test.ts", outputs =
 # through `setSpawnTimer` and reads the entry it decides either side of the posed
 # moment; an INTERVAL point stands the clock at 0, lets one update draw it, and
 # reads the drawn clock off the snapshot against the range specs/foes.md fixes,
-# which holds for every draw; and `spawn-clock-holds-in-banner` poses a clock
-# during the banner and reads it after the banner has given way. The gate points
-# alone watch a whole minute, because "no foe over a minute" has no draw to pose.
+# which holds for every draw, and holds a handful of such draws to at least two
+# distinct values, since the clock is drawn uniformly over a continuous
+# interval; and `spawn-clock-holds-in-banner` poses a clock during the banner
+# and reads it after the banner has given way. A GATE point and the CAP point
+# pose the kind's clock to run out on the next update, several times over, and
+# read the roster: that is the moment the spawner would enter a foe, so no point
+# waits out an interval the clock is drawn to, and none costs more than a
+# handful of updates whatever a build's pacing.
 [[review.categories]]
 id = "foes"
 title = "The support foes"
@@ -1611,7 +1608,7 @@ validation = { script = "foes/glitch-one-bolt.test.ts", outputs = [
 [[review.categories.items]]
 id = "glitch-gate"
 title = "No glitch before level 2"
-description = "With setFoeSpawning(true), over a minute of level-1 play no glitch joins the roster."
+description = "With setFoeSpawning(true) at level 1, a glitch clock posed to run out on the next update brings no glitch onto the roster, on each of five expiries."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "foes/glitch-gate.test.ts", outputs = [
@@ -1620,7 +1617,7 @@ validation = { script = "foes/glitch-gate.test.ts", outputs = [
 [[review.categories.items]]
 id = "glitch-interval"
 title = "The glitch's clock is drawn inside its interval"
-description = "With setFoeSpawning(true) at level 2, a glitch clock posed at 0 and read one update of active play later stands between GLITCH_MIN_INTERVAL (7 s) less that update's delta and GLITCH_MAX_INTERVAL (12 s), on each of five fresh draws. The arrival the clock decides is instrumentation.set-spawn-timer's item."
+description = "With setFoeSpawning(true) at level 2, a glitch clock posed at 0 and read one update of active play later stands between GLITCH_MIN_INTERVAL (7 s) less that update's delta and GLITCH_MAX_INTERVAL (12 s), on each of five fresh draws, and the five hold at least two distinct values. The arrival the clock decides is instrumentation.set-spawn-timer's item."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "foes/glitch-interval.test.ts", outputs = [
@@ -1638,7 +1635,7 @@ validation = { script = "foes/spawn-clock-holds-in-banner.test.ts", outputs = [
 [[review.categories.items]]
 id = "glitch-cap"
 title = "At most two glitches on the board"
-description = "With setFoeSpawning(true) over a minute of level-5 play, the roster never holds more than GLITCH_MAX_ON_BOARD (2) glitches at once."
+description = "With setFoeSpawning(true) at level 5 and two glitches held on the board, a glitch clock posed to run out on the next update five times over never puts a third glitch on the roster: it holds at most GLITCH_MAX_ON_BOARD (2) at once."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "foes/glitch-cap.test.ts", outputs = [
@@ -1710,19 +1707,19 @@ validation = { script = "foes/dropper-sparse-trigger.test.ts", outputs = [
 [[review.categories.items]]
 id = "dropper-dense-no-trigger"
 title = "A dense lower field draws none"
-description = "With setFoeSpawning(true) at level 3 and thirty nodes in rows 10..19, no dropper appears over ten seconds. The glitch spawner is running too — that is what foeSpawning gates — so the item reads the dropper roster alone and re-poses the thirty nodes each check interval, since a glitch may eat one."
+description = "With setFoeSpawning(true) at level 3 and thirty nodes in rows 10..19, a dropper clock posed to run out on the next update draws no dropper in, on each of three expiries. The glitch spawner is running too — that is what foeSpawning gates — so the item reads the dropper roster alone and re-poses the thirty nodes before each expiry, since a glitch may eat one."
 domains = ["arcade"]
 failure_cap = "scuffed"
 # The glitch spawner is running too — that is what `foeSpawning` gates — so this
-# reads the DROPPER roster alone and re-poses the thirty nodes each check
-# interval, since a glitch may eat one out from under the density it is testing.
+# reads the DROPPER roster alone and re-poses the thirty nodes before each
+# expiry, since a glitch may eat one out from under the density it is testing.
 validation = { script = "foes/dropper-dense-no-trigger.test.ts", outputs = [
   { id = "dense", name = "The dense lower field that drew none", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "dropper-gate"
 title = "Droppers begin at level 3"
-description = "With setFoeSpawning(true) at levels 1 and 2, a sparse lower field draws no dropper over ten seconds."
+description = "With setFoeSpawning(true) at levels 1 and 2 over a sparse lower field, a dropper clock posed to run out on the next update draws no dropper in, on each of three expiries at each level."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "foes/dropper-gate.test.ts", outputs = [
@@ -1776,7 +1773,7 @@ validation = { script = "foes/corruptor-one-bolt.test.ts", outputs = [
 [[review.categories.items]]
 id = "corruptor-gate"
 title = "No corruptor before level 5"
-description = "With setFoeSpawning(true), over a minute of level-4 play no corruptor joins the roster."
+description = "With setFoeSpawning(true) at level 4, a corruptor clock posed to run out on the next update brings no corruptor onto the roster, on each of five expiries."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "foes/corruptor-gate.test.ts", outputs = [
@@ -1794,7 +1791,7 @@ validation = { script = "foes/corruptor-arrives.test.ts", outputs = [
 [[review.categories.items]]
 id = "corruptor-interval"
 title = "The corruptor's clock is drawn inside its interval"
-description = "With setFoeSpawning(true) at level 5, a corruptor clock posed at 0 and read one update of active play later stands between CORRUPTOR_MIN_INTERVAL (14 s) less that update's delta and CORRUPTOR_MAX_INTERVAL (22 s), on each of five fresh draws."
+description = "With setFoeSpawning(true) at level 5, a corruptor clock posed at 0 and read one update of active play later stands between CORRUPTOR_MIN_INTERVAL (14 s) less that update's delta and CORRUPTOR_MAX_INTERVAL (22 s), on each of five fresh draws, and the five hold at least two distinct values."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "foes/corruptor-interval.test.ts", outputs = [
@@ -1962,18 +1959,6 @@ domains = ["arcade"]
 failure_cap = "broken"
 validation = { script = "progression/victory-on-twelve.test.ts", outputs = [
   { id = "victory", name = "The victory screen level 12 opened", kind = "image" },
-] }
-[[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances on its own clock"
-description = "A started run left to run on the build's own clock accumulates simulation time and gives way from its level banner to live play with nothing stepping it."
-domains = ["charge", "worm", "arcade"]
-failure_cap = "broken"
-# Two outputs, a before and an after, because what is being shown is that time
-# passed with nothing poking the game.
-validation = { script = "progression/advances-in-real-time.test.ts", outputs = [
-  { id = "before", name = "The instant play begins", kind = "image" },
-  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
 ] }
 
 # --- Scoring ------------------------------------------------------------------

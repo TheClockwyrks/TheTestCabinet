@@ -15,6 +15,15 @@
 // dropper off the board is the level gate this point decides. Without the field
 // the check would pass on a build that simply never counted.
 //
+// THE CHECK THAT WOULD DRAW A DROPPER IN IS POSED, NOT WAITED FOR.
+// `specs/foes.md` runs the sparse-field check when the level's dropper clock
+// reaches 0, and `setSpawnTimer` (`specs/instrumentation.md`) poses the seconds
+// left on that clock, so the clock is posed to run out inside the next update
+// and that update runs. From level 3 that is the moment a dropper enters over a
+// field this sparse; at levels 1 and 2 it is the moment the gate has to hold.
+// It is posed several times over at each level, so a build whose gate holds
+// the first check and lapses on a later one is caught as well.
+//
 // The requirement this point decides IS the level's own spawning, so this is one
 // of the few points that turns `setFoeSpawning` back on. At level 2 the glitch
 // spawner runs alongside it — that is what `foeSpawning` gates — so the reading
@@ -24,7 +33,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
-  DROPPER_CHECK_INTERVAL,
   DROPPER_COUNT_BOTTOM_ROW,
   DROPPER_COUNT_TOP_ROW,
   DROPPER_FROM_LEVEL,
@@ -38,7 +46,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { watchRoster } from "./watching";
+import { expireClock } from "./watching";
 
 /** Every level below the gate: 1 and 2. */
 const LEVELS = Array.from(
@@ -58,11 +66,8 @@ const FIELD: readonly (readonly [number, number, number])[] = Array.from(
   (_, index) => [2 + index * 4, FIELD_ROW, FIELD_CHARGE] as const,
 );
 
-/** The stretch watched at each level, as the review item states it. */
-const WATCH_SECONDS = 10;
-
-/** How often the roster is read, in seconds. */
-const POLL_SECONDS = 0.5;
+/** How many times the dropper's clock is posed to run out at each level. */
+const EXPIRIES = 3;
 
 let h: Harness;
 
@@ -80,16 +85,19 @@ it("keeps every dropper off the board below the level they begin at", async () =
     await poseNodes(h, FIELD);
     await h.debug.setFoeSpawning(true);
 
-    const watch = await watchRoster(h, "dropper", WATCH_SECONDS, POLL_SECONDS);
+    let peak = 0;
+    for (let expiry = 1; expiry <= EXPIRIES; expiry += 1) {
+      peak = Math.max(peak, await expireClock(h, "dropper"));
+    }
 
     await captureStill(h, "gated");
     assertEqual(
-      watch.peak,
+      peak,
       0,
-      `no dropper enters over ${WATCH_SECONDS} s of level-${level} play — ` +
-        `four DROPPER_CHECK_INTERVALs (${DROPPER_CHECK_INTERVAL} s) — with ` +
-        `${FIELD.length} nodes standing in rows ${DROPPER_COUNT_TOP_ROW} to ` +
-        `${DROPPER_COUNT_BOTTOM_ROW}, below DROPPER_SPARSE_THRESHOLD ` +
+      `no dropper enters across ${EXPIRIES} expiries of the dropper clock at ` +
+        `level ${level}, below DROPPER_FROM_LEVEL (${DROPPER_FROM_LEVEL}), ` +
+        `with ${FIELD.length} nodes standing in rows ${DROPPER_COUNT_TOP_ROW} ` +
+        `to ${DROPPER_COUNT_BOTTOM_ROW}, below DROPPER_SPARSE_THRESHOLD ` +
         `(${DROPPER_SPARSE_THRESHOLD}); droppers seen on the board at once`,
     );
   }

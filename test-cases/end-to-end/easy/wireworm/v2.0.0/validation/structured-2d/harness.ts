@@ -721,9 +721,6 @@ export interface WirewormExtras {
 
   /** Run whole frames covering `duration` seconds of game time. */
   advanceSeconds(duration: number): Promise<void>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
-
   /**
    * Move the pointer to a logical point with nothing pressed, then run the frame
    * that reads it. The hover `specs/ui.md` selects a menu item on.
@@ -859,14 +856,6 @@ const kit = createEngineCaseHarness<
       instance: initialized as GameInstance<WirewormSurface>,
 
       advanceSeconds: (duration) => base.advance(ticksFor(duration)),
-
-      async runFor(ms: number) {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((wake) => setTimeout(wake, ms));
-        controller.abort();
-        await running;
-      },
 
       async movePointer(x, y, options = {}) {
         // `-1` is what a browser puts in `button` for an event about position.

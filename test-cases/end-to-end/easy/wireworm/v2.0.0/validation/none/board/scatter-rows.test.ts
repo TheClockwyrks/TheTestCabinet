@@ -16,10 +16,10 @@
 //
 // Several runs, because the tiles are a draw: a build that clamps its row on one
 // draw and not the next has a wrong rule, and each run opened afresh is one draw
-// of the same rule. HOW MANY nodes are laid is
-// board/scatter-density's requirement; the count is read here only far enough to
-// know a scatter happened at all, since a run that laid nothing would satisfy
-// every row rule by laying no rows.
+// of the same rule. HOW MANY nodes are laid is a share of a generated world,
+// which no point counts; the count is read here only far enough to know a
+// scatter happened at all, since a run that laid nothing would satisfy every
+// row rule by laying no rows.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";

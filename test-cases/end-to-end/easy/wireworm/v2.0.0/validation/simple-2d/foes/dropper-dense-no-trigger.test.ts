@@ -5,12 +5,20 @@
 // foes/dropper-sparse-trigger, at the same level and against the same rule, with
 // the field posed far above the threshold instead of just below it.
 //
-// The thirty nodes are RE-POSED as the watch runs. The requirement is the
-// spawner's reading of a dense field, and `setFoeSpawning` gates all three
-// spawners together, so the glitches the level also brings in are on the board
-// eating the very field whose density is under test. Re-posing holds the density
-// where the check put it, so nothing but the rule this item names can decide the
-// outcome. Setting a node that already stands at that charge changes nothing.
+// THE CHECK IS POSED, NOT WAITED FOR. specs/foes.md counts the lower field when
+// the level's dropper clock reaches 0, and `setSpawnTimer`
+// (specs/instrumentation.md) poses the seconds left on that clock, so the clock
+// is posed to run out inside the next update and that update runs: that is the
+// moment the count is taken and a dropper would enter over a sparse field, and
+// the dense field is what keeps one out. It is posed several times over, so a
+// build that reads the field right once and wrong on a later check is caught.
+//
+// The thirty nodes are RE-POSED before each expiry. `setFoeSpawning` gates all
+// three spawners together, so a glitch the level also brings in could be on the
+// board eating the very field whose density is under test. Re-posing holds the
+// density where the check put it, so nothing but the rule this item names can
+// decide the outcome. Setting a node that already stands at that charge changes
+// nothing.
 //
 // The reading counts DROPPERS alone, for the same reason: the glitches are the
 // price of turning the gate on, not part of the requirement.
@@ -22,10 +30,9 @@ import {
   captureStill,
   createHarness,
   startPlaying,
-  ticksFor,
   type Harness,
 } from "../harness";
-import { watchRoster } from "./harness";
+import { expireClock } from "./harness";
 
 /** The level watched: the one droppers begin at. */
 const LEVEL = DROPPER_FROM_LEVEL;
@@ -46,16 +53,8 @@ const FIELD_TILES = Array.from({ length: FIELD_SIZE }, (_, index) => ({
   r: FIELD_TOP_ROW + (index % FIELD_ROWS),
 }));
 
-/** The stretch watched, as the review item states it: ten seconds. */
-const WATCH_SECONDS = 10;
-
-/**
- * How often the roster is read and the field re-posed: a quarter second. Two
- * glitches crossing the field at GLITCH_H_SPEED can stand on no more than a
- * handful of tiles in that time, so the field never falls near
- * DROPPER_SPARSE_THRESHOLD between one re-pose and the next.
- */
-const POLL_FRAMES = ticksFor(0.25);
+/** How many times the dropper's clock is posed to run out. */
+const EXPIRIES = 3;
 
 let h: Harness;
 
@@ -75,24 +74,21 @@ it("draws no dropper in while the lower field is dense", async () => {
       h.debug.setNode(tile.c, tile.r, FIELD_CHARGE);
     }
   };
-  poseDenseField();
   h.debug.setFoeSpawning(true);
 
-  const watch = await watchRoster(
-    h,
-    "dropper",
-    ticksFor(WATCH_SECONDS),
-    POLL_FRAMES,
-    poseDenseField,
-  );
+  let peak = 0;
+  for (let expiry = 1; expiry <= EXPIRIES; expiry += 1) {
+    poseDenseField();
+    peak = Math.max(peak, await expireClock(h, "dropper"));
+  }
   captureStill(h, "dense");
 
   assertEqual(
-    watch.peak,
+    peak,
     0,
-    `no dropper enters over ${WATCH_SECONDS} s of level-${LEVEL} play with ` +
-      `${FIELD_SIZE} nodes held standing in rows 10 to 19, at or above ` +
-      `DROPPER_SPARSE_THRESHOLD (${DROPPER_SPARSE_THRESHOLD}); droppers seen ` +
-      `at once`,
+    `no dropper enters across ${EXPIRIES} expiries of the level-${LEVEL} ` +
+      `dropper clock with ${FIELD_SIZE} nodes held standing in rows 10 to ` +
+      `19, at or above DROPPER_SPARSE_THRESHOLD (${DROPPER_SPARSE_THRESHOLD}); ` +
+      `droppers seen at once`,
   );
 });

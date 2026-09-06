@@ -13,8 +13,9 @@
 // with a different appearance and different consequences.
 //
 // That a field was laid at all is asserted first, because a run that laid no
-// nodes has no charge to be wrong about. How many were laid and where is
-// `board/scatter-density`'s and `board/scatter-rows`'s.
+// nodes has no charge to be wrong about. Where they were laid is
+// `board/scatter-rows`'s; how many is a share of a generated world, which no
+// point counts.
 //
 // Read over three runs, each its own case, so a failure names the draw.
 

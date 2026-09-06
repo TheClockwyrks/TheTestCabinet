@@ -16,6 +16,11 @@
 // draws, and a build that draws outside it, or never draws, fails on the first
 // that shows it.
 //
+// THE DRAWS ARE ALSO HELD TO DIFFER. `specs/foes.md` draws the clock uniformly
+// over a continuous interval, so five draws of a conforming build never
+// coincide, and a build that stands its clock at one fixed value inside the
+// interval is named by the sample holding fewer than two distinct values.
+//
 // The band's lower end gives back the one update the clock may already have
 // counted down: the draw happens at the start of the update and the countdown
 // against that update's delta may follow inside it, so a clock drawn at exactly
@@ -33,7 +38,7 @@ import {
   CORRUPTOR_MAX_INTERVAL,
   CORRUPTOR_MIN_INTERVAL,
 } from "../constants";
-import { assertBetween } from "../assert";
+import { assertBetween, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -48,6 +53,14 @@ const LEVEL = CORRUPTOR_FROM_LEVEL;
 
 /** The fresh draws read. Each is one draw of the same rule. */
 const DRAWS = [1, 2, 3, 4, 5];
+
+/**
+ * The distinct values the five draws must hold between them: two. The clock is
+ * drawn uniformly over a continuous interval, so five draws of a conforming
+ * build coincide with a probability of zero, and a build that returns one
+ * fixed value inside the interval is what this names.
+ */
+const DISTINCT_DRAWS = 2;
 
 /** The delta of the one update that draws the clock, in seconds. */
 const UPDATE_SECONDS = 1 / TICK_HZ;
@@ -91,4 +104,13 @@ it("draws the corruptor's clock between its shortest and longest interval", asyn
         `the one update's delta it may have counted down (specs/foes.md)`,
     );
   }
+
+  assertGreaterThanOrEqual(
+    new Set(drawn.map(({ clock }) => clock)).size,
+    DISTINCT_DRAWS,
+    `distinct values among the ${DRAWS.length} clocks drawn at level ` +
+      `${LEVEL} — the clock is drawn uniformly between CORRUPTOR_MIN_INTERVAL ` +
+      `(${CORRUPTOR_MIN_INTERVAL} s) and CORRUPTOR_MAX_INTERVAL (${CORRUPTOR_MAX_INTERVAL} s), ` +
+      `so it varies from draw to draw (specs/foes.md)`,
+  );
 });

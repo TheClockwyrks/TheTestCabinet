@@ -5,8 +5,16 @@
 //
 // The level watched is 4, the one immediately below the gate, as the review item
 // states — the level a build with an off-by-one gate would let one through at.
-// It is watched for a minute, which is nearly three CORRUPTOR_MAX_INTERVALs, so
-// a corruptor that was going to enter has had every chance to.
+//
+// THE MOMENT A CORRUPTOR WOULD ENTER IS POSED, NOT WAITED FOR. specs/foes.md
+// brings a corruptor in when the level's corruptor clock reaches 0, and
+// `setSpawnTimer` (specs/instrumentation.md) poses the seconds left on that
+// clock, so the clock is posed to run out inside the next update and that
+// update runs. From level 5 that is exactly the moment a corruptor enters —
+// `foes/corruptor-arrives` reads one arriving that way — and at level 4 it is
+// the moment the gate has to hold. It is posed several times over, so a build
+// whose gate holds the first expiry and lapses on a later one is caught as
+// well, and nothing waits on the interval a clock is drawn to.
 //
 // The requirement IS the level's own spawning, so this is one of the few checks
 // that turns `setFoeSpawning` back on. The glitch and dropper spawners run
@@ -14,25 +22,21 @@
 // counts corruptors alone.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { CORRUPTOR_FROM_LEVEL, CORRUPTOR_MAX_INTERVAL } from "../constants";
+import { CORRUPTOR_FROM_LEVEL } from "../constants";
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
   startPlaying,
-  ticksFor,
   type Harness,
 } from "../harness";
-import { watchRoster } from "./harness";
+import { expireClock } from "./harness";
 
 /** The level watched: the one below the gate. */
 const LEVEL = CORRUPTOR_FROM_LEVEL - 1;
 
-/** The stretch of play watched, as the review item states it: one minute. */
-const WATCH_SECONDS = 60;
-
-/** How often the roster is read: a twentieth of a second. */
-const POLL_FRAMES = ticksFor(0.05);
+/** How many times the corruptor's clock is posed to run out. */
+const EXPIRIES = 5;
 
 let h: Harness;
 
@@ -49,19 +53,17 @@ it("keeps every corruptor off the board below the level they begin at", async ()
   h.debug.setLevel(LEVEL);
   h.debug.setFoeSpawning(true);
 
-  const watch = await watchRoster(
-    h,
-    "corruptor",
-    ticksFor(WATCH_SECONDS),
-    POLL_FRAMES,
-  );
+  let peak = 0;
+  for (let expiry = 1; expiry <= EXPIRIES; expiry += 1) {
+    peak = Math.max(peak, await expireClock(h, "corruptor"));
+  }
   captureStill(h, "gated");
 
   assertEqual(
-    watch.peak,
+    peak,
     0,
-    `no corruptor joins the roster over ${WATCH_SECONDS} s of level-${LEVEL} ` +
-      `play, which is nearly three CORRUPTOR_MAX_INTERVALs ` +
-      `(${CORRUPTOR_MAX_INTERVAL} s); corruptors seen at once`,
+    `no corruptor joins the roster across ${EXPIRIES} expiries of the ` +
+      `corruptor clock at level ${LEVEL}, below CORRUPTOR_FROM_LEVEL ` +
+      `(${CORRUPTOR_FROM_LEVEL}); corruptors seen at once`,
   );
 });

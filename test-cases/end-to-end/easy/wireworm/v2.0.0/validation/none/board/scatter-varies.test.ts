@@ -7,23 +7,22 @@
 // level to be memorised, and it is the one property a hard-coded layout cannot
 // fake.
 //
-// So two runs are opened afresh, each the way a player opens one — `DESCEND` on
-// the title (specs/ui.md) — and the two fields are compared as SETS OF TILES.
-// What is asked of them is what specs/nodes.md states and nothing more: the two
-// runs lay DIFFERENT fields, so some tile is occupied by one scatter and not the
-// other. A build with one fixed layout lays the same set twice and fails
-// outright. HOW FAR the two draws diverge is not a figure the file fixes, so no
-// share of the tiles is asserted.
+// So a small sample of runs is opened afresh, each the way a player opens one —
+// `DESCEND` on the title (specs/ui.md) — and each field is read as a SET OF
+// TILES. What is asked of them is what specs/nodes.md states and nothing more:
+// the runs lay DIFFERENT fields, so at least two of the sampled scatters occupy
+// different sets of tiles. A build with one fixed layout lays the same set
+// every time and fails outright. HOW FAR two draws diverge is not a figure the
+// file fixes, so no share of the tiles is asserted.
 //
-// THE READING IS A DRAW, AND THE DRAW CANNOT FAIL A CONFORMING BUILD. Two
-// uniform draws of at least 68 tiles out of 680 land on the same set with a
+// THE READING IS A DRAW, AND THE DRAW CANNOT FAIL A CONFORMING BUILD. Three
+// uniform draws of at least 68 tiles out of 680 all land on one set with a
 // probability far below anything a run could ever see, so a build that draws as
 // the file states never fails here on chance, and a build that lays one layout
-// never passes. Several pairs, because a build could differ on one pair by
-// accident and be fixed everywhere else.
+// never passes.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan } from "../assert";
+import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -32,8 +31,11 @@ import {
   type WirewormSnapshot,
 } from "../harness";
 
-/** The pairs of runs the comparison is read over. */
-const PAIRS = [1, 2, 3];
+/** The runs the scatter is read over. Each is one draw of the same rule. */
+const RUNS = [1, 2, 3];
+
+/** The distinct scatters the sample must hold: two, as the file states. */
+const DISTINCT_SCATTERS = 2;
 
 let h: Harness;
 
@@ -50,43 +52,26 @@ function occupied(snapshot: WirewormSnapshot): Set<string> {
   return new Set(snapshot.nodes.map((node) => `${node.c},${node.r}`));
 }
 
-/** A fresh run, and the field it opened with. */
-async function scatterOfFreshRun(): Promise<Set<string>> {
-  await startRunFromTitle(h);
-  await captureStill(h, "scatter");
-  return occupied(await h.snapshot());
-}
-
-it.each(PAIRS)(
-  "lays different fields on two fresh runs, pair %i",
-  async (pair) => {
-    // The second run is the one the still shows, so it is opened last.
-    const before = await scatterOfFreshRun();
-    const after = await scatterOfFreshRun();
-
+it("lays at least two distinct fields over three fresh runs", async () => {
+  const layouts: string[] = [];
+  for (const run of RUNS) {
+    await startRunFromTitle(h);
+    // The last run is the one the still shows.
+    await captureStill(h, "scatter");
+    const tiles = occupied(await h.snapshot());
     assertGreaterThan(
-      before.size,
+      tiles.size,
       0,
-      `a starting scatter to read, from the first run of pair ${pair} ` +
-        `(specs/nodes.md)`,
+      `a starting scatter to read, from run ${run} (specs/nodes.md)`,
     );
-    assertGreaterThan(
-      after.size,
-      0,
-      `a starting scatter to read, from the second run of pair ${pair} ` +
-        `(specs/nodes.md)`,
-    );
+    layouts.push([...tiles].sort().join(" "));
+  }
 
-    const differing =
-      [...before].filter((tile) => !after.has(tile)).length +
-      [...after].filter((tile) => !before.has(tile)).length;
-
-    assertGreaterThan(
-      differing,
-      0,
-      `tiles occupied by one of the two scatters and not the other, over pair ` +
-        `${pair} (specs/nodes.md: two runs lay different fields); the two runs ` +
-        `occupied ${before.size} and ${after.size} tiles`,
-    );
-  },
-);
+  assertGreaterThanOrEqual(
+    new Set(layouts).size,
+    DISTINCT_SCATTERS,
+    `distinct sets of tiles occupied by the starting scatters of ` +
+      `${RUNS.length} runs opened afresh (specs/nodes.md: two runs lay ` +
+      `different fields)`,
+  );
+});

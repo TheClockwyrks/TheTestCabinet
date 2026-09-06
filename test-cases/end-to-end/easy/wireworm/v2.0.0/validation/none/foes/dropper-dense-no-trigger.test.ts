@@ -8,18 +8,22 @@
 // dropper on every check and a build that spawns none would grade alike on one
 // paired item.
 //
-// THE THIRTY NODES ARE RE-POSED AS THE WATCH RUNS. `setFoeSpawning` gates all
-// three spawners together, so turning it on to test the dropper's rule also puts
-// glitches on the board — and a glitch eats the node it stands on, which is the
-// very field whose density is under test. Re-posing holds the density where this
-// point put it, so nothing but the rule the item names can decide the outcome.
-// Setting a node that already stands at that charge changes nothing, so the
-// re-pose is inert wherever nothing was eaten.
+// THE CHECK IS POSED, NOT WAITED FOR. `specs/foes.md` counts the lower field
+// when the level's dropper clock reaches 0, and `setSpawnTimer`
+// (`specs/instrumentation.md`) poses the seconds left on that clock, so the
+// clock is posed to run out inside the next update and that update runs: that
+// is the moment the count is taken and a dropper would enter over a sparse
+// field, and the dense field is what keeps one out. It is posed several times
+// over, so a build that reads the field right once and wrong on a later check
+// is caught.
 //
-// The re-pose runs every half second. Two glitches crossing at `GLITCH_H_SPEED`
-// (`210`) stand on at most a handful of tiles in that time, so the field cannot
-// fall from thirty to anywhere near `DROPPER_SPARSE_THRESHOLD` between one
-// re-pose and the next.
+// THE THIRTY NODES ARE RE-POSED BEFORE EACH EXPIRY. `setFoeSpawning` gates all
+// three spawners together, so turning it on to test the dropper's rule could
+// also put a glitch on the board — and a glitch eats the node it stands on,
+// which is the very field whose density is under test. Re-posing holds the
+// density where this point put it, so nothing but the rule the item names can
+// decide the outcome. Setting a node that already stands at that charge changes
+// nothing, so the re-pose is inert wherever nothing was eaten.
 //
 // The reading counts DROPPERS alone, for the same reason: the glitches are the
 // price of turning the gate on, not part of this requirement.
@@ -39,7 +43,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { watchRoster } from "./watching";
+import { expireClock } from "./watching";
 
 /** The level watched: the one droppers begin at. */
 const LEVEL = DROPPER_FROM_LEVEL;
@@ -61,11 +65,8 @@ const FIELD: readonly (readonly [number, number, number])[] = Array.from(
     [2 + index, FIELD_TOP_ROW + (index % FIELD_ROWS), FIELD_CHARGE] as const,
 );
 
-/** The stretch watched, as the review item states it: ten seconds. */
-const WATCH_SECONDS = 10;
-
-/** How often the roster is read and the field re-posed, in seconds. */
-const POLL_SECONDS = 0.5;
+/** How many times the dropper's clock is posed to run out. */
+const EXPIRIES = 3;
 
 let h: Harness;
 
@@ -79,25 +80,22 @@ afterEach(async () => {
 
 it("draws no dropper in while the lower field is dense", async () => {
   await startPlaying(h, { level: LEVEL });
-  const poseDenseField = (): Promise<void> => poseNodes(h, FIELD);
-  await poseDenseField();
   await h.debug.setFoeSpawning(true);
 
-  const watch = await watchRoster(
-    h,
-    "dropper",
-    WATCH_SECONDS,
-    POLL_SECONDS,
-    poseDenseField,
-  );
+  let peak = 0;
+  for (let expiry = 1; expiry <= EXPIRIES; expiry += 1) {
+    await poseNodes(h, FIELD);
+    peak = Math.max(peak, await expireClock(h, "dropper"));
+  }
 
   await captureStill(h, "dense");
   assertEqual(
-    watch.peak,
+    peak,
     0,
-    `no dropper enters over ${WATCH_SECONDS} s of level-${LEVEL} play with ` +
-      `${FIELD_SIZE} nodes held standing in rows ${DROPPER_COUNT_TOP_ROW} to ` +
-      `${DROPPER_COUNT_BOTTOM_ROW}, far above DROPPER_SPARSE_THRESHOLD ` +
-      `(${DROPPER_SPARSE_THRESHOLD}); droppers seen on the board at once`,
+    `no dropper enters across ${EXPIRIES} expiries of the level-${LEVEL} ` +
+      `dropper clock with ${FIELD_SIZE} nodes held standing in rows ` +
+      `${DROPPER_COUNT_TOP_ROW} to ${DROPPER_COUNT_BOTTOM_ROW}, far above ` +
+      `DROPPER_SPARSE_THRESHOLD (${DROPPER_SPARSE_THRESHOLD}); droppers seen ` +
+      `on the board at once`,
   );
 });

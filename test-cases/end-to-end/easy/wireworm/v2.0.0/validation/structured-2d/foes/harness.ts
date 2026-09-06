@@ -2,14 +2,15 @@
 //
 // Only this group poses these, so they live beside the checks that use them
 // rather than in the shared harness next door. Like everything there, they fix
-// ARRANGEMENT alone — which tile a foe stands on, which faculty is held, how
-// often a roster is sampled — and never a threshold: every distance, interval
+// ARRANGEMENT alone — which tile a foe stands on, which faculty is held, when a
+// spawner's clock runs out — and never a threshold: every distance, interval
 // and count a check asserts is stated in that check, derived from the figure
 // specs/foes.md fixes for it.
 
 import {
   chargeAt,
   poseFoe,
+  TICK_HZ,
   type FoeKind,
   type FoeSnapshot,
   type Harness,
@@ -46,47 +47,48 @@ export function foesOfKind(
   return snapshot.foes.filter((foe) => foe.kind === kind);
 }
 
-/** What watching one kind's roster over a stretch of play found. */
-export interface RosterWatch {
-  /** The most foes of that kind the roster held at any one sample. */
-  peak: number;
-  /** The frame of the watch the first one was seen at, or `null` for none. */
-  firstAt: number | null;
-}
+/**
+ * The seconds a spawner clock is posed at so that it runs out inside the next
+ * update: half of one update's delta.
+ *
+ * specs/foes.md brings a foe in, or runs the dropper's sparse-field check, when
+ * its kind's clock reaches `0` — "When a clock reaches `0` its kind's entry or
+ * check happens and the clock is drawn again" — and `setSpawnTimer` poses the
+ * seconds left on that clock (specs/instrumentation.md). A clock posed at half
+ * a delta reaches `0` inside the very next update, so the entry it decides is
+ * the next thing that happens, and nothing waits on the interval the clock is
+ * then redrawn to.
+ */
+export const DUE_SECONDS = 0.5 / TICK_HZ;
 
 /**
- * Run `frames` frames, sampling the roster for foes of `kind` every `poll`
- * frames, and report the most it ever held at once and when the first appeared.
- *
- * The roster is read once before the first frame too, so a foe posed by the
- * arrangement counts toward the peak. `each` runs after every sample's frames,
- * for a check that has to hold something true for the whole stretch.
+ * The updates run once a clock is posed due: the one it runs out in, and one
+ * more for a build that acts on the update after its clock crosses `0` rather
+ * than inside the one it crosses in.
  */
-export async function watchRoster(
-  h: Harness,
-  kind: FoeKind,
-  frames: number,
-  poll: number,
-  each?: () => void,
-): Promise<RosterWatch> {
-  let peak = 0;
-  let firstAt: number | null = null;
+export const EXPIRY_FRAMES = 2;
 
-  const sample = (at: number): void => {
-    const count = foesOfKind(h.snapshot(), kind).length;
-    if (count > peak) peak = count;
-    if (count > 0 && firstAt === null) firstAt = at;
-  };
-
-  sample(0);
-  for (let done = 0; done < frames; ) {
-    const step = Math.min(poll, frames - done);
-    await h.advance(step);
-    done += step;
-    each?.();
-    sample(done);
+/**
+ * Pose the level's clock for `kind` to run out inside the next update, run the
+ * updates that expiry lands in, and report the most foes of `kind` the roster
+ * held over them.
+ *
+ * This is the reading every check about a spawner's level gate or its cap
+ * takes. The moment the spawner would bring a foe in is POSED rather than waited
+ * for, so a check costs two updates instead of the interval the clock is drawn
+ * to, and its cost does not follow the build's pacing. The roster is read after
+ * each update, so a foe that entered and was removed inside the stretch still
+ * counts toward the peak, and the foes standing before the first update count
+ * too, so a cap that is already binding is read at the cap.
+ */
+export async function expireClock(h: Harness, kind: FoeKind): Promise<number> {
+  h.debug.setSpawnTimer(kind, DUE_SECONDS);
+  let peak = foesOfKind(h.snapshot(), kind).length;
+  for (let frame = 0; frame < EXPIRY_FRAMES; frame += 1) {
+    await h.advance(1);
+    peak = Math.max(peak, foesOfKind(h.snapshot(), kind).length);
   }
-  return { peak, firstAt };
+  return peak;
 }
 
 /**

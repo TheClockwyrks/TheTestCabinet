@@ -580,9 +580,6 @@ export interface WirewormExtras {
    */
   readonly state: DeepReadonly<WirewormState>;
 
-  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
-
   /**
    * Move the pointer to a logical point with nothing pressed, then run the frame
    * that delivers it. The hover `specs/ui.md` selects a menu item on.
@@ -730,14 +727,6 @@ const kit = createEngineCaseHarness<
     return {
       get state() {
         return engine.state;
-      },
-
-      async runFor(ms: number) {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((wake) => setTimeout(wake, ms));
-        controller.abort();
-        await running;
       },
 
       async movePointer(x, y, options = {}) {

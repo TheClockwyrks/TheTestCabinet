@@ -22,17 +22,21 @@
 // the off half holds every one of them and the on half is satisfied by whichever
 // of them arrives first.
 //
-// A MINUTE IS LONGER THAN ANY OF THE INTERVALS. `CORRUPTOR_MAX_INTERVAL` (`22`
-// s) is the longest wait the specification names, so `60` s of play is nearly
-// three of them: a build whose gate merely delays a spawner rather than holding
-// it is caught, and a build whose gate works reports an empty roster whatever
-// its intervals are.
+// THE MOMENT EACH SPAWNER WOULD ACT IS POSED, NOT WAITED FOR. specs/foes.md has
+// each kind's entry or check happen when its clock reaches `0`, and
+// `setSpawnTimer` poses the seconds left on each clock, so all three are posed
+// to run out inside the next update. With the gate off, a clock "holds its
+// value whenever it is not counting down ... while foe spawning is off"
+// (specs/foes.md), so a second of play leaves the roster empty; with it on, the
+// same posed clocks run out and the level's foes arrive on the next update.
+// Nothing waits on the interval a clock is drawn to, so the point costs a second
+// of updates whatever a build's pacing.
 //
 // THE ON HALF IS READ LOOSELY AND ON PURPOSE. It is asserted only that SOME foe
-// arrived, inside a window past every interval the specification names, because
-// this point is about the gate. Which foe arrives when, how many share the
-// board, and what draws a dropper in are `foes/glitch-arrives`, `foes/glitch-
-// cap`, `foes/dropper-sparse-trigger` and their siblings.
+// arrived, because this point is about the gate. Which foe arrives when, how
+// many share the board, and what draws a dropper in are
+// `instrumentation/set-spawn-timer`, `foes/glitch-cap`,
+// `foes/dropper-sparse-trigger` and their siblings.
 //
 // THE BOARD IS OTHERWISE EMPTY AND QUIET. `startPlaying` clears all four rosters
 // and holds the worm entry and the cursor's contact off, so anything that turns
@@ -40,18 +44,15 @@
 // nothing else.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  CORRUPTOR_FROM_LEVEL,
-  CORRUPTOR_MAX_INTERVAL,
-  DROPPER_CHECK_INTERVAL,
-  GLITCH_MAX_INTERVAL,
-} from "../constants";
+import { CORRUPTOR_FROM_LEVEL } from "../constants";
 import { assertLength, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
   startPlaying,
+  TICK_HZ,
   ticksFor,
+  type FoeKind,
   type Harness,
 } from "../harness";
 
@@ -61,19 +62,29 @@ import {
  */
 const LEVEL = CORRUPTOR_FROM_LEVEL;
 
-/** How long the gated board is played for, in seconds. */
-const GATED_SECONDS = 60;
+/** The three kinds, each with a clock of its own (specs/foes.md). */
+const KINDS: readonly FoeKind[] = ["glitch", "dropper", "corruptor"];
 
 /**
- * How long the ungated board is given to produce a foe, in seconds.
- *
- * `CORRUPTOR_MAX_INTERVAL` (`22` s) is the longest wait specs/foes.md names for
- * any spawner, and the dropper's sparse-field check runs every
- * `DROPPER_CHECK_INTERVAL` (`2.5` s) on a board this empty — so this window is
- * past every one of them with room to spare, and a build whose spawning works
- * at all fills the roster well inside it.
+ * The seconds each clock is posed at: half of one update's delta, so a clock
+ * that is counting down reaches `0` inside the very next update.
  */
-const UNGATED_SECONDS = CORRUPTOR_MAX_INTERVAL + 3;
+const DUE_SECONDS = 0.5 / TICK_HZ;
+
+/** How long the gated board is played for, in seconds. */
+const GATED_SECONDS = 1;
+
+/**
+ * How long the ungated board is given before a foe is expected, in seconds: a
+ * tenth of a second, room for a build that acts on the update after its clock
+ * crosses `0` rather than inside the one it crosses in.
+ */
+const UNGATED_SECONDS = 0.1;
+
+/** Pose every kind's clock to run out inside the next update. */
+function poseClocksDue(h: Harness): void {
+  for (const kind of KINDS) h.debug.setSpawnTimer(kind, DUE_SECONDS);
+}
 
 let h: Harness;
 
@@ -89,6 +100,7 @@ it("keeps the level's own foes away while the gate is off", async () => {
   startPlaying(h);
   h.debug.setLevel(LEVEL);
   h.debug.setFoeSpawning(false);
+  poseClocksDue(h);
 
   await h.advanceSeconds(GATED_SECONDS);
   // Before the assertions, so a failing gate still leaves the picture of the
@@ -99,22 +111,21 @@ it("keeps the level's own foes away while the gate is off", async () => {
     h.snapshot().foes,
     0,
     `the foes on a level-${LEVEL} board after ${GATED_SECONDS} s of play ` +
-      `with setFoeSpawning(false) held — that span is nearly three ` +
-      `CORRUPTOR_MAX_INTERVALs (${CORRUPTOR_MAX_INTERVAL} s), past ` +
-      `GLITCH_MAX_INTERVAL (${GLITCH_MAX_INTERVAL} s) many times over, and ` +
-      `${Math.floor(GATED_SECONDS / DROPPER_CHECK_INTERVAL)} sparse-field ` +
-      `checks (specs/foes.md)`,
+      `with setFoeSpawning(false) held and every spawner clock posed to run ` +
+      `out on the next update (specs/instrumentation.md)`,
   );
 
   // And the control: the level really would have spawned one.
   h.debug.setFoeSpawning(true);
+  poseClocksDue(h);
   const arrived = await h.until((s) => s.foes.length > 0, {
     maxFrames: ticksFor(UNGATED_SECONDS),
   });
   assertTrue(
     arrived.hit,
     `a foe to join the roster within ${UNGATED_SECONDS} s of ` +
-      `setFoeSpawning(true) on the same level-${LEVEL} board — without one, ` +
-      `an empty roster while the gate was off says nothing about the gate`,
+      `setFoeSpawning(true) with every spawner clock posed to run out on the ` +
+      `same level-${LEVEL} board — without one, an empty roster while the ` +
+      `gate was off says nothing about the gate`,
   );
 });

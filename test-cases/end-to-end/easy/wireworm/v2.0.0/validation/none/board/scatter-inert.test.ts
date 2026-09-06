@@ -13,10 +13,10 @@
 // lowers a charge has had a chance to run.
 //
 // Several runs, because the tiles are a draw and each run opened afresh is one
-// draw of the same rule. The count is
-// read only far enough to know a scatter happened at all, since a run that laid
-// nothing would satisfy a rule about every node it laid; how many are laid is
-// board/scatter-density's requirement.
+// draw of the same rule. The count is read only far enough to know a scatter
+// happened at all, since a run that laid nothing would satisfy a rule about
+// every node it laid; how many are laid is a share of a generated world, which
+// no point counts.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
