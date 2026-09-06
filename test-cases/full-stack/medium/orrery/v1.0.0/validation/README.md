@@ -82,7 +82,9 @@ Everything below is one call, under the same name, on all three engines.
 frames, which is the primitive the two cycle helpers are built on;
 `advanceCycles(h, n)` and `advanceFraction(h, f)` name cycles and fractions of one
 at whatever speed the run is set to; `h.until(pred, opts)` and
-`h.stepWatching(n, watch)` sweep.
+`h.stepWatching(n, watch)` sweep. Every one of them is frames a check asked for,
+so no check waits on the wall clock and a span costs the frames it is divided
+into rather than the seconds it names.
 
 **Reading** — `h.snapshot()`, plus the readings in `snapshot.ts`
 (`partById`, `moteAt`, `poseOf`, `gripsOf`, `heldBy`, `constellationOf`,

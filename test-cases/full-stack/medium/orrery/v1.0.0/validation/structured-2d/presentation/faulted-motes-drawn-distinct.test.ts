@@ -64,7 +64,7 @@ import {
   assertGreaterThan,
   assertLength,
 } from "../assert";
-import { MOTE_R, TICK_HZ } from "../constants";
+import { MOTE_R } from "../constants";
 import { at, hexCenter, type Hex, type Region } from "../field";
 import { armPart, solution, type SolutionPart } from "../formats";
 import { BARE } from "../fixtures";
@@ -84,8 +84,17 @@ import {
 /** How much further game time a frozen run is given before it is read. */
 const SETTLE_SECONDS = 5;
 
-/** That span in whole frames of the harness's own clock. */
-const SETTLE_FRAMES = SETTLE_SECONDS * TICK_HZ;
+/**
+ * The frames that span is delivered over.
+ *
+ * A frozen run "advances no further" (`specs/simulation.md`), so the span reaches
+ * the one-shot effect alone, and a player is "advanced each frame with that
+ * frame's delta" (`specs/assets.md`) — so the same seconds decay it however they
+ * are divided, exactly as "an interval of game time reaches the same state
+ * however it was divided into frames" (`specs/instrumentation.md`). Driving the
+ * span over frames no read is taken from is cost this verdict does not need.
+ */
+const SETTLE_FRAMES = 30;
 
 /**
  * Half the side of the square a mote's own drawing is read inside.
@@ -189,7 +198,7 @@ async function pose(tearing: number): Promise<PixelRect> {
 
   await advanceCycles(h, 1);
   await h.advance(1);
-  await h.advance(SETTLE_FRAMES);
+  await h.advanceSeconds(SETTLE_SECONDS, SETTLE_FRAMES);
   if (tearing === 0) await captureStill(h, "marked");
 
   const sim = (await h.snapshot()).sim;

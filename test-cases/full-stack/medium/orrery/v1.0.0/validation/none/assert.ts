@@ -9,7 +9,7 @@
 // contract, and a case that drifted from it would report a verdict the console
 // could not render.
 //
-// This file stays because the 1065 suites next door say `from "../assert"`, and
+// This file stays because the 1053 suites next door say `from "../assert"`, and
 // that is the right thing for them to say: an assertion is the vocabulary a
 // check states its verdict in, not a package a check depends on. The two ENGINE
 // projects say the same one line over the same package — it is staged into every
