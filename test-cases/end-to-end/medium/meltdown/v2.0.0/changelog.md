@@ -84,11 +84,13 @@ simulated-clock gain must both stay under a ceiling, with both readings taken
 from the one snapshot on the press so the pair spans the paused window and
 nothing else. The running leg is what stops a dead floor passing vacuously, and
 the tolerances are non-zero on purpose because a build may resolve an injected
-key on the frame after it arrived. Four items carry it under every engine: the
-two pause items, the resume, and the speed toggle. The item that the game
-advances by the elapsed time of its frames is decided under the engines alone,
-where the frame loop is the engine's; under `none` the loop is the build's own
-and only real time could decide it.
+key on the frame after it arrived. Four items carry that window under every
+engine: the two pause items, the resume, and the item that the toggle doubles the
+game time. A fifth, that the same game time reaches the same state at either
+speed, drives two legs of deliberately different lengths for the same reason. The
+item that the game advances by the elapsed time of its frames is decided under
+the engines alone, where the frame loop is the engine's; under `none` the loop is
+the build's own and only real time could decide it.
 
 ## Random draws are sampled sparingly
 

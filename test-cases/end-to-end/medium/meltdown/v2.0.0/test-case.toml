@@ -2542,14 +2542,15 @@ validation = { script = "surge/enters-on-an-open-opening-tile.test.ts", outputs 
 # The frame around a match. Five items in this group are about whether time
 # passes, and each is measured over a stated number of driven frames of a stated
 # length, never over a stretch of real time, so the same game time lands on any
-# machine. pause-freezes-the-floor, pause-freezes-the-heat and
-# resume-runs-the-floor-again read legs of equal length with both readings taken
-# from the ONE snapshot on the press, so the pair spans the paused window and
-# nothing else, and the running leg is what stops a dead floor passing vacuously.
-# game-runs-on-its-own-clock reads whether the elapsed time a frame carries
-# reaches the simulation, which under an engine is the build's integration of the
-# frame the engine hands it; under none the frame loop is the build's own and only
-# real time could decide it, so the item is scoped to the engines.
+# machine. pause-freezes-the-floor, pause-freezes-the-heat,
+# resume-runs-the-floor-again and speed-doubles-the-game-time read legs of equal
+# length with both readings taken from the ONE snapshot on the press, so the pair
+# spans the window the press opened and nothing else, and the running leg is what
+# stops a dead floor passing vacuously. game-runs-on-its-own-clock, the fifth,
+# reads whether the elapsed time a frame carries reaches the simulation, which
+# under an engine is the build's integration of the frame the engine hands it;
+# under none the frame loop is the build's own and only real time could decide it,
+# so the item is scoped to the engines.
 [[review.categories]]
 id = "waves"
 title = "The run"
