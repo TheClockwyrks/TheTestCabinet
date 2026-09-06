@@ -35,8 +35,8 @@ import {
 } from "../constants";
 import {
   captureStill,
-  createHarness,
-  framesFor,
+  createRunoutHarness,
+  runoutFrames,
   startCascade,
   type Harness,
 } from "../harness";
@@ -49,12 +49,17 @@ const EXPECTED_WALK = Array.from(
 );
 
 /**
- * How long the sweep may run for, in frames.
+ * How long the sweep may run for, in frames of the run-out clock.
  *
  * The last of the fifty-two launches falls on the fifty-second interval, so a whole
  * deck of intervals plus three covers every one of them with room to spare.
+ *
+ * The frames are `RUNOUT_HZ`'s and not the suite's, because nothing below is
+ * quantised to a frame: which card left which foundation is the same card whatever
+ * the frame was, and a launch interval of `0.18` s is five frames even at the
+ * run-out rate, so a frame still carries at most one launch. See `RUNOUT_HZ`.
  */
-const MAX_FRAMES = framesFor(LAUNCH_INTERVAL * (DECK_SIZE + 3));
+const MAX_FRAMES = runoutFrames(LAUNCH_INTERVAL * (DECK_SIZE + 3));
 
 /** The ranks that came off one foundation, in the order they left. */
 function walkOf(launches: readonly Launch[], foundation: number): number[] {
@@ -66,7 +71,7 @@ function walkOf(launches: readonly Launch[], foundation: number): number[] {
 let harness: Harness;
 
 beforeEach(async () => {
-  harness = await createHarness();
+  harness = await createRunoutHarness();
 });
 
 afterEach(() => {

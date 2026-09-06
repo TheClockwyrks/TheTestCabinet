@@ -54,8 +54,8 @@ import {
  *
  * The frames are `RUNOUT_HZ`'s and not the suite's: what is read below is how much
  * of the table is still painted once the cascade is over, and a stamp is a whole
- * card's footprint — a flyer moving at the slowest speed the range allows still
- * covers less than nine units between two frames at sixty, against a card a hundred
+ * card's footprint — a flyer moving at the fastest speed the range allows still
+ * covers fourteen units between two frames at thirty, against a card a hundred
  * wide, so the swath a card leaves is the same swath either way. See `RUNOUT_HZ`.
  */
 const MAX_FRAMES = runoutFrames(20);

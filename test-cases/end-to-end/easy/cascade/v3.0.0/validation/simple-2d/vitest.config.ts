@@ -49,9 +49,9 @@ export default defineEngineValidationConfig({
   // for a little over twelve seconds of game time and puts up to fifty-two cards
   // in the air; every frame of it renders every one of them into
   // `@napi-rs/canvas`, and a card face is five runs of text, so the run-out is the
-  // most expensive thing this project does — around a minute of it on an idle
-  // host. Ten minutes is that with an order of magnitude of room, which is what it
-  // takes to survive a host running many times its own number of cores. It is
+  // most expensive thing this project does even stepped at `RUNOUT_HZ`. Ten
+  // minutes is that with orders of magnitude of room, which is what it takes to
+  // survive a host running many times its own number of cores. It is
   // still a ceiling and not a target: a suite that hangs costs this and no more,
   // and every suite here finishes in seconds when the machine is its own.
   testTimeout: 600_000,

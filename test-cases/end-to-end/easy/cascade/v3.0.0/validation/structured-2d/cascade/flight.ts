@@ -71,32 +71,45 @@ export function flightSeconds(frames: number): number {
 }
 
 /**
- * A harness whose clock steps the frames a RUN-OUT is waited out in — the suite's
- * own `TICK_HZ`, not this group's {@link CASCADE_HZ}.
+ * The frame a RUN-OUT is stepped in — neither this group's {@link CASCADE_HZ} nor
+ * the suite's `TICK_HZ`.
  *
- * Two checks in this group have to sit through the whole victory cascade before
- * they can read anything: `cascade-completes` and `trail-survives-completion`.
- * Twelve and a half seconds of game time at `CASCADE_HZ` is three thousand frames,
- * and every one of them renders up to fifty-two card faces into a real canvas — so
- * the WAIT, and not the reading, is what those two cost, and what they cost is what
- * a busy host turns into a timeout against a build that did nothing wrong.
+ * Three checks in this group have to sit through the whole victory cascade before
+ * they can read anything: `cascade-completes`, `launch-takes-top-card` and
+ * `trail-survives-completion`. Twelve and a half seconds of game time at
+ * `CASCADE_HZ` is three thousand frames, and every one of them renders up to
+ * fifty-two card faces into a real canvas — so the WAIT, and not the reading, is
+ * what those three cost, and what they cost is what a busy host turns into a
+ * timeout against a build that did nothing wrong.
  *
- * NEITHER READS AN ACCELERATED QUANTITY, which is the whole reason this group steps
- * finely: they read the cascade's own end flag, the launched count, the flight being
- * empty, and how much of the table is still painted — facts about where the cascade
- * ENDED, none of them quantised to a frame. `specs/instrumentation.md` has the game
- * integrate whatever delta a frame supplies and `instrumentation/advances-in-frames`
- * is the point that grades it, and the references were measured at 240, 120, 60 and
- * 30 Hz: the cascade ends `cascadeDone` with all fifty-two launched and nothing in
- * flight, at the same `12.57` s of game time, at every one of them.
+ * NONE OF THE THREE READS AN ACCELERATED QUANTITY, which is the whole reason this
+ * group otherwise steps finely: they read the cascade's own end flag, the launched
+ * count, the flight being empty, which card left which foundation, and how much of
+ * the table is still painted — facts about where the cascade ended and what it
+ * carried there, none of them quantised to a frame.
+ *
+ * AND WHERE A CASCADE ENDS IS NOT A FRAME-RATE QUANTITY EITHER. Two things decide
+ * it, and specs/victory.md integrates both exactly however an interval is divided
+ * into frames: the launch clock adds each frame's delta, so the fifty-second launch
+ * falls at the same game time whatever the frames were, and a card retires on `x`
+ * alone, which advances by `vx * dt` at a `vx` the flight never changes. What
+ * gravity and the floor do to `y` in between is the one part a coarser frame moves,
+ * and it is exactly what {@link CASCADE_HZ} is for.
+ *
+ * Thirty is a frame length an ordinary machine really delivers, so the ending these
+ * three watch is an ending a player could sit through. A launch interval of `0.18`
+ * s is still five frames at it, so a frame carries at most one launch.
  */
+export const RUNOUT_HZ = 30;
+
+/** A harness whose clock steps the frames a run-out is waited out in. */
 export function createRunoutHarness(): Promise<Harness> {
-  return createHarness();
+  return createHarness({ hz: RUNOUT_HZ });
 }
 
 /** Whole frames of the run-out clock covering `duration` seconds. */
 export function runoutFrames(duration: number): number {
-  return framesFor(duration);
+  return framesFor(duration, RUNOUT_HZ);
 }
 
 /**
@@ -339,10 +352,12 @@ function shrankFoundation(before: number[], after: number[]): number {
  * flight.
  *
  * One frame at a time because a launch's velocity is what the launch gave it:
- * read a few frames later, `vy` has been through gravity. The frames are this
- * group's own (1/240 s), which is far finer than the launch interval
- * specs/victory.md fixes, so a frame carries at most one launch and each is
- * reported on its own.
+ * read a few frames later, `vy` has been through gravity. Which clock those frames
+ * come off is the caller's: the checks that read a launch VELOCITY step this
+ * group's own (1/240 s), and `launch-takes-top-card`, which reads only which card
+ * left which foundation, steps {@link RUNOUT_HZ}. Both are finer than the launch
+ * interval specs/victory.md fixes, so a frame carries at most one launch either way
+ * and each is reported on its own.
  *
  * `stop` ends the sweep early when it has seen everything the check asked for.
  */
