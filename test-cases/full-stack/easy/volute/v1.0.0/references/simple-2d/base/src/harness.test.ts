@@ -77,7 +77,7 @@ export interface CuePlay {
  * over the engine that holds the state.
  */
 export interface Driver {
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   setScreen(name: string): void;
   setLevel(level: number): void;
   setScore(n: number): void;
@@ -88,6 +88,7 @@ export interface Driver {
   clearTrain(): void;
   setLoaded(charge: string): void;
   setQueued(charge: string): void;
+  setNextEmitted(charge: string | null): void;
   setAim(angleDegrees: number): void;
   fire(): void;
   /**
@@ -314,7 +315,7 @@ export async function harness(options: HarnessOptions = {}): Promise<Harness> {
   };
 
   const api: Driver = {
-    reset: (options) => void engine.apply((s) => debug.reset(s, options)),
+    reset: () => void engine.apply((s) => debug.reset(s)),
     setScreen: (name) => void engine.apply((s) => debug.setScreen(s, name)),
     setLevel: (level) => void engine.apply((s) => debug.setLevel(s, level)),
     setScore: (n) => void engine.apply((s) => debug.setScore(s, n)),
@@ -325,6 +326,8 @@ export async function harness(options: HarnessOptions = {}): Promise<Harness> {
     clearTrain: () => void engine.apply((s) => debug.clearTrain(s)),
     setLoaded: (charge) => void engine.apply((s) => debug.setLoaded(s, charge)),
     setQueued: (charge) => void engine.apply((s) => debug.setQueued(s, charge)),
+    setNextEmitted: (charge) =>
+      void engine.apply((s) => debug.setNextEmitted(s, charge)),
     setAim: (angle) => void engine.apply((s) => debug.setAim(s, angle)),
     fire: () => void engine.apply((s) => debug.fire(s)),
     fireAt: (angle) => {

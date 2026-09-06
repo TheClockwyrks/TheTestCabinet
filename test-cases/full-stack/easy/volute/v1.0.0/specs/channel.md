@@ -104,9 +104,11 @@ core stands exactly `SPACING` behind a tail sitting at `SPACING`, and so joins
 the trailing segment; a tail further out leaves the emitted core a segment of
 its own, closing at the catch-up rate.
 
-An emitted core's charge is drawn from the game's seeded generator, uniformly
-over the set of distinct charges on the channel at the moment of emission, and
-uniformly over the level's charge set when the channel carries no core. The
+An emitted core's charge is drawn at random, uniformly over the set of distinct
+charges on the channel at the moment of emission, and uniformly over the level's
+charge set when the channel carries no core. The debug surface
+`specs/instrumentation.md` fixes poses the charge of the next emission through
+`setNextEmitted`, and an emission carrying a posed charge makes no draw. The
 level's charge set and quota are in `specs/progression.md`. Whether an emitted
 core carries a machinery mark is in `specs/machinery.md`.
 
@@ -114,8 +116,8 @@ core carries a machinery mark is in `specs/machinery.md`.
 
 A level starts with `12` cores already on the channel, the head
 at `s = 308` and the tail at `s = 0`, spaced by `SPACING`. Each seeded core's
-charge is drawn from the seeded generator uniformly over the level's charge set,
-and each decrements the level's quota exactly as an emission does. The twelve
+charge is drawn at random, uniformly over the level's charge set, and each
+decrements the level's quota exactly as an emission does. The twelve
 enter in order from the head, so the seeded core at `s = 0` is the twelfth core
 of the level.
 

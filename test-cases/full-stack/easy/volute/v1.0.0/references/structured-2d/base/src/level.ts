@@ -28,8 +28,10 @@ import { resegment, type TrainPorts } from "./train";
 
 /** What opening a level and emitting a core need from the world they stand in. */
 export interface HallPorts extends TrainPorts {
-  /** One charge from the game's seeded generator, uniformly over `from`. */
+  /** One charge drawn at random, uniformly over `from`. */
   drawCharge(from: readonly ChargeId[]): ChargeId;
+  /** The charge posed for the next emission, taken so the pose is consumed. */
+  takeNextEmitted(): ChargeId | null;
   /** Take a core in flight out of the world. */
   destroyProjectile(projectile: Projectile): void;
   /** The hall's one injector. */
@@ -99,9 +101,14 @@ function deliver(
   return ports.spawnCore(charge, s, mark, 0);
 }
 
-/** Place a core at the inlet, by the level's charge and mark rules. */
+/**
+ * Place a core at the inlet, by the level's charge and mark rules.
+ *
+ * A charge the debug surface posed with `setNextEmitted` stands in for the
+ * draw, and this emission consumes it, so the one after is drawn again.
+ */
 export function emitCore(state: HallState, ports: HallPorts): void {
-  const charge = drawEmissionCharge(state, ports);
+  const charge = ports.takeNextEmitted() ?? drawEmissionCharge(state, ports);
   state.cores.push(deliver(state, ports, 0, charge));
   resegment(state);
 }

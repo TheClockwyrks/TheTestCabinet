@@ -274,8 +274,6 @@ export const DANGER_BED: CueName = "danger-loop";
 
 /** The version `window.__volute.version` reports. */
 export const VOLUTE_DEBUG_VERSION = 1;
-/** The seed a `reset` uses when it is given none. */
-export const DEFAULT_SEED = 1;
 /** The `window` property the debug and automation surface is installed on. */
 export const VOLUTE_HANDLE = "__volute";
 

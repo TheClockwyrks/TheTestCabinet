@@ -1,13 +1,11 @@
 // The debugging and automation surface: every operation it names, the snapshot it
-// reports, and the two rules that make it worth resting a verdict on — a pose
-// arranges the hall and decides nothing, and the hall it arranges is
-// reproducible.
+// reports, and the rule that makes it worth resting a verdict on — a pose
+// arranges the hall and decides nothing.
 
 import { describe, expect, it } from "vitest";
 import {
   CELLS,
   CHARGE_IDS,
-  DEFAULT_SEED,
   LEVELS,
   LEVEL_COUNT,
   MACHINERY_DURATIONS,
@@ -15,7 +13,7 @@ import {
   SEEDED_CORES,
   VOLUTE_DEBUG_VERSION,
 } from "./constants";
-import { bare, harness } from "./harness.test";
+import { bare, harness, last, type Harness } from "./harness.test";
 
 /** Every operation specs/instrumentation.md names, beside `version`. */
 const OPERATIONS = [
@@ -102,10 +100,10 @@ describe("snapshot", () => {
         "level",
         "machinery",
         "muted",
+        "nextEmitted",
         "pressure",
         "projectiles",
         "quotaRemaining",
-        "rngState",
         "score",
         "screen",
         "segments",
@@ -180,7 +178,7 @@ describe("reset", () => {
       machinery: null,
       interlude: 0,
       simTime: 0,
-      rngState: DEFAULT_SEED,
+      nextEmitted: null,
     });
     expect(shot.train).toEqual([]);
     expect(shot.segments).toEqual([]);
@@ -194,45 +192,95 @@ describe("reset", () => {
     h.dispose();
   });
 
-  it("seeds the generator, and leaves the mute bit alone", async () => {
+  it("leaves the mute bit alone, and clears a posed emission charge", async () => {
     const h = await harness();
     h.tap("KeyM");
     await h.step();
     expect(h.api.snapshot().muted).toBe(true);
-    h.api.reset({ seed: 12345 });
-    expect(h.api.snapshot().rngState).toBe(12345);
+    h.api.setNextEmitted("garnet");
+    h.api.reset();
+    expect(h.api.snapshot().nextEmitted).toBeNull();
     await h.step();
     expect(h.api.snapshot().muted).toBe(true);
     h.dispose();
   });
+});
 
-  it("reaches the same hall from the same seed and the same calls", async () => {
-    const trace = async (): Promise<string> => {
-      const h = await harness();
-      h.api.reset({ seed: 99 });
-      h.api.start();
-      await h.step(120);
-      h.api.fireAt(300);
-      await h.step(60);
-      const shot = h.api.snapshot();
-      h.dispose();
-      // `simTime` is the one field outside the guarantee, and it is identical
-      // here anyway because both runs stepped the same number of frames.
-      return JSON.stringify(shot);
-    };
-    expect(await trace()).toBe(await trace());
+describe("setNextEmitted", () => {
+  /** A level-5 hall carrying halide alone, with the inlet open and cores to emit. */
+  async function halideHall(): Promise<Harness> {
+    const h = await bare(5);
+    h.api.setQuotaRemaining(5);
+    h.api.setEmission(true);
+    h.api.poseTrain([
+      [356, "halide", null],
+      [328, "halide", null],
+      [300, "halide", null],
+    ]);
+    return h;
+  }
+
+  it("poses the charge the inlet emits next, and the emission consumes it", async () => {
+    const h = await halideHall();
+    h.api.setNextEmitted("garnet");
+    expect(h.api.snapshot().nextEmitted).toBe("garnet");
+    await h.step();
+    const shot = h.api.snapshot();
+    expect(last(shot.train).charge).toBe("garnet");
+    expect(shot.nextEmitted).toBeNull();
+    h.dispose();
   });
 
-  it("reaches a different hall from a different seed", async () => {
-    const opening = async (seed: number): Promise<string> => {
-      const h = await harness();
-      h.api.reset({ seed });
-      h.api.start();
-      const charges = h.api.snapshot().train.map((core) => core.charge);
-      h.dispose();
-      return charges.join(",");
-    };
-    expect(await opening(1)).not.toBe(await opening(7));
+  it("clears the pose on null, so the inlet draws from the channel again", async () => {
+    const h = await halideHall();
+    h.api.setNextEmitted("garnet");
+    h.api.setNextEmitted(null);
+    expect(h.api.snapshot().nextEmitted).toBeNull();
+    await h.step();
+    expect(last(h.api.snapshot().train).charge).toBe("halide");
+    h.dispose();
+  });
+
+  it("takes a charge outside the five as no pose", async () => {
+    const h = await halideHall();
+    h.api.setNextEmitted("garnet");
+    h.api.setNextEmitted("quartz");
+    expect(h.api.snapshot().nextEmitted).toBeNull();
+    h.dispose();
+  });
+
+  it("replaces a standing pose with the later call", async () => {
+    const h = await halideHall();
+    h.api.setNextEmitted("garnet");
+    h.api.setNextEmitted("cobalt");
+    await h.step();
+    expect(last(h.api.snapshot().train).charge).toBe("cobalt");
+    h.dispose();
+  });
+
+  it("waits behind a held inlet", async () => {
+    const h = await halideHall();
+    h.api.setEmission(false);
+    h.api.setNextEmitted("garnet");
+    await h.step(5);
+    expect(h.api.snapshot().train).toHaveLength(3);
+    expect(h.api.snapshot().nextEmitted).toBe("garnet");
+    h.api.setEmission(true);
+    await h.step();
+    expect(last(h.api.snapshot().train).charge).toBe("garnet");
+    h.dispose();
+  });
+
+  it("leaves the mark cadence where the quota puts it", async () => {
+    const h = await bare(1);
+    h.api.setQuotaRemaining(LEVELS[0].quota - 11);
+    h.api.setEmission(true);
+    h.api.setNextEmitted("sulfur");
+    await h.step();
+    const placed = last(h.api.snapshot().train);
+    expect(placed.charge).toBe("sulfur");
+    expect(placed.mark).toBe("choke");
+    h.dispose();
   });
 });
 
@@ -336,15 +384,16 @@ describe("the poses", () => {
     h.dispose();
   });
 
-  it("setLoaded and setQueued leave the generator where it stood", async () => {
+  it("setLoaded and setQueued set their charge, and nothing else", async () => {
     const h = await bare();
-    const before = h.api.snapshot().rngState;
+    const before = h.api.snapshot();
     h.api.setLoaded("olivine");
     h.api.setQueued("garnet");
     const shot = h.api.snapshot();
     expect(shot.injector.loaded).toBe("olivine");
     expect(shot.injector.queued).toBe("garnet");
-    expect(shot.rngState).toBe(before);
+    expect(shot.injector.aim).toBe(before.injector.aim);
+    expect(shot.projectiles).toEqual([]);
     h.dispose();
   });
 

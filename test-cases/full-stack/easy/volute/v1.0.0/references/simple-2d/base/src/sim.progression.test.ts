@@ -66,7 +66,6 @@ describe("the level table", () => {
   it("uses only its own charges", async () => {
     for (let index = 0; index < LEVELS.length; index += 1) {
       const h = await harness();
-      h.api.reset({ seed: index + 7 });
       h.api.startLevel(index + 1);
       // The twelve a level opens with are drawn from the level's own set.
       const seen = new Set(h.api.snapshot().train.map((core) => core.charge));

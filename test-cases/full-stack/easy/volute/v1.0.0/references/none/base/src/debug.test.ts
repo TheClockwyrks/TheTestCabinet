@@ -12,7 +12,7 @@ import {
   SEED_CORES,
   VOLUTE_DEBUG_VERSION,
 } from "./constants";
-import { harness, last, startRun } from "./harness.test";
+import { harness, last, startRun, type Harness } from "./harness.test";
 
 const OPERATIONS = [
   "setAutoStep",
@@ -70,10 +70,10 @@ describe("the surface", () => {
           "level",
           "machinery",
           "muted",
+          "nextEmitted",
           "pressure",
           "projectiles",
           "quotaRemaining",
-          "rngState",
           "score",
           "screen",
           "segments",
@@ -123,7 +123,8 @@ describe("reset", () => {
     startRun(hall);
     hall.step(60);
     hall.api.setPressure(70);
-    hall.api.reset({ seed: 42 });
+    hall.api.setNextEmitted("garnet");
+    hall.api.reset();
     const shot = hall.api.snapshot();
     expect(shot).toMatchObject({
       screen: "title",
@@ -137,7 +138,7 @@ describe("reset", () => {
       machinery: null,
       interlude: 0,
       simTime: 0,
-      rngState: 42,
+      nextEmitted: null,
     });
     expect(shot.train).toHaveLength(0);
     expect(shot.projectiles).toHaveLength(0);
@@ -158,22 +159,79 @@ describe("reset", () => {
     hall.step();
     expect(hall.api.snapshot().muted).toBe(true);
   });
+});
 
-  it("defaults to the stated seed", () => {
-    const hall = harness(999);
-    hall.api.reset();
-    expect(hall.api.snapshot().rngState).toBe(1);
+describe("setNextEmitted", () => {
+  /** A level-5 hall carrying halide alone, with the inlet open and cores to emit. */
+  function halideHall(): Harness {
+    const hall = harness();
+    hall.api.startLevel(5);
+    hall.api.setQuotaRemaining(5);
+    hall.api.clearTrain();
+    hall.api.poseTrain([
+      [356, "halide", null],
+      [328, "halide", null],
+      [300, "halide", null],
+    ]);
+    return hall;
+  }
+
+  it("poses the charge the inlet emits next, and the emission consumes it", () => {
+    const hall = halideHall();
+    hall.api.setNextEmitted("garnet");
+    expect(hall.api.snapshot().nextEmitted).toBe("garnet");
+    hall.step();
+    const shot = hall.api.snapshot();
+    expect(last(shot.train).charge).toBe("garnet");
+    expect(shot.nextEmitted).toBeNull();
   });
 
-  it("replays a run identically from the same seed", () => {
-    const walk = (): string => {
-      const hall = harness(7);
-      hall.api.reset({ seed: 5 });
-      startRun(hall);
-      hall.step(400);
-      return JSON.stringify(hall.api.snapshot());
-    };
-    expect(walk()).toBe(walk());
+  it("clears the pose on null, so the inlet draws from the channel again", () => {
+    const hall = halideHall();
+    hall.api.setNextEmitted("garnet");
+    hall.api.setNextEmitted(null);
+    expect(hall.api.snapshot().nextEmitted).toBeNull();
+    hall.step();
+    expect(last(hall.api.snapshot().train).charge).toBe("halide");
+  });
+
+  it("takes a charge outside the five as no pose", () => {
+    const hall = halideHall();
+    hall.api.setNextEmitted("garnet");
+    hall.api.setNextEmitted("quartz");
+    expect(hall.api.snapshot().nextEmitted).toBeNull();
+  });
+
+  it("replaces a standing pose with the later call", () => {
+    const hall = halideHall();
+    hall.api.setNextEmitted("garnet");
+    hall.api.setNextEmitted("cobalt");
+    hall.step();
+    expect(last(hall.api.snapshot().train).charge).toBe("cobalt");
+  });
+
+  it("waits behind a held inlet", () => {
+    const hall = halideHall();
+    hall.api.setEmission(false);
+    hall.api.setNextEmitted("garnet");
+    hall.step(5);
+    expect(hall.api.snapshot().train).toHaveLength(3);
+    expect(hall.api.snapshot().nextEmitted).toBe("garnet");
+    hall.api.setEmission(true);
+    hall.step();
+    expect(last(hall.api.snapshot().train).charge).toBe("garnet");
+  });
+
+  it("leaves the mark cadence where the quota puts it", () => {
+    const hall = harness();
+    hall.api.startLevel(1);
+    hall.api.setQuotaRemaining(LEVELS[0].quota - 11);
+    hall.api.clearTrain();
+    hall.api.setNextEmitted("sulfur");
+    hall.step();
+    const placed = last(hall.api.snapshot().train);
+    expect(placed.charge).toBe("sulfur");
+    expect(placed.mark).toBe("choke");
   });
 });
 
@@ -263,16 +321,18 @@ describe("poses", () => {
     expect(last(hall.api.snapshot().train).mark).toBe("choke");
   });
 
-  it("sets the loaded and queued charges without drawing", () => {
+  it("sets the loaded and queued charges, and nothing else", () => {
     const hall = harness();
     startRun(hall);
-    const seed = hall.api.snapshot().rngState;
+    const before = hall.api.snapshot();
     hall.api.setLoaded("olivine");
     hall.api.setQueued("garnet");
     const shot = hall.api.snapshot();
     expect(shot.injector.loaded).toBe("olivine");
     expect(shot.injector.queued).toBe("garnet");
-    expect(shot.rngState).toBe(seed);
+    expect(shot.injector.aim).toBe(before.injector.aim);
+    expect(shot.projectiles).toHaveLength(0);
+    expect(shot.train).toEqual(before.train);
   });
 
   it("always launches, whatever the cooldown", () => {
@@ -463,7 +523,7 @@ describe("the single-field poses", () => {
     const hall = harness();
     hall.api.setEmission(false);
     hall.api.setFeed(false);
-    hall.api.reset({ seed: 9 });
+    hall.api.reset();
     const shot = hall.api.snapshot();
     expect(shot.emission).toBe(false);
     expect(shot.feed).toBe(false);

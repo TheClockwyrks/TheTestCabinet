@@ -119,8 +119,12 @@ export interface VoluteState {
   feed: boolean;
   /** The game's readable copy of the runtime's mute bit. */
   muted: boolean;
-  /** The state of the seeded generator every random draw comes from. */
-  rngState: number;
+  /**
+   * The charge posed for the next core the inlet emits, and `null` while none
+   * is posed. `setNextEmitted` sets it, the emission that takes it clears it,
+   * and a `reset` clears it.
+   */
+  nextEmitted: ChargeId | null;
 }
 
 /**

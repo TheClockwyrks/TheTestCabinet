@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // The pure pieces the rest of the build rests on: the channel's arc-length
-// measure, the seeded generator, the two numeric helpers, and the produced files
+// measure, the random source, the two numeric helpers, and the produced files
 // on disk.
 
 import { readFileSync } from "node:fs";
@@ -16,7 +16,7 @@ import {
   PATH_LENGTH,
 } from "./constants";
 import { clamp, normalizeAngle, radians } from "./math";
-import { nextFloat, nextInt, pick, seedState } from "./rng";
+import { nextInt, pick } from "./rng";
 import { PARTICLE_SYSTEMS, SHEETS, type SheetName } from "./assets";
 
 /** The produced files, where the build serves them from. */
@@ -71,54 +71,27 @@ describe("the channel", () => {
   });
 });
 
-describe("the seeded generator", () => {
-  it("carries its whole state in one word", () => {
-    expect(seedState(7)).toBe(7);
-    expect(seedState(-1)).toBe(0xffffffff);
-    expect(seedState(Number.NaN)).toBe(0);
-  });
-
-  it("answers the same sequence from the same seed", () => {
-    const first = [0, 0, 0].reduce<number[]>(
-      (out) => {
-        const drawn = nextFloat(out[out.length - 1]);
-        return [...out, drawn.state];
-      },
-      [5],
-    );
-    const second = [0, 0, 0].reduce<number[]>(
-      (out) => {
-        const drawn = nextFloat(out[out.length - 1]);
-        return [...out, drawn.state];
-      },
-      [5],
-    );
-    expect(second).toEqual(first);
-  });
-
-  it("draws inside the bound it is given", () => {
-    let state = 1;
-    for (let i = 0; i < 200; i += 1) {
-      const drawn = nextInt(state, 5);
-      expect(drawn.value).toBeGreaterThanOrEqual(0);
-      expect(drawn.value).toBeLessThan(5);
-      state = drawn.state;
+describe("the random source", () => {
+  it("draws inside the bound it is given, and covers it", () => {
+    const seen = new Set<number>();
+    for (let i = 0; i < 400; i += 1) {
+      const drawn = nextInt(5);
+      expect(Number.isInteger(drawn)).toBe(true);
+      expect(drawn).toBeGreaterThanOrEqual(0);
+      expect(drawn).toBeLessThan(5);
+      seen.add(drawn);
     }
-    expect(nextInt(state, 1).value).toBe(0);
+    expect(seen.size).toBe(5);
+    expect(nextInt(1)).toBe(0);
   });
 
   it("refuses to draw from an empty set", () => {
-    expect(() => pick(1, [])).toThrow(RangeError);
+    expect(() => pick([])).toThrow(RangeError);
   });
 
   it("reaches every charge over enough draws", () => {
     const seen = new Set<string>();
-    let state = 1;
-    for (let i = 0; i < 400; i += 1) {
-      const drawn = pick(state, CHARGE_IDS);
-      seen.add(drawn.value);
-      state = drawn.state;
-    }
+    for (let i = 0; i < 400; i += 1) seen.add(pick(CHARGE_IDS));
     expect(seen.size).toBe(CHARGE_IDS.length);
   });
 });

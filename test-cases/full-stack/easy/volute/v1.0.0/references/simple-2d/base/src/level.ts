@@ -23,7 +23,7 @@ import {
 } from "./constants";
 import type { ChargeId, Level, MachineryKind } from "./constants";
 import { clamp, resegment, type Draft, type DraftCore } from "./draft";
-import { pick, seedState } from "./rng";
+import { pick } from "./rng";
 
 /** The level's figures, for a level number clamped into range. */
 export function levelSpec(level: number): Level {
@@ -37,7 +37,7 @@ export function normalizeAngle(degrees: number): number {
 }
 
 /** A whole, complete draft holding the title screen's values. */
-export function createDraft(seed: number): Draft {
+export function createDraft(): Draft {
   return {
     screen: "title",
     score: 0,
@@ -60,7 +60,7 @@ export function createDraft(seed: number): Draft {
     emission: true,
     feed: true,
     muted: false,
-    rngState: seedState(seed),
+    nextEmitted: null,
   };
 }
 
@@ -68,9 +68,9 @@ export function createDraft(seed: number): Draft {
  * Return every declared field to its title-screen value.
  *
  * `muted` is deliberately untouched — muting is a player preference the runtime
- * owns — and so is `rngState`, which only a `reset` reseeds. `emission` and
- * `feed` are untouched too: they belong to the caller driving the game rather
- * than to the run being played (specs/instrumentation.md).
+ * owns. `emission` and `feed` are untouched too: they belong to the caller
+ * driving the game rather than to the run being played
+ * (specs/instrumentation.md).
  */
 export function toTitle(draft: Draft): void {
   draft.screen = "title";
@@ -91,6 +91,7 @@ export function toTitle(draft: Draft): void {
   draft.interlude = 0;
   draft.simTime = 0;
   draft.accumulator = 0;
+  draft.nextEmitted = null;
 }
 
 /** The distinct charges standing on the channel right now, in train order. */
@@ -103,23 +104,18 @@ export function chargesOnChannel(draft: Draft): ChargeId[] {
 }
 
 /**
- * One charge from the game's generator, by the rule an emitted core follows:
- * uniformly over the charges already on the channel, and uniformly over the
- * level's charge set when the channel carries none.
+ * One charge by the rule an emitted core follows: uniformly over the charges
+ * already on the channel, and uniformly over the level's charge set when the
+ * channel carries none.
  */
 export function drawCharge(draft: Draft): ChargeId {
   const present = chargesOnChannel(draft);
-  const from = present.length > 0 ? present : levelSpec(draft.level).charges;
-  const drawn = pick(draft.rngState, from);
-  draft.rngState = drawn.state;
-  return drawn.value;
+  return pick(present.length > 0 ? present : levelSpec(draft.level).charges);
 }
 
 /** One charge drawn uniformly over the level's own charge set. */
 export function drawLevelCharge(draft: Draft): ChargeId {
-  const drawn = pick(draft.rngState, levelSpec(draft.level).charges);
-  draft.rngState = drawn.state;
-  return drawn.value;
+  return pick(levelSpec(draft.level).charges);
 }
 
 /**
@@ -148,9 +144,14 @@ function deliver(draft: Draft, s: number, charge: ChargeId): DraftCore {
 /**
  * Place a core at the inlet, drawing its charge and its mark by the level's
  * rules.
+ *
+ * A charge the debug surface posed with `setNextEmitted` stands in for the
+ * draw, and this emission consumes it, so the one after is drawn again.
  */
 export function emitCore(draft: Draft): void {
-  const charge = drawCharge(draft);
+  const posed = draft.nextEmitted;
+  draft.nextEmitted = null;
+  const charge = posed ?? drawCharge(draft);
   draft.cores.push(deliver(draft, 0, charge));
   resegment(draft);
 }

@@ -22,15 +22,19 @@ This file is for people working on the case. Nothing in it is seeded.
   advance rates, the two extraction events, the chain, four machineries, five
   levels, seven screens — through without blurring a row. The asset pass is what
   `max_runtime_hours = 6` accounts for, not the difficulty.
-- **Determinism through debug verbs.** A scenario poses the moment it wants
-  rather than replaying a level from a seed. `setScreen`, `setLevel`, `setScore`,
+- **Outcomes posed through debug verbs.** A scenario poses the moment it wants
+  rather than playing a level toward it. `setScreen`, `setLevel`, `setScore`,
   `setCells`, `setChainStep`, `startLevel`, `clearTrain`, `poseTrain`,
-  `setLoaded`, `setQueued`, `setAim`, `fire`, `setPressure`,
+  `setLoaded`, `setQueued`, `setNextEmitted`, `setAim`, `fire`, `setPressure`,
   `setQuotaRemaining`, `setEmission`, `setFeed` and `grantMachinery` all route
   through the real systems, and no operation decides an outcome, so every
   extraction, score and chain a validator reads comes from stepping the game.
   `instrumentation.pose-decides-nothing` is the point that holds a build to
-  that.
+  that. The game's three random draws (the opening twelve, each emitted core's
+  charge, and the injector's loaded and queued charges) are stated as the set
+  each is uniform over, and a validator whose requirement touches one poses its
+  outcome (`poseTrain`, `setLoaded`/`setQueued`, `setNextEmitted`) rather than
+  seeding anything; the case names no generator and carries no generator state.
 - **Appearance is free; legibility is fixed.** The palette, the type, the
   glyphs, the sprite artwork and the animation timing are the build's own. What
   is specified is what a player must read: five charges told apart on the

@@ -106,14 +106,16 @@ debugging and automation surface that takes the hall off real time
 (`setAutoStep(false)`, `step(n)`), arranges a scenario (`startLevel`,
 `poseTrain`, `fire`, `setPressure`, `grantMachinery`, …) and reads the whole game
 back (`snapshot()`). Every operation is a read or a pose — the outcomes come from
-the ticks that follow, exactly as they do in play — so the same seed and the same
-calls reach the same state every time.
+the ticks that follow, exactly as they do in play. Where the game would draw at
+random, a scenario poses the outcome instead: `poseTrain` the cores on the
+channel, `setLoaded` and `setQueued` the injector's charges, and `setNextEmitted`
+the charge of the next core the inlet emits.
 
 ```js
 const v = window.__volute;
 v.setAutoStep(false);
-v.reset({ seed: 1 });
-v.start();
+v.reset();
+v.startLevel(1);
 v.step(120);
 console.log(v.snapshot().train.length);
 ```

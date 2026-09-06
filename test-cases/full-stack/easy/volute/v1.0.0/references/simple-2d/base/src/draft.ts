@@ -83,7 +83,8 @@ export interface Draft {
   /** Whether the train advances: step 2 of the tick order. */
   feed: boolean;
   muted: boolean;
-  rngState: number;
+  /** The charge posed for the next emission, `null` while none stands. */
+  nextEmitted: ChargeId | null;
 }
 
 /** Clamp a value into a closed range. */
@@ -184,7 +185,7 @@ export function thaw(state: DeepReadonly<VoluteState>): Draft {
     emission: state.emission,
     feed: state.feed,
     muted: state.muted,
-    rngState: state.rngState,
+    nextEmitted: state.nextEmitted,
   };
 
   // A state posed with segments that disagree with the spacing is normalized
@@ -231,6 +232,6 @@ export function freeze(draft: Draft): VoluteState {
     emission: draft.emission,
     feed: draft.feed,
     muted: draft.muted,
-    rngState: draft.rngState >>> 0,
+    nextEmitted: draft.nextEmitted,
   };
 }

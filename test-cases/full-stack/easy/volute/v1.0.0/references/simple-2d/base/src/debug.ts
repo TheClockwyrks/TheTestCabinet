@@ -27,7 +27,6 @@ import {
   CELLS,
   CHAIN_RESET,
   CHARGE_IDS,
-  DEFAULT_SEED,
   LEVEL_COUNT,
   MACHINERY_KINDS,
   PATH_LENGTH,
@@ -121,7 +120,8 @@ export interface VoluteSnapshot {
   feed: boolean;
   muted: boolean;
   simTime: number;
-  rngState: number;
+  /** The charge posed for the next emission, and `null` while none stands. */
+  nextEmitted: ChargeId | null;
 }
 
 /** A charge id, or the first of the five when the argument names none. */
@@ -129,6 +129,11 @@ function asCharge(value: unknown): ChargeId {
   return CHARGE_IDS.includes(value as ChargeId)
     ? (value as ChargeId)
     : CHARGE_IDS[0];
+}
+
+/** A charge id, or `null` when the argument names none. */
+function asChargeOrNull(value: unknown): ChargeId | null {
+  return CHARGE_IDS.includes(value as ChargeId) ? (value as ChargeId) : null;
 }
 
 /** A machinery kind, or `null` when the argument names none. */
@@ -221,7 +226,7 @@ export function snapshot(state: DeepReadonly<VoluteState>): VoluteSnapshot {
     feed: state.feed,
     muted: state.muted,
     simTime: state.simTime,
-    rngState: state.rngState >>> 0,
+    nextEmitted: state.nextEmitted,
   };
 }
 
@@ -244,8 +249,7 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
     version: VOLUTE_DEBUG_VERSION,
 
     /**
-     * Restore every declared field to its title-screen value and reseed the
-     * generator.
+     * Restore every declared field to its title-screen value.
      *
      * `muted` is deliberately untouched: muting is a player preference the
      * runtime owns, and a reset is not a reason to start making noise again. So
@@ -253,10 +257,9 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      * rather than to the run being played, so a reset inside a posed scenario
      * leaves the hall held exactly as the scenario held it.
      */
-    reset(state, options) {
+    reset(state) {
       const draft = thaw(state);
       toTitle(draft);
-      draft.rngState = asNumber(options?.seed, DEFAULT_SEED) >>> 0;
       reopen();
       return freeze(draft);
     },
@@ -363,17 +366,31 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
       return freeze(draft);
     },
 
-    /** Set the charge the injector holds loaded. The generator is untouched. */
+    /** Set the charge the injector holds loaded, and nothing else. */
     setLoaded(state, charge) {
       const draft = thaw(state);
       draft.loaded = asCharge(charge);
       return freeze(draft);
     },
 
-    /** Set the charge the injector holds queued. The generator is untouched. */
+    /** Set the charge the injector holds queued, and nothing else. */
     setQueued(state, charge) {
       const draft = thaw(state);
       draft.queued = asCharge(charge);
+      return freeze(draft);
+    },
+
+    /**
+     * Pose the charge of the next core the inlet emits, or clear the pose with
+     * `null`.
+     *
+     * The next emission carries it in place of the draw, whatever the channel
+     * holds, and consumes it; the inlet's gate, the quota and the mark cadence
+     * are untouched, so a posed charge waits behind a held inlet.
+     */
+    setNextEmitted(state, charge) {
+      const draft = thaw(state);
+      draft.nextEmitted = asChargeOrNull(charge);
       return freeze(draft);
     },
 

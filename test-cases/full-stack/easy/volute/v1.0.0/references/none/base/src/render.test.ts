@@ -148,9 +148,12 @@ function surface(record?: Op[]) {
 
 /** A hall in play, with the cores given and nothing arriving. */
 function posed(cores: [number, ChargeId, MachineryKind | null][]): VoluteState {
-  const state = createState(1);
+  const state = createState();
   startLevel(state, 1);
   state.quotaRemaining = 0;
+  // Posed rather than left to the draw, so two halls posed alike draw alike.
+  state.loaded = "halide";
+  state.queued = "sulfur";
   state.cores = cores.map(([s, charge, mark]) => ({
     charge,
     s,
@@ -459,7 +462,7 @@ describe("the screens", () => {
   };
 
   it("names itself on the title, with the controls of the hall", () => {
-    const state = createState(1);
+    const state = createState();
     const drawn = copy(state);
     expect(drawn).toContain("VOLUTE");
     expect(drawn).toContain("ENTER");

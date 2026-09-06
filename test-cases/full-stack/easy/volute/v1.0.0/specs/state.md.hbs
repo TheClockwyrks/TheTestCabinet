@@ -49,8 +49,9 @@ specification is written against them.
 - Whether audio is muted. A fresh game starts with its audio unmuted, and the
   mute bit then belongs to the player: neither a `reset` nor a level opening
   moves it.
-- The state of the seeded generator every random draw comes from. A `reset` sets
-  it from the seed it is given.
+- The charge posed for the next core the inlet emits, or that none is posed. It
+  is what the debugging surface's `setNextEmitted` sets, the emission that takes
+  it clears it, and a `reset` clears it.
 
 On `title` the run's fields hold their opening values: score `0`, level `1`,
 three cells, the level's full quota still to emit, pressure `0`, chain step `1`,
@@ -123,8 +124,8 @@ export interface VoluteState {
   readonly accumulator: number;
   readonly emission: boolean;
   readonly feed: boolean;
+  readonly nextEmitted: ChargeId | null;
   readonly muted: boolean;
-  readonly rngState: number;
 }
 ```
 
@@ -215,12 +216,13 @@ differs in the fields posed and read back by reading them.
 - `emission` — whether the inlet emits, and `feed` — whether the train advances.
   Both are `true` in play. They are what the debug surface's `setEmission` and
   `setFeed` set, so a `reset` and a level opening both leave them as they stand.
+- `nextEmitted` — the charge posed for the next core the inlet emits, and `null`
+  while none is posed. It is what the debug surface's `setNextEmitted` sets, the
+  emission that takes it returns it to `null`, and a `reset` returns it to
+  `null`.
 - `muted` — the game's readable copy of the engine's mute bit, which every
   `update` carries into the state it returns. The engine owns muting, and this
   field is what the debug surface reports.
-- `rngState` — the state of the game's one seeded generator. A `reset` sets it
-  from the seed it is given, and every draw advances it: an emitted core's
-  charge, a seeded core's charge, and each charge the injector loads and queues.
 
 ## The title state
 
@@ -241,8 +243,8 @@ ended, since they report its score and level.
 | `aim` | `270` |
 | `fireCooldown`, `interlude`, `simTime`, `accumulator` | `0` |
 | `emission`, `feed` | unchanged |
+| `nextEmitted` | `null` |
 | `muted` | unchanged; `false` on a fresh game |
-| `rngState` | the seed |
 
 ## The contract
 
@@ -322,9 +324,9 @@ this specification is written against them.
 - Whether audio is muted, which the engine owns and the debug surface reports. A
   fresh game starts with its audio unmuted, and the mute bit then belongs to the
   player: neither a `reset` nor a level opening moves it.
-- The state of the seeded generator every random draw comes from: an emitted
-  core's charge, a seeded core's charge, and each charge the injector loads and
-  queues. A `reset` sets it from the seed it is given.
+- The charge posed for the next core the inlet emits, or that none is posed. It
+  is what the debugging surface's `setNextEmitted` sets, the emission that takes
+  it clears it, and a `reset` clears it.
 
 On `title` the run's values are score `0`, level `1`, `CELLS` cells, level 1's
 full quota still to emit, pressure `0`, chain step `1`, no machinery, an empty
