@@ -284,13 +284,14 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 # the same point is decided by the same-named suite in each engine's validator
 # project under `validation/<engine>/`. The three suites are the same files:
 # the three harnesses export one async API, so a point is graded identically
-# whichever runtime the run selected. Five points carry `engines = ["none"]`
+# whichever runtime the run selected. Six points carry `engines = ["none"]`
 # and live under `validation/none/` alone: the debug overlay's visibility, its
-# toggle key and its reading the game without changing it, and the stage's fit
-# to the window are the engine's own work under the two 3D runtimes, so a check
-# on them there would grade the engine rather than the build.
+# toggle key and its reading the game without changing it, the frame loop going
+# off real time, and the stage's fit to the window are the engine's own work
+# under the two 3D runtimes, so a check on them there would grade the engine
+# rather than the build.
 #
-# 819 points across 14 categories. Each asserts ONE observable behavior,
+# 820 points across 14 categories. Each asserts ONE observable behavior,
 # because a build that gets half of a compound point right must score
 # differently from one that gets all of it right. A domain's rating is
 # the worst cap among its failures, so the count weights nothing — what the split
@@ -1963,6 +1964,23 @@ domains = ["simulation", "choreography"]
 failure_cap = "scuffed"
 validation = { script = "instrumentation/advance-scales-with-the-watch-speed.test.ts", outputs = [
   { id = "scaled", name = "The run at the tick three speeds counted to", kind = "image" },
+] }
+
+# Start a run and drive it ten ticks so an axis is mid-command, then, with the
+# game taken off real time by setAutoStep(false), run thirty of the frames the
+# build's own loop asked the page for — each handed the timestamp a real loop
+# would have handed it, half a second of a loop's clock — with no advance call,
+# and read run.tick and run.axes again. — run.tick and every axis value are
+# unchanged.
+# From specs/instrumentation.md § The clock.
+[[review.categories.items]]
+id = "auto-step-off-stops-the-frame-loop"
+title = "Taken off real time, the game changes only when it is advanced"
+description = "setAutoStep(false) stops the frame loop advancing the game from the wall clock, so a run stands still across the frames the build's own loop runs and changes only when advance says so."
+domains = ["simulation"]
+failure_cap = "scuffed"
+validation = { script = "instrumentation/auto-step-off-stops-the-frame-loop.test.ts", engines = ["none"], outputs = [
+  { id = "still", name = "The run after thirty frames of the build's own loop", kind = "image" },
 ] }
 
 # Show the overlay with Backquote on the build screen of an emptied site and

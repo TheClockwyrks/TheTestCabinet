@@ -223,7 +223,8 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   // not, and this project drives enough of them for that to decide whether its
   // suites finish inside the platform's cap. The file's own header carries the
   // full reasoning, and `capture` below pumps one of the held frames so a still
-  // shows the page as it stands.
+  // shows the page as it stands, while `paintFrames` runs as many as a check
+  // about the build's own loop asks for.
   extraInitScripts: ["cues-init.js", "paint-gate.js"],
   projectRoot: PROJECT_ROOT,
 });
@@ -350,6 +351,22 @@ export interface Harness {
   capture(id: string, name: string): Promise<void>;
 
   /* ---- This engine's own, for the few suites that are about it ------------ */
+
+  /**
+   * Run `count` of the frames the build's own loop has asked the page for and
+   * this project's paint gate is holding back.
+   *
+   * FOR THE CHECK ABOUT THE CLOCK. `advance` runs the frames a check asks for;
+   * these are the frames the BUILD asked for, each handed the timestamp a real
+   * loop would have handed it — `1 / TICK_HZ` of a second apart — so a build
+   * still stepping from its frame loop steps here. A build that honours
+   * `setAutoStep(false)` draws and moves nothing.
+   *
+   * The two engine projects have no such thing: the engine owns the frame loop
+   * there and holds no frame back, so the suite that pumps one carries
+   * `engines = ["none"]`.
+   */
+  paintFrames(count: number): Promise<void>;
 
   /** Why the build's surface cannot be driven, or `null` when it can. */
   readonly surfaceFault: string | null;
@@ -502,6 +519,8 @@ export async function createHarness(
       console.log(`gantry: captured ${id} — ${name}`);
     },
 
+    paintFrames: (count) => paint(base, count),
+
     surfaceFault: base.surfaceFault,
     pageErrors: base.pageErrors,
     openingSnapshot: base.openingSnapshot,
@@ -514,7 +533,7 @@ export async function createHarness(
 }
 
 /**
- * Run one of the frames this project's paint gate is holding back.
+ * Run `count` of the frames this project's paint gate is holding back.
  *
  * As with the cue probe, a page that does not carry it is a fault in this
  * project rather than in the build — the gate is injected before a line of the
@@ -523,15 +542,22 @@ export async function createHarness(
  */
 async function paint(
   base: BaseHarness<GantrySnapshot, GantryDebugApi>,
+  count = 1,
 ): Promise<void> {
-  const ran = await base.page.evaluate((global) => {
-    const gate = (
-      window as unknown as Record<string, { pump(): void } | undefined>
-    )[global];
-    if (gate === undefined) return false;
-    gate.pump();
-    return true;
-  }, PAINT_GLOBAL);
+  const ran = await base.page.evaluate(
+    ([global, frames]) => {
+      const gate = (
+        window as unknown as Record<
+          string,
+          { pump(count: number): void } | undefined
+        >
+      )[global as string];
+      if (gate === undefined) return false;
+      gate.pump(frames as number);
+      return true;
+    },
+    [PAINT_GLOBAL, count] as [string, number],
+  );
   if (!ran) {
     throw new Error(
       `gantry: window.${PAINT_GLOBAL} is absent, so the harness's own paint ` +

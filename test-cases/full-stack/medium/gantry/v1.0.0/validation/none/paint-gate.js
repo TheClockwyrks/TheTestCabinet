@@ -31,9 +31,17 @@
 // page asked the platform for. What a held page does NOT do is run the build's
 // LOOP callback, so anything a build refreshes there and nowhere else — this
 // case's reference draws its diagnostics overlay that way — stands still until a
-// frame is pumped. `capture` pumps one before every still, so what is composited
-// is the page as it stands, and nothing else in this project needs one: what a
-// check reads off the canvas is drawn by `advance`'s own render.
+// frame is pumped. Two things pump one:
+//   * `capture` — one before every still, so what is composited is the page as
+//     it stands. Nothing else a check reads off the canvas needs one: that is
+//     drawn by `advance`'s own render.
+//   * `paintFrames(count)` — the check about the clock, which runs the frames the
+//     BUILD asked for rather than the ones a check asked for.
+//
+// A PUMPED FRAME IS THE FRAME THE PAGE WOULD HAVE HAD. The callback is handed a
+// timestamp `1000 / 60` of a second past the last one, which is what a page
+// painting freely would have handed it, so a build that steps from its frame
+// loop steps exactly as far in a pumped frame as in a real one.
 //
 // A build that never calls `requestAnimationFrame` is unaffected in every part.
 (() => {
