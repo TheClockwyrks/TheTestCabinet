@@ -250,6 +250,10 @@ A saucer's departure draws a fresh `saucerDue` as `specs/saucer.md` states, so a
 value posed while a saucer is up is replaced when that saucer leaves, and a value
 posed while none is up stands until the arrival it times.
 
+The cadence runs whenever the field holds no saucer. A saucer taken off through
+`removeSaucer()` is followed by the next arrival once `saucerClock` reaches
+`saucerDue`, exactly as one that left on its own clock is.
+
 ### The ship
 
 | Operation | Effect |

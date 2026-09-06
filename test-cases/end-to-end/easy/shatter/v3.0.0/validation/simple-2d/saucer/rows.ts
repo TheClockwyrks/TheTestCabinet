@@ -12,31 +12,24 @@
 // THE ROW IS THE GAME'S OWN DRAW. Nothing here poses a row: `setNextSaucerRow` is
 // how a check that wants a particular row gets one, and these two checks want the
 // build's draw. What IS posed is the cadence's due, through `setSaucerDue`, so an
-// arrival follows the departure before it within a quarter of a second rather
-// than after a gap of twenty-five to thirty-five; the draw of the row is the same
-// draw either way.
+// arrival follows the one before it within a quarter of a second rather than
+// after a visit of twelve seconds and a gap of twenty-five to thirty-five; the
+// draw of the row is the same draw either way. Each visit is taken off through
+// `removeSaucer` once its row is read, and `specs/instrumentation.md` has the
+// cadence run from there exactly as it does after a visit that ran out.
 //
-// NOT ONE FIGURE BELOW IS A BOUND. The game count, the sample size and the stride
-// are the scenario and its cost; every tolerance stays in the check that asserts
-// it, derived there from the figure `specs/saucer.md` fixes for it.
+// NOT ONE FIGURE BELOW IS A BOUND. The game count and the sample size are the
+// scenario and its cost; every tolerance stays in the check that asserts it,
+// derived there from the figure `specs/saucer.md` fixes for it.
 
-import { TICK_HZ } from "../constants";
 import { captureStill, type Harness } from "../harness";
-import { awaitDeparture, closeUpArrival, openSaucerGame } from "./cadence";
+import { closeUpArrival, openSaucerGame } from "./cadence";
 
 /** How many games the arrivals are read from. */
 export const GAMES = 4;
 
 /** How many consecutive visits are read from each of them. Ten each, forty in all. */
 export const ARRIVALS_PER_GAME = 10;
-
-/**
- * Half a `SAUCER_WEAVE_INTERVAL`, the stride a departure is watched for with.
- *
- * NOT A TOLERANCE. A departure is watched for, not read: the row is read on the
- * tick the arrival is caught, and {@link closeUpArrival} catches it tick by tick.
- */
-export const STRIDE = TICK_HZ / 2;
 
 /** One arrival's entry row, with the game and the visit it was read from. */
 export interface EntryRow {
@@ -52,8 +45,9 @@ export interface EntryRow {
  * as first ones rather than copies of one game's opening draw. The draw is the
  * game's own, so each game is really opened and left to run: `openSaucerGame`
  * resets, empties the field and turns the arrival gate back on, and nothing else
- * can put a saucer up. Each visit runs out on its own clock before the next is
- * brought on, and the whole gather runs undrawn but for the one still.
+ * can put a saucer up. Each visit is taken off the field once its row is read,
+ * the next is brought on with a posed due, and the whole gather runs undrawn but
+ * for the one still.
  */
 export async function readEntryRows(
   h: Harness,
@@ -65,11 +59,7 @@ export async function readEntryRows(
     openSaucerGame(h);
     let previous: number | null = null;
     for (let visit = 0; visit < ARRIVALS_PER_GAME; visit += 1) {
-      if (previous !== null) {
-        await h.quiet(async () => {
-          await awaitDeparture(h, previous as number, STRIDE);
-        });
-      }
+      if (previous !== null) h.debug.removeSaucer();
       const arrival = await closeUpArrival(h, previous);
       if (rows.length === 0) captureStill(h, still);
       rows.push({ game, id: arrival.saucer.id, y: arrival.saucer.y });

@@ -29,7 +29,7 @@ Whatever its shape, the state carries the following.
 - Every bullet the ship has in flight, each with a distinct id, its centre, its
   velocity, and the seconds of its life left.
 - Every rock on the field, each with a distinct id, its centre, its velocity, its
-  size, and its drawn spin.
+  size, and the spin it is drawn at.
 {{#if (eq variant.slug "warhead")}}
   Each rock also carries its remaining health and the seconds of hit flash left on
   it.
@@ -345,7 +345,8 @@ export class ShatterState extends GameState {
   the rock exists.
 - `x`, `y`, `vx`, `vy` — its centre and its velocity.
 - `size` — `"large"`, `"medium"`, or `"small"`.
-- `spin` — its drawn rotation, in radians. It affects nothing but the drawing.
+- `spin` — the rotation it is drawn at, in radians. It affects nothing but the
+  drawing.
 {{#if (eq variant.slug "warhead")}}
 - `health` — the hits it has left, from `1` to the full health of its size.
 - `flash` — the seconds of hit flash left on it, `0` for none.

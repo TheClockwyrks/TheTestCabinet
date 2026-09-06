@@ -18,14 +18,8 @@
 // it, derived there from the figure `specs/saucer.md` fixes for it.
 
 import { fail } from "../assert";
-import { FIELD_W, SAUCER_LIFETIME } from "../constants";
-import {
-  secondsFor,
-  startPlaying,
-  ticksFor,
-  type Harness,
-  type UntilResult,
-} from "../harness";
+import { FIELD_W } from "../constants";
+import { secondsFor, startPlaying, ticksFor, type Harness } from "../harness";
 import type {
   BulletSnapshot,
   SaucerSnapshot,
@@ -150,35 +144,6 @@ export async function closeUpArrival(
     stride: 1,
     maxTicks: ticksFor(SHORT_DUE) * 4,
   });
-}
-
-/** How long a wait for a departure runs before the scenario is unreachable. */
-const DEPARTURE_CEILING_TICKS = ticksFor(SAUCER_LIFETIME + 1);
-
-/**
- * Run until the field is clear of the saucer `id`, and report how long it took.
- *
- * A visit ends on its own clock, `SAUCER_LIFETIME` after it entered
- * (`specs/saucer.md`), so a sweep of a little over that always finds the field
- * clear on a conformant build; the cadence to the next arrival runs from there.
- */
-export async function awaitDeparture(
-  h: Harness,
-  id: number,
-  stride: number,
-): Promise<UntilResult> {
-  const left = await h.until(
-    (snapshot) => snapshot.saucer === null || snapshot.saucer.id !== id,
-    { poll: stride, maxFrames: DEPARTURE_CEILING_TICKS },
-  );
-  if (!left.hit) {
-    fail(
-      `saucer ${id} leaving the field within SAUCER_LIFETIME ` +
-        `(${SAUCER_LIFETIME} s) of game time (specs/saucer.md)`,
-      "it was still on the field a second past that",
-    );
-  }
-  return left;
 }
 
 /** How near an edge a centre stands, across the seam, in logical units. */

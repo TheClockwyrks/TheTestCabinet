@@ -17,12 +17,19 @@
 // two rocks standing side by side differ for reasons that have nothing to do with
 // health, and a check that compared them would pass any build at all. Instead one
 // Large is read at full health, its health is posed down to `1` through
-// `setRockHealth`, and it is read again one frame later: `specs/rocks.md` makes
-// the spin slow, so one tick of it shifts the drawing by well under half a pixel,
-// and the ONLY thing that can have changed by more is the look its health gives
-// it. The health is POSED rather than shot on, so what is read is the damaged
-// look and not the hit flash `armor/hit-flash` grades: `setRockHealth` produces
-// no hit.
+// `setRockHealth`, and it is read again one frame later, so the ONLY thing that
+// can have changed between the two readings beyond what one tick does to the
+// rock on its own is the look its health gives it. The health is POSED rather
+// than shot on, so what is read is the damaged look and not the hit flash
+// `armor/hit-flash` grades: `setRockHealth` produces no hit.
+//
+// THE NOISE FLOOR IS MEASURED, NOT ASSUMED. `specs/rocks.md` gives every rock a
+// slow drawn rotation and fixes no rate for it, so the samples inside the rock
+// move from tick to tick with nothing happening. Before the health is posed the
+// same rock is read across one tick at full health, and how many samples that
+// tick redrew is the floor the damaged look has to clear as well as the fixed
+// one. A build whose rock spins visibly is held to its own spin, the way
+// `armor/hit-flash` holds the flash to it.
 //
 // THE SAMPLE IS 441 POINTS INSIDE THE ROCK'S OUTLINE: a 21 by 21 grid over the
 // square INSCRIBED in a Large's collision circle, so every point of it lies inside
@@ -77,12 +84,11 @@ const MIN_DIFFERING = 30;
  * How far apart two samples must be to count as differing, on the 0–441 scale
  * `colorDistance` measures in.
  *
- * The two frames are of the same rock one tick apart, so a pixel its health did
- * not touch is the same colour in both but for the fraction of a pixel its slow
- * spin moved the drawing. Sixteen is about a twentieth of one channel, well above
- * what that shift does to an anti-aliased edge and far below the contrast of any
+ * Sixteen is about a twentieth of one channel, far below the contrast of any
  * mark a build would draw to say "damaged"; below it two colours are the same
- * colour to a player.
+ * colour to a player. What one tick of the rock's own spin does to the samples
+ * is measured rather than assumed, and the count it moves by more than this is
+ * the floor the damaged reading has to clear.
  */
 const DIFFERENT = 16;
 
@@ -118,13 +124,25 @@ function readGrid(target: Harness): Rgb[] {
   });
 }
 
+/** How many of the 441 samples moved by more than {@link DIFFERENT}. */
+function differing(before: readonly Rgb[], after: readonly Rgb[]): number {
+  return after.filter(
+    (colour, index) => colorDistance(colour, before[index]) > DIFFERENT,
+  ).length;
+}
+
 it("draws a Large at health 1 differently from the same Large at full health", async () => {
   startPlaying(h);
   const rock = poseRock(h, "large", DAMAGED_SPOT.x, DAMAGED_SPOT.y);
 
-  // One frame, so the rock is on the canvas, and the undamaged reading.
+  // THE QUIET TICK. The rock at full health, read one frame apart with nothing
+  // happening to it: how many samples the build's own cosmetic spin redraws
+  // across one tick is the floor the damaged look has to clear.
+  await h.advance(1);
+  const quiet = readGrid(h);
   await h.advance(1);
   const whole = readGrid(h);
+  const spin = differing(quiet, whole);
 
   // The same rock, damaged, one frame later.
   poseHealth(h, rock, DAMAGED);
@@ -147,17 +165,14 @@ it("draws a Large at health 1 differently from the same Large at full health", a
     "sample points read inside the damaged Large's outline",
   );
 
-  const differing = damaged.filter(
-    (colour, index) => colorDistance(colour, whole[index]) > DIFFERENT,
-  ).length;
-
   assertGreaterThan(
-    differing,
-    MIN_DIFFERING,
+    differing(whole, damaged),
+    Math.max(MIN_DIFFERING, spin),
     `of ${GRID * GRID} points sampled inside the rock's outline, how many ` +
       `are drawn differently at health ${DAMAGED} than at ROCK_HEALTH.large ` +
-      `(${FULL}) — everything else about the two frames being identical. ` +
-      "specs/rocks.md draws a rock progressively more damaged as its health " +
-      "falls, so a player can judge how many hits it has left",
+      `(${FULL}) one tick earlier. specs/rocks.md draws a rock progressively ` +
+      "more damaged as its health falls, so a player can judge how many hits " +
+      `it has left. The bound is the larger of ${MIN_DIFFERING} and the ` +
+      `${spin} the same rock's own spin redrew across one tick at full health`,
   );
 });

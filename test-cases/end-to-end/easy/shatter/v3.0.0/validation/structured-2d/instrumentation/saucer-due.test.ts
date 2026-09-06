@@ -11,6 +11,16 @@
 // seconds, well short of the `18` a game begins with, and the field is watched:
 // clear half a second before the due, a saucer up within a stride after it.
 //
+// THE CLOCK IS READ BEFORE THE POSE AND AFTER IT, and the two readings are held
+// to each other: "stands where it is" is a claim about the operation, so the
+// figure it is checked against is the clock the build reported the moment
+// before, whatever that was. The game is opened by a real `confirm`, and the
+// specs fix the order of work inside a tick, not whether the frame that carries
+// the confirm steps its ticks before or after the key is applied — so a build
+// may report the clock at one tick or at `0` here, and either is right. Every
+// later moment is counted from that reading rather than from the harness's
+// frame count.
+//
 // THE STRIDE is a tenth of a second, and the arrival may be read up to one
 // stride late, so the bound on when it came carries one stride at each end.
 
@@ -51,6 +61,7 @@ afterEach(() => {
 
 it("brings the next saucer in when the clock reaches the posed due", async () => {
   const opened = await openQuietGame(h);
+  const standing = h.snapshot().saucerClock;
   h.debug.setSaucerDue(POSED_DUE);
   const posed = h.snapshot();
   assertCloseTo(
@@ -61,13 +72,15 @@ it("brings the next saucer in when the clock reaches the posed due", async () =>
   );
   assertCloseTo(
     posed.saucerClock,
-    seconds(opened),
+    standing,
     READ_BACK_DIGITS,
-    "saucerClock standing where it was, at the start of the cadence " +
+    "saucerClock standing where it was the moment before the due was posed " +
       "(specs/instrumentation.md)",
   );
 
-  await h.quiet(() => h.advance(BEFORE_DUE - opened));
+  // Half a second short of the due, counted on the build's own clock.
+  const beforeDue = BEFORE_DUE - opened;
+  await h.quiet(() => h.advance(beforeDue));
   assertEqual(
     h.snapshot().saucer,
     null,
@@ -87,10 +100,10 @@ it("brings the next saucer in when the clock reaches the posed due", async () =>
       "(specs/instrumentation.md)",
   );
   assertBetween(
-    seconds(BEFORE_DUE + arrival.frames),
+    standing + seconds(beforeDue + arrival.frames),
     POSED_DUE - seconds(STRIDE),
     POSED_DUE + seconds(STRIDE),
-    "the seconds of game time the saucer arrived at, against the posed due " +
-      "(specs/instrumentation.md)",
+    "the seconds the cadence had run when the saucer arrived, against the " +
+      "posed due (specs/instrumentation.md)",
   );
 });

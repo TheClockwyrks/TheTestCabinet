@@ -51,13 +51,7 @@
 // group in this suite marches minutes of game time.
 
 import { ConstantClock } from "@clockwyrks/structured-2d";
-import {
-  FACE_UP,
-  SAFE_X,
-  SAFE_Y,
-  SAUCER_LIFETIME,
-  TICK_HZ,
-} from "../constants";
+import { FACE_UP, SAFE_X, SAFE_Y, TICK_HZ } from "../constants";
 import { fail } from "../assert";
 import {
   clearCalls,
@@ -320,29 +314,4 @@ export async function closeUpArrival(h: Harness): Promise<Visit> {
     );
   }
   return visit;
-}
-
-/**
- * Run until the field is clear of the saucer `id`.
- *
- * A visit ends on its own clock, `SAUCER_LIFETIME` after it entered
- * (`specs/saucer.md`), so a watch of a little over that always finds the field
- * clear on a conformant build; the cadence to the next arrival runs from there.
- * Undrawn, like every watch here.
- */
-export async function awaitDeparture(h: Harness, id: number): Promise<void> {
-  const left = await h.quiet(() =>
-    h.until(
-      (snapshot) => snapshot.saucer === null || snapshot.saucer.id !== id,
-      { poll: 1, maxFrames: marchFrames(SAUCER_LIFETIME + 1) },
-    ),
-  );
-  clearCalls(h);
-  if (!left.hit) {
-    fail(
-      `saucer ${id} leaving the field within SAUCER_LIFETIME ` +
-        `(${SAUCER_LIFETIME} s) of game time (specs/saucer.md)`,
-      "it was still on the field a second past that",
-    );
-  }
 }
