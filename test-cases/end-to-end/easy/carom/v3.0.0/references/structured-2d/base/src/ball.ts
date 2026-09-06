@@ -36,6 +36,7 @@ import {
 import { glowCircle, type Ctx } from "./draw";
 import { step } from "./physics";
 import { obstacleRects } from "./scenery";
+import { drawServeSign } from "./random";
 import { parkedBall, type BallSim, type Side } from "./sim";
 import { caromState, type Screen } from "./state";
 import { Paddle } from "./paddle";
@@ -51,6 +52,11 @@ export class Ball extends Actor {
   held = true;
   /** Seconds remaining of that wait. */
   holdTimer = HOLD_TIME;
+  /**
+   * The vertical sign the serve takes, drawn afresh whenever the ball is parked
+   * and posed by the debug surface (specs/balls.md).
+   */
+  serveSign: 1 | -1 = drawServeSign();
   /** Recent positions, oldest first, for the motion trail. */
   trail: readonly TrailSample[] = [];
 
@@ -71,10 +77,14 @@ export class Ball extends Actor {
     };
   }
 
-  /** Park at the field center, motionless and spinless, with no trail. */
+  /**
+   * Park at the field center, motionless and spinless, with no trail and a
+   * fresh serve sign.
+   */
   park(): void {
     this.pose(parkedBall());
     this.trail = [];
+    this.serveSign = drawServeSign();
   }
 
   /**

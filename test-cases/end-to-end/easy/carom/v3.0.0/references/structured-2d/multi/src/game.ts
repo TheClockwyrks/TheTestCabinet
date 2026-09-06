@@ -6,8 +6,8 @@
 // class. The instance is the ONE framework object that outlives every level
 // transition (the engine constructs it once and keeps it), so it carries
 // exactly the state specs/state.md needs to survive a transition — the mode,
-// the title menu's remembered selection, the simulation clock, the seeded
-// generator, the AI's two faculties, and the debug driver's hold on each
+// the title menu's remembered selection, the simulation clock, the AI's two
+// faculties, and the debug driver's hold on each
 // paddle — and nothing that belongs to a level: the screen, the menus, the
 // scores, and the field's bodies live in the world the open level built
 // (src/state.ts, src/field.ts).
@@ -33,7 +33,7 @@
 import { GameInstance } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { defineCues } from "./audio";
-import { DEFAULT_SEED, LEVELS } from "./constants";
+import { LEVELS } from "./constants";
 import { createDebugSurface, type CaromDebug } from "./debug";
 import { diagnosticSources } from "./diagnostics";
 import {
@@ -45,7 +45,6 @@ import {
 import { registerActions } from "./input";
 import { match, title } from "./levels";
 import { MatchMode } from "./match-mode";
-import { nextAngle } from "./rng";
 import { CaromState, isTitleScreen, type Mode, type Screen } from "./state";
 import { COLOR } from "./theme";
 import type { PressOrigins } from "./menus";
@@ -127,12 +126,6 @@ export class CaromGame extends GameInstance<CaromDebug> {
    */
   simTime = 0;
 
-  /** The seed the generator was last seeded from. */
-  seed: number = DEFAULT_SEED;
-
-  /** The seeded generator's whole state (src/rng.ts). */
-  rngState: number = DEFAULT_SEED;
-
   /** The AI's two faculties (specs/instrumentation.md). */
   readonly ai: AiFaculties = { tracking: true, movement: true };
 
@@ -197,19 +190,6 @@ export class CaromGame extends GameInstance<CaromDebug> {
 
   // ---- The primitives the menus and the debug surface drive ---------------
 
-  /** Draw a launch's angle from the seeded generator (specs/balls.md). */
-  drawLaunchAngle(): number {
-    const [angle, next] = nextAngle(this.rngState);
-    this.rngState = next;
-    return angle;
-  }
-
-  /** Seed the generator, setting both `seed` and `rngState` to `seed`. */
-  reseed(seed: number): void {
-    this.seed = seed;
-    this.rngState = seed;
-  }
-
   /**
    * Start a match, as SOLO and VERSUS on the title, RESTART on the pause menu,
    * and PLAY AGAIN after a match all do (specs/ui.md, "Starting a match"): the
@@ -222,7 +202,7 @@ export class CaromGame extends GameInstance<CaromDebug> {
 
   /**
    * Return to the title, restoring every declared field to its title-screen
-   * value except `titleIndex`, `simTime`, `muted`, `seed`, and `rngState`, and
+   * value except `titleIndex`, `simTime`, and `muted`, and
    * with `menuIndex` taken from `menuIndex` (specs/ui.md).
    *
    * The world is posed at once so a reading taken before the next frame already

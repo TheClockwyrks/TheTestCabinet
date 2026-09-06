@@ -5,8 +5,8 @@
 //
 //   * The game INSTANCE (`src/game.ts`) carries what must survive a level
 //     transition: the mode of the current or most recent match, the title
-//     menu's remembered selection, the simulation clock, the seeded
-//     generator, and — while a transition is in flight — the carried state the
+//     menu's remembered selection, the simulation clock, and — while a
+//     transition is in flight — the carried state the
 //     incoming world is dressed from (`src/carry.ts`).
 //   * The world's GAME STATE (`CaromState`, below) carries the screen, the
 //     menus, the match figures, the AI's two faculties, and the obstacle
@@ -85,7 +85,7 @@ export class CaromState extends GameState {
    * The game instance, bound by `CaromGame.worldOpened` before the world's
    * first frame. It is how the world's controllers, mode, and components reach
    * the state that outlives a world: the mode, the title menu's remembered
-   * selection, the simulation clock, and the seeded generator.
+   * selection, and the simulation clock.
    */
   declare game: CaromGame;
 

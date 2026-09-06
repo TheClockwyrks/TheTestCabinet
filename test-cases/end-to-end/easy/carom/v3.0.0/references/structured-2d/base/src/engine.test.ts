@@ -410,8 +410,7 @@ describe("initialization", () => {
     expect(snapshot.winner).toBeNull();
     expect(snapshot.receiver).toBe("left");
     expect(snapshot.muted).toBe(false);
-    expect(snapshot.seed).toBe(1);
-    expect(snapshot.rngState).toBe(1);
+    expect(Math.abs(snapshot.ball?.serveSign ?? 0)).toBe(1);
     expect(snapshot.ai).toEqual({ tracking: true, movement: true });
     expect(snapshot.paddles.left).toEqual({
       cy: FIELD_CY,
@@ -429,6 +428,7 @@ describe("initialization", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
     expect(snapshot.obstacles).toEqual(
@@ -794,42 +794,25 @@ describe("serving", () => {
     expect(angle).toBeCloseTo(SERVE_ANGLE, 6);
   });
 
-  it("replays the same serve from the same seed", async () => {
-    const first = await servedBall(7);
-    const second = await servedBall(7);
-    const other = await servedBall(1234);
-    expect(first).toEqual(second);
-    // The seed genuinely feeds the draw: some seed disagrees.
-    expect(first.vy === other.vy && first.vx === other.vx).toBe(
-      Math.sign(first.vy) === Math.sign(other.vy),
-    );
-  });
-
-  it("advances the generator's state on every draw", async () => {
-    openCountdown(harness, "versus");
-    harness.debug.setSeed(42);
-    expect(harness.snapshot().seed).toBe(42);
-    expect(harness.snapshot().rngState).toBe(42);
-
-    harness.debug.setBallHoldTimer(0);
-    await harness.engine.advance(1);
-    expect(harness.snapshot().seed).toBe(42);
-    expect(harness.snapshot().rngState).not.toBe(42);
-  });
-
-  async function servedBall(seed: number): Promise<{ vx: number; vy: number }> {
-    const h = await createHarness();
-    try {
-      openCountdown(h, "versus");
-      h.debug.setSeed(seed);
-      h.debug.setBallHoldTimer(0);
-      await h.engine.advance(1);
-      const ball = h.snapshot().ball;
-      return { vx: ball?.vx ?? 0, vy: ball?.vy ?? 0 };
-    } finally {
-      h.dispose();
+  it("serves with the sign the ball holds, and leaves it as it is", async () => {
+    for (const sign of [-1, 1] as const) {
+      openCountdown(harness, "versus");
+      harness.debug.setBallServeSign(sign);
+      harness.debug.setBallHoldTimer(0);
+      await harness.engine.advance(1);
+      expect(Math.sign(harness.snapshot().ball?.vy ?? 0)).toBe(sign);
+      expect(harness.snapshot().ball?.serveSign).toBe(sign);
     }
-  }
+  });
+
+  it("draws the serve sign afresh whenever the ball is parked", () => {
+    const signs = new Set<number>();
+    for (let i = 0; i < 200 && signs.size < 2; i++) {
+      harness.debug.spawnBall();
+      signs.add(harness.snapshot().ball?.serveSign ?? 0);
+    }
+    expect(signs).toEqual(new Set([-1, 1]));
+  });
 });
 
 // ---- The rally ----------------------------------------------------------
@@ -1199,7 +1182,7 @@ describe("the debug surface", () => {
     harness.debug.setScore(4, 6);
     harness.debug.setWinner("right");
     harness.debug.setReceiver("right");
-    harness.debug.setSeed(99);
+    harness.debug.setBallServeSign(-1);
     harness.debug.setAiTracking(false);
     harness.debug.setAiMovement(false);
 
@@ -1211,8 +1194,7 @@ describe("the debug surface", () => {
     expect(snapshot.score).toEqual({ p1: 4, p2: 6 });
     expect(snapshot.winner).toBe("right");
     expect(snapshot.receiver).toBe("right");
-    expect(snapshot.seed).toBe(99);
-    expect(snapshot.rngState).toBe(99);
+    expect(snapshot.ball?.serveSign).toBe(-1);
     expect(snapshot.ai).toEqual({ tracking: false, movement: false });
 
     harness.debug.setWinner(null);
@@ -1271,6 +1253,7 @@ describe("the debug surface", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
   });
@@ -1326,7 +1309,6 @@ describe("the debug surface", () => {
     harness.debug.setTitleIndex(2);
     harness.debug.setAiTracking(false);
     harness.debug.setAiMovement(false);
-    harness.debug.setSeed(31);
     harness.debug.clearWorld();
     harness.tap("KeyM");
     await harness.engine.advance(5);
@@ -1343,8 +1325,6 @@ describe("the debug surface", () => {
     expect(title.score).toEqual({ p1: 0, p2: 0 });
     expect(title.winner).toBeNull();
     expect(title.receiver).toBe("left");
-    expect(title.seed).toBe(1);
-    expect(title.rngState).toBe(1);
     expect(title.ai).toEqual({ tracking: true, movement: true });
     expect(title.paddles.left).toEqual({
       cy: FIELD_CY,

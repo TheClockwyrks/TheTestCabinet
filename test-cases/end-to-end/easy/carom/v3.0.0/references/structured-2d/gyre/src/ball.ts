@@ -28,6 +28,7 @@ import type { DrawApi } from "@clockwyrks/structured-2d";
 import { BALL_R, CUES, HOLD_TIME, TAGS } from "./constants";
 import { glowCircle, type Ctx } from "./draw";
 import { step } from "./physics";
+import { drawServeSign } from "./random";
 import { parkedBall, type BallSim } from "./sim";
 import { Obstacle } from "./scenery";
 import { caromState, screenOf } from "./state";
@@ -44,6 +45,11 @@ export class Ball extends Actor {
   held = true;
   /** Seconds remaining of that wait. */
   holdTimer = HOLD_TIME;
+  /**
+   * The vertical sign the serve takes, drawn afresh whenever the ball is parked
+   * and posed by the debug surface (specs/balls.md).
+   */
+  serveSign: 1 | -1 = drawServeSign();
   /** Recent positions, oldest first, for the motion trail. */
   trail: readonly TrailSample[] = [];
 
@@ -73,6 +79,7 @@ export class Ball extends Actor {
     this.held = true;
     this.holdTimer = HOLD_TIME;
     this.trail = [];
+    this.serveSign = drawServeSign();
   }
 
   /** Write a computed motion back onto the actor. */

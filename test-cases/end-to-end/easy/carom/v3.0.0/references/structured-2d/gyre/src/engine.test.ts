@@ -29,7 +29,6 @@ import {
   AI_HOME_Y,
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -394,8 +393,7 @@ describe("initialization", () => {
     expect(snapshot.winner).toBeNull();
     expect(snapshot.receiver).toBe("left");
     expect(snapshot.muted).toBe(false);
-    expect(snapshot.seed).toBe(DEFAULT_SEED);
-    expect(snapshot.rngState).toBe(DEFAULT_SEED);
+    expect(Math.abs(snapshot.ball?.serveSign ?? 0)).toBe(1);
     expect(snapshot.paddles.left).toEqual({
       cy: FIELD_CY,
       vy: 0,
@@ -413,6 +411,7 @@ describe("initialization", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
     // The title shows the clock-zero pose a match will open on: both obstacles
@@ -849,7 +848,6 @@ describe("the debug surface", () => {
       "spawnBall",
       "spawnObstacle",
       "reset",
-      "setSeed",
       "setScreen",
       "setMode",
       "setMenuIndex",
@@ -866,6 +864,8 @@ describe("the debug surface", () => {
       "setBallSpin",
       "setBallHeld",
       "setBallHoldTimer",
+      "setBallServeSign",
+      "drawBallServeSign",
       "setAiTracking",
       "setAiMovement",
       "setMuted",
@@ -908,7 +908,7 @@ describe("the debug surface", () => {
     d.setBallSpin(66);
     d.setBallHeld(false);
     d.setBallHoldTimer(0.25);
-    d.setSeed(1234);
+    d.setBallServeSign(-1);
 
     const s = harness.snapshot();
     expect(s.mode).toBe("solo");
@@ -934,8 +934,7 @@ describe("the debug surface", () => {
     expect(s.ai).toEqual({ tracking: false, movement: false });
     expect(s.obstacleClock).toBe(0.75);
     expect(s.obstacleClockRunning).toBe(false);
-    expect(s.seed).toBe(1234);
-    expect(s.rngState).toBe(1234);
+    expect(ball(s).serveSign).toBe(-1);
     expect(ball(s).x).toBe(300);
     expect(ball(s).y).toBe(250);
     expect(ball(s).vx).toBe(120);
@@ -1037,7 +1036,6 @@ describe("the debug surface", () => {
     expect(harness.snapshot().muted).toBe(true);
     harness.debug.setScore(6, 2);
     harness.debug.setTitleIndex(2);
-    harness.debug.setSeed(99);
     harness.debug.setAiTracking(false);
     harness.debug.setPaddleDriven("right", true);
     harness.debug.clearWorld();
@@ -1055,8 +1053,6 @@ describe("the debug surface", () => {
     expect(s.receiver).toBe("left");
     expect(s.ai).toEqual({ tracking: true, movement: true });
     expect(s.paddles.right.driven).toBe(false);
-    expect(s.seed).toBe(DEFAULT_SEED);
-    expect(s.rngState).toBe(DEFAULT_SEED);
     expect(s.obstacles).toHaveLength(OBSTACLES.length);
     expect(ball(s).held).toBe(true);
     // The engine owns the mute bit, so a reset does not touch it.
@@ -1088,42 +1084,33 @@ describe("serving", () => {
     );
   });
 
-  it("serves toward the receiver, and draws the vertical sign from the seed", async () => {
+  it("serves toward the receiver, with the sign the ball holds", async () => {
     await countdown(harness, "versus");
     harness.debug.setReceiver("right");
     harness.debug.setBallHoldTimer(0);
     await harness.advance(2);
     expect(ball(harness.snapshot()).vx).toBeGreaterThan(0);
 
-    // Sixteen serves off one seed leave upward on some and downward on others.
-    const signs = new Set<number>();
-    for (let i = 0; i < 16; i++) {
+    // A posed sign is the sign the serve takes, and the serve leaves it as it is.
+    for (const sign of [-1, 1] as const) {
       harness.debug.spawnBall();
+      harness.debug.setBallServeSign(sign);
       harness.debug.setBallHoldTimer(0);
       harness.debug.setScreen("countdown");
       await harness.advance(2);
-      signs.add(Math.sign(ball(harness.snapshot()).vy));
+      expect(Math.sign(ball(harness.snapshot()).vy)).toBe(sign);
+      expect(ball(harness.snapshot()).serveSign).toBe(sign);
     }
-    expect(signs).toEqual(new Set([1, -1]));
   });
 
-  it("reproduces a run of serves exactly from one seed", async () => {
-    const run = async (): Promise<number[]> => {
-      harness.debug.reset();
-      await harness.advance(1);
-      harness.debug.setSeed(7);
-      await show(harness, "countdown");
-      const out: number[] = [];
-      for (let i = 0; i < 6; i++) {
-        harness.debug.spawnBall();
-        harness.debug.setBallHoldTimer(0);
-        harness.debug.setScreen("countdown");
-        await harness.advance(2);
-        out.push(ball(harness.snapshot()).vy);
-      }
-      return out;
-    };
-    expect(await run()).toEqual(await run());
+  it("draws the serve sign afresh whenever the ball is parked", async () => {
+    await countdown(harness, "versus");
+    const signs = new Set<number>();
+    for (let i = 0; i < 200 && signs.size < 2; i++) {
+      harness.debug.spawnBall();
+      signs.add(ball(harness.snapshot()).serveSign);
+    }
+    expect(signs).toEqual(new Set([1, -1]));
   });
 });
 

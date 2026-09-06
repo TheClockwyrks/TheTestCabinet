@@ -41,11 +41,7 @@
 import type { World } from "@clockwyrks/structured-2d";
 import { Ball, ballOf, spawnBallActor } from "./ball";
 import { CaromMode } from "./carom-mode";
-import {
-  CAROM_DEBUG_VERSION,
-  DEFAULT_SEED,
-  OBSTACLE_CENTERS,
-} from "./constants";
+import { CAROM_DEBUG_VERSION, OBSTACLE_CENTERS } from "./constants";
 import type { CaromGame } from "./game";
 import { menuItemRect as rectOf, type MenuRect } from "./menu";
 import { paddleOf } from "./paddle";
@@ -59,6 +55,7 @@ import {
   type Screen,
 } from "./state";
 import type { TrailSample } from "./trail";
+import { drawServeSign } from "./random";
 
 /** One sample of the ball's trail, as a snapshot reports it. */
 export interface TrailPoint {
@@ -81,6 +78,8 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** The vertical sign the serve takes. */
+  serveSign: 1 | -1;
   /** The ball's trail samples, oldest first. */
   trail: TrailPoint[];
 }
@@ -128,10 +127,6 @@ export interface CaromSnapshot {
   winner: Side | null;
   /** Whether the mute toggle is currently on. */
   muted: boolean;
-  /** The seed the generator was last seeded from. */
-  seed: number;
-  /** That generator's current state, as a single number. */
-  rngState: number;
   paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
   /** The AI's two faculties, each gated on its own. */
   ai: { tracking: boolean; movement: boolean };
@@ -157,7 +152,6 @@ export interface CaromDebug {
   spawnBall(): void;
   spawnObstacle(index: number): void;
   reset(): void;
-  setSeed(seed: number): void;
 
   /* Screens and menus. */
   setScreen(screen: Screen): void;
@@ -182,6 +176,8 @@ export interface CaromDebug {
   setBallSpin(spin: number): void;
   setBallHeld(held: boolean): void;
   setBallHoldTimer(seconds: number): void;
+  setBallServeSign(sign: 1 | -1): void;
+  drawBallServeSign(): void;
 
   /* The AI opponent: one operation per faculty. */
   setAiTracking(enabled: boolean): void;
@@ -221,6 +217,7 @@ function ballSnapshot(ball: Ball | null): BallSnapshot | null {
     spin: ball.spin,
     held: ball.held,
     holdTimer: ball.holdTimer,
+    serveSign: ball.serveSign,
     trail: trailOf(ball.trail),
   };
 }
@@ -287,7 +284,6 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
 
       game.titleIndex = 0;
       game.simTime = 0;
-      game.setSeed(DEFAULT_SEED);
       game.ai.tracking = true;
       game.ai.movement = true;
       for (const side of ["left", "right"] as const) {
@@ -308,11 +304,6 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
       mode.centerPaddles();
       mode.standardWorld();
       mode.setPhase("playing");
-    },
-
-    /** The generator seeded: `seed` is the value given, `rngState` its start. */
-    setSeed(seed) {
-      game.setSeed(seed);
     },
 
     // ---- Screens and menus ----------------------------------------------
@@ -418,6 +409,20 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
       });
     },
 
+    /** The vertical sign the ball's serve takes, `1` or `-1`. */
+    setBallServeSign(sign) {
+      withBall((ball) => {
+        ball.serveSign = sign < 0 ? -1 : 1;
+      });
+    },
+
+    /** The one draw parking makes, made again on its own (specs/balls.md). */
+    drawBallServeSign() {
+      withBall((ball) => {
+        ball.serveSign = drawServeSign();
+      });
+    },
+
     // ---- The AI opponent -------------------------------------------------
 
     setAiTracking(enabled) {
@@ -454,8 +459,6 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
         score: { p1: p1?.score ?? 0, p2: p2?.score ?? 0 },
         winner: current.winner,
         muted: open.audio.muted(),
-        seed: game.seed,
-        rngState: game.rngState,
         paddles: {
           left: {
             cy: left.transform.y,

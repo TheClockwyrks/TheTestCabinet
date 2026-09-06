@@ -5,8 +5,7 @@
 //
 //   * The game INSTANCE (`src/game.ts`) carries what must survive a level
 //     transition: the remembered title selection, the simulation clock, the
-//     seeded generator, the AI's two faculties, and the debug surface's hold on
-//     each paddle.
+//     AI's two faculties, and the debug surface's hold on each paddle.
 //   * The open world's GAME STATE (`CaromState`, below) carries what a level
 //     scopes: the screen, the mode, the two menu figures, the winner, and the
 //     side the next serve travels toward. The two scores live on the player

@@ -297,10 +297,9 @@ export abstract class CaromMode extends GameMode {
   private serve(ball: Ball): void {
     const state = this.state;
     const dir = state.receiver === "left" ? -1 : 1;
-    // The SIGN of the serve's vertical component is the one draw this game
-    // makes from its seeded generator, kept on the instance so a reseeded
-    // replay crosses the level transition a match opens with.
-    const sign = state.game.drawServeSign();
+    // The SIGN of the serve's vertical component is the ball's own, drawn when
+    // it was parked or posed since, and the serve leaves it as it is.
+    const sign = ball.serveSign;
     ball.holdTimer = 0;
     ball.held = false;
     ball.trail = [];

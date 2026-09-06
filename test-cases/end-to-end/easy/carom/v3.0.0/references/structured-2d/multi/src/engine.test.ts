@@ -37,7 +37,6 @@ import {
   BALL_HOMES,
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CY,
   FIELD_H,
   FIELD_W,
@@ -413,8 +412,6 @@ describe("initialization", () => {
     expect(snapshot.score).toEqual({ p1: 0, p2: 0 });
     expect(snapshot.winner).toBeNull();
     expect(snapshot.muted).toBe(false);
-    expect(snapshot.seed).toBe(DEFAULT_SEED);
-    expect(snapshot.rngState).toBe(DEFAULT_SEED);
     expect(snapshot.ai).toEqual({ tracking: true, movement: true });
     expect(snapshot.simTime).toBe(0);
     const rest = { cy: FIELD_CY, vy: 0, drivenVy: 0, driven: false };
@@ -431,6 +428,7 @@ describe("initialization", () => {
         spin: 0,
         held: true,
         holdTimer: HOLD_TIME,
+        launchAngle: expect.any(Number),
         trail: [],
       })),
     );
@@ -758,42 +756,32 @@ describe("launching", () => {
     }
   });
 
-  it("draws a fresh angle for every launch, over the whole circle", async () => {
+  it("draws a fresh angle over the whole circle whenever a ball is parked", async () => {
+    await openCountdown(harness, "versus");
     const quadrants = new Set<number>();
-    for (let seed = 1; seed <= 40; seed++) {
-      await openCountdown(harness, "versus");
-      harness.debug.setSeed(seed);
-      endHolds(harness);
-      await harness.engine.advance(1);
-      for (const ball of harness.snapshot().balls) {
-        const angle = Math.atan2(ball.vy, ball.vx) + Math.PI;
-        quadrants.add(Math.floor(angle / (Math.PI / 2)) % 4);
-      }
+    for (let i = 0; i < 200 && quadrants.size < 4; i++) {
+      harness.debug.spawnBall(0);
+      const angle = harness.snapshot().balls[0].launchAngle;
+      quadrants.add(Math.floor(angle / (Math.PI / 2)) % 4);
     }
     expect(quadrants).toEqual(new Set([0, 1, 2, 3]));
   });
 
-  it("replays the same three launches from the same seed", async () => {
-    const first = await launchedBalls(4242);
-    const second = await launchedBalls(4242);
-    const other = await launchedBalls(7);
-    expect(first).toEqual(second);
-    // The seed genuinely feeds the draws: another seed launches differently.
-    expect(first).not.toEqual(other);
+  it("launches each ball along the angle it holds, and leaves it as it is", async () => {
+    await openCountdown(harness, "versus");
+    const angles = [0.4, 2.0, 4.5];
+    angles.forEach((angle, index) => {
+      harness.debug.setBallLaunchAngle(index, angle);
+    });
+    endHolds(harness);
+    await harness.engine.advance(1);
+    const balls = harness.snapshot().balls;
+    angles.forEach((angle, index) => {
+      expect(balls[index].launchAngle).toBe(angle);
+      const flown = Math.atan2(balls[index].vy, balls[index].vx);
+      expect(Math.cos(flown - angle)).toBeCloseTo(1, 3);
+    });
   });
-
-  async function launchedBalls(seed: number): Promise<BallSnapshot[]> {
-    const h = await createHarness();
-    try {
-      await openCountdown(h, "versus");
-      h.debug.setSeed(seed);
-      endHolds(h);
-      await h.engine.advance(1);
-      return h.snapshot().balls;
-    } finally {
-      h.dispose();
-    }
-  }
 });
 
 // ---- The rally ----------------------------------------------------------
@@ -1222,7 +1210,7 @@ describe("the debug surface", () => {
     harness.debug.setResumeScreen("countdown");
     harness.debug.setScore(3, 4);
     harness.debug.setWinner("right");
-    harness.debug.setSeed(99);
+    harness.debug.setBallLaunchAngle(1, 2.5);
     harness.debug.setAiTracking(false);
     harness.debug.setPaddleCy("left", 200);
     harness.debug.setPaddleVy("left", 150);
@@ -1235,8 +1223,7 @@ describe("the debug surface", () => {
     expect(snapshot.resumeScreen).toBe("countdown");
     expect(snapshot.score).toEqual({ p1: 3, p2: 4 });
     expect(snapshot.winner).toBe("right");
-    expect(snapshot.seed).toBe(99);
-    expect(snapshot.rngState).toBe(99);
+    expect(snapshot.balls[1].launchAngle).toBe(2.5);
     expect(snapshot.ai).toEqual({ tracking: false, movement: true });
     expect(snapshot.paddles.left).toMatchObject({
       cy: 200,
@@ -1362,7 +1349,6 @@ describe("the debug surface", () => {
     harness.debug.setAiMovement(false);
     harness.debug.setTitleIndex(2);
     harness.debug.setScore(5, 6);
-    harness.debug.setSeed(77);
     await harness.engine.advance(5);
 
     harness.debug.reset();
@@ -1377,8 +1363,6 @@ describe("the debug surface", () => {
     expect(title.resumeScreen).toBe("playing");
     expect(title.score).toEqual({ p1: 0, p2: 0 });
     expect(title.winner).toBeNull();
-    expect(title.seed).toBe(DEFAULT_SEED);
-    expect(title.rngState).toBe(DEFAULT_SEED);
     expect(title.ai).toEqual({ tracking: true, movement: true });
     // Zeroed by the reset, and one frame has run since.
     expect(title.simTime).toBeCloseTo(FRAME_MS / 1000, 6);

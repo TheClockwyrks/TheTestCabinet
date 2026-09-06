@@ -7,8 +7,8 @@
 // transition (the engine constructs it once and keeps it), so it carries
 // exactly the state that must survive one — and specs/ui.md says precisely
 // which fields those are, because "Returning to the title" restores every
-// declared field EXCEPT `titleIndex`, `simTime`, `muted`, `seed` and
-// `rngState`, and "Starting a match" names a list that leaves the AI's
+// declared field EXCEPT `titleIndex`, `simTime` and `muted`, and "Starting a
+// match" names a list that leaves the AI's
 // faculties and the debug surface's hold on each paddle alone. Everything else
 // specs/state.md declares lives in the world: the screen and the menus on the
 // game state, the scores on the player states, the field's bodies on the
@@ -26,14 +26,13 @@
 
 import { GameInstance } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
-import { DEFAULT_SEED, LEVELS } from "./constants";
+import { LEVELS } from "./constants";
 import { defineCues } from "./audio";
 import { CaromMode } from "./carom-mode";
 import { createDebugSurface, type CaromDebug } from "./debug";
 import { diagnosticSources } from "./diagnostics";
 import { registerActions } from "./input";
 import { match, title } from "./levels";
-import { nextSign } from "./rng";
 import { CaromState } from "./state";
 import { COLOR } from "./theme";
 
@@ -78,15 +77,6 @@ export class CaromGame extends GameInstance<CaromDebug> {
    */
   simTime = 0;
 
-  /** The seed the generator was last seeded from. */
-  seed: number = DEFAULT_SEED;
-
-  /**
-   * The seeded generator's whole state (`src/rng.ts`). Every draw stores the
-   * follow-on state back here, so a reseeded replay reproduces exactly.
-   */
-  rngState: number = DEFAULT_SEED;
-
   /** The AI's faculties. Both start true, and `reset` returns both to true. */
   readonly ai: AiState = { tracking: true, movement: true };
 
@@ -123,19 +113,6 @@ export class CaromGame extends GameInstance<CaromDebug> {
     state.game = this;
     const mode = world.mode;
     if (mode instanceof CaromMode) mode.arrive();
-  }
-
-  /** Draw the serve's vertical sign from the seeded generator. */
-  drawServeSign(): 1 | -1 {
-    const [sign, next] = nextSign(this.rngState);
-    this.rngState = next;
-    return sign;
-  }
-
-  /** Seed the generator: `seed` is the value given, `rngState` its start. */
-  setSeed(seed: number): void {
-    this.seed = seed;
-    this.rngState = seed;
   }
 }
 

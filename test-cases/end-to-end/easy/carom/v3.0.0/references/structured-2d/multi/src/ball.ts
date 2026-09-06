@@ -19,6 +19,7 @@ import { Actor, DrawComponent } from "@clockwyrks/structured-2d";
 import type { DrawApi } from "@clockwyrks/structured-2d";
 import { BALL_R } from "./constants";
 import { glowCircle, type Ctx } from "./draw";
+import { drawLaunchAngle } from "./random";
 import { parkedBall, type BallSim, type RallyBall } from "./sim";
 import { screenOf } from "./state";
 import { COLOR, LAYER } from "./theme";
@@ -40,6 +41,11 @@ export class Ball extends Actor {
   held = false;
   /** Seconds remaining of that wait. */
   holdTimer = 0;
+  /**
+   * The angle, in radians, the next launch leaves along: drawn afresh whenever
+   * the ball is parked and posed by the debug surface (specs/balls.md).
+   */
+  launchAngle = drawLaunchAngle();
   /** Recent positions, oldest first, for this ball's own motion trail. */
   trail: readonly TrailSample[] = [];
 
@@ -67,15 +73,16 @@ export class Ball extends Actor {
 
   /**
    * Park at this ball's own home point, motionless and spinless, with no
-   * trail. `hold` is the wait it starts there: a positive hold leaves the ball
-   * waiting and solid until that many seconds have passed, and `0` leaves it
-   * parked and unheld.
+   * trail and a fresh launch angle. `hold` is the wait it starts there: a
+   * positive hold leaves the ball waiting and solid until that many seconds
+   * have passed, and `0` leaves it parked and unheld.
    */
   park(hold: number): void {
     this.pose(parkedBall(this.index));
     this.held = hold > 0;
     this.holdTimer = hold;
     this.trail = [];
+    this.launchAngle = drawLaunchAngle();
   }
 
   /** Write a computed motion back onto the actor. */

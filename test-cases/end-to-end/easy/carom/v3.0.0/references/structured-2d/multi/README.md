@@ -139,8 +139,8 @@ written _inside_, and the build's own code is the subclasses:
   is already open.
 - **State in framework objects.** The game instance (`CaromGame`) carries what
   outlives a transition: the mode, the title menu's remembered selection, the
-  simulation clock, the seeded generator, the AI's two faculties, and the debug
-  driver's hold on each paddle. The world's `CaromState` carries the screen, the
+  simulation clock, the AI's two faculties, and the debug driver's hold on each
+  paddle. The world's `CaromState` carries the screen, the
   menu, the scores, and the winner; the actors carry the field's bodies. Nothing
   lives in a module-level variable.
 - **Audio, input, rendering, the fit, the overlay** — all the engine's. The
@@ -175,13 +175,14 @@ const { balls } = engine.debug.snapshot();
 ```
 
 The world is `clearWorld()`, `spawnBall(index)`, `spawnObstacle(index)`,
-`reset()`, and `setSeed(seed)`. The screens and menus are `setScreen`,
+and `reset()`. The screens and menus are `setScreen`,
 `setMode`, `setMenuIndex`, `setTitleIndex`, and `setResumeScreen`; the match is
 `setScore(p1, p2)` and `setWinner(side)`. Each paddle is taken one side at a
 time with `setPaddleCy`, `setPaddleVy` — which sets that side's `drivenVy`,
 held across frames — and `setPaddleDriven`. Each ball takes its `index` first:
-`setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`, and
-`setBallHoldTimer`. The AI's two faculties are gated separately with
+`setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,
+`setBallHoldTimer`, `setBallLaunchAngle`, and `drawBallLaunchAngle`. The AI's
+two faculties are gated separately with
 `setAiTracking` and `setAiMovement`, and the mute bit the `mute` action toggles
 is posed with `setMuted(muted)`. The two readings are `snapshot()`, which
 reports every field an operation sets, and `menuItemRect(index)`, which reports
