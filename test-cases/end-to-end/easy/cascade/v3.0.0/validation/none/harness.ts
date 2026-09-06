@@ -525,11 +525,17 @@ export function framesFor(duration: number): number {
  * empty, the text the next frame drew, how much of the table is still painted.
  * None of it is quantised to a frame, which is what the fine step above exists
  * for. `specs/instrumentation.md` has the game integrate whatever delta a frame
- * supplies and `instrumentation/advances-in-frames` is the point that grades
- * exactly that, so a wait taken in coarser frames arrives at the same place — the
- * references were measured at 240, 120, 60 and 30 Hz and end `cascadeDone` with
- * all fifty-two launched and nothing in flight at the same `12.57` s of game time
- * at every one of them.
+ * supplies, and `instrumentation/advances-in-frames` is the point that grades
+ * exactly that.
+ *
+ * AND WHERE A CASCADE ENDS IS NOT A FRAME-RATE QUANTITY EITHER. Two things decide
+ * it, and `specs/victory.md` integrates both exactly however an interval is
+ * divided into frames: the launch clock adds each frame's delta and carries the
+ * remainder, so the fifty-second launch falls at the same game time whatever the
+ * frames were, and a card retires on `x` alone, which advances by `vx * dt` at a
+ * `vx` the bounce leaves unchanged. What gravity and the floor do to `y` in
+ * between is the one part a coarser frame moves, and it is exactly what the
+ * checks stepped at {@link TICK_HZ} are for.
  *
  * Sixty is also what a browser gives a game on an ordinary display, so it is the
  * rate the ending a player sees really runs at. A check reads at {@link TICK_HZ}
