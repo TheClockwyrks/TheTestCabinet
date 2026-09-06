@@ -252,8 +252,10 @@ A posed outcome sits on the precondition side of the
 would have decided; the systems that follow from it run for real, and the
 validator reads where they land. A validator seeds nothing, reads no generator
 state, counts no draws, and compares no two runs for sameness. The design rules
-for both sides are in
-[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/#random-draws-are-posed-as-outcomes).
+are in Writing Debug APIs and Validators, for
+[the API](/guides/authoring/writing-debug-apis-and-validators/#random-draws-are-posed-as-outcomes)
+and for
+[the validators](/guides/authoring/writing-debug-apis-and-validators/#validators-pose-what-the-game-would-draw).
 
 ## The debug overlay
 

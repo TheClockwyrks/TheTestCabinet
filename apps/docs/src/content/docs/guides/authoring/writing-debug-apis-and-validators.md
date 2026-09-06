@@ -392,11 +392,11 @@ the frame is the world's, not the ball's.
 
 A validator whose requirement touches a random draw poses the outcome through
 the [operation the API carries for it](#random-draws-are-posed-as-outcomes),
-switches off any gate that would draw over it, runs the real systems, and reads
-the result. It seeds nothing, reads no generator state, counts no draws, never
-compares two runs for sameness, and never searches for the input that produces
-an outcome. Each of those grades how a build draws, which the specs leave to the
-build.
+closes the gate on any automatic draw that would run over it, runs the real
+systems, and reads the result. It seeds nothing, reads no generator state,
+counts no draws, never compares two runs for sameness, and never searches for
+the input that produces an outcome. Each of those grades how a build draws,
+which the specs leave to the build.
 
 A figure the simulation integrates is compared within the tolerance the spec's
 precision allows, such as within `0.1` of the expected value or a named
