@@ -457,17 +457,6 @@ export interface Harness {
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
 
-  /**
-   * Run one of the frames the page is being held back from.
-   *
-   * A NO-OP HERE: this engine draws when the harness's own clock says so, and
-   * there is no held frame to run. The engineless harness DOES hold the build's
-   * free-running frames (see `validation/none/paint-gate.js`), so the operation
-   * exists on all three harnesses and a check that pumps one stays one file in
-   * three directories.
-   */
-  paintFrame(): Promise<void>;
-
   /* ---- This engine's own, for the few suites that are about it ------------ */
 
   /** Why the build's surface cannot be driven, or `null` when it can. */
@@ -1193,10 +1182,6 @@ export async function createHarness(
       // engineless project's cue probe reaches it there: by naming whatever the
       // build actually sounded rather than only what the case enumerated.
       return cueNames().filter((cue) => audio.looping(cue));
-    },
-
-    async paintFrame() {
-      // Nothing is held back here; see the declaration.
     },
 
     async capture(id, name) {

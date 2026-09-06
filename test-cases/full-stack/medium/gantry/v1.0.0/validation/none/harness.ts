@@ -222,8 +222,8 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   // a page that is painting freely costs about ten times one into a page that is
   // not, and this project drives enough of them for that to decide whether its
   // suites finish inside the platform's cap. The file's own header carries the
-  // full reasoning, and `paintFrame` below runs one of the held frames for the
-  // checks that read what the build draws around the canvas.
+  // full reasoning, and `capture` below pumps one of the held frames so a still
+  // shows the page as it stands.
   extraInitScripts: ["cues-init.js", "paint-gate.js"],
   projectRoot: PROJECT_ROOT,
 });
@@ -348,22 +348,6 @@ export interface Harness {
 
   /** Keep the picture on screen as the review item's `id` output. */
   capture(id: string, name: string): Promise<void>;
-
-  /**
-   * Run one of the frames the page has asked for and is being held back from.
-   *
-   * FOR A CHECK THAT READS WHAT THE BUILD DRAWS AROUND THE CANVAS. `advance`
-   * draws the canvas itself — the specification has every advanced frame followed
-   * by a render, and that render happens inside the call — so a check reading the
-   * picture needs nothing from this. A build is free to refresh what sits outside
-   * the canvas on its own loop instead (this case's reference draws its
-   * diagnostics overlay that way), and that loop is held; one pumped frame is
-   * what a page painting freely would have given it.
-   *
-   * A no-op on the two engines, which draw when their own clock says so and hold
-   * no frame back.
-   */
-  paintFrame(): Promise<void>;
 
   /* ---- This engine's own, for the few suites that are about it ------------ */
 
@@ -504,8 +488,6 @@ export async function createHarness(
     cues: () => readCues(base, "take"),
     loopingCues: () => readCues(base, "looping"),
 
-    paintFrame: () => paint(base),
-
     async capture(id, name) {
       // One held frame first, so the picture composited into the still is the one
       // the build has just drawn. Everything the build draws on the canvas is
@@ -558,22 +540,6 @@ async function paint(
         "in the build",
     );
   }
-}
-
-/**
- * Run one held frame on a page this project opened but does not hold a harness
- * for — a second page serving the build a swapped asset, say.
- *
- * The gate is installed on the CONTEXT, so every page in it carries one; what
- * such a page has no other route to is the harness method.
- */
-export async function paintPage(page: Page): Promise<void> {
-  await page.evaluate((global) => {
-    const gate = (
-      window as unknown as Record<string, { pump(): void } | undefined>
-    )[global];
-    if (gate !== undefined) gate.pump();
-  }, PAINT_GLOBAL);
 }
 
 /**
