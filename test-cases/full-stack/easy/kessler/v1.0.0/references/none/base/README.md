@@ -75,7 +75,6 @@ the browser.
 
 - `src/constants.ts` — every figure the specification fixes, in one place.
 - `src/polar.ts` — the polar and vector helpers the angular rules read by.
-- `src/rng.ts` — the seeded mulberry32 stream; only pod draws consume it.
 - `src/state.ts` — the `Session` and the wave layouts.
 - `src/rings.ts` — ring slot and target-arc geometry.
 - `src/reflect.ts` — the deflector bounce and the reflection pipeline every

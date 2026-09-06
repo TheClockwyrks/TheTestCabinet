@@ -40,9 +40,14 @@ function makeOps() {
           ...rest: unknown[]
         ) => unknown;
         const result = operation(state, ...args);
-        // The two readings return what they read; every pose returns the
-        // next state (specs/instrumentation.md).
-        if (name === "snapshot" || name === "menuItemRect") return result;
+        // The readings return what they read; every pose returns the next
+        // state (specs/instrumentation.md).
+        if (
+          name === "snapshot" ||
+          name === "menuItemRect" ||
+          name === "drawPod"
+        )
+          return result;
         state = result as KesslerState;
         return result;
       };
@@ -74,9 +79,49 @@ describe("reset", () => {
     expect(snap.waveAdvance).toBe(true);
   });
 
-  it("rejects a malformed seed", () => {
+  it("clears a posed pod outcome", () => {
+    const { ops, snapshot } = makeOps();
+    ops.setNextPod("multiball");
+    ops.reset();
+    expect(snapshot().nextPod).toBeNull();
+  });
+});
+
+describe("setNextPod and drawPod", () => {
+  it("poses a kind, or none, that the snapshot reads back", () => {
+    const { ops, snapshot } = makeOps();
+    ops.setNextPod("shield");
+    expect(snapshot().nextPod).toBe("shield");
+    ops.setNextPod("none");
+    expect(snapshot().nextPod).toBe("none");
+  });
+
+  it("rejects an unknown kind", () => {
     const { ops } = makeOps();
-    expect(() => ops.reset(Number.NaN)).toThrow();
+    expect(() => ops.setNextPod("laser" as never)).toThrow(/unknown kind/);
+    expect(() => ops.setNextPod(undefined as never)).toThrow(/unknown kind/);
+  });
+
+  it("drawPod returns a kind or null and changes nothing", () => {
+    const { ops, snapshot, cues } = makeOps();
+    ops.setScreen("playing");
+    ops.setNextPod("narrow");
+    const before = snapshot();
+    const seen = new Set<string | null>();
+    for (let i = 0; i < 400; i += 1) seen.add(ops.drawPod());
+    for (const outcome of seen) {
+      expect([
+        null,
+        "widen",
+        "multiball",
+        "shield",
+        "pierce",
+        "narrow",
+      ]).toContain(outcome);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+    expect(snapshot()).toEqual(before);
+    expect(cues).toEqual([]);
   });
 });
 

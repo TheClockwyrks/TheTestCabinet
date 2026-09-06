@@ -5,15 +5,14 @@
 // `playing` advances the simulation; `waveclear` advances its 180-tick
 // interstitial and nothing else; the other four freeze everything. The game
 // also owns the session lifecycle — a fresh session on START, the discard on
-// QUIT — the seeded pod stream, the two driver switches, and the snapshot
-// every build reports (`specs/instrumentation.md`).
+// QUIT — the pod draw's random source and posed outcome, the two driver
+// switches, and the snapshot every build reports (`specs/instrumentation.md`).
 //
 // Nothing here reads the wall clock. Who feeds `update` — the frame loop or
 // the debug surface's `step` — is the runtime's business, and the game
 // behaves the same either way.
 
 import {
-  DEFAULT_SEED,
   INTERSTITIAL_TICKS,
   PAUSE_MENU,
   TICK_DT,
@@ -21,6 +20,7 @@ import {
   type Action,
   type Cue,
   type ParticleSystem,
+  type PodKind,
   type ScreenName,
 } from "./constants";
 import type { PointerMove } from "./input";
@@ -32,8 +32,14 @@ import {
   TITLE_HOWTO_ENTRY,
   type MenuItemRect,
 } from "./menus";
-import { mulberry32, type Rng } from "./rng";
-import { launchParkedBall, tickPlaying, type TickIo } from "./sim";
+import {
+  launchParkedBall,
+  rollPod,
+  tickPlaying,
+  type PodPose,
+  type Rng,
+  type TickIo,
+} from "./sim";
 import { pointAt } from "./polar";
 import {
   bootSession,
@@ -70,11 +76,11 @@ export interface Snapshot {
   wave: number;
   score: number;
   lives: number;
-  seed: number;
   interstitialTicks: number;
   autoStep: boolean;
   waveAdvance: boolean;
   podSpawn: boolean;
+  nextPod: PodPose;
   paddle: { angleDeg: number; spanDeg: number };
   balls: {
     x: number;
@@ -135,12 +141,12 @@ export class Game {
   /** The rotation actions' held values, sampled by each tick. */
   readonly held = { left: false, right: false };
 
-  /** The seed the pod stream reseeds from at each session start. */
-  seed = DEFAULT_SEED;
+  /** The outcome `setNextPod` posed for the next pod draw, or `null`. */
+  nextPod: PodPose = null;
   /** Ticks left on the wave-clear interstitial while on `waveclear`. */
   interstitialTicks = 0;
-  /** The session's pod stream; pod draws alone consume it. */
-  private rng: Rng = mulberry32(DEFAULT_SEED);
+  /** The random source the pod draws read. */
+  private readonly rng: Rng = Math.random;
   /**
    * The menu entry a pointer press is down inside, and the screen it went
    * down on. A release inside the same entry of the same screen accepts it
@@ -198,6 +204,11 @@ export class Game {
     return {
       held: this.held,
       rng: this.rng,
+      takePosedPod: () => {
+        const posed = this.nextPod;
+        this.nextPod = null;
+        return posed;
+      },
       podSpawn: this.podSpawn,
       waveAdvance: this.waveAdvance,
       tickIndex: this.simTicks,
@@ -355,12 +366,10 @@ export class Game {
 
   /**
    * Starts a fresh session exactly as confirming START does: the boot layout
-   * with a ball parked on the deflector, the pod stream reseeded from the
-   * session's seed, and the game on `playing`.
+   * with a ball parked on the deflector, and the game on `playing`.
    */
   startFreshSession(): void {
     this.session = bootSession();
-    this.rng = mulberry32(this.seed);
     parkFreshBall(this.session, this.simTicks);
     this.enter("playing");
   }
@@ -373,13 +382,12 @@ export class Game {
 
   /**
    * Restores the boot state (`specs/instrumentation.md`): the title screen
-   * over the boot layout, zero ticks, both driver switches on, and the pod
-   * stream seeded with `seed`. Whether the simulation advances on its own
-   * each frame is untouched.
+   * over the boot layout, zero ticks, both driver switches on, and no posed
+   * pod outcome. Whether the simulation advances on its own each frame is
+   * untouched.
    */
-  reset(seed: number = DEFAULT_SEED): void {
-    this.seed = seed;
-    this.rng = mulberry32(seed);
+  reset(): void {
+    this.nextPod = null;
     this.session = bootSession();
     this.screen = "title";
     this.menuIndex = 0;
@@ -419,6 +427,15 @@ export class Game {
     this.screen = name;
   }
 
+  /**
+   * One pod draw alone (`specs/instrumentation.md`'s `drawPod`): the random
+   * outcome a destruction would draw, with nothing spawned and the posed
+   * outcome left where it stands.
+   */
+  drawPod(): PodKind | null {
+    return rollPod(this.rng);
+  }
+
   // --- The snapshot (specs/instrumentation.md) ---
 
   /** A pure read of the state, in the fixed shape. */
@@ -431,11 +448,11 @@ export class Game {
       wave: session.wave,
       score: session.score,
       lives: session.lives,
-      seed: this.seed,
       interstitialTicks: this.interstitialTicks,
       autoStep: this.autoStep,
       waveAdvance: this.waveAdvance,
       podSpawn: this.podSpawn,
+      nextPod: this.nextPod,
       paddle: { angleDeg: session.paddleAngleDeg, spanDeg: spanOf(session) },
       balls: session.balls.map((ball) => ({
         x: ball.x,

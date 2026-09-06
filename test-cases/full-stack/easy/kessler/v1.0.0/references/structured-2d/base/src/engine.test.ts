@@ -313,24 +313,3 @@ describe("the fixed timestep", () => {
     h.engine.setClock(new ConstantClock(FRAME_MS));
   });
 });
-
-describe("determinism through the engine", () => {
-  it("reproduces identical snapshots from the same seed and drive", async () => {
-    const run = async (harness: Harness) => {
-      harness.debug.reset(123);
-      await harness.step(1);
-      harness.tap("Space");
-      await harness.step(2);
-      harness.tap("Space");
-      harness.press("ArrowRight");
-      await harness.step(300);
-      harness.release("ArrowRight");
-      return harness.debug.snapshot();
-    };
-    const first = await run(h);
-    const other = await createHarness();
-    const second = await run(other);
-    other.dispose();
-    expect(second).toEqual(first);
-  });
-});

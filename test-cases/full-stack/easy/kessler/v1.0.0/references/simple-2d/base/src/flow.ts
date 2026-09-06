@@ -6,7 +6,7 @@
 // does on the screen the game is on, the tick accumulator that consumes a
 // frame's seconds into whole ticks, the session lifecycle (a fresh session on
 // START, the discard on QUIT), the 180-tick wave-clear interstitial, the
-// seeded pod stream's carried state, and the two driver switches. Only
+// outcome posed for the next pod draw, and the two driver switches. Only
 // `playing` advances the simulation; `waveclear` advances its interstitial
 // and nothing else; the other four freeze everything.
 //
@@ -21,7 +21,6 @@
 import type { DeepReadonly } from "ts-essentials";
 import type { KesslerAssets } from "./assets";
 import {
-  DEFAULT_SEED,
   INTERSTITIAL_TICKS,
   PAUSE_MENU,
   TICK_DT,
@@ -32,8 +31,12 @@ import {
   type ScreenName,
 } from "./figures";
 import { menuEntryAt, menuItemRects, TITLE_HOWTO_ENTRY } from "./menus";
-import { seedRngState, stepRng } from "./rng";
-import { launchParkedBall, tickPlaying, type TickIo } from "./sim";
+import {
+  launchParkedBall,
+  tickPlaying,
+  type PodPose,
+  type TickIo,
+} from "./sim";
 import {
   bootSession,
   clearVolatiles,
@@ -89,10 +92,8 @@ export interface KesslerState {
   simTicks: number;
   /** Unconsumed game time carried between updates, in seconds. */
   accumulator: number;
-  /** The seed the pod stream reseeds from at each session start. */
-  seed: number;
-  /** The pod stream's whole state (`src/rng.ts`); draws alone advance it. */
-  rngState: number;
+  /** The outcome `setNextPod` posed for the next pod draw, or `null`. */
+  nextPod: PodPose;
   /** Ticks left on the wave-clear interstitial while on `waveclear`. */
   interstitialTicks: number;
   /**
@@ -133,21 +134,17 @@ const TICK_EPSILON = 1e-9;
 
 /**
  * The boot state (`specs/instrumentation.md` `reset`): the title screen over
- * the boot layout, zero ticks, both driver switches on, and the pod stream
- * seeded with `seed`.
+ * the boot layout, zero ticks, both driver switches on, and no posed pod
+ * outcome.
  */
-export function bootState(
-  assets: KesslerAssets,
-  seed: number = DEFAULT_SEED,
-): KesslerState {
+export function bootState(assets: KesslerAssets): KesslerState {
   return {
     screen: "title",
     menuIndex: 0,
     ticks: 0,
     simTicks: 0,
     accumulator: 0,
-    seed,
-    rngState: seedRngState(seed),
+    nextPod: null,
     interstitialTicks: 0,
     pointerPress: null,
     waveAdvance: true,
@@ -170,8 +167,7 @@ export function cloneState(view: View): KesslerState {
     ticks: view.ticks,
     simTicks: view.simTicks,
     accumulator: view.accumulator,
-    seed: view.seed,
-    rngState: view.rngState,
+    nextPod: view.nextPod,
     interstitialTicks: view.interstitialTicks,
     pointerPress:
       view.pointerPress === null
@@ -219,12 +215,10 @@ function enter(draft: KesslerState, screen: ScreenName): void {
 
 /**
  * Starts a fresh session exactly as confirming START does: the boot layout
- * with a ball parked on the deflector, the pod stream reseeded from the
- * session's seed, and the game on `playing`.
+ * with a ball parked on the deflector, and the game on `playing`.
  */
 export function startFreshSession(draft: KesslerState): void {
   draft.session = bootSession();
-  draft.rngState = seedRngState(draft.seed);
   parkFreshBall(draft.session, draft.simTicks);
   enter(draft, "playing");
 }
@@ -395,10 +389,11 @@ export function handlePointerDraft(
 function tickIo(draft: KesslerState, held: Held, io: FlowIo): TickIo {
   return {
     held: { left: held.left, right: held.right },
-    rng: () => {
-      const step = stepRng(draft.rngState);
-      draft.rngState = step.state;
-      return step.value;
+    rng: Math.random,
+    takePosedPod: () => {
+      const posed = draft.nextPod;
+      draft.nextPod = null;
+      return posed;
     },
     podSpawn: draft.podSpawn,
     waveAdvance: draft.waveAdvance,
@@ -491,6 +486,6 @@ export function poseScreen(view: View, name: ScreenName): KesslerState {
 }
 
 /** The boot state restored over the same loaded sprites (`reset`). */
-export function resetState(view: View, seed: number): KesslerState {
-  return bootState(cloneState(view).assets, seed);
+export function resetState(view: View): KesslerState {
+  return bootState(cloneState(view).assets);
 }

@@ -15,7 +15,6 @@
 
 import {
   CUES,
-  DEFAULT_SEED,
   PAUSE_ITEMS,
   TICK_DT,
   TITLE_ITEMS,
@@ -24,7 +23,6 @@ import {
   type Screen,
 } from "./constants";
 import { menuEntryAt, menuItemRects, TITLE_HOWTO_ENTRY } from "./menus";
-import { nextFloat, seedRng } from "./rng";
 import { launchParkedBall, tickPlaying, type TickIo } from "./sim";
 import {
   bootSession,
@@ -109,7 +107,12 @@ export function runOneTick(state: KesslerState, hooks: TickHooks): void {
 function tickIo(state: KesslerState, hooks: TickHooks): TickIo {
   return {
     held: state.held,
-    rng: () => nextFloat(state),
+    rng: Math.random,
+    takePosedPod: () => {
+      const posed = state.nextPod;
+      state.nextPod = null;
+      return posed;
+    },
     podSpawn: state.podSpawn,
     waveAdvance: state.waveAdvance,
     tickIndex: state.simTicks,
@@ -261,12 +264,10 @@ export function handlePointer(
 
 /**
  * Starts a fresh session exactly as confirming START does: the boot layout
- * with a ball parked on the deflector, the pod stream reseeded from the
- * session's seed, and the game on `playing`.
+ * with a ball parked on the deflector, and the game on `playing`.
  */
 export function startFreshSession(state: KesslerState): void {
   bootSession(state);
-  state.rngState = seedRng(state.seed);
   parkFreshBall(state, state.simTicks);
   enter(state, "playing");
 }
@@ -303,15 +304,11 @@ export function poseScreen(state: KesslerState, name: Screen): void {
 
 /**
  * Restores the boot state (`specs/instrumentation.md`): the title screen
- * over the boot layout, zero ticks, both driver switches on, and the pod
- * stream seeded with `seed`.
+ * over the boot layout, zero ticks, both driver switches on, and no posed pod
+ * outcome.
  */
-export function resetState(
-  state: KesslerState,
-  seed: number = DEFAULT_SEED,
-): void {
-  state.seed = seed;
-  state.rngState = seedRng(seed);
+export function resetState(state: KesslerState): void {
+  state.nextPod = null;
   bootSession(state);
   state.screen = "title";
   state.menuIndex = 0;

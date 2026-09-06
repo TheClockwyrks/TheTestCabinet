@@ -79,7 +79,6 @@ half.
 
 - `src/constants.ts` — every figure the specification fixes, in one place.
 - `src/polar.ts` — the polar and vector helpers the angular rules read by.
-- `src/rng.ts` — the seeded mulberry32 stream; only pod draws consume it.
 - `src/figures.ts` — the wave formulas: ball speed, orbit speeds, the pod
   table.
 - `src/session.ts` — the session records (balls, pods, effects) and the wave

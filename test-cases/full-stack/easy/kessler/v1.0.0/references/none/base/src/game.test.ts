@@ -4,7 +4,8 @@
 import { describe, expect, it } from "vitest";
 import { RINGS, type Cue, type ParticleSystem } from "./constants";
 import { Game } from "./game";
-import { pointAt } from "./polar";
+import { pointAt, radialAt } from "./polar";
+import { arcCenterDeg } from "./rings";
 
 function makeGame() {
   const cues: Cue[] = [];
@@ -324,7 +325,7 @@ describe("the accumulator", () => {
   });
 });
 
-describe("reset and determinism", () => {
+describe("reset", () => {
   it("restores the boot state and zero ticks", () => {
     const { game } = makeGame();
     game.handleAction("confirm");
@@ -345,16 +346,61 @@ describe("reset and determinism", () => {
     expect(snap.paddle.angleDeg).toBe(90);
   });
 
-  it("reproduces identical snapshots from the same seed and drive", () => {
-    const run = () => {
-      const { game } = makeGame();
-      game.reset(123);
-      game.handleAction("confirm");
-      game.handleAction("launch");
-      game.held.right = true;
-      for (let i = 0; i < 600; i += 1) game.tick();
-      return game.snapshot();
-    };
-    expect(run()).toEqual(run());
+  it("clears a posed pod outcome", () => {
+    const { game } = makeGame();
+    game.nextPod = "shield";
+    game.reset();
+    expect(game.snapshot().nextPod).toBeNull();
+  });
+});
+
+describe("the pod draw through the game", () => {
+  it("reports the posed outcome until a destruction consumes it", () => {
+    const { game } = makeGame();
+    expect(game.snapshot().nextPod).toBeNull();
+    game.nextPod = "pierce";
+    expect(game.snapshot().nextPod).toBe("pierce");
+
+    // A piercing ball fired at ring 1's slot 0 destroys it within the tick
+    // budget; the destruction sheds the posed kind and clears the pose.
+    game.poseScreen("playing");
+    game.waveAdvance = false;
+    game.session.effects.pierceTicks = 100;
+    const theta = arcCenterDeg(RINGS[0], 0, 0);
+    const at = pointAt(332, theta);
+    const inward = radialAt(theta);
+    game.session.balls.push({
+      x: at.x,
+      y: at.y,
+      vx: -240 * inward.x,
+      vy: -240 * inward.y,
+      parked: false,
+      spawnTick: 0,
+    });
+    for (let i = 0; i < 6; i += 1) game.tick();
+    expect(game.session.rings[0].targets[0]).toBeNull();
+    expect(game.snapshot().pods.map((pod) => pod.kind)).toEqual(["pierce"]);
+    expect(game.snapshot().nextPod).toBeNull();
+  });
+
+  it("draws a pod alone, spawning nothing and keeping the pose", () => {
+    const { game, cues } = makeGame();
+    game.nextPod = "widen";
+    const before = game.snapshot();
+    const outcomes = new Set<string | null>();
+    for (let i = 0; i < 400; i += 1) outcomes.add(game.drawPod());
+    for (const outcome of outcomes) {
+      expect([
+        null,
+        "widen",
+        "multiball",
+        "shield",
+        "pierce",
+        "narrow",
+      ]).toContain(outcome);
+    }
+    expect(outcomes.size).toBeGreaterThan(1);
+    expect(game.snapshot()).toEqual(before);
+    expect(cues).toEqual([]);
   });
 });

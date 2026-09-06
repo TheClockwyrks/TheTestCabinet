@@ -7,8 +7,9 @@
 // event, decided from the position a body held before its advance this tick
 // and the position the advance gave it, and every reflection changes velocity
 // alone. A destruction runs its salvage pod draw at once, so draws land in
-// resolution order (`specs/pods.md`), and a ball-caused destruction that
-// leaves zero live targets is the clearing event (`specs/rings.md`).
+// resolution order (`specs/pods.md`), an outcome posed through `setNextPod`
+// stands in for the next draw's random one, and a ball-caused destruction
+// that leaves zero live targets is the clearing event (`specs/rings.md`).
 //
 // The module is headless. It reads nothing from the renderer, the wall clock,
 // or the page; the cues and particle spawns a tick raises go out through the
@@ -63,7 +64,6 @@ import {
   liveTargetCount,
   withinArcRel,
 } from "./rings";
-import type { Rng } from "./rng";
 import {
   clearVolatiles,
   followPaddle,
@@ -74,12 +74,20 @@ import {
   type Session,
 } from "./state";
 
-/** What one tick reads and raises: input, the pod stream, and the hooks. */
+/** A source of numbers in `[0, 1)`; each call is one independent draw. */
+export type Rng = () => number;
+
+/** What `setNextPod` poses for the next draw: a kind, `none`, or nothing. */
+export type PodPose = PodKind | "none" | null;
+
+/** What one tick reads and raises: input, the random source, and the hooks. */
 export interface TickIo {
   /** The rotation actions' held values this tick. */
   held: { left: boolean; right: boolean };
-  /** The session's seeded stream; pod draws alone consume it. */
+  /** The random source the pod draws read. */
   rng: Rng;
+  /** Takes the outcome posed for the next pod draw, clearing it. */
+  takePosedPod(): PodPose;
   /** The `podSpawn` driver switch (specs/instrumentation.md). */
   podSpawn: boolean;
   /** The `waveAdvance` driver switch (specs/instrumentation.md). */
@@ -501,10 +509,20 @@ function reflectOffTarget(
 }
 
 /**
- * The salvage pod draw a destruction runs (specs/pods.md): `u1` decides
- * whether a pod sheds, and only a shedding draw takes `u2` for the kind. The
- * pod spawns at the ring's mid radius, at the destroyed target's arc-center
- * angle as the ring stands posed this tick.
+ * One pod draw as `specs/pods.md` states it: a pod with probability
+ * `POD_DROP_CHANCE`, its kind by the kind table, and `null` otherwise. The
+ * draw a destruction runs and the surface's `drawPod` are both this.
+ */
+export function rollPod(rng: Rng): PodKind | null {
+  if (rng() >= POD_DROP_CHANCE) return null;
+  return podKindForRoll(rng());
+}
+
+/**
+ * The salvage pod draw a destruction runs (specs/pods.md): the outcome posed
+ * through `setNextPod` when one stands, consumed here, and the random draw
+ * otherwise. The pod spawns at the ring's mid radius, at the destroyed
+ * target's arc-center angle as the ring stands posed this tick.
  */
 function drawPod(
   session: Session,
@@ -512,13 +530,13 @@ function drawPod(
   ringIndex: number,
   slot: number,
 ): void {
-  const u1 = io.rng();
-  if (u1 >= POD_DROP_CHANCE) return;
-  const u2 = io.rng();
+  const posed = io.takePosedPod();
+  const kind = posed === null ? rollPod(io.rng) : posed;
+  if (kind === "none" || kind === null) return;
   const spec = RINGS[ringIndex];
   const ring = session.rings[ringIndex];
   session.pods.push({
-    kind: podKindForRoll(u2),
+    kind,
     r: spec.midRadius,
     angleDeg: normalizeDeg(arcCenterDeg(spec, slot, ring.angleDeg)),
     spawnTick: io.tickIndex,

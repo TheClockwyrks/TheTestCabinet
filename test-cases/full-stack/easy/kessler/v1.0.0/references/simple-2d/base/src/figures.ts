@@ -51,7 +51,6 @@ import {
   BALL_RADIUS,
   BOUNCE_CLAMP_DEG,
   BURNUP_RADIUS,
-  DEFAULT_SEED,
   MULTIBALL_OFFSET_DEG,
   NARROW_DURATION_TICKS,
   NARROW_SPAN_DEG,
@@ -82,7 +81,6 @@ export {
   BALL_FRAME_TICKS,
   BALL_RADIUS,
   BOUNCE_CLAMP_DEG,
-  DEFAULT_SEED,
   NARROW_SPAN_DEG,
   PLANET_RADIUS,
   POD_DROP_CHANCE,
@@ -195,12 +193,15 @@ export const RINGS: readonly RingSpec[] = RING_TABLE.map((row) => ({
 export { POD_KINDS } from "./constants";
 
 /**
- * The kind the second draw `u2` lands on: the first row of the cumulative
- * `POD_KIND_TABLE` whose bound exceeds `u2`.
+ * The kind a uniform draw `u` in `[0, 1)` lands on: the rows of
+ * `POD_KIND_TABLE` laid end to end by probability, so each kind takes its
+ * share of the unit interval.
  */
-export function podKindForRoll(u2: number): PodKind {
+export function podKindForRoll(u: number): PodKind {
+  let upTo = 0;
   for (const row of POD_KIND_TABLE) {
-    if (u2 < row.upTo) return row.kind;
+    upTo += row.probability;
+    if (u < upTo) return row.kind;
   }
   return POD_KIND_TABLE[POD_KIND_TABLE.length - 1].kind;
 }

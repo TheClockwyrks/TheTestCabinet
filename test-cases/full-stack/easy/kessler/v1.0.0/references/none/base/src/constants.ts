@@ -18,8 +18,6 @@ export const CENTER = 500;
 export const TICK_HZ = 60;
 /** The game time one tick is worth, in seconds. */
 export const TICK_DT = 1 / TICK_HZ;
-/** The seed a fresh session gives the pod generator (specs/pods.md). */
-export const DEFAULT_SEED = 1;
 
 // --- The field (specs/field.md) ---
 
@@ -148,7 +146,7 @@ export const RINGS: readonly RingSpec[] = [
 
 // --- Salvage pods and effects (specs/pods.md) ---
 
-/** The five pod kinds, in the order their `u2` bands sit in `[0, 1)`. */
+/** The five pod kinds, in the order the kind table lists them. */
 export const POD_KINDS = [
   "widen",
   "multiball",
@@ -160,20 +158,32 @@ export const POD_KINDS = [
 /** One salvage pod kind. */
 export type PodKind = (typeof POD_KINDS)[number];
 
-/** The chance a destruction sheds a pod: it does at `u1 < 0.25`. */
+/** The probability a destruction sheds a pod. */
 export const POD_DROP_CHANCE = 0.25;
 
+/** The probability a shed pod is each kind, in the kind table's order. */
+export const POD_KIND_TABLE: readonly {
+  readonly kind: PodKind;
+  readonly probability: number;
+}[] = [
+  { kind: "widen", probability: 0.25 },
+  { kind: "multiball", probability: 0.2 },
+  { kind: "shield", probability: 0.2 },
+  { kind: "pierce", probability: 0.15 },
+  { kind: "narrow", probability: 0.2 },
+];
+
 /**
- * The kind the second draw `u2` lands on: `widen` on `[0, 0.25)`, `multiball`
- * on `[0.25, 0.45)`, `shield` on `[0.45, 0.65)`, `pierce` on `[0.65, 0.80)`,
- * and `narrow` on `[0.80, 1)`.
+ * The kind a uniform draw `u` in `[0, 1)` lands on: the table's rows laid end
+ * to end by probability, so each kind takes its share of the unit interval.
  */
-export function podKindForRoll(u2: number): PodKind {
-  if (u2 < 0.25) return "widen";
-  if (u2 < 0.45) return "multiball";
-  if (u2 < 0.65) return "shield";
-  if (u2 < 0.8) return "pierce";
-  return "narrow";
+export function podKindForRoll(u: number): PodKind {
+  let upTo = 0;
+  for (const row of POD_KIND_TABLE) {
+    upTo += row.probability;
+    if (u < upTo) return row.kind;
+  }
+  return POD_KIND_TABLE[POD_KIND_TABLE.length - 1].kind;
 }
 
 /** How fast a pod falls radially inward, in logical units per second. */

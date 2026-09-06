@@ -30,7 +30,7 @@ import {
 } from "./menus";
 import { kesslerState, type KesslerState } from "./state";
 import { normalizeDeg, pointAt, polarOf } from "./polar";
-import { launchParkedBall } from "./sim";
+import { launchParkedBall, rollPod, type PodPose } from "./sim";
 import { spanOf, piercingNow } from "./session";
 import type { World } from "@clockwyrks/structured-2d";
 
@@ -41,10 +41,10 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
-  seed: number;
   interstitialTicks: number;
   waveAdvance: boolean;
   podSpawn: boolean;
+  nextPod: PodPose;
   paddle: { angleDeg: number; spanDeg: number };
   balls: {
     x: number;
@@ -71,7 +71,7 @@ export interface KesslerSnapshot {
 
 /** The debug and automation surface, exactly as the specification lists it. */
 export interface KesslerDebugApi {
-  reset(seed?: number): void;
+  reset(): void;
   snapshot(): KesslerSnapshot;
   menuItemRect(index: number): MenuItemRect | null;
   setScreen(name: Screen): void;
@@ -91,6 +91,8 @@ export interface KesslerDebugApi {
   setRingSpeed(ring: number, degPerSec: number): void;
   clearPods(): void;
   spawnPod(kind: PodKind, x: number, y: number): void;
+  setNextPod(kind: PodKind | "none"): void;
+  drawPod(): PodKind | null;
   setEffectTicks(kind: "widen" | "narrow" | "pierce", ticks: number): void;
   setShield(active: boolean): void;
   setWaveAdvance(on: boolean): void;
@@ -137,10 +139,10 @@ export function snapshotOf(state: KesslerState): KesslerSnapshot {
     wave: state.wave,
     score: state.score,
     lives: state.lives,
-    seed: state.seed,
     interstitialTicks: state.interstitialTicks,
     waveAdvance: state.waveAdvance,
     podSpawn: state.podSpawn,
+    nextPod: state.nextPod,
     paddle: { angleDeg: state.paddleAngleDeg, spanDeg: spanOf(state) },
     balls: state.balls.map((ball) => ({
       x: ball.x,
@@ -178,11 +180,8 @@ export function snapshotOf(state: KesslerState): KesslerSnapshot {
 export function createDebugApi(worldOf: () => World): KesslerDebugApi {
   const stateOf = (): KesslerState => kesslerState(worldOf());
   return {
-    reset(seed) {
-      resetState(
-        stateOf(),
-        seed === undefined ? undefined : mustWhole("reset seed", seed, 0),
-      );
+    reset() {
+      resetState(stateOf());
       // A reset wants a bare field, live effects included.
       worldOf().find(FxActor)?.fx.clear();
     },
@@ -354,6 +353,22 @@ export function createDebugApi(worldOf: () => World): KesslerDebugApi {
         r: at.r,
         angleDeg: at.angleDeg,
       });
+    },
+
+    /** Poses the outcome the next pod draw sheds: a kind, or `none`. */
+    setNextPod(kind) {
+      if (kind !== "none" && !POD_KINDS.includes(kind)) {
+        throw new Error(`setNextPod: unknown kind ${String(kind)}`);
+      }
+      stateOf().nextPod = kind;
+    },
+
+    /**
+     * One pod draw alone: the random outcome a destruction would draw, with
+     * nothing spawned and the posed outcome left where it stands.
+     */
+    drawPod() {
+      return rollPod(Math.random);
     },
 
     setEffectTicks(kind, ticks) {

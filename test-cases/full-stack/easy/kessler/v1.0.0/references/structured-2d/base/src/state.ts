@@ -20,13 +20,11 @@
 import { GameState } from "@clockwyrks/structured-2d";
 import type { World } from "@clockwyrks/structured-2d";
 import {
-  DEFAULT_SEED,
   DEFLECTOR_START_ANGLE_DEG,
   START_LIVES,
   START_WAVE,
   type Screen,
 } from "./constants";
-import { seedRng } from "./rng";
 import { filledRings, type RingState } from "./rings";
 import {
   clearedEffects,
@@ -35,6 +33,7 @@ import {
   type Pod,
   type Session,
 } from "./session";
+import type { PodPose } from "./sim";
 
 export class KesslerState extends GameState implements Session {
   /** The screen the game is on; a session opens on `title`. */
@@ -75,10 +74,8 @@ export class KesslerState extends GameState implements Session {
   /** The `podSpawn` driver switch; on when the game is played. */
   podSpawn = true;
 
-  /** The seed the pod stream reseeds from at each session start. */
-  seed = DEFAULT_SEED;
-  /** The seeded pod stream's whole state; pod draws alone advance it. */
-  rngState = seedRng(DEFAULT_SEED);
+  /** The outcome `setNextPod` posed for the next pod draw, or `null`. */
+  nextPod: PodPose = null;
   /** The next ball or pod identity the session hands out. */
   nextId = 0;
 
