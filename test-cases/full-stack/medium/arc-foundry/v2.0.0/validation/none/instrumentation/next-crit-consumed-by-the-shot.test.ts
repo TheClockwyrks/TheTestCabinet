@@ -64,10 +64,13 @@ it("keeps the arming until a shot launches, and spends it on that shot", async (
 
   await parkUnit(h, "overload", TARGET);
   const fired = await captureReplay(h, "consumed", () =>
-    h.until((s) => s.projectiles.length > 0 || structureById(s, id).damageDealt > 0, {
-      maxFrames: ticks(PATIENCE),
-      poll: 1,
-    }),
+    h.until(
+      (s) => s.projectiles.length > 0 || structureById(s, id).damageDealt > 0,
+      {
+        maxFrames: ticks(PATIENCE),
+        poll: 1,
+      },
+    ),
   );
   assertEqual(
     fired.hit,

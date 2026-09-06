@@ -67,10 +67,10 @@ afterEach(async () => {
 
 /** Drive until the tower's tally moves past `from`, and hand back what it moved by. */
 async function nextShot(id: number, from: number): Promise<number> {
-  const landed = await h.until(
-    (s) => structureById(s, id).damageDealt > from,
-    { maxFrames: ticks(PATIENCE), poll: 1 },
-  );
+  const landed = await h.until((s) => structureById(s, id).damageDealt > from, {
+    maxFrames: ticks(PATIENCE),
+    poll: 1,
+  });
   assertEqual(
     landed.hit,
     true,

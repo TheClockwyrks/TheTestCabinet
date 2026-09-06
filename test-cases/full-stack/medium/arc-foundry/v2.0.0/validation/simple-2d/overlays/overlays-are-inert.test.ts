@@ -63,7 +63,8 @@ async function tenSeconds(overlay: "combos" | "damage"): Promise<void> {
 
   await h.advance(spanFrames(SPAN));
   const reached = h.snapshot();
-  const what = overlay === "combos" ? "the recipe book" : "the damage leaderboard";
+  const what =
+    overlay === "combos" ? "the recipe book" : "the damage leaderboard";
 
   assertCloseTo(
     reached.simTime - opened.simTime,

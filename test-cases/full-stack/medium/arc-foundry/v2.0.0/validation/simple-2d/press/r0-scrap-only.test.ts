@@ -17,7 +17,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { REFINEMENT_ODDS, TIERS } from "../constants";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { captureStill, createHarness, type Harness, openYard } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  type Harness,
+  openYard,
+} from "../harness";
 
 /** How many rolls are drawn. */
 const ROLLS = 120;

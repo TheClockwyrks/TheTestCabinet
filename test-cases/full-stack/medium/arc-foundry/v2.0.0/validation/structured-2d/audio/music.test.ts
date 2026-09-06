@@ -33,7 +33,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { CUES } from "../constants";
 import { assertEqual, assertTrue } from "../assert";
-import { captureReplay, createHarness, openRun, type Harness } from "../harness";
+import {
+  captureReplay,
+  createHarness,
+  openRun,
+  type Harness,
+} from "../harness";
 import { durationSeconds, fileOf, readWave } from "./wav";
 
 /** How long past the file's own end the bed must still be sounding. */

@@ -11,7 +11,12 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains } from "../assert";
 import { COMPONENT_TYPES, REFINEMENT_MAX, REFINEMENT_ODDS } from "../constants";
-import { captureStill, createHarness, openYard, type Harness } from "../harness";
+import {
+  captureStill,
+  createHarness,
+  openYard,
+  type Harness,
+} from "../harness";
 
 /** How many rolls are drawn at each end of the track. */
 const ROLLS = 60;
