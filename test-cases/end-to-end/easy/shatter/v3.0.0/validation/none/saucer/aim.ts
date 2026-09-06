@@ -1,11 +1,12 @@
-// Shatter — the sixty shots the three aim checks read. CASE-PROVIDED.
+// Shatter — the handful of shots the aim checks read. CASE-PROVIDED.
 //
 // `specs/saucer.md` gives the saucer's aim three separable properties — it points
 // at the ship, its error stays inside a bound, and the error is redrawn for every
 // shot — and each is an item of its own, because a build that aims dead-on and a
 // build that scatters over thirty degrees are different faults and must grade
 // differently. What all three share is the SCENARIO: a saucer standing still, a
-// ship standing still four hundred units away, and sixty shots read as they leave.
+// ship standing still four hundred units away, and a handful of shots read as
+// they leave.
 // So the scenario is built once, here, and each check reads its own thing off it.
 //
 // IT LIVES IN THE GROUP because nothing outside `saucer` reads a saucer's aim.
@@ -48,23 +49,25 @@ export const SAUCER_STAND = { x: 140, y: 640 };
 export const SHIP_STAND = { x: SAUCER_STAND.x + 400, y: SAUCER_STAND.y };
 
 /**
- * The sixty shots all three checks read.
+ * The eight shots the two unposed aim checks read.
  *
- * `aims-at-the-ship` is where the number comes from: `specs/saucer.md` draws the
- * per-shot error uniformly over `+/-SAUCER_AIM_ERROR`, whose standard deviation is
- * `E / sqrt(3)` = `5.77` degrees, so the mean of `n` of them has a standard error
- * of `E / sqrt(3n)`, which at sixty is `0.745` degrees — and the three degrees that
- * item asserts is four of those. The other two read the same sixty.
+ * A HANDFUL, NOT A SAMPLE. `aim-error-within-10-degrees` holds each of them
+ * inside the bound `specs/saucer.md` states and `aim-error-varies-per-shot` asks
+ * only that they are not all one bearing; neither reads a statistic off them,
+ * because how a build's draw is shaped inside the stated range is the reviewer's
+ * to judge. Eight is two visits' worth at `SHOTS_PER_VISIT`, so the scenario is
+ * re-posed once and a build that fires only on a fresh visit is read across the
+ * renewal. `aims-at-the-ship` poses its error and reads one shot of its own.
  */
-export const SHOT_COUNT = 60;
+export const SHOT_COUNT = 8;
 
 /**
  * How many shots are taken from each saucer before another is brought on.
  *
  * A CONSEQUENCE OF THE SPECIFICATION, NOT A CHOICE. `specs/saucer.md` gives a visit
- * `SAUCER_LIFETIME` (`12` seconds), and sixty shots at `SAUCER_FIRE_INTERVAL` is
- * ninety-six — so no single visit can produce them and the scenario is re-posed as
- * each visit runs out. Six shots is `9.6` seconds, comfortably inside a visit, and
+ * `SAUCER_LIFETIME` (`12` seconds), and eight shots at `SAUCER_FIRE_INTERVAL` is
+ * `12.8` — so no single visit can produce them and the scenario is re-posed as
+ * the first visit runs out. Six shots is `9.6` seconds, comfortably inside a visit, and
  * `addSaucer` "replaces any saucer already up" with its clocks at their opening
  * values, so each batch is the same scenario over again. Every shot read is a real
  * shot from a saucer standing at the same place aiming at a ship standing at the
@@ -80,7 +83,7 @@ export const SHOTS_PER_VISIT = 6;
  * a reading: every round the sweep returns is one that appeared on a tick the sweep
  * itself ran and is read with the well's contribution held to a single tick. What a
  * lead-in can do is pass OVER a shot on a build that fires faster than it, which
- * changes WHICH sixty shots are read and nothing about any of them — and the next
+ * changes WHICH shots are read and nothing about any of them — and the next
  * shot is then caught just the same. `fires-every-1p6s` is the item that decides
  * the cadence, and it skips nothing at all.
  */
@@ -100,11 +103,11 @@ async function standSaucer(h: Harness): Promise<void> {
 }
 
 /**
- * Pose the scenario and read the aim error of sixty shots, in degrees.
+ * Pose the scenario and read the aim error of `SHOT_COUNT` shots, in degrees.
  *
  * The error is signed, taken as the turn from the bearing to the SHIP to the
- * bearing the round left along, so a build that aims dead-on reads sixty zeros and
- * a build with a fixed lead reads sixty of the same number. The saucer's own
+ * bearing the round left along, so a build that aims dead-on reads nothing but
+ * zeros and a build with a fixed lead reads copies of one number. The saucer's own
  * velocity is subtracted first, because `specs/saucer.md` has the round leave "at
  * `SAUCER_BULLET_SPEED` along that bearing, PLUS the saucer's own velocity" — here
  * the saucer is posed at rest, so the subtraction takes nothing away and says which

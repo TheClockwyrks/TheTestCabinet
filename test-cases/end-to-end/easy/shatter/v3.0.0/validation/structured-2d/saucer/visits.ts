@@ -5,7 +5,7 @@
 // what it does once it has: the first arrival at `SAUCER_FIRST_DELAY` (`18` s),
 // the `SAUCER_GAP_MIN`–`SAUCER_GAP_MAX` (`25`–`35` s) gap after each one leaves,
 // the edge and the row each enters at, that only one is ever up, and — through the
-// avoidance sweep — thirty-six whole crossings. Every one of them needs long
+// avoidance sweep — twenty whole crossings. Every one of them needs long
 // stretches of game time, and this module is the one reading they share: the game
 // opened the way a player opens it, emptied of everything the point is not about,
 // and then watched arrival by arrival.
@@ -25,8 +25,8 @@
 // `specs/instrumentation.md` states outright as the property the whole surface
 // rests on. A frame worth {@link MARCH_TICKS} ticks is therefore exactly as much
 // game as {@link MARCH_TICKS} frames worth one, and it is what makes these points
-// affordable: forty arrivals over four games is eight minutes of game time even
-// with every due posed short, which is sixty thousand ticks, and the engine
+// affordable: a watch for a second arrival is fifty seconds of game time even
+// with the first due posed short, which is six thousand ticks, and the engine
 // renders once per FRAME rather than once per tick.
 //
 // WHAT THE COARSER FRAME COSTS, AND WHERE IT IS PAID. A reading can only be taken

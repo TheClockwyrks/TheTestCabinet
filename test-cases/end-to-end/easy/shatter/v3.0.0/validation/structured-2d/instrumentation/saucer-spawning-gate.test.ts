@@ -9,19 +9,28 @@
 // saucer's arrival clock to the start of a game's cadence"
 // (`specs/instrumentation.md`), so each leg resets first and then poses live
 // play over it. Without that the clock would be wherever the previous scenario
-// left it, and "no saucer in sixty seconds" would be a claim about a clock that
-// had already run.
+// left it, and "no saucer past the first delay" would be a claim about a clock
+// that had already run.
 //
-// SIXTY SECONDS IS THE WINDOW, and it is chosen from the specification rather
-// than from patience: `specs/saucer.md` puts the first arrival of a game at
-// `SAUCER_FIRST_DELAY` (`18` seconds), so a minute is more than three times the
-// wait the gate is holding off. A build whose gate merely DELAYS the arrival, or
-// gates only the first one, is inside that window.
+// THE WINDOW IS THE FIRST DELAY AND TWO SECONDS OVER, chosen from the
+// specification rather than from patience: `specs/saucer.md` puts the first
+// arrival of a game at `SAUCER_FIRST_DELAY` (`18` seconds), so a gate that does
+// nothing has let a saucer in by the time the window closes, and a gate that
+// works has held the one arrival the cadence owed inside it. The gate's hold
+// over LATER arrivals follows from the same faculty, and a watch past the first
+// delay would grade the cadence's gaps a second time.
 //
 // THE FIELD IS OTHERWISE EMPTY AND QUIET. The wave gate stays shut and the
 // ship's contact test with it, so the only thing that can appear on the field
-// over the minute is the saucer this item is about.
+// over the window is the saucer this item is about.
+//
+// A FRAME IS WORTH EIGHT TICKS HERE. `specs/simulation.md` converts whatever
+// delta a frame brings into whole ticks, so twenty seconds of game time reach
+// the same state however they are divided into frames, and what the watch reads
+// is the saucer slot alone: a visit lasts `SAUCER_LIFETIME` (`12` s), which no
+// stride of a fifteenth of a second can step over.
 
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { SAUCER_FIRST_DELAY } from "../constants";
 import { assertEqual, assertNull } from "../assert";
@@ -30,43 +39,49 @@ import {
   createHarness,
   resetTo,
   startPlaying,
+  TICK_MS,
   ticksFor,
   type Harness,
 } from "../harness";
 
-/** How long each leg watches for, in seconds of game time. */
-const WATCH_SECONDS = 60;
+/** How long each leg watches for, in seconds of game time. See the header. */
+const WATCH_SECONDS = SAUCER_FIRST_DELAY + 2;
 
-/** How often that watch samples, in frames. A visit lasts 12 s (1440). */
-const WATCH_POLL = 4;
+/** The whole ticks one frame of the watch is worth: a fifteenth of a second. */
+const WATCH_TICKS_PER_FRAME = 8;
+
+/** The frames covering the window at that stride. */
+const WATCH_FRAMES = Math.ceil(ticksFor(WATCH_SECONDS) / WATCH_TICKS_PER_FRAME);
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({
+    clock: new ConstantClock(TICK_MS * WATCH_TICKS_PER_FRAME),
+  });
 });
 
 afterEach(() => {
   h?.dispose();
 });
 
-it("off, no saucer joins over a minute of game time", async () => {
+it("off, no saucer joins past the first delay", async () => {
   resetTo(h);
   startPlaying(h);
   h.debug.setSaucerSpawning(false);
   assertNull(h.snapshot().saucer, "no saucer is up when the leg begins");
 
-  // Undrawn: a minute of game time is 7 200 frames, and what the sweep reads is
-  // the saucer slot. The frame it stops on, and the state it reports, are the
-  // same either way.
+  // Undrawn: twenty seconds of game time is 300 frames of eight ticks, and what
+  // the sweep reads is the saucer slot. The frame it stops on, and the state it
+  // reports, are the same either way.
   const arrived = await h.quiet(() =>
     h.until((s) => s.saucer !== null, {
-      maxFrames: ticksFor(WATCH_SECONDS),
-      poll: WATCH_POLL,
+      maxFrames: WATCH_FRAMES,
+      poll: 1,
     }),
   );
 
-  // The field with no saucer a minute in, on a frame drawn for it.
+  // The field with no saucer past the first delay, on a frame drawn for it.
   await h.paint();
   captureStill(h, "quiet");
 
@@ -74,13 +89,13 @@ it("off, no saucer joins over a minute of game time", async () => {
     arrived.hit,
     false,
     `with saucerSpawning off, no saucer appears over ${WATCH_SECONDS} s of ` +
-      `game time — more than three times the ${SAUCER_FIRST_DELAY} s ` +
-      "specs/saucer.md puts the first arrival of a game at",
+      `game time — past the ${SAUCER_FIRST_DELAY} s specs/saucer.md puts the ` +
+      "first arrival of a game at",
   );
   assertNull(h.snapshot().saucer, "the saucer slot is still empty");
 });
 
-it("on, one joins inside the same minute", async () => {
+it("on, one joins inside the same window", async () => {
   resetTo(h);
   startPlaying(h);
   h.debug.setSaucerSpawning(true);
@@ -88,8 +103,8 @@ it("on, one joins inside the same minute", async () => {
 
   const arrived = await h.quiet(() =>
     h.until((s) => s.saucer !== null, {
-      maxFrames: ticksFor(WATCH_SECONDS),
-      poll: WATCH_POLL,
+      maxFrames: WATCH_FRAMES,
+      poll: 1,
     }),
   );
   assertEqual(

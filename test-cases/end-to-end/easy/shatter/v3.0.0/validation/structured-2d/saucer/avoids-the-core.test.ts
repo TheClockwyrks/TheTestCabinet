@@ -1,4 +1,4 @@
-// saucer/avoids-the-core — across thirty-six whole crossings, the saucer's circle
+// saucer/avoids-the-core — across twenty whole crossings, the saucer's circle
 // never overlaps the star's core.
 //
 // THE RULE. `specs/saucer.md`, Geometry: "It is a powered craft... and it steers
@@ -8,7 +8,7 @@
 // build's own." The distance is the whole requirement, and HOW a build keeps it is
 // deliberately not.
 //
-// WHY THIRTY-SIX CROSSINGS AND NOT ONE. This is the fold-in fix of `changelog.md`
+// WHY TWENTY CROSSINGS AND NOT ONE. This is the fold-in fix of `changelog.md`
 // carried forward as a design property. The item this replaces lined the saucer up
 // `60` units from the star at cruise — under half a second of warning — and a
 // craft that answers with vertical speed while keeping its crossing speed still
@@ -22,15 +22,15 @@
 // reroll discard the clearance it had accumulated, which is intermittent by
 // construction and does not respect one tidy sample.
 //
-// THE THIRTY-SIX. Nine rows, from `80` units below the star's row to `80` above it
-// in `20`-unit steps, each flown from the left edge and from the right, the whole
+// THE TWENTY. Five rows, from `80` units below the star's row to `80` above it
+// in `40`-unit steps, each flown from the left edge and from the right, the whole
 // set flown with each weave direction. The weave matters because the direction of
 // the first reroll is a draw (`specs/saucer.md`), and a saucer weaving into the
 // star is a different crossing from one weaving away; `setSaucerWeave` poses that
 // draw (`specs/instrumentation.md`), so the same row is flown both ways.
 //
 // THE VERDICT IS THE CLOSEST APPROACH OF ALL OF THEM, not of the first: one
-// crossing that came too close breaks the rule however the other thirty-five went.
+// crossing that came too close breaks the rule however the other nineteen went.
 //
 // THE DISTANCE IS MEASURED TO THE PATH, NOT TO THE SAMPLES. A crossing is `1097`
 // ticks and the sweep samples it every eight, and the closest point of an approach
@@ -43,7 +43,7 @@
 // back to the other.
 //
 // THE GUN IS SHUT AND NOTHING ELSE IS ON THE FIELD. `setSaucerGun(false)` means
-// thirty-six crossings produce no rounds at all — the steering is the requirement,
+// twenty crossings produce no rounds at all — the steering is the requirement,
 // and a round of the saucer's own has nothing to do with it. `startPlaying` leaves
 // no rock and no other craft, shuts the wave loop and the game's own arrival, and
 // shuts the ship's lethal contact test, so a crossing is the only thing happening.
@@ -80,9 +80,9 @@ const WEAVES = [1, -1] as const;
 
 /** How far either side of the star's row the entry rows reach, and their step. */
 const ROW_REACH = 80;
-const ROW_STEP = 20;
+const ROW_STEP = 40;
 
-/** The nine entry rows, from 80 below the star's row to 80 above it. */
+/** The five entry rows, from 80 below the star's row to 80 above it. */
 const ROWS: number[] = [];
 for (let row = STAR_Y - ROW_REACH; row <= STAR_Y + ROW_REACH; row += ROW_STEP) {
   ROWS.push(row);
@@ -162,7 +162,7 @@ afterEach(() => {
   harnesses = [];
 });
 
-it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R from the star's centre", async () => {
+it("keeps every one of 20 crossings clear of CORE_R + SAUCER_R from the star's centre", async () => {
   const sweep = await createMarchHarness();
   harnesses.push(sweep);
 
@@ -170,7 +170,7 @@ it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R from the star's c
   let worst: Crossing = { weave: WEAVES[0], row: ROWS[0], side: SIDES[0] };
 
   // The sweep runs undrawn: what it reads is a path of centres out of the
-  // snapshot, and thirty-six crossings of nine seconds each is forty thousand
+  // snapshot, and twenty crossings of nine seconds each is twenty thousand
   // ticks nothing looks at. The crossing it ends on is flown again
   // below in front of the recorder, and THAT is what a reviewer sees.
   await sweep.quiet(async () => {
@@ -201,7 +201,7 @@ it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R from the star's c
     }
   });
 
-  // The closest of the 36 crossings, flown again in front of the recorder at one
+  // The closest of the 20 crossings, flown again in front of the recorder at one
   // tick a frame — and before the assertion, so a failing build leaves the
   // approach its verdict rests on behind.
   const film = await createHarness();

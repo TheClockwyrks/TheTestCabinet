@@ -77,12 +77,12 @@ export const SHORT_DUE = 0.25;
 /* -------------------------------------------------------------------------- */
 //
 // THE SAUCER'S SCENARIOS READ A LOT OF TICKS AND ALMOST NOTHING OFF EACH ONE.
-// `at-most-one-at-a-time` needs the reported saucer id on EVERY tick of two minutes
-// of game time — 14 400 of them — because what it is looking for is the tick
-// reporting no saucer between two visits, and a stride that stepped over that tick
-// would fail a conformant build. `avoids-the-core` needs the saucer's centre every
-// eight ticks of thirty-six crossings. The three aim items need the tick each of
-// sixty shots was fired on. And every wait for an arrival covers eighteen to
+// `at-most-one-at-a-time` needs the reported saucer id on EVERY tick of fifty
+// seconds of game time — 6 000 of them — because what it is looking for is the
+// tick reporting no saucer between two visits, and a stride that stepped over that
+// tick would fail a conformant build. `avoids-the-core` needs the saucer's centre
+// every eight ticks of twenty crossings. The aim items need the tick each of a
+// handful of shots was fired on. And every wait for an arrival covers up to
 // thirty-five seconds of game time to read one id.
 //
 // A CROSSING INTO THE PAGE PER SAMPLE IS WHAT COSTS, NOT THE TICKS. The simulation
@@ -215,7 +215,7 @@ export async function nextArrival(
   const stride = options.stride ?? 1;
   const maxTicks = options.maxTicks ?? ARRIVAL_CEILING_TICKS;
   // THE SWEEP RUNS INSIDE THE PAGE, for the reason the section above states at
-  // length: forty arrivals over four games is thousands of round trips, and on a
+  // length: a wait for an arrival is up to thousands of round trips, and on a
   // host also running a model's build that is what decides how long these items
   // take.
   const found = await traceNextArrival(h, afterId, stride, maxTicks);
@@ -296,7 +296,7 @@ export interface Volley {
  * would then never see it arrive.
  *
  * `leadIn` skips whole ticks before the sampling starts, for a check that wants
- * sixty shots and does not read the gaps between them: every tick it skips is
+ * several shots and does not read the gaps between them: every tick it skips is
  * counted in `ticks` just the same, and a build that fires FASTER than the lead-in
  * simply has some of its rounds passed over, which changes which shots are read and
  * not what any of them is. A check whose requirement IS the gap passes no lead-in.

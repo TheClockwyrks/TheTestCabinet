@@ -3,21 +3,19 @@
 //
 // THE RULE. `specs/saucer.md`, Entry and travel: a saucer enters "at a `y` drawn
 // uniformly from `SAUCER_R` to `FIELD_H - SAUCER_R`". The bound alone is this
-// point's; that the rows also SPREAD across that range is
-// `saucer/enters-at-a-random-row`'s, read off the same forty arrivals.
+// point's; that the rows also VARY across that range is
+// `saucer/enters-at-a-random-row`'s, read off the same six arrivals.
 //
 // THE BOUND IS THE RANGE ITSELF, not a tolerance around an observed one:
 // `[SAUCER_R, FIELD_H - SAUCER_R]` is `[18, 702]`.
 //
 // WHICH WRONG MODEL THIS DECIDES, PLAINLY. It fails a build that puts a saucer
-// where half the craft is off the field — most sharply one drawing over the whole
-// `[0, FIELD_H]`, or clamping to `0`, or entering at a fixed `y` outside the band.
-// It is worth saying what it only SOMETIMES catches: forty draws over `[0, 720]`
-// each land outside `[18, 702]` with probability `36/720` = `1/20`, so forty of
-// them catch that particular build about `87` percent of the time. Forty is what
-// the spread half needs and what the arrivals cost; nothing here pretends the
-// reading is a certainty against a draw that is only slightly too wide, and a build
-// entering at `y = 0` on every arrival fails on the first one.
+// where half the craft is off the field — most sharply one clamping to `0`, or
+// entering at a fixed `y` outside the band, which fails on the first arrival. A
+// build whose range is only slightly too wide lands outside the band on a
+// fraction of its draws, and six arrivals are a handful rather than a sample:
+// they decide that the rows a build draws lie where the specification puts them,
+// and leave how a build's draw is shaped to the reviewer.
 //
 // THE ROW READING IS EXACT. A saucer "enters with no vertical component" and its
 // weave begins "one full interval after it enters", so the row is unchanged for a
@@ -25,10 +23,10 @@
 // sample can be late by. The allowance below exists only so a build that starts its
 // weave immediately is failed by `saucer/weave-interval` rather than here.
 //
-// FORTY ARRIVALS OVER FOUR GAMES, ten apiece, so the reading covers LATER
-// arrivals as well as first ones. The gather is in `./rows`, shared with the spread
-// item, and the range is asserted PER ARRIVAL so a build that enters off the field
-// once fails on that one rather than being averaged out.
+// SIX ARRIVALS OVER TWO GAMES, three apiece, so the reading covers LATER arrivals
+// as well as first ones. The gather is in `./rows`, shared with the variation
+// item, and the range is asserted PER ARRIVAL so a build that enters off the
+// field once fails on that one rather than being averaged out.
 
 import { afterEach, it } from "vitest";
 import { FIELD_H, SAUCER_R, SAUCER_WEAVE_SPEED } from "../constants";

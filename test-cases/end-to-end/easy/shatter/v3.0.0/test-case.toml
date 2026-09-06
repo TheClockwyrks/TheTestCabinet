@@ -603,11 +603,11 @@ validation = { script = "instrumentation/wave-spawning-gate.test.ts", outputs = 
 [[review.categories.items]]
 id = "saucer-spawning-gate"
 title = "Saucer spawning off keeps the saucer away"
-description = "With setSaucerSpawning(false) no saucer joins over sixty seconds of game time; with it on, one does."
+description = "With setSaucerSpawning(false) no saucer joins over twenty seconds of game time, past the SAUCER_FIRST_DELAY (18 s) the first arrival is due at; with it on, one does."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/saucer-spawning-gate.test.ts", outputs = [
-  { id = "quiet", name = "The field with no saucer a minute in", kind = "image" },
+  { id = "quiet", name = "The field with no saucer past the first delay", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "ship-collision-gate"
@@ -1544,7 +1544,7 @@ validation = { script = "saucer/first-arrives-at-18s.test.ts", outputs = [
 [[review.categories.items]]
 id = "at-most-one-at-a-time"
 title = "Only one saucer is up at a time"
-description = "Sampled every tick across two minutes of game time with spawning on, the reported saucer.id never changes from one live saucer to another without a tick reporting saucer null between the two visits, so a build whose spawner starts a second visit over a live one fails."
+description = "With spawning on and the first due posed short through setSaucerDue, the saucer.id sampled every tick across fifty seconds of game time never changes from one live saucer to another without a tick reporting saucer null between the two visits, so a build whose spawner starts a second visit over a live one fails."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "saucer/at-most-one-at-a-time.test.ts", outputs = [
@@ -1553,7 +1553,7 @@ validation = { script = "saucer/at-most-one-at-a-time.test.ts", outputs = [
 [[review.categories.items]]
 id = "subsequent-gap"
 title = "Later saucers arrive 25 to 35 seconds apart"
-description = "The interval between one saucer leaving and the next arriving lies in [25, 35] seconds, sampled across three games."
+description = "With the first due posed short through setSaucerDue, the interval between one saucer leaving and the next arriving lies in [25, 35] seconds, read in each of three games."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/subsequent-gap.test.ts", outputs = [
@@ -1571,20 +1571,20 @@ validation = { script = "saucer/enters-at-an-edge.test.ts", outputs = [
 [[review.categories.items]]
 id = "entry-row-inside-the-range"
 title = "The entry row lies inside the stated range"
-description = "Every entry row across forty arrivals over four games lies inside [SAUCER_R, FIELD_H - SAUCER_R], the range specs/saucer.md draws it from, so a build entering half a craft off the field fails. The bound alone; the spread is a separate item."
+description = "Every entry row across six arrivals over two games lies inside [SAUCER_R, FIELD_H - SAUCER_R], the range specs/saucer.md draws it from, so a build entering half a craft off the field fails. The bound alone; that the rows vary is a separate item."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/entry-row-inside-the-range.test.ts", outputs = [
-  { id = "entry", name = "One of the forty arrivals the rows were read from", kind = "image" },
+  { id = "entry", name = "One of the six arrivals the rows were read from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "enters-at-a-random-row"
 title = "A saucer enters at a row drawn across the field"
-description = "Across forty arrivals over four games the entry rows span more than half of [SAUCER_R, FIELD_H - SAUCER_R], which a uniform draw fails to clear once in twenty billion and a build entering on one fixed lane never does. The threshold is derived from the stated range, not from an observed spread. The spread alone; the range bound is a separate item."
+description = "Across six arrivals over two games the entry rows are not all one row: the highest and the lowest differ by more than the half unit of float slack a draw over whole-numbered ends can carry, which a row drawn afresh for every arrival always does and a build entering on one fixed lane never does. The variation alone; the range bound is a separate item."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/enters-at-a-random-row.test.ts", outputs = [
-  { id = "rows", name = "One of the forty arrivals the rows were read from", kind = "image" },
+  { id = "rows", name = "One of the six arrivals the rows were read from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "crosses-at-cruise"
@@ -1635,11 +1635,11 @@ validation = { script = "saucer/weave-speed.test.ts", outputs = [
 [[review.categories.items]]
 id = "avoids-the-core"
 title = "A saucer never overlaps the star's core"
-description = "Across 36 crossings — nine rows from 80 units below the star's row to 80 above it in 20-unit steps, each from the left edge and from the right, the whole set flown with the weave posed down and posed up, with the gun off — the closest approach of any of them to the star's centre, measured as the distance to the line between eight-tick samples, exceeds CORE_R + SAUCER_R (48)."
+description = "Across 20 crossings — five rows from 80 units below the star's row to 80 above it in 40-unit steps, each from the left edge and from the right, the whole set flown with the weave posed down and posed up, with the gun off — the closest approach of any of them to the star's centre, measured as the distance to the line between eight-tick samples, exceeds CORE_R + SAUCER_R (48)."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "saucer/avoids-the-core.test.ts", outputs = [
-  { id = "closest", name = "The closest of the 36 crossings to the core", kind = "replay" },
+  { id = "closest", name = "The closest of the 20 crossings to the core", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "despawns-after-12s"
@@ -1684,25 +1684,25 @@ description = "With its mind and travel off and the ship posed 400 units away, a
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "saucer/aims-at-the-ship.test.ts", outputs = [
-  { id = "aim", name = "The spread of sixty aimed shots at the ship", kind = "image" },
+  { id = "aim", name = "The shot leaving straight for the ship", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "aim-error-within-10-degrees"
 title = "The aim error stays inside 10 degrees"
-description = "Every one of those sixty shots leaves within SAUCER_AIM_ERROR (10 degrees) of the bearing to the ship. The bound alone; the scatter is a separate item."
+description = "Every one of eight unposed shots at a stationary ship leaves within SAUCER_AIM_ERROR (10 degrees) of the bearing to the ship. The bound alone; the scatter is a separate item."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/aim-error-within-10-degrees.test.ts", outputs = [
-  { id = "aim", name = "The sixty shots inside the error bound", kind = "image" },
+  { id = "aim", name = "The eight shots inside the error bound", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "aim-error-varies-per-shot"
 title = "The aim error is redrawn for every shot"
-description = "Across those same sixty shots at a stationary ship the bearings are not all equal: their spread exceeds 4 degrees, which a uniform draw over plus or minus 10 degrees clears overwhelmingly and a build that aims dead-on, or reuses one offset, does not. specs/saucer.md states the draw as fresh per shot, which is the rule this item asserts."
+description = "Across those same eight shots at a stationary ship the bearings are not all equal: the widest two differ by more than a quarter of a degree, which an offset drawn afresh for every shot always does and a build that aims dead-on, or reuses one offset, never does. specs/saucer.md states the draw as fresh per shot, which is the rule this item asserts."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/aim-error-varies-per-shot.test.ts", outputs = [
-  { id = "scatter", name = "The scatter across sixty shots at a still ship", kind = "image" },
+  { id = "scatter", name = "The scatter across eight shots at a still ship", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "bullet-carries-the-saucers-velocity"

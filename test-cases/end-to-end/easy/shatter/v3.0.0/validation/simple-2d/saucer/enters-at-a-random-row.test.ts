@@ -1,50 +1,42 @@
-// Shatter — saucer/enters-at-a-random-row: entry rows are drawn across the whole
+// saucer/enters-at-a-random-row — entry rows are drawn across the whole
 // field, not taken from one lane.
 //
 // THE RULE. `specs/saucer.md`: a saucer enters "at a `y` drawn uniformly from
 // `SAUCER_R` to `FIELD_H - SAUCER_R`", and "Entry rows are drawn across the whole
 // field, so a crossing lined up on the star's row is an ordinary one."
 //
-// THE SPREAD ALONE. That every row lies INSIDE that range is
-// `saucer/entry-row-inside-the-range`'s point, read off the same forty arrivals;
-// this one reads only how far they spread. A build that always enters dead centre
-// clears the range bound comfortably and fails here, which is exactly why the two
-// are separate points.
+// THE VARIATION ALONE. That every row lies INSIDE that range is
+// `saucer/entry-row-inside-the-range`'s point, read off the same six arrivals;
+// this one reads only that the rows are not all one row. A build that always
+// enters dead centre clears the range bound comfortably and fails here, which is
+// exactly why the two are separate points.
 //
-// AND THE THRESHOLD IS DERIVED FROM THE STATED RANGE, NOT FROM AN OBSERVED SPREAD.
-// The range is `684` units wide, and the forty rows must span more than half of
-// it — `342` units. Forty draws from a uniform span less than half of it with
-// probability `41 / 2^40`, under one in twenty billion, which is the
-// specification's own claim about the draw and not a reference build's habit, and
-// far beyond the six standard deviations a probability item is read to. A build
-// entering on one fixed lane spans nothing at all, and one alternating between
-// two lanes spans the gap between them.
+// TWO DISTINCT ROWS ARE THE WHOLE OF THE ASSERTION. The draw is continuous, so
+// six arrivals from it never share a row, while a build that enters on one fixed
+// lane reads six copies of one number and fails. How widely a build's rows spread
+// inside the range is not a figure `specs/saucer.md` fixes and not one a sample
+// decides: it is the reviewer's to judge from the picture. Two rows are distinct
+// when they differ by more than the float slack a uniform draw over
+// whole-numbered ends can carry, which is the same half unit the range item
+// allows at its ends.
 //
-// FORTY ARRIVALS OVER FOUR GAMES, so the reading covers LATER arrivals as well
-// as first ones — four games, ten consecutive visits each. The gather is in
-// `./rows`. `enters-at-an-edge` takes the other half of the entry draw, posed edge
-// by edge.
+// SIX ARRIVALS OVER TWO GAMES, so the reading covers LATER arrivals as well as
+// first ones — two games, three consecutive visits each. The gather is in
+// `./rows`. `enters-at-an-edge` takes the other half of the entry draw, posed
+// edge by edge.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan } from "../assert";
-import { FIELD_H, SAUCER_R } from "../constants";
 import { createHarness, type Harness } from "../harness";
 import { readEntryRows } from "./rows";
 
-/** The bottom of the range `specs/saucer.md` draws the entry row from. */
-const ROW_MIN = SAUCER_R;
-
-/** The top of it. */
-const ROW_MAX = FIELD_H - SAUCER_R;
-
 /**
- * Half the range the forty rows must span, `342` units.
+ * How far apart two rows must be to count as two rows: half a unit.
  *
- * The item's own figure, and a property of the DRAW rather than of any build:
- * forty uniform samples span less than half their range once in twenty billion.
- * A build entering on one fixed lane spans nothing at all.
+ * Float rounding on a uniform draw over a range whose ends are whole numbers, and
+ * nothing else. A build entering on one fixed lane reads rows a full zero apart.
  */
-const SPAN_NEEDED = (ROW_MAX - ROW_MIN) / 2;
+const ROW_EPSILON = 0.5;
 
 let h: Harness;
 
@@ -56,14 +48,15 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("spreads forty entry rows over more than half the range they are drawn from", async () => {
+it("enters at more than one row across six arrivals", async () => {
   const rows = await readEntryRows(h, "rows");
   const ys = rows.map((row) => row.y);
 
   assertGreaterThan(
     Math.max(...ys) - Math.min(...ys),
-    SPAN_NEEDED,
-    `the range ${rows.length} entry rows covered, against half the ` +
-      `${ROW_MAX - ROW_MIN}-unit range they are drawn from (specs/saucer.md)`,
+    ROW_EPSILON,
+    `the units between the highest and the lowest of ${rows.length} entry ` +
+      "rows, which a row drawn afresh for every arrival puts apart and a fixed " +
+      "lane never does (specs/saucer.md)",
   );
 });

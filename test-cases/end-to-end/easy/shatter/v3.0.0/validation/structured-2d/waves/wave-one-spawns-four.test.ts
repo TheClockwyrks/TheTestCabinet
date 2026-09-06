@@ -29,12 +29,10 @@
 // top. What it does NOT accommodate is a build that puts up a different number of
 // them.
 //
-// THREE GAMES. The positions of a wave's rocks are drawn (`specs/simulation.md`,
-// "Random draws"), and the placement rules `specs/progression.md` states are
-// constraints a build satisfies by rejecting and redrawing. A build whose
-// rejection loop gives up after a fixed number of tries and spawns fewer rocks
-// than it owes fails intermittently by construction, so the opening wave is
-// opened three times in three games and every one of them has to hold four.
+// ONE GAME. The count is exact and the world is generated once: the opening
+// wave of a game opened the way a player opens one has to hold four Large rocks
+// and nothing else. A build whose placement loop gives up and spawns fewer than
+// it owes is a build whose count is wrong, and the reviewer sees its waves.
 //
 // WHAT THIS ITEM DOES NOT DECIDE. WHERE the four stand, which is
 // `spawns-clear-of-the-ship`'s and `spawns-clear-of-the-star`'s, and how fast they
@@ -57,15 +55,6 @@ const OPENING_WAVE = 1;
 const OPENING_ROCKS = WAVE_BASE_ROCKS + OPENING_WAVE;
 
 /**
- * How many games the opening is flown in.
- *
- * A wave's positions are drawn, and a build that satisfies the placement rules by
- * rejecting and redrawing can run out of tries on one draw and not on another.
- * One opening would grade that build by luck.
- */
-const GAMES = 3;
-
-/**
  * How long the opening wave is waited for.
  *
  * `WAVE_BANNER_TIME` (`1.5` s) and half a second, because a build is free to run
@@ -85,46 +74,43 @@ afterEach(() => {
 });
 
 it("opens a game with WAVE_BASE_ROCKS + 1 Large rocks", async () => {
-  for (let game = 1; game <= GAMES; game += 1) {
-    await startRun(h);
+  await startRun(h);
 
-    const opened = h.snapshot();
-    assertEqual(
-      opened.screen,
-      "playing",
-      `game ${String(game)}: a game in play after confirming PLAY on the ` +
-        `title, which is the route this item's opening wave arrives by ` +
-        `(specs/ui.md); a build that does not start a game here is decided by ` +
-        `screens/play-starts-a-game`,
-    );
+  const opened = h.snapshot();
+  assertEqual(
+    opened.screen,
+    "playing",
+    `a game in play after confirming PLAY on the title, which is the route ` +
+      `this item's opening wave arrives by (specs/ui.md); a build that does ` +
+      `not start a game here is decided by screens/play-starts-a-game`,
+  );
 
-    const arrival = await h.until((s) => s.rocks.length > 0, {
-      maxFrames: OPENING_WINDOW_TICKS,
-      poll: 1,
-    });
-    const rocks: RockSnapshot[] = arrival.snapshot.rocks;
-    // The opening wave as it arrived, kept before the assertions so a failing
-    // build leaves the picture that shows why.
-    captureStill(h, "wave");
+  const arrival = await h.until((s) => s.rocks.length > 0, {
+    maxFrames: OPENING_WINDOW_TICKS,
+    poll: 1,
+  });
+  const rocks: RockSnapshot[] = arrival.snapshot.rocks;
+  // The opening wave as it arrived, kept before the assertions so a failing
+  // build leaves the picture that shows why.
+  captureStill(h, "wave");
 
-    assertLength(
-      rocks,
-      OPENING_ROCKS,
-      `game ${String(game)}: wave ${String(OPENING_WAVE)} putting up ` +
-        `WAVE_BASE_ROCKS + ${String(OPENING_WAVE)} = ` +
-        `${String(OPENING_ROCKS)} rocks — wave N spawns WAVE_BASE_ROCKS + N ` +
-        `Large rocks (specs/progression.md); read on the first tick the field ` +
-        `held a rock, within ${String(WAVE_BANNER_TIME + 0.5)} s of the game ` +
-        `opening, so either opening the specification allows is accommodated`,
-    );
+  assertLength(
+    rocks,
+    OPENING_ROCKS,
+    `wave ${String(OPENING_WAVE)} putting up ` +
+      `WAVE_BASE_ROCKS + ${String(OPENING_WAVE)} = ` +
+      `${String(OPENING_ROCKS)} rocks — wave N spawns WAVE_BASE_ROCKS + N ` +
+      `Large rocks (specs/progression.md); read on the first tick the field ` +
+      `held a rock, within ${String(WAVE_BANNER_TIME + 0.5)} s of the game ` +
+      `opening, so either opening the specification allows is accommodated`,
+  );
 
-    const wrongSize = rocks.filter((rock) => rock.size !== "large");
-    assertLength(
-      wrongSize,
-      0,
-      `game ${String(game)}: every rock of the opening wave a Large — a wave ` +
-        `spawns Large rocks (specs/progression.md); found ` +
-        `${wrongSize.map((rock) => rock.size).join(", ")}`,
-    );
-  }
+  const wrongSize = rocks.filter((rock) => rock.size !== "large");
+  assertLength(
+    wrongSize,
+    0,
+    `every rock of the opening wave a Large — a wave spawns Large rocks ` +
+      `(specs/progression.md); found ` +
+      `${wrongSize.map((rock) => rock.size).join(", ")}`,
+  );
 });

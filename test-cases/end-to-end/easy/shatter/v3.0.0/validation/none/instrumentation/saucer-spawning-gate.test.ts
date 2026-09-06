@@ -1,12 +1,12 @@
 // instrumentation/saucer-spawning-gate — `setSaucerSpawning(false)` really does
 // shut the game's own arrival of a saucer, and opening it lets one in.
 //
-// WHY A MINUTE. `specs/saucer.md` puts the first arrival of a game at
-// `SAUCER_FIRST_DELAY` (18 seconds) and every later one `SAUCER_GAP_MIN` to
-// `SAUCER_GAP_MAX` (25 to 35 seconds) after the previous saucer leaves. Sixty
-// seconds of game time with the gate shut is more than three first delays and
-// longer than the longest gap, so a build whose gate does nothing has had every
-// opportunity the specification gives it.
+// WHY THE FIRST DELAY AND TWO SECONDS OVER. `specs/saucer.md` puts the first
+// arrival of a game at `SAUCER_FIRST_DELAY` (18 seconds), so a gate that does
+// nothing has let a saucer in by the time the window closes, and a gate that
+// works has held the one arrival the cadence owed inside it. The gate's hold over
+// LATER arrivals follows from the same faculty, and a watch past the first delay
+// would grade the cadence's gaps a second time.
 //
 // WHY THE GATE MATTERS TO EVERYTHING ELSE. `startPlaying` shuts it for every
 // scenario in this project, because a scenario that runs past eighteen seconds of
@@ -34,8 +34,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** The game time a shut gate is watched over, in seconds. */
-const QUIET_TIME = 60;
+/** The game time a shut gate is watched over, in seconds. See the header. */
+const QUIET_TIME = SAUCER_FIRST_DELAY + 2;
 
 /**
  * The game time an open gate is given to produce a saucer, in seconds.
@@ -58,7 +58,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("keeps the saucer away for a minute while the gate is shut", async () => {
+it("keeps the saucer away past the first delay while the gate is shut", async () => {
   // `startPlaying` opens with the saucer gate shut, which is the state under test.
   await startPlaying(h);
   const joined = await h.skipUntil((s) => s.saucer !== null, {

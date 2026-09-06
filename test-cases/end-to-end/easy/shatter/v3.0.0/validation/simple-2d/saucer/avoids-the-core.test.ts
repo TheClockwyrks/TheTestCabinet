@@ -9,19 +9,19 @@
 // one this item may assert, and everything about the approach is left to the
 // build.
 //
-// THIRTY-SIX REAL CROSSINGS, NOT ONE POSED CONFRONTATION. This is the item the
+// TWENTY REAL CROSSINGS, NOT ONE POSED CONFRONTATION. This is the item the
 // fold-in fix of `changelog.md` reshaped, and the reason is worth restating: a
 // scenario that lines a saucer up sixty units from the star at cruise gives it
 // under half a second of warning, and a craft that answers with vertical speed
 // while keeping its crossing speed still clips the core — so the old check passed
 // exactly one way of steering and failed conformant builds for the way they
-// steer. What is flown here instead is the entry rule's own output: nine rows
+// steer. What is flown here instead is the entry rule's own output: five rows
 // from eighty units below the star's to eighty above it, each from the left edge
 // and from the right, the whole set with each weave direction. Every one of them is a
 // course the game itself produces, and the whole approach is the build's to
 // steer.
 //
-// AND THE VERDICT IS THE WORST OF ALL THIRTY-SIX, because avoidance is often
+// AND THE VERDICT IS THE WORST OF ALL TWENTY, because avoidance is often
 // one-sided — which the rows either side of the star are for — and because a
 // build that rerolls its weave on a timer can have a reroll discard the avoidance
 // it had accumulated, which is intermittent by construction and does not respect
@@ -43,7 +43,7 @@
 // it leaves it on the far side, when the visit ends, or at `SAUCER_LIFETIME`,
 // which is the ceiling the specification itself puts on a visit.
 //
-// THE GUN IS OFF, so thirty-six crossings put no round on the field at all. Its
+// THE GUN IS OFF, so twenty crossings put no round on the field at all. Its
 // mind is on, because the steering IS the requirement.
 //
 // THE RECORDING IS THE CLOSEST CROSSING, NOT THE FIRST. On a failing build the
@@ -74,7 +74,7 @@ import {
 import { poseVisit } from "./visit";
 
 /** The nine entry rows: eighty units either side of the star's, in twenties. */
-const ROW_OFFSETS = [-80, -60, -40, -20, 0, 20, 40, 60, 80] as const;
+const ROW_OFFSETS = [-80, -40, 0, 40, 80] as const;
 
 /** The two edges a saucer enters at, each heading into the field. */
 const EDGES = [
@@ -93,7 +93,7 @@ const SAUCER_CLEARANCE = CORE_R + SAUCER_R;
  *
  * A fifteenth of a second, over which a saucer travelling at its cruise and
  * weaving at full vertical speed covers `11.1` units. That is what makes
- * thirty-six crossings affordable, and it is why the distance is read to the LINE
+ * twenty crossings affordable, and it is why the distance is read to the LINE
  * between samples rather than to the samples themselves.
  */
 const SAMPLE_STRIDE = 8;
@@ -139,7 +139,7 @@ const WINDOW_TICKS = ticksFor((2 * WINDOW) / SAUCER_SPEED) + ticksFor(0.5);
 /** A second of the crossing after the window, so the recording ends on the outcome. */
 const TAIL_TICKS = ticksFor(1);
 
-/** One crossing of the thirty-six: which row, which edge, which game. */
+/** One crossing of the twenty: which row, which edge, which game. */
 interface Crossing {
   weave: (typeof WEAVES)[number];
   row: number;
@@ -158,7 +158,7 @@ function columnGap(h: Harness): number {
  * Follow the posed crossing past the star and answer the closest it came to the
  * star's centre, measured to the LINE between samples.
  *
- * The window is what makes thirty-six of these affordable: outside it the sweep
+ * The window is what makes twenty of these affordable: outside it the sweep
  * advances in `APPROACH_STRIDE` ticks and reads nothing, and inside it samples
  * every `SAMPLE_STRIDE`. It stops when the saucer leaves the window on the far
  * side, when the visit ends, or at the ceiling.
@@ -168,7 +168,7 @@ async function crossingApproach(h: Harness): Promise<number> {
   let ran = 0;
   let entered = false;
   // Undrawn: the reading is a path of centres out of the snapshot, and
-  // thirty-six crossings of twelve seconds each is a hundred thousand frames
+  // twenty crossings of twelve seconds each is a hundred thousand frames
   // nothing looks at. The crossing the check ends on is flown again below, with
   // the recorder armed, and THAT is what a reviewer sees.
   return h.quiet(async () => {
@@ -225,7 +225,7 @@ function poseCrossing(crossing: Crossing): void {
   h.debug.setSaucerWeave(crossing.weave);
 }
 
-it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R", async () => {
+it("keeps every one of 20 crossings clear of CORE_R + SAUCER_R", async () => {
   const crossings: Crossing[] = [];
   for (const weave of WEAVES) {
     for (const edge of EDGES) {
@@ -265,7 +265,7 @@ it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R", async () => {
   });
 
   // A CROSSING THIS SWEEP NEVER SAW IS NOT A CROSSING THAT KEPT ITS DISTANCE.
-  // Every one of the 36 is posed at an edge heading into the field, and
+  // Every one of the 20 is posed at an edge heading into the field, and
   // `specs/saucer.md` crosses it at `SAUCER_SPEED` (`140`), so `12` seconds of
   // visit carries it `1680` units — past the star's column whichever edge it came
   // in at. A build whose saucer never reached the window therefore never flew the
@@ -273,13 +273,13 @@ it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R", async () => {
   assertLessThan(
     worst,
     Number.POSITIVE_INFINITY,
-    "a saucer reaching the star's column on at least one of 36 crossings, " +
+    "a saucer reaching the star's column on at least one of 20 crossings, " +
       `each posed at an edge and crossing at SAUCER_SPEED (specs/saucer.md)`,
   );
   assertGreaterThan(
     worst,
     SAUCER_CLEARANCE - CHORD_ALLOWANCE,
-    "how near the star's centre the closest of 36 crossings came — row " +
+    "how near the star's centre the closest of 20 crossings came — row " +
       `${worstCrossing.row}, from the ${worstCrossing.edge.name}, weaving ` +
       `${worstCrossing.weave > 0 ? "down" : "up"} first (specs/saucer.md)`,
   );

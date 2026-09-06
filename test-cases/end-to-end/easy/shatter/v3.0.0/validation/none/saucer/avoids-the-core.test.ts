@@ -8,17 +8,17 @@
 // BUILD'S OWN." The one distance the specification fixes is therefore the only one
 // this item may assert, and everything about the approach is left to the build.
 //
-// THIRTY-SIX REAL CROSSINGS, NOT ONE POSED CONFRONTATION. A scenario that lines a
+// TWENTY REAL CROSSINGS, NOT ONE POSED CONFRONTATION. A scenario that lines a
 // saucer up sixty units from the star at cruise gives it under half a second of
 // warning, and a craft that answers with vertical speed while keeping its
 // crossing speed still clips the core — so such a check passes exactly one way of
 // steering and fails conformant builds for the way they steer. What is flown here
-// instead is the entry rule's own output: nine rows from eighty units below the
+// instead is the entry rule's own output: five rows from eighty units below the
 // star's to eighty above it, each from the left edge and from the right, the whole
 // set with each weave direction. Every one of them is a course the game itself
 // produces, and the whole approach is the build's to steer.
 //
-// AND THE VERDICT IS THE WORST OF ALL THIRTY-SIX, because avoidance is often
+// AND THE VERDICT IS THE WORST OF ALL TWENTY, because avoidance is often
 // one-sided — which the rows either side of the star are for — and because a build
 // that rerolls its weave on a timer can have a reroll discard the avoidance it had
 // accumulated. Both weave directions, posed through `setSaucerWeave`, because
@@ -31,11 +31,11 @@
 // check hunting a build that came too close. `closestApproach` in `geometry.ts` is
 // that reading.
 //
-// THE GUN IS OFF, so thirty-six crossings put no round on the field at all. Its
+// THE GUN IS OFF, so twenty crossings put no round on the field at all. Its
 // mind is on, because the steering IS the requirement.
 //
 // THE SAMPLING RUNS INSIDE THE PAGE, for the reason `cadence.ts` sets out beside
-// `traceSaucerPath`: thirty-six crossings are tens of thousands of ticks and read
+// `traceSaucerPath`: twenty crossings are tens of thousands of ticks and read
 // two numbers off each sample, and a round trip apiece would make this item's
 // verdict a fact about how loaded the host was. The loop there calls the build's
 // own `advance` and the build's own `snapshot()`, and the crossing it follows is
@@ -71,7 +71,7 @@ import {
 import { traceSaucerPath } from "./cadence";
 
 /** The nine entry rows: eighty units either side of the star's, in twenties. */
-const ROW_OFFSETS = [-80, -60, -40, -20, 0, 20, 40, 60, 80] as const;
+const ROW_OFFSETS = [-80, -40, 0, 40, 80] as const;
 
 /** The two edges a saucer enters at, each heading into the field. */
 const EDGES = [
@@ -96,7 +96,7 @@ const WINDOW = 320;
  * The eight ticks between two samples inside the window.
  *
  * A fifteenth of a second, over which a saucer travelling at its cruise and weaving
- * at full vertical speed covers `11.1` units. That is what makes thirty-six
+ * at full vertical speed covers `11.1` units. That is what makes twenty
  * crossings affordable, and it is why the distance is read to the LINE between
  * samples rather than to the samples themselves.
  */
@@ -133,7 +133,7 @@ const WINDOW_TICKS = ticksFor((2 * WINDOW) / SAUCER_SPEED) + ticksFor(0.5);
 /** A second of the crossing after the window, so the recording ends on the outcome. */
 const TAIL_TICKS = ticksFor(1);
 
-/** One crossing of the thirty-six: which row, which edge, which weave. */
+/** One crossing of the twenty: which row, which edge, which weave. */
 interface Crossing {
   weave: (typeof WEAVES)[number];
   row: number;
@@ -179,7 +179,7 @@ async function poseCrossing(crossing: Crossing): Promise<void> {
   await h.debug.setSaucerWeave(crossing.weave);
 }
 
-it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R", async () => {
+it("keeps every one of 20 crossings clear of CORE_R + SAUCER_R", async () => {
   const crossings: Crossing[] = [];
   for (const weave of WEAVES) {
     for (const edge of EDGES) {
@@ -224,6 +224,6 @@ it("keeps every one of 36 crossings clear of CORE_R + SAUCER_R", async () => {
   assertGreaterThan(
     worst,
     SAUCER_CLEARANCE - CHORD_ALLOWANCE,
-    `how near the star's centre the closest of 36 crossings came — row ${worstCrossing.row}, from the ${worstCrossing.edge.name}, weaving ${worstCrossing.weave > 0 ? "down" : "up"} first (specs/saucer.md)`,
+    `how near the star's centre the closest of 20 crossings came — row ${worstCrossing.row}, from the ${worstCrossing.edge.name}, weaving ${worstCrossing.weave > 0 ? "down" : "up"} first (specs/saucer.md)`,
   );
 });

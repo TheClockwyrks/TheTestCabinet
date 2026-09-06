@@ -15,7 +15,10 @@
 // buy is that a build whose draw runs outside the band on part of its range is
 // caught rather than sampled around. Nothing is posed for the gap: `setSaucerDue`
 // is how a check that wants a particular due gets one, and this check wants the
-// build's own draw.
+// build's own draw. What IS posed is the FIRST due of each game, so the visit
+// the gap follows is up a quarter of a second in rather than at `18` s: the first
+// delay is `saucer/first-arrives-at-18s`'s item, and the draw this item reads is
+// the one the game makes when that visit leaves.
 //
 // BOTH ENDS ARE ASSERTED, because both are the rule: a build that comes straight
 // back fails the low end and a build that makes the player wait a minute fails the
@@ -38,6 +41,7 @@ import {
   MARCH_STEP,
   marchFrames,
   openQuietGame,
+  SHORT_DUE,
   watchVisits,
 } from "./visits";
 
@@ -48,12 +52,12 @@ const GAMES = [1, 2, 3] as const;
  * How long each game is watched for, in seconds of game time.
  *
  * The longest a conformant build can take to reach the second arrival is the
- * `18` s first delay, the `12` s visit, and the `35` s upper gap — `65` s. Five
- * more is margin for a build whose clocks run a shade slow, so a run that never
- * reaches a second visit is reported as exactly that rather than as a gap out of
- * range.
+ * posed quarter-second first due, the `12` s visit, and the `35` s upper gap —
+ * `47.25` s. Five more is margin for a build whose clocks run a shade slow, so a
+ * run that never reaches a second visit is reported as exactly that rather than
+ * as a gap out of range.
  */
-const WATCH_SECONDS = 70;
+const WATCH_SECONDS = 53;
 
 /**
  * How far outside the stated band a reading may fall, in seconds.
@@ -77,6 +81,7 @@ it.each(GAMES)(
   async (game) => {
     h = await createMarchHarness();
     const opened = await openQuietGame(h);
+    h.debug.setSaucerDue(SHORT_DUE);
 
     const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
       done: (visits) => visits.length >= 2,
@@ -90,8 +95,8 @@ it.each(GAMES)(
       watch.visits.length,
       2,
       `saucer visits inside ${WATCH_SECONDS} s of game time in game ${game} — ` +
-        `the first is due at 18 s and the second at most 12 + ${SAUCER_GAP_MAX} s ` +
-        "after it (specs/saucer.md)",
+        `the first is due at the posed ${SHORT_DUE} s and the second at most ` +
+        `12 + ${SAUCER_GAP_MAX} s after it (specs/saucer.md)`,
     );
     const left = watch.visits[0].goneAt;
     assertTrue(

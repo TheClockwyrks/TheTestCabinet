@@ -15,15 +15,21 @@
 //
 // EVERY TICK, BECAUSE THE GAP IS WHAT IS BEING LOOKED FOR. A stride that stepped
 // over the empty ticks between two visits would read a conformant build as
-// replacing a live saucer, so the sampling has to be exhaustive. Two minutes of
-// game time holds three arrivals at the cadence `specs/saucer.md` fixes — the first
-// at `18` s, then a `12`-second visit and a `25`-to-`35`-second gap for each after
-// it — which is why the span is two minutes and why fewer than two visits is a
-// scenario this check never reached rather than a verdict it can give.
+// replacing a live saucer, so the sampling has to be exhaustive.
+//
+// THE FIRST DUE IS POSED SHORT, AND THE REST IS THE GAME'S OWN. `setSaucerDue`
+// sets the figure the gap draw decides (`specs/instrumentation.md`), so the first
+// visit is brought on a quarter of a second in rather than at `18` s; what the
+// item reads is what happens ONCE a visit is up, and the cadence after that visit
+// — its `12`-second stay and the `25`-to-`35`-second gap the game draws when it
+// leaves — is untouched. Fifty seconds of game time therefore holds two arrivals
+// on any conformant build, which is why the span is fifty seconds and why fewer
+// than two visits is a scenario this check never reached rather than a verdict it
+// can give.
 //
 // THE SWEEP RUNS INSIDE THE PAGE, for the reason `cadence.ts` sets out beside
-// `traceSaucerVisits`: fourteen thousand single-tick samples read one number each,
-// and a round trip for every one of them makes this item's verdict a fact about how
+// `traceSaucerVisits`: six thousand single-tick samples read one number each, and
+// a round trip for every one of them makes this item's verdict a fact about how
 // loaded the host was. The loop there calls the build's own `advance(1)` and the
 // build's own `snapshot()`, in that order, and returns only the moments the id
 // changed.
@@ -36,19 +42,19 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { openSaucerGame, traceSaucerVisits } from "./cadence";
+import { SHORT_DUE, openSaucerGame, traceSaucerVisits } from "./cadence";
 
-/** The two minutes of game time the sequence is read over. */
-const SPAN_TICKS = ticksFor(120);
+/** The fifty seconds of game time the sequence is read over. */
+const SPAN_TICKS = ticksFor(50);
 
 /**
  * How many visits the span must hold for the reading to have been taken at all.
  *
- * Derived from the cadence, not from a run: the first arrival is due at `18` s and
- * the second no later than `18 + 12 + 35` = `65` s, so a conformant build shows at
- * least two inside two minutes. A build that shows fewer has failed
- * `first-arrives-at-18s` or `subsequent-gap`; here it means the sequence this item
- * reads was never produced.
+ * Derived from the cadence, not from a run: the first arrival is due at the posed
+ * `SHORT_DUE` and the second no later than `0.25 + 12 + 35` = `47.25` s, so a
+ * conformant build shows at least two inside fifty seconds. A build that shows
+ * fewer has failed `subsequent-gap` or ignored the posed due; here it means the
+ * sequence this item reads was never produced.
  */
 const VISITS_NEEDED = 2;
 
@@ -64,6 +70,7 @@ afterEach(async () => {
 
 it("never turns one live saucer straight into another", async () => {
   await openSaucerGame(h);
+  await h.debug.setSaucerDue(SHORT_DUE);
 
   const changes = await traceSaucerVisits(h, SPAN_TICKS);
   await captureStill(h, "visit");
@@ -72,7 +79,7 @@ it("never turns one live saucer straight into another", async () => {
   assertGreaterThanOrEqual(
     visits.length,
     VISITS_NEEDED,
-    "the arrivals two minutes of game time holds at the cadence specs/saucer.md fixes",
+    "the arrivals fifty seconds of game time holds at the cadence specs/saucer.md fixes, the first due posed short",
   );
 
   for (let at = 1; at < changes.length; at += 1) {

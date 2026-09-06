@@ -10,7 +10,7 @@
 // `specs/instrumentation.md` gives the surface `setNextSaucerAim`, which sets the
 // outcome of that draw for the next shot. With it posed at `0` the round has to
 // leave along the bearing to the ship exactly, and the reading is one shot rather
-// than the mean of sixty. The draw's own range and scatter are
+// than the mean of a sample. The draw's own range and scatter are
 // `aim-error-within-10-degrees`'s and `aim-error-varies-per-shot`'s items, read
 // off unposed shots.
 //

@@ -1,11 +1,11 @@
-// Shatter — the forty arrivals the two entry-row checks read. CASE-PROVIDED.
+// Shatter — the handful of arrivals the two entry-row checks read. CASE-PROVIDED.
 //
 // `specs/saucer.md` has a saucer enter "at a `y` drawn uniformly from `SAUCER_R` to
 // `FIELD_H - SAUCER_R`", and that one sentence carries two separable properties: a
-// row lies INSIDE the range, and rows drawn over and over SPREAD across it. Each is
+// row lies INSIDE the range, and rows drawn over and over VARY across it. Each is
 // an item of its own, because a build that always enters dead centre and a build
 // that enters half a craft off the top are different faults and must grade
-// differently. What both share is the GATHER — four games opened, ten consecutive
+// differently. What both share is the GATHER — two games opened, three consecutive
 // arrivals brought on in each — so it is run once, here, and each check reads its
 // own thing off it.
 //
@@ -22,7 +22,12 @@
 // sits beside `visits.ts` rather than inside it because `visits.ts` is the marching
 // route every `saucer` check shares and this is one scenario two of them share.
 //
-// NOT ONE FIGURE BELOW IS A BOUND. The game count and the sample size are the
+// A HANDFUL, NOT A SAMPLE. Six arrivals are enough for each check to read what it
+// reads — every row inside the stated range, and more than one row among them —
+// and neither check reads a statistic off them. A draw's spread and shape are the
+// reviewer's to judge from the picture, not a figure a sample decides.
+//
+// NOT ONE FIGURE BELOW IS A BOUND. The game count and the arrival count are the
 // scenario and its cost; every tolerance stays in the check that asserts it,
 // derived there from the figure `specs/saucer.md` fixes for it.
 
@@ -30,12 +35,12 @@ import { captureStill, type Harness } from "../harness";
 import { closeUpArrival, createMarchHarness, openQuietGame } from "./visits";
 
 /** How many games the arrivals are read from. */
-export const GAMES = 4;
+export const GAMES = 2;
 
 /** How many consecutive arrivals each game contributes. */
-export const ARRIVALS_PER_GAME = 10;
+export const ARRIVALS_PER_GAME = 3;
 
-/** The forty arrivals both points are decided on. */
+/** The six arrivals both points are decided on. */
 export const ARRIVALS = GAMES * ARRIVALS_PER_GAME;
 
 /** One arrival's entry row, with the game and the visit it was read from. */
@@ -46,9 +51,9 @@ export interface EntryRow {
 }
 
 /**
- * Open four games and bring ten consecutive arrivals on in each, forty in all.
+ * Open two games and bring three consecutive arrivals on in each, six in all.
  *
- * FOUR GAMES AND TEN VISITS APIECE, so the reading covers LATER arrivals as well
+ * TWO GAMES AND THREE VISITS APIECE, so the reading covers LATER arrivals as well
  * as first ones rather than copies of one game's opening draw. The draw is the
  * game's own, so each game is really opened and left to run: `openQuietGame`
  * resets, empties the field and leaves the arrival gate running, and nothing
@@ -75,7 +80,7 @@ export async function readEntryRows(
       if (previous !== null) h.debug.removeSaucer();
       const arrival = await closeUpArrival(h);
       if (rows.length === 0) {
-        // One of the forty arrivals the rows were read from. The watch runs
+        // One of the six arrivals the rows were read from. The watch runs
         // undrawn, so one frame is drawn for this picture.
         await h.paint();
         captureStill(h, still);

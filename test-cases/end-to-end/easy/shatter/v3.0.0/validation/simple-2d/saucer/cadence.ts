@@ -185,11 +185,10 @@ export interface Volley {
  *
  * NO TICK IS EVER SKIPPED, so no check in this group can pass over a shot. The
  * whole sweep is one tick at a time: in-process stepping runs a tick of this
- * game in a fifth of a millisecond, so the sixty shots the three aim items read
- * — ninety-six seconds of game time — cost a couple of seconds sampled
- * exhaustively, and a lead-in that skipped most of each interval would buy
- * nothing while letting a build that fires faster than the lead-in have its
- * extra rounds passed over.
+ * game in a fifth of a millisecond, so the handful of shots the aim items read
+ * cost a fraction of a second sampled exhaustively, and a lead-in that skipped
+ * most of each interval would buy nothing while letting a build that fires
+ * faster than the lead-in have its extra rounds passed over.
  */
 export async function nextVolley(
   h: Harness,

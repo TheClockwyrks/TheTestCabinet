@@ -14,7 +14,10 @@
 // the three: how widely a build's draws scatter inside a legal range is not
 // something `specs/saucer.md` fixes. Nothing is posed for the gap — `setSaucerDue`
 // is how a check that wants a particular due gets one, and this check wants the
-// build's own draw.
+// build's own draw. What IS posed is the FIRST due of each game, so the visit the
+// gap follows is up a quarter of a second in rather than at `18` s: the first
+// delay is `first-arrives-at-18s`'s item, and the draw this item reads is the one
+// the game makes when that visit leaves.
 //
 // WHY FOUR TENTHS OF A SECOND. The sweep samples every `STRIDE` ticks, so the tick
 // it reports a departure on and the tick it reports the next arrival on are each up
@@ -33,7 +36,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { nextArrival, openSaucerGame } from "./cadence";
+import { SHORT_DUE, nextArrival, openSaucerGame } from "./cadence";
 
 /** How many games the draw is read from. */
 const GAMES = 3;
@@ -63,6 +66,7 @@ afterEach(async () => {
 it("waits SAUCER_GAP_MIN to SAUCER_GAP_MAX after a saucer leaves", async () => {
   for (let game = 1; game <= GAMES; game += 1) {
     await openSaucerGame(h);
+    await h.debug.setSaucerDue(SHORT_DUE);
 
     const first = await nextArrival(h, null, { stride: STRIDE });
 

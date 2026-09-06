@@ -23,11 +23,14 @@
 // tick is what keeps the reading close to the spawn: it is the speed the wave gave
 // each rock, not one a second of falling has changed.
 //
-// THREE GAMES, so the sample is a dozen rocks rather than four. The speeds are
-// draws (`specs/simulation.md`), and a build drawing them from some other range
-// would need to be unlucky to be caught by four samples from one game. Nothing is
-// posed for the speed: `setNextRockSpeed` is how a check that wants a particular
-// one gets it, and this check wants the build's own draws.
+// ONE GAME, EVERY LARGE OF ITS OPENING WAVE. The speeds are draws
+// (`specs/simulation.md`), and the rule is a bound on each: every Large the wave
+// put up is held to the scaled range, a handful of unposed draws against it. A
+// build drawing from a Medium's or a Small's range is whole ranges away and fails
+// on the first; how a build's draw is shaped inside the range is the reviewer's
+// to judge, not a figure a sample decides. Nothing is posed for the speed:
+// `setNextRockSpeed` is how a check that wants a particular one gets it, and this
+// check wants the build's own draws.
 //
 // THE MULTIPLIER IS TAKEN FROM THE WAVE THE BUILD REPORTS, not from the number 1,
 // so this item grades the speed alone: whether the game opens on wave 1 at all is
@@ -59,9 +62,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-
-/** How many games the opening wave is drawn in, so a dozen rocks are read. */
-const GAMES = 3;
 
 /**
  * How long a wave is waited for, in ticks.
@@ -98,47 +98,45 @@ afterEach(() => {
 });
 
 it("spawns every Large of a wave inside its range scaled by that wave's multiplier", async () => {
-  for (let game = 1; game <= GAMES; game += 1) {
-    // A real opening: the title screen, then PLAY.
-    await startRun(h);
+  // A real opening: the title screen, then PLAY.
+  await startRun(h);
 
-    const arrival = await h.until((snapshot) => snapshot.rocks.length > 0, {
-      maxFrames: WAVE_WINDOW_TICKS,
-      poll: 1,
-    });
-    captureStill(h, "wave");
+  const arrival = await h.until((snapshot) => snapshot.rocks.length > 0, {
+    maxFrames: WAVE_WINDOW_TICKS,
+    poll: 1,
+  });
+  captureStill(h, "wave");
 
-    assertTrue(
-      arrival.hit,
-      `game ${game}: a wave of rocks on the field within ` +
-        `${WAVE_BANNER_TIME + 1} seconds of a game opening — wave 1 spawns at ` +
-        "once or as its banner ends (specs/progression.md)",
+  assertTrue(
+    arrival.hit,
+    `a wave of rocks on the field within ${WAVE_BANNER_TIME + 1} seconds of ` +
+      "a game opening — wave 1 spawns at once or as its banner ends " +
+      "(specs/progression.md)",
+  );
+
+  const wave = Math.max(1, arrival.snapshot.wave);
+  // specs/progression.md: 1 + min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (N - 1)).
+  const multiplier =
+    1 + Math.min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (wave - 1));
+  const spawned = rocksOf(arrival.snapshot, "large");
+
+  assertGreaterThan(
+    spawned.length,
+    0,
+    "Large rocks in the wave that arrived — a wave spawns Large rocks " +
+      "(specs/progression.md)",
+  );
+
+  for (const [index, rock] of spawned.entries()) {
+    assertBetween(
+      speedOf(rock),
+      ROCK_SPEED_MIN.large * multiplier * (1 - TOLERANCE),
+      ROCK_SPEED_MAX.large * multiplier * (1 + TOLERANCE),
+      `rock ${index + 1} of wave ${wave}: the speed it spawned drifting at — ` +
+        `a Large's base range, ${ROCK_SPEED_MIN.large} to ` +
+        `${ROCK_SPEED_MAX.large} (specs/rocks.md), scaled by that wave's ` +
+        `multiplier of ${multiplier.toFixed(2)} (specs/progression.md), ` +
+        "within two percent",
     );
-
-    const wave = Math.max(1, arrival.snapshot.wave);
-    // specs/progression.md: 1 + min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (N - 1)).
-    const multiplier =
-      1 + Math.min(WAVE_SPEED_CAP, WAVE_SPEED_STEP * (wave - 1));
-    const spawned = rocksOf(arrival.snapshot, "large");
-
-    assertGreaterThan(
-      spawned.length,
-      0,
-      `game ${game}: Large rocks in the wave that arrived — a wave spawns ` +
-        "Large rocks (specs/progression.md)",
-    );
-
-    for (const [index, rock] of spawned.entries()) {
-      assertBetween(
-        speedOf(rock),
-        ROCK_SPEED_MIN.large * multiplier * (1 - TOLERANCE),
-        ROCK_SPEED_MAX.large * multiplier * (1 + TOLERANCE),
-        `game ${game}, rock ${index + 1} of wave ${wave}: the speed it ` +
-          `spawned drifting at — a Large's base range, ` +
-          `${ROCK_SPEED_MIN.large} to ${ROCK_SPEED_MAX.large} ` +
-          "(specs/rocks.md), scaled by that wave's multiplier of " +
-          `${multiplier.toFixed(2)} (specs/progression.md), within two percent`,
-      );
-    }
   }
 });

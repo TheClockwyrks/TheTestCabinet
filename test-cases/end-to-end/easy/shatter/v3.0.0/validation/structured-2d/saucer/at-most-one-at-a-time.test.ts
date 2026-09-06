@@ -21,10 +21,16 @@
 // begun over a live one shows as one live id followed straight by another
 // however far apart the samples are, and a conformant build's clear stretch
 // between visits lasts `SAUCER_GAP_MIN` (`25` s) and more, which no stride of a
-// fifteenth of a second steps over. Two minutes of game time is long enough to
-// hold three arrivals under the `18` s first delay and the `25`–`35` s gaps
-// after it, so the requirement is exercised across visits rather than asserted
-// over one.
+// fifteenth of a second steps over.
+//
+// THE FIRST DUE IS POSED SHORT, AND THE REST IS THE GAME'S OWN. `setSaucerDue`
+// sets the figure the gap draw decides (`specs/instrumentation.md`), so the first
+// visit is brought on a quarter of a second in rather than at `18` s; what the
+// item reads is what happens ONCE a visit is up, and the cadence after that
+// visit — its `12`-second stay and the `25`–`35` s gap the game draws when it
+// leaves — is untouched. Fifty seconds of game time is therefore long enough to
+// hold two arrivals on any conformant build, so the requirement is exercised
+// across visits rather than asserted over one.
 //
 // AT LEAST TWO VISITS ARE REQUIRED. A run that produced one saucer, or none, could
 // not have shown an overlap and must not be reported as having ruled one out — so
@@ -32,7 +38,7 @@
 //
 // NOTHING ELSE IS LEFT RUNNING. The game is really opened, the wave loop is shut
 // and the opening wave taken off, and the ship's lethal contact test is shut, so
-// two minutes pass without a wave, a death or a game over interrupting the
+// fifty seconds pass without a wave, a death or a game over interrupting the
 // cadence. `saucerSpawning` is left on: the arrivals have to be the game's own.
 //
 // WHAT THIS DOES NOT DECIDE. When the arrivals come — `saucer/first-arrives-at-18s`
@@ -45,11 +51,18 @@ import {
   createMarchHarness,
   marchFrames,
   openQuietGame,
+  SHORT_DUE,
   watchVisits,
 } from "./visits";
 
-/** How much game time the slot is watched for, in seconds. */
-const WATCH_SECONDS = 120;
+/**
+ * How much game time the slot is watched for, in seconds.
+ *
+ * The first arrival is due at the posed `SHORT_DUE` and the second no later than
+ * `0.25 + 12 + 35` = `47.25` s, so fifty holds two visits on any conformant
+ * build.
+ */
+const WATCH_SECONDS = 50;
 
 /**
  * The fewest visits the watch has to have seen for its verdict to mean anything.
@@ -72,6 +85,7 @@ afterEach(() => {
 
 it("never reports one live saucer id giving way to another without a clear sample between", async () => {
   const opened = await openQuietGame(h);
+  h.debug.setSaucerDue(SHORT_DUE);
 
   let filmed = false;
   const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
@@ -90,8 +104,8 @@ it("never reports one live saucer id giving way to another without a clear sampl
     watch.visits.length,
     MIN_VISITS,
     `saucer visits over ${WATCH_SECONDS} s of game time with the game's own ` +
-      "arrival running — fewer than two is a run with no changeover to check " +
-      "(specs/saucer.md, The cadence)",
+      "arrival running and the first due posed short — fewer than two is a run " +
+      "with no changeover to check (specs/saucer.md, The cadence)",
   );
   assertEqual(
     watch.overlaps.length,

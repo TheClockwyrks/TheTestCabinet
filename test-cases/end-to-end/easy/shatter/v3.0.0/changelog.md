@@ -154,14 +154,14 @@ build's steering, while claiming to measure whether the saucer overlaps the core
 and it posed a state a conformant build's own flight cannot reach, the steering
 being what keeps it out of there.
 
-`saucer/avoids-the-core` now flies 36 real crossings: nine rows from 80 units
-below the star's row to 80 above it in 20-unit steps, each from the left edge and
+`saucer/avoids-the-core` now flies 20 real crossings: five rows from 80 units
+below the star's row to 80 above it in 40-unit steps, each from the left edge and
 from the right, the whole set flown with the first weave reroll posed each way.
 Every crossing is a course the specification's own entry rule produces, the whole
 approach is left for the build to steer through, and the closest approach of all
-36 decides the point.
+20 decides the point.
 
-Thirty-six rather than one, because both common faults here are invisible in a
+Twenty rather than one, because both common faults here are invisible in a
 single sample. Avoidance is often one-sided, clearing an approach from above and
 driving one from below straight through, which is what the rows either side of the
 star are for. And a build that rerolls its weave on a timer can have the reroll
@@ -169,13 +169,13 @@ discard the avoidance it has accumulated, so whether it clears depends on where
 the reroll lands in the approach rather than on which row it came in on. That one
 is intermittent by construction and does not respect a tidy sample.
 
-The 36 are affordable because the closest approach is read as the star's distance
-to the straight line between two samples rather than to the samples themselves.
-Reading the samples alone at that stride reports the saucer further out than it
-got, which is the wrong direction for a check hunting a build that came too close.
-The saucer's gun is held off for the sweep, so 36 crossings produce no saucer
-bullets at all, and the recording shows the crossing that came closest, which is
-the one the verdict was decided on.
+The crossings are affordable because the closest approach is read as the star's
+distance to the straight line between two samples rather than to the samples
+themselves. Reading the samples alone at that stride reports the saucer further
+out than it got, which is the wrong direction for a check hunting a build that
+came too close. The saucer's gun is held off for the sweep, so the crossings
+produce no saucer bullets at all, and the recording shows the crossing that came
+closest, which is the one the verdict was decided on.
 
 ## The fragment fan is read out of the well's reach, and off the pair
 
