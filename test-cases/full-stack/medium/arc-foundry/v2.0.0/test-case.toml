@@ -1561,7 +1561,7 @@ description = "A unit parked just outside the structure's radius draws no shot o
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: park a frozen unit one unit beyond the reported range
-# and advance five seconds. See validation/<engine>/firing/holds-fire-out-of-
+# and advance three seconds. See validation/<engine>/firing/holds-fire-out-of-
 # range.test.ts.
 validation = { script = "firing/holds-fire-out-of-range.test.ts", outputs = [
   { id = "hold", name = "The structure holding fire", kind = "replay" },
@@ -1569,14 +1569,14 @@ validation = { script = "firing/holds-fire-out-of-range.test.ts", outputs = [
 [[review.categories.items]]
 id = "cadence"
 title = "A structure fires at its stated rate"
-description = "Over a counted interval with a target always in range, the number of projectiles a structure launched matches its reported fire rate in shots per second, within one shot."
+description = "With a target always in range, the simulation time a structure leaves between consecutive projectile launches is one over its reported fire rate in shots per second, within one frame."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: park a frozen invincible target in range and count the
-# projectiles launched over ten seconds. See
+# Automated validation: park a frozen invincible target in range, watch four
+# consecutive launches, and take the mean gap between them. See
 # validation/<engine>/firing/cadence.test.ts.
 validation = { script = "firing/cadence.test.ts", outputs = [
-  { id = "cadence", name = "The shots counted over the interval", kind = "replay" },
+  { id = "cadence", name = "The consecutive launches the gap was taken from", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "projectile-speed"
@@ -1657,7 +1657,7 @@ description = "A Regulator with a unit standing on top of it launches no project
 domains = ["simulation"]
 failure_cap = "scuffed"
 # Automated validation: stand a Regulator, park a frozen unit on it, advance
-# ten seconds, and read the projectiles and the structure back. See
+# three seconds, and read the projectiles and the structure back. See
 # validation/<engine>/firing/regulator-never-fires.test.ts.
 validation = { script = "firing/regulator-never-fires.test.ts", outputs = [
   { id = "quiet", name = "The Regulator standing quiet under a unit", kind = "replay" },

@@ -94,7 +94,10 @@ const HARVEST = { col: 10, row: 10 };
  */
 const HZ = 5;
 
-/** Frames between two readings of the yard: half a second. */
+/**
+ * Frames between two readings of the yard: half a second's worth of frames,
+ * rounded to whole frames, which is `3` frames — `0.6` s — at this rate.
+ */
 const POLL = Math.max(1, Math.round(HZ / 2));
 
 /** Three minutes of simulation: past any wave, and a verdict if a build has none. */
