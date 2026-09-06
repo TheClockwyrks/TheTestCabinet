@@ -5,8 +5,7 @@
 // the broken list belongs to the run that broke them and the structure itself is
 // untouched. specs/program.md § Starting and ending a run says the same from the
 // other side — "Either way the structure, the tape, and the loads' starting poses
-// are untouched: every run begins from the same authored state, and running is
-// always repeatable" — and specs/structure.md § The static check reports "each
+// are untouched: every run begins from the same authored state" — and specs/structure.md § The static check reports "each
 // intact member's force and utilization", which for the crane on the build screen
 // is every member the player placed.
 //

@@ -32,10 +32,9 @@
 // point steps between the two and the crane below puts that force into its own
 // members. Nothing fabricates a utilization; the build's own solve decides it.
 //
-// THE TWO WATCHES ARE TWO RUNS OF ONE PAGE, one after the other. What the reading
-// rests on is the build's own determinism — "the same structure and the same tape
-// produce the same run, tick for tick, every time" (specs/instrumentation.md) —
-// and the two runs differ in the watch speed alone. `openSite` is what parts
+// THE TWO WATCHES ARE TWO RUNS OF ONE PAGE, one after the other, posed the same
+// way — the same crane, the same tape and the same load schedule — so the two
+// runs differ in the watch speed alone. `openSite` is what parts
 // them: it puts the run back to its idle placeholder and the camera back at its
 // start pose while leaving the structure and the tape stored on the site, so the
 // second watch is posed by re-adding the load and starting the run rather than by

@@ -4,8 +4,8 @@
 // specs/rigging.md § Attaching: the candidate is the waiting load nearest the hook
 // point, "ties going to the one the site lists first". So the rule is total: a
 // tape driven onto a symmetric yard has one answer, not two, and a build that
-// broke a tie by whichever load its own search reached first would be
-// nondeterministic on exactly the yard this poses.
+// broke a tie by whichever load its own search reached first would answer by
+// its search order on exactly the yard this poses.
 //
 // THE TIE IS EXACT BY CONSTRUCTION. The hook is posed at the position the run
 // starts it at — the pivot minus `(0, HOIST_START, 0)`, which the cable holds at

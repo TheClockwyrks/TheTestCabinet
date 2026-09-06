@@ -1,7 +1,7 @@
 // instrumentation/edit-acceptance-independent-of-the-renderer — the editor reads
 // nothing from the camera.
 //
-// `specs/instrumentation.md` § A deterministic core: "Render-free core. Game
+// `specs/instrumentation.md` § A render-free core: "Render-free core. Game
 // state advances from ticks and input alone, independent of the canvas, of the
 // renderer, and of wall-clock time. The dependency runs one way: the simulation
 // reads nothing from the renderer, and whether an edit is accepted is decided

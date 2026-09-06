@@ -291,7 +291,7 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 # the two 3D runtimes, so a check on them there would grade the engine rather
 # than the build.
 #
-# 820 points across 14 categories. Each asserts ONE observable behavior,
+# 818 points across 14 categories. Each asserts ONE observable behavior,
 # because a build that gets half of a compound point right must score
 # differently from one that gets all of it right. A domain's rating is
 # the worst cap among its failures, so the count weights nothing — what the split
@@ -1330,26 +1330,12 @@ validation = { script = "instrumentation/start-run-pivot-and-bob-at-the-run-star
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 
-# Pose an identical crane, tape and yard twice, advance 200 ticks each time,
-# and compare the snapshots tick by tick. — Every compared field matches
-# exactly at every sampled tick.
-# From specs/instrumentation.md § A deterministic core.
-[[review.categories.items]]
-id = "deterministic-run-repeats"
-title = "The same structure and tape produce the same run tick for tick"
-description = "Gantry uses no randomness and a run advances only on its fixed tick, so the same posed structure and tape produce the same axes, the same bob position and the same forces at the same tick number, twice over."
-domains = ["simulation", "choreography"]
-failure_cap = "scuffed"
-validation = { script = "instrumentation/deterministic-run-repeats.test.ts", outputs = [
-  { id = "state", name = "The driven state this point decides", kind = "image" },
-] }
-
 # On a cleared structure call setCamera(0, 10, 10) and place a strut, undo
 # it, call setCamera(200, 80, 80) so the nodes fall outside the stage, and
 # place the same strut again; then attempt the same refused edit under both
 # camera poses. — Both placements land identically, member for member, and
 # the refused edit is refused under both poses.
-# From specs/instrumentation.md § A deterministic core.
+# From specs/instrumentation.md § A render-free core.
 [[review.categories.items]]
 id = "edit-acceptance-independent-of-the-renderer"
 title = "Whether an edit is accepted is decided from the structure and the site alone"
@@ -1363,7 +1349,7 @@ validation = { script = "instrumentation/edit-acceptance-independent-of-the-rend
 # On a cleared structure, call addMember for a member longer than its
 # material's maximum and read snapshot().structure. — members is unchanged,
 # cost is unchanged, historyDepth is unchanged, and the call raised nothing.
-# From specs/instrumentation.md § A deterministic core.
+# From specs/instrumentation.md § A render-free core.
 [[review.categories.items]]
 id = "pose-refusal-is-silent"
 title = "A pose the game's rules refuse changes nothing and reports nothing"
@@ -5420,8 +5406,8 @@ validation = { script = "rigging/cable-tension-formula.test.ts", outputs = [
 # hoist still, and run the same posed crane twice — once with a grip move
 # driving to 180 at GRIP_ACCEL and once with the grip idle — sampling
 # run.forces and run.bob every tick. — Every member force and utilization,
-# and the bob's position and velocity, are identical tick for tick in both
-# runs.
+# and the bob's position and velocity, read the same at every tick with the
+# grip turning as with it idle.
 # From specs/rigging.md § The grip.
 [[review.categories.items]]
 id = "grip-applies-no-force"
@@ -5468,8 +5454,9 @@ validation = { script = "rigging/attach-adds-the-mass-this-tick.test.ts", output
 # Clear the loads and the obstacles, add one waiting load in reach, pose the
 # bob swinging, and run the same posed crane and tape twice — once with the
 # attach step and once with it removed — sampling run.bob every tick. —
-# run.bob.pos and run.bob.vel are identical tick for tick in both runs: the
-# pendulum steps read no mass, so the attach itself moves the bob not at all.
+# run.bob.pos and run.bob.vel agree at every tick between the two runs, within
+# 1e-9: the pendulum steps read no mass, so the attach itself moves the bob
+# not at all.
 # From specs/rigging.md § Attaching.
 [[review.categories.items]]
 id = "attach-carries-the-bob-on"
@@ -5825,25 +5812,6 @@ domains = ["choreography"]
 failure_cap = "broken"
 validation = { script = "rigging/release-yaw-tolerance.test.ts", outputs = [
   { id = "yaw-tolerance", name = "The release at exactly PLACE_YAW_TOL", kind = "image" },
-] }
-
-# Pose two cranes on site index 0 (First Lift) that are built differently — a
-# different tower bracing and an extra counterweight on a tower node — but
-# whose ring, track and trolley put the pivot on the same path, clear the
-# loads and obstacles on both, run the same tape over each, and sample
-# run.bob and run.axes at every tick. — run.bob.pos, run.bob.vel and run.axes
-# match exactly, tick for tick, between the two runs: the swing followed the
-# pivot's path and the hoist length and read nothing else about the
-# structure.
-# From specs/rigging.md § Determinism.
-[[review.categories.items]]
-id = "rigging-reads-only-the-pivot-and-the-length"
-title = "The rigging reads nothing but the pivot, the hoist length and its own state"
-description = "The rigging reads nothing but the pivot, the hoist length and its own state, so two runs whose pivots follow the same path produce the same swing and the same tensions tick for tick however differently the structure carrying that pivot is built."
-domains = ["simulation", "choreography"]
-failure_cap = "scuffed"
-validation = { script = "rigging/rigging-reads-only-the-pivot-and-the-length.test.ts", outputs = [
-  { id = "swing", name = "The bare hook swung out on the minimal crane", kind = "image" },
 ] }
 
 # ----------------------------------------------------------------------------
@@ -6637,15 +6605,16 @@ validation = { script = "tape/start-refused-with-an-empty-tape.test.ts", outputs
 
 # Clear the loads and the obstacles, pose a ready crane and a multi-step
 # tape. Run once at speed index 0, advancing 8 frames; reset and run again at
-# speed index 2, advancing 2 frames. — Both runs read run.tick 8, and
-# run.axes, run.pivot, run.bob, run.loads, run.forces, run.broken,
-# run.stepIndex and run.stepLive are equal between them.
+# speed index 2, advancing 2 frames. — Both runs read run.tick 8, the tape
+# position, the phase, the attached load and the broken list are equal between
+# them, and the axes, the pivot, the bob, the loads and the solved forces agree
+# within 1e-9.
 # From specs/program.md § Starting and ending a run — "speed changes how many
 # ticks a second of watching covers and nothing else".
 [[review.categories.items]]
 id = "watch-speed-scales-nothing-but-ticks"
 title = "The watch speed changes how many ticks a frame covers and nothing else"
-description = "A frame at speed index i covers RUN_SPEEDS[i] ticks, and the run it produces is otherwise identical: the same structure and tape watched at 1x and at 4x reach the same state at the same tick."
+description = "A frame at speed index i covers RUN_SPEEDS[i] ticks and changes nothing else about the run: the same structure and tape watched at 1x and at 4x read the same axes, bob, loads and forces at the same tick."
 domains = ["choreography"]
 failure_cap = "scuffed"
 validation = { script = "tape/watch-speed-scales-nothing-but-ticks.test.ts", outputs = [

@@ -20,8 +20,8 @@
 // `structure.cost`.
 //
 // THE RUN IS ONE SLEW MOVE, AND ITS CLOCK IS A WHOLE NUMBER OF SECONDS. The
-// controller of specs/program.md § Axis motion is exact and deterministic, so a
-// turn of the arm takes a fixed count of ticks, and `30` degrees at
+// controller of specs/program.md § Axis motion is exact, so a turn of the arm
+// takes a fixed count of ticks, and `30` degrees at
 // `SLEW_MAX_RATE` is the turn whose count is exact by construction rather than
 // by arithmetic luck. At `SLEW_ACCEL` (`30`) the arm takes one whole second to
 // reach `SLEW_MAX_RATE` (`30`) and one whole second to brake back to rest, and

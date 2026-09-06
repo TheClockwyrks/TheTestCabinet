@@ -12,7 +12,7 @@
 // is started, driven until all four axes have carried well away from the posture,
 // and aborted; the second run is what the reading is taken from. `specs/program.md`
 // has the abort leave the structure, the tape and the loads untouched — "every run
-// begins from the same authored state, and running is always repeatable" — so
+// begins from the same authored state" — so
 // the second run is posed by nothing but the first one having happened.
 //
 // ALL FOUR AXES IN ONE MOVE, so the first run leaves none of them where it found

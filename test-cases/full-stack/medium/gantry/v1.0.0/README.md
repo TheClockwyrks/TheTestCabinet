@@ -168,7 +168,7 @@ What every project reads first is the frame's own account of itself: `drawn()`
 reports one entry per thing the last frame put on screen, with its kind, its
 name, the produced file its geometry came from, the world position it stands at
 and the extent it covers. The `none` project drives the built site in real
-headless Chromium through `window.__gantry`, so the 814 points it shares are
+headless Chromium through `window.__gantry`, so the 812 points it shares are
 decided against a real browser as well as against the two in-process runtimes,
 and the six it carries alone are decided there only.
 
@@ -181,7 +181,7 @@ default's four because the whole run must fit inside the platform's
 twenty-minute cap on a validator suite (`VITEST_TIMEOUT` in
 `crates/core/src/vitest_validator.rs`) — at four it measured 39 minutes, which
 the runner stops, and a stopped suite decides no point at all. The two engine
-projects run the 814 points they share in about half a minute each.
+projects run the 812 points they share in about half a minute each.
 
 The numbers pass this list used to call for is **done**. Every site in
 `specs/sites.md` has a worked crane and a tape that clears it inside its budget,

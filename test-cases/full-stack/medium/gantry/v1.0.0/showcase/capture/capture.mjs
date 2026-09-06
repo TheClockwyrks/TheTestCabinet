@@ -782,8 +782,8 @@ async function stillsPass(browser, url, d, track) {
   say("   still: the-crane.png");
 
   // Off the wall clock for the rest: `advance` steps whole ticks of the build's
-  // own length, which is exactly what watch speed 1 gives, so this replay is the
-  // video's run tick for tick.
+  // own length, which is exactly what watch speed 1 gives, so a still lands on
+  // the tick the video's camera track names.
   await page.evaluate(() => window.__gantry.setAutoStep(false));
   await setCamera(page, RUN_CAM);
   await startRunOffClock(page);

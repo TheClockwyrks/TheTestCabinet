@@ -14,8 +14,9 @@
 //
 // The check is read three times over, because a check that removed a member would
 // most plainly show as a second reading disagreeing with the first — and because
-// "the same structure ... produce[s] the same run, tick for tick, every time"
-// (specs/instrumentation.md) makes the three readings comparable exactly.
+// a check is a reading "computed on the spot" from the structure as it stands
+// (specs/instrumentation.md § Readings), the three readings are comparable
+// exactly.
 // `snapshot().structure.members` is read on both sides of them, so a member that
 // went is caught whether or not the later readings still mention it.
 

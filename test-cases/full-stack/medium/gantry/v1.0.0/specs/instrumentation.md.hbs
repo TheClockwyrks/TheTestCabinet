@@ -82,12 +82,12 @@ it.
 
 ## A render-free core
 
-The simulation advances on its fixed tick, apart from its drawing, which is
-what lets the surface drive it from code. Three properties make it driveable:
+The simulation is a fixed-tick core kept apart from its drawing. Three
+properties make it driveable from code:
 
-- Fixed timestep. Game state advances from the elapsed simulation time it is
-  handed, a tick at a time, so a tick means the same thing whatever the frame
-  rate and whatever the watch speed.
+- Fixed timestep. Game state advances a tick at a time from the elapsed
+  simulation time it is handed, and a tick is the same length at every frame
+  rate and every watch speed.
 - Render-free core. Game state advances from ticks and input alone,
   independent of the canvas, of the renderer, and of wall-clock time. The
   dependency runs one way: the simulation reads nothing from the renderer, and

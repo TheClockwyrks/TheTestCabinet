@@ -5,8 +5,8 @@
 // loop advancing the game from the wall clock, so it changes only when `advance`
 // says so." Everything the surface is for rests on it — "Advancing while the
 // game is still stepping automatically adds to what the wall clock is already
-// doing, so a scenario that must be reproducible calls `setAutoStep(false)`
-// first" — and every check in this project is driven with the game already taken
+// doing, so a scenario that counts ticks calls `setAutoStep(false)` first" —
+// and every check in this project is driven with the game already taken
 // off its own clock, which is the state this one measures.
 //
 // A RUN IN PROGRESS IS THE HARDEST THING TO HOLD STILL. An idle build screen has

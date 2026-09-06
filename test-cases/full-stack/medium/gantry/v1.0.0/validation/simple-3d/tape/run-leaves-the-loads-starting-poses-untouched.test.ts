@@ -3,7 +3,7 @@
 //
 // `specs/program.md` § Starting and ending a run: "Either way the structure, the
 // tape, and the loads' starting poses are untouched: every run begins from the
-// same authored state, and running is always repeatable." `specs/state.md` splits
+// same authored state." `specs/state.md` splits
 // the two readings the requirement is about: the site's loads carry "its starting
 // pose, and its target pose", while a run carries "each load's run state … its
 // lift point's current position, and its yaw" — one entry per load the run
