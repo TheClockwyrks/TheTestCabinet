@@ -3,9 +3,9 @@
 //
 // Three parts, each behind its own driver switch: despawning by distance
 // while `despawning` is on, the scripted events while `events` is on, and
-// the window spawn timer while `spawning` is on. Every random figure, the
-// spawn angle, the type choice, and a swarm's direction, is drawn from the
-// seeded generator; a window spawn draws its type first and its angle second.
+// the window spawn timer while `spawning` is on. The spawn angle, the type
+// choice, and a swarm's direction are drawn at random, except where the debug
+// surface posed the next spawn's angle or the next swarm's direction.
 
 import {
   DESPAWN_DISTANCE,
@@ -34,15 +34,39 @@ function ringPoint(run: RunState, d: Vec): Vec {
   };
 }
 
-/** A unit vector at an angle drawn uniformly from the generator. */
-function randomDirection(ctx: TickContext): Vec {
-  const angle = ctx.rng.next() * 2 * Math.PI;
+/** The unit vector at `degrees` from `+x` toward `+y`. */
+function directionAt(degrees: number): Vec {
+  const angle = (degrees * Math.PI) / 180;
   return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+/** A unit vector at an angle drawn uniformly over the full circle. */
+function randomDirection(ctx: TickContext): Vec {
+  return directionAt(ctx.rng.next() * 360);
+}
+
+/**
+ * The direction of the next spawn point: the posed `nextSpawnAngle` when one
+ * stands, consumed here, and a random one otherwise.
+ */
+function spawnDirection(ctx: TickContext): Vec {
+  const posed = ctx.run.nextSpawnAngle;
+  if (posed === null) return randomDirection(ctx);
+  ctx.run.nextSpawnAngle = null;
+  return directionAt(posed);
+}
+
+/** The direction of the next swarm: posed by `nextSwarmAngle`, else drawn. */
+function swarmDirection(ctx: TickContext): Vec {
+  const posed = ctx.run.nextSwarmAngle;
+  if (posed === null) return randomDirection(ctx);
+  ctx.run.nextSwarmAngle = null;
+  return directionAt(posed);
 }
 
 /** Spawn one enemy of `type` at a spawn point on the ring. */
 function spawnOnRing(ctx: TickContext, type: EnemyId): void {
-  const at = ringPoint(ctx.run, randomDirection(ctx));
+  const at = ringPoint(ctx.run, spawnDirection(ctx));
   spawnEnemy(ctx.run, type, at.x, at.y);
 }
 
@@ -53,7 +77,7 @@ function spawnOnRing(ctx: TickContext, type: EnemyId): void {
  */
 function spawnSwarm(ctx: TickContext): void {
   const { run } = ctx;
-  const d = randomDirection(ctx);
+  const d = swarmDirection(ctx);
   const center = ringPoint(run, d);
   const perp = { x: -d.y, y: d.x };
   const spacing = SWARM_LINE / (SWARM_SIZE - 1);

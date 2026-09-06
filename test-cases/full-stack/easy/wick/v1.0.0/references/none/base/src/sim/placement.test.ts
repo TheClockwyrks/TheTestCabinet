@@ -13,7 +13,7 @@ interface World {
 
 /** A `playing` run holding `weapons`, every autonomous faculty held. */
 function playing(...weapons: [WeaponId, number][]): World {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.run.weapons = weapons.map(([id, level]) => ({
     id,
@@ -28,7 +28,7 @@ function playing(...weapons: [WeaponId, number][]): World {
   state.switches.enemyMotion = false;
   state.switches.enemyContact = false;
   state.switches.weaponFire = false;
-  return { state, rng: new Rng(() => state), cues: new Set() };
+  return { state, rng: new Rng(), cues: new Set() };
 }
 
 function step(world: World, ticks = 1): void {

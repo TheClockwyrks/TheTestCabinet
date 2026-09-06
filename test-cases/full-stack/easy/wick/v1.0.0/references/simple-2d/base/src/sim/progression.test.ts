@@ -20,12 +20,12 @@ import {
 } from "./progression";
 
 function world(): { state: Draft; ctx: TickContext } {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   const ctx = makeTickContext(
     state,
-    new Rng(() => state),
+    new Rng(),
     NOTHING_HELD,
     new Set<CueName>(),
   );

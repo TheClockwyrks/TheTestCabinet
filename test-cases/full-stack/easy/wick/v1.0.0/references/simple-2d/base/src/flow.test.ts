@@ -91,8 +91,8 @@ function pausedRun(): Draft {
   return state;
 }
 
-function world(seed = 1): World {
-  const state = initialState(seed);
+function world(): World {
+  const state = initialState();
   const mute = { on: false };
   const cues = new Set<CueName>();
   return {
@@ -608,7 +608,7 @@ describe("the accumulator", () => {
 
 describe("a frame", () => {
   it("leaves the state it was handed as it was and returns a new one", () => {
-    const before = initialState(3);
+    const before = initialState();
     const frozen = JSON.stringify(before);
     const { draft } = runFrame(before, {
       dt: TICK_DT,
@@ -691,19 +691,5 @@ describe("a frame", () => {
     expect(state.simTime).toBeCloseTo(0.75, 12);
     expect(state.run.tick).toBe(30);
     expect(state.run.player.x).toBeCloseTo(90, 6);
-  });
-
-  it("replays the same run from the same seed", () => {
-    const runs = [9, 9].map((seed) => {
-      const w = world(seed);
-      startRun(w.state);
-      w.state.run.pendingLevelUps = 3;
-      w.update(TICK_DT);
-      choose(w.state, 1, w.cues);
-      choose(w.state, 0, w.cues);
-      return w.state;
-    });
-    expect(runs[0].run.offers).toEqual(runs[1].run.offers);
-    expect(runs[0].rngState).toBe(runs[1].rngState);
   });
 });

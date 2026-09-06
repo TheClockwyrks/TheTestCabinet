@@ -1,6 +1,6 @@
 // Wick — the game over its state: the screens, the menus, the frame's update,
 // and the cues a frame plays (specs/ui.md, specs/controls.md
-// "The pointer", specs/instrumentation.md "A deterministic core").
+// "The pointer", specs/instrumentation.md "A render-free core").
 //
 // The simulation itself is `src/sim/`; this is the layer that decides which
 // screen ticks, which actions each screen answers, what the pointer does with
@@ -15,7 +15,6 @@ import {
 } from "./almanac";
 import {
   CUES,
-  DEFAULT_SEED,
   END_ITEMS,
   PAUSE_ITEMS,
   TICK_DT,
@@ -28,7 +27,7 @@ import {
 } from "./constants";
 import type { PointerFrame } from "./input";
 import { contains, menuRects, tabRects, type Rect } from "./layout";
-import { Rng, seedState } from "./rng";
+import { Rng } from "./rng";
 import { freshRun, idleRun, initialState, type WickState } from "./state";
 import {
   NOTHING_HELD,
@@ -103,11 +102,10 @@ export class Game {
     readonly index: number;
   } | null = null;
 
-  constructor(hooks: GameHooks, seed: number = DEFAULT_SEED) {
+  constructor(hooks: GameHooks, rng: Rng = new Rng()) {
     this.hooks = hooks;
-    this.state = initialState(seedState(seed));
-    // The generator reads and writes whichever state the game holds.
-    this.rng = new Rng(() => this.state);
+    this.state = initialState();
+    this.rng = rng;
   }
 
   get screen(): Screen {
@@ -148,13 +146,13 @@ export class Game {
   }
 
   /**
-   * Restore every declared field to its title-screen value, seeding the
-   * generator with `seed`. `muted` and `autoStep` stay as they are.
+   * Restore every declared field to its title-screen value. `muted` and
+   * `autoStep` stay as they are.
    */
-  reset(seed: number = DEFAULT_SEED): void {
+  reset(): void {
     const muted = this.state.muted;
     this.armed = null;
-    this.state = initialState(seedState(seed));
+    this.state = initialState();
     this.state.muted = muted;
     this.cues.clear();
   }

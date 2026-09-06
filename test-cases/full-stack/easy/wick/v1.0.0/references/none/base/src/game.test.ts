@@ -534,7 +534,7 @@ describe("the accumulator", () => {
 });
 
 describe("reset", () => {
-  it("returns to the title with a seeded generator, keeping muted", () => {
+  it("returns to the title, keeping muted and autoStep", () => {
     const { game: g, mute } = game();
     g.startRun();
     g.update(1);
@@ -543,32 +543,15 @@ describe("reset", () => {
     g.mirrorMuted();
     g.state.simTime = 5;
     g.autoStep = false;
-    g.reset(42);
+    g.state.run.nextDrop = "bread";
+    g.reset();
     expect(g.state.screen).toBe("title");
     expect(g.state.run).toEqual(idleRun());
     expect(g.state.switches.spawning).toBe(true);
     expect(g.state.simTime).toBe(0);
-    expect(g.state.rngState).toBe(42);
+    expect(g.state.run.nextDrop).toBeNull();
     expect(g.state.muted).toBe(true);
     expect(mute.on).toBe(true);
     expect(g.autoStep).toBe(false);
-    g.rng.next();
-    expect(g.state.rngState).not.toBe(42);
-  });
-
-  it("replays the same run from the same seed", () => {
-    const a = game().game;
-    const b = game().game;
-    a.reset(9);
-    b.reset(9);
-    for (const g of [a, b]) {
-      g.startRun();
-      g.state.run.pendingLevelUps = 3;
-      g.update(TICK_DT);
-      g.choose(1);
-      g.choose(0);
-    }
-    expect(a.state.run.offers).toEqual(b.state.run.offers);
-    expect(a.state.rngState).toBe(b.state.rngState);
   });
 });

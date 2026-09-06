@@ -111,6 +111,22 @@ export function forgetHits(run: RunState, dead: ReadonlySet<number>): void {
 }
 
 /**
+ * The drop roll of specs/world.md: the posed `nextDrop` when one stands,
+ * consumed here; otherwise bread with probability `BREAD_CHANCE`, and only
+ * when no bread dropped a draft with probability `DRAFT_CHANCE`.
+ */
+function rollDrop(ctx: TickContext): "bread" | "draft" | "none" {
+  const posed = ctx.run.nextDrop;
+  if (posed !== null) {
+    ctx.run.nextDrop = null;
+    return posed;
+  }
+  if (ctx.rng.next() < BREAD_CHANCE) return "bread";
+  if (ctx.rng.next() < DRAFT_CHANCE) return "draft";
+  return "none";
+}
+
+/**
  * The last part of phase 6: an enemy whose `hp` is at or below `0` dies. The
  * kill count rises, and a puff is left to draw; while `drops` is on its drop
  * lands at its center and a common kill draws for bread and a draft.
@@ -150,18 +166,11 @@ export function resolveDeaths(ctx: TickContext): void {
         bornTick: run.tick,
       });
       run.nextId += 1;
-      if (ctx.rng.next() < BREAD_CHANCE) {
+      const dropped = rollDrop(ctx);
+      if (dropped !== "none") {
         run.pickups.push({
           id: run.nextId,
-          kind: "bread",
-          x: enemy.x,
-          y: enemy.y,
-        });
-        run.nextId += 1;
-      } else if (ctx.rng.next() < DRAFT_CHANCE) {
-        run.pickups.push({
-          id: run.nextId,
-          kind: "draft",
+          kind: dropped,
           x: enemy.x,
           y: enemy.y,
         });

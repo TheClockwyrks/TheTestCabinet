@@ -9,7 +9,7 @@
 // with Taper in the first weapon slot.
 
 import type { DeepReadonly, DeepWritable } from "ts-essentials";
-import { BASE_MAX_HP, DEFAULT_SEED } from "./constants";
+import { BASE_MAX_HP } from "./constants";
 import type {
   EnemyState,
   EnemyHit,
@@ -24,7 +24,6 @@ import type {
   WickState,
   ZoneState,
 } from "./game";
-import { seedState } from "./rng";
 
 /** The whole state, writable: what a transition builds and returns. */
 export type Draft = DeepWritable<WickState>;
@@ -77,6 +76,12 @@ export function idleRun(): DraftRun {
     spawnTimer: 0,
     firedEvents: [],
     nextId: 0,
+    nextSpawnAngle: null,
+    nextSwarmAngle: null,
+    nextPuddleOffset: null,
+    nextStrikeTarget: null,
+    nextChestItem: null,
+    nextDrop: null,
     movedTicks: 0,
     moving: false,
     puffs: [],
@@ -93,9 +98,9 @@ export function freshRun(): DraftRun {
 /**
  * The title-screen state: the idle run, the highlight, the almanac's tab and
  * its window, the accumulator, and `simTime` all at `0`, every driver switch
- * on, unmuted, and the generator seeded by `seed`.
+ * on, and unmuted.
  */
-export function initialState(seed: number = DEFAULT_SEED): Draft {
+export function initialState(): Draft {
   return {
     screen: "title",
     menuIndex: 0,
@@ -105,7 +110,6 @@ export function initialState(seed: number = DEFAULT_SEED): Draft {
     accumulator: 0,
     simTime: 0,
     muted: false,
-    rngState: seedState(seed),
     spawning: true,
     events: true,
     despawning: true,
@@ -171,6 +175,13 @@ function cloneRun(run: DeepReadonly<RunState>): DraftRun {
     spawnTimer: run.spawnTimer,
     firedEvents: [...run.firedEvents],
     nextId: run.nextId,
+    nextSpawnAngle: run.nextSpawnAngle,
+    nextSwarmAngle: run.nextSwarmAngle,
+    nextPuddleOffset:
+      run.nextPuddleOffset === null ? null : { ...run.nextPuddleOffset },
+    nextStrikeTarget: run.nextStrikeTarget,
+    nextChestItem: run.nextChestItem,
+    nextDrop: run.nextDrop,
     movedTicks: run.movedTicks,
     moving: run.moving,
     puffs: run.puffs.map((puff: DeepReadonly<Puff>) => ({ ...puff })),
@@ -188,7 +199,6 @@ export function cloneState(view: DeepReadonly<WickState>): Draft {
     accumulator: view.accumulator,
     simTime: view.simTime,
     muted: view.muted,
-    rngState: view.rngState,
     spawning: view.spawning,
     events: view.events,
     despawning: view.despawning,

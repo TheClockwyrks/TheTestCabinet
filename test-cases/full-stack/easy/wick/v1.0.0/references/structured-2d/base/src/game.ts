@@ -62,6 +62,7 @@ export type {
   Facing,
   GemState,
   GemTier,
+  NextDrop,
   OfferId,
   PassiveId,
   PassiveSlot,

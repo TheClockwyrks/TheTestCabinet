@@ -111,11 +111,16 @@ describe("the snapshot", () => {
       firedEvents: [],
       aliveCommons: 0,
       nextId: 0,
+      nextSpawnAngle: null,
+      nextSwarmAngle: null,
+      nextPuddleOffset: null,
+      nextStrikeTarget: null,
+      nextChestItem: null,
+      nextDrop: null,
     });
     expect(snap.muted).toBe(false);
     expect(snap.accumulator).toBe(0);
     expect(snap.simTime).toBe(0);
-    expect(snap.rngState).toBe(1);
   });
 
   it("is a copy, and reports the pool on levelup alone", () => {
@@ -184,41 +189,40 @@ describe("the snapshot", () => {
 });
 
 describe("reset", () => {
-  it("restores the title state, the switches, and the seed, keeping autoStep and muted", () => {
+  it("restores the title state and the switches, keeping autoStep and muted", () => {
     const { api, game } = playing();
     api.setSpawning(false);
     api.setAutoStep(false);
+    api.setNextDrop("bread");
     api.step(5);
     game.state.muted = true;
-    api.reset({ seed: 7 });
+    api.reset();
     const snap = api.snapshot();
     expect(snap.screen).toBe("title");
     expect(snap.spawning).toBe(true);
-    expect(snap.rngState).toBe(7);
+    expect(snap.run.nextDrop).toBeNull();
     expect(snap.simTime).toBe(0);
     expect(snap.autoStep).toBe(false);
     expect(snap.menuIndex).toBe(0);
     expect(snap.almanacTab).toBe(0);
     expect(snap.almanacScroll).toBe(0);
     expect(snap.run.tick).toBe(0);
-    api.reset();
-    expect(api.snapshot().rngState).toBe(1);
+    expect(snap.muted).toBe(true);
   });
 });
 
 describe("setScreen", () => {
-  it("sets the screen alone, keeping rng, simTime, and the switches", () => {
+  it("sets the screen alone, keeping the poses, simTime, and the switches", () => {
     const { api, game } = build();
     api.setWeaponFire(false);
     game.state.simTime = 3;
-    game.rng.next();
-    const rng = game.state.rngState;
+    game.state.run.nextSwarmAngle = 45;
     api.setScreen("playing");
     const snap = api.snapshot();
     expect(snap.screen).toBe("playing");
     expect(snap.run.weapons).toEqual([]);
     expect(snap.simTime).toBe(3);
-    expect(snap.rngState).toBe(rng);
+    expect(snap.run.nextSwarmAngle).toBe(45);
     expect(snap.weaponFire).toBe(false);
   });
 
@@ -448,17 +452,6 @@ describe("the lamplighter and progression poses", () => {
     expect(api.snapshot().run.level).toBe(1);
     expect(api.snapshot().run.enemies).toEqual([]);
     expect(api.snapshot().run.gems).toEqual([]);
-  });
-
-  it("takes a whole seed from 0 to 2^32 - 1 and nothing else", () => {
-    const { api } = build();
-    api.reset({ seed: 0 });
-    expect(api.snapshot().rngState).toBe(0);
-    api.reset({ seed: 2 ** 32 - 1 });
-    expect(api.snapshot().rngState).toBe(2 ** 32 - 1);
-    for (const seed of [-1, 1.5, 2 ** 32, Number.NaN]) {
-      expect(() => api.reset({ seed })).toThrow();
-    }
   });
 
   it("takes an evolved id in nextOffers and discards the list at the open", () => {
@@ -725,5 +718,75 @@ describe("poses sound nothing", () => {
     expect(game.drainCues()).toEqual([]);
     api.setScreen("fallen");
     expect(game.drainCues()).toEqual([]);
+  });
+});
+
+describe("the drawn outcome poses", () => {
+  it("set each field, read back by the snapshot, on a run screen alone", () => {
+    const { api } = playing();
+    api.spawnEnemy("moth", 100, 0);
+    const [moth] = api.snapshot().run.enemies;
+    api.setNextSpawnAngle(0);
+    api.setNextSwarmAngle(359.5);
+    api.setNextPuddleOffset(-240, 320);
+    api.setNextStrikeTarget(moth.id);
+    api.setNextChestItem("brass");
+    api.setNextDrop("draft");
+    expect(api.snapshot().run).toMatchObject({
+      nextSpawnAngle: 0,
+      nextSwarmAngle: 359.5,
+      nextPuddleOffset: { x: -240, y: 320 },
+      nextStrikeTarget: moth.id,
+      nextChestItem: "brass",
+      nextDrop: "draft",
+    });
+    api.setScreen("paused");
+    api.setNextDrop("bread");
+    expect(api.snapshot().run.nextDrop).toBe("bread");
+    api.setScreen("title");
+    api.setNextDrop("none");
+    expect(api.snapshot().run.nextDrop).toBe("bread");
+  });
+
+  it("refuse an argument outside its domain", () => {
+    const { api } = playing();
+    api.spawnEnemy("moth", 100, 0);
+    for (const bad of [-1, 360, 400, Number.NaN, "90"]) {
+      expect(() => api.setNextSpawnAngle(bad as number)).toThrow();
+      expect(() => api.setNextSwarmAngle(bad as number)).toThrow();
+    }
+    expect(() => api.setNextPuddleOffset(400, 1)).toThrow();
+    expect(() => api.setNextPuddleOffset(Number.NaN, 0)).toThrow();
+    api.setNextPuddleOffset(400, 0);
+    expect(() => api.setNextStrikeTarget(7)).toThrow();
+    expect(() => api.setNextStrikeTarget(-1)).toThrow();
+    expect(() => api.setNextChestItem("pyre")).toThrow();
+    expect(() => api.setNextChestItem("lamp-oil")).toThrow();
+    expect(() => api.setNextChestItem(3 as unknown as string)).toThrow();
+    expect(() => api.setNextDrop("chest")).toThrow();
+    expect(() => api.setNextDrop("")).toThrow();
+    expect(api.snapshot().run).toMatchObject({
+      nextSpawnAngle: null,
+      nextSwarmAngle: null,
+      nextPuddleOffset: { x: 400, y: 0 },
+      nextStrikeTarget: null,
+      nextChestItem: null,
+      nextDrop: null,
+    });
+  });
+
+  it("decide the next draw through the real systems", () => {
+    const { api } = playing();
+    api.setSpawning(false);
+    api.setEvents(false);
+    api.setWeaponFire(false);
+    api.spawnEnemy("moth", 500, 0);
+    api.setEnemyHp(api.snapshot().run.enemies[0].id, 1);
+    api.spawnProjectile("ember", 500, 0, 0, 0, 0);
+    api.setNextDrop("draft");
+    api.step(1);
+    const after = api.snapshot().run;
+    expect(after.pickups.map((pickup) => pickup.kind)).toEqual(["draft"]);
+    expect(after.nextDrop).toBeNull();
   });
 });

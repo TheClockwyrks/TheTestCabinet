@@ -168,6 +168,9 @@ export function acceptOffer(ctx: TickContext, index: number): void {
 /** The result of a chest: an evolution, a level, or a heal, in that order. */
 export function openChest(ctx: TickContext): ChestResult {
   const { run } = ctx;
+  // The posed item is consumed by this chest whatever its result.
+  const posed = run.nextChestItem;
+  run.nextChestItem = null;
   for (const held of run.weapons) {
     if (!isBaseWeapon(held.id) || held.level < MAX_WEAPON_LEVEL) continue;
     const evolved = evolutionOf(held.id);
@@ -190,7 +193,10 @@ export function openChest(ctx: TickContext): ChestResult {
     if (held.level < PASSIVES[held.id].maxLevel) levelable.push(held.id);
   }
   if (levelable.length > 0) {
-    const item = ctx.rng.pick(levelable);
+    const item =
+      posed !== null && levelable.includes(posed)
+        ? posed
+        : ctx.rng.pick(levelable);
     const level = isPassiveId(item)
       ? levelPassive(ctx, item)
       : levelWeapon(ctx, item);

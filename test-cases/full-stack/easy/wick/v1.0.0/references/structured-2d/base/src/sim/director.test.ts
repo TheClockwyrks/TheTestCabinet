@@ -22,14 +22,14 @@ import { tick } from "./tick";
 import { makeProjectile } from "./weapons";
 
 /** A run in which nothing moves, fires, or hits; the director alone runs. */
-function playing(seed = 1): { state: WickState; rng: Rng; cues: Set<CueName> } {
-  const state = initialState(seed);
+function playing(): { state: WickState; rng: Rng; cues: Set<CueName> } {
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   state.enemyMotion = false;
   state.enemyContact = false;
   state.weaponFire = false;
-  return { state, rng: new Rng(() => state), cues: new Set() };
+  return { state, rng: new Rng(), cues: new Set() };
 }
 
 function step(world: ReturnType<typeof playing>, ticks = 1): void {
@@ -89,8 +89,8 @@ describe("the windows", () => {
 
   it("choose a type uniformly from the window's row", () => {
     const seen = new Set<EnemyId>();
-    for (let seed = 1; seed <= 5; seed += 1) {
-      const world = playing(seed);
+    for (let night = 1; night <= 5; night += 1) {
+      const world = playing();
       const { run } = world.state;
       run.tick = 2 * SPAWN_WINDOW * TICK_HZ;
       step(world, 3 * TICK_HZ);
@@ -380,5 +380,54 @@ describe("dawn", () => {
     expect(world.state.screen).toBe("dawn");
     expect(run.tick).toBe(600 * TICK_HZ);
     expect(run.enemies.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("the posed angles", () => {
+  it("place the next window spawn at nextSpawnAngle and consume it", () => {
+    const world = playing();
+    const { run } = world.state;
+    run.player.x = 100;
+    run.player.y = -50;
+    run.nextSpawnAngle = 90;
+    step(world);
+    expect(run.enemies).toHaveLength(1);
+    expect(run.enemies[0].x).toBeCloseTo(100, 9);
+    expect(run.enemies[0].y).toBeCloseTo(-50 + SPAWN_DISTANCE, 9);
+    expect(run.nextSpawnAngle).toBeNull();
+  });
+
+  it("place the next scripted elite at nextSpawnAngle", () => {
+    const world = playing();
+    world.state.spawning = false;
+    const { run } = world.state;
+    run.nextSpawnAngle = 180;
+    before(world, 120);
+    step(world);
+    expect(run.enemies.map((enemy) => enemy.type)).toEqual(["mothwing"]);
+    expect(run.enemies[0].x).toBeCloseTo(-SPAWN_DISTANCE, 9);
+    expect(run.enemies[0].y).toBeCloseTo(0, 9);
+    expect(run.nextSpawnAngle).toBeNull();
+  });
+
+  it("lay the next swarm along nextSwarmAngle and consume it", () => {
+    const world = playing();
+    world.state.spawning = false;
+    const { run } = world.state;
+    run.nextSwarmAngle = 0;
+    run.nextSpawnAngle = 90;
+    before(world, 60);
+    step(world);
+    expect(run.enemies).toHaveLength(SWARM_SIZE);
+    for (const gnat of run.enemies) {
+      expect(gnat.x).toBeCloseTo(SPAWN_DISTANCE, 9);
+      expect(gnat.heading.x).toBeCloseTo(-1, 12);
+    }
+    const ys = run.enemies.map((gnat) => gnat.y).sort((a, b) => a - b);
+    expect(ys[0]).toBeCloseTo(-SWARM_LINE / 2, 9);
+    expect(ys[SWARM_SIZE - 1]).toBeCloseTo(SWARM_LINE / 2, 9);
+    expect(run.nextSwarmAngle).toBeNull();
+    // A swarm draws no spawn point, so the posed spawn angle stands.
+    expect(run.nextSpawnAngle).toBe(90);
   });
 });

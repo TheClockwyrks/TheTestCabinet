@@ -23,7 +23,7 @@ interface World {
 
 /** A `playing` run holding `weapons`, every autonomous faculty held. */
 function playing(...weapons: [WeaponId, number][]): World {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.run.weapons = weapons.map(([id, level]) => ({
     id,
@@ -37,7 +37,7 @@ function playing(...weapons: [WeaponId, number][]): World {
   state.despawning = false;
   state.enemyMotion = false;
   state.enemyContact = false;
-  return { state, rng: new Rng(() => state), cues: new Set() };
+  return { state, rng: new Rng(), cues: new Set() };
 }
 
 function hold(world: World, id: PassiveId, level: number): void {
@@ -171,14 +171,13 @@ describe("the recipes", () => {
 });
 
 describe("a chest's other results", () => {
-  it("levels one held item below its max from the seeded generator", () => {
+  it("levels one held item below its max, drawn at random", () => {
     const world = playing(["taper", 4], ["pin", MAX_WEAPON_LEVEL]);
     hold(world, "brass", 3);
     hold(world, "tallow", 1);
     world.state.run.player.hp = 50;
     const seen = new Set<string>();
-    for (let seed = 1; seed <= 40; seed += 1) {
-      world.state.rngState = seed;
+    for (let opened = 1; opened <= 40; opened += 1) {
       world.state.screen = "playing";
       world.state.run.weapons[0].level = 4;
       world.state.run.passives[1].level = 1;
@@ -200,6 +199,61 @@ describe("a chest's other results", () => {
       }
     }
     expect([...seen].sort()).toEqual(["tallow", "taper"]);
+  });
+
+  it("levels the posed nextChestItem when it is held below its max", () => {
+    const world = playing(["taper", 4], ["pin", MAX_WEAPON_LEVEL]);
+    hold(world, "brass", 3);
+    hold(world, "tallow", 1);
+    for (let opened = 0; opened < 10; opened += 1) {
+      world.state.screen = "playing";
+      world.state.run.weapons[0].level = 4;
+      world.state.run.nextChestItem = "taper";
+      chest(world);
+      step(world);
+      expect(world.state.run.chestResult).toEqual({
+        kind: "level",
+        item: "taper",
+        level: 5,
+      });
+      expect(world.state.run.nextChestItem).toBeNull();
+    }
+  });
+
+  it("discards a posed item that is maxed or not held, and draws instead", () => {
+    const world = playing(["pin", MAX_WEAPON_LEVEL]);
+    hold(world, "brass", 1);
+    for (const posed of ["pin", "brass", "ember", "wick"] as const) {
+      world.state.screen = "playing";
+      world.state.run.passives[0].level = 1;
+      world.state.run.nextChestItem = posed;
+      chest(world);
+      step(world);
+      expect(world.state.run.chestResult).toEqual({
+        kind: "level",
+        item: "brass",
+        level: 2,
+      });
+      expect(world.state.run.nextChestItem).toBeNull();
+    }
+  });
+
+  it("consumes a posed item on a chest that evolves or heals", () => {
+    const evolving = playing(["taper", MAX_WEAPON_LEVEL]);
+    hold(evolving, "wick", 1);
+    evolving.state.run.nextChestItem = "wick";
+    chest(evolving);
+    step(evolving);
+    expect(evolving.state.run.chestResult?.kind).toBe("evolve");
+    expect(evolving.state.run.nextChestItem).toBeNull();
+
+    const healing = playing(["spark", MAX_WEAPON_LEVEL]);
+    healing.state.run.player.hp = 10;
+    healing.state.run.nextChestItem = "spark";
+    chest(healing);
+    step(healing);
+    expect(healing.state.run.chestResult).toEqual({ kind: "heal" });
+    expect(healing.state.run.nextChestItem).toBeNull();
   });
 
   it("passes over a max-level weapon that has no recipe", () => {

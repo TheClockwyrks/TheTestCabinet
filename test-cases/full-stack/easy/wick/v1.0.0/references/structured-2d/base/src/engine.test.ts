@@ -634,24 +634,20 @@ describe("the fixed timestep", () => {
   });
 });
 
-describe("determinism through the engine", () => {
-  it("reproduces identical snapshots from the same seed and drive", async () => {
-    const run = async (harness: Harness) => {
-      harness.debug.reset({ seed: 123 });
-      await harness.step(1);
-      harness.tap("Enter");
-      await harness.step(1);
-      harness.press("ArrowRight");
-      await harness.step(240);
-      harness.release("ArrowRight");
-      await harness.step(60);
-      return harness.debug.snapshot();
-    };
-    const first = await run(h);
-    const other = await createHarness();
-    const second = await run(other);
-    other.dispose();
-    expect(second).toEqual(first);
-    expect(first.run.enemies.length).toBeGreaterThan(0);
+describe("a night through the engine", () => {
+  it("plays a stretch of the night from the title with the director running", async () => {
+    h.debug.reset();
+    await h.step(1);
+    h.tap("Enter");
+    await h.step(1);
+    h.press("ArrowRight");
+    await h.step(240);
+    h.release("ArrowRight");
+    await h.step(60);
+    const snap = h.debug.snapshot();
+    expect(snap.screen).toBe("playing");
+    expect(snap.run.tick).toBe(301);
+    expect(snap.run.enemies.length).toBeGreaterThan(0);
+    expect(snap.run.player.x).toBeGreaterThan(0);
   });
 });

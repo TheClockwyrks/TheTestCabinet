@@ -90,11 +90,16 @@ describe("the snapshot", () => {
       firedEvents: [],
       aliveCommons: 0,
       nextId: 0,
+      nextSpawnAngle: null,
+      nextSwarmAngle: null,
+      nextPuddleOffset: null,
+      nextStrikeTarget: null,
+      nextChestItem: null,
+      nextDrop: null,
     });
     expect(snap.muted).toBe(false);
     expect(snap.accumulator).toBe(0);
     expect(snap.simTime).toBe(0);
-    expect(snap.rngState).toBe(1);
     expect("autoStep" in snap).toBe(false);
   });
 
@@ -135,30 +140,21 @@ describe("the snapshot", () => {
 });
 
 describe("reset", () => {
-  it("restores the title state, the switches, and the seed, keeping muted", async () => {
+  it("restores the title state and the switches, keeping muted", async () => {
     const { debug } = playing();
     debug.setSpawning(false);
+    debug.setNextDrop("bread");
     await h.step(5);
     h.engine.world.audio.setMuted(true);
     await h.step(1);
-    debug.reset({ seed: 7 });
+    debug.reset();
     const snap = debug.snapshot();
     expect(snap.screen).toBe("title");
     expect(snap.spawning).toBe(true);
-    expect(snap.rngState).toBe(7);
+    expect(snap.run.nextDrop).toBeNull();
     expect(snap.simTime).toBe(0);
     expect(snap.run.tick).toBe(0);
     expect(snap.muted).toBe(true);
-    debug.reset();
-    expect(debug.snapshot().rngState).toBe(1);
-    expect(() => debug.reset({ seed: Number.NaN })).toThrow();
-    for (const seed of [-1, 1.5, 2 ** 32]) {
-      expect(() => debug.reset({ seed })).toThrow();
-    }
-    debug.reset({ seed: 0 });
-    expect(debug.snapshot().rngState).toBe(0);
-    debug.reset({ seed: 2 ** 32 - 1 });
-    expect(debug.snapshot().rngState).toBe(2 ** 32 - 1);
   });
 
   it("stops the music on the next tick of the mode", async () => {
@@ -185,7 +181,6 @@ describe("setScreen", () => {
     expect(snap.run.weapons).toEqual([]);
     expect(snap.run).toEqual(before.run);
     expect(snap.simTime).toBe(before.simTime);
-    expect(snap.rngState).toBe(before.rngState);
     expect(snap.weaponFire).toBe(false);
     expect(h.cues).toEqual([]);
   });
@@ -226,7 +221,8 @@ describe("setScreen", () => {
     expect(snap.screen).toBe("levelup");
     expect(snap.run.pendingLevelUps).toBe(0);
     expect(snap.run.offers).toEqual([]);
-    expect(snap.rngState).toBe(before.rngState);
+    // The pool is derived on levelup; every stored field stands.
+    expect({ ...snap.run, pool: [] }).toEqual({ ...before.run, pool: [] });
   });
 
   it("shows the end screens without ending the run, and reaches every screen", () => {
@@ -806,13 +802,14 @@ describe("the switches", () => {
     const [moth] = debug.snapshot().run.enemies;
     debug.setEnemyHp(moth.id, 1);
     debug.spawnPuddle("oil-splash", 1000, 0);
-    const before = debug.snapshot();
+    debug.setNextDrop("bread");
     await h.step(1);
     let snap = debug.snapshot();
     expect(snap.run.kills).toBe(1);
     expect(snap.run.gems).toEqual([]);
     expect(snap.run.pickups).toEqual([]);
-    expect(snap.rngState).toBe(before.rngState);
+    // A held death makes no roll, so the posed drop stands.
+    expect(snap.run.nextDrop).toBe("bread");
 
     debug.setDrops(true);
     debug.spawnEnemy("moth", -1000, 0);
@@ -824,6 +821,8 @@ describe("the switches", () => {
     expect(snap.run.kills).toBe(2);
     expect(snap.run.gems).toHaveLength(1);
     expect(snap.run.gems[0].tier).toBe("small");
+    expect(snap.run.pickups.map((pickup) => pickup.kind)).toEqual(["bread"]);
+    expect(snap.run.nextDrop).toBeNull();
   });
 
   it("banks a gain unspent while progression is off and spends it when on", async () => {
@@ -848,5 +847,75 @@ describe("the switches", () => {
     expect(snap.run.level).toBe(2);
     expect(snap.run.xp).toBe(5);
     expect(snap.run.pendingLevelUps).toBe(1);
+  });
+});
+
+describe("the drawn outcome poses", () => {
+  it("set each field, read back by the snapshot, on a run screen alone", () => {
+    const { debug } = playing();
+    debug.spawnEnemy("moth", 100, 0);
+    const [moth] = debug.snapshot().run.enemies;
+    debug.setNextSpawnAngle(0);
+    debug.setNextSwarmAngle(359.5);
+    debug.setNextPuddleOffset(-240, 320);
+    debug.setNextStrikeTarget(moth.id);
+    debug.setNextChestItem("brass");
+    debug.setNextDrop("draft");
+    expect(debug.snapshot().run).toMatchObject({
+      nextSpawnAngle: 0,
+      nextSwarmAngle: 359.5,
+      nextPuddleOffset: { x: -240, y: 320 },
+      nextStrikeTarget: moth.id,
+      nextChestItem: "brass",
+      nextDrop: "draft",
+    });
+    debug.setScreen("paused");
+    debug.setNextDrop("bread");
+    expect(debug.snapshot().run.nextDrop).toBe("bread");
+    debug.setScreen("title");
+    debug.setNextDrop("none");
+    expect(debug.snapshot().run.nextDrop).toBe("bread");
+    expect(h.cues).toEqual([]);
+  });
+
+  it("refuse an argument outside its domain", () => {
+    const { debug } = playing();
+    debug.spawnEnemy("moth", 100, 0);
+    for (const bad of [-1, 360, 400, Number.NaN]) {
+      expect(() => debug.setNextSpawnAngle(bad)).toThrow();
+      expect(() => debug.setNextSwarmAngle(bad)).toThrow();
+    }
+    expect(() => debug.setNextPuddleOffset(400, 1)).toThrow();
+    expect(() => debug.setNextPuddleOffset(Number.NaN, 0)).toThrow();
+    debug.setNextPuddleOffset(400, 0);
+    expect(() => debug.setNextStrikeTarget(7)).toThrow();
+    expect(() => debug.setNextStrikeTarget(-1)).toThrow();
+    expect(() => debug.setNextChestItem("pyre" as never)).toThrow();
+    expect(() => debug.setNextChestItem("lamp-oil" as never)).toThrow();
+    expect(() => debug.setNextDrop("chest" as never)).toThrow();
+    expect(debug.snapshot().run).toMatchObject({
+      nextSpawnAngle: null,
+      nextSwarmAngle: null,
+      nextPuddleOffset: { x: 400, y: 0 },
+      nextStrikeTarget: null,
+      nextChestItem: null,
+      nextDrop: null,
+    });
+  });
+
+  it("decide the next draw through the real systems", async () => {
+    const { debug } = playing();
+    debug.setSpawning(false);
+    debug.setEvents(false);
+    debug.setWeaponFire(false);
+    debug.spawnEnemy("moth", 500, 0);
+    const [moth] = debug.snapshot().run.enemies;
+    debug.setEnemyHp(moth.id, 1);
+    debug.spawnProjectile("ember", 500, 0, 0, 0, 0);
+    debug.setNextDrop("draft");
+    await h.step(1);
+    const after = debug.snapshot().run;
+    expect(after.pickups.map((pickup) => pickup.kind)).toEqual(["draft"]);
+    expect(after.nextDrop).toBeNull();
   });
 });

@@ -30,8 +30,7 @@ import type {
   PickupKind,
   WeaponId,
 } from "./constants";
-import { BASE_MAX_HP, DEFAULT_SEED } from "./constants";
-import { seedState } from "./rng";
+import { BASE_MAX_HP } from "./constants";
 
 export type { EnemyId, GemTier, OfferId, PassiveId, PickupKind, WeaponId };
 
@@ -50,6 +49,11 @@ export type Facing = "left" | "right";
 
 export type ZoneKind =
   "puddle" | "lantern" | "aura" | "slash" | "strike" | "burst";
+
+/** What `setNextDrop` poses for the next common kill's roll. */
+export type NextDrop = "bread" | "draft" | "none";
+
+export const NEXT_DROPS: readonly NextDrop[] = ["bread", "draft", "none"];
 
 export type ChestResult =
   | { kind: "evolve"; weapon: WeaponId }
@@ -183,6 +187,13 @@ export interface RunState {
   /** Run-clock seconds of the scripted events that have fired, ascending. */
   firedEvents: number[];
   nextId: number;
+  /** The posed outcomes of specs/instrumentation.md, `null` while none is posed. */
+  nextSpawnAngle: number | null;
+  nextSwarmAngle: number | null;
+  nextPuddleOffset: { x: number; y: number } | null;
+  nextStrikeTarget: number | null;
+  nextChestItem: WeaponId | PassiveId | null;
+  nextDrop: NextDrop | null;
   /** Ticks on which the lamplighter moved, for the walk cycle. */
   movedTicks: number;
   /** Whether the lamplighter moved on the last tick. */
@@ -253,6 +264,12 @@ export function idleRun(): RunState {
     spawnTimer: 0,
     firedEvents: [],
     nextId: 0,
+    nextSpawnAngle: null,
+    nextSwarmAngle: null,
+    nextPuddleOffset: null,
+    nextStrikeTarget: null,
+    nextChestItem: null,
+    nextDrop: null,
     movedTicks: 0,
     moving: false,
     puffs: [],
@@ -280,8 +297,6 @@ export class WickState extends GameState {
   simTime = 0;
   /** The game's readable copy of the engine's mute bit. */
   muted = false;
-  /** The whole state of the seeded generator. */
-  rngState: number = seedState(DEFAULT_SEED);
   spawning = true;
   events = true;
   despawning = true;
@@ -300,13 +315,10 @@ export class WickState extends GameState {
 }
 
 /**
- * Restore every declared field to its title-screen value, seeding the
- * generator with `seed`. `muted` stays as it is, since the engine owns it.
+ * Restore every declared field to its title-screen value. `muted` stays as it
+ * is, since the engine owns it.
  */
-export function resetState(
-  state: WickState,
-  seed: number = DEFAULT_SEED,
-): void {
+export function resetState(state: WickState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.almanacTab = 0;
@@ -314,15 +326,14 @@ export function resetState(
   state.run = idleRun();
   state.accumulator = 0;
   state.simTime = 0;
-  state.rngState = seedState(seed);
   for (const name of SWITCH_NAMES) state[name] = true;
   state.held = { ...NOTHING_HELD };
 }
 
-/** A state at its title-screen values over `seed`, for code with no world. */
-export function initialState(seed: number = DEFAULT_SEED): WickState {
+/** A state at its title-screen values, for code with no world. */
+export function initialState(): WickState {
   const state = new WickState();
-  resetState(state, seed);
+  resetState(state);
   return state;
 }
 

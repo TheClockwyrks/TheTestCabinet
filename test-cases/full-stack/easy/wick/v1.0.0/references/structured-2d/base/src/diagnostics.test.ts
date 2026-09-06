@@ -26,7 +26,7 @@ describe("the run clock", () => {
 
 describe("the game's sources", () => {
   it("report the facts the snapshot reports, read fresh at each call", () => {
-    const state = initialState(1);
+    const state = initialState();
     const sources = diagnosticSources(() => state);
     const idle = readings(sources);
     expect(idle.get("screen")).toBe("title");
@@ -57,7 +57,7 @@ describe("the game's sources", () => {
   });
 
   it("leave the state as it is when read", () => {
-    const state = initialState(1);
+    const state = initialState();
     startRun(state);
     const sources = diagnosticSources(() => state);
     const before = JSON.stringify(state);

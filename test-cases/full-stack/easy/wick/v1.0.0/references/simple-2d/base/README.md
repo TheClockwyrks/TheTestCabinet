@@ -83,7 +83,8 @@ is the engine binding and the drawing.
   debug surface's type, `BACKGROUND`, and the `Game` the engine drives.
 - `src/state.ts` — the idle and fresh runs, the writable draft a transition
   clones the state into, and the clone.
-- `src/rng.ts` — the seeded generator, whose whole state is `rngState`.
+- `src/rng.ts` — the game's private random source, drawn from where the debug
+  surface has posed no outcome.
 - `src/stats.ts` — the derived stats the passives feed.
 - `src/sim/` — one tick, phase by phase: the lamplighter, the enemies, the
   weapons' firing and the placement of the permanent shapes, the projectiles

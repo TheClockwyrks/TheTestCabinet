@@ -14,10 +14,10 @@ import type { World } from "@clockwyrks/structured-2d";
 import { reconcileActors } from "./actors";
 import {
   DAWN_TIME,
-  DEFAULT_SEED,
   GEM_TIERS,
   MAX_WEAPON_LEVEL,
   OFFER_COUNT,
+  OIL_SCATTER,
   PASSIVES,
   PASSIVE_SLOTS,
   PICKUP_KINDS,
@@ -33,7 +33,6 @@ import {
 } from "./constants";
 import { RUN_SCREENS, SILENT, choose, setSwitch } from "./flow";
 import { menuRects, tabRects, type WickRect } from "./menus";
-import { nextRandom } from "./rng";
 import { forgetHits } from "./sim/effects";
 import {
   aliveCommons,
@@ -47,6 +46,7 @@ import { candidatePool, isOfferId, isPassiveId } from "./sim/progression";
 import {
   PROJECTILE_WEAPONS,
   PUDDLE_WEAPONS,
+  isBaseWeapon,
   isEvolution,
   isWeaponId,
   makeProjectile,
@@ -54,12 +54,14 @@ import {
   pairedIds,
 } from "./sim/weapons";
 import {
+  NEXT_DROPS,
   SWITCH_NAMES,
   resetState,
   wickState,
   type ChestResult,
   type EnemyState,
   type Facing,
+  type NextDrop,
   type RunState,
   type Screen,
   type SwitchName,
@@ -156,11 +158,16 @@ export interface WickSnapshot {
     firedEvents: number[];
     aliveCommons: number;
     nextId: number;
+    nextSpawnAngle: number | null;
+    nextSwarmAngle: number | null;
+    nextPuddleOffset: { x: number; y: number } | null;
+    nextStrikeTarget: number | null;
+    nextChestItem: string | null;
+    nextDrop: NextDrop | null;
   };
   muted: boolean;
   accumulator: number;
   simTime: number;
-  rngState: number;
 }
 
 export type { WickRect };
@@ -168,7 +175,7 @@ export type { WickRect };
 /** The surface, exactly as `specs/instrumentation.md` declares it. */
 export interface WickDebugApi {
   readonly version: number;
-  reset(options?: { readonly seed?: number }): void;
+  reset(): void;
   snapshot(): WickSnapshot;
   menuRects(): readonly WickRect[];
   tabRects(): readonly WickRect[];
@@ -185,7 +192,12 @@ export interface WickDebugApi {
   setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
-  advanceRng(draws: number): void;
+  setNextSpawnAngle(degrees: number): void;
+  setNextSwarmAngle(degrees: number): void;
+  setNextPuddleOffset(dx: number, dy: number): void;
+  setNextStrikeTarget(id: number): void;
+  setNextChestItem(id: WeaponId | PassiveId): void;
+  setNextDrop(kind: NextDrop): void;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;
@@ -278,6 +290,13 @@ function oneOf<T extends string>(
     );
   }
   return value as T;
+}
+
+/** A posed angle: a real number of at least `0` and below `360`. */
+function angle(value: unknown): number {
+  const degrees = real(value, "degrees", 0);
+  if (degrees >= 360) invalid("degrees must be below 360");
+  return degrees;
 }
 
 const SCREENS: readonly Screen[] = [
@@ -377,11 +396,17 @@ export function snapshotOf(state: WickState): WickSnapshot {
       firedEvents: r.firedEvents.slice(),
       aliveCommons: aliveCommons(r),
       nextId: r.nextId,
+      nextSpawnAngle: r.nextSpawnAngle,
+      nextSwarmAngle: r.nextSwarmAngle,
+      nextPuddleOffset:
+        r.nextPuddleOffset === null ? null : { ...r.nextPuddleOffset },
+      nextStrikeTarget: r.nextStrikeTarget,
+      nextChestItem: r.nextChestItem,
+      nextDrop: r.nextDrop,
     },
     muted: state.muted,
     accumulator: state.accumulator,
     simTime: state.simTime,
-    rngState: state.rngState,
   };
 }
 
@@ -416,8 +441,8 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
 
   /**
    * Set `screen` and the three menu indices, and nothing else: the run, the
-   * loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`,
-   * `rngState`, `simTime`, and the driver switches all stand as they were, and
+   * loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, every
+   * posed outcome, `simTime`, and the driver switches all stand as they were, and
    * no cue sounds. A call that leaves `playing` discards the accumulator, as
    * every frame and pose that leaves `playing` does. Applies on every screen.
    * Beginning a run, opening an overlay, and ending a run are the game's own
@@ -438,16 +463,8 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
   return {
     version: WICK_DEBUG_VERSION,
 
-    reset(options) {
-      let seed = DEFAULT_SEED;
-      if (options !== undefined && options !== null) {
-        if (typeof options !== "object") {
-          invalid(`reset options must be an object, got ${String(options)}`);
-        }
-        if (options.seed !== undefined)
-          seed = whole(options.seed, "seed", 0, 2 ** 32 - 1);
-      }
-      resetState(state(), seed);
+    reset() {
+      resetState(state());
       settle();
     },
 
@@ -492,18 +509,50 @@ export function createDebugApi(worldOf: () => World): WickDebugApi {
       });
     },
 
-    /**
-     * Take `draws` draws off the generator and discard them, so `rngState`
-     * lands where `draws` random choices would have left it. Nothing is
-     * chosen with what was drawn. Applies on every screen, so it runs outside
-     * `pose`.
-     */
-    advanceRng(draws) {
-      const count = whole(draws, "draws", 0);
-      const s = state();
-      for (let i = 0; i < count; i += 1) {
-        s.rngState = nextRandom(s.rngState).state;
+    // ---- Drawn outcomes ----------------------------------------------
+    // Each sets what the next draw of its kind decides; the draw consumes it.
+
+    setNextSpawnAngle(degrees) {
+      const value = angle(degrees);
+      pose(() => {
+        run().nextSpawnAngle = value;
+      });
+    },
+    setNextSwarmAngle(degrees) {
+      const value = angle(degrees);
+      pose(() => {
+        run().nextSwarmAngle = value;
+      });
+    },
+    setNextPuddleOffset(dx, dy) {
+      const x = real(dx, "dx");
+      const y = real(dy, "dy");
+      if (Math.hypot(x, y) > OIL_SCATTER) {
+        invalid(`an offset must be at most OIL_SCATTER (${OIL_SCATTER}) long`);
       }
+      pose(() => {
+        run().nextPuddleOffset = { x, y };
+      });
+    },
+    setNextStrikeTarget(id) {
+      pose(() => {
+        run().nextStrikeTarget = enemyById(id).id;
+      });
+    },
+    setNextChestItem(id) {
+      if (typeof id !== "string" || !(isBaseWeapon(id) || isPassiveId(id))) {
+        invalid(`${String(id)} is no base weapon or passive`);
+      }
+      const item = id;
+      pose(() => {
+        run().nextChestItem = item;
+      });
+    },
+    setNextDrop(kind) {
+      const value: NextDrop = oneOf(kind, "kind", NEXT_DROPS);
+      pose(() => {
+        run().nextDrop = value;
+      });
     },
 
     setPlayerPosition(x, y) {

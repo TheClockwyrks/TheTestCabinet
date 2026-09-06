@@ -65,7 +65,7 @@ function differs(
 }
 
 function playingState(): WickState {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   return state;
@@ -295,7 +295,7 @@ describe("the produced sprites in the frame", () => {
   });
 
   it("draws the almanac's produced picture and walks its enemy sheet", () => {
-    const state = initialState(1);
+    const state = initialState();
     state.screen = "almanac";
     const pane = [
       ALMANAC.paneX,

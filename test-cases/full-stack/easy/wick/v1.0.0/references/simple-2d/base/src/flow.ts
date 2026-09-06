@@ -1,6 +1,6 @@
 // Wick — the screens, the menus, the frame's update, and the cues a frame
 // raises (specs/ui.md, specs/controls.md, specs/instrumentation.md "A
-// deterministic core").
+// render-free core").
 //
 // The simulation itself is `src/sim/`; this is the layer that decides which
 // screen ticks, which actions each screen answers, how a frame's delta time
@@ -60,9 +60,13 @@ export const MUSIC_SCREENS: readonly Screen[] = [
   "paused",
 ];
 
-/** The generator over the draft's own `rngState`. */
+/** The game's private random source, drawn from where nothing is posed. */
+const rng = new Rng();
+
+/** The random source a transition over `draft` draws from. */
 export function rngOf(draft: Draft): Rng {
-  return new Rng(() => draft);
+  void draft;
+  return rng;
 }
 
 // ---- Transitions -----------------------------------------------------------
