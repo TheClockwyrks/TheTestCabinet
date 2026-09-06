@@ -29,7 +29,8 @@
 // therefore filtered by where they were anchored.
 //
 // THE FIGURE IS MATCHED AS A WHOLE TOKEN. A `6` inside a score of `1650` is not the
-// level reached, so the digits must stand with no letter or digit against either end.
+// level reached, so the digits must stand with no digit against either end (a letter
+// may: coalesced runs spell a label and its figure as `LEVEL6`).
 // The score is posed to `POSED_SCORE`, which carries neither posed level's digit at
 // all, so nothing else on the screen can supply or mask one.
 //
@@ -43,7 +44,7 @@ import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextRuns,
   startCrossing,
   type Harness,
 } from "../harness";
@@ -100,13 +101,15 @@ function settings(figure: number): string[] {
 
 /**
  * Whether some run of that text carries `figure`, under any of its settings, with
- * no letter or digit either side — so a `6` is still not found inside `1250`.
+ * no digit either side — so a `6` is still not found inside `1250`, while the
+ * `6` of `LEVEL6` is: the runs are coalesced verbatim, so a label and its figure
+ * drawn a measured space apart spell one run with no space between them.
  */
 function names(runs: readonly string[], figure: number): boolean {
   const wanted = settings(figure)
     .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
-  const pattern = new RegExp(`(^|[^A-Za-z0-9])(?:${wanted})([^A-Za-z0-9]|$)`);
+  const pattern = new RegExp(`(^|[^0-9])(?:${wanted})([^0-9]|$)`);
   return runs.some((run) => pattern.test(run));
 }
 
@@ -139,8 +142,10 @@ it("names the level the run reached on the game-over screen", async () => {
   await h.advance(DRAW_FRAMES);
   captureStill(h, "gameover");
 
-  // Only the runs anchored on the strait, where specs/ui.md puts the six screens.
-  const runs = drawnTextSpans(h)
+  // Only the runs anchored on the strait, where specs/ui.md puts the six
+  // screens — the LOGICAL runs, so a figure letter-spaced a glyph per
+  // `fillText` is read as the figure it spells.
+  const runs = drawnTextRuns(h)
     .filter((span) => span.y >= HUD_H)
     .map((span) => span.text);
 

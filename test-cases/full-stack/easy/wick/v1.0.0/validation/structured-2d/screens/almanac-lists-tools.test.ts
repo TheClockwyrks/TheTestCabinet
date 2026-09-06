@@ -35,7 +35,7 @@ import {
   captureStill,
   createHarness,
   poseScreen,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { moveEntry, outOfOrder, windowNames } from "./almanac";
@@ -65,7 +65,7 @@ it("draws the sixteen weapon names in order over the two windows", async () => {
   const top = windowNames(TAB, opened.almanacScroll);
   assertEqual(top.length, ALMANAC_ROWS, "rows the first window shows");
   assertNull(
-    outOfOrder(textDraws(first.calls), top),
+    outOfOrder(placedRuns(first.calls), top),
     `the first name the first window drew out of ${TAB} order, of ${top.join(", ")} (specs/ui.md, almanac)`,
   );
 
@@ -81,7 +81,7 @@ it("draws the sixteen weapon names in order over the two windows", async () => {
   const end = windowNames(TAB, walked.almanacScroll);
   assertEqual(end.length, ALMANAC_ROWS, "rows the last window shows");
   assertNull(
-    outOfOrder(textDraws(second.calls), end),
+    outOfOrder(placedRuns(second.calls), end),
     `the first name the last window drew out of ${TAB} order, of ${end.join(", ")} (specs/ui.md, almanac)`,
   );
 });

@@ -244,6 +244,15 @@ const kit = createCaseHarness<DeepcoreSnapshot, DeepcoreDebugApi>({
   // art and audio it committed before it is ready. Fifteen costs a healthy build
   // nothing, because the poll returns the instant the global appears.
   surfaceTimeoutMs: 15_000,
+  // MEASURE EVERY TEXT CALL, because copy is read off the logical runs a frame
+  // spells rather than off the `fillText` split. A build that letter-spaces a
+  // heading draws one glyph per call — the only portable way to letter-space
+  // canvas text — and specs/ui.md fixes what a screen carries, not its layout.
+  // The shared harness's merge rule (`case-harness/text.ts`) needs each call's
+  // measured width and alignment to coalesce side-by-side glyphs on one baseline
+  // back into the string they spell; without it nothing merges and `drewText`
+  // fails a screen that drew exactly the right words.
+  measureText: true,
   projectRoot: dirname(fileURLToPath(import.meta.url)),
 });
 

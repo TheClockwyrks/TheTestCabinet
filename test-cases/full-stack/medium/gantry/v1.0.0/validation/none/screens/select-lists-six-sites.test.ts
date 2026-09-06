@@ -27,12 +27,7 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotNull, assertTrue } from "../assert";
 import { SITE_COUNT, SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
-import {
-  textDraws,
-  toDrawCall,
-  type RecordedOp,
-  type TextDraw,
-} from "../case-harness/index";
+import { drawnTextRuns, type TextDraw } from "../case-harness/index";
 
 /**
  * Every run of text the last frame drew on the screen layer, with where it drew
@@ -43,14 +38,18 @@ import {
  * logical stage units" — and the anchor each run was drawn at is what lets rows
  * be told from one another without knowing anything about the layout a build
  * chose.
+ *
+ * The runs are the LOGICAL ones the frame spells, each placed where its first
+ * draw was, never the `fillText` split: a build that letter-spaces a label or
+ * a figure draws a glyph per call, which is the only portable way to
+ * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
+ * where the screen says `12`. `screenCalls` carries the measured geometry the
+ * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
+ * on one baseline back together, and every raw string is a substring of its
+ * run, so coalescing can only add a match.
  */
 async function screenDraws(harness: Harness): Promise<TextDraw[]> {
-  const ops = (await harness.page.evaluate(() =>
-    (window as unknown as Record<string, { last(): unknown[] }>)[
-      "__tcabRec"
-    ]!.last(),
-  )) as RecordedOp[];
-  return textDraws(ops.map(toDrawCall));
+  return drawnTextRuns(await harness.screenCalls());
 }
 
 /**

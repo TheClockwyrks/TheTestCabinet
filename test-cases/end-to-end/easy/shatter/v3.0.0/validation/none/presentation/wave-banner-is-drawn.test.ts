@@ -16,6 +16,17 @@
 // build — a build that sets the word and the number as two runs, one over the other
 // or one beside the other, has drawn the banner the specification asked for.
 //
+// THE RUNS, AND THE CALLS BEHIND THEM. A build that letter-spaces its banner draws
+// one glyph per `fillText` — the only portable way to letter-space canvas text — on
+// a screen whose copy `specs/ui.md` fixes and whose type it leaves to the build.
+// Read a call at a time, `WAVE` is four runs of one letter and no word. So each
+// reading takes the package's `drawnTextRuns`, which coalesces side-by-side draws
+// on one baseline back into the string they spell, placed as one extent, AND its
+// `textDraws`, one per call: the merge can also glue the number onto the word the
+// build set a bare space away, and the call that drew either whole is still the box
+// it occupies. A word or a number found in either is found — and once the banner
+// has run out, neither list has anything near the centre to find it in.
+//
 // THE WAVE POSED IS `7`, which appears nowhere else on a field posed like this: the
 // score is `0`, the lives are `3` and the field is empty. And the near-the-centre
 // window is what keeps the HUD out of the reading — `specs/ui.md` draws the HUD in
@@ -33,6 +44,7 @@ import { STAR_X, STAR_Y, WAVE_BANNER_TIME } from "../constants";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
   startPlaying,
   textDraws,
   ticksFor,
@@ -92,7 +104,8 @@ it("names the wave at the field's centre while the banner runs and not once it h
   await harness.debug.setShipPosition(FAR_SHIP.x, FAR_SHIP.y);
   await harness.debug.setWaveBanner(WAVE_BANNER_TIME);
 
-  const running = textDraws(await harness.frameCalls());
+  const runningCalls = await harness.frameCalls();
+  const running = [...drawnTextRuns(runningCalls), ...textDraws(runningCalls)];
   await captureStill(harness, "banner");
 
   assertTrue(
@@ -101,7 +114,8 @@ it("names the wave at the field's centre while the banner runs and not once it h
   );
 
   await harness.advance(AFTER_TICKS);
-  const spent = textDraws(await harness.frameCalls());
+  const spentCalls = await harness.frameCalls();
+  const spent = [...drawnTextRuns(spentCalls), ...textDraws(spentCalls)];
 
   assertTrue(
     !namesTheWave(spent),

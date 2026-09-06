@@ -50,7 +50,7 @@ import {
   createHarness,
   drewText,
   poseScreen,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { drewRightOfList, moveTab, statLine, windowNames } from "./almanac";
@@ -90,7 +90,7 @@ it("draws Small Gem's name, EXPERIENCE, and its description", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "pickup");
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   assertTrue(
     drewRightOfList(draws, GEM_NAMES[ENTRY], BESIDE),
     `the detail pane drew the entry's name, ${GEM_NAMES[ENTRY]}, to the right of the list (specs/ui.md, almanac)`,

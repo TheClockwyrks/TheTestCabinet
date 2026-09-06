@@ -52,7 +52,7 @@ import {
   menuRects,
   openLevelUp,
   poseScreen,
-  textDraws,
+  placedRuns,
   type Harness,
   type Screen,
 } from "../harness";
@@ -101,7 +101,7 @@ async function checkMenu(
   const drawn = await h.frameDraw();
   assertLabelledInOrder(
     h,
-    textDraws(drawn.calls),
+    placedRuns(drawn.calls),
     rects,
     labels,
     `menuRects() on ${screen} reports the menu's rectangles in menu order`,

@@ -18,7 +18,12 @@
 // (`> BOTTLENECK`) or to repeat the chosen name as a heading would make the five
 // frames differ by that alone — which is the highlight, not a description. So
 // every run carrying one of the `MODE_ITEMS` names is dropped, and what is
-// compared is the text that is left.
+// compared is the text that is left. A run is the LOGICAL one the screen spells
+// (`readScreen`), and the merge behind it is verbatim: a row's name and a
+// description drawn on its baseline a space along come back as ONE run naming
+// the mode, which would drop the description with the name. So a run that names
+// a mode is read as the spans it was spelled from, and the spans that name no
+// mode are the body — exactly what the reading was call by call.
 //
 // AND IT MUST BE THERE AT ALL. Each of the five frames must leave a non-empty
 // body behind, so a build that draws a blurb for one mode and nothing for the
@@ -96,7 +101,10 @@ it("draws a different body of text for each of the five modes, and starts none o
     );
 
     const body = runs
-      .map((run) => run.text.trim())
+      .flatMap((run) =>
+        namesAMode(run.text) ? run.parts.map((part) => part.text) : [run.text],
+      )
+      .map((text) => text.trim())
       .filter((text) => text.length > 0 && !namesAMode(text));
     assertGreaterThanOrEqual(
       body.length,

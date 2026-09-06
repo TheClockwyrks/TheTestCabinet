@@ -37,11 +37,11 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
-  drawnText,
   drewText,
   hasToken,
   isolate,
-  textDraws,
+  placedRuns,
+  textReadings,
   type Harness,
 } from "../harness";
 import { anchorY } from "./stage";
@@ -73,7 +73,11 @@ it("draws THE LIGHT WENT OUT, the figures, and TRY AGAIN above TITLE", async () 
 
   const { calls } = await h.frameDraw();
   captureStill(h, "fallen");
-  const lines = drawnText(calls);
+  // The raw calls and the logical runs they spell, both (`textReadings`): a
+  // figure drawn a glyph per call is the number it is off the runs, and one
+  // drawn a narrow gap after its label, which the run rule merges into
+  // `KILLS143`, still stands alone as the raw call.
+  const lines = textReadings(calls);
 
   assertTrue(
     drewText(calls, FALLEN_TEXT),
@@ -92,7 +96,7 @@ it("draws THE LIGHT WENT OUT, the figures, and TRY AGAIN above TITLE", async () 
     `the fallen screen drew the kill count, ${KILLS}`,
   );
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   const first = anchorY(draws, END_ITEMS[0]);
   const second = anchorY(draws, END_ITEMS[1]);
   assertNotNull(first, `where ${END_ITEMS[0]} was drawn`);

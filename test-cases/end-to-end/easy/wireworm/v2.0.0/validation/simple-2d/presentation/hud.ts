@@ -14,6 +14,16 @@
 // the shared harness's `drawnTextSpans`, so a build is free to lay its bar out
 // however it likes.
 //
+// A READOUT IS LOOKED FOR IN THE RUNS AS WELL AS THE CALLS. A build that
+// letter-spaces its `LEVEL` label or its score draws a glyph per call, and no
+// single call then carries the label or the figure; the harness's
+// `drawnTextSpanForms` lists each run those calls spell beside the calls
+// themselves, placed at its first draw and spanning its glyphs, so `hudSpanForms`
+// is what a point reads when it has to FIND a readout before it can hold it to
+// anything. `hudSpans` stays one span per call, for the reading that walks the
+// bar's digits left to right — a run inserted among its own glyphs would
+// scramble that.
+//
 // HOW A FIGURE IS READ OUT OF A RUN. specs/ui.md fixes the figures a readout
 // shows and leaves its composition to the build — "How the level readout is
 // composed around those three parts is yours" — so what is read from a run is its
@@ -30,11 +40,29 @@
 // and a half.
 
 import { HUD_H } from "../constants";
-import { drawnTextSpans, type Harness, type TextSpan } from "../harness";
+import {
+  drawnTextSpanForms,
+  drawnTextSpans,
+  type Harness,
+  type TextSpan,
+} from "../harness";
 
-/** Every run of text the frame drew inside the HUD bar (specs/board.md). */
+/** Whether a span was anchored inside the HUD bar (specs/board.md). */
+function onBar(span: TextSpan): boolean {
+  return span.y >= 0 && span.y <= HUD_H;
+}
+
+/** Every text draw the frame made inside the HUD bar, one span per call. */
 export function hudSpans(h: Harness): TextSpan[] {
-  return drawnTextSpans(h).filter((span) => span.y >= 0 && span.y <= HUD_H);
+  return drawnTextSpans(h).filter(onBar);
+}
+
+/**
+ * Every span inside the HUD bar, as the calls split it AND as the runs those
+ * calls spell — the reading for finding a readout, however it was drawn.
+ */
+export function hudSpanForms(h: Harness): TextSpan[] {
+  return drawnTextSpanForms(h).filter(onBar);
 }
 
 /** The separators a build may draw between the digit triples of a figure. */

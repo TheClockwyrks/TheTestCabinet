@@ -34,7 +34,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { barText, figuresIn, gapBetween, hudSpans } from "./hud";
+import { barText, figuresIn, gapBetween, hudSpanForms } from "./hud";
 
 /**
  * The level this point poses.
@@ -77,7 +77,9 @@ it("draws the LEVEL label with the level beside it, and the total on the bar", a
   await h.advance(1);
   captureStill(h, "hud");
 
-  const spans = hudSpans(h);
+  // The bar's calls and the runs they spell, so a label or a figure the build
+  // letter-spaced a glyph per call is found in the run it spells.
+  const spans = hudSpanForms(h);
   const labels = spans.filter((span) =>
     span.text.toLowerCase().includes(HUD_LEVEL_LABEL.toLowerCase()),
   );

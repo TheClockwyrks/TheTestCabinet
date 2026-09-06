@@ -21,9 +21,12 @@
 //
 // HOW A LABEL IS MATCHED. Case-insensitively, and as part of a run rather than as
 // the whole of it: the copy is the case's, fixed by specs/screens.md as `HUD_ITEMS`, but how a build presents it is the build's, and a label is
-// commonly drawn with a marker or a bullet beside it. Where the run sits is read
-// through the transform and the alignment the build drew it with, so a build is
-// free to lay its strip out however it likes.
+// commonly drawn with a marker or a bullet beside it. The runs are the LOGICAL
+// ones the frame spells (`drawnRunSpans`), its `fillText` calls coalesced, so a
+// label letter-spaced a glyph per call is read as the label rather than as its
+// letters. Where the run sits is read through the transform and the alignment
+// the build drew it with, so a build is free to lay its strip out however it
+// likes.
 //
 // THE WORLD IT POSES. `openTable` and nothing else: an empty table in play, which
 // is the screen specs/screens.md draws the HUD on. Nothing is posed onto the
@@ -44,7 +47,7 @@ import {
   captureStill,
   createHarness,
   drawFrame,
-  drawnTextSpans,
+  drawnRunSpans,
   menuRect,
   openTable,
   pointIn,
@@ -85,7 +88,7 @@ afterEach(() => {
 
 it("draws each of the three HUD labels inside its own rectangle", async () => {
   openTable(h);
-  const spans = drawnTextSpans(h, await drawFrame(h));
+  const spans = drawnRunSpans(h, await drawFrame(h));
   captureStill(h, "hud");
 
   for (const [index, label] of HUD_ITEMS.entries()) {

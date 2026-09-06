@@ -49,6 +49,7 @@ import { readFileSync } from "node:fs";
 import type { Page } from "playwright";
 import {
   createCaseHarness,
+  type DrawCall,
   type Harness as BaseHarness,
   type HarnessOptions,
 } from "./case-harness/index";
@@ -211,6 +212,12 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   // back — and every check runs after this harness's opening reset, so that half
   // of the requirement would be invisible without a reading taken first.
   readOpeningSnapshot: true,
+  // Measure every text call the recorder holds, so `screenCalls` carries the
+  // width and alignment the shared merge rule needs to put a letter-spaced run —
+  // one glyph per `fillText` — back together into the copy it spells. Without
+  // it no two text draws ever coalesce, and a check reading copy off
+  // `drawnTextLines` would be reading the raw call split after all.
+  measureText: true,
   // Gantry draws through WebGL, so nothing here reads pixels off a 2D context;
   // what a still captures is the page's own composited frame.
   //
@@ -379,6 +386,27 @@ export interface Harness {
    */
   paintFrame(): Promise<void>;
 
+  /**
+   * Every operation the last CLOSED frame made on the screen layer, as draw
+   * calls, with every text call measured.
+   *
+   * THE SAME READING ON ALL THREE ENGINES. Under `none` it is the shared
+   * harness's own `lastCalls`, read off the recorder it injects before a line of
+   * the build runs; the two engine projects answer the package recorder's
+   * `calls`, taken off the context it wraps around the engine's screen layer.
+   * Either way each `fillText`/`strokeText` carries its measured width and the
+   * alignment in force, which is what lets `drawnTextLines` and `drawnTextRuns`
+   * (`case-harness/text.ts`) fold a heading a build letter-spaced — one glyph
+   * per call — back into the run it spells. A check that reads copy or figures
+   * reads them off those runs and never off the call split, because the
+   * specification fixes the words and leaves their spacing to the build.
+   *
+   * Call it after the frame that draws the thing under test: a frame that has
+   * only been posed has drawn nothing, so a check advances one frame and then
+   * reads.
+   */
+  screenCalls(): Promise<DrawCall[]>;
+
   /* ---- This engine's own, for the few suites that are about it ------------ */
 
   /** Why the build's surface cannot be driven, or `null` when it can. */
@@ -534,6 +562,8 @@ export async function createHarness(
       await kit.captureStill(base, id);
       console.log(`gantry: captured ${id} — ${name}`);
     },
+
+    screenCalls: () => base.lastCalls(),
 
     surfaceFault: base.surfaceFault,
     pageErrors: base.pageErrors,

@@ -121,7 +121,7 @@ import {
   type DrawCall,
   type TextGeometry,
 } from "./case-harness/draw-calls";
-import { drawnText as drawnTextRuns } from "./case-harness/text";
+import { drawnText, drawnTextLines } from "./case-harness/text";
 import type { Pixel } from "./case-harness/pixels";
 import { BACKGROUND as buildBackground, game as buildGame } from "../src/game";
 import { fail } from "./assert";
@@ -273,16 +273,18 @@ export { callsTo, setsOf };
  * read `F F A A C C E E T T` — a run that spells nothing. Listed by channel,
  * each channel spells the copy on its own.
  */
-export const drawnText = drawnTextRuns;
+export { drawnText };
 
 /**
  * Whether `wanted` is among the words a frame put on screen.
  *
- * FACET'S OWN READING, and not the package's `drewText`, which spells the copy
- * out of the merged runs `drawnTextLines` finds by geometry. This one asks four
- * questions of the raw strings instead, and the difference decides points: a
- * build that draws a line one glyph at a time is read here by the joined run and
- * there by whether the glyphs happened to merge into one run.
+ * FACET'S OWN READING, kept beside the package's `drewText` rather than replaced
+ * by it. That one spells the copy out of the merged runs `drawnTextLines` finds
+ * by geometry and matches along one baseline; this asks four questions of every
+ * piece {@link copyPieces} lists — the raw strings, then those same runs — so a
+ * build that draws a line one glyph at a time is read by the merged run AND by
+ * the joined raw pieces, and every match of the package's reading is a match
+ * here. The suites read `frameText` through this, and were written against it.
  *
  * specs/ui.md fixes the COPY — `FACET`, `PRESSURE FINDS THE FLAW`, `SCORE`,
  * `PLAY AGAIN` — and fixes nothing about how many draw calls a build spends on
@@ -295,6 +297,11 @@ export const drawnText = drawnTextRuns;
  *   a decorated entry     `"> PLAY <"`, or `"SCORE 120"` for a check about
  *                         the label alone
  *
+ * and a fifth is read the same way through the pieces {@link copyPieces}
+ * appends — a glyph at a time with a shadow apiece, `"F", "F", "A", "A", ...`,
+ * whose fill channel spells nothing on its own but whose two baselines each
+ * coalesce into `"FACET"`.
+ *
  * Four readings, tried from the most local to the most permissive, so a build
  * that drew the copy in ONE call is decided by that call alone: a piece that IS
  * the copy; a piece that CONTAINS it; the frame's whole run of text; and that
@@ -303,11 +310,12 @@ export const drawnText = drawnTextRuns;
  *
  * What the last two readings buy is bounded, and the bound is the rule for
  * using this: a search over the joined run can find a phrase that spans two
- * adjacent draws, so this decides that copy IS on screen and NEVER that two
- * pieces of copy are separate. An item about two readouts asks about each of
- * them; an item that asserts copy is ABSENT asserts the absence of that one
- * string and pairs it with a frame that does show it, so an accidental join
- * shows up as the two frames agreeing rather than as a verdict.
+ * adjacent draws — or the seam where the coalesced runs follow the raw
+ * pieces — so this decides that copy IS on screen and NEVER that two pieces of
+ * copy are separate. An item about two readouts asks about each of them; an
+ * item that asserts copy is ABSENT asserts the absence of that one string and
+ * pairs it with a frame that does show it, so an accidental join shows up as
+ * the two frames agreeing rather than as a verdict.
  */
 export function showsText(pieces: readonly string[], wanted: string): boolean {
   const needle = wanted.trim().toLowerCase();
@@ -321,9 +329,38 @@ export function showsText(pieces: readonly string[], wanted: string): boolean {
   return bare(joined).includes(bare(needle));
 }
 
+/**
+ * Every piece a copy check reads off a frame's draw calls: the raw strings by
+ * channel ({@link drawnText}), then the logical runs those calls spell
+ * (`drawnTextLines`, from the shared harness's `case-harness/text.ts`).
+ *
+ * THE RAW PIECES FIRST, so every reading this project's items were written
+ * against survives untouched; THEN THE RUNS, so a build that letter-spaces a
+ * heading — one `fillText` per glyph, which is the only portable way to
+ * letter-space canvas text — spells `"FACET"` in the list as well as
+ * `"F", "A", "C", "E", "T"`. The shared merge folds an outlined glyph's
+ * restrike into its run and writes a space where a build advanced the pen over
+ * one, so a title outlined a glyph at a time and a line tracked past its skipped
+ * spaces both come back as the words they show, and a title letter-spaced under
+ * a DROP SHADOW — a second, offset `fillText` per glyph — comes back as the word
+ * on each of its two baselines where its fill channel alone reads
+ * `F F A A C C E E T T`. Every raw string is a substring of the run it belongs
+ * to, so listing the runs after the raw pieces can only add a match and never
+ * take one away.
+ *
+ * The runs are only as good as the measurement. The shared harness's recorder
+ * attaches the width and alignment of every text call as it is made, in the
+ * shape the shared readers take ({@link TextGeometry}), because the kit's config
+ * asks for it with `recorder: { measureText: true }`; a list that was never
+ * measured merges nothing, and its runs are its calls over again.
+ */
+export function copyPieces(calls: readonly DrawCall[]): string[] {
+  return [...drawnText(calls), ...drawnTextLines(calls)];
+}
+
 /** Whether the frame's own draw calls put `wanted` on screen. */
 export function drewText(calls: readonly DrawCall[], wanted: string): boolean {
-  return showsText(drawnText(calls), wanted);
+  return showsText(copyPieces(calls), wanted);
 }
 
 /**
@@ -988,7 +1025,12 @@ export interface FacetModel {
 
   /** Clear the call log, run one frame, and hand back what that frame drew. */
   frameCalls(): Promise<DrawCall[]>;
-  /** Every string one frame drew. */
+  /**
+   * Every string one frame drew: the pieces as the build drew them, then the
+   * logical runs they spell, as {@link copyPieces} lists them. A check asks
+   * {@link showsText} whether the copy is on screen rather than looking for it
+   * in the list.
+   */
   frameText(): Promise<string[]>;
   /**
    * Reflect over the surface WITHOUT invoking it: the `typeof` of each name.
@@ -1126,8 +1168,9 @@ const kit = createEngineCaseHarness<
   tickHz: TICK_HZ,
   surfaceRequirement: SURFACE_REQUIREMENT,
   // Every text call is measured and the transform in force at it recorded, which
-  // is what the recorder this replaces always did. Nothing in this directory
-  // reads the measurement; it is kept so `h.calls` holds what it has always held.
+  // is what the recorder this replaces always did, and what lets `copyPieces`
+  // coalesce a heading drawn a glyph at a time back into the word it spells;
+  // without a width every draw is a point and nothing merges.
   recorder: { measureText: true },
   defaultClock: () => new HarnessClock(new ConstantClock(TICK_MS)),
 
@@ -1310,7 +1353,7 @@ const kit = createEngineCaseHarness<
         return [...base.calls];
       },
       async frameText() {
-        return drawnText(await whole.frameCalls());
+        return copyPieces(await whole.frameCalls());
       },
       probe(names) {
         const reflected: Record<string, string> = {};

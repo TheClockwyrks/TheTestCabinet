@@ -32,7 +32,7 @@
 // of its own too.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
 import { assertEqual, assertLength, fail } from "../assert";
 import { GRIP_MAX_RATE, SITE_NAMES } from "../constants";
 import { createHarness, openSite, type Harness } from "../harness";
@@ -51,6 +51,14 @@ const TAPE_STEPS = 5;
  * so it builds the smallest structure that carries a cost at all — `RING_COST`
  * plus four units of rail, `372` against Long Reach's budget of `5600`, which is
  * a figure no other readout on the screen can be confused with.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
  */
 async function poseCrane(harness: Harness): Promise<void> {
   await harness.debug.setRing(0, 2, 0);
@@ -81,8 +89,7 @@ afterEach(async () => {
 
 /** Every run of text the frame the page last drew put on its readout layer. */
 async function readoutText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
+  return drawnTextLines(await harness.screenCalls());
 }
 
 /**

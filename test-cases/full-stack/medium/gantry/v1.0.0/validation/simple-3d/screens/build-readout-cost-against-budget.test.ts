@@ -22,7 +22,7 @@
 // build.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
 import { assertTrue, fail } from "../assert";
 import { RING_COST, SITES, STRUT_COST_PER_UNIT } from "../constants";
 import { clearAll, createHarness, openSite, type Harness } from "../harness";
@@ -36,10 +36,19 @@ const COST = RING_COST + 2 * (2 * STRUT_COST_PER_UNIT);
 /** How far the drawn cost may sit from the cost the game reports. */
 const ROUNDING = 1;
 
-/** Every run of text the last closed frame drew, in draw order. */
+/**
+ * Every logical run of text the last closed frame drew, in reading order.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
+ */
 async function frameText(harness: Harness): Promise<string[]> {
-  const ops = await harness.screenOps();
-  return drawnText(ops.map(toDrawCall));
+  return drawnTextLines(await harness.screenCalls());
 }
 
 /**

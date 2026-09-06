@@ -15,7 +15,11 @@
 //   moment, drawn with its anchor inside the strip specs/ui.md gives it. Where a
 //   run landed comes from `text.ts`, which walks the transform in force at the
 //   call, so a build that translates to a corner and draws at the origin is placed
-//   where it actually drew.
+//   where it actually drew. The runs are the LOGICAL ones (`text.ts`'s
+//   `textRuns`): a build that letter-spaces `DEPTH 4` draws one glyph per call,
+//   and only the merged run names the depth. A merged run keeps its first draw's
+//   anchor, so the strip test is unchanged, and it spans every glyph, so the
+//   legibility sample below only gains points.
 //
 //   IS IT LEGIBLE WHERE IT STANDS? A readout drawn in the strip's own color is
 //   present in the draw log and invisible to a player. So the pixels the run

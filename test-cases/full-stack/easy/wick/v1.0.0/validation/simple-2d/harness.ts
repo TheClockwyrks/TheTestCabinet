@@ -121,7 +121,12 @@ import {
   DRAW_METHODS,
   type DrawCall,
 } from "./case-harness/draw-calls";
-import { drawnText } from "./case-harness/text";
+import {
+  drawnText,
+  drawnTextLines,
+  drawnTextRuns,
+  drewText as spelledText,
+} from "./case-harness/text";
 import { colorDistance, type Rgb } from "./case-harness/color";
 import {
   IDENTITY,
@@ -2557,24 +2562,53 @@ export function spriteNear(
 export { drawnText };
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
  * commonly drawn with a selection marker or padding around it.
  *
- * A DIFFERENT QUESTION FROM THE PACKAGE'S `drewText`, which spells the frame
- * into merged LOGICAL RUNS first and matches inside those. This matches inside
- * one RAW call, which is narrower: a heading drawn a glyph per `fillText` reads
- * as a run there and as single glyphs here. Every `screens` point in this
- * project was taken under the narrow reading — the wide one is reached
- * deliberately, through {@link drewPhrase}, which admits a split across calls
- * and states so — so binding the package's here would quietly widen what those
- * points accept.
+ * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
+ * split. A build that letter-spaces a heading draws one glyph per call, which
+ * is the only portable way to letter-space canvas text, and specs/ui.md fixes
+ * the copy a screen shows while leaving its spacing to the build. The recorder
+ * measures every text call, so the shared harness's merge rule
+ * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline
+ * back into the string they spell. Every raw string is a substring of the run
+ * it belongs to, so coalescing can only add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return spelledText(calls, text);
+}
+
+/**
+ * Every logical run of text the frame spelled, as the strings it spells: the
+ * shared harness's reading, under its own name, for a check that reads copy
+ * off the strings itself. A letter-spaced heading is one entry here where
+ * {@link drawnText} has one per glyph.
+ */
+export { drawnTextLines };
+
+/**
+ * Every string the frame drew, read BOTH ways: the raw calls ({@link drawnText})
+ * and then the logical runs they spell ({@link drawnTextLines}).
+ *
+ * What a reader that bounds its token reads. The shared merge rule joins the
+ * draws verbatim and writes a space only where a gap opens past the run's own
+ * tracking, so a label and its figure drawn as two calls a narrow gap apart —
+ * or a single-glyph figure, which gives the rule no tracking to judge by —
+ * come back as the one run `HP73`, where the raw call `73` stood alone. Read
+ * off the runs only, a check for the figure standing alone would fail a plain
+ * build that the raw reading passed. Read off both, the runs still carry a
+ * letter-spaced figure as the number it spells and the raw calls still carry
+ * a plain one, so the reading keeps the one property the merge promises: it
+ * only ever adds a match. A reader that COUNTS its matches must not read this,
+ * since a plain call appears twice; it takes the larger count over each
+ * reading on its own.
+ */
+export function textReadings(calls: readonly DrawCall[]): string[] {
+  return [...drawnText(calls), ...drawnTextLines(calls)];
 }
 
 /**
@@ -2602,7 +2636,14 @@ export function drewPhrase(
     `(?<![A-Za-z0-9])${words.join("[^A-Za-z0-9]+")}(?![A-Za-z0-9])`,
     "i",
   );
-  return pattern.test(drawnText(calls).join(" "));
+  // Each reading joined and tested on its own, for the reason
+  // {@link textReadings} gives: the logical runs, so a glyph-per-call heading
+  // is not joined into `L E V E L`; and the raw calls, so a label and its
+  // figure a narrow gap apart, which the run rule merges verbatim into
+  // `TIME0:05`, still read as the two words they are.
+  return [drawnText(calls), drawnTextLines(calls)].some((strings) =>
+    pattern.test(strings.join(" ")),
+  );
 }
 
 /** One run of text a frame drew, and where it drew it in device pixels. */
@@ -2611,7 +2652,11 @@ export interface TextDraw {
   /** The anchor the run was drawn at, mapped through the transform in force. */
   x: number;
   y: number;
-  /** The run's measured width under the font in force, in the call's space. */
+  /**
+   * The run's measured width under the font in force: in the call's space for
+   * a {@link textDraws} entry, and in device pixels — the extent the run
+   * occupies, its right edge less its left — for a {@link placedRuns} entry.
+   */
   width: number;
   /** The alignment that places the run about its anchor. */
   textAlign: string;
@@ -2668,20 +2713,57 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
 }
 
 /**
- * Every run of text the frame drew that holds `text`, ignoring case.
+ * Every logical run of text the frame spelled, placed as a {@link TextDraw}.
+ *
+ * The shared harness's `drawnTextRuns` coalesces the frame's measured text
+ * calls into the runs they spell, so a heading drawn one glyph per call comes
+ * back as one entry where {@link textDraws} has one per glyph. Each run is
+ * placed by its own extent: `x` is its left edge, `width` its extent in device
+ * pixels — where a {@link textDraws} entry's is in the call's space — and
+ * `textAlign` `left` accordingly, so a reading that spans a run from those
+ * three gets the same span for a single call however that call was aligned.
+ * The baseline `y` is the run's own.
+ */
+export function placedRuns(calls: readonly DrawCall[]): TextDraw[] {
+  return drawnTextRuns(calls).map((run) => ({
+    text: run.text,
+    x: run.left,
+    y: run.y,
+    width: run.right - run.left,
+    textAlign: "left",
+  }));
+}
+
+/** `text` lower-cased with every run of whitespace removed: how copy is compared below. */
+function foldedText(text: string): string {
+  return text.replace(/\s+/g, "").toLowerCase();
+}
+
+/**
+ * Every logical run of text the frame spelled that holds `text`, ignoring
+ * case and whitespace.
  *
  * What a check about WHERE a piece of copy sits reads: a build commonly draws
  * one run twice, a shadow under the face of it, and commonly wraps a marker
  * around the item at `menuIndex`, so a run is attributed to the copy it
- * contains rather than matched whole.
+ * contains rather than matched whole. Read off {@link placedRuns} rather than
+ * {@link textDraws} for the reason {@link drewText} gives: a menu item drawn a
+ * glyph at a time holds its name in no single call, and only in the run those
+ * calls spell. And compared with the whitespace folded out of BOTH sides, the
+ * way the shared `drewText` compares: a build that letter-spaces its copy may
+ * skip the space glyph and advance the pen, and one that colours a word may
+ * draw a line's words as separate calls, so a run spelling `LIGHTTHELAMP` — or
+ * one the merge rule wrote a space into — is the copy `LIGHT THE LAMP` either
+ * way. Every raw call is a member of some run, and a run keeps its first
+ * draw's baseline, so nothing a per-call reading would place is lost here.
  */
 export function textDrawsOf(
   calls: readonly DrawCall[],
   text: string,
 ): TextDraw[] {
-  const wanted = text.trim().toLowerCase();
-  return textDraws(calls).filter((draw) =>
-    draw.text.toLowerCase().includes(wanted),
+  const wanted = foldedText(text);
+  return placedRuns(calls).filter((draw) =>
+    foldedText(draw.text).includes(wanted),
   );
 }
 

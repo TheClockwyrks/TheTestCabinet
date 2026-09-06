@@ -30,6 +30,7 @@
 import { wrap, type Point } from "../geometry";
 import {
   colorDistance,
+  spelledTextRuns,
   type DrawCall,
   type Harness,
   type Rgb,
@@ -427,7 +428,22 @@ function aboveAnchor(baseline: unknown): number {
   }
 }
 
-/** The runs of text the recorded calls drew, oldest first. */
+/**
+ * The runs of text the recorded calls drew, oldest first — one per call — and,
+ * after them, one for each run the frame SPELLED in more than one call.
+ *
+ * The score and the wave are read here by the figure a run's digits make, and
+ * a build that letter-spaces its HUD or its banner draws one digit per call:
+ * the only portable way to letter-space canvas text, on a screen whose copy
+ * `specs/ui.md` fixes and whose type it leaves to the build. Read a call at a
+ * time, `4870` is four runs of one digit and no score. So `harness.ts`'s
+ * `spelledTextRuns`, which coalesces side-by-side draws on one baseline back into
+ * the string they spell, supplies a box per multi-call run as well — its extent
+ * the run's, its height the union of its calls' — and a reader that finds its
+ * figure in either has found it. The calls stay, because the merge can also
+ * glue a figure onto a neighbour the build set a bare space away, and the call
+ * that drew the figure whole is still the box it occupies.
+ */
 export function textRuns(
   h: Harness,
   calls: readonly DrawCall[] = h.calls,
@@ -480,6 +496,24 @@ export function textRuns(
       right: left + width,
       top,
       bottom: top + size,
+    });
+  }
+  // The runs spelled across several calls, each as the box its calls span.
+  const boxes = new Map(runs.map((run) => [run.at, run]));
+  for (const run of spelledTextRuns(h, calls)) {
+    if (run.parts.length < 2) continue;
+    const members = run.parts.flatMap((part) => {
+      const box = boxes.get(part.at);
+      return box === undefined ? [] : [box];
+    });
+    if (members.length === 0) continue;
+    runs.push({
+      at: run.at,
+      text: run.text,
+      left: run.left,
+      right: run.right,
+      top: Math.min(...members.map((box) => box.top)),
+      bottom: Math.max(...members.map((box) => box.bottom)),
     });
   }
   return runs;

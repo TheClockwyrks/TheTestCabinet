@@ -44,7 +44,7 @@ import { assertCloseTo, assertDeepEqual, fail } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextForms,
   poseFoe,
   poseWorm,
   seconds,
@@ -213,12 +213,14 @@ it("draws every registered value and changes nothing in the game", async () => {
 
   // A steady frame without the overlay, for the baseline text — the overlay is
   // off when the game starts and nothing has toggled it yet.
-  const baseline = drawnText(await h.frameCalls());
+  // Both as the calls split the panel and as the runs they spell: the figures
+  // are held to a boundary on both sides (`drawnTextForms`).
+  const baseline = drawnTextForms(await h.frameCalls());
   const before = await h.snapshot();
 
   // …then the toggle, and the frame that draws the panel it opened.
   await toggleOverlay(h);
-  const overlay = newLines(baseline, drawnText(await h.frameCalls()));
+  const overlay = newLines(baseline, drawnTextForms(await h.frameCalls()));
   // The overlay drawn over the posed board.
   await captureStill(h, "overlay");
   const after = await h.snapshot();

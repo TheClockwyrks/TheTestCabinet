@@ -11,7 +11,6 @@
 import { assertDeepEqual } from "../assert";
 import { BASE_MAX_HP, MOVE_SPEED, PICKUP_RADIUS, XP_BASE } from "../constants";
 import {
-  drawnText,
   endDawn,
   endFallen,
   freshRun,
@@ -24,6 +23,7 @@ import {
   spawnEnemyAt,
   spawnGemAt,
   spawnPickupAt,
+  textReadings,
   type Harness,
   type IsolateOptions,
   type Screen,
@@ -423,10 +423,18 @@ export function withoutSimTime(
 // take the text a frame paints and compare frames with and without the panel.
 // Nothing here fixes where the panel sits or how a line is worded.
 
-/** Every string the next frame draws, in draw order. */
+/**
+ * Every string the next frame draws, read both ways: the raw calls, then the
+ * logical runs they spell (`textReadings`). The runs, so a panel a build
+ * letter-spaces still reads as the lines it spells; the raw calls as well, so
+ * a value drawn a narrow gap after its label, which the run rule merges into
+ * one word, still stands alone as a token. The readings below diff two frames
+ * read the same way, so a line the panel adds is in the difference whichever
+ * way it was read, and match tokens on what is left.
+ */
 export async function frameText(h: Harness): Promise<string[]> {
   const { calls } = await h.frameDraw();
-  return drawnText(calls);
+  return textReadings(calls);
 }
 
 /**

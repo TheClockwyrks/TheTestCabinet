@@ -9,20 +9,22 @@
 // `×` is accepted beside `x` because a build is free to set the multiplier with
 // the multiplication sign, and the space between them is optional for the same
 // reason. What is not optional is the figure, which is why `3` is read rather
-// than any digit.
+// than any digit. The text read is the LOGICAL runs the frame spelled
+// (`drawnTextLines`), so a readout letter-spaced into an `x` and a `3` a call
+// apart still reads as `x3`.
 //
 // The window is posed full, so the readout is being asked for in the state
 // specs/scoring.md puts it in after a combo has just risen.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import { COMBO_WINDOW } from "../constants";
 import {
   HOME_HEAD,
   captureStill,
   chainFrom,
   createHarness,
-  drawnText,
   poseScene,
   type Harness,
 } from "../harness";
@@ -56,7 +58,7 @@ it("draws the multiplier as x3 at a multiplier of three", async () => {
   await captureStill(h, "shown");
 
   assertGreaterThan(
-    drawnText(calls).filter((run) => READOUT.test(run)).length,
+    drawnTextLines(calls).filter((run) => READOUT.test(run)).length,
     0,
     `the HUD drawing the multiplier as x${COMBO}`,
   );

@@ -31,7 +31,7 @@ import {
   captureStill,
   createHarness,
   poseScreen,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { moveTab, outOfOrder, windowNames } from "./almanac";
@@ -68,7 +68,7 @@ it("draws the six gem and pickup names in order on one frame", async () => {
     `entries the ${TAB} tab shows at once, its whole list being no longer than ALMANAC_ROWS (${ALMANAC_ROWS})`,
   );
   assertNull(
-    outOfOrder(textDraws(calls), names),
+    outOfOrder(placedRuns(calls), names),
     `the first name drawn out of ${TAB} order, of ${names.join(", ")} (specs/ui.md, almanac)`,
   );
 });

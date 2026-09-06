@@ -35,7 +35,7 @@ import { assertEqual, assertGreaterThan, fail } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextSpanForms,
   resetTo,
   startPlaying,
   type Harness,
@@ -126,7 +126,9 @@ it("draws the level label with the level beside it and the total on the bar", as
 
   h.calls.length = 0;
   await h.advance(1);
-  const spans = drawnTextSpans(h);
+  // The bar's calls and the runs they spell, so a label or a figure the build
+  // letter-spaced a glyph per call is found in the run it spells.
+  const spans = drawnTextSpanForms(h);
   // The HUD bar carrying the level and the total.
   captureStill(h, "hud");
 

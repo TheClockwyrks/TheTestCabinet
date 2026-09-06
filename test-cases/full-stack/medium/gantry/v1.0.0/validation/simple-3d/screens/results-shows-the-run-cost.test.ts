@@ -72,7 +72,7 @@ import {
   type Harness,
   type TapeStepSpec,
 } from "../harness";
-import { drawnText, toDrawCall } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
 
 /** Site 1. Which site it is decides nothing here; its yard is emptied. */
 const SITE = 0;
@@ -112,10 +112,18 @@ const COST_TOLERANCE = 1;
  * readouts are drawn on a 2D layer composited on top of the picture, laid out
  * in logical stage units" — so the words a screen shows are the runs of text
  * that layer's frame issued, whatever font, colour, or arrangement a build
- * chose for them. */
+ * chose for them.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
+ */
 async function screenText(harness: Harness): Promise<string[]> {
-  const ops = await harness.screenOps();
-  return drawnText(ops.map(toDrawCall));
+  return drawnTextLines(await harness.screenCalls());
 }
 
 /**

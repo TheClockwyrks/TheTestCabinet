@@ -521,6 +521,14 @@ const kit = createCaseHarness<WickSnapshot, WickDebugApi>({
   // ready. Fifteen costs a healthy build nothing, because the poll returns the
   // instant the global appears.
   surfaceTimeoutMs: 15_000,
+  // Measure every text call, so the shared harness can coalesce side-by-side
+  // glyphs on one baseline back into the run they spell (`case-harness/text.ts`,
+  // `drawnTextRuns`). A build that letter-spaces a heading draws one glyph per
+  // `fillText`, which is the only portable way to letter-space canvas text, and
+  // `specs/ui.md` fixes the copy a screen shows while leaving its spacing to the
+  // build. Without a width nothing merges and every copy reader in `screens/`
+  // is back to reading the `fillText` split.
+  measureText: true,
   // This case's own probe, beside the kit's two, read relative to this file.
   extraInitScripts: ["audio-init.js"],
   projectRoot: dirname(fileURLToPath(import.meta.url)),
@@ -580,6 +588,8 @@ export {
   distance,
   drawnPoints,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
   drawOps,
   drewText,
   imageDraws,

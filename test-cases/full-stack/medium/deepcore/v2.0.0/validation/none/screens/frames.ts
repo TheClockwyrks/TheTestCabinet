@@ -19,7 +19,12 @@
 // frames taken at the SAME highlight: the change the highlight makes has to be
 // bigger than the change a frame makes on its own.
 
-import { type DrawCall, type Harness } from "../harness";
+import {
+  drawnText,
+  drawnTextLines,
+  type DrawCall,
+  type Harness,
+} from "../harness";
 
 /** One frame's operations, each flattened to a comparable string. */
 export function signature(calls: readonly DrawCall[]): string[] {
@@ -44,16 +49,22 @@ export function frameDistance(
   return distance;
 }
 
-/** Every string the frame drew, upper-cased and joined, for a copy reading. */
+/**
+ * Every string of text the frame drew, upper-cased and joined, for a copy
+ * reading: the raw `fillText` split AND the logical runs it spells.
+ *
+ * The runs (`drawnTextLines`) are there because a build that letter-spaces a
+ * heading draws one glyph per call, and a word the copy readings look for has
+ * to come back whole, not as glyphs with a separator between each. The raw
+ * split (`drawnText`) is KEPT beside them because the copy readings anchor on
+ * word boundaries that the separator supplies and a coalesced run can remove:
+ * a build that draws "SMALL" and "1,200 m" as two calls placed by measurement,
+ * with no space glyph between, spells the run "SMALL1,200 m", where `\b1200\b`
+ * no longer matches. Read both and a word found by either reading matches, so
+ * coalescing can only add a match here too.
+ */
 export function drawnCopy(calls: readonly DrawCall[]): string {
-  return calls
-    .flatMap((call) =>
-      call.kind === "call" &&
-      (call.method === "fillText" || call.method === "strokeText") &&
-      typeof call.args[0] === "string"
-        ? [call.args[0]]
-        : [],
-    )
+  return [...drawnText(calls), ...drawnTextLines(calls)]
     .join(" • ")
     .toUpperCase();
 }

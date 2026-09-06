@@ -57,7 +57,7 @@ import { MODE_ITEMS } from "../constants";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 import { lettersIn } from "./copy";
@@ -139,7 +139,9 @@ it("draws a different body of text for each of the five modes", async () => {
         `${MODE_ITEMS.length}, since moving the highlight starts nothing ` +
         `(specs/screens.md)`,
     );
-    frames.push(drawnText(calls).map((text) => text.trim()));
+    // The logical runs the row spells, not the `fillText` split: a glyph is
+    // neither a row label to strike out nor text distinct to the row that drew it.
+    frames.push(drawnTextLines(calls).map((text) => text.trim()));
   }
 
   for (const [leg, texts] of frames.entries()) {

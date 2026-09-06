@@ -25,10 +25,10 @@ import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
 import {
   createHarness,
-  drawnText,
   hasToken,
   isolate,
   minusLines,
+  textReadings,
   type Harness,
 } from "../harness";
 import { captureFrames, keepFrame } from "./hud";
@@ -66,14 +66,24 @@ it("draws 0 at kills 0 and 143 at kills 143", async () => {
   assertEqual(noneTick.kills, NONE, "the count the first frame drew at");
   assertEqual(manyTick.kills, MANY, "the count the second frame drew at");
 
-  const drewMany = minusLines(drawnText(many.calls), drawnText(none.calls));
+  // Each frame read both ways, as the raw calls and as the logical runs they
+  // spell: a count drawn a glyph per call is the number it is off the runs,
+  // and one drawn a narrow gap after its label, which the run rule merges
+  // into `KILLS143`, still stands alone as the raw call.
+  const drewMany = minusLines(
+    textReadings(many.calls),
+    textReadings(none.calls),
+  );
   if (!hasToken(drewMany, String(MANY))) {
     fail(
       `a run of text holding ${MANY} that the frame at kills ${NONE} did not draw`,
       drewMany,
     );
   }
-  const drewNone = minusLines(drawnText(none.calls), drawnText(many.calls));
+  const drewNone = minusLines(
+    textReadings(none.calls),
+    textReadings(many.calls),
+  );
   if (!hasToken(drewNone, String(NONE))) {
     fail(
       `a run of text holding ${NONE} that the frame at kills ${MANY} did not draw`,

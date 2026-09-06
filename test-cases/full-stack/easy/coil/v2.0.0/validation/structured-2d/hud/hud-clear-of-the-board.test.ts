@@ -34,9 +34,14 @@ import {
   createHarness,
   poseScene,
   type Harness,
-  type TextDraw,
 } from "../harness";
-import { bandBottom, matchingRuns, numberRuns, runsOf } from "./band";
+import {
+  bandBottom,
+  matchingRuns,
+  numberRuns,
+  runsOf,
+  type TextDraw,
+} from "./band";
 
 const SCORE = 1234;
 const BEST = 5678;

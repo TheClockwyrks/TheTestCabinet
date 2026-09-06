@@ -25,7 +25,19 @@
 // two drew are what this point requires to exist; the heading and the HUD are
 // common to all three, so they cancel.
 //
-// THE TOLERANCE. None: a run of text is either in the difference or it is not.
+// Each frame is read TWICE, and the difference is taken under each reading: as
+// the raw `fillText` strings (`drawnText`) and as the LOGICAL runs the frame
+// spelled (`drawnTextLines`). A build that letter-spaces its result copy draws
+// one glyph per call, and read per call the heal frame's single letters would
+// be cancelled one by one by the same letters in the other two frames' copy, so
+// the difference could reach zero while the words differed; read as runs, the
+// heal's whole line is not the level's or the evolution's. But a set difference
+// is not monotone under coalescing in either direction — a build whose heal
+// copy merges with a footer it shares with the other results, or a plain build
+// whose raw call stood alone, can lose under one reading what it keeps under
+// the other — so the point passes when EITHER difference is non-empty.
+//
+// THE TOLERANCE. None: a string is either in the difference or it is not.
 // Nothing about the wording, its colour, or its place is read.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -35,13 +47,23 @@ import {
   captureStill,
   createHarness,
   drawnText,
+  drawnTextLines,
   holdPassive,
   holdWeapon,
   isolate,
   minusLines,
   openChest,
+  type DrawCall,
   type Harness,
 } from "../harness";
+
+/** One frame's drawn text under each reading: the raw calls, then the logical runs. */
+type Readings = [raw: string[], runs: string[]];
+
+/** Both readings of one frame, in the order {@link Readings} fixes. */
+function readings(calls: readonly DrawCall[]): Readings {
+  return [drawnText(calls), drawnTextLines(calls)];
+}
 
 let h: Harness;
 
@@ -63,7 +85,7 @@ it("says something for a heal that it does not say for a level or an evolution",
     "evolve",
     "the first chest's result",
   );
-  const evolveText = drawnText((await h.frameDraw()).calls);
+  const evolveText = readings((await h.frameDraw()).calls);
 
   isolate(h);
   holdWeapon(h, "taper", 3);
@@ -73,7 +95,7 @@ it("says something for a heal that it does not say for a level or an evolution",
     "level",
     "the second chest's result",
   );
-  const levelText = drawnText((await h.frameDraw()).calls);
+  const levelText = readings((await h.frameDraw()).calls);
 
   isolate(h);
   holdWeapon(h, "taper", MAX_WEAPON_LEVEL);
@@ -84,12 +106,15 @@ it("says something for a heal that it does not say for a level or an evolution",
     { kind: "heal" },
     "the third chest's result",
   );
-  const healText = drawnText((await h.frameDraw()).calls);
+  const healText = readings((await h.frameDraw()).calls);
   captureStill(h, "heal");
 
+  const own = healText.map((heal, reading) =>
+    minusLines(minusLines(heal, levelText[reading]), evolveText[reading]),
+  );
   assertGreaterThan(
-    minusLines(minusLines(healText, levelText), evolveText).length,
+    Math.max(...own.map((extra) => extra.length)),
     0,
-    "runs of text the heal result drew that the level and evolve results did not",
+    "text the heal result drew that the level and evolve results did not, read as raw calls or as logical runs",
   );
 });

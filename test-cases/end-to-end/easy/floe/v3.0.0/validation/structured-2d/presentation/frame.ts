@@ -10,8 +10,9 @@
 //
 // So this is the whole of it: forget what came before, run one frame, and leave
 // `h.calls` holding exactly what that frame issued. The harness's readers —
-// `drawnImages`, `drawnTextSpans`, `drawnText` — all walk `h.calls`, so after
-// this they are reading the frame this returned rather than the run so far.
+// `drawnImages`, `drawnTextRuns`, `drawnTextSpans`, `drawnText` — all walk
+// `h.calls`, so after this they are reading the frame this returned rather than
+// the run so far.
 //
 // It advances the simulation by one tick, like any other frame. A check that
 // must not step the game between an arrangement and its reading has already

@@ -59,6 +59,7 @@ import {
   captureStill,
   createHarness,
   drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 import { drewNumber } from "./copy";
@@ -112,7 +113,14 @@ it("draws every difficulty's starting money and wave count before one is chosen"
     "the live lives while the list is read",
   );
 
-  const runs = drawnText(calls);
+  // The logical runs the list spells AND the `fillText` split, because a figure
+  // is a whole token and each reading can lose it where the other keeps it: a
+  // row that letter-spaces its figure draws it a digit per call, and only the
+  // run spells it; a row that draws two figures a space apart in two calls
+  // merges them, verbatim, into a figure neither is, and only the split keeps
+  // them. `drewNumber` asks whether some entry carries the figure, so the union
+  // costs nothing and only ever adds a match.
+  const runs = [...drawnTextLines(calls), ...drawnText(calls)];
   for (const [row, difficulty] of DIFFICULTIES.entries()) {
     const figures = DIFFICULTY_TABLE[difficulty];
     for (const [what, value] of [

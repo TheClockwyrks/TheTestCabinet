@@ -10,7 +10,10 @@
 //
 // THE HEADING IS WHERE THE EDITOR NAMES IT (`specs/editor.md`, Layout):
 // "Heading — `x` `0` to `STAGE_W` (`1280`), `y` `0` to `HEADING_H` (`48`) — The
-// challenge's name, the machine's current cost, and the editor's messages."
+// challenge's name, the machine's current cost, and the editor's messages." The
+// name is read off the logical runs drawn there (`textRunsIn`), never off the
+// `fillText` split: a build that letter-spaces its heading draws one glyph per
+// call, and the name is still the name.
 //
 // WHICH CHALLENGE IS "AT `index`" IS DECIDED WITHOUT A FIXED LIST. Both courses
 // carry distinct names — `specs/modes/campaign.md` requires each course challenge
@@ -31,7 +34,12 @@
 // back; and the frame drawn over it writes that name in the heading.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertMatches, assertNotEqual, assertNotNull } from "../assert";
+import {
+  assertEqual,
+  assertMatches,
+  assertNotEqual,
+  assertNotNull,
+} from "../assert";
 import { NAME_MAX } from "../constants";
 import { HEADING_REGION } from "../field";
 import {
@@ -39,7 +47,7 @@ import {
   createHarness,
   openChallenge,
   openTitle,
-  textIn,
+  textRunsIn,
   type Harness,
 } from "../harness";
 
@@ -90,17 +98,13 @@ it("opens that mode's challenge at that index, in the editor, under its name", a
     "extras",
     "the snapshot reports the open challenge under the mode asked for",
   );
-  assertEqual(
-    again.challenge?.index,
-    6,
-    "and under the index asked for",
-  );
+  assertEqual(again.challenge?.index, 6, "and under the index asked for");
   assertEqual(
     again.challenge?.name,
     name,
     "index 6 opens the same challenge every time, rather than the one opened last",
   );
-  const heading = textIn(calls, HEADING_REGION)
+  const heading = textRunsIn(calls, HEADING_REGION)
     .map((draw) => draw.text)
     .join(" ")
     .toLowerCase();

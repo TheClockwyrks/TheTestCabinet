@@ -117,7 +117,12 @@ import {
   type Rect,
 } from "./case-harness/point";
 import { retable } from "./case-harness/replay/retable";
-import { drawnText, textDraws, type TextDraw } from "./case-harness/text";
+import {
+  drawnText,
+  drawnTextRuns,
+  drewText as spelledText,
+  type TextDraw,
+} from "./case-harness/text";
 import {
   DevicePointerEvent,
   applyDriver,
@@ -1471,23 +1476,25 @@ export async function drawFrame(h: Harness): Promise<DrawCall[]> {
 /* ---- Text ----------------------------------------------------------------- */
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a validator asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
- * commonly drawn with a selection marker or padding around it. Requiring the exact
- * run would fail a screen that shows precisely the right words.
+ * commonly drawn with a selection marker or padding around it. Requiring the
+ * exact run would fail a screen that shows precisely the right words.
  *
- * OVER THE RAW CALLS, WHICH IS NOT THE PACKAGE'S READING. The package's `drewText`
- * matches against the logical RUNS a frame spells, so a heading drawn a glyph per
- * `fillText` is one string there and several here. Coalescing can only ADD a match,
- * and this suite's screen items include ones that assert a word was NOT drawn — so
- * the two readings do not decide the same points, and this case keeps the one its
- * verdicts were taken under.
+ * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
+ * split. A build that letter-spaces a heading draws one glyph per call, which
+ * is the only portable way to letter-space canvas text, and the specification
+ * fixes the copy a screen shows while leaving its spacing to the build. Every
+ * text call is measured, so the shared harness's merge rule
+ * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
+ * into the string they spell. Every raw string is a substring of the run it
+ * belongs to, so coalescing can only add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return spelledText(calls, text);
 }
 
 /**
@@ -1499,7 +1506,7 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
 export type TextSpan = TextDraw;
 
 /**
- * Every run of text `calls` drew, placed in logical units.
+ * Every logical run of text `calls` drew, placed in logical units.
  *
  * A build may anchor its text through any `translate`/`scale` it likes and align it
  * any way it likes, so the anchor is mapped through the transform the context held
@@ -1507,21 +1514,27 @@ export type TextSpan = TextDraw;
  * `textAlign`. Which way a `start`/`end` alignment reads is the page's direction;
  * this game draws no right-to-left text, so they are left and right.
  *
+ * COALESCED, never one entry per call. A build that letter-spaces a heading or a
+ * readout draws one glyph per `fillText`, which is the only portable way to
+ * letter-space canvas text, and every reader of these looks a run up by the copy
+ * it carries and then asks where it sits — and no glyph reads as the figure it
+ * is part of. So this is the package's `drawnTextRuns`, not its `textDraws`: the
+ * merge rule (`case-harness/text.ts`) folds side-by-side glyphs on one baseline
+ * back into the run they spell, decided in the canvas's own pixels because the
+ * rule is relative, and the merged runs are then carried back through the
+ * engine's fit to logical units. A run keeps the anchor of its first draw, so a
+ * call that stands alone comes back exactly as `textDraws` would place it, and
+ * every raw string is a substring of its run, so this can only add a match and
+ * never take one away.
+ *
  * This is how the HUD items decide WHERE a reading was drawn — which strip it sits
  * in, which half of the strip, whether it clears the play field.
- *
- * ONE ENTRY PER CALL. The package ships three placed text readings and only one of
- * them is this: `textDraws` reports each draw on its own, where `drawnTextRuns` and
- * `reanchoredTextRuns` MERGE the draws of a letter-spaced run into one entry. A
- * merged run is wider than any of its members and sits at a different anchor, so a
- * check holding a HUD figure clear of a strip would be reading a different
- * rectangle under either of those.
  */
 export function drawnTextSpans(
   h: Harness,
   calls: readonly DrawCall[] = h.calls,
 ): TextSpan[] {
-  return allInLogical(h.engine.viewport(), textDraws(calls));
+  return allInLogical(h.engine.viewport(), drawnTextRuns(calls));
 }
 
 /* ---- Where a frame put its sprites ---------------------------------------- */

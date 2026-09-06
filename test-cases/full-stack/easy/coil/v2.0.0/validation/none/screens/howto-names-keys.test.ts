@@ -12,13 +12,22 @@
 // What a build calls a key is its own: `ArrowUp` is written `UP`, `ARROW UP`, `↑`
 // or `▲` on real screens, and all of them name the key. The patterns below accept
 // each of those, over the frame's text with case folded away, so the check is on
-// whether the key is named rather than on how.
+// whether the key is named rather than on how. The text is the LOGICAL runs the
+// frame spelled (`drawnTextLines`) AND the raw `fillText` strings (`drawnText`)
+// together. The runs are needed because a build that letter-spaces its copy
+// draws one glyph per call, and `U`, `P` joined by a space would never read as
+// `UP`. The raw split is kept beside them because the patterns are
+// boundary-anchored: a key name like `W` is one glyph, so a build that draws it
+// and its action as two calls close together (`W`, then `UP` a few units on)
+// can coalesce into `WUP` and lose the boundary the raw string still has. The
+// union reads both, so neither presentation is fed back as a failure.
 //
 // The screen is reached through the surface, so a build whose title menu cannot
 // open it fails `states/howto-reachable` alone rather than this as well.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import { WASD, type Dir } from "../constants";
 import {
   captureStill,
@@ -58,7 +67,9 @@ it("names a bound key for each of the four steering directions", async () => {
   const calls = await h.frameCalls();
   await captureStill(h, "howto");
 
-  const text = drawnText(calls).join(" ").toUpperCase();
+  const text = [...drawnText(calls), ...drawnTextLines(calls)]
+    .join(" ")
+    .toUpperCase();
   for (const dir of Object.keys(NAMES) as Dir[]) {
     assertMatches(
       text,

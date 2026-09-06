@@ -52,7 +52,7 @@ import {
   menuRects,
   poseScreen,
   tap,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import {
@@ -107,7 +107,7 @@ it("reports ALMANAC_ROWS rows whose position i is the entry at almanacScroll + i
   captureStill(h, "window");
   assertLabelledInOrder(
     h,
-    textDraws(drawn.calls),
+    placedRuns(drawn.calls),
     rects,
     ALMANAC_ENTRY_NAMES.TOOLS.slice(POSED_SCROLL, POSED_SCROLL + ALMANAC_ROWS),
     "menuRects() on almanac reports the rectangle at position i for the entry at menuIndex almanacScroll + i",

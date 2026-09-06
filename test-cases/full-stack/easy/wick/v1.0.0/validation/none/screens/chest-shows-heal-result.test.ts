@@ -23,7 +23,9 @@
 // THE TOLERANCE. A run of text counts as the heal's own when it is drawn below
 // the heading's row and its folded text appears on neither of the other two
 // frames, which is the widest reading that still tells a build that names the
-// heal from one that shows an empty panel.
+// heal from one that shows an empty panel. The difference is taken over the raw
+// calls and over the logical runs each on their own, and either finding a run
+// of the heal's own passes (`ownTextBelow` in `./stage`).
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";

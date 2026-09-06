@@ -122,6 +122,7 @@ import {
   createCaseHarness,
   darkestOf,
   drawnText,
+  drawnTextLines,
   touchGlide,
   touchPress,
   touchRelease,
@@ -595,6 +596,7 @@ export {
   closeWorkerBrowser,
   colorDistance,
   drawOps,
+  drawnTextRuns,
   drewText,
   luminance,
   sampleColor,
@@ -788,16 +790,26 @@ export async function stops(h: Harness): Promise<number> {
  * The stricter sibling of the package's `drewText`, for the copy `specs/ui.md`
  * requires as a word rather than as a substring — the how-to screen's `SPACE`,
  * `ARROWS`, `WASD`, `ESC`, `P` and `M`. A screen reading "press the spacebar"
- * contains `space` and names no key the specification named. Read off the RAW
- * text calls rather than off the coalesced runs, because a token is a token
- * wherever the build chose to break its drawing.
+ * contains `space` and names no key the specification named.
+ *
+ * Read off the RAW text calls AND off the logical runs they spell. A token is a
+ * token wherever the build chose to break its drawing — but a build that
+ * letter-spaces its how-to copy breaks it at every glyph, which is the only
+ * portable way to letter-space canvas text, and no glyph is the word. This
+ * harness asks for `measureText`, so the package's `drawnTextLines` can
+ * coalesce side-by-side glyphs on one baseline back into the word they spell
+ * (`case-harness/text.ts`). The raw strings stay in the reading because the
+ * same rule can glue two words the build set a bare space apart, in two calls,
+ * into one, and a word that stood alone in a call stood alone on the screen.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return [...drawnText(calls), ...drawnTextLines(calls)].some((drawn) =>
+    pattern.test(drawn),
+  );
 }
 
 /**

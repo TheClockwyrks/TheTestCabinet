@@ -27,7 +27,7 @@ import {
 } from "../constants";
 import {
   colorDistance,
-  drawnText,
+  drawnTextLines,
   readRegion,
   type DrawCall,
   type Harness,
@@ -211,9 +211,15 @@ export function numberRuns(
   return draws.filter((run) => readsAs(run.text, value));
 }
 
-/** Whether any run of text the frame drew reads as `value`. */
+/**
+ * Whether any run of text the frame drew reads as `value`.
+ *
+ * Read off the logical runs the frame spells, not the raw `fillText` split: a
+ * readout letter-spaced a digit per call reads as its figure only once the
+ * shared harness has folded the glyphs back together.
+ */
 export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
-  return drawnText(calls).some((text) => readsAs(text, value));
+  return drawnTextLines(calls).some((text) => readsAs(text, value));
 }
 
 /* -------------------------------------------------------------------------- */

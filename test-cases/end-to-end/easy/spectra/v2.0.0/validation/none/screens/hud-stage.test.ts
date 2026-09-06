@@ -33,7 +33,7 @@ import {
   createHarness,
   drewText,
   startPosed,
-  textDraws,
+  drawnTextRuns,
   type Harness,
 } from "../harness";
 import { TOP_STRIP, insideBand, numberRuns } from "./reading";
@@ -70,7 +70,7 @@ it("draws the stage label and digits in the top strip and follows the stage", as
     drewText(first, HUD_STAGE_LABEL),
     `the HUD drawing HUD_STAGE_LABEL (${HUD_STAGE_LABEL}) (specs/ui.md)`,
   );
-  const firstRuns = numberRuns(textDraws(first), FIRST_STAGE);
+  const firstRuns = numberRuns(drawnTextRuns(first), FIRST_STAGE);
   assertGreaterThan(
     firstRuns.length,
     0,
@@ -91,7 +91,7 @@ it("draws the stage label and digits in the top strip and follows the stage", as
     "the run is posed at the second stage",
   );
 
-  const second = textDraws(await h.frameCalls());
+  const second = drawnTextRuns(await h.frameCalls());
   assertGreaterThan(
     numberRuns(second, SECOND_STAGE).length,
     0,

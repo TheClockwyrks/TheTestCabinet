@@ -38,8 +38,8 @@ import { assertEqual, assertTrue } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
   poseScreen,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -76,7 +76,11 @@ it("draws every key BINDINGS gives an action, and names the mouse", async () => 
   const { calls } = await h.frameDraw();
   captureStill(h, "howto");
 
-  const text = drawnText(calls).join("\n");
+  // The raw calls and the logical runs they spell, one per line
+  // (`textReadings`): a key a build letter-spaces is its name off the runs,
+  // and a key drawn as its own call a space before its action, which the run
+  // rule merges into `PPause`, still stands alone as the raw call.
+  const text = textReadings(calls).join("\n");
   for (const [name, pattern] of KEYS) {
     assertTrue(
       pattern.test(text),

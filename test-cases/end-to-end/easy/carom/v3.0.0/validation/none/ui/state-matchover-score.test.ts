@@ -14,7 +14,14 @@
 //
 // The final score is read as the two numbers drawn: `11` somewhere in the
 // frame's text, and `0` as a number of its own. How the screen presents them —
-// side by side, labelled, on two lines — is the build's.
+// side by side, labelled, on two lines — is the build's. The text is the LOGICAL
+// runs the frame spelled (`drawnTextLines`) AND the raw `fillText` strings
+// (`drawnText`) together: a build that letter-spaces the score draws `1`, `1`
+// as two calls, and only the coalesced run spells `11`, while `figure` is
+// bounded on a digit either side, so a label's own digit coalescing onto the
+// score (`P1` then `11` a few units on, read as `P111`) would lose a boundary
+// the raw string still has. The union reads both, so neither presentation is
+// fed back as a failure.
 //
 // SPLIT FROM `ui/state-matchover`, which reads the two menu entries. A build
 // that offers the entries but tells the player nothing about how the match ended
@@ -30,6 +37,7 @@ import {
   captureStill,
   createHarness,
   drawnText,
+  drawnTextLines,
   driveGoal,
   startPlaying,
   type Harness,
@@ -93,7 +101,7 @@ it("draws the final score the match ended on", async () => {
 
   const calls = await h.frameCalls();
   await captureStill(h, "score");
-  const text = drawnText(calls).join(" ");
+  const text = [...drawnText(calls), ...drawnTextLines(calls)].join(" ");
   assertMatches(text, figure(WIN_SCORE));
   assertMatches(text, figure(0));
 });

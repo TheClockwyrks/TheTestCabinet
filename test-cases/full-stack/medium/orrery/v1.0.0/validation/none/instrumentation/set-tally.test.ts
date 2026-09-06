@@ -19,7 +19,9 @@
 // THE VERDICT. `sim.tallies` reads back the posed `4`; the readout carries the
 // posed figure and the challenge's `target` (how a build words the pair is the
 // build's, so what is read is that both figures are drawn in the readout's
-// region); and the delivery that follows leaves `5` — the tally rose FROM the
+// region — as the logical runs the frame spells, `textRunsIn`, so a figure a
+// build letter-spaced one glyph per call is still read as the figure); and the
+// delivery that follows leaves `5` — the tally rose FROM the
 // posed figure rather than from `0`, and the constellation it accepted is gone
 // from the field.
 
@@ -38,7 +40,7 @@ import {
   resumeRun,
   spawnMote,
   tallyOf,
-  textIn,
+  textRunsIn,
   type Harness,
 } from "../harness";
 
@@ -84,7 +86,7 @@ it("poses one product's tally, shows it against the target, and adds the next de
     POSED_TALLY,
     "setTally(0, 4) sets product 0's tally to the posed figure",
   );
-  const shown = textIn(drawn, READOUT_REGION).map((draw) => draw.text);
+  const shown = textRunsIn(drawn, READOUT_REGION).map((draw) => draw.text);
   assertTrue(
     shown.some((text) => text.includes(String(POSED_TALLY))),
     `the readout shows the posed tally 4; it drew ${JSON.stringify(shown)}`,

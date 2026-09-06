@@ -9,13 +9,27 @@
 // panel. Nothing here fixes where the panel sits or how a line is worded,
 // because the specification does not.
 
+import { drawnTextLines } from "../case-harness/text";
 import { OVERLAY_TOGGLE_CODE } from "../constants";
 import { drawnText, tap, type Harness } from "../harness";
 
-/** Every string the next frame draws, in draw order. */
+/**
+ * Every string the next frame draws, in draw order, followed by each logical
+ * run those strings spell that no single call did.
+ *
+ * The panel is the build's own drawing, so a build that letter-spaces its text
+ * draws one glyph per call, and only the coalesced run (`case-harness/text.ts`)
+ * carries the token a line reports. The raw strings stay in the corpus because
+ * {@link hasToken} is bounded — a run that fuses a figure with the label
+ * beside it could hide a token the raw call still shows — so between them a
+ * line is found by whichever split it was drawn in. A frame that spelled no
+ * run across calls reads exactly as it did before.
+ */
 export async function frameText(h: Harness): Promise<string[]> {
   const { calls } = await h.frameDraw();
-  return drawnText(calls);
+  const raw = drawnText(calls);
+  const seen = new Set(raw);
+  return [...raw, ...drawnTextLines(calls).filter((run) => !seen.has(run))];
 }
 
 /** Press the toggle once — one real key edge, one tick. */

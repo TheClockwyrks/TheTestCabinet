@@ -38,7 +38,7 @@ import {
   type Harness,
 } from "../harness";
 import { corridorDirs, stepTile } from "../maze";
-import { textDraws } from "../text";
+import { textRuns } from "../text";
 import { frameOps } from "../states/screens";
 import {
   LEGIBLE_MIN,
@@ -77,7 +77,7 @@ it("draws the score in the top strip, legibly, and follows it", async () => {
   await h.debug.setScore(POSED_SCORE);
 
   const posed = await h.snapshot();
-  const drawn = textDraws(await frameOps(h));
+  const drawn = textRuns(await frameOps(h));
   // Before the assertions, so a failing check still leaves the HUD it read.
   await captureStill(h, "hud");
 
@@ -117,7 +117,7 @@ it("draws the score in the top strip, legibly, and follows it", async () => {
     "the score the snapshot reports once the forager has eaten, which is the " +
       "figure the readout then has to carry",
   );
-  const after = textDraws(await frameOps(h));
+  const after = textRuns(await frameOps(h));
   assertNotNull(
     figureReadoutOf(after, TOP_STRIP, eaten.score),
     `a run of text carrying the new score ${String(eaten.score)} in the top ` +

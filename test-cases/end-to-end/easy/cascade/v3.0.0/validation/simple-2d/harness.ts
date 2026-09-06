@@ -104,6 +104,9 @@ import {
 import { colorDistance, rgbOf, type Rgb } from "./case-harness/color";
 import {
   drawnText as rawDrawnText,
+  drawnTextLines,
+  drawnTextRuns,
+  drewText as spelledText,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -153,6 +156,11 @@ import {
   type SourcePile,
   type Suit,
 } from "./surface";
+
+// The logical runs a frame spells, for the suites that join a frame's text
+// themselves rather than asking {@link drewText}; see that reader for why copy is
+// never read off the `fillText` split.
+export { drawnTextLines } from "./case-harness/text";
 
 export type {
   CardSnapshot,
@@ -1604,25 +1612,25 @@ export function boxAt(
 export const drawnText = rawDrawnText;
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the case's
  * own, but how a build presents it is the build's, and a label is commonly drawn
  * with padding or a marker around it. Requiring the exact run would fail a screen
  * that shows precisely the right words.
  *
- * READ OFF THE RAW CALLS, WHICH IS NOT WHAT THE PACKAGE'S `drewText` READS. The
- * package's spells the frame's text into LOGICAL RUNS first, so a heading drawn a
- * glyph per `fillText` reads as the word it spells; this one asks whether some
- * single call carried the copy. The two agree on every build that draws a label
- * in one call and disagree on one that does not, so binding the package's here
- * would quietly widen what this project's `screens` and `presentation` points
- * accept. Cascade's engineless project binds the package's; these two do not, and
- * that difference is recorded in the README's collision table.
+ * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
+ * split. A build that letter-spaces a heading draws one glyph per call, which
+ * is the only portable way to letter-space canvas text, and the specification
+ * fixes the copy a screen shows while leaving its spacing to the build. The
+ * recorder measures every text call, so the shared harness's merge rule
+ * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
+ * into the string they spell. Every raw string is a substring of the run it
+ * belongs to, so coalescing can only add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return spelledText(calls, text);
 }
 
 /**
@@ -1631,13 +1639,17 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
  * What the how-to copy's four standalone tokens are matched with: `ACE` inside
  * `PLACE` is not the word the specification asked for, and a substring match would
  * take it.
+ *
+ * Read off the logical runs the frame spells, for the reason {@link drewText}
+ * gives: `S T O C K` drawn a glyph per call is the word, and a match against the
+ * `fillText` split would find five one-letter runs and no word among them.
  */
 export function drewToken(calls: readonly DrawCall[], token: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^A-Za-z0-9])`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return drawnTextLines(calls).some((line) => pattern.test(line));
 }
 
 /**
@@ -1658,15 +1670,39 @@ export type TextSpan = TextDraw;
  * stage's own units. Which way a `start`/`end` alignment reads is the page's
  * direction; this game draws no right-to-left text, so they are left and right.
  *
- * ONE ENTRY PER CALL, never merged: a check here holds a drawn label against the
- * region the build reported for it, and a merged run is wider than any of its
- * members.
+ * ONE ENTRY PER CALL, never merged: the reading for a check that counts draws
+ * or holds one draw's own extent. A check that reads COPY against a region asks
+ * {@link drawnRunSpans} instead, whose runs are wider than any of their members.
  */
 export function drawnTextSpans(
   h: Harness,
   calls: readonly DrawCall[] = h.calls,
 ): TextSpan[] {
   return allInLogical(h.viewport(), textDraws(calls));
+}
+
+/**
+ * The frame's text coalesced into the LOGICAL RUNS it spells, placed in logical
+ * units the way {@link drawnTextSpans} places one call.
+ *
+ * What a reader that holds COPY against a REGION reads. A build that
+ * letter-spaces a label draws one glyph per `fillText`, which is the only
+ * portable way to letter-space canvas text, and specs/screens.md fixes the words
+ * a control carries while leaving their spacing to the build; a span per call
+ * would then carry one letter each and match no label. The shared harness's
+ * merge rule (`case-harness/text.ts`) folds side-by-side draws on one baseline
+ * back into the run they spell, and a run keeps its first draw's anchor while
+ * its right edge grows, so its extent is the whole label's. Every raw string is
+ * a substring of its run, so coalescing can only add a match.
+ *
+ * The runs come back in canvas pixels, placed exactly as {@link drawnTextSpans}
+ * places one draw, and are carried back through the engine's fit the same way.
+ */
+export function drawnRunSpans(
+  h: Harness,
+  calls: readonly DrawCall[] = h.calls,
+): TextSpan[] {
+  return allInLogical(h.viewport(), drawnTextRuns(calls));
 }
 
 /* ---- Color ---------------------------------------------------------------- */

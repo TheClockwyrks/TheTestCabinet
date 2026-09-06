@@ -108,6 +108,7 @@ import {
   closeWorkerBrowser,
   createCaseHarness,
   drawnText,
+  drawnTextLines,
   mediaDestination as mediaPath,
   setsOf,
   type Clock,
@@ -521,9 +522,11 @@ export interface Harness {
    * `visibility`, a zero `opacity` or a zero-sized box has drawn nothing, so a
    * check that reads an ABSENCE reads the frame rather than the document.
    *
-   * The pieces are as the build drew them, which is not always a word: a build
-   * that letter-spaces a title issues one `fillText` per GLYPH, and the array then
-   * holds `"F", "A", "C", "E", "T"`. So a check asks {@link showsText} whether the
+   * The canvas pieces are as the build drew them, which is not always a word: a
+   * build that letter-spaces a title issues one `fillText` per GLYPH, and the
+   * array then holds `"F", "A", "C", "E", "T"` — followed by the logical runs
+   * those calls spell once the measured glyphs are coalesced, `"FACET"`, as
+   * {@link copyPieces} lists them. So a check asks {@link showsText} whether the
    * copy is on screen rather than looking for it in the array itself.
    */
   frameText(): Promise<string[]>;
@@ -674,6 +677,12 @@ const kit = createCaseHarness<FacetSnapshot, FacetSurface>({
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
   defaultSeed: DEFAULT_SEED,
+  // Measure every text call a frame made, in the page and under the build's own
+  // loaded fonts, so the shared harness's readers over LOGICAL RUNS of text can
+  // coalesce a heading drawn a glyph at a time back into the word it spells;
+  // without a width every draw is a point and nothing merges. `copyPieces` reads
+  // those runs after the raw strings.
+  measureText: true,
   // A GENUINE browser gesture, so the build's audio context can open: a build is
   // free to open its audio from a real DOM event alone, so a gesture delivered
   // any other way would leave a perfectly good build silent. A KEY rather than a
@@ -1140,7 +1149,7 @@ export async function createHarness(
         }
         return found;
       });
-      return [...drawnText(drawn), ...dom];
+      return [...copyPieces(drawn), ...dom];
     },
 
     probe: async (names) => (await base.probe(names)).ops,
@@ -1269,12 +1278,13 @@ export { drawnText };
 /**
  * Whether `wanted` is among the words a frame put on screen.
  *
- * FACET'S OWN, and not the shared harness's `drewText`. That one reads the
- * LOGICAL runs a frame's text calls spell and asks whether one of them contains
- * the copy; this reads four ways, from the most local to the most permissive, so
- * that a build which drew the copy in ONE call is decided by that call alone. The
- * two agree on a build that draws a line at a time and disagree on every other,
- * and this project's items were written against this one.
+ * FACET'S OWN, kept beside the shared harness's `drewText` rather than replaced
+ * by it. Both read the LOGICAL runs a frame's text calls spell — the pieces
+ * {@link copyPieces} lists carry those runs after the raw strings — but that one
+ * matches a substring along one baseline, where this reads four ways, from the
+ * most local to the most permissive, over every piece of the frame. Every match
+ * of the shared reading is a match here, and this project's items, which read
+ * `frameText` through this, were written against the wider one.
  *
  * `specs/ui.md` fixes the COPY — `FACET`, `PRESSURE FINDS THE FLAW`, `SCORE`,
  * `PLAY AGAIN` — and fixes nothing about how many draw calls a build spends on
@@ -1287,6 +1297,11 @@ export { drawnText };
  *   a decorated entry     `"> PLAY <"`, or `"SCORE 120"` for a check about
  *                         the label alone
  *
+ * and a fifth is read the same way through the pieces {@link copyPieces}
+ * appends — a glyph at a time with a shadow apiece, `"F", "F", "A", "A", ...`,
+ * whose fill channel spells nothing on its own but whose two baselines each
+ * coalesce into `"FACET"`.
+ *
  * Four readings, tried from the most local to the most permissive, so a build
  * that drew the copy in ONE call is decided by that call alone: a piece that IS
  * the copy; a piece that CONTAINS it; the frame's whole run of text; and that
@@ -1295,11 +1310,12 @@ export { drawnText };
  *
  * What the last two readings buy is bounded, and the bound is the rule for
  * using this: a search over the joined run can find a phrase that spans two
- * adjacent draws, so this decides that copy IS on screen and NEVER that two
- * pieces of copy are separate. An item about two readouts asks about each of
- * them; an item that asserts copy is ABSENT asserts the absence of that one
- * string and pairs it with a frame that does show it, so an accidental join
- * shows up as the two frames agreeing rather than as a verdict.
+ * adjacent draws — or the seam where the coalesced runs follow the raw
+ * pieces — so this decides that copy IS on screen and NEVER that two pieces of
+ * copy are separate. An item about two readouts asks about each of them; an
+ * item that asserts copy is ABSENT asserts the absence of that one string and
+ * pairs it with a frame that does show it, so an accidental join shows up as
+ * the two frames agreeing rather than as a verdict.
  */
 export function showsText(pieces: readonly string[], wanted: string): boolean {
   const needle = wanted.trim().toLowerCase();
@@ -1313,9 +1329,38 @@ export function showsText(pieces: readonly string[], wanted: string): boolean {
   return bare(joined).includes(bare(needle));
 }
 
+/**
+ * Every piece a copy check reads off a frame's draw calls: the raw strings by
+ * channel ({@link drawnText}), then the logical runs those calls spell
+ * (`drawnTextLines`, from the shared harness's `case-harness/text.ts`).
+ *
+ * THE RAW PIECES FIRST, so every reading this project's items were written
+ * against survives untouched; THEN THE RUNS, so a build that letter-spaces a
+ * heading — one `fillText` per glyph, which is the only portable way to
+ * letter-space canvas text — spells `"FACET"` in the list as well as
+ * `"F", "A", "C", "E", "T"`. The shared merge folds an outlined glyph's
+ * restrike into its run and writes a space where a build advanced the pen over
+ * one, so a title outlined a glyph at a time and a line tracked past its skipped
+ * spaces both come back as the words they show, and a title letter-spaced under
+ * a DROP SHADOW — a second, offset `fillText` per glyph — comes back as the word
+ * on each of its two baselines where its fill channel alone reads
+ * `F F A A C C E E T T`. Every raw string is a substring of the run it belongs
+ * to, so listing the runs after the raw pieces can only add a match and never
+ * take one away.
+ *
+ * The runs are only as good as the measurement. The shared harness measures
+ * every text call the frames it reads for this project made, in the page and
+ * under the build's own loaded fonts, because the kit's config asks for it with
+ * `measureText: true`; a list that was never measured merges nothing, and its
+ * runs are its calls over again.
+ */
+export function copyPieces(calls: readonly DrawCall[]): string[] {
+  return [...drawnText(calls), ...drawnTextLines(calls)];
+}
+
 /** Whether the frame's own draw calls put `wanted` on screen. */
 export function drewText(calls: readonly DrawCall[], wanted: string): boolean {
-  return showsText(drawnText(calls), wanted);
+  return showsText(copyPieces(calls), wanted);
 }
 
 /**

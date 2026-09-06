@@ -14,6 +14,10 @@
 // can mean when `specs/` fixes no geometry for this screen. A run counts as the
 // number when its digits — all of them — read that challenge's number, so `" 1"`,
 // `"1."` and `"CHALLENGE 1"` all count and a run carrying two numbers does not.
+// The runs are the LOGICAL ones the frame spells (`drawnTextRuns`), not the
+// `fillText` calls: letter spacing is not portable, so a build that tracks its
+// rows draws one glyph per call, and a row drawn `1 2` that way is still the one
+// figure `12` — read off the calls it would be the two figures `1` and `2`.
 //
 // WHY THE COURSE IS READ FRESH. Nothing is solved and no record is set, because "A
 // solved row also shows its three records, `cost`, `cycles`, and `area`, each
@@ -31,9 +35,9 @@ import { assertDefined, assertGreaterThan, assertNotNull } from "../assert";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
   openChallenge,
   openSelect,
-  textDraws,
   type Harness,
   type TextDraw,
 } from "../harness";
@@ -165,7 +169,7 @@ it("draws each row's challenge number, running 1 upward down the list", async ()
   const names = await courseNames(count);
 
   await openSelect(h, "campaign");
-  const drawn = textDraws(await h.lastCalls());
+  const drawn = drawnTextRuns(await h.lastCalls());
   await captureStill(h, "numbers");
 
   const rows = rowBaselines(linesOf(drawn), names);

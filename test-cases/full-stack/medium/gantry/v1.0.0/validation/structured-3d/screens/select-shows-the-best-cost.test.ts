@@ -26,112 +26,21 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertTrue, fail } from "../assert";
+import { drawnTextRuns, type TextDraw } from "../case-harness/index";
 import { SITE_NAMES } from "../constants";
 import { createHarness, type Harness } from "../harness";
 /* -------------------------------------------------------------------------- */
 /* Reading the frame's text                                                   */
 /* -------------------------------------------------------------------------- */
 //
-// The clock, the projection and the input are the engine's under this build,
-// and so is the screen layer the readouts are drawn on, so this suite reads the
-// frame's drawing through `h.screenOps()` — the harness's record of every
-// operation the engine's screen pass made on that layer. It answers the last
-// CLOSED frame, so a frame is advanced before it is read.
-
-/** One operation the recorder wrote, in the order the render made it. */
-type RecordedOp =
-  | { op: "call"; method: string; args: unknown[] }
-  | { op: "set"; property: string; value: unknown };
-
-/** A 2D affine transform, in the order `setTransform` takes its arguments. */
-type Matrix = readonly [number, number, number, number, number, number];
-
-const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
-
-/** `m` with `n` applied under it, as the canvas composes a transform. */
-function mul(m: Matrix, n: Matrix): Matrix {
-  return [
-    m[0] * n[0] + m[2] * n[1],
-    m[1] * n[0] + m[3] * n[1],
-    m[0] * n[2] + m[2] * n[3],
-    m[1] * n[2] + m[3] * n[3],
-    m[0] * n[4] + m[2] * n[5] + m[4],
-    m[1] * n[4] + m[3] * n[5] + m[5],
-  ];
-}
-
-/** Where `(x, y)` lands under `m`. */
-function at(m: Matrix, x: number, y: number): { x: number; y: number } {
-  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] };
-}
-
-/** `m` after the transform `method` names, or `null` when it names none. */
-function moved(m: Matrix, method: string, n: readonly number[]): Matrix | null {
-  if (method === "resetTransform") return IDENTITY;
-  if (method === "setTransform" && n.length >= 6) {
-    return [n[0], n[1], n[2], n[3], n[4], n[5]];
-  }
-  if (method === "transform" && n.length >= 6) {
-    return mul(m, [n[0], n[1], n[2], n[3], n[4], n[5]]);
-  }
-  if (method === "translate" && n.length >= 2) {
-    return mul(m, [1, 0, 0, 1, n[0], n[1]]);
-  }
-  if (method === "scale" && n.length >= 2) {
-    return mul(m, [n[0], 0, 0, n[1], 0, 0]);
-  }
-  if (method === "rotate" && n.length >= 1) {
-    const c = Math.cos(n[0]);
-    const s = Math.sin(n[0]);
-    return mul(m, [c, s, -s, c, 0, 0]);
-  }
-  return null;
-}
-
-/** One run of text a frame drew, at the point the transform in force put it. */
-interface TextDraw {
-  text: string;
-  x: number;
-  y: number;
-}
-
-/**
- * Every run of text the frame drew, with its anchor.
- *
- * A build is free to draw under a transform — to translate to a corner of the
- * stage and draw at the origin — so where a `fillText` landed is only the point
- * it names once the transform in force at that call is applied.
- */
-function textDraws(ops: readonly RecordedOp[]): TextDraw[] {
-  const out: TextDraw[] = [];
-  const stack: Matrix[] = [];
-  let m = IDENTITY;
-  for (const op of ops) {
-    if (op.op !== "call") continue;
-    const n = op.args.filter((a): a is number => typeof a === "number");
-    if (op.method === "save") {
-      stack.push(m);
-      continue;
-    }
-    if (op.method === "restore") {
-      m = stack.pop() ?? IDENTITY;
-      continue;
-    }
-    const next = moved(m, op.method, n);
-    if (next !== null) {
-      m = next;
-      continue;
-    }
-    if (
-      (op.method === "fillText" || op.method === "strokeText") &&
-      typeof op.args[0] === "string" &&
-      n.length >= 2
-    ) {
-      out.push({ text: op.args[0], ...at(m, n[0], n[1]) });
-    }
-  }
-  return out;
-}
+// The frame's text is read through `h.screenCalls()`, the harness's record of
+// every operation the last CLOSED frame made on the screen layer with each text
+// call measured, so a frame is advanced before it is read. The runs come back
+// coalesced by `drawnTextRuns` (`case-harness/text.ts`): a build that
+// letter-spaces a row's name or its figure draws a glyph per `fillText`, and
+// the specification fixes what a row shows and not how it is set, so the row is
+// read off the logical runs it spells and never off the call split. Every raw
+// string is a substring of its run, so coalescing can only add a match.
 
 /** Two runs are on one line when their anchors sit this close in `y`. */
 const LINE_TOL = 4;
@@ -162,11 +71,6 @@ function findText(order: readonly TextDraw[], wanted: string): number | null {
   });
   const found = joined.indexOf(needle);
   return found < 0 ? null : owner[found]!;
-}
-
-/** Every operation the last closed frame's render issued. */
-async function frameOps(harness: Harness): Promise<RecordedOp[]> {
-  return (await harness.screenOps()) as RecordedOp[];
 }
 
 /* ---- The six rows of the site list ---------------------------------------- */
@@ -292,7 +196,7 @@ it("shows a cleared site's best cost on its row", async () => {
     `site ${SITE + 1} standing cleared, which is what puts a score on its row`,
   );
 
-  const order = readingOrder(textDraws(await frameOps(h)));
+  const order = readingOrder(drawnTextRuns(await h.screenCalls()));
   await h.capture("state", "The best cost beside a cleared site");
 
   assertTrue(

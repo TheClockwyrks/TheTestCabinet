@@ -9,12 +9,23 @@
 // drawn over the star and the rocks.
 //
 // WHAT IS READ. The runs of text the frame drew, with their anchors mapped through
-// whatever transform was in force at each (`textDraws`, `validation/none/harness.ts`).
-// At the harness's own shape the canvas is the field at one unit per pixel, so a
-// run's anchor and its measured box are directly comparable with the figures
+// whatever transform was in force at each (`validation/none/harness.ts`). At the
+// harness's own shape the canvas is the field at one unit per pixel, so a run's
+// anchor and its measured box are directly comparable with the figures
 // `specs/overview.md` fixes. The check is for a run CONTAINING the posed digits, not
 // for one equal to them: a build is free to draw its score padded, or with a label
 // beside it in the same run.
+//
+// THE RUNS, AND THE CALLS BEHIND THEM. A build that letter-spaces its score draws
+// one digit per `fillText` — the only portable way to letter-space canvas text — on
+// a screen whose copy `specs/ui.md` fixes and whose type it leaves to the build.
+// Read a call at a time, `730` is three runs of one digit and no score. So the
+// reading takes the package's `drawnTextRuns`, which coalesces side-by-side draws on
+// one baseline back into the string they spell, placed as one extent, AND its
+// `textDraws`, one per call: the merge can also glue the score onto a label the
+// build set a bare space away, and the call that drew the digits whole is still the
+// box they occupy. A run found in either is found; the placement is judged on
+// whichever box the digits were found in.
 //
 // THE TWO PLACEMENT BOUNDS, EACH TAKEN FROM A SPECIFICATION SENTENCE. "In the upper
 // portion of the field" is the top half. "Clear of the field's centre" is stated
@@ -36,6 +47,7 @@ import { segmentDistance } from "../geometry";
 import {
   captureStill,
   createHarness,
+  drawnTextRuns,
   startPlaying,
   textDraws,
   type Harness,
@@ -84,7 +96,8 @@ it("draws the posed score in the upper portion of the field, clear of its centre
   // readout in the picture this leaves behind.
   await harness.debug.setShipPosition(FAR_SHIP.x, FAR_SHIP.y);
 
-  const runs = textDraws(await harness.frameCalls());
+  const calls = await harness.frameCalls();
+  const runs = [...drawnTextRuns(calls), ...textDraws(calls)];
   await captureStill(harness, "hud");
 
   const digits = runs.filter((run) => run.text.includes(String(SCORE)));

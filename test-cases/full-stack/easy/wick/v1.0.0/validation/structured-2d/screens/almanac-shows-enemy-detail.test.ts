@@ -52,7 +52,7 @@ import {
   createHarness,
   drewText,
   poseScreen,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { drewRightOfList, moveTab, statLine, windowNames } from "./almanac";
@@ -93,7 +93,7 @@ it("draws the Moth's name, HEALTH, SPEED, DAMAGE, and its description", async ()
   const { calls } = await h.frameDraw();
   captureStill(h, "enemy");
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   assertTrue(
     drewRightOfList(draws, ENEMY_NAMES[ENTRY], BESIDE),
     `the detail pane drew the entry's name, ${ENEMY_NAMES[ENTRY]}, to the right of the list (specs/ui.md, almanac)`,

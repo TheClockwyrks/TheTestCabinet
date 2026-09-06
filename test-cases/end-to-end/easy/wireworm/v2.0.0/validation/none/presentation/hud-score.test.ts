@@ -28,7 +28,7 @@ import {
   captureStill,
   createHarness,
   startPlaying,
-  textDraws,
+  textDrawForms,
   type Harness,
 } from "../harness";
 
@@ -49,7 +49,10 @@ it("draws the posed score inside the HUD bar", async () => {
   await startPlaying(h);
   await h.debug.setScore(POSED_SCORE);
 
-  const draws = textDraws(await h.frameCalls());
+  // The frame's calls and the runs they spell, so a score the build
+  // letter-spaced a digit per call is read off the run those digits coalesce
+  // into.
+  const draws = textDrawForms(await h.frameCalls());
   // The HUD bar carrying the posed score.
   await captureStill(h, "hud");
 

@@ -29,7 +29,7 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextSpanForms,
   resetTo,
   startPlaying,
   type Harness,
@@ -55,7 +55,9 @@ it("draws the posed score inside the HUD bar", async () => {
 
   h.calls.length = 0;
   await h.advance(1);
-  const spans = drawnTextSpans(h);
+  // The bar's calls and the runs they spell, so a score the build letter-spaced
+  // a digit per call is read off the run those digits coalesce into.
+  const spans = drawnTextSpanForms(h);
   // The HUD bar carrying the posed score.
   captureStill(h, "hud");
 

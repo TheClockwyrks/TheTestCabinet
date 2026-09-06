@@ -351,10 +351,15 @@ const kit = createEngineCaseHarness<OrrerySnapshot, OrreryDriver, OrreryEngine>(
     // path — a bundler is free to inline a produced PNG, and that is still the
     // committed file — so a bitmap argument is replaced in the record by an
     // `ImageRef` naming it, and `Harness.imagePixels` reads that source's own pixels
-    // back. Text is NOT measured: nothing this project reads places a run about its
-    // anchor, so measuring every text call would be paid for on every frame of every
-    // check for a reading no suite takes.
-    recorder: { internImages: true },
+    // back. Every text call is MEASURED as it is made — its width under the font in
+    // force, the alignment that places it, and the transform it was drawn under —
+    // because a check reads a screen's copy off the LOGICAL RUNS the frame spells
+    // and not off the `fillText` split: a build that letter-spaces a heading draws
+    // one glyph per call, and the shared merge rule (`case-harness/text.ts`) needs
+    // each glyph's extent to fold them back into the word. Without this nothing
+    // merges, and a row's number drawn `1 2` a glyph at a time is two figures no
+    // reading of `drawing.ts`'s runs would find.
+    recorder: { internImages: true, measureText: true },
     // Deliberately EMPTY: this project stamps its own cues, on the frame Orrery
     // attributes them to and at the time Orrery measures. See {@link stamp}.
     cueEvents: [],

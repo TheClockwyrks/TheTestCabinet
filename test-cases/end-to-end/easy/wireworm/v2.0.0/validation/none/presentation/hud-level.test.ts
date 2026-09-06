@@ -36,7 +36,7 @@ import {
   captureStill,
   createHarness,
   startPlaying,
-  textDraws,
+  textDrawForms,
   type Harness,
   type TextDraw,
 } from "../harness";
@@ -127,7 +127,9 @@ it("draws the level label with the level beside it and the total on the bar", as
   await h.debug.setScore(POSED_SCORE);
   await h.debug.setLevel(POSED_LEVEL);
 
-  const draws = textDraws(await h.frameCalls());
+  // The frame's calls and the runs they spell, so a label or a figure the build
+  // letter-spaced a glyph per call is found in the run it spells.
+  const draws = textDrawForms(await h.frameCalls());
   // The HUD bar carrying the level and the total.
   await captureStill(h, "hud");
 

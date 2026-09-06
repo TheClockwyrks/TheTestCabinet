@@ -52,7 +52,7 @@ import {
   openLevelUp,
   pixelsDiffering,
   tap,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { anchorY, bandAt } from "./stage";
@@ -98,7 +98,7 @@ it("lists the offers top to bottom and redraws the rows the highlight moves betw
 
   const first = await h.frameDraw();
   captureStill(h, "offers");
-  const draws = textDraws(first.calls);
+  const draws = placedRuns(first.calls);
   const anchors = NAMES.map((name) => anchorY(draws, name));
   for (const [index, at] of anchors.entries()) {
     assertNotNull(at, `where offer ${index}, ${NAMES[index]}, was drawn`);

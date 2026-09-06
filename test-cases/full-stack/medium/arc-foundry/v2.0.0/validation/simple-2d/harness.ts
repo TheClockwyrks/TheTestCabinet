@@ -117,7 +117,7 @@ import {
 } from "./case-harness/engine/2d";
 import { colorDistance, luminance, type Rgb } from "./case-harness/color";
 import { callsTo, setsOf, type DrawCall } from "./case-harness/draw-calls";
-import { drawnText } from "./case-harness/text";
+import { drawnText, drewText } from "./case-harness/text";
 import {
   IDENTITY,
   apply,
@@ -201,7 +201,15 @@ export {
 } from "./surface";
 
 /* The readings this project takes straight off the package, under its names. */
-export { callsTo, colorDistance, distance, drawnText, luminance, setsOf };
+export {
+  callsTo,
+  colorDistance,
+  distance,
+  drawnText,
+  drewText,
+  luminance,
+  setsOf,
+};
 export type { AssetFailure, DrawCall, Rect, Rgb, TimedCue, UntilOptions };
 
 /* -------------------------------------------------------------------------- */
@@ -467,10 +475,17 @@ const arrivals = new WeakMap<object, string[]>();
  *  - `pointerEvent` is {@link PointerEvt}, this case's own — position and a device,
  *    and no button mask.
  *
- * The recorder is left plain. No `measureText`: {@link textDraws} places a run by
- * walking the frame's own transform operations and reads copy off the anchors, and
- * no point here measures a run's extent. No `internImages`: {@link imageDraws}
- * reads where a blit LANDED, and never which bitmap it was.
+ * The recorder measures text and interns nothing. `measureText`, because the
+ * screens checks read a screen's copy off the LOGICAL RUNS the frame spells and
+ * not off the `fillText` split: a build that letter-spaces a heading draws one
+ * glyph per call, and the shared merge rule (`case-harness/text.ts`) needs each
+ * glyph's measured extent and alignment to fold them back into the word — without
+ * it nothing merges, and `ARC FOUNDRY` drawn a letter at a time is eleven strings
+ * no reading of the copy would find. This project's own {@link textDraws} is
+ * unmoved by it: that reading places a run by walking the frame's own transform
+ * operations, and answers the anchor and the operation's INDEX, never an extent.
+ * No `internImages`: {@link imageDraws} reads where a blit LANDED, and never which
+ * bitmap it was.
  */
 const kit = createEngineCaseHarness<
   FoundrySnapshot,
@@ -483,6 +498,9 @@ const kit = createEngineCaseHarness<
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
   surfaceRequirement: SURFACE_REQUIREMENT,
+  // Each text call measured and the transform in force at it recorded, for the
+  // reason the paragraph above gives.
+  recorder: { measureText: true },
   defaultClock: () => new ConstantClock(TICK_MS),
   createEngine: ({ canvas, clock, surface }) => {
     const engine = createEngine<FoundryState, FoundrySurface>({

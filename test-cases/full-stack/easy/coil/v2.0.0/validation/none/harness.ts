@@ -232,6 +232,11 @@ const kit = createCaseHarness<CoilSnapshot, DrivenSurface>({
   // without it `navigator.maxTouchPoints` is zero and a dispatched contact
   // arrives as a mouse.
   hasTouch: true,
+  // The copy readings place a run at its anchor and read the LOGICAL runs a
+  // frame spells, so every text call is measured in the page — width and
+  // alignment under the build's own font — and side-by-side glyphs on one
+  // baseline coalesce back into the string they spell (`case-harness/text.ts`).
+  measureText: true,
   // This case's own audio probe, beside the kit's two. The kit's probe at
   // `__tcabAudio` COUNTS sounds, which is enough for a case whose audio points
   // ask whether a frame sounded; Coil's ask WHICH of four cues sounded and

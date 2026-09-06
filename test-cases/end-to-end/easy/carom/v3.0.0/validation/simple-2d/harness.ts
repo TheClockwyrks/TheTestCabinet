@@ -149,6 +149,7 @@ import {
 } from "./case-harness/draw-calls";
 import {
   drawnText as rawDrawnText,
+  drawnTextLines,
   drewText as spelledText,
   textDraws,
   type TextDraw,
@@ -2078,6 +2079,18 @@ export async function slideOffItem(
 export function drawnText(calls: readonly DrawCall[]): string[] {
   return rawDrawnText(calls);
 }
+
+/**
+ * Every LOGICAL run of text the frame spelled, as the strings it spells.
+ *
+ * The reading a check joining the frame's text takes beside {@link drawnText}:
+ * a build that letter-spaces its copy draws one glyph per `fillText`, and only
+ * the coalesced run spells the word those calls make. Every raw string is a
+ * substring of its run, so reading the runs beside the calls can only add a
+ * match — which is what keeps a pattern anchored on a word boundary honest
+ * when two draws close together coalesce across it.
+ */
+export { drawnTextLines };
 
 /**
  * Whether the frame spelled `text` inside some run of text, ignoring case.

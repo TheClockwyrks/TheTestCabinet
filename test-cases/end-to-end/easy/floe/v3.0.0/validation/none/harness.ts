@@ -569,7 +569,10 @@ const kit = createCaseHarness<FloeSnapshot, FloeDebugApi>({
   awaitFrameBeforeRead: true,
   // A frame's text calls carry their measured width and the alignment in force,
   // because `strait/hud-above-strait` reads where a readout SITS rather than
-  // only which strings were drawn.
+  // only which strings were drawn — and because every copy reader reads the
+  // LOGICAL runs (`drawnTextRuns`), which the shared harness can only coalesce
+  // out of measured draws: without the width nothing merges, and a title
+  // letter-spaced a glyph per `fillText` would never be found by what it spells.
   measureText: true,
   projectRoot: dirname(fileURLToPath(import.meta.url)),
 });
@@ -905,6 +908,8 @@ export type {
 export {
   colorDistance,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
   drewText,
   mouseGlide,
   mousePress,

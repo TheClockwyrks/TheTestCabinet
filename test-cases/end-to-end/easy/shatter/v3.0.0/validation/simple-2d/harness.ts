@@ -11,9 +11,11 @@
 // this project at `validation/case-harness/`: the key event, the surface metrics
 // an engine takes its measurements through, the READ of the debug surface and the
 // stand-in for a build that returned none, the apply-threaded driver, the device
-// mapping and the pixel read, the colour and draw-call readings, the event-loop
-// yield, the evidence writers, and the assertions. A fix landed there reaches
-// Shatter; the copy of it that used to live here drifted from the day it was made.
+// mapping and the pixel read, the colour, draw-call and text readings — the merge
+// rule that reads a letter-spaced run as the copy it spells among them — the
+// event-loop yield, the evidence writers, and the assertions. A fix landed there
+// reaches Shatter; the copy of it that used to live here drifted from the day it
+// was made.
 //
 // WHAT DOES NOT, AND WHY THIS PROJECT DOES NOT BIND `createEngineCaseHarness`.
 // The kit's frame is one call of `engine.advance` per frame with the recorder
@@ -140,7 +142,11 @@ import {
 } from "./case-harness/engine/index";
 import { deviceOf, makeReplayCapture, pixelAt } from "./case-harness/engine/2d";
 import type { Matrix } from "./case-harness/matrix";
-import { drawnText } from "./case-harness/text";
+import {
+  drawnText,
+  drawnTextRuns as coalesceTextDraws,
+  drewText as spelledText,
+} from "./case-harness/text";
 import {
   BINDINGS,
   FACE_UP,
@@ -664,13 +670,225 @@ function recorder(
   });
 }
 
-/** Whether the render drew `text`, ignoring case and surrounding space. */
+/**
+ * Whether the render spelled `text` somewhere along some baseline, ignoring
+ * case and whitespace.
+ *
+ * The shared harness's reading (`case-harness/text.ts`), the same one the
+ * structured-2d and engineless validators make. Substring rather than
+ * equality: `specs/ui.md` fixes the copy a screen shows and leaves its
+ * presentation to the build, and a menu entry is commonly drawn with a
+ * selection marker or padding around it, so requiring the exact run would fail
+ * a screen showing precisely the right words. Read off the logical RUNS the
+ * frame spells rather than off the `fillText` split — a build that
+ * letter-spaces a heading draws one glyph per call, which is the only portable
+ * way to letter-space canvas text, and the recorder measures every text call
+ * so the shared merge rule can coalesce side-by-side glyphs on one baseline
+ * back into the string they spell — and with the whitespace folded out of both
+ * sides across every run sharing a baseline, so the copy is found whether the
+ * build drew its spaces, skipped them, or split the line into words. Every raw
+ * string is a substring of the run it belongs to, so coalescing can only add a
+ * match and never take one away.
+ */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toUpperCase();
-  return drawnText(calls).some(
-    (drawn) => drawn.trim().toUpperCase() === wanted,
+  return spelledText(calls, text);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Where the text landed                                                      */
+/* -------------------------------------------------------------------------- */
+
+/** One text call the frame made, placed in the logical `1280 x 720` field. */
+export interface TextSpan {
+  /** Where the call sits in the list it was read from. */
+  at: number;
+  text: string;
+  /** The anchor, in logical units. */
+  x: number;
+  y: number;
+  /** The horizontal extent of the glyphs, in logical units. */
+  left: number;
+  right: number;
+}
+
+/**
+ * Every text call in `calls`, placed in logical units. ONE ENTRY PER CALL.
+ *
+ * The placement is the real one. `fillText` is called in the build's own user
+ * space, so the recorder keeps the context transform at the moment of the call
+ * along with the measured width and the alignment; the anchor is pushed through
+ * that transform into device pixels, and the engine's viewport — the letterbox
+ * offset and the device-pixels-per-logical-unit scale it chose — takes it the
+ * rest of the way back into the field's own units. A build that drew its text
+ * inside a `translate`/`scale` of its own is read exactly like one that did not.
+ * Which way a `start`/`end` alignment reads is the page's direction; this game
+ * draws no right-to-left text, so they are left and right.
+ *
+ * ONE ENTRY PER CALL is what a reader that counts draws or holds one draw clear
+ * of a region wants. A reader of COPY wants the logical runs those calls spell
+ * — a letter-spaced heading is one run and many calls — and that is
+ * {@link spelledTextRuns}, which merges these.
+ *
+ * A call whose anchor is not a pair of numbers, or that the recorder never
+ * measured, placed nothing a check could point at and is left out.
+ */
+export function drawnTextSpans(
+  h: Harness,
+  calls: readonly DrawCall[] = h.calls,
+): TextSpan[] {
+  const view = h.engine.viewport();
+  const spans: TextSpan[] = [];
+  for (let at = 0; at < calls.length; at += 1) {
+    const call = calls[at];
+    if (call.kind !== "call" || call.text === undefined) continue;
+    if (call.method !== "fillText" && call.method !== "strokeText") continue;
+    const [text, ax, ay] = call.args;
+    if (typeof text !== "string") continue;
+    if (typeof ax !== "number" || typeof ay !== "number") continue;
+    const { transform: m, width, textAlign } = call.text;
+    if (m === undefined) continue;
+    // Device-space anchor, then back through the engine's fit to logical units.
+    const deviceX = m[0] * ax + m[2] * ay + m[4];
+    const deviceY = m[1] * ax + m[3] * ay + m[5];
+    const x = (deviceX - view.offsetX) / view.scale;
+    const y = (deviceY - view.offsetY) / view.scale;
+    // The measured width is in the build's user space; the same transform's own
+    // horizontal scale carries it to device pixels and the viewport's to logical.
+    const w = (width * Math.hypot(m[0], m[1])) / view.scale;
+    const before =
+      textAlign === "center"
+        ? w / 2
+        : textAlign === "right" || textAlign === "end"
+          ? w
+          : 0;
+    spans.push({ at, text, x, y, left: x - before, right: x - before + w });
+  }
+  return spans;
+}
+
+/** One logical run of text the frame spelled, and the calls that spelled it. */
+export interface TextRunSpan extends TextSpan {
+  /**
+   * The calls the run was drawn in, in reading order; one for a run drawn
+   * whole. A restrike — the same string struck again at the same anchor, an
+   * outline and its fill — spelled nothing the run does not already, and is not
+   * a part: an outlined heading drawn whole is still a run of one call.
+   */
+  parts: readonly TextSpan[];
+}
+
+/**
+ * The frame's text calls coalesced into the logical runs they spell, placed in
+ * logical units.
+ *
+ * WHY. A build that letter-spaces a heading draws one glyph per `fillText`,
+ * which is the only portable way to letter-space canvas text, and `specs/ui.md`
+ * fixes the COPY a screen shows while leaving its spacing to the build. A reader
+ * that matched copy against each raw call would fail a screen that drew exactly
+ * the right words. So copy is read off the RUNS: the shared harness's merge rule
+ * (`case-harness/text.ts`) joins side-by-side draws on one baseline back into
+ * the string they spell, which the recorder's measurement of every text call is
+ * what makes possible.
+ *
+ * MERGED HERE, IN LOGICAL UNITS. The shared rule is relative, so it is handed
+ * the calls already placed by {@link drawnTextSpans} — each as a left-anchored
+ * draw at its logical extent — rather than the raw calls, whose walk would
+ * decide in whatever space the build happened to draw in. Every run keeps the
+ * anchor of its first call, so a run drawn whole comes back as its own span.
+ *
+ * AND EVERY RUN KEEPS ITS PARTS. Coalescing can only add a match to a reader
+ * that matches by containment — every raw string is a substring of its run —
+ * but a reader that wants a standalone word, an exact figure or an equal string
+ * can lose one: two runs the build set a bare space apart, in two calls, come
+ * back glued. Such a reader reads the run AND its parts, and passes on either.
+ *
+ * NAMED FOR WHAT IT ADDS. The package's own `drawnTextRuns(calls)` — imported
+ * here as `coalesceTextDraws`, and what the engineless validators bind by that
+ * name — places the merged runs as `TextDraw[]` in the canvas's own units and
+ * keeps no parts. This one is placed in LOGICAL units through the engine's
+ * viewport and carries the calls that spelled each run, so it goes by its own
+ * name rather than answering the package's with a different signature.
+ */
+export function spelledTextRuns(
+  h: Harness,
+  calls: readonly DrawCall[] = h.calls,
+): TextRunSpan[] {
+  // The shared rule sorts the draws down the frame then across it and walks them
+  // in that order, so a run's parts are a contiguous stretch of the same sort.
+  const spans = drawnTextSpans(h, calls)
+    .filter((span) => span.text.length > 0)
+    .sort((a, b) => a.y - b.y || a.left - b.left);
+  const merged = coalesceTextDraws(
+    spans.map((span) => ({
+      kind: "call" as const,
+      method: "fillText",
+      args: [span.text, span.left, span.y],
+      text: { width: span.right - span.left, textAlign: "left" },
+    })),
+  );
+  // The run's copy is its parts' concatenated, plus the SPACES the shared rule
+  // writes at a word gap the build advanced over rather than drew, so the parts
+  // are matched up with the whitespace folded out of both sides. And the rule
+  // FOLDS A RESTRIKE — the same string struck again where the run's last draw
+  // stands, `strokeText` then `fillText` of an outlined heading — into the draw
+  // it repeats, widening the run without adding to its copy; so a span that
+  // restrikes the part just taken is stepped over here, or it would be counted
+  // against the NEXT run's copy and throw the lining-up off from there on.
+  const fold = (text: string): string => text.replace(/\s+/g, "");
+  const runs: TextRunSpan[] = [];
+  let next = 0;
+  for (const run of merged) {
+    const parts: TextSpan[] = [];
+    const wanted = fold(run.text);
+    let spelled = "";
+    while (spelled.length < wanted.length && next < spans.length) {
+      const part = spans[next];
+      parts.push(part);
+      spelled += fold(part.text);
+      next += 1;
+      while (next < spans.length && restrikes(part, spans[next])) next += 1;
+    }
+    const first = parts[0];
+    if (first === undefined || spelled !== wanted) {
+      // A harness fault, never the build's: the merge is a partition of the
+      // placed calls, restrikes folded, in the order they were handed over.
+      fail(
+        "the harness's own reading of the frame's text runs to line up with " +
+          "the calls that spelled them",
+        { run: run.text, spelled },
+      );
+    }
+    runs.push({
+      at: first.at,
+      text: run.text,
+      x: first.x,
+      y: run.y,
+      left: run.left,
+      right: run.right,
+      parts,
+    });
+  }
+  return runs;
+}
+
+/**
+ * Whether `span` restrikes `struck` under the shared rule: the same text at the
+ * same anchor, within the slack the merge allows a draw on one baseline and a
+ * draw sitting back inside the run before it. The rule decides on the draws it
+ * is handed, which {@link spelledTextRuns} anchors at each span's own `left`
+ * and `y`, so the same figures decide here.
+ */
+function restrikes(struck: TextSpan, span: TextSpan): boolean {
+  return (
+    span.text === struck.text &&
+    Math.abs(span.y - struck.y) <= RESTRIKE_BASELINE_SLACK &&
+    Math.abs(span.left - struck.left) <= RESTRIKE_ANCHOR_SLACK
   );
 }
+
+/** The shared rule's own slacks, `RUN_BASELINE_SLACK` and `RUN_BACKTRACK_SLACK`. */
+const RESTRIKE_BASELINE_SLACK = 0.75;
+const RESTRIKE_ANCHOR_SLACK = 0.5;
 
 /**
  * The colour the build drew at a logical point: ONE device pixel.

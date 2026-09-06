@@ -6,9 +6,10 @@
 // WHY IT LIVES HERE RATHER THAN IN THE HARNESS. The harness owns every compound
 // sequence that POSES the game — opening a run, standing a structure, releasing a
 // unit — because those are shared by every category. What this file holds is the
-// opposite: two readings only the screens checks take, of the text a frame drew
-// and of the colour it left on the canvas. Nothing outside this directory uses
-// them.
+// opposite: two readings of a rendered screen, of the text a frame drew and of
+// the colour it left on the canvas, which the screens checks take and which one
+// campaign check (`defeat-has-no-rating`) borrows to read the screen a run ends
+// on.
 //
 // WHAT A TEXT READING IS FAIR TO ASSERT. `specs/ui.md` fixes each screen's COPY
 // and its navigation and explicitly leaves its layout, palette and type to the
@@ -19,6 +20,7 @@
 // padded. Where the entry was drawn, in what colour, at what size, is the
 // build's.
 
+import { drawnTextLines } from "../case-harness/text";
 import type { DrawCall } from "../harness";
 
 /* -------------------------------------------------------------------------- */
@@ -37,25 +39,28 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 }
 
 /**
- * The whole of a frame's text as one upper-cased string, with letter-spacing
- * folded back into words.
+ * Whether the recording carries measured text geometry.
  *
- * WHY THE FOLDING. `specs/ui.md` fixes each screen's copy and leaves its type to
- * the build, and a common way to letter-space a heading on a canvas is to draw
- * each character with its own `fillText` at its own advance. A frame that does
- * that emits the heading as a run of one-character draws, so joining the runs
- * naively turns `ARC FOUNDRY` into `A R C   F O U N D R Y` — which no reading of
- * the copy would find, and which would also scatter a standalone letter across the
- * frame for every heading on the screen, so that a check looking for the key `B`
- * would find one in `BUILD`.
- *
- * So a maximal run of consecutive one-character draws is joined with nothing
- * between, which is the text the player actually reads, and the groups are joined
- * with a space. A build that draws its copy as whole strings is unaffected: every
- * run longer than one character is a group of its own.
+ * The harness measures every text call it records — the string's width under
+ * the font in force, and its alignment — and that is what the shared merge rule
+ * decides on. A recording without it can only be folded by the shape of its
+ * calls, which is the fallback below.
  */
-export function frameText(calls: readonly DrawCall[]): string {
-  const runs = drawnText(calls);
+function measured(calls: readonly DrawCall[]): boolean {
+  return calls.some((call) => call.kind === "call" && call.text !== undefined);
+}
+
+/**
+ * The runs of a recording that carries no geometry, with a maximal sequence of
+ * consecutive one-character draws joined into the word it spells.
+ *
+ * The best that can be read without widths: a letter-spaced heading is a run of
+ * one-character draws, and joining them with nothing between is the text the
+ * player reads. It is also a guess, which is why it is only the fallback — two
+ * lone characters drawn one after the other fold into one word whether or not
+ * they sat together.
+ */
+function foldSpaced(runs: readonly string[]): string[] {
   const groups: string[] = [];
   let spaced: string[] = [];
   const flush = (): void => {
@@ -71,6 +76,38 @@ export function frameText(calls: readonly DrawCall[]): string {
     }
   }
   flush();
+  return groups;
+}
+
+/**
+ * The whole of a frame's text as one upper-cased string, with letter-spacing
+ * folded back into words.
+ *
+ * WHY THE FOLDING. `specs/ui.md` fixes each screen's copy and leaves its type to
+ * the build, and the only portable way to letter-space a heading on a canvas is
+ * to draw each character with its own `fillText` at its own advance. A frame
+ * that does that emits the heading as a run of one-character draws, so joining
+ * the runs naively turns `ARC FOUNDRY` into `A R C   F O U N D R Y` — which no
+ * reading of the copy would find, and which would also scatter a standalone
+ * letter across the frame for every heading on the screen, so that a check
+ * looking for the key `B` would find one in `BUILD`.
+ *
+ * HOW. The groups are the LOGICAL RUNS the frame spells, read off the shared
+ * harness's `drawnTextLines` (`case-harness/text.ts`): the harness measures
+ * every text call, and the merge rule coalesces side-by-side draws on one
+ * baseline back into the string they spell, so a heading drawn a glyph at a
+ * time comes back as the heading and two figures a clear gap apart stay two.
+ * Every raw string is a substring of the run it belongs to, so the merge can
+ * only add a match and never take one away. A recording that carries no
+ * geometry falls back to folding consecutive one-character draws by shape,
+ * which is what this read before the harness measured. Either way the groups
+ * are joined with a space, and a build that draws its copy as whole strings is
+ * unaffected: every such run is a group of its own.
+ */
+export function frameText(calls: readonly DrawCall[]): string {
+  const groups = measured(calls)
+    ? drawnTextLines(calls)
+    : foldSpaced(drawnText(calls));
   return groups.join(" ").toUpperCase();
 }
 
@@ -159,7 +196,8 @@ export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
 }
 
 /**
- * Every number the frame drew, as numbers, in the order they were drawn.
+ * Every number the frame drew, as numbers, in the order {@link frameText} reads
+ * them.
  *
  * A grouped figure is one number: the separators come off the match before it is
  * read, so `1,234` is the single `1234`.

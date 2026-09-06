@@ -383,8 +383,9 @@ export type RecordedOp =
  * The two records hold the same facts under two spellings — `kind` here, `op`
  * there — because the engineless recorder is injected into a page and writes the
  * console player's replay format. Renaming the discriminant is the whole of the
- * difference; the `text` geometry an engine recorder can also take is dropped,
- * because this project never asks for it (see `recorder` in the kit below).
+ * difference; the `text` geometry the package's recorder attaches to a measured
+ * text call is left off, because that format carries none — a check that wants
+ * it reads {@link Harness.screenCalls}, which answers the calls with it on.
  */
 function recordedOp(call: DrawCall): RecordedOp {
   return call.kind === "call"
@@ -594,6 +595,20 @@ export interface Harness {
    * reads, exactly as it does there.
    */
   screenOps(): Promise<RecordedOp[]>;
+  /**
+   * The same frame's operations as the draw calls the package's recorder wrote,
+   * each text call carrying the width and alignment it was measured at.
+   *
+   * THE READING A CHECK TAKES COPY AND FIGURES OFF, on all three engines. The
+   * measurement — `recorder: { measureText: true }` in the kit below — is what
+   * lets `drawnTextLines` and `drawnTextRuns` (`case-harness/text.ts`) fold a
+   * heading a build letter-spaced, one glyph per `fillText`, back into the run
+   * it spells; the specification fixes the words and leaves their spacing to
+   * the build, so a check reads the runs and never the call split.
+   * {@link screenOps} answers the engineless recorder's document, which carries
+   * no measurement, so a check that reads copy reads this one.
+   */
+  screenCalls(): Promise<DrawCall[]>;
   /** The ticks this harness has driven, 1-based, as the engine's frame counter reports. */
   tick(): number;
   /**
@@ -888,10 +903,13 @@ const kit: EngineCaseKit<GantrySnapshot, GantryDriver, GantryEngine, unknown> =
     stage: { width: STAGE_W, height: STAGE_H },
     tickHz: TICK_HZ,
     surfaceRequirement: SURFACE_REQUIREMENT,
-    // No `measureText`: every check that reads the frame's copy walks the
-    // operation list and composes the transforms itself, exactly as it does under
-    // `none`, where the injected recorder carries no measurement either.
-    recorder: {},
+    // Measure every text call, so the calls `h.screenCalls()` answers carry the
+    // width and alignment the shared merge rule needs to put a letter-spaced run
+    // — one glyph per `fillText` — back together into the copy it spells, as the
+    // `none` project asks with `measureText: true`. Without it no two text draws
+    // ever coalesce, and a check reading copy off `drawnTextLines` would be
+    // reading the raw call split after all.
+    recorder: { measureText: true },
     cueEvents: ["cue:played", "cue:looped"],
     defaultClock: () => new ConstantClock(1000 / TICK_HZ),
     createEngine: ({ canvas, clock, surface, shape }) => {
@@ -1356,6 +1374,9 @@ export async function createHarness(
     screen: base.canvas,
     async screenOps() {
       return base.calls.map(recordedOp);
+    },
+    async screenCalls() {
+      return [...base.calls];
     },
     tick: () => base.tick(),
 

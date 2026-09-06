@@ -90,6 +90,9 @@ import {
   SequenceClock,
   distance,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
+  drewText as spelledText,
   meanOf,
   mouseGlide,
   rectCenter,
@@ -984,24 +987,48 @@ export function watchCues(h: Harness): TimedCue[] {
 /* Reading one frame's render                                                 */
 /* -------------------------------------------------------------------------- */
 //
-// `drawnText` and `textDraws` are the package's, under the same names. The two
-// predicates below are NOT: the package's `drewText` reads copy off the LOGICAL
-// runs a frame spells, merging draws that sit side by side on one baseline, and
-// this project has always asked its question of the RAW strings a build issued.
-// A heading drawn a glyph at a time answers differently under the two, and every
-// screen check here was taken under this one.
+// `drawnText` and `textDraws` are the package's, under the same names, and answer
+// the CALLS: one entry per `fillText`/`strokeText`, for the reader that counts
+// draws or holds one draw clear of a region. `drawnTextLines` and `drawnTextRuns`
+// are the package's too, and answer the LOGICAL RUNS a frame spells, merging
+// draws that sit side by side on one baseline. Every reader of COPY here — the
+// two predicates below, and the screen suites' `numberRuns` and `runCarrying` —
+// reads the runs, because a build that letter-spaces a heading draws it a glyph
+// per call and the specification fixes the words, not their spacing.
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * The frame's text as the LOGICAL RUNS it spells: the strings alone, and the
+ * runs placed the way {@link textDraws} places one draw.
+ *
+ * Both are the shared harness's own (`case-harness/text.ts`), re-exported so a
+ * suite reads them beside the rest of this harness. A check that reads copy AND
+ * where it sits — `screens/reading`'s `numberRuns` and `runCarrying` — takes
+ * `drawnTextRuns`, because {@link textDraws} would hand it a letter-spaced
+ * figure a glyph at a time, and no glyph reads as the figure. {@link textDraws}
+ * stays one entry per call, for the reader that needs each draw's own extent.
+ */
+export { drawnTextLines, drawnTextRuns };
+
+/**
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
  * commonly drawn with a selection marker or padding around it. Requiring the
  * exact run would fail a screen that shows precisely the right words.
+ *
+ * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
+ * split. A build that letter-spaces a heading draws one glyph per call, which
+ * is the only portable way to letter-space canvas text, and the specification
+ * fixes the copy a screen shows while leaving its spacing to the build. Every
+ * text call is measured, so the shared harness's merge rule
+ * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
+ * into the string they spell. Every raw string is a substring of the run it
+ * belongs to, so coalescing can only add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return spelledText(calls, text);
 }
 
 /**
@@ -1010,14 +1037,16 @@ export function drewText(calls: readonly DrawCall[], text: string): boolean {
  * The stricter sibling of {@link drewText}, for the copy `specs/ui.md` requires
  * as a word rather than as a substring — the how-to screen's `SPACE`, `ARROWS`
  * and `AD`. A screen reading "press the spacebar" contains `space` and does not
- * name the key the specification named.
+ * name the key the specification named. Read off the same logical runs as
+ * {@link drewText}, for the same reason: `SPACE` letter-spaced a glyph per call
+ * is still the word.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return drawnTextLines(calls).some((line) => pattern.test(line));
 }
 
 /**

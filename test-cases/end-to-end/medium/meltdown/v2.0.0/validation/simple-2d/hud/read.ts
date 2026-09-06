@@ -31,13 +31,14 @@ import { PANEL_X, STAGE_H, STAGE_W } from "../constants";
 import {
   colorDistance,
   drawFrame,
-  drawnTextSpans,
   sampleColor,
+  spelledRuns,
   type ControlsSnapshot,
   type DrawnRect,
   type Harness,
   type RectSnapshot,
   type Rgb,
+  type TextRun,
   type TextSpan,
 } from "../harness";
 
@@ -61,10 +62,21 @@ export const PANEL_STRIP: RectSnapshot = {
  * A run is placed by the middle of its glyphs rather than by its anchor, because
  * a build aligns its readouts however it likes and a right-aligned figure is
  * anchored at the far edge of the strip with its glyphs to the left of it.
+ *
+ * The runs are the LOGICAL ones the frame spells (`spelledRuns`), not the
+ * `fillText` split: a build that letter-spaces its readouts draws `WAVE 3/15` a
+ * glyph per call, and a figure read as a token or a pair read off one run wants
+ * the words the panel shows, not how the build spaced them. Each run also
+ * carries the spans it was spelled from, because the merge writes a space only
+ * at a gap past the run's own tracking and concatenates verbatim inside it: a
+ * label and its figure drawn as two calls set tight, or a letter-spaced label
+ * whose figure sits one tracking gap along, read as the one run `WAVE3/15`, and
+ * {@link saysWord} — a WHOLE-word reading — tests the parts beside the run so it
+ * keeps the match it had call by call. Coalescing only ever adds a match.
  */
-export async function panelRuns(h: Harness): Promise<TextSpan[]> {
+export async function panelRuns(h: Harness): Promise<TextRun[]> {
   const calls = await drawFrame(h);
-  return drawnTextSpans(h, calls).filter(
+  return spelledRuns(h, calls).filter(
     (span) => (span.left + span.right) / 2 >= PANEL_STRIP.x,
   );
 }
@@ -72,6 +84,36 @@ export async function panelRuns(h: Harness): Promise<TextSpan[]> {
 /** Every run's text, for a failure that shows the reviewer the whole panel. */
 export function textsOf(spans: readonly TextSpan[]): string[] {
   return spans.map((span) => span.text);
+}
+
+/**
+ * A run of text that may name the spans it was spelled from: a {@link TextRun},
+ * or a bare span, which spells itself.
+ *
+ * What every reader of a figure or a token below takes, so a caller holding
+ * plain spans — one entry per call — reads them exactly as it always did.
+ */
+export type Spelled = TextSpan & { parts?: readonly TextSpan[] };
+
+/**
+ * Every string the runs show: each run, and each raw span it was spelled from,
+ * each once per run.
+ *
+ * What a reading made on a WHOLE-string basis — a token boundary, a FIGURE, or
+ * one frame's lines compared with another's for equal members — is made over,
+ * for the reason {@link panelRuns} gives: the merge concatenates verbatim
+ * inside the run's tracking, so two bare figures drawn tight in two calls, `40`
+ * and `130`, come back as the one run `40130`, which is a figure neither of
+ * them is — and two a word space apart as `40 130`, one run where the panel
+ * drew two, which a reader that COUNTS must count over the parts — and only the parts
+ * still carry the two the panel drew. A run drawn in one call spells itself and
+ * is read once.
+ */
+export function spellingsOf(spans: readonly Spelled[]): string[] {
+  return spans.flatMap((span) => {
+    const texts = [span.text, ...(span.parts ?? []).map((part) => part.text)];
+    return texts.filter((text, i) => texts.indexOf(text) === i);
+  });
 }
 
 /**
@@ -93,12 +135,14 @@ export function readsText(spans: readonly TextSpan[], text: string): boolean {
  * `readsText` above is a substring reading, which is right for a multi-letter
  * label a build may frame however it likes; it is wrong for a one-letter word
  * such as a radiator face, where "N" would be found inside any word carrying an
- * "n". So the word is matched between non-alphanumeric boundaries.
+ * "n". So the word is matched between non-alphanumeric boundaries — over the
+ * run and the spans it was spelled from both, for the reason {@link panelRuns}
+ * gives.
  */
-export function saysWord(spans: readonly TextSpan[], word: string): boolean {
+export function saysWord(spans: readonly Spelled[], word: string): boolean {
   const escaped = word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(^|[^A-Za-z0-9])${escaped}([^A-Za-z0-9]|$)`, "i");
-  return spans.some((span) => pattern.test(span.text));
+  return spellingsOf(spans).some((text) => pattern.test(text));
 }
 
 /** The compass word each face letter may equally be spelled out as. */
@@ -117,7 +161,7 @@ const FACE_WORDS: Record<string, string> = {
  * vocabulary; the compass word is accepted beside it because spelling a letter
  * out is a presentation choice no specification takes away.
  */
-export function saysFace(spans: readonly TextSpan[], side: string): boolean {
+export function saysFace(spans: readonly Spelled[], side: string): boolean {
   return saysWord(spans, side) || saysWord(spans, FACE_WORDS[side] ?? side);
 }
 
@@ -143,7 +187,7 @@ const TARGETING_WORDS = [
 ] as const;
 
 /** Whether the panel drew a targeting read at all, in any of those words. */
-export function saysTargeting(spans: readonly TextSpan[]): boolean {
+export function saysTargeting(spans: readonly Spelled[]): boolean {
   return TARGETING_WORDS.some((word) => saysWord(spans, word));
 }
 
@@ -171,15 +215,17 @@ const GROUPS = new RegExp(GROUP, "g");
 /**
  * Every figure the runs carry, as numbers.
  *
- * A run is scanned for maximal runs of digits with an optional decimal part and
- * an optional grouping of those digits into triples, so `"7/26"` reads as `7` and
- * `26`, `"SIZE 4x4"` as `4` and `4`, `"9.0s"` as `9`, `"x2.15"` as `2.15`, and
- * `"9,999"` as the one figure `9999` the build drew rather than as two.
+ * A string is scanned for maximal runs of digits with an optional decimal part
+ * and an optional grouping of those digits into triples, so `"7/26"` reads as
+ * `7` and `26`, `"SIZE 4x4"` as `4` and `4`, `"9.0s"` as `9`, `"x2.15"` as
+ * `2.15`, and `"9,999"` as the one figure `9999` the build drew rather than as
+ * two. Every spelling of a run is scanned — the run, and each span it was
+ * spelled from — for the reason {@link spellingsOf} gives.
  */
-export function numbersIn(spans: readonly TextSpan[]): number[] {
+export function numbersIn(spans: readonly Spelled[]): number[] {
   const found: number[] = [];
-  for (const span of spans) {
-    const matches = span.text.match(DRAWN);
+  for (const text of spellingsOf(spans)) {
+    const matches = text.match(DRAWN);
     if (matches === null) continue;
     for (const match of matches) found.push(Number(match.replace(GROUPS, "")));
   }
@@ -188,7 +234,7 @@ export function numbersIn(spans: readonly TextSpan[]): number[] {
 
 /** Whether some figure the runs carry sits within `tolerance` of `value`. */
 export function readsNumber(
-  spans: readonly TextSpan[],
+  spans: readonly Spelled[],
   value: number,
   tolerance = 0,
 ): boolean {
@@ -204,7 +250,7 @@ export function readsNumber(
  * far it moved.
  */
 export function nearestNumber(
-  spans: readonly TextSpan[],
+  spans: readonly Spelled[],
   value: number,
   requirement: string,
 ): number {
@@ -246,11 +292,11 @@ export function inside(
 }
 
 /** The runs anchored on `rect`, which is where a control's own caption lands. */
-export function runsInside(
-  spans: readonly TextSpan[],
+export function runsInside<T extends TextSpan>(
+  spans: readonly T[],
   rect: RectSnapshot,
   pad = CAPTION_PAD,
-): TextSpan[] {
+): T[] {
   return spans.filter((span) => inside(rect, span.x, span.y, pad));
 }
 
@@ -290,10 +336,10 @@ export function everyControl(controls: ControlsSnapshot): RectSnapshot[] {
  * drawn outside its control reading as part of the information area — is the
  * harmless direction.
  */
-export function infoRuns(
-  spans: readonly TextSpan[],
+export function infoRuns<T extends TextSpan>(
+  spans: readonly T[],
   controls: ControlsSnapshot,
-): TextSpan[] {
+): T[] {
   const rects = everyControl(controls);
   return spans.filter(
     (span) => !rects.some((rect) => inside(rect, span.x, span.y)),
@@ -399,8 +445,8 @@ export function showRect(rect: DrawnRect): string {
  * the whole strip would find those digits and call them its readout.
  */
 export async function readPanel(h: Harness): Promise<{
-  runs: TextSpan[];
-  info: TextSpan[];
+  runs: TextRun[];
+  info: TextRun[];
   controls: ControlsSnapshot;
 }> {
   const runs = await panelRuns(h);

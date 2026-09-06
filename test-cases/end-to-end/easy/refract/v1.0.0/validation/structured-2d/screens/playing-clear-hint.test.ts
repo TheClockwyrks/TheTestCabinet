@@ -10,6 +10,15 @@
 // does. How the hint is worded and where it sits is the build's; that it sits
 // clear of the board is presentation/readouts-clear-of-the-board's point, not
 // this one's.
+//
+// The frame's text is read as its COALESCED RUNS (the harness's `drawnTextLines`),
+// never as the raw `fillText` split: a build that letter-spaces its copy draws
+// one glyph per call, which is the only portable way to letter-space canvas
+// text, and read call by call every glyph is a word of its own — the R inside a
+// letter-spaced REFRACT would name the key, and a standalone R could sit in no
+// run at all. The recorder measures every text call, so the harness's merge
+// rule folds side-by-side glyphs on one baseline back into the string they
+// spell, and the word boundary decides what it is meant to.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -17,7 +26,7 @@ import { GEO_3X3 } from "../fixtures";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   loadBoard,
   resetTo,
   type Harness,
@@ -43,7 +52,7 @@ it("names the clear key as a standalone R on the playing frame", async () => {
   await h.advance(1);
   captureStill(h, "playing");
 
-  const texts = drawnText(h.calls);
+  const texts = drawnTextLines(h.calls);
   assertGreaterThan(texts.length, 0, "the playing frame draws text");
   assertEqual(
     texts.some((text) => /\bR\b/.test(text)),

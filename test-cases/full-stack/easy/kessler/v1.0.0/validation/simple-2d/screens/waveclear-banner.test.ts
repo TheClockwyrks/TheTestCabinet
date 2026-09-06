@@ -11,9 +11,9 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertMatches } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import {
   captureStill,
-  drawnText,
   openHarness,
   poseInterstitial,
   type Harness,
@@ -36,7 +36,11 @@ it("draws a banner announcing the cleared wave", async () => {
   const { calls } = await h.frameDraw();
   captureStill(h, "banner");
 
-  const text = drawnText(calls).join(" ").toLowerCase();
+  // Off the logical runs the frame spells, not the raw calls: a banner that
+  // is letter-spaced is drawn one glyph per call, and only the coalesced run
+  // (`case-harness/text.ts`) reads as the word. Every raw string is a
+  // substring of its run, so this can only add a match.
+  const text = drawnTextLines(calls).join(" ").toLowerCase();
   assertMatches(
     text,
     /wave|clear/,

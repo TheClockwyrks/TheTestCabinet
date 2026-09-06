@@ -134,9 +134,13 @@ every sound in the window, so an engineless check fences its window with silence
 
 **What a frame drew** — `h.frameCalls()` / `h.lastCalls()` hand back the
 operations, and `drawing.ts` reads them: `imageDraws`, `imagesNear`,
-`distinctSources`, `drawnText`, `drewText`, `textDraws`, `textIn`, `drawnPoints`,
-`drawOps`. `h.imagePixels(id)` reads a drawn source's own pixels back, which is
-how a sprite is identified — never by matching a path.
+`distinctSources`, `drawnText`, `drewText`, `textDraws`, `textIn`,
+`drawnTextRuns`, `drawnTextLines`, `textRunsIn`, `drawnPoints`, `drawOps`. Copy
+is read off the logical runs (`drawnTextRuns`, `drawnTextLines`, `textRunsIn`),
+which fold a heading drawn one glyph per call back into the word it spells;
+`textDraws` and `textIn` stay one entry per call, for a count or a clearance.
+`h.imagePixels(id)` reads a drawn source's own pixels back, which is how a
+sprite is identified — never by matching a path.
 
 **What a frame left** — `h.pixel`, `h.pixels`, `h.pixelRect`, `h.viewport`,
 `h.device`, `h.css`, `h.surface`, and `color.ts`'s samplers.

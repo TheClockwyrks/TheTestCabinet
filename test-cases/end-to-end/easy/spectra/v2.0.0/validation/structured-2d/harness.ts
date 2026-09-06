@@ -133,7 +133,13 @@ import {
   sampleColor as sampleClusterColor,
 } from "./case-harness/engine/2d";
 import { callsTo, setsOf, type TextGeometry } from "./case-harness/draw-calls";
-import { drawnText, textDraws, type TextDraw } from "./case-harness/text";
+import {
+  drawnText,
+  drawnTextLines,
+  drawnTextRuns,
+  drewText as spelledText,
+  type TextDraw,
+} from "./case-harness/text";
 import { colorDistance, type Rgb } from "./case-harness/color";
 import { apply, type Matrix } from "./case-harness/matrix";
 import { distance, rectCenter, type Point } from "./case-harness/point";
@@ -673,7 +679,7 @@ export function expectedLiveParticles(
  *
  * The package's own `DrawCall`, plus the `transform` a `drawImage` carries — a
  * strict extension, so every reading the package ships over a recorded call
- * (`callsTo`, `setsOf`, `drawnText`, `textDraws`) reads this unchanged.
+ * (`callsTo`, `setsOf`, `drawnText`, `drawnTextRuns`) reads this unchanged.
  */
 export type DrawCall =
   | {
@@ -1981,22 +1987,25 @@ export const pixelsChanged = countPixelsChanged;
 /* -------------------------------------------------------------------------- */
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
  * commonly drawn with a selection marker or padding around it. Requiring the
  * exact run would fail a screen that shows precisely the right words.
  *
- * READ OFF THE RAW CALLS, which is why this is not the package's `drewText`.
- * That one reads off the logical runs a frame spells, and coalescing can only ADD
- * a match: a build that letter-spaced a heading a glyph per `fillText` answers it
- * and does not answer this. Every copy point in this project was decided under the
- * stricter reading, so the stricter reading stays.
+ * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
+ * split. A build that letter-spaces a heading draws one glyph per call, which
+ * is the only portable way to letter-space canvas text, and the specification
+ * fixes the copy a screen shows while leaving its spacing to the build. Every
+ * text call is measured, so the shared harness's merge rule
+ * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
+ * into the string they spell. Every raw string is a substring of the run it
+ * belongs to, so coalescing can only add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return spelledText(calls, text);
 }
 
 /** Every character with a meaning inside a regular expression, escaped. */
@@ -2013,11 +2022,13 @@ function escapeForPattern(text: string): string {
  * accept a screen that never says the word. "CYAN" must not be answered by
  * "CYANOGEN", and "AD" must not be answered by "READY"; the boundaries are what
  * make the difference. Punctuation and spacing around the token are still the
- * build's, because a boundary is not a character.
+ * build's, because a boundary is not a character. Read off the same logical
+ * runs as {@link drewText}, for the same reason: `CYAN` letter-spaced a glyph
+ * per call is still the word.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(`\\b${escapeForPattern(word.trim())}\\b`, "i");
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return drawnTextLines(calls).some((line) => pattern.test(line));
 }
 
 /**
@@ -2238,16 +2249,15 @@ export function imagesNear(
 /**
  * One run of text a frame drew, and the logical x range its glyphs span.
  *
- * The package's `TextDraw`, restated in this project's logical units — ONE ENTRY
- * PER CALL, which is what `textDraws` answers and what a check holding a readout
- * clear of a region needs. It is neither of the package's merged readings: a
- * `drawnTextRuns` coalesces a letter-spaced heading into one wider entry, which
- * is a different question from where each draw landed.
+ * The package's `TextDraw`, restated in this project's logical units, and a
+ * LOGICAL RUN rather than one call: the package's `drawnTextRuns` coalesces a
+ * letter-spaced heading into the one entry it spells, and every reader of these
+ * looks a run up by the copy it carries before asking where it sits.
  */
 export type TextSpan = TextDraw;
 
 /**
- * Every run of text the frame drew, placed in logical units.
+ * Every logical run of text the frame drew, placed in logical units.
  *
  * A build may anchor its text through any transform the pipeline or its own
  * drawing applies and align it any way it likes, so the anchor is mapped through
@@ -2255,6 +2265,17 @@ export type TextSpan = TextDraw;
  * its measured width and `textAlign`. Which way a `start`/`end` alignment reads is
  * the page's direction; this game draws no right-to-left text, so they are left
  * and right.
+ *
+ * COALESCED, never one entry per call. A build that letter-spaces a heading or a
+ * readout draws one glyph per `fillText`, which is the only portable way to
+ * letter-space canvas text, and no glyph reads as the figure it is part of. So
+ * this is the package's `drawnTextRuns`, not its `textDraws`: the merge rule
+ * (`case-harness/text.ts`) folds side-by-side glyphs on one baseline back into
+ * the run they spell, decided in the canvas's own pixels because the rule is
+ * relative, and the merged runs are then carried back through the engine's fit.
+ * A run keeps the anchor of its first draw, so a call that stands alone comes
+ * back exactly as `textDraws` would place it, and every raw string is a
+ * substring of its run, so this can only add a match and never take one away.
  *
  * This is how the HUD checks decide WHERE a reading was drawn — the score in the
  * top strip, the lives in the bottom one — rather than merely that its characters
@@ -2265,7 +2286,7 @@ export type TextSpan = TextDraw;
  * this mapping carries back to logical units like any other run.
  */
 export function drawnTextSpans(h: Harness): TextSpan[] {
-  return allInLogical(h.viewport(), textDraws(h.calls));
+  return allInLogical(h.viewport(), drawnTextRuns(h.calls));
 }
 
 /* -------------------------------------------------------------------------- */

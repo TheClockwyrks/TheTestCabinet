@@ -22,14 +22,17 @@
 // Case is not the requirement. What the screen must carry is the words, and a
 // build that draws them inside a longer run — a marker, a prefix, padding — has
 // drawn the label, so the match is a case-insensitive substring of the screen's
-// text rather than a run equal to it.
+// text rather than a run equal to it. And the text is the RUNS the screen spells
+// (`drawnTextLines`) rather than its `fillText` calls: a build that
+// letter-spaces the label draws it a glyph per call, and specs/stock.md fixes
+// the words, not their spacing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertMatches } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   resetTo,
   type Harness,
 } from "../harness";
@@ -52,6 +55,6 @@ it("draws DRAW THREE on the title screen", async () => {
   const calls = await h.drawFrame();
   captureStill(h, "title");
 
-  const drawn = drawnText(calls).join(" | ").toUpperCase();
+  const drawn = drawnTextLines(calls).join(" | ").toUpperCase();
   assertMatches(drawn, DEAL_MODE_LABEL, "the text the title screen drew");
 });

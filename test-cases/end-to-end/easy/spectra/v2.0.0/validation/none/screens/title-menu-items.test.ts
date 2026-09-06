@@ -14,7 +14,7 @@
 // than compiled in.
 //
 // ORDER IS READ AS THE ANCHOR THE BUILD DREW EACH RUN AT, mapped through whatever
-// transform was in force (`textDraws`), so a menu drawn at a translated origin, at
+// transform was in force (`drawnTextRuns`), so a menu drawn at a translated origin, at
 // any size, anywhere on the screen reads the same as one drawn in stage
 // coordinates. Nothing about the spacing between the two, their size, or their
 // horizontal placement is asserted: `specs/ui.md` fixes none of it.
@@ -31,7 +31,7 @@ import {
   createHarness,
   drawnText,
   drewText,
-  textDraws,
+  drawnTextRuns,
   type Harness,
 } from "../harness";
 import { runCarrying } from "./reading";
@@ -67,7 +67,7 @@ it("draws every title-menu entry, the mode entry above HOW TO PLAY", async () =>
     );
   }
 
-  const draws = textDraws(calls);
+  const draws = drawnTextRuns(calls);
   const mode = runCarrying(draws, items[0]);
   const howto = runCarrying(draws, items[1]);
   if (mode === undefined || howto === undefined) {

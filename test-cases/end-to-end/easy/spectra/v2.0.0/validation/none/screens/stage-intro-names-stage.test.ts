@@ -39,7 +39,7 @@ import {
   captureStill,
   createHarness,
   drewText,
-  textDraws,
+  drawnTextRuns,
   type Harness,
 } from "../harness";
 import { numberRuns } from "./reading";
@@ -82,7 +82,7 @@ it("draws the stage label and the stage's number on the stage intro", async () =
       "(specs/ui.md)",
   );
   assertGreaterThan(
-    numberRuns(textDraws(calls), POSED_STAGE).length,
+    numberRuns(drawnTextRuns(calls), POSED_STAGE).length,
     0,
     `the stage intro drawing the stage's number (${POSED_STAGE}) beside that ` +
       "label (specs/ui.md)",

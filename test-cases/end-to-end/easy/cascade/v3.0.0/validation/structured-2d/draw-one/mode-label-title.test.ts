@@ -44,7 +44,7 @@ import { assertEqual, assertMatches } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextLines,
   type Harness,
 } from "../harness";
 import { DEAL_MODE_LABEL } from "./constants";
@@ -53,10 +53,12 @@ import { DEAL_MODE_LABEL } from "./constants";
  * `DEAL_MODE_LABEL`'s words, in order, however the build spaces or splits them.
  *
  * The label is one literal, and its WORDS are what a player reads; whether the
- * build draws them in one call or in two is a layout decision specs/screens.md
- * leaves to it. The match is case-insensitive for the same reason, and each end
- * is held to a word boundary so a longer word ending in `ONE` is not read as the
- * label.
+ * build draws them in one call, in two, or a glyph at a time is a layout
+ * decision specs/screens.md leaves to it, which is why the frame's text is read
+ * as the logical runs it spells ({@link drawnTextLines}) rather than as its
+ * `fillText` calls. The match is case-insensitive for the same reason, and each
+ * end is held to a word boundary so a longer word ending in `ONE` is not read as
+ * the label.
  */
 const LABEL = new RegExp(
   `(^|[^A-Za-z0-9])${DEAL_MODE_LABEL.trim().split(/\s+/).join("\\s+")}($|[^A-Za-z0-9])`,
@@ -88,7 +90,7 @@ it("draws DRAW ONE on the title screen", async () => {
       "label is read (specs/instrumentation.md)",
   );
   assertMatches(
-    drawnText(calls).join(" "),
+    drawnTextLines(calls).join(" "),
     LABEL,
     `the text the title screen drew, which carries ${DEAL_MODE_LABEL}, this ` +
       "build's DEAL_MODE_LABEL (specs/screens.md, specs/stock.md)",

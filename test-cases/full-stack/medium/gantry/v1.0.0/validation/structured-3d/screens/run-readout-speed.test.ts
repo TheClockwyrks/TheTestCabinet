@@ -25,7 +25,7 @@
 // one tick, no rigging, no loads, no collisions.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { drawnText, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
 import { assertEqual, assertTrue, fail } from "../assert";
 import { HOIST_MAX, HOIST_MAX_RATE, RUN_SPEEDS } from "../constants";
 import {
@@ -65,10 +65,19 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Every run of text the frame the page last drew put on its readout layer. */
+/**
+ * Every run of text the frame the page last drew put on its readout layer.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
+ */
 async function readoutText(harness: Harness): Promise<string[]> {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  return drawnText(ops.map(toDrawCall));
+  return drawnTextLines(await harness.screenCalls());
 }
 
 /**

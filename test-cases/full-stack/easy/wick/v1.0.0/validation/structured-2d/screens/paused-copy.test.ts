@@ -53,7 +53,7 @@ import {
   isolate,
   placeEnemy,
   poseScreen,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { anchorY } from "./stage";
@@ -103,7 +103,7 @@ it("draws PAUSED, the pause menu beneath it, and the HUD over the frozen world",
     `the pause screen drew the HUD's clock, ${clockText(TICK)} (specs/ui.md, playing)`,
   );
 
-  const draws = textDraws(paused.calls);
+  const draws = placedRuns(paused.calls);
   const heading = anchorY(draws, PAUSED_TEXT);
   assertNotNull(heading, `where ${PAUSED_TEXT} was drawn`);
   for (const item of PAUSE_ITEMS) {

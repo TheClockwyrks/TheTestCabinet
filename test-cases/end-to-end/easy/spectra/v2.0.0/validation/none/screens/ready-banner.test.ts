@@ -35,7 +35,7 @@ import {
   createHarness,
   drewText,
   startPosed,
-  textDraws,
+  drawnTextRuns,
   type Harness,
 } from "../harness";
 import { PLAY_FIELD, insideBand, runCarrying } from "./reading";
@@ -85,7 +85,7 @@ it("draws READY over the field during the ready phase and not during live play",
     `the ready phase drawing READY_TEXT (${READY_TEXT}) (specs/ui.md)`,
   );
 
-  const banner = runCarrying(textDraws(ready), READY_TEXT);
+  const banner = runCarrying(drawnTextRuns(ready), READY_TEXT);
   assertTrue(
     banner !== undefined && insideBand(PLAY_FIELD, banner.y),
     `the READY banner drawn OVER THE FIELD, whose y specs/field.md fixes at ` +

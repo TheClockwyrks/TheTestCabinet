@@ -824,15 +824,21 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 }
 
 /**
- * Whether the frame spelled `text` inside some logical run of text, ignoring
- * case.
+ * Whether the frame spelled `text` somewhere along some baseline, ignoring
+ * case and whitespace.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
  * commonly drawn with a selection marker or padding around it. Requiring the
- * exact run would fail a screen that shows precisely the right words. Read off
- * the logical RUNS rather than off the raw calls, so a heading letter-spaced a
- * glyph per `fillText` is found by the words it spells.
+ * exact run would fail a screen that shows precisely the right words.
+ *
+ * The shared harness's reading (`case-harness/text.ts`): off the logical runs
+ * the frame spells rather than off the raw calls, so a heading letter-spaced a
+ * glyph per `fillText` is found by the words it spells; and with the
+ * whitespace folded out of both sides across every run sharing a baseline, so
+ * the copy is found whether the build drew its spaces, skipped them, or split
+ * the line into words. Every raw string is a substring of the run it belongs
+ * to, so coalescing can only add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
   return spelledText(calls, text);

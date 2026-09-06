@@ -32,8 +32,8 @@ import {
   STAGE_H,
   STAGE_W,
 } from "../constants";
+import { drawnTextLines } from "../case-harness/text";
 import {
-  drawnText,
   readRegion,
   type Box,
   type DrawCall,
@@ -239,9 +239,15 @@ export function numberRuns(
   return spans.filter((run) => readsAs(run.text, value));
 }
 
-/** Whether any run of text the frame drew reads as `value`. */
+/**
+ * Whether any run of text the frame drew reads as `value`.
+ *
+ * Read off the logical runs the frame spells, not the raw `fillText` split: a
+ * readout letter-spaced a digit per call reads as its figure only once the
+ * shared harness has folded the glyphs back together.
+ */
 export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
-  return drawnText(calls).some((text) => readsAs(text, value));
+  return drawnTextLines(calls).some((text) => readsAs(text, value));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -256,14 +262,16 @@ export function drewNumber(calls: readonly DrawCall[], value: number): boolean {
  * for a token `specs/ui.md` asks for as a "standalone word": a screen reading
  * "press the spacebar" contains `space` and has not named the key the specification
  * named. Word boundaries here are non-letter, non-digit characters, so a token
- * inside quotes, brackets or a slash-separated pair still counts.
+ * inside quotes, brackets or a slash-separated pair still counts. Read off the
+ * logical runs the frame spells, as `drewText` is: `SPACE` letter-spaced a glyph
+ * per call is still the word.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${quoted(word)}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((text) => pattern.test(text));
+  return drawnTextLines(calls).some((text) => pattern.test(text));
 }
 
 /* -------------------------------------------------------------------------- */

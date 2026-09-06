@@ -9,10 +9,11 @@
 //
 // THE ORDER IS A PLACEMENT, NOT A DRAW ORDER. Which entry a build's render
 // happens to issue first says nothing about what a player sees, so the reading
-// is where each entry's glyphs LANDED — `harness.ts`'s `drawnTextSpans` maps
+// is where each entry's glyphs LANDED — `harness.ts`'s `spelledTextRuns` maps
 // each run's anchor back through the transform the context held at the call, so
 // a build that draws its menu through a transform of its own is read in the same
-// logical units as one that does not.
+// logical units as one that does not, and coalesces a run drawn a glyph at a
+// time back into the entry it spells.
 //
 // ABOVE IS STRICTLY ABOVE, AND NO FIGURE IS FIXED FOR IT. `specs/ui.md` states
 // the stacking and leaves "the layout of each screen" to the build, so the check

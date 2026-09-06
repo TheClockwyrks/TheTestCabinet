@@ -32,7 +32,7 @@ import {
   createHarness,
   drewText,
   poseScreen,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { anchorX } from "./almanac";
@@ -61,7 +61,7 @@ it("draws the four tab names left to right", async () => {
     );
   }
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   for (let tab = 1; tab < ALMANAC_TABS.length; tab += 1) {
     const before = anchorX(draws, ALMANAC_TABS[tab - 1]);
     const here = anchorX(draws, ALMANAC_TABS[tab]);

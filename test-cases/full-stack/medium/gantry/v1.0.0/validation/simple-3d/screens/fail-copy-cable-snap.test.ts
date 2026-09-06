@@ -39,7 +39,7 @@ import {
   startRun,
   type Harness,
 } from "../harness";
-import { drawnText, toDrawCall } from "../case-harness/index";
+import { drawnTextLines } from "../case-harness/index";
 
 /** The cause this check drives the run to. */
 const CAUSE = "cable-snap" as const;
@@ -64,6 +64,14 @@ const LOAD_MASS = 400;
  * horizontal distances from the slew axis — the four track rules of
  * specs/structure.md § The trolley and the rail — so no readiness issue is raised
  * and the run starts.
+ *
+ * Read off the LOGICAL RUNS the frame spells, never off the `fillText` split:
+ * a build that letter-spaces its copy draws a glyph per call, which is the only
+ * portable way to letter-space canvas text, and the specification fixes the
+ * words a screen shows while leaving their spacing to the build. `screenCalls`
+ * carries the measured geometry the shared merge rule (`case-harness/text.ts`)
+ * needs to put side-by-side glyphs on one baseline back together, and every
+ * raw string is a substring of its run, so coalescing can only add a match.
  */
 async function poseReadyCrane(harness: Harness): Promise<void> {
   await harness.debug.setRing(0, 2, 0);
@@ -86,8 +94,7 @@ async function poseTape(harness: Harness): Promise<void> {
  * them.
  */
 async function screenText(harness: Harness): Promise<string[]> {
-  const ops = await harness.screenOps();
-  return drawnText(ops.map(toDrawCall));
+  return drawnTextLines(await harness.screenCalls());
 }
 
 /** The copy this check is about. */

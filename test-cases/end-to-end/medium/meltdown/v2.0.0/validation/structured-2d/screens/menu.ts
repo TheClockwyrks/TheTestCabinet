@@ -29,20 +29,55 @@
 import { fail } from "../assert";
 import {
   colorDistance,
-  drawnTextSpans,
   renderFrame,
+  spelledRuns,
   type ControlRect,
   type Harness,
   type Rgb,
+  type TextRun,
   type TextSpan,
 } from "../harness";
 
 /* ---- Text ----------------------------------------------------------------- */
 
-/** Run one frame and hand back every run of text it drew, placed in logical units. */
-export async function readScreen(h: Harness): Promise<TextSpan[]> {
+/**
+ * Run one frame and hand back every run of text it drew, placed in logical units.
+ *
+ * The LOGICAL runs the frame spells (`spelledRuns`), not the `fillText`
+ * split: a build that letter-spaces its menu draws each row a glyph per call,
+ * and a row found by its copy or a figure read as a token wants the words the
+ * screen shows, not how the build spaced them. Each run also carries the spans
+ * it was spelled from, because the merge concatenates verbatim inside the run's
+ * own tracking: a row's label and its figure drawn as two calls tight together
+ * read as the one run `EASY500`, which is neither the row nor a token `EASY`. So
+ * {@link runFor}, which prefers the run that IS the copy, and {@link saysStem},
+ * a token reading, look at the parts beside the run, and keep every match they
+ * had call by call. Coalescing only ever adds a match.
+ */
+export async function readScreen(h: Harness): Promise<TextRun[]> {
   await renderFrame(h);
-  return drawnTextSpans(h);
+  return spelledRuns(h);
+}
+
+/**
+ * A run of text that may name the spans it was spelled from: a {@link TextRun},
+ * or a bare span, which spells itself.
+ */
+export type Spelled = TextSpan & { parts?: readonly TextSpan[] };
+
+/**
+ * Every string a run shows: the run itself, and each raw span it was spelled
+ * from, each once.
+ *
+ * What every reading on a token boundary is made over — a stem, and a FIGURE
+ * too, for the reason {@link readScreen} gives: the merge concatenates verbatim
+ * inside the run's tracking, so a score and a wave count drawn tight in two
+ * calls, `875` and `12`, come back as the one run `87512`, which is a figure neither of them is, and
+ * only the parts still carry the two the screen reported.
+ */
+function spellings(run: Spelled): string[] {
+  const texts = [run.text, ...(run.parts ?? []).map((part) => part.text)];
+  return texts.filter((text, i) => texts.indexOf(text) === i);
 }
 
 /** A run's text, trimmed and upper-cased — how every comparison here is made. */
@@ -59,13 +94,23 @@ function normalize(text: string): string {
  * `PLAY` would happily answer with the other row. A build free to decorate its
  * highlighted row — `> PLAY`, `[PLAY]` — is still answered with its own row
  * rather than with the longer one.
+ *
+ * A run that IS the copy is looked for among the runs first and then among the
+ * spans they were spelled from, for the reason {@link readScreen} gives: a row
+ * whose label merged with a figure beside it is still answered with the label
+ * as it was drawn, placed where it was drawn. Containment is asked of the runs
+ * alone, since a span holding the copy belongs to a run that holds it too.
  */
 export function runFor(
-  runs: readonly TextSpan[],
+  runs: readonly TextRun[],
   copy: string,
 ): TextSpan | undefined {
   const wanted = normalize(copy);
-  const exact = runs.find((run) => normalize(run.text) === wanted);
+  const exact =
+    runs.find((run) => normalize(run.text) === wanted) ??
+    runs
+      .flatMap((run) => run.parts)
+      .find((part) => normalize(part.text) === wanted);
   if (exact !== undefined) return exact;
   const holding = runs.filter((run) => normalize(run.text).includes(wanted));
   if (holding.length === 0) return undefined;
@@ -83,7 +128,7 @@ export function runFor(
  * reads what the build put on the screen instead.
  */
 export function requireRun(
-  runs: readonly TextSpan[],
+  runs: readonly TextRun[],
   copy: string,
   context: string,
 ): TextSpan {
@@ -105,17 +150,18 @@ export function requireRun(
  * names a subject rather than a sentence: a screen covering the redline TRIP may
  * say "trips", "tripped" or "the trip", and all three are the same subject
  * covered. The token boundary is what keeps it honest — a stem of `AIR` is not
- * answered by `REPAIR`.
+ * answered by `REPAIR`. Read over the run and the spans it was spelled from
+ * both, for the reason {@link readScreen} gives.
  */
-export function saysStem(runs: readonly TextSpan[], stem: string): boolean {
+export function saysStem(runs: readonly TextRun[], stem: string): boolean {
   const escaped = stem.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`(^|[^A-Za-z0-9])${escaped}[A-Za-z]*`, "i");
-  return runs.some((run) => pattern.test(run.text));
+  return runs.some((run) => spellings(run).some((text) => pattern.test(text)));
 }
 
 /** Whether some run carries a token beginning with ANY of `stems`. */
 export function saysAnyStem(
-  runs: readonly TextSpan[],
+  runs: readonly TextRun[],
   stems: readonly string[],
 ): boolean {
   return stems.some((stem) => saysStem(runs, stem));
@@ -142,11 +188,19 @@ const DRAWN = new RegExp(
 /** Every group separator inside one figure, for dropping before it is read. */
 const GROUPS = new RegExp(GROUP, "g");
 
-/** Every number a run's text carries, in the order it carries them. */
-export function numbersIn(run: TextSpan): number[] {
-  return (run.text.match(DRAWN) ?? []).map((figure) =>
+/** Every number one string carries, in the order it carries them. */
+function figuresIn(text: string): number[] {
+  return (text.match(DRAWN) ?? []).map((figure) =>
     Number(figure.replace(GROUPS, "")),
   );
+}
+
+/**
+ * Every number a run carries: those its text carries, and those each span it
+ * was spelled from carries, for the reason {@link spellings} gives.
+ */
+export function numbersIn(run: Spelled): number[] {
+  return spellings(run).flatMap(figuresIn);
 }
 
 /**
@@ -157,7 +211,7 @@ export function numbersIn(run: TextSpan): number[] {
  * a wave count, a life count, a sum of money — is a whole number, and a build
  * that grouped a long one into digit triples reported that same whole number.
  */
-export function readsNumber(runs: readonly TextSpan[], value: number): boolean {
+export function readsNumber(runs: readonly Spelled[], value: number): boolean {
   return runs.some((run) => numbersIn(run).includes(value));
 }
 

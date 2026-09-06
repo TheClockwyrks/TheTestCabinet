@@ -21,7 +21,7 @@
 // `counterweight` is as fairly drawn `WEIGHT`, and `delete` as `REMOVE`.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { textDraws, toDrawCall } from "../case-harness/index";
+import { drawnTextRuns } from "../case-harness/index";
 import { fail } from "../assert";
 import { createHarness, emptyYard, openSite, type Harness } from "../harness";
 
@@ -35,10 +35,20 @@ const TOOLS: readonly { digit: string; names: readonly string[] }[] = [
   { digit: "6", names: ["delete", "remove", "erase"] },
 ];
 
-/** Every run of text the last closed frame drew, with where it landed. */
+/**
+ * Every run of text the last closed frame drew, with where it landed.
+ *
+ * The runs are the LOGICAL ones the frame spells, each placed where its first
+ * draw was, never the `fillText` split: a build that letter-spaces a label or
+ * a figure draws a glyph per call, which is the only portable way to
+ * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
+ * where the screen says `12`. `screenCalls` carries the measured geometry the
+ * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
+ * on one baseline back together, and every raw string is a substring of its
+ * run, so coalescing can only add a match.
+ */
 async function frameDraws(harness: Harness) {
-  const ops = await harness.screenOps();
-  return textDraws(ops.map(toDrawCall));
+  return drawnTextRuns(await harness.screenCalls());
 }
 
 /** Letters and digits alone, lowercased. */

@@ -120,7 +120,14 @@ import {
   type EnginePointReader,
 } from "./case-harness/engine/2d";
 import { colorDistance, type Rgb } from "./case-harness/color";
-import { drawnText, textDraws, type TextDraw } from "./case-harness/text";
+import {
+  drawnText,
+  drawnTextLines,
+  drawnTextRuns,
+  drewText as spelledText,
+  textDraws,
+  type TextDraw,
+} from "./case-harness/text";
 import type { DrawCall } from "./case-harness/draw-calls";
 import { BACKGROUND, game as build } from "../src/game";
 import { fail } from "./assert";
@@ -1647,27 +1654,46 @@ export const pixelsChanged = countPixelsChanged;
 /**
  * Every string the frame drew, through `fillText` or `strokeText`.
  *
- * The package's reading, which answers the RAW strings one entry per call.
+ * The package's reading, which answers the RAW strings one entry per call — what
+ * a reader that counts draws, or takes the difference between two frames' text,
+ * wants. A reader of COPY wants the merged-run reading beside it,
+ * {@link drawnTextLines}: see {@link drewText} for why.
  */
 export { drawnText };
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Every logical run of text the frame spelled, as the strings it spells.
+ *
+ * The shared harness's reading, re-exported so a suite next door goes on naming
+ * `../harness` for everything it reads. Where {@link drawnText} answers the raw
+ * `fillText` split, this answers the RUNS those calls spell: a heading drawn a
+ * glyph at a time is one entry here and a dozen there. See {@link drewText} for
+ * why copy is read off this and never off the split.
+ */
+export { drawnTextLines };
+
+/**
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a readout is
  * commonly drawn with its label, a separator or padding around it. Requiring the
  * exact run would fail a panel that shows precisely the right words.
  *
- * A DIFFERENT QUESTION FROM THE PACKAGE'S `drewText`, which asks the same of a
- * LOGICAL RUN — the coalesced run a build drew a glyph at a time. This one asks
- * it of the RAW draws, which is what every point in this project was decided
- * under, and the two answers differ wherever a build letter-spaces its copy. So it
- * stays here under its own name.
+ * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
+ * split. A build that letter-spaces a heading draws one glyph per call, which is
+ * the only portable way to letter-space canvas text, and the specification fixes
+ * the copy a screen shows while leaving its spacing to the build. The recorder
+ * measures every text call (`recorder: { measureText: true }` above), so the
+ * shared harness's merge rule (`case-harness/text.ts`) can coalesce side-by-side
+ * glyphs on one baseline back into the string they spell. Every raw string is a
+ * substring of the run it belongs to, so coalescing can only add a match and
+ * never take one away. The package's `drewText`, under the name every check
+ * here has always used.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return spelledText(calls, text);
 }
 
 /**
@@ -1785,15 +1811,149 @@ export type TextSpan = TextDraw;
  * this mapping carries back to logical units like any other run.
  *
  * ONE ENTRY PER CALL — the package's `textDraws` rather than its `drawnTextRuns`,
- * which coalesces the draws of one logical run into a single wider entry. This
- * project's checks read each draw's own extent, so the per-call reading is the one
- * they were decided under. `allInLogical` is the second half: the package's text
- * readings answer in CANVAS pixels, because that is where the calls were made, and
- * this maps them back through the engine's own fit into the logical units every
- * check states its expectations in.
+ * which coalesces the draws of one logical run into a single wider entry. This is
+ * what a check holding a readout clear of a region, or counting the draws a
+ * panel made, wants; a check reading COPY wants the runs those draws spell, and
+ * takes {@link spelledRuns}. `allInLogical` is the second half of both: the
+ * package's text readings answer in CANVAS pixels, because that is where the
+ * calls were made, and this maps them back through the engine's own fit into
+ * the logical units every check states its expectations in.
  */
 export function drawnTextSpans(h: Harness): TextSpan[] {
   return allInLogical(h.viewport(), textDraws(h.calls));
+}
+
+/**
+ * One logical run of text, and the spans it was spelled from.
+ *
+ * `parts` is the {@link drawnTextSpans} entries the run coalesced, in reading
+ * order — one entry, the span itself, for a run drawn in a single call. A reader
+ * that matches a WHOLE TOKEN reads both: see {@link spelledRuns} for why.
+ *
+ * A run keeps the anchor and the alignment of its first span, as the package's
+ * `drawnTextRuns` keeps its first draw's: how the anchor sits in the glyphs it
+ * was drawn with, not in the whole run.
+ */
+export interface TextRun extends TextSpan {
+  parts: readonly TextSpan[];
+}
+
+/**
+ * Every LOGICAL run of text the frame drew, placed in logical units, each with
+ * the spans that spelled it.
+ *
+ * {@link drawnTextSpans} is one entry per call, which is what a reader holding a
+ * readout clear of a region wants and what a reader of COPY must never use alone:
+ * a build that letter-spaces a menu row draws it a glyph per `fillText`, and a
+ * row looked for by its label — `screens/menu`'s `runFor`, a panel readout read
+ * by its figure — would be missing from a screen that drew exactly the right
+ * words. So the runs are the package's `drawnTextRuns` — the same draws
+ * coalesced under the shared merge rule and nothing local
+ * (`case-harness/text.ts`): two draws on one baseline, side by side, no further
+ * apart than the run's own mean advance allows, are one run spelling both. A run
+ * keeps its first draw's anchor and grows to its last draw's right edge. The
+ * rule is decided in canvas pixels, where the calls were made, and the runs come
+ * back through `allInLogical` exactly as the spans do, because a run carries the
+ * same four numbers a draw does.
+ *
+ * A RUN CAN SPELL MORE THAN ANY OF ITS DRAWS DID, AND NOT ALWAYS WITH A SPACE
+ * BETWEEN THEM. The rule joins any gap up to 0.6 of the run's mean advance, and
+ * writes a space into the run only where the gap opens past the run's own
+ * tracking: a label and its figure drawn as two calls an ordinary word space
+ * apart — `WAVE` in one colour, `3/15` in another — come back as the one run
+ * `WAVE 3/15`, and two tallies on one baseline, `KILLS 0` and `DEALT 0`, as one
+ * run `KILLS 0 DEALT 0`. But a figure set tight against its label, or a gap no
+ * wider than the tracking a letter-spaced label already carries, concatenates
+ * verbatim into `WAVE3/15`, in which `WAVE` is no longer a whole token. A
+ * substring reader still finds its copy there, but a whole-word reader would
+ * not, where read call by call it did, and a reader COUNTING readouts finds one
+ * run where the panel drew two. So every run also carries the spans it was
+ * spelled from, and a reader that matches on a token boundary reads the run
+ * AND its parts, while one that counts counts the parts; coalescing then only
+ * ever adds a match, which is the guarantee it is here to give.
+ *
+ * Which spans a run took is recovered from the order the rule documents: it
+ * partitions the draws in reading order, down the frame then across it, so the
+ * members are consumed in that same order, each matched verbatim against the
+ * run's text where it stands, until the text is spelled. A space the rule wrote
+ * at a word gap is spelled by no draw and is stepped over; a draw of whitespace
+ * alone is in the run verbatim, since the rule writes no space beside one; and
+ * a RESTRIKE — the same text struck again where the last draw consumed already
+ * stands, an outlined glyph's fill over its stroke — is the glyph the run
+ * already spells, folded by the rule under the same test it folds it by
+ * ({@link restrikes}), and is passed over without becoming a part. That test
+ * is stated in canvas pixels, where the rule decided it, so the walk runs over
+ * the draws as the package placed them and only the parts it took are mapped
+ * into logical units. Were a run's text ever left unspelled by that walk, every
+ * run in the frame would be handed back as its own only part, which is the
+ * reading a whole-token reader had before the runs existed; the walk is the
+ * rule's own, so that is a guard and not a path the rule takes.
+ *
+ * NAMED AS THE NONE HARNESS NAMES ITS OWN, AND NOT `drawnTextRuns`. That name is
+ * the shared package's — the merge over raw draw calls, answering a `TextDraw[]`
+ * in canvas pixels — and this answers a parts-carrying `TextRun[]` in logical
+ * units. One name keeps one meaning across the case's three harnesses and the
+ * package they are built over.
+ */
+export function spelledRuns(h: Harness): TextRun[] {
+  const view = h.viewport();
+  const runs = allInLogical(view, drawnTextRuns(h.calls));
+  // The draws in the order the rule walked them, in the canvas pixels it sorted
+  // and compared them in; the parts a run takes are placed in logical units.
+  const ordered = textDraws(h.calls)
+    .filter((draw) => draw.text.length > 0)
+    .sort((a, b) => a.y - b.y || a.left - b.left);
+
+  const spelled: TextRun[] = [];
+  let next = 0;
+  /** The last draw taken as a part, which a restrike repeats. */
+  let last: TextDraw | undefined;
+  for (const run of runs) {
+    const parts: TextDraw[] = [];
+    let at = 0;
+    while (at < run.text.length && next < ordered.length) {
+      const member = ordered[next];
+      if (last !== undefined && restrikes(member, last)) {
+        next += 1;
+      } else if (run.text.startsWith(member.text, at)) {
+        parts.push(member);
+        at += member.text.length;
+        next += 1;
+        last = member;
+      } else if (run.text[at] === " ") {
+        // A space the rule wrote at a word gap, which no draw spelled.
+        at += 1;
+      } else {
+        break;
+      }
+    }
+    if (at !== run.text.length || parts.length === 0) {
+      return runs.map((each) => ({ ...each, parts: [{ ...each }] }));
+    }
+    spelled.push({ ...run, parts: allInLogical(view, parts) });
+  }
+  return spelled;
+}
+
+/** How far apart two draws' baselines may sit and still be one glyph struck twice. */
+const RESTRIKE_BASELINE_SLACK = 0.75;
+
+/** How far a draw may sit from the one it repeats and still be a restrike of it. */
+const RESTRIKE_ANCHOR_SLACK = 0.5;
+
+/**
+ * Whether `draw` strikes `last` again where it already stands: the same text at
+ * the same anchor, within the slacks the shared merge rule folds a restrike by,
+ * both in the canvas pixels the rule compared them in. An outlined glyph is
+ * drawn twice, `strokeText` then `fillText`, and the rule keeps the run
+ * spelling it once.
+ */
+function restrikes(draw: TextDraw, last: TextDraw): boolean {
+  return (
+    draw.text === last.text &&
+    Math.abs(draw.y - last.y) <= RESTRIKE_BASELINE_SLACK &&
+    Math.abs(draw.left - last.left) <= RESTRIKE_ANCHOR_SLACK
+  );
 }
 
 /** Forget every draw call recorded so far, so a check reads its own frame alone. */

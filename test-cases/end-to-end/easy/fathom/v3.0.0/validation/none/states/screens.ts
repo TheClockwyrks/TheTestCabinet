@@ -19,6 +19,16 @@
 //   folded to upper case for the same reason: `specs/ui.md` states the copy in
 //   capitals and says nothing about case.
 //
+//   AND THE RUNS READ ARE THE LOGICAL ONES, NEVER THE `fillText` SPLIT. A build
+//   that letter-spaces a heading draws one glyph per call, which is the only
+//   portable way to letter-space canvas text, and `specs/ui.md` fixes the copy a
+//   screen shows while leaving its spacing to the build. The shared harness's
+//   `drawnTextLines` merges side-by-side draws on one baseline back into the run
+//   they spell, so `FATHOM` drawn a glyph at a time reads as `FATHOM` rather than
+//   as `F | A | T | H | O | M`. Every raw string is a substring of its run, so
+//   the merge can only add a match and never take one away. `textRuns` stays the
+//   raw split for the readers that count draws rather than read them.
+//
 //   HOW LONG DID A SCREEN HOLD, AND DID ANYTHING MOVE BEHIND IT? `specs/ui.md`
 //   times the countdown and the cleared interstitial on "the simulation's own
 //   accumulated time", which is `simTime`, and fixes what advances on each
@@ -32,6 +42,8 @@
 // presses is one `specs/movement.md` binds.
 
 import { assertMatches } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
+import { drewText as spelledText } from "../case-harness/text";
 import { ARROW_KEY, BINDINGS } from "../constants";
 import { stageCatch } from "../fixtures";
 import type { DrawCall, FathomSnapshot, Harness } from "../harness";
@@ -74,17 +86,37 @@ export function textRuns(ops: readonly DrawCall[]): string[] {
   );
 }
 
-/** Every run the frame drew, folded to upper case and joined for one reading. */
-export function drawnText(ops: readonly DrawCall[]): string {
-  return textRuns(ops).join(" | ").toUpperCase();
+/**
+ * Every logical run the frame spelled, in reading order down the frame.
+ *
+ * The shared harness's `drawnTextLines`, which coalesces a run drawn a glyph at a
+ * time back into the string it spells (the header says why). It needs each text
+ * call to carry its measured width and alignment, which this harness's recorder
+ * attaches; without them nothing merges and this is exactly {@link textRuns}.
+ */
+export function textLines(ops: readonly DrawCall[]): string[] {
+  return drawnTextLines(ops);
 }
 
-/** The frame drew `text` somewhere in some run of text, ignoring case. */
+/** Every run the frame drew, folded to upper case and joined for one reading. */
+export function drawnText(ops: readonly DrawCall[]): string {
+  return textLines(ops).join(" | ").toUpperCase();
+}
+
+/**
+ * The frame drew `text` somewhere in some run of text, ignoring case.
+ *
+ * Read first through the shared harness's `drewText`, which folds the
+ * whitespace out of both sides and reads along each baseline, so a heading
+ * tracked wide enough to split at its skipped spaces is still found; the joined
+ * reading then states the failure in the frame's own words.
+ */
 export function assertDrew(
   ops: readonly DrawCall[],
   text: string,
   context: string,
 ): void {
+  if (spelledText(ops, text)) return;
   assertMatches(drawnText(ops), text.toUpperCase(), context);
 }
 

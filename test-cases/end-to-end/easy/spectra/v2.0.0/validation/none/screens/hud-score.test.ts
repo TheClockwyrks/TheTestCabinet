@@ -21,7 +21,7 @@
 // conformant compositions and `specs/ui.md` fixes neither, so both count.
 //
 // WHICH STRIP IT LANDED IN is read from the anchor the build drew the run at,
-// mapped through whatever transform was in force (`textDraws`), so a HUD drawn at
+// mapped through whatever transform was in force (`drawnTextRuns`), so a HUD drawn at
 // a translated origin reads the same as one drawn in stage coordinates. At the
 // harness's default shape the canvas is the stage at one pixel per unit, so the
 // anchor is directly comparable with the figures `specs/field.md` fixes.
@@ -38,7 +38,7 @@ import {
   captureStill,
   createHarness,
   startPosed,
-  textDraws,
+  drawnTextRuns,
   type Harness,
 } from "../harness";
 import { TOP_STRIP, insideBand, numberRuns } from "./reading";
@@ -67,7 +67,7 @@ it("draws the score in the top strip and follows it when it changes", async () =
     "the run is posed at the first score (specs/instrumentation.md)",
   );
 
-  const first = textDraws(await h.frameCalls());
+  const first = drawnTextRuns(await h.frameCalls());
   await captureStill(h, "score");
 
   const firstRuns = numberRuns(first, FIRST_SCORE);
@@ -91,7 +91,7 @@ it("draws the score in the top strip and follows it when it changes", async () =
     "the run is posed at the second score",
   );
 
-  const second = textDraws(await h.frameCalls());
+  const second = drawnTextRuns(await h.frameCalls());
   const secondRuns = numberRuns(second, SECOND_SCORE);
   assertGreaterThan(
     secondRuns.length,

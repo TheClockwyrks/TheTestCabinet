@@ -61,7 +61,7 @@ import {
   type Harness,
 } from "../harness";
 import { parkForager } from "../scene";
-import { frameOps, textRuns } from "../states/screens";
+import { frameOps, textLines } from "../states/screens";
 
 /** The three hunters, one of each stood on the board. */
 const KINDS = ["lanternjaw", "gloamfin", "flarefish"] as const;
@@ -86,7 +86,12 @@ const RING = 4;
 /** Ticks run before the readings, so the light has finished revealing. */
 const SETTLE_TICKS = 8;
 
-/** The runs `opened` drew that `shut` did not, counted rather than set-matched. */
+/**
+ * The runs `opened` drew that `shut` did not, counted rather than set-matched.
+ *
+ * Logical runs, so an overlay that letter-spaces a figure still reports it as
+ * one figure rather than as a column of digits a `|` apart.
+ */
 function added(shut: readonly string[], opened: readonly string[]): string {
   const left = [...shut];
   const extra: string[] = [];
@@ -138,9 +143,9 @@ it("draws every fact the specification names, and reading it changes nothing", a
 
   const before = await h.snapshot();
 
-  const shut = textRuns(await frameOps(h));
+  const shut = textLines(await frameOps(h));
   await h.tap(OVERLAY_KEY);
-  const drawn = added(shut, textRuns(await frameOps(h)));
+  const drawn = added(shut, textLines(await frameOps(h)));
   // Before the assertions, so a failing check still leaves the overlay it read.
   await captureStill(h, "sources");
   const after = await h.snapshot();

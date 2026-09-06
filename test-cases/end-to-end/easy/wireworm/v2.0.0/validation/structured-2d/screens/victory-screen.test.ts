@@ -32,7 +32,7 @@ import {
   canvasPixels,
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextForms,
   drewText,
   pixelsChanged,
   resetTo,
@@ -94,7 +94,9 @@ it("reports the score, the twelve levels cleared, the lives and both ending item
   await h.advance(1);
   captureStill(h, "victory");
 
-  const copy = drawnText(h.calls).join("  ");
+  // Both as the calls split the copy and as the runs it spells, because the
+  // figure is held to a boundary on both sides (`drawnTextForms`).
+  const copy = drawnTextForms(h.calls).join("  ");
   assertMatches(
     copy,
     drawnFigure(RUN_SCORE),

@@ -23,7 +23,7 @@ import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
+  drawnTextForms,
   resetTo,
   type Harness,
 } from "../harness";
@@ -57,7 +57,9 @@ it("names SPACE, ARROWS and WASD as standalone words", async () => {
   await h.advance(1);
   captureStill(h, "howto");
 
-  const texts = drawnText(h.calls);
+  // Both as the calls split the copy and as the runs it spells, because each
+  // key is held to a boundary on both sides (`drawnTextForms`).
+  const texts = drawnTextForms(h.calls);
   assertGreaterThan(texts.length, 0, "the how-to screen draws text");
   for (const word of KEY_WORDS) {
     const standalone = new RegExp(`\\b${word}\\b`, "i");

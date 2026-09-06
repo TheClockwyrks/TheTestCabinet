@@ -60,7 +60,7 @@ import {
   drewText,
   isolate,
   openLevelUp,
-  textDraws,
+  placedRuns,
   type Harness,
 } from "../harness";
 import { anchorY, fillEverySlot, lowestAnchorY } from "./stage";
@@ -108,7 +108,7 @@ it("draws a weapon's, a passive's, and lamp oil's line beneath the offers", asyn
     `the overlay drew the highlighted weapon's line ${JSON.stringify(line)} (specs/ui.md, levelup)`,
   );
 
-  const draws = textDraws(calls);
+  const draws = placedRuns(calls);
   const listBottom = NAMES.map((name) => {
     const at = lowestAnchorY(draws, name);
     assertNotNull(at, `where the offer ${name} was drawn`);

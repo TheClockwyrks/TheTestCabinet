@@ -61,7 +61,7 @@ import {
   type Harness,
   type TowerType,
 } from "../harness";
-import { readPanel, textsOf } from "./read";
+import { readPanel, spellingsOf } from "./read";
 
 /** The five emitters specs/hud.md has reading as hitting ground and air. */
 const GROUND_AND_AIR: readonly TowerType[] = [
@@ -103,7 +103,14 @@ const MONEY = 9999;
 const LIVES = 17;
 const WAVE = 3;
 
-/** A reading's runs, normalized so two spellings of one line compare equal. */
+/**
+ * A reading's runs, normalized so two spellings of one line compare equal.
+ *
+ * Over the coalesced runs and the raw spans they were spelled from both
+ * (`spellingsOf`): the sets are compared for EQUAL members, so a targeting read
+ * that merged into a neighbouring label on one panel is still found as its own
+ * draw.
+ */
 function linesOf(texts: readonly string[]): Set<string> {
   return new Set(
     texts.map((text) => text.trim().replace(/\s+/g, " ").toLowerCase()),
@@ -145,7 +152,7 @@ it("reads the three targeting classes apart, on the hover panel and the inspecto
   for (const type of TOWER_TYPES) {
     h.debug.setHoverShop(type);
     const { info } = await readPanel(h);
-    hovered.set(type, linesOf(textsOf(info)));
+    hovered.set(type, linesOf(spellingsOf(info)));
   }
   h.debug.setHoverShop(null);
 
@@ -156,7 +163,7 @@ it("reads the three targeting classes apart, on the hover panel and the inspecto
     h.debug.setSelected(id);
     const { info } = await readPanel(h);
     if (type === AIR_ONLY) captureStill(h, "targeting");
-    selected.set(type, linesOf(textsOf(info)));
+    selected.set(type, linesOf(spellingsOf(info)));
     h.debug.setSelected(null);
     h.debug.removeTower(id);
   }

@@ -10,6 +10,8 @@
 // area sits is the build's: no text of the form the specification fixes for the
 // readout, `x2` through `x5`, appears anywhere. `×` is accepted beside `x`
 // because a build is free to set the multiplier with the multiplication sign.
+// The text read is the LOGICAL runs the frame spelled (`drawnTextLines`), so a
+// readout letter-spaced into an `x` and a `2` a call apart is still found.
 //
 // The window is posed closed as well as the multiplier at one, which is the state
 // specs/scoring.md pairs them in: a round opens with `M` at `1` and the window
@@ -17,12 +19,12 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
+import { drawnTextLines } from "../case-harness/text";
 import {
   HOME_HEAD,
   captureStill,
   chainFrom,
   createHarness,
-  drawnText,
   poseScene,
   type Harness,
 } from "../harness";
@@ -55,7 +57,7 @@ it("draws no multiplier readout while M is one", async () => {
   captureStill(h, "empty");
 
   assertLength(
-    drawnText(calls).filter((run) => MULTIPLIER.test(run)),
+    drawnTextLines(calls).filter((run) => MULTIPLIER.test(run)),
     0,
     "runs of text reading as a multiplier",
   );

@@ -35,7 +35,7 @@
 // pair rather than a `3` somewhere on the screen.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { textDraws, toDrawCall, type RecordedOp } from "../case-harness/index";
+import { drawnTextRuns } from "../case-harness/index";
 import { assertEqual, assertLength, fail } from "../assert";
 import {
   GRIP_MAX_RATE,
@@ -103,10 +103,20 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** Every line of text the frame the page last drew put on its readout layer. */
+/**
+ * Every line of text the frame the page last drew put on its readout layer.
+ *
+ * The runs are the LOGICAL ones the frame spells, each placed where its first
+ * draw was, never the `fillText` split: a build that letter-spaces a label or
+ * a figure draws a glyph per call, which is the only portable way to
+ * letter-space canvas text, and a line assembled from those glyphs reads `1 2`
+ * where the screen says `12`. `screenCalls` carries the measured geometry the
+ * shared merge rule (`case-harness/text.ts`) needs to put side-by-side glyphs
+ * on one baseline back together, and every raw string is a substring of its
+ * run, so coalescing can only add a match.
+ */
 async function readoutLines(harness: Harness): Promise<string[]> {
-  const ops = (await harness.screenOps()) as RecordedOp[];
-  const draws = textDraws(ops.map(toDrawCall));
+  const draws = drawnTextRuns(await harness.screenCalls());
   const lines: string[] = [];
   for (const draw of draws) {
     const near = draws

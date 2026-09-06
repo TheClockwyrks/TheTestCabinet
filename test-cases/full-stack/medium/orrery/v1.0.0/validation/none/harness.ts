@@ -119,6 +119,14 @@ const kit = createCaseHarness<OrrerySnapshot, OrrerySurface>({
   // `specs/assets.md` requires every one of them decoded before that frame, so
   // the wait is the generous one rather than the short one.
   surfaceTimeoutMs: 15_000,
+  // Measure every text call a frame made (its width under the font in force,
+  // and its alignment), because a check reads a screen's copy off the LOGICAL
+  // RUNS the frame spells and not off the `fillText` split: a build that
+  // letter-spaces a heading draws one glyph per call, and the shared merge rule
+  // (`case-harness/text.ts`) needs each glyph's extent to fold them back into
+  // the word. Without this nothing merges, and a row's number drawn `1 2` a
+  // glyph at a time is two figures no reading of `drawing.ts`'s runs would find.
+  measureText: true,
   projectRoot: PROJECT_ROOT,
 });
 

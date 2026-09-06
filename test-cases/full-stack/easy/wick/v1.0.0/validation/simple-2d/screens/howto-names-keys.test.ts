@@ -43,8 +43,8 @@ import { assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnText,
   poseScene,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -80,7 +80,11 @@ it("names the arrows, WASD, Enter, Space, Escape, P, M, and the mouse", async ()
 
   const { calls } = await h.frameDraw();
   captureStill(h, "howto");
-  const text = drawnText(calls).join(" ");
+  // The raw calls and the logical runs they spell, joined: a key a build
+  // letter-spaces is still its name off the runs, and a key drawn as its own
+  // call a space before its action, which the run rule merges into `PPause`,
+  // still stands alone as the raw call.
+  const text = textReadings(calls).join(" ");
 
   assertDeepEqual(
     NAMED.filter(([, pattern]) => !pattern.test(text)).map(([name]) => name),

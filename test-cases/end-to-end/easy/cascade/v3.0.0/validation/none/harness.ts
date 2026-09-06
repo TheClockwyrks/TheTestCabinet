@@ -94,7 +94,7 @@ import {
   IDENTITY,
   apply,
   createCaseHarness,
-  drawnText,
+  drawnTextLines,
   mouseGlide,
   mousePress,
   mouseRelease,
@@ -853,6 +853,8 @@ export {
   closeWorkerBrowser,
   colorDistance,
   drawnText,
+  drawnTextLines,
+  drawnTextRuns,
   drewText,
   luminance,
   mouseGlide,
@@ -883,11 +885,16 @@ export { DEFAULT_REPLAY_BACKGROUND as REPLAY_BACKGROUND } from "./case-harness/i
 /* -------------------------------------------------------------------------- */
 //
 // What a frame drew is the shared harness's reading — `drawnText`, `drewText`,
-// `textDraws`, `callsTo` and `setsOf` are re-exported above and behave the same
-// in every engineless project. The two below are Cascade's own: one reads a
-// STANDALONE word rather than a substring, and the other reads the boxes of the
-// shapes a frame painted, which is how the `table` group finds the cards without
-// requiring the build to have drawn them as rectangles.
+// `drawnTextLines`, `drawnTextRuns`, `textDraws`, `callsTo` and `setsOf` are
+// re-exported above and behave the same in every engineless project. Copy is
+// read off the LOGICAL RUNS a frame spells (`drewText`, `drawnTextLines`,
+// `drawnTextRuns`) and never off the `fillText` split: a build that
+// letter-spaces a heading draws one glyph per call, and the specification fixes
+// the words while leaving their spacing to the build. The two below are
+// Cascade's own: one reads a STANDALONE word rather than a substring, and the
+// other reads the boxes of the shapes a frame painted, which is how the `table`
+// group finds the cards without requiring the build to have drawn them as
+// rectangles.
 
 /**
  * Whether the frame drew `word` as a STANDALONE token, ignoring case.
@@ -896,13 +903,20 @@ export { DEFAULT_REPLAY_BACKGROUND as REPLAY_BACKGROUND } from "./case-harness/i
  * a word rather than as a substring — the how-to screen's `ACE`, `KING`, `STOCK`
  * and `DOUBLE-CLICK`, which `HOWTO_TOKENS` holds. A screen reading "restocking"
  * contains `stock` and does not name the pile the specification named.
+ *
+ * Read off the logical runs the frame spells, like `drewText`: `S T O C K` drawn
+ * a glyph per call is the word, and a match against the `fillText` split would
+ * find five one-letter runs and no word among them. The harness measures every
+ * text call, so the shared merge rule (`case-harness/text.ts`) can fold them
+ * back together; every raw string is a substring of its run, so this only ever
+ * adds a match.
  */
 export function drewWord(calls: readonly DrawCall[], word: string): boolean {
   const pattern = new RegExp(
     `(^|[^A-Za-z0-9])${word.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9]|$)`,
     "i",
   );
-  return drawnText(calls).some((drawn) => pattern.test(drawn));
+  return drawnTextLines(calls).some((line) => pattern.test(line));
 }
 
 /**

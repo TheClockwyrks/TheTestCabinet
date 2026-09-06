@@ -10,9 +10,9 @@
 // `specs/assets.md` is emphatic that "every mote, filament, glyph, hub, gripper,
 // mount, and aperture on screen is a produced sprite".
 //
-// ONE LIST SHAPE, THREE RECORDERS. Under no engine the operations come from the
-// injected recorder the shared harness installs; under either engine they come
-// from a proxy this project's `harness.ts` puts over the real context. Both
+// ONE LIST SHAPE, TWO RECORDERS. Under no engine the operations come from the
+// injected recorder the shared harness installs in the page; under either engine
+// they come from the proxy the shared engine kit puts over the real context. Both
 // normalize to {@link DrawCall} — and both replace a bitmap argument with an
 // {@link ImageRef}, so a source is identified by its per-harness identity and its
 // natural size rather than by a path. A path is the wrong key on purpose: a
@@ -25,6 +25,12 @@
 // and draw at the origin, so where a call landed is only known once the transform
 // in force at that call is applied. Each walk below carries that state through
 // `save`/`restore` and every transform operation.
+
+import type { TextGeometry } from "./case-harness/draw-calls";
+import {
+  drawnTextRuns as coalescedTextRuns,
+  drewText as spelledText,
+} from "./case-harness/text";
 
 /* -------------------------------------------------------------------------- */
 /* The transform                                                              */
@@ -137,10 +143,24 @@ export function scaleOf(m: Matrix): number {
 /* The operations                                                             */
 /* -------------------------------------------------------------------------- */
 
-/** One recorded operation on the 2D context, in the order the render made it. */
+/**
+ * One recorded operation on the 2D context, in the order the render made it.
+ *
+ * A text call carries the shared harness's `TextGeometry` when the project asked
+ * for measurement: the width under the font in force at the call and the
+ * alignment that places the run about its anchor, which is what the shared merge
+ * rule (`case-harness/text.ts`) needs to fold a heading drawn one glyph per call
+ * back into the word it spells. Under no engine the shared harness measures each
+ * call after the fact, in the page (`measureText: true` in `harness.ts`'s
+ * config); under either engine its recorder measures it on the real context at
+ * the moment of the call and carries the transform in force as well
+ * (`recorder: { measureText: true }`). The same type on purpose, so the shared
+ * readings accept these calls unchanged.
+ */
 export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[] }
+  | { kind: "call"; method: string; args: unknown[]; text?: TextGeometry }
   | { kind: "set"; property: string; value: unknown };
+export type { TextGeometry };
 
 /**
  * A bitmap source a frame named.
@@ -437,8 +457,24 @@ export function distinctSources(calls: readonly DrawCall[]): ImageRef[] {
 // build presents them is the build's: a menu item is commonly drawn with a
 // selection marker or padding around it. Requiring the exact run would fail a
 // screen showing precisely the right words.
+//
+// AND COPY IS NEVER READ OFF THE `fillText` SPLIT. `specs/assets.md` puts every
+// word on the stage on the frame as drawn text and fixes no more — "Which
+// typeface carries them is yours" — and letter spacing is not portable, so a
+// build that letter-spaces a heading draws one glyph per call. Two readings
+// stand side by side here for that reason. {@link textDraws} and {@link textIn}
+// answer ONE ENTRY PER CALL, which is what a count of marks in a cell or a
+// readout held clear of a region asks for. {@link drawnTextRuns},
+// {@link drawnTextLines} and {@link textRunsIn} answer the LOGICAL RUNS the
+// frame spells: the shared merge rule (`case-harness/text.ts`) folds side-by-side
+// draws on one baseline back into the string they spell, using the width and
+// alignment the recorder measured on each call. Every raw string is a substring
+// of the run it belongs to, so a reading of the runs can only ever ADD a match.
+// A reader that matches copy against a single draw — a row's number, a readout's
+// figure, an identifier on a part — reads the runs, or a row drawn `1 2` a glyph
+// at a time never shows the number `12`.
 
-/** Every string the frame drew, through `fillText` or `strokeText`. */
+/** Every string the frame drew, through `fillText` or `strokeText`. RAW. */
 export function drawnText(calls: readonly DrawCall[]): string[] {
   return [
     ...callsTo(calls, "fillText"),
@@ -446,10 +482,15 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
   ].flatMap((args) => (typeof args[0] === "string" ? [args[0]] : []));
 }
 
-/** Whether the frame drew `text` as part of some run of text, ignoring case. */
+/**
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
+ *
+ * Read off {@link drawnTextLines} and never off the raw calls, for the reason in
+ * this section's header: a heading drawn a glyph at a time is still the heading.
+ */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return spelledText(calls, text);
 }
 
 /** One run of text a frame drew, and where it drew it. */
@@ -479,16 +520,76 @@ export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
   return draws;
 }
 
-/** Every run of text the frame drew whose anchor lies inside a rectangle. */
+/** Whether a draw's anchor lies inside a rectangle. */
+function anchoredIn(
+  draw: TextDraw,
+  region: { x: number; y: number; w: number; h: number },
+): boolean {
+  return (
+    draw.x >= region.x &&
+    draw.x < region.x + region.w &&
+    draw.y >= region.y &&
+    draw.y < region.y + region.h
+  );
+}
+
+/**
+ * Every text draw whose anchor lies inside a rectangle. ONE ENTRY PER CALL: the
+ * reading for a count of marks, or for a draw held clear of a region. A reader
+ * matching copy inside the region wants {@link textRunsIn}.
+ */
 export function textIn(
   calls: readonly DrawCall[],
   region: { x: number; y: number; w: number; h: number },
 ): TextDraw[] {
-  return textDraws(calls).filter(
-    (draw) =>
-      draw.x >= region.x &&
-      draw.x < region.x + region.w &&
-      draw.y >= region.y &&
-      draw.y < region.y + region.h,
-  );
+  return textDraws(calls).filter((draw) => anchoredIn(draw, region));
+}
+
+/**
+ * The frame's text draws coalesced into the logical runs they spell, each placed
+ * as {@link textDraws} places its first draw.
+ *
+ * The shared harness's `drawnTextRuns` decides the merge — same baseline, side by
+ * side, a gap no wider than the run's own mean advance allows — and places a run
+ * at the anchor of its first draw, mapped through the same transform walk
+ * {@link textDraws} makes. The one thing the shared reading does not carry is
+ * the rotation in force, so it is looked up from this project's own draw at that
+ * anchor: a run is the draw it starts with, turned however that draw was turned.
+ *
+ * A PARTITION of the frame's non-empty text draws: a run that was never split
+ * comes back exactly as {@link textDraws} reports it, so on a frame no build
+ * letter-spaced the two readings are the same list.
+ */
+export function drawnTextRuns(calls: readonly DrawCall[]): TextDraw[] {
+  const angles = new Map<string, number>();
+  for (const draw of textDraws(calls)) {
+    const key = `${draw.x},${draw.y}`;
+    if (!angles.has(key)) angles.set(key, draw.angle);
+  }
+  return coalescedTextRuns(calls).map((run) => ({
+    text: run.text,
+    x: run.x,
+    y: run.y,
+    angle: angles.get(`${run.x},${run.y}`) ?? 0,
+  }));
+}
+
+/** Every logical run of text the frame spelled, as the strings it spells. */
+export function drawnTextLines(calls: readonly DrawCall[]): string[] {
+  return drawnTextRuns(calls).map((run) => run.text);
+}
+
+/**
+ * Every logical run of text whose anchor lies inside a rectangle.
+ *
+ * The reading for copy inside a region — a figure on the readout, the challenge's
+ * name in the heading, the identifier in a row's label. A run is anchored where
+ * its first draw was, so a run that starts inside the region is inside it, as a
+ * single-call draw of the same words would be.
+ */
+export function textRunsIn(
+  calls: readonly DrawCall[],
+  region: { x: number; y: number; w: number; h: number },
+): TextDraw[] {
+  return drawnTextRuns(calls).filter((draw) => anchoredIn(draw, region));
 }

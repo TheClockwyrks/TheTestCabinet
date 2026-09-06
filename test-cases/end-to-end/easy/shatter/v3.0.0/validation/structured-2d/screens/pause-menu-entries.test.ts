@@ -14,8 +14,9 @@
 // is a menu that discards a run when the player meant to carry on.
 //
 // THE ORDER IS A PLACEMENT, NOT A DRAW ORDER: the reading is where each entry's
-// glyphs LANDED, through `harness.ts`'s `drawnTextSpans`, so which call a build
-// happens to issue first changes nothing.
+// glyphs LANDED, through `harness.ts`'s `spelledTextRuns`, so which call a build
+// happens to issue first changes nothing, and neither does how many calls it
+// spelled an entry in.
 //
 // NO FIGURE IS FIXED FOR THE SPACING. `specs/ui.md` leaves "the layout of each
 // screen" to the build, so the check asserts the sign of each separation and

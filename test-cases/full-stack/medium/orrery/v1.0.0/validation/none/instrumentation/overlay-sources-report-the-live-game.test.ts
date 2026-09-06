@@ -25,7 +25,10 @@
 // so a figure the game's own readout already draws is still counted when the panel
 // draws it a second time. Nothing here reads a LABEL: the specification names the
 // facts, never the words a build prints beside them, and every figure below is
-// taken from `snapshot()` rather than written down.
+// taken from `snapshot()` rather than written down. The lines are the LOGICAL
+// runs each frame spells (`drawnTextLines`), not its `fillText` calls, so a
+// panel that letter-spaces a line still reports the value that line carries
+// rather than one character of it per line.
 //
 // THE NEGATIVE IS THE CHALLENGE'S NAME. "Quorum Zenith" is on the panel in the
 // second world and cannot be on it in the first, where no challenge is open — so
@@ -49,7 +52,7 @@ import {
   advanceFraction,
   captureReplay,
   createHarness,
-  drawnText,
+  drawnTextLines,
   openTitle,
   placePart,
   placeTrack,
@@ -109,9 +112,9 @@ function addedTexts(
  * frame in: the text the next frame gained, or, failing that, the text it lost.
  */
 async function panelLines(): Promise<string[]> {
-  const before = drawnText(await h.frameCalls());
+  const before = drawnTextLines(await h.frameCalls());
   await toggleOverlay(h);
-  const after = drawnText(await h.frameCalls());
+  const after = drawnTextLines(await h.frameCalls());
   const gained = addedTexts(after, before);
   const lost = addedTexts(before, after);
   assertTrue(

@@ -36,7 +36,7 @@ import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  drawnTextSpans,
+  drawnTextSpanForms,
   poseBoltAtTile,
   poseFoe,
   poseWorm,
@@ -125,8 +125,10 @@ it("draws the HUD readouts inside the HUD bar", async () => {
   const h = await board(MID_ROW);
   await h.advance(1);
 
-  // One frame has run, so every span below is one this frame drew.
-  const spans = drawnTextSpans(h);
+  // One frame has run, so every span below is one this frame drew — the calls
+  // and the runs they spell, so a readout letter-spaced a glyph per call is
+  // found in its run, placed at the baseline its glyphs share.
+  const spans = drawnTextSpanForms(h);
   const readouts = spans.filter(
     (span) =>
       span.text.includes(String(SCORE)) ||

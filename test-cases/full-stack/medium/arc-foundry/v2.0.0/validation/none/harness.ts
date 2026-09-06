@@ -216,6 +216,14 @@ const kit = createCaseHarness<FoundrySnapshot, DrivenFoundryDebugApi>({
   // so the call the build sees is the same one whether or not a check named a
   // seed of its own.
   defaultSeed: DEFAULT_SEED,
+  // Measure every text call a frame made (its width under the font in force,
+  // and its alignment), because a check reads a screen's copy off the LOGICAL
+  // RUNS the frame spells and not off the `fillText` split: a build that
+  // letter-spaces a heading draws one glyph per call, and the shared merge rule
+  // (`case-harness/text.ts`) needs each glyph's extent to fold them back into
+  // the word. Without this nothing merges and `ARC FOUNDRY` drawn a letter at a
+  // time is eleven strings no reading of the copy would find.
+  measureText: true,
   replayBackground: REPLAY_BACKGROUND,
   surfaceTimeoutMs: SURFACE_TIMEOUT_MS,
   projectRoot: PROJECT_ROOT,

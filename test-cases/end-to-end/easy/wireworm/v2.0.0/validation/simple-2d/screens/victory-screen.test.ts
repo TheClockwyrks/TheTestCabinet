@@ -32,7 +32,7 @@ import {
   captureStill,
   createHarness,
   drawFrame,
-  drawnText,
+  drawnTextForms,
   drewText,
   type Harness,
 } from "../harness";
@@ -110,7 +110,9 @@ it("reports the score, the twelve levels cleared, the lives and both ending item
   const drawn = await drawFrame(h);
   captureStill(h, "victory");
 
-  const copy = drawnText(drawn).join("  ");
+  // Both as the calls split the copy and as the runs it spells, because the
+  // figure is held to a boundary on both sides (`drawnTextForms`).
+  const copy = drawnTextForms(drawn).join("  ");
   assertMatches(
     copy,
     drawnFigure(RUN_SCORE),

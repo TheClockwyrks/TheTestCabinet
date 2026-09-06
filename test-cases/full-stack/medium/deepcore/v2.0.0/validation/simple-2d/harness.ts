@@ -136,6 +136,8 @@ import {
 } from "./case-harness/draw-calls";
 import {
   drawnText as rawDrawnText,
+  drawnTextLines,
+  drewText as spelledText,
   textDraws,
   type TextDraw,
 } from "./case-harness/text";
@@ -553,7 +555,9 @@ const kit = createEngineCaseHarness<
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
   surfaceRequirement: SURFACE_REQUIREMENT,
-  // The text readings below place a run about its anchor, so each text call is
+  // The text readings below place a run about its anchor, and `drewText` reads
+  // copy off the logical runs the shared harness merges side-by-side glyphs
+  // into — nothing merges without each draw's extent — so each text call is
   // measured and the transform in force at it recorded.
   recorder: { measureText: true },
   cueEvents: ["cue:played", "cue:looped"],
@@ -1484,11 +1488,13 @@ export async function driveFall(
 /* -------------------------------------------------------------------------- */
 //
 // The readings a check makes over what a frame left behind. Most are the
-// package's, taken under this project's own names; four are NOT, and each of the
-// four is a place where the package ships a reading of the same name that answers
-// a different question. Folding one into the other would silently move a
-// threshold rather than fail, so this file binds the reading Deepcore's verdicts
-// were established under and says which it is.
+// package's, taken under this project's own names; three are NOT (`DRAW_METHODS`,
+// `drawnPoints` and `imageDraws`), and each of the three is a place where the
+// package ships a reading of the same name that answers a different question.
+// Folding one into the other would silently move a threshold rather than fail,
+// so this file binds the reading Deepcore's verdicts were established under and
+// says which it is. `drewText` is no longer among them: it delegates to the
+// package's, reading the frame's logical runs.
 
 /** The radius the five-point colour cluster is spread over, in logical units. */
 const SAMPLE_RADIUS = 6;
@@ -1526,31 +1532,39 @@ export function sampleCell(
 
 /* ---- Reading one frame's render ------------------------------------------- */
 
+/**
+ * Every logical run of text the frame spelled, as the strings it spells: a
+ * letter-spaced heading drawn one glyph per call is ONE entry. The shared
+ * harness's reading, re-exported so a suite reads copy the way {@link drewText}
+ * does; {@link drawnText} below stays the raw split, one string per call.
+ */
+export { drawnTextLines };
+
 /** Every string the frame drew, through `fillText` or `strokeText`. */
 export function drawnText(calls: readonly DrawCall[]): string[] {
   return rawDrawnText(calls);
 }
 
 /**
- * Whether the frame drew `text` as part of some run of text, ignoring case.
+ * Whether the frame spelled `text` inside some logical run of text, ignoring
+ * case.
  *
  * Substring rather than equality on purpose: the copy a check asserts is the
  * case's own, but how a build presents it is the build's, and a menu entry is
  * commonly drawn with a selection marker or padding around it. Requiring the
  * exact run would fail a screen that shows precisely the right words.
  *
- * READ OFF THE RAW CALLS, AND NOT OFF THE PACKAGE'S LOGICAL RUNS. The package's
- * `drewText` coalesces the frame's text draws into runs first, so a heading
- * letter-spaced a glyph per `fillText` is found by the words it spells; this one
- * requires the words to be inside a single call. Every raw string is a substring
- * of the run it belongs to, so the package's reading can only ADD matches — which
- * is exactly why the two are not interchangeable here: this project asserts on
- * copy that is ABSENT as well as on copy that is present, and its twenty-two
- * call sites were decided under this reading.
+ * And read off the LOGICAL RUNS the frame spells, never off the `fillText`
+ * split. A build that letter-spaces a heading draws one glyph per call, which
+ * is the only portable way to letter-space canvas text, and specs/ui.md fixes
+ * the copy a screen carries while leaving its layout to the build. The recorder
+ * measures every text call, so the shared harness's merge rule
+ * (`case-harness/text.ts`) can coalesce side-by-side glyphs on one baseline back
+ * into the string they spell. Every raw string is a substring of the run it
+ * belongs to, so coalescing can only add a match and never take one away.
  */
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
-  const wanted = text.trim().toLowerCase();
-  return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+  return spelledText(calls, text);
 }
 
 /** One run of text a frame drew, placed in logical units. */

@@ -27,5 +27,20 @@
 // logical unit. A check that builds a harness at some other shape reads the
 // picture through `h.device` instead, and none of the points that use this module
 // does.
+//
+// THE FOUR PLACING POINTS READ `textRuns`, THE LOGICAL RUNS, AND NOT `textDraws`.
+// Each of them finds its run by the WORDS it carries before it asks where the run
+// is, and a build that letter-spaces a readout draws one glyph per call, which no
+// single call then names. The shared `drawnTextRuns` merges side-by-side draws on
+// one baseline back into the run they spell — off the width and alignment the
+// recorder attaches to every text call — keeping the anchor of the first draw and
+// growing the right edge, so the anchor a strip or a region is held against is
+// the one the build drew at either way, and a run drawn in one call comes back
+// exactly as `textDraws` reports it. `textDraws` stays exported, one entry per
+// call, for a reader that ever needs each draw's own extent.
 
-export { textDraws, type TextDraw } from "./case-harness/text";
+export {
+  drawnTextRuns as textRuns,
+  textDraws,
+  type TextDraw,
+} from "./case-harness/text";

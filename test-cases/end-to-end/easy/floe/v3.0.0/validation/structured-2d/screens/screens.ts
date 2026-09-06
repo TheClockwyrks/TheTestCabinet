@@ -36,7 +36,7 @@
 
 import { HUD_H } from "../constants";
 import {
-  drawnTextSpans,
+  drawnTextRuns,
   type Harness,
   type Screen,
   type TextSpan,
@@ -46,20 +46,28 @@ import {
 const APOSTROPHES = /[‘’ʼ´`]/g;
 
 /**
- * Every run of text ONE freshly rendered frame drew, placed in stage units.
+ * Every logical run of text ONE freshly rendered frame spelled, placed in stage
+ * units.
  *
  * The recorder's list is emptied first and exactly one frame is run, so what
  * comes back is that frame's own drawing and not the session's.
+ *
+ * THE RUNS ARE THE LOGICAL ONES, NOT THE `fillText` CALLS. A build that
+ * letter-spaces its title draws a glyph per call, which is the only portable way
+ * to letter-space canvas text, and `specs/ui.md` fixes the copy while leaving
+ * its typography to the build; {@link drawnTextRuns} coalesces side-by-side
+ * draws on one baseline back into the string they spell, so `F L O E` a glyph
+ * at a time reads as the title it is.
  */
 export async function frameText(h: Harness): Promise<TextSpan[]> {
   h.calls.length = 0;
   await h.advance(1);
-  return drawnTextSpans(h);
+  return drawnTextRuns(h);
 }
 
 /**
- * The runs of `spans` that were drawn over the strait, in the order they were
- * drawn.
+ * The runs of `spans` that were drawn over the strait, in reading order — down
+ * the frame, then across it — as {@link drawnTextRuns} returns them.
  *
  * Anchored at or below `HUD_H`, which is where `specs/strait.md` puts the strait
  * and `specs/ui.md` puts the screens.
@@ -107,7 +115,13 @@ function settings(text: string): string[] {
 }
 
 /**
- * `text` matched as a whole word: with no letter or digit against either end.
+ * `text` matched as a whole figure: with no digit against either end.
+ *
+ * THE BOUNDARY IS A DIGIT, NOT A LETTER OR A DIGIT. The runs a check reads are
+ * coalesced by the shared `drawnTextRuns`, which concatenates side-by-side draws
+ * verbatim, so a build that draws `SCORE` and then `1250` a measured space apart
+ * spells the one run `SCORE1250`; a letter boundary would refuse the figure it
+ * plainly reports. A digit boundary keeps every protection this reader is for.
  *
  * What the end screens' FIGURES are read with, so the `8` of "LEVELS CLEARED 8"
  * counts and the `8` of a score of `1834` does not, and so a level reached of `6`
@@ -126,7 +140,7 @@ export function standsAlone(text: string): RegExp {
   const wanted = settings(String(text))
     .map((setting) => setting.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
-  return new RegExp(`(^|[^A-Z0-9])(?:${wanted})([^A-Z0-9]|$)`, "i");
+  return new RegExp(`(^|[^0-9])(?:${wanted})([^0-9]|$)`, "i");
 }
 
 /**

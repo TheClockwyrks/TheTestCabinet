@@ -31,10 +31,10 @@ import {
   advanceTicks,
   captureStill,
   createHarness,
-  drawnText,
   drewText,
   hasToken,
   isolate,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -69,7 +69,11 @@ it("reads and draws the ended run's clock, level, and kills", async () => {
   assertEqual(ended.run.level, LEVEL, "run.level on the end screen");
   assertEqual(ended.run.kills, KILLS, "run.kills on the end screen");
 
-  const lines = drawnText(calls);
+  // The raw calls and the logical runs they spell, both (`textReadings`): a
+  // figure drawn a glyph per call is the number it is off the runs, and one
+  // drawn a narrow gap after its label, which the run rule merges into
+  // `KILLS143`, still stands alone as the raw call.
+  const lines = textReadings(calls);
   assertTrue(
     drewText(calls, clockText(END_TICK)),
     `the end screen drew the time survived, ${clockText(END_TICK)}`,

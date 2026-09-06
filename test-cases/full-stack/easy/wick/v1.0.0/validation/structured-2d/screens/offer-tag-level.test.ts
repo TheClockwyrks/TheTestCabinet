@@ -31,9 +31,9 @@ import { LEVEL_LABEL, MAX_WEAPON_LEVEL } from "../constants";
 import {
   captureStill,
   createHarness,
-  drawnText,
   isolate,
   openLevelUp,
+  textReadings,
   type Harness,
 } from "../harness";
 
@@ -78,7 +78,10 @@ it("tags a held Taper's offer with the level it would become", async () => {
 
   const tag = new RegExp(`${LEVEL_LABEL}\\s*${OFFERED_LEVEL}(?![\\w])`, "i");
   assertTrue(
-    drawnText(calls).some((line) => tag.test(line)),
+    // Both readings, so the tag is found whether the level was drawn a glyph
+    // at a time (the run) or a plain call the run rule merged into its
+    // neighbour (the raw call).
+    textReadings(calls).some((line) => tag.test(line)),
     `a run of text reading ${LEVEL_LABEL} ${OFFERED_LEVEL}, the level the offer would give Taper (specs/ui.md, levelup)`,
   );
 });

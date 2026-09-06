@@ -15,6 +15,16 @@
 // results are opened in turn, the runs of text each drew below its heading are
 // collected, and the heal's are taken less the other two's.
 //
+// UNDER TWO READINGS. The text below the heading is read once as the raw
+// `fillText` calls (`textDraws`) and once as the logical runs the frame spelled
+// (`placedRuns`), and the difference is taken under each. A build that
+// letter-spaces its copy draws one glyph per call, and per call the heal's
+// letters are cancelled by the same letters in the other results' copy, so the
+// runs are what find its line; but a set difference is not monotone under
+// coalescing in either direction — a heal line that merges with a footer every
+// result shares can vanish as a run while its raw call stood alone — so the
+// point passes when EITHER difference is non-empty.
+//
 // WHY A DIFFERENCE RATHER THAN AN INEQUALITY. Copy the overlay draws whatever
 // the result is — a footer, an instruction to press on — lands beneath the
 // heading too, so a heal frame carrying only that footer is a NON-EMPTY list,
@@ -50,16 +60,20 @@ import {
   holdWeapon,
   isolate,
   openChest,
+  placedRuns,
   textDraws,
   type Harness,
   type WickSnapshot,
 } from "../harness";
 import { lowestAnchorY, textBelow } from "./stage";
 
-/** What one posed chest left: its result, and the copy beneath its heading. */
+/**
+ * What one posed chest left: its result, and the copy beneath its heading
+ * under each reading — the raw calls first, then the logical runs.
+ */
 interface Opened {
   snapshot: WickSnapshot;
-  below: string[];
+  below: [calls: string[], runs: string[]];
 }
 
 let h: Harness;
@@ -79,10 +93,19 @@ async function open(pose: () => void, still: boolean): Promise<Opened> {
   const snapshot = await openChest(h);
   const { calls } = await h.frameDraw();
   if (still) captureStill(h, "heal");
-  const draws = textDraws(calls);
-  const heading = lowestAnchorY(draws, CHEST_TEXT);
+  const runs = placedRuns(calls);
+  // The heading's baseline, read off the runs: every raw call is a member of
+  // some run, and a run keeps its first draw's baseline, so a heading found
+  // per call is found here too.
+  const heading = lowestAnchorY(runs, CHEST_TEXT);
   assertNotNull(heading, `where ${CHEST_TEXT} was drawn`);
-  return { snapshot, below: textBelow(draws, heading as number, CHEST_TEXT) };
+  return {
+    snapshot,
+    below: [
+      textBelow(textDraws(calls), heading as number, CHEST_TEXT),
+      textBelow(runs, heading as number, CHEST_TEXT),
+    ],
+  };
 }
 
 it("reports a heal in text of its own that the other results do not carry", async () => {
@@ -117,12 +140,16 @@ it("reports a heal in text of its own that the other results do not carry", asyn
     "the chest's result over a weapon at its top level beside its recipe passive",
   );
 
-  const own = heal.below.filter(
-    (line) => !level.below.includes(line) && !evolve.below.includes(line),
+  const own = heal.below.map((lines, reading) =>
+    lines.filter(
+      (line) =>
+        !level.below[reading].includes(line) &&
+        !evolve.below[reading].includes(line),
+    ),
   );
   assertGreaterThanOrEqual(
-    own.length,
+    Math.max(...own.map((lines) => lines.length)),
     1,
-    `runs of text the heal drew beneath ${CHEST_TEXT} that the level and evolve results did not (specs/ui.md, chest)`,
+    `text the heal drew beneath ${CHEST_TEXT} that the level and evolve results did not, read as raw calls or as logical runs (specs/ui.md, chest)`,
   );
 });
