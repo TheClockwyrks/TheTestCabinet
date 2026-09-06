@@ -508,7 +508,6 @@ const kit = createEngineCaseHarness<
     instance: initialized as GameInstance<MeltdownSurface>,
 
     advanceSeconds: (duration: number) => base.advance(ticksFor(duration)),
-
   }),
 });
 
@@ -549,12 +548,17 @@ export const createHarness = kit.createHarness;
 
 /**
  * A harness on the {@link DRIVE_HZ} clock, for a check that needs minutes of game
- * time. Everything else about it is {@link createHarness}'s default.
+ * time. Everything else about it is {@link createHarness}'s default, except that
+ * the draw-call log is off: what these checks read is the game's state and the
+ * picture on the canvas, and recording every operation of thousands of frames
+ * costs about a third of the drive for a log none of them opens. A drive that
+ * does read the log asks for it back.
  */
 export function createDriveHarness(
   options: Omit<HarnessOptions, "clock"> = {},
 ): Promise<Harness> {
   return createHarness({
+    recordDrawCalls: false,
     ...options,
     clock: new ConstantClock(1000 / DRIVE_HZ),
   });

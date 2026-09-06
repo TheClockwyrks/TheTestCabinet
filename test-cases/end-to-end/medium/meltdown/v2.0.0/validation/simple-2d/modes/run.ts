@@ -208,29 +208,33 @@ export const ONSLAUGHT_SECONDS = 70;
  * of game time reaches the same state however it was divided into frames"
  * (specs/waves.md), and `instrumentation.render-free-core` is the point that
  * grades that claim, so a scenario is free to choose how finely it dices the game
- * time it needs. What this one needs is seventy seconds OF GAME TIME, which at the
- * suite's clock is eight thousand four hundred frames, each of them a full update
- * and a full render of a floor carrying a hundred units — twenty-five seconds of
- * one core on an idle machine, and four minutes of wall clock on a runner sharing
- * twenty cores between two hundred tasks, against a per-check ceiling. None of
- * that arithmetic is anything the point asserts.
+ * time it needs. What this one needs is seventy seconds OF GAME TIME on a floor
+ * filling with a hundred units, and every frame of it is a full update and a full
+ * render of that floor.
  *
- * `1/30` of a second still puts eighteen frames inside one `WAVE_SPAWN_INTERVAL`
- * (`0.6` s), so the release cadence this point counts is resolved eighteen times
- * over, and it is the same clock the structured-2d copy of this point has always
- * used. Nothing read here has a finer resolution than that: a unit is counted from
- * the roster it appears in, not from the frame it appeared on.
+ * A frame of a fifteenth of a second still puts nine frames inside one
+ * `WAVE_SPAWN_INTERVAL` (`0.6` s), so the release cadence this point counts is
+ * resolved nine times over. Nothing read here has a finer resolution than that: a
+ * unit is counted from the roster it appears in, not from the frame it appeared
+ * on.
  */
-export const ONSLAUGHT_HZ = 30;
+export const ONSLAUGHT_HZ = 15;
 
 /** Frames of {@link ONSLAUGHT_HZ} covering `duration` seconds of game time. */
 export function onslaughtFrames(duration: number): number {
   return Math.ceil(duration * ONSLAUGHT_HZ);
 }
 
-/** A harness whose clock is {@link ONSLAUGHT_HZ}, for the two onslaught points. */
+/**
+ * A harness on the onslaught's clock, keeping no log of the drawing operations
+ * its frames make: this scenario reads the roster and the picture, never what the
+ * render called.
+ */
 export function createOnslaughtHarness(): Promise<Harness> {
-  return createHarness({ clock: new ConstantClock(1000 / ONSLAUGHT_HZ) });
+  return createHarness({
+    clock: new ConstantClock(1000 / ONSLAUGHT_HZ),
+    recordDrawCalls: false,
+  });
 }
 
 export const ONSLAUGHT_TICKS = onslaughtFrames(ONSLAUGHT_SECONDS);
@@ -245,13 +249,12 @@ export const ONSLAUGHT_UNITS = HUNDRED_UNITS;
  * How often the onslaught is sampled: every other frame.
  *
  * Geometry rather than a tolerance. specs/modes.md paces the release at
- * `WAVE_SPAWN_INTERVAL` (`0.6`) seconds, which is eighteen frames of this
- * scenario's {@link ONSLAUGHT_HZ} clock, so a sample every other frame falls
- * between two releases nine times over and cannot land on a release and a phase
- * change at once. Nothing can be MISSED at any spacing: a unit held where it
+ * `WAVE_SPAWN_INTERVAL` (`0.6`) seconds, which is nine frames of
+ * {@link ONSLAUGHT_HZ}, so a sample every other frame falls between two releases
+ * four times over and cannot land on a release and a phase change at once. Nothing can be MISSED at any spacing: a unit held where it
  * arrived never leaves the roster, so a sample sees every unit released before it,
  * however many frames ago. What the spacing costs is only how promptly a unit is
- * held — at most two frames, a fifteenth of a second, in which a Mote covers four
+ * held — at most two frames of that clock, in which a Mote covers eight
  * logical units.
  */
 export const SAMPLE_EVERY = 2;

@@ -15,11 +15,11 @@
 // is the arrangement the rule is about: a unit already against the wall, with a
 // route that runs along it. Both vents are represented, so both assigned exhausts
 // are, and the flyer is here too because specs/mazing.md gives it a straight line
-// rather than a route and a straight line is the easier thing to overshoot. The
-// types are the slow ones — a Core at 30 units per second and a Hulk at 38 — so
-// the walking lasts the minute rather than being over in five seconds, with one
-// Sprint at 120 because the fastest unit is the one most likely to step through a
-// wall.
+// rather than a route and a straight line is the easier thing to overshoot. Most
+// of the types are the slow ones — a Core at 30 units per second and a Hulk at
+// 38 — so the wall is still being walked at the end of the window rather than
+// vacated in its first seconds, with one Sprint at 120 because the fastest unit
+// is the one most likely to step through a wall.
 //
 // THE ANTI-VACUITY LEG, AND WHY IT IS HERE. A floor on which nothing moves
 // satisfies a containment invariant perfectly, so the check would pass a build
@@ -76,8 +76,17 @@ import {
  */
 const OVERSHOOT_MAX = 1;
 
-/** How long the surge is watched, in seconds of game time. */
-const WATCH_SECONDS = 60;
+/**
+ * How long the surge is watched, in seconds of game time.
+ *
+ * Every unit here opens ON the wall the invariant is about, so a build that lets
+ * one through lets it through in the first strides; what the window has to be is
+ * long enough for each of them to walk a stretch of wall rather than a tile of
+ * it. Twenty seconds is two thousand four hundred frames of the suite's clock, in
+ * which the slowest unit posed covers six hundred logical units — most of the
+ * floor's width — and the fastest crosses the floor twice.
+ */
+const WATCH_SECONDS = 20;
 
 /**
  * Frames between two readings: a tenth of a second, in which the fastest unit in
@@ -93,9 +102,9 @@ const POLL_FRAMES = 12;
  * width.
  *
  * The anti-vacuity bound, and deliberately far below what a walking floor
- * produces — a single Core crossing the floor covers most of it on its own, and
- * ten units over a minute cover several thousand units between them. It is here
- * to fail a floor that never moved, not to measure a speed.
+ * produces — the Sprint alone covers two floor widths over the window, and the
+ * ten of them cover several thousand units between them. It is here to fail a
+ * floor that never moved, not to measure a speed.
  */
 const MIN_TOTAL_TRAVEL = FLOOR_W;
 
@@ -135,7 +144,10 @@ function outside(unit: UnitSnapshot): number {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  // Nothing here reads what was drawn — the reading is each centre off the
+  // snapshot, and the still is the canvas itself — so the drive keeps no log of
+  // the drawing operations the window's frames make.
+  h = await createHarness({ recordDrawCalls: false });
 });
 
 afterEach(() => {
