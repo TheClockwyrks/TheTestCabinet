@@ -251,8 +251,9 @@ A posed outcome sits on the precondition side of the
 [guardrail](#the-precondition-guardrail). The operation decides what the draw
 would have decided; the systems that follow from it run for real, and the
 validator reads where they land. A validator seeds nothing, reads no generator
-state, counts no draws, and compares no two runs for sameness. The design rules
-are in Writing Debug APIs and Validators, for
+state, counts no draws, and compares no two runs for sameness. It drives
+simulated time through the API's step and control operations and never waits
+on real time. The design rules are in Writing Debug APIs and Validators, for
 [the API](/guides/authoring/writing-debug-apis-and-validators/#random-draws-are-posed-as-outcomes)
 and for
 [the validators](/guides/authoring/writing-debug-apis-and-validators/#validators-pose-what-the-game-would-draw).
