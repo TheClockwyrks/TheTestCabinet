@@ -2,32 +2,31 @@
 //
 // `specs/instrumentation.md` makes `muted` a player preference a `reset` leaves
 // alone, and `specs/controls.md` has the mute action toggle "all audio" and
-// nothing else. So the requirement is that the simulation is untouched by it: one
-// identical scenario, driven once unmuted and once muted, has to reach exactly the
-// same state and raise exactly the same cues at exactly the same moments.
+// nothing else. So the requirement is that the simulation is untouched by it: a
+// cut driven while muted breaks its cell as `specs/character.md` says a cut does,
+// banks its ore as `specs/mining.md` says a broken ore cell does, the clock
+// `specs/instrumentation.md` has accumulate every update keeps accumulating, and
+// the cues `specs/assets.md` ties to those moments still sound at them.
 //
-// THE SCENARIO IS THE SAME ONE TWICE, not two similar ones. Both runs open from a
-// `reset`, lay the same floor and the same ore cell, stand the
-// miner on the same cell with its travel held, hold the same key until the cell
-// breaks, and then run the same span of game time. Everything the snapshot reports
-// about the miner, the bay and the clock is compared, and the cell that was cut is
-// read back too.
+// THE READING IS THE MUTED RUN AGAINST THE SPECIFICATION, not against an unmuted
+// one. Each figure the muted run is held to is a figure the specs state: the cell
+// reads as tunnel, the bay holds one unit of the ore at that ore's own weight, and
+// the game time run after the break is the game time that was driven. A build
+// that halts, slows or skips the world while muted misses one of them.
 //
-// AND THE CUES ARE COMPARED, which is the half the engineless project cannot
-// reach. The engine announces every play and loop start by name on a muted bus
-// exactly as it does on an unmuted one, only at `gain: 0` (`engine/audio.md`), so
-// the two runs' cue transcripts — each cue's name against the frame of its own run
-// it sounded on — must be identical. A build that stops asking for cues while
-// muted is caught here, and a player turning the sound back on mid-descent picks
-// up a game that never skipped a beat.
-//
-// The bed is started before either run is measured, so its one loop belongs to
-// neither transcript. The bus is muted with the mute action rather than posed,
+// AND THE CUES ARE READ, which is the half the engineless project cannot reach.
+// The engine announces every play and loop start by name on a muted bus exactly
+// as it does on an unmuted one, only at `gain: 0` (`engine/audio.md`), so the
+// `drill` cue must be audible while the cut is held and `ore-pickup` must sound
+// within a frame of the break, as `audio/drill-loop` and `audio/ore-pickup-cue`
+// read them unmuted. A build that stops asking for cues while muted is caught
+// here, and a player turning the sound back on mid-descent picks up a game that
+// never skipped a beat. The bus is muted with the mute action rather than posed,
 // because the engine owns the bit and the surface does not carry it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { PLAYABLE_COL_MIN } from "../constants";
-import { assertEqual } from "../assert";
+import { CUES, PLAYABLE_COL_MIN } from "../constants";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   ACTION_KEY,
   captureReplay,
@@ -35,13 +34,13 @@ import {
   driveCut,
   layFloor,
   layOre,
+  mineralOf,
   openScene,
   pinMiner,
   standOn,
-  type DeepcoreSnapshot,
   type Harness,
 } from "../harness";
-import { over, transcript, watchAudio, type AudioLog } from "./cues";
+import { audibleIn, playsIn, watchAudio } from "./cues";
 
 const ROW = 300;
 const COL = PLAYABLE_COL_MIN + 8;
@@ -51,76 +50,90 @@ const ORE = "voltite" as const;
 const AFTER_SECONDS = 2;
 const AFTER_FRAMES = 120;
 
-/** Everything about the run that muting must leave exactly as it was. */
-function outcome(snapshot: DeepcoreSnapshot, broke: boolean): string {
-  const { miner, cargo, satchel } = snapshot;
-  return JSON.stringify({
-    broke,
-    simTime: snapshot.simTime,
-    x: miner.x,
-    y: miner.y,
-    vx: miner.vx,
-    vy: miner.vy,
-    state: miner.state,
-    fuel: miner.fuel,
-    hull: miner.hull,
-    slotsUsed: cargo.slotsUsed,
-    loadKg: cargo.loadKg,
-    ore: cargo.ore,
-    satchel,
-  });
-}
+/**
+ * Decimal places the clock is held to over that span.
+ *
+ * `simTime` is a sum of the frames' deltas, so two correct builds can differ by
+ * the rounding of a hundred and twenty additions; a build whose clock stood
+ * still while muted is off by the whole span.
+ */
+const CLOCK_DIGITS = 3;
+
+/** Frames either side of the break the pickup cue may land on. */
+const SLACK = 1;
 
 let h: Harness;
-let log: AudioLog;
 
 beforeEach(async () => {
   h = await createHarness();
-  log = watchAudio(h);
 });
 
 afterEach(() => {
   h?.dispose();
 });
 
-it("reaches the same state and sounds the same cues muted and unmuted", async () => {
-  // The bed starts on the first frame the game runs, so it is started here rather
-  // than inside the first of the two runs, where it would land in one transcript
-  // and not the other.
+it("breaks the cell, banks the ore, runs the clock on and sounds the cues while muted", async () => {
   openScene(h);
   await h.advance(2);
+  await h.tap(ACTION_KEY.mute);
+  // The snapshot carries the game's copy of the engine's bit, refreshed every
+  // update, so one frame past the press is where it is read.
+  await h.advance(1);
+  const muted = h.snapshot().muted;
 
-  const dig = async (): Promise<{ outcome: string; cues: string[] }> => {
-    openScene(h);
-    layFloor(h, ROW);
-    layOre(h, COL, ROW, ORE);
-    standOn(h, COL, ROW);
-    pinMiner(h);
-    let broke = false;
-    const window = await over(h, async () => {
-      broke = (await driveCut(h, "down", { col: COL, row: ROW })).broke;
-      await h.advanceSeconds(AFTER_SECONDS, AFTER_FRAMES);
-    });
+  layFloor(h, ROW);
+  layOre(h, COL, ROW, ORE);
+  standOn(h, COL, ROW);
+  pinMiner(h);
+
+  const log = watchAudio(h);
+  const run = await captureReplay(h, "muted", async () => {
+    const from = h.frame();
+    const cut = await driveCut(h, "down", { col: COL, row: ROW });
+    const broke = h.frame();
+    await h.advance(SLACK);
+    // The span the clock is held to opens after the break has settled.
+    const rested = h.snapshot().simTime;
+    await h.advanceSeconds(AFTER_SECONDS, AFTER_FRAMES);
     return {
-      outcome: outcome(h.snapshot(), broke),
-      cues: transcript(log, window),
+      cut,
+      cutting: { from, to: broke },
+      broke,
+      rested,
+      after: h.snapshot(),
     };
-  };
-
-  const both = await captureReplay(h, "same", async () => {
-    const loud = await dig();
-    await h.tap(ACTION_KEY.mute);
-    await h.advance(1);
-    const muted = h.snapshot().muted;
-    const quiet = await dig();
-    return { loud, quiet, muted };
   });
 
-  assertEqual(both.muted, true, "specs/controls.md");
-  assertEqual(both.quiet.outcome, both.loud.outcome, "specs/controls.md");
+  const drilled = audibleIn(log, CUES.drill, run.cutting);
+  const picked = playsIn(log, CUES.orePickup, {
+    from: run.broke - SLACK - 1,
+    to: run.broke + SLACK,
+  });
+
+  assertEqual(muted, true, "specs/controls.md");
+  assertEqual(run.cut.broke, true, "specs/character.md");
+  assertEqual(run.cut.tile.kind, "tunnel", "specs/character.md");
+  assertEqual(run.after.cargo.ore[ORE], 1, "specs/mining.md");
+  assertEqual(run.after.cargo.slotsUsed, 1, "specs/mining.md");
   assertEqual(
-    both.quiet.cues.join(", "),
-    both.loud.cues.join(", "),
-    "specs/controls.md",
+    run.after.cargo.loadKg,
+    mineralOf(ORE).weightKg,
+    "specs/mining.md",
+  );
+  assertCloseTo(
+    run.after.simTime - run.rested,
+    AFTER_SECONDS,
+    CLOCK_DIGITS,
+    "specs/instrumentation.md: simTime accumulates the delta of every update, muted or not",
+  );
+  assertEqual(
+    drilled,
+    true,
+    "specs/assets.md: the drill cue plays while cutting",
+  );
+  assertGreaterThan(
+    picked.length,
+    0,
+    "specs/assets.md: the ore-pickup cue plays when an ore is banked",
   );
 });

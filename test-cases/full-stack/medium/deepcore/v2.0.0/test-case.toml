@@ -956,7 +956,7 @@ validation = { script = "generation/topsoil-clear.test.ts", outputs = [
 [[review.categories.items]]
 id = "resonite-node"
 title = "Exactly one Resonite node exists, in the rockbed"
-description = "Every generated mine holds exactly one material node holding resonite, and it sits at a minable cell of the rockbed band, in every generated mine at every world size."
+description = "Every generated mine, at every world size, holds exactly one material node holding resonite, and it sits at a minable cell of the rockbed band."
 domains = ["simulation"]
 failure_cap = "broken"
 # Automated validation: generate several mines at every size and count
@@ -968,7 +968,7 @@ validation = { script = "generation/resonite-node.test.ts", outputs = [
 [[review.categories.items]]
 id = "cryenite-node"
 title = "Exactly one Cryenite node exists, in the deepstone"
-description = "Every generated mine holds exactly one material node holding cryenite, and it sits at a minable cell of the deepstone band, in every generated mine at every world size."
+description = "Every generated mine, at every world size, holds exactly one material node holding cryenite, and it sits at a minable cell of the deepstone band."
 domains = ["simulation"]
 failure_cap = "broken"
 # Automated validation: generate several mines at every size and count
@@ -2596,7 +2596,7 @@ validation = { script = "supplies/explosives-cost-no-fuel.test.ts", outputs = [
 [[review.categories.items]]
 id = "quantum-teleporter-bounds"
 title = "The Quantum Teleporter drops the miner over the camp"
-description = "The Quantum Teleporter places the miner above the camp ground at a height drawn from 1 to 8 tiles with a downward speed drawn from 150 to 700 units per second, then lets the ordinary physics carry it down, so its landing obeys the fall-impact rule."
+description = "The Quantum Teleporter places the miner above the camp ground with its feet at a height drawn from 1 to 8 tiles above the ground line and a downward speed drawn from 150 to 700 units per second, then lets the ordinary physics carry it down, so its landing obeys the fall-impact rule."
 domains = ["simulation"]
 failure_cap = "passable"
 # Automated validation: use the teleporter from underground over many draws
@@ -4709,8 +4709,9 @@ title = "Muting changes nothing but the sound"
 description = "Muting silences the audio and changes nothing else: the simulation carries on and cues still fire at the same moments, so turning the sound back on mid-play picks up where the game is."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: drive one identical posed scenario muted and unmuted
-# and hold the resulting state and the cue events equal.
+# Automated validation: mute, then drive a posed cut and read that the cell
+# broke, the ore was banked and the clock ran on; under an engine, that the
+# drill and ore-pickup cues sounded at their moments.
 validation = { script = "audio/muted-play-continues.test.ts", outputs = [
   { id = "same", name = "The same dig muted and unmuted", kind = "replay" },
 ] }

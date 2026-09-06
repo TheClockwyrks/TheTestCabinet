@@ -132,8 +132,11 @@ miner on the way up.
 
 ## What is committed
 
-The best of twenty-four takes auditioned, at a cap of `1200`: a shaft sunk from
-the camp to row 32 (160 m), the bay filled to 15 of 15 slots at 244 kg, four ores
-worth 1,024 Credits on the counter, the hull untouched, and the climb landing on
-12 of 100 fuel — 38.7 seconds end to end. It scored 191 against a field whose
+The committed take was recorded by an earlier form of this driver, which
+auditioned twenty-four takes without the recorder and played the winner again
+under it; it has not been re-recorded since the driver took its present shape.
+At a cap of `1200` it is: a shaft sunk from the camp to row 32 (160 m), the bay
+filled to 15 of 15 slots at 244 kg, four ores worth 1,024 Credits on the counter,
+the hull untouched, and the climb landing on 12 of 100 fuel — 38.7 seconds end to
+end. It scored 191 against a field whose
 next best was 180.

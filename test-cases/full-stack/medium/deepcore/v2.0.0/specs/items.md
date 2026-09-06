@@ -37,9 +37,10 @@ Dynamite a radius of `1` cell, Plastic Explosives a radius of `2`.
 
 ## Teleporters
 
-- The Quantum Teleporter places the miner above the camp ground at a height drawn
-  uniformly from `1` to `8` tiles with a downward speed drawn uniformly from `150`
-  to `700` units per second, then lets the normal physics carry it down. The
+- The Quantum Teleporter places the miner above the camp ground with its feet at
+  a height drawn uniformly from `1` to `8` tiles above the ground line, with a
+  downward speed drawn uniformly from `150` to `700` units per second, then lets
+  the normal physics carry it down. The
   ordinary fall-impact rule applies to the landing, so a bad draw can kill a
   low-hull miner.
 - The Matter Transmitter places the miner standing on the camp ground at zero

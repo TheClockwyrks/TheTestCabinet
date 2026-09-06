@@ -35,11 +35,16 @@ import { bandOf, generatedMine, look } from "./mine-scan";
  * surfaces soonest and for the least work. The sweep is therefore wide at Quick
  * and narrower at the two deeper sizes, each of which costs proportionally more
  * to generate and read for the same one node.
+ *
+ * Every mine here is generated and read back through the browser, a round trip
+ * of tens of milliseconds a mine, so the sweep is sized to keep the check inside
+ * the seconds a validator is allowed rather than to the count an in-process
+ * engine project can afford.
  */
 const MINES_PER_SIZE: Readonly<Record<WorldSize, number>> = {
-  quick: 200,
-  standard: 24,
-  marathon: 12,
+  quick: 32,
+  standard: 6,
+  marathon: 3,
 };
 
 let h: Harness;
