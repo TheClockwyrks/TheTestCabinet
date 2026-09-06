@@ -31,8 +31,8 @@ type = "full-stack"
 # (specular reflection, english from the contact offset, an exit-angle clamp, and the
 # wave's ball speed) with a spelled-out decay-and-kick pipeline on every other
 # surface. Around that core sit three orbiting rings with per-wave speed formulas, a
-# seeded salvage-pod stream feeding five distinct effects, waves, lives, and six
-# screens — all of them exactly specified, with no physics to tune, no opponent to
+# salvage-pod draw at stated odds feeding five distinct effects, waves, lives, and
+# six screens — all of them exactly specified, with no physics to tune, no opponent to
 # model, and no subsystem large enough to need splitting out behind an interface.
 # What it measures is whether a build carries the specified loop through without
 # blurring a row. The produced-asset pass — two sprite sets and a sheet, three
@@ -319,9 +319,8 @@ tick_hz = 60
 source = "specs/overview.md.hbs"
 
 # The field: the 1000x1000 stage and its polar mapping, the geometry table with every
-# contact radius, the containment field and the planet, the order a tick resolves in,
-# and the determinism statement. Unbranched: the field is the same simulation under
-# every engine.
+# contact radius, the containment field and the planet, and the order a tick
+# resolves in. Unbranched: the field is the same simulation under every engine.
 [[spec]]
 source = "specs/field.md"
 
@@ -358,9 +357,9 @@ source = "specs/controls.md.hbs"
 [[spec]]
 source = "specs/assets.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# seedable core, an API to pose and inspect the game from code, and a read-only debug
-# overlay. Seeded for every run and framed as an ordinary developer affordance of the
+# The debugging and automation surface every build must expose: a render-free,
+# steppable core, an API to pose and inspect the game from code, and a read-only
+# debug overlay. Seeded for every run and framed as an ordinary developer affordance of the
 # game. It branches on the engine, for how the surface is reached, what shape its
 # operations take, and the `step`/`setAutoStep` pair only an engineless build carries
 # (under an engine the runtime's own clock is driven instead); the engineless branch
@@ -385,7 +384,7 @@ source = "specs/showcase.md.hbs"
 [[domain]]
 id = "gameplay"
 name = "Orbital Play"
-description = "The demolition game itself, and how it plays: the fixed-tick polar simulation, the deflector and its bounce pipeline, serving and losing balls, the three rings and their orbits, target contacts and destruction, the seeded salvage pods and the five effects they grant, scoring, waves, lives, and the screens' rules."
+description = "The demolition game itself, and how it plays: the fixed-tick polar simulation, the deflector and its bounce pipeline, serving and losing balls, the three rings and their orbits, target contacts and destruction, the salvage pods and the five effects they grant, scoring, waves, lives, and the screens' rules."
 
 [[domain]]
 id = "presentation"
@@ -431,7 +430,7 @@ description = "Everything a player sees and hears. The produced assets first: th
 # planet that never costs a ball, a deflector that does not turn, a bounce that
 # never resolves, a ball that cannot be served or launched, a session that cannot be
 # started, a lost ball that is never parked again); `scuffed` where a rule the game is built
-# on is noticeably wrong (a contact rule, a formula, a draw from the seeded stream,
+# on is noticeably wrong (a contact rule, a formula, the odds of the pod draw,
 # an effect that does not apply); `passable` where the fault is a tolerance, an edge
 # case, a ceiling or a secondary path; and `great` where it is a cosmetic detail (a
 # second key bound to an action a first key already covers, the distinctness of a
@@ -473,7 +472,7 @@ validation = { script = "instrumentation/debug-api-live.test.ts", outputs = [ { 
 [[review.categories.items]]
 id = "snapshot-shape"
 title = "Snapshot reports the full documented shape"
-description = "On a posed session holding balls, targets on every ring, a falling pod, a running effect timer, and the shield, snapshot returns every field specs/instrumentation.md documents with its documented type, including seed, interstitialTicks, and the nested paddle, balls, rings, pods, effects, and menu objects, with values matching what was posed."
+description = "On a posed session holding balls, targets on every ring, a falling pod, a running effect timer, and the shield, snapshot returns every field specs/instrumentation.md documents with its documented type, including nextPod, interstitialTicks, and the nested paddle, balls, rings, pods, effects, and menu objects, with values matching what was posed."
 domains = ["gameplay"]
 failure_cap = "broken"
 validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [ { id = "posed", name = "The Posed Session", kind = "image" } ] }
@@ -493,14 +492,6 @@ description = "From a thoroughly disturbed session, reset() returns the game to 
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/reset-restores.test.ts", outputs = [ { id = "reset", name = "The Boot State After Reset", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "seeded-replay-deterministic"
-title = "A seeded session replays to identical snapshots"
-description = "Two sessions given reset(seed) with the same seed, the same sequence of operations, and the same elapsed ticks report identical snapshots, including the same pods of the same kinds in the same order."
-domains = ["gameplay"]
-failure_cap = "passable"
-validation = { script = "instrumentation/seeded-replay-deterministic.test.ts", outputs = [ { id = "seeded", name = "A Seeded Session", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "set-screen-sets-the-screen"
@@ -664,11 +655,51 @@ validation = { script = "instrumentation/clear-pods.test.ts", outputs = [ { id =
 
 [[review.categories.items]]
 id = "spawn-pod"
-title = "spawnPod adds one falling pod off the generator"
-description = "spawnPod(kind, x, y) adds one pod of the named kind at (x, y) that falls radially inward at 120 units per second from the call onward, and the generator is not consumed, so the seeded pod sequence stays where it stands."
+title = "spawnPod adds one falling pod"
+description = "spawnPod(kind, x, y) adds one pod of the named kind at (x, y) that falls radially inward at 120 units per second from the call onward."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/spawn-pod.test.ts", outputs = [ { id = "falling", name = "Posed pods falling radially inward", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-next-pod-poses-the-kind"
+title = "setNextPod poses the kind the next draw sheds"
+description = "setNextPod(kind) with one of the five kind names reads back as nextPod, and the next destruction that makes a draw sheds a pod of exactly that kind."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-pod-poses-the-kind.test.ts", outputs = [ { id = "posed-shed", name = "A destruction shedding the posed kind", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-next-pod-none-sheds-nothing"
+title = "setNextPod(none) makes the next draw shed nothing"
+description = "After setNextPod(\"none\") the next destruction that makes a draw sheds no pod."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-pod-none-sheds-nothing.test.ts", outputs = [ { id = "posed-none", name = "A destruction shedding nothing under a posed none", kind = "replay" } ] }
+
+[[review.categories.items]]
+id = "set-next-pod-consumed-by-the-draw"
+title = "A draw consumes the posed outcome"
+description = "The destruction that sheds the posed outcome consumes it, so nextPod reads null afterwards and a following setNextPod poses the draw after."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-pod-consumed-by-the-draw.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by its draw", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "draw-pod-returns-an-outcome"
+title = "drawPod returns a draw's outcome"
+description = "drawPod() returns one of the five kind names or null on every call, the outcome of one pod draw."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/draw-pod-returns-an-outcome.test.ts", outputs = [ { id = "drawn", name = "The session the draws were made in", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "draw-pod-changes-nothing"
+title = "drawPod leaves the game as it stood"
+description = "drawPod() adds no pod and changes nothing else: a posed session's snapshot, a posed nextPod included, reads the same before and after a run of calls, and no cue sounds."
+domains = ["gameplay"]
+failure_cap = "passable"
+validation = { script = "instrumentation/draw-pod-changes-nothing.test.ts", outputs = [ { id = "unchanged", name = "The session unchanged by the draws", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-effect-ticks-arms"
@@ -721,18 +752,18 @@ validation = { script = "instrumentation/wave-advance-switch-resumes.test.ts", o
 [[review.categories.items]]
 id = "pod-spawn-switch-holds"
 title = "podSpawn off holds the pod draw"
-description = "With setPodSpawn(false) a destruction makes no pod draw and does not consume the generator, so no pod spawns and the seeded sequence stays where it stands."
+description = "With setPodSpawn(false) a destruction makes no pod draw, so no pod spawns even with a kind posed through setNextPod, and the posed outcome stays posed."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/pod-spawn-switch-holds.test.ts", outputs = [ { id = "held", name = "A destruction shedding no pod", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "pod-spawn-switch-resumes"
-title = "podSpawn back on resumes the seeded stream"
-description = "Turning setPodSpawn back on resumes the draw from the next destruction, taking the seeded sequence up exactly where it stood."
+title = "podSpawn back on resumes the pod draw"
+description = "Turning setPodSpawn back on resumes the draw from the next destruction, which sheds the outcome posed while the switch was off."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "instrumentation/pod-spawn-switch-resumes.test.ts", outputs = [ { id = "resumed", name = "The seeded pod draw resuming where it stood", kind = "replay" } ] }
+validation = { script = "instrumentation/pod-spawn-switch-resumes.test.ts", outputs = [ { id = "resumed", name = "The pod draw resuming from the next destruction", kind = "replay" } ] }
 
 [[review.categories.items]]
 id = "overlay-sources"
@@ -769,7 +800,7 @@ validation = { script = "instrumentation/overlay-off-at-start.test.ts", engines 
 [[review.categories.items]]
 id = "overlay-read-only"
 title = "The overlay reads the game without changing it"
-description = "Showing the overlay, letting it report over a stretch of ticks, and hiding it leaves the game exactly as an identical session without it: every diagnostic source is a pure read, so the two sessions' snapshots are identical."
+description = "Showing the overlay, letting it report over a stretch of rendered frames, and hiding it leaves the game exactly as it stood: every diagnostic source is a pure read, so the snapshot before the overlay was shown and the snapshot after it was hidden are identical."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The watched stretch the overlay reports over", kind = "replay" } ] }
@@ -1565,47 +1596,27 @@ failure_cap = "passable"
 validation = { script = "pierce/destruction-clears-the-wave.test.ts", outputs = [ { id = "clear", name = "A piercing destruction clearing the wave", kind = "replay" } ] }
 
 # --- Salvage pods -------------------------------------------------------------
-# The seeded draw, the pod in flight, and the two ways a flight ends. The draw
-# rules are validator-load-bearing: the same seed must shed the same pods, so
-# the stream, its consumption, and the kind table each stand as their own item.
+# The draw and its odds, the pod in flight, and the two ways a flight ends. The
+# two probabilities are decided by a bounded sample of the surface's `drawPod`,
+# which performs the one draw alone; everything else is posed through
+# `setNextPod` and read off the destruction tick.
 [[review.categories]]
 id = "pods"
 title = "Salvage Pods"
 [[review.categories.items]]
-id = "seeded-stream-reproducible"
-title = "The pod sequence is seeded and reproducible"
-description = "Two sessions from reset(seed) with the same seed and the same destructions in the same order shed the same pods, of the same kinds, in the same order."
-domains = ["gameplay"]
-failure_cap = "passable"
-validation = { script = "pods/seeded-stream-reproducible.test.ts", outputs = [ { id = "seeded-run", name = "Seeded run", kind = "replay" } ] }
-[[review.categories.items]]
-id = "shed-below-quarter"
-title = "A destruction sheds on a draw below 0.25"
-description = "Each destruction takes the stream's next value u1 at the moment it resolves and sheds a pod exactly when u1 < 0.25; at u1 >= 0.25 it sheds nothing."
+id = "sheds-one-in-four"
+title = "A destruction sheds a pod with probability 0.25"
+description = "Each destruction sheds one pod with probability 0.25 and sheds nothing otherwise: over a bounded sample of draws the shed fraction sits within six standard deviations of one in four."
 domains = ["gameplay"]
 failure_cap = "scuffed"
-validation = { script = "pods/shed-below-quarter.test.ts", outputs = [ { id = "shed", name = "Shedding draw", kind = "replay" }, { id = "no-shed", name = "Empty draw", kind = "replay" } ] }
-[[review.categories.items]]
-id = "no-shed-consumes-one"
-title = "A draw that sheds nothing consumes one value"
-description = "A destruction that sheds nothing consumes exactly one value and the draw ends there, so the next destruction's u1 is the stream's next value and the seeded sequence stays aligned."
-domains = ["gameplay"]
-failure_cap = "passable"
-validation = { script = "pods/no-shed-consumes-one.test.ts", outputs = [ { id = "aligned-draw", name = "Aligned draw", kind = "replay" } ] }
+validation = { script = "pods/sheds-one-in-four.test.ts", outputs = [ { id = "sampled", name = "The session the draws were sampled in", kind = "image" } ] }
 [[review.categories.items]]
 id = "kind-table"
-title = "The second draw picks the kind by the table"
-description = "On a shed the second value u2 picks the kind by the fixed bands: widen on [0, 0.25), multiball on [0.25, 0.45), shield on [0.45, 0.65), pierce on [0.65, 0.80), and narrow on [0.80, 1)."
+title = "A shed pod's kind follows the kind table"
+description = "A shed pod's kind is drawn with the table's probabilities, widen 0.25, multiball 0.20, shield 0.20, pierce 0.15, and narrow 0.20: over a bounded sample of shedding draws each kind's count sits within six standard deviations of its expected share."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "pods/kind-table.test.ts", outputs = [ { id = "band-draw", name = "Band draw", kind = "replay" } ] }
-[[review.categories.items]]
-id = "default-seed-one"
-title = "A fresh session seeds with DEFAULT_SEED"
-description = "A fresh session seeds the stream with DEFAULT_SEED (1), so its pod sequence matches a reset(1) session played the same way."
-domains = ["gameplay"]
-failure_cap = "passable"
-validation = { script = "pods/default-seed-one.test.ts", outputs = [ { id = "default-run", name = "Default-seed run", kind = "replay" } ] }
+validation = { script = "pods/kind-table.test.ts", outputs = [ { id = "sampled", name = "The session the kinds were sampled in", kind = "image" } ] }
 [[review.categories.items]]
 id = "spawns-at-arc-center"
 title = "A pod spawns at the destroyed target's arc center"

@@ -65,22 +65,18 @@ riding a level transition. `src/game.ts` declares and exports its type,
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic and steppable. Three
+The surface rests on the simulation being steppable apart from drawing. Two
 properties make it so.
 
 - A fixed timestep, decoupled from rendering, as `specs/overview.md` fixes it.
+  Game state advances from the elapsed simulation time it is handed, with no
+  canvas and no wall clock, so a step means the same thing whatever the frame
+  rate.
 - Simulation-owned contacts. Every contact is decided from the state's own polar
   figures under the crossing rules of `specs/deflector-and-ball.md` and
   `specs/rings.md`, so what a tick resolves follows from the state alone.
-- Seeded randomness. The game holds one pseudo-random generator, seeded by
-  `reset` and consumed only by the pod draws `specs/pods.md` states, so
-  reseeding and replaying the same calls reproduces the same pod sequence
-  exactly.
-
-Given the same seed and the same sequence of operations and elapsed ticks, the
-game reproduces identical snapshots every time.
 
 Audio belongs to the ticks. A pose changes the state alone and sounds nothing;
 the cues a scenario hears come from the ticks run after it.
@@ -124,7 +120,7 @@ operation below, and each is reported by the snapshot.
 | Switch | While it is on | While it is off |
 | --- | --- | --- |
 | `waveAdvance` | A ball-caused destruction that leaves zero live targets is the clearing event: the field empties, the interstitial runs, and the next wave begins, as `specs/rings.md` states. | The clearing event does not fire. Play carries on in `playing` over an empty field, and destructions keep scoring. |
-| `podSpawn` | Each destruction makes the pod draw `specs/pods.md` states, consuming the generator. | No draw is made and the generator is not consumed, so no pod spawns and the seeded sequence stays where it stands. |
+| `podSpawn` | Each destruction makes the pod draw `specs/pods.md` states. | No draw is made, so no pod spawns, and an outcome `setNextPod` posed stays posed for the next draw that is made. |
 
 A switch changes only what it names. Turning one back on resumes that
 consequence from the next event onward, with no catching up for the events it
@@ -177,14 +173,14 @@ and the canvas reflects the result. `ticks` is a whole number of at least `1`
 and defaults to `1`.
 
 Stepping while the game is still stepping automatically adds to what the wall
-clock is already doing, so a reproducible scenario calls `setAutoStep(false)`
-first.
+clock is already doing, so a scenario driven from code calls
+`setAutoStep(false)` first.
 
 {{/if}}
 {{#if (eq engine.slug "simple-2d")}}
-### `reset(state, seed)`
+### `reset(state)`
 {{else}}
-### `reset(seed)`
+### `reset()`
 {{/if}}
 
 Restores the game to its boot state: the `title` screen
@@ -192,14 +188,13 @@ with `menu.index` at `0`, the score at `0`, `3` lives, wave `1`, `ticks` at `0`,
 the deflector at angle `90` with span `48`, every ring slot filled at its full
 hit points with every ring angle at `0` and each ring's speed from the wave-1
 formulas, no balls, no pods, no timed effect, no shield, the interstitial timer
-at `0`, and both driver switches on. `seed` is an optional whole number that
-seeds the pod generator, defaulting to {{#if (eq engine.slug "none")}}`1`{{else}}`DEFAULT_SEED` (`1`){{/if}}.
+at `0`, no posed pod outcome, and both driver switches on.
 {{#if (eq engine.slug "none")}}
 
 Whether the simulation advances on its own each frame is untouched.
 `setAutoStep` belongs to the caller driving the game rather than to the session
 being played, so a `reset` inside a stepped scenario leaves the game off the
-wall clock and the scenario stays reproducible.
+wall clock.
 {{/if}}
 
 A reset leaves the game indistinguishable from a freshly started session, so
@@ -239,8 +234,9 @@ an `index` outside the menu's entries, it returns `null`. It changes nothing.
 Sets `screen` to `name`, one of the six values `specs/screens.md` names, and
 changes nothing else. The score, the lives, the wave, the deflector, the balls,
 the rings, the pods, the timed effects, the shield, the interstitial timer, the
-menu highlight, and both driver switches all stand exactly as they stood. No
-cue sounds at the call, as the deterministic core above states.
+menu highlight, the posed pod outcome, and both driver switches all stand
+exactly as they stood. No cue sounds at the call, as the render-free core above
+states.
 
 What each screen then does is the screen's own, fixed in `specs/screens.md`: a
 tick of `playing` advances the whole simulation, a tick of `waveclear` counts
@@ -407,8 +403,41 @@ burns, so no score, cue, effect, or particle comes of it.
 Adds one pod of `kind`, one of the five kinds `specs/pods.md` names, at
 `(x, y)`. It falls radially inward at the fall speed `specs/pods.md` fixes,
 from the call onward, and catching or burning it resolves exactly as for a
-drawn pod. The generator is
-not consumed, so the seeded sequence stays where it stands.
+drawn pod. No draw is made, so an outcome `setNextPod` posed stays posed.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setNextPod(state, kind)`
+{{else}}
+### `setNextPod(kind)`
+{{/if}}
+
+Poses the outcome of the next pod draw. `kind` is one of the five kinds
+`specs/pods.md` names, or `none`. The next destruction that makes a draw sheds
+a pod of `kind` at the spawn point `specs/pods.md` fixes, or sheds nothing for
+`none`, in place of the random outcome. That draw consumes the pose, and every
+draw after it is random again until the next call; a call before the draw is
+made replaces the pose. The snapshot reports the pose as `nextPod`, and `null`
+once it is consumed.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `drawPod(state)`
+
+A reading that performs one pod draw exactly as a destruction performs it, with
+the random outcome `specs/pods.md` states, and returns what it decided: the
+kind of the pod it would shed, one of the five kind names, or `null` for a draw
+that sheds nothing. It returns no state, because it poses nothing: no pod is
+added, no cue sounds, and a posed `nextPod` is left where it stands. Each call
+is one independent draw, so repeated calls sample the draw's distribution.
+{{else}}
+### `drawPod()`
+
+Performs one pod draw exactly as a destruction performs it, with the random
+outcome `specs/pods.md` states, and returns what it decided: the kind of the
+pod it would shed, one of the five kind names, or `null` for a draw that sheds
+nothing. Nothing else happens: no pod is added, no cue sounds, and a posed
+`nextPod` is left where it stands. Each call is one independent draw, so
+repeated calls sample the draw's distribution.
+{{/if}}
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setEffectTicks(state, kind, ticks)`
@@ -458,7 +487,6 @@ by default and a `reset` restores both.
   wave: <number>,
   score: <number>,
   lives: <number>,
-  seed: <number>,           // the seed the pod generator was laid with
   interstitialTicks: <number>, // ticks left of the interstitial; counts down
                             // on `waveclear` alone
 {{#if (eq engine.slug "none")}}
@@ -466,6 +494,8 @@ by default and a `reset` restores both.
 {{/if}}
   waveAdvance: <boolean>,   // driver switch
   podSpawn: <boolean>,      // driver switch
+  nextPod: <string> | null, // the outcome `setNextPod` posed for the next
+                            // draw: a kind name or "none", `null` once consumed
   paddle: { angleDeg: <number>, spanDeg: <number> },
   balls: [                  // spawn order, oldest first
     { x: <number>, y: <number>, vx: <number>, vy: <number>,
@@ -493,9 +523,9 @@ every live ball, the parked ball included, in spawn order. `rings` always holds
 three entries, ring 1 first, and each ring's `targets` lists its live targets
 by `slot` with the hit points each has left, so a slot with no entry holds no
 target. `paddle.angleDeg` and every ring's `angleDeg` are normalized into
-`[0, 360)`, and the three effect timers count down in whole ticks. `seed` is
-the value the last `reset` laid the pod generator with, so a scenario reads
-back the seed it posed.
+`[0, 360)`, and the three effect timers count down in whole ticks. `nextPod`
+is the value the last `setNextPod` posed, so a scenario reads back the outcome
+it posed, and `null` when no pose stands.
 {{#if (eq engine.slug "none")}}
 
 `autoStep` is `true` while the frame loop advances the simulation from the wall

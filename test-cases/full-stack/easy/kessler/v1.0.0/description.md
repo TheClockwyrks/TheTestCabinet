@@ -39,8 +39,8 @@ bounce is a four-step pipeline — specular reflection, english proportional to
 the contact offset, an exit-angle clamp, and the wave's ball speed — and every
 other reflection preserves speed, takes a kick from a moving ring, and decays
 toward the radial. Around that core sit orbiting rings on per-wave formulas, a
-seeded pod stream with pinned draw order, five effects with tick-counted
-timers, waves, lives and six screens, all of it deterministic under a seed.
+pod draw at stated odds on every destruction, five effects with tick-counted
+timers, waves, lives and six screens.
 
 On top of that correctness sits a full production pass: sprites, a sheet, three
 particle systems, thirteen cues and two beds that loop without a seam. A tidy

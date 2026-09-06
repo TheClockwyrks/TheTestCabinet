@@ -10,25 +10,25 @@ lists. Durations are whole ticks of the fixed timestep `specs/overview.md` fixes
 
 ## The pod draw
 
-The game keeps one random stream for the whole session: a mulberry32 generator
-seeded with the session's seed. A fresh session seeds it with `1`, and pod
-draws are the only thing that consumes it. Each draw takes the
-stream's next value, a number in `[0, 1)`, so the same seed and the same play
-shed the same pods in the same order.
+Each destruction decides at random, at the moment it resolves, whether the
+destroyed derelict sheds a salvage pod: it sheds one pod with probability
+`0.25` and sheds nothing otherwise. A tick that destroys several targets
+decides once per destruction, in resolution order, and each decision is
+independent of every other.
 
-Each destruction runs the draw at the moment it resolves, so a tick that
-destroys several targets draws once per destruction, in resolution order. The
-destruction takes the stream's next value `u1`. At `u1 < 0.25` it sheds a pod
-and takes a second value `u2` for the kind; at `u1 >= 0.25` it sheds nothing
-and the draw ends there.
+A shed pod's kind is drawn with the probabilities below, independently of
+everything else.
 
-| `u2` | Kind |
+| Kind | Probability |
 | --- | --- |
-| `[0, 0.25)` | `widen` |
-| `[0.25, 0.45)` | `multiball` |
-| `[0.45, 0.65)` | `shield` |
-| `[0.65, 0.80)` | `pierce` |
-| `[0.80, 1)` | `narrow` |
+| `widen` | `0.25` |
+| `multiball` | `0.20` |
+| `shield` | `0.20` |
+| `pierce` | `0.15` |
+| `narrow` | `0.20` |
+
+The debug surface `specs/instrumentation.md` fixes poses the outcome of one
+draw through `setNextPod`, and performs a draw on its own through `drawPod`.
 
 ## Flight
 
