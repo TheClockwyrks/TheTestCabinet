@@ -12,7 +12,7 @@
 //
 // The reading is a count held at zero rather than a share within a tolerance,
 // because the specification states none rather than few. It is taken across
-// several seeds and every world size, since the topsoil is a quarter of the mine
+// several fresh mines and every world size, since the topsoil is a quarter of the mine
 // at each of them and the rule is every mine's.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -21,7 +21,7 @@ import { WORLD_SIZES, type WorldSize } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look, tallyBand } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 7, 19] as const;
+const MINES = 5;
 
 let h: Harness;
 
@@ -35,10 +35,10 @@ afterEach(async () => {
 
 it("leaves the topsoil holding only rock and ore", async () => {
   for (const size of WORLD_SIZES) {
-    for (const seed of SEEDS) {
-      const at = `the ${size} mine on seed ${seed}`;
+    for (let mine = 1; mine <= MINES; mine += 1) {
+      const at = `the ${size} mine, generation ${mine}`;
       const tally = tallyBand(
-        await generatedMine(h, seed, size as WorldSize),
+        await generatedMine(h, size as WorldSize),
         "topsoil",
       );
       assertEqual(tally.kinds.gas, 0, `topsoil gas pockets in ${at}`);

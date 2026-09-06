@@ -24,7 +24,7 @@
 // point drawn at the top-left of the mine viewport, and `src/render.ts` applies
 // them as its own transform on that context (specs/world.md).
 
-import { DEFAULT_SEED, GEMSTONE_IDS, ITEM_IDS, ORE_IDS } from "./constants";
+import { GEMSTONE_IDS, ITEM_IDS, ORE_IDS } from "./constants";
 import type {
   ComponentId,
   CueName,
@@ -260,8 +260,10 @@ export interface DeepcoreState {
   readonly muted: boolean;
   /** Whether the save slot holds an expedition, mirrored every update. */
   readonly hasSave: boolean;
-  /** The generator every draw the game makes runs off (src/rng.ts). */
-  readonly rngState: number;
+  /** The height, in tiles, posed for the next Quantum Teleporter use, else null. */
+  readonly nextTeleportHeight: number | null;
+  /** The downward speed posed for the next Quantum Teleporter use, else null. */
+  readonly nextTeleportSpeed: number | null;
 
   // What the frame read, mirrored so the render is a function of the state.
   readonly input: MoveInput;
@@ -327,11 +329,11 @@ export function startingTiers(): Record<TrackName, number> {
  * The whole state at its title-screen value: the `title` screen, no expedition
  * in progress, an empty mine, the miner standing at the spawn, tier `1` on every
  * track, a full tank and hull, and nothing held. `reset` on the debug surface
- * restores exactly this, seeded as the caller asked (specs/instrumentation.md).
+ * restores exactly this (specs/instrumentation.md).
  */
 export function createInitialState(
   assets: Assets,
-  options: { seed?: number; muted?: boolean; hasSave?: boolean } = {},
+  options: { muted?: boolean; hasSave?: boolean } = {},
 ): DeepcoreState {
   const coreRow = coreRowFor(DEFAULT_WORLD_SIZE);
   const tiers = startingTiers();
@@ -365,7 +367,8 @@ export function createInitialState(
     simTime: 0,
     muted: options.muted ?? false,
     hasSave: options.hasSave ?? false,
-    rngState: options.seed ?? DEFAULT_SEED,
+    nextTeleportHeight: null,
+    nextTeleportSpeed: null,
     input: { left: false, right: false, down: false, thrust: false },
     pointer: { x: 0, y: 0, down: false },
     notes: [],

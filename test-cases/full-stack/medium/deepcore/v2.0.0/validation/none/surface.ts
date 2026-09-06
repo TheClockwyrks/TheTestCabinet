@@ -301,6 +301,8 @@ export interface DeepcoreSnapshot {
   scanner: ScannerView;
   notice: NoticeView | null;
   noticesFired: { gas: boolean; lava: boolean };
+  nextTeleportHeight: number | null;
+  nextTeleportSpeed: number | null;
   summary: SummaryView | null;
 }
 
@@ -360,11 +362,10 @@ export interface DeepcoreDebugApi {
   /* ---- Restoring the world ---- */
 
   /**
-   * Restore the whole observable state to its title-screen value, and seed the
-   * generator. `muted`, `autoStep`, and the save slot are untouched; every held
+   * Restore the whole observable state to its title-screen value. `muted`, `autoStep`, and the save slot are untouched; every held
    * key is released.
    */
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   /** Regenerate the grid at the current world size, leaving everything else. */
   generateMine(): Promise<void>;
   /** Open every playable cell below `row 0` and above the Core chamber. */
@@ -448,6 +449,19 @@ export interface DeepcoreDebugApi {
   /** The audio mute toggle. Engineless builds alone. */
   setMuted(muted: boolean): Promise<void>;
 
+  /* ---- Posing the Quantum Teleporter ---- */
+
+  /**
+   * The height, in tiles above the camp ground, the next Quantum Teleporter use
+   * places the miner at, from `1` to `8`, or `null` to leave it to the draw.
+   */
+  setNextTeleportHeight(tiles: number | null): Promise<void>;
+  /**
+   * The downward speed, in units per second, the next Quantum Teleporter use
+   * gives the miner, from `150` to `700`, or `null` to leave it to the draw.
+   */
+  setNextTeleportSpeed(speed: number | null): Promise<void>;
+
   /* ---- The controls: the named counterparts of the on-screen ones ---- */
 
   /** Discard one unit of that ore. The unit is lost. */
@@ -528,6 +542,9 @@ export const REQUIRED_OPS = [
   "setElapsed",
   "clearSave",
   "setMuted",
+  // Posing the Quantum Teleporter
+  "setNextTeleportHeight",
+  "setNextTeleportSpeed",
   // The controls
   "dropOre",
   "sell",

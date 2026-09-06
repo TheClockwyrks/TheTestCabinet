@@ -93,7 +93,7 @@ newsheet() {
 }
 s() { draw-sheet "$@" --config "$CFG" >/dev/null; }
 
-# --- deterministic PRNG (a plain LCG) so the grain is reproducible per seed -------
+# --- a plain LCG, so one grain seed always lays the same layout ---------------------
 RSEED=0
 rnd() {  # rnd <n> : sets R to a value in [0, n)
   RSEED=$(( (RSEED * 1103515245 + 12345) & 0x7fffffff ))

@@ -205,13 +205,6 @@ describe("generation", () => {
     }
   });
 
-  it("rebuilds the same mine from the same seed", () => {
-    const a = generateMine(new Rng(12345), CORE_ROW);
-    const b = generateMine(new Rng(12345), CORE_ROW);
-    expect(JSON.stringify(a.grid)).toBe(JSON.stringify(b.grid));
-    expect(a.nodes).toEqual(b.nodes);
-  });
-
   it("scales the depth with the world size and keeps the band shape", () => {
     const quick = generateMine(new Rng(1), 250);
     expect(quick.grid).toHaveLength(251);

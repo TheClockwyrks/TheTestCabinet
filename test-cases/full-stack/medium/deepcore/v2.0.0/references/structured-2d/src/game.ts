@@ -37,7 +37,7 @@
 
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
-import { DEFAULT_SEED, GEMSTONE_IDS, ITEM_IDS, ORE_IDS } from "./constants";
+import { GEMSTONE_IDS, ITEM_IDS, ORE_IDS } from "./constants";
 import type {
   ComponentId,
   CueName,
@@ -314,8 +314,10 @@ export class DeepcoreState extends GameState {
 
   /** Accumulated game time, in seconds, on every screen. */
   simTime!: number;
-  /** The generator every draw the game makes runs off (src/rng.ts). */
-  rngState!: number;
+  /** The height, in tiles, posed for the next Quantum Teleporter use, else null. */
+  nextTeleportHeight!: number | null;
+  /** The downward speed posed for the next Quantum Teleporter use, else null. */
+  nextTeleportSpeed!: number | null;
 
   // What the frame read, mirrored so the drawing is a function of the state.
   input!: MoveInput;
@@ -357,11 +359,10 @@ export class DeepcoreState extends GameState {
    * screen, no expedition in progress, an empty mine, the miner standing at the
    * spawn, tier `1` on every track, a full tank and hull, and nothing held.
    *
-   * `options.seed` seeds the generator, defaulting to `DEFAULT_SEED`. `muted`,
-   * `hasSave`, and `assets` are deliberately untouched
+   * `muted`, `hasSave`, and `assets` are deliberately untouched
    * (specs/instrumentation.md).
    */
-  restore(options: { seed?: number } = {}): void {
+  restore(): void {
     const coreRow = coreRowFor(DEFAULT_WORLD_SIZE);
     const tiers = startingTiers();
 
@@ -397,7 +398,8 @@ export class DeepcoreState extends GameState {
     this.camLead = 0;
 
     this.simTime = 0;
-    this.rngState = options.seed ?? DEFAULT_SEED;
+    this.nextTeleportHeight = null;
+    this.nextTeleportSpeed = null;
 
     this.input = { left: false, right: false, down: false, thrust: false };
     this.pointer = { x: 0, y: 0, down: false };

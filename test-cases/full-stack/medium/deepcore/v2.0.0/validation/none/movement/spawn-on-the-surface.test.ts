@@ -37,7 +37,8 @@ import {
   type Harness,
 } from "../harness";
 
-const SEEDS = [1, 2, 7] as const;
+/** How many fresh expeditions are opened. Several, because the rule is every one's. */
+const EXPEDITIONS = 3;
 
 /** A second of the game's own physics, to catch a miner that sinks. */
 const SETTLE_FRAMES = TICK_HZ;
@@ -56,10 +57,10 @@ afterEach(async () => {
 });
 
 it("opens every expedition on the camp ground at column 4, at depth 0", async () => {
-  for (const seed of SEEDS) {
-    const at = `the expedition on seed ${seed}`;
+  for (let n = 1; n <= EXPEDITIONS; n += 1) {
+    const at = `expedition ${n}`;
     await h.debug.setAutoStep(false);
-    await h.debug.reset({ seed });
+    await h.debug.reset();
     await h.debug.generateMine();
     await h.debug.setScreen("in-mine");
 

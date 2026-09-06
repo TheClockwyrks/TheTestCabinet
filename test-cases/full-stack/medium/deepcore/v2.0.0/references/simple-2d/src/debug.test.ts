@@ -17,6 +17,8 @@ import {
   MINER_H,
   ROCKET_COMPONENTS,
   SURFACE_Y,
+  TELEPORT_HEIGHT_TILES_MAX,
+  TELEPORT_SPEED_MIN,
   TILE,
   TRACKS,
   WORLD_COLS,
@@ -83,6 +85,8 @@ describe("readings", () => {
         "scanner",
         "notice",
         "noticesFired",
+        "nextTeleportHeight",
+        "nextTeleportSpeed",
         "elapsedSeconds",
         "summary",
       ].sort(),
@@ -242,22 +246,51 @@ describe("restoring the world", () => {
     expect(h.debug.findTile(h.state, "ore")).not.toBeNull();
   });
 
-  it("rebuilds the same mine from the same seed through reset", () => {
-    const scan = (): string => {
-      let out = "";
-      for (let row = 1; row < 40; row += 1) {
-        for (let col = 1; col < WORLD_COLS - 1; col += 1) {
-          out += h.debug.tileAt(h.state, col, row).kind[0];
-        }
-      }
-      return out;
-    };
-    h.pose((debug, state) => debug.reset(state, { seed: 99 }));
-    h.pose((debug, state) => debug.generateMine(state));
-    const first = scan();
-    h.pose((debug, state) => debug.reset(state, { seed: 99 }));
-    h.pose((debug, state) => debug.generateMine(state));
-    expect(scan()).toBe(first);
+  it("poses each Quantum Teleporter draw on its own, within its bounds, and clears it with null", () => {
+    expect(h.debug.snapshot(h.state).nextTeleportHeight).toBeNull();
+    expect(h.debug.snapshot(h.state).nextTeleportSpeed).toBeNull();
+    h.pose((debug, state) =>
+      debug.setNextTeleportHeight(state, TELEPORT_HEIGHT_TILES_MAX),
+    );
+    expect(h.debug.snapshot(h.state).nextTeleportHeight).toBe(
+      TELEPORT_HEIGHT_TILES_MAX,
+    );
+    expect(h.debug.snapshot(h.state).nextTeleportSpeed).toBeNull();
+    h.pose((debug, state) =>
+      debug.setNextTeleportSpeed(state, TELEPORT_SPEED_MIN),
+    );
+    expect(h.debug.snapshot(h.state).nextTeleportSpeed).toBe(
+      TELEPORT_SPEED_MIN,
+    );
+    h.pose((debug, state) => debug.setNextTeleportHeight(state, null));
+    expect(h.debug.snapshot(h.state).nextTeleportHeight).toBeNull();
+    expect(h.debug.snapshot(h.state).nextTeleportSpeed).toBe(
+      TELEPORT_SPEED_MIN,
+    );
+    expect(() =>
+      h.debug.setNextTeleportHeight(h.state, TELEPORT_HEIGHT_TILES_MAX + 1),
+    ).toThrow();
+    expect(() =>
+      h.debug.setNextTeleportSpeed(h.state, TELEPORT_SPEED_MIN - 1),
+    ).toThrow();
+  });
+
+  it("consumes a posed Quantum Teleporter outcome with the use, and clears it on reset", () => {
+    h.pose((debug, state) =>
+      debug.setItemCount(state, "quantum-teleporter", 1),
+    );
+    h.pose((debug, state) => debug.setNextTeleportHeight(state, 2));
+    h.pose((debug, state) => debug.setNextTeleportSpeed(state, 300));
+    h.pose((debug, state) => debug.useItem(state, "quantum-teleporter"));
+    const placed = h.debug.snapshot(h.state);
+    expect((SURFACE_Y - (placed.miner.y + MINER_H)) / TILE).toBeCloseTo(2, 9);
+    expect(placed.miner.vy).toBe(300);
+    expect(placed.nextTeleportHeight).toBeNull();
+    expect(placed.nextTeleportSpeed).toBeNull();
+
+    h.pose((debug, state) => debug.setNextTeleportHeight(state, 5));
+    h.pose((debug, state) => debug.reset(state));
+    expect(h.debug.snapshot(h.state).nextTeleportHeight).toBeNull();
   });
 
   it("restores the whole observable state to its title value", () => {

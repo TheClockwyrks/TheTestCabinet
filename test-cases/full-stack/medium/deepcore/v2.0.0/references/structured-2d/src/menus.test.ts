@@ -52,20 +52,22 @@ describe("the menus", () => {
 });
 
 describe("the generator", () => {
-  it("is a pure function of its state, so a replay reproduces a draw", () => {
+  it("is a pure function of its state", () => {
     const [first, next] = nextFloat(1);
     expect(nextFloat(1)).toEqual([first, next]);
     expect(first).toBeGreaterThanOrEqual(0);
     expect(first).toBeLessThan(1);
   });
 
-  it("draws the same sequence from the same seed and a different one otherwise", () => {
-    const run = (seed: number): number[] => {
-      const draws = new Draws(seed);
+  it("draws a different sequence from a different word, and a fresh cursor varies", () => {
+    const run = (state: number): number[] => {
+      const draws = new Draws(state);
       return [draws.float(), draws.float(), draws.float()];
     };
-    expect(run(7)).toEqual(run(7));
     expect(run(7)).not.toEqual(run(8));
+    const laid = new Set<number>();
+    for (let i = 0; i < 8; i += 1) laid.add(Draws.fresh().state);
+    expect(laid.size).toBeGreaterThan(1);
   });
 
   it("draws whole numbers, chances, picks, and weighted picks in range", () => {

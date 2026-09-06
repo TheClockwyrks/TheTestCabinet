@@ -34,8 +34,9 @@ export default defineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
   // A Deepcore scenario is posed rather than played to, so the long ones are the
   // Core Sample's ninety-second timer and the generation sweeps over several
-  // seeds at the Marathon size, both driven off the clock rather than waited out.
-  // Two minutes is generous against a healthy build and still bounds a hung one.
+  // fresh mines at the Marathon size, both driven off the clock rather than
+  // waited out. Two minutes is generous against a healthy build and still bounds
+  // a hung one.
   testTimeout: 120_000,
   hookTimeout: 60_000,
   // Four rather than the package's eight, and never more than the host has

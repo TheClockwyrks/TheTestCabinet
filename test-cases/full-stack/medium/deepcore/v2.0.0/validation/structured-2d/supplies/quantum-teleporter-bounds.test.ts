@@ -12,9 +12,8 @@
 // by the time it was looked at. The height is the miner's feet above `SURFACE_Y`,
 // which is the world `y` `specs/world.md` gives the camp's ground line.
 //
-// The two draws are the one thing in this game the surface's seed does not
-// reproduce, which the specification says outright, so this reads the RANGE over
-// many draws rather than any particular value. Two distinct heights are required
+// The draws are the game's own, so this reads the RANGE over many draws rather
+// than any particular value; `supplies/quantum-teleporter-posed` reads a posed one. Two distinct heights are required
 // across them: a build that returns one fixed height every time is not drawing
 // from a range. The last draw is then let fall, because the rest of the sentence
 // is that ordinary physics takes it down, and it must come to rest on the camp.

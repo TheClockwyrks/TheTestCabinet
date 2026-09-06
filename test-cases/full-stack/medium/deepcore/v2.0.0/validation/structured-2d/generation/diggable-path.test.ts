@@ -1,7 +1,7 @@
 // generation/diggable-path — a route down that needs no lava and no explosives.
 //
 // `specs/world.md` states it as a property of every generated mine, at every size
-// and every seed: "From the cave mouth there is a path to each material node and
+// in every generated mine: "From the cave mouth there is a path to each material node and
 // to the Core that crosses only minable cells that are neither lava nor
 // unbreakable stone, so a route down is always diggable without drilling lava or
 // blasting a boulder."
@@ -28,7 +28,7 @@ import {
 } from "../harness";
 import { cellKey, generatedMine, look, reachableFrom } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 7, 19] as const;
+const MINES = 5;
 
 /** The cells a dug route may cross: minable, and neither lava nor boulder. */
 function diggable(kind: TileKind): boolean {
@@ -53,9 +53,9 @@ afterEach(() => {
 
 it("runs a diggable route from the cave mouth to both nodes and the Core", async () => {
   for (const size of WORLD_SIZES) {
-    for (const seed of SEEDS) {
-      const at = `the ${size} mine on seed ${seed}`;
-      const scan = generatedMine(h, seed, size);
+    for (let mine = 1; mine <= MINES; mine += 1) {
+      const at = `the ${size} mine, generation ${mine}`;
+      const scan = generatedMine(h, size);
       const reached = reachableFrom(
         scan,
         { col: CAVE_MOUTH_COL, row: 1 },

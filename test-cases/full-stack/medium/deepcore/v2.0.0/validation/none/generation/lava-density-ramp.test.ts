@@ -14,7 +14,7 @@
 // of pools carries the sampling noise of the number of POOLS rather than of the
 // number of cells — a few dozen draws per band rather than a few thousand.
 // Pooling several mines is what makes the reading a measurement of the density
-// the build uses rather than of which pools this one seed happened to place.
+// the build uses rather than of which pools one mine happened to place.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertGreaterThan } from "../assert";
@@ -22,7 +22,7 @@ import { DENSITY_TOLERANCE, lavaDensityAt, type Band } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look, poolTallies, tallyBand } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const MINES = 8;
 
 const MIDPOINTS: readonly { band: Band; fraction: number }[] = [
   { band: "deepstone", fraction: 0.625 },
@@ -41,7 +41,8 @@ afterEach(async () => {
 
 it("raises the lava share from 0.0475 in the deepstone to 0.0825 in the coreshell", async () => {
   const scans = [];
-  for (const seed of SEEDS) scans.push(await generatedMine(h, seed));
+  for (let mine = 1; mine <= MINES; mine += 1)
+    scans.push(await generatedMine(h));
 
   const shares: number[] = [];
   for (const { band, fraction } of MIDPOINTS) {

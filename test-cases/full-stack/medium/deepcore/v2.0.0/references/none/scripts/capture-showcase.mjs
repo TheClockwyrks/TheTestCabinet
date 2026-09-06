@@ -96,11 +96,11 @@ function writeClip(raw, out) {
 }
 
 /** Arrange one expedition, through the game's own menus and shop controls. */
-async function arrange(page, seed) {
-  await page.evaluate((s) => {
+async function arrange(page) {
+  await page.evaluate(() => {
     const d = window.__deepcore;
-    d.reset({ seed: s });
-  }, seed);
+    d.reset();
+  });
   // Through the menus, exactly as a player does: NEW EXPEDITION, STANDARD, STANDARD.
   await page.evaluate(() => {
     const d = window.__deepcore;
@@ -147,7 +147,7 @@ async function main() {
   await clip.waitForFunction(() => !!window.__deepcore, null, {
     timeout: 30000,
   });
-  await arrange(clip, 20260830);
+  await arrange(clip);
 
   await wait(clip, 900); // the camp, before the first step
   await holdFor(clip, "KeyD", 4200); // walk east across the camp
@@ -172,7 +172,7 @@ async function main() {
     timeout: 30000,
   });
 
-  await arrange(page, 20260830);
+  await arrange(page);
   await wait(page, 500);
   await page.screenshot({ path: path.join(OUT, "camp.png") });
 

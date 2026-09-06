@@ -890,8 +890,6 @@ export const MINER_STATES: readonly MinerState[] = [
 
 /** The version the surface reports. */
 export const DEEPCORE_DEBUG_VERSION = 1;
-/** The seed a reset takes when none is given. */
-export const DEFAULT_SEED = 1;
 
 // ---------------------------------------------------------------------------
 // Presentation, which the specification leaves to the build

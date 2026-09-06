@@ -301,6 +301,8 @@ export interface DeepcoreSnapshot {
   scanner: ScannerView;
   notice: NoticeView | null;
   noticesFired: { gas: boolean; lava: boolean };
+  nextTeleportHeight: number | null;
+  nextTeleportSpeed: number | null;
   summary: SummaryView | null;
 }
 
@@ -354,10 +356,9 @@ export interface DeepcoreDebugApi<S = unknown> {
   /* ---- Restoring the world ---- */
 
   /**
-   * Restore the whole observable state to its title-screen value, and seed the
-   * generator. The save slot is untouched, and so is the engine's mute bit.
+   * Restore the whole observable state to its title-screen value. The save slot is untouched, and so is the engine's mute bit.
    */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   /** Regenerate the grid at the current world size, leaving everything else. */
   generateMine(state: DeepReadonly<S>): S;
   /** Open every playable cell below `row 0` and above the Core chamber. */
@@ -445,6 +446,19 @@ export interface DeepcoreDebugApi<S = unknown> {
    */
   setElapsed(state: DeepReadonly<S>, seconds: number): S;
   clearSave(state: DeepReadonly<S>): S;
+
+  /* ---- Posing the Quantum Teleporter ---- */
+
+  /**
+   * The height, in tiles above the camp ground, the next Quantum Teleporter use
+   * places the miner at, from `1` to `8`, or `null` to leave it to the draw.
+   */
+  setNextTeleportHeight(state: DeepReadonly<S>, tiles: number | null): S;
+  /**
+   * The downward speed, in units per second, the next Quantum Teleporter use
+   * gives the miner, from `150` to `700`, or `null` to leave it to the draw.
+   */
+  setNextTeleportSpeed(state: DeepReadonly<S>, speed: number | null): S;
 
   /* ---- The controls: the named counterparts of the on-screen ones ---- */
 
@@ -539,6 +553,9 @@ export const REQUIRED_OPS = [
   "setCameraLead",
   "setElapsed",
   "clearSave",
+  // Posing the Quantum Teleporter
+  "setNextTeleportHeight",
+  "setNextTeleportSpeed",
   // The controls
   "dropOre",
   "sell",

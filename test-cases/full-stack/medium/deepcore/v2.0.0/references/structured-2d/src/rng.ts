@@ -1,19 +1,22 @@
-// Deepcore — the deterministic generator, as a value.
+// Deepcore — the game's private random source, as a value.
 //
-// `specs/instrumentation.md` requires that reseeding and replaying the same
-// calls reproduce the same mine exactly, so the generator's whole state has to
-// live in the game's state rather than in an object beside it. That state is a
-// single 32-bit word, and every draw below is a pure function from that word to
-// the next one and the value drawn — mulberry32, which is small, fast, and
-// well-distributed enough for scattering rock.
+// The engine holds the game's state by value and nothing holds a writable one,
+// so a run of draws works on a local cursor rather than an object beside the
+// state. The cursor holds a single 32-bit word, and every draw below is a pure
+// function from that word to the next one and the value drawn: a tiny mixing
+// generator, small, fast, and well-distributed enough for scattering rock.
 //
-// A caller threads the word through: `const [f, next] = nextFloat(seed)`. The
-// generation code takes a `Draw` cursor so a long sequence of draws reads as
-// ordinary statements rather than as a chain of tuples; the cursor holds nothing
-// but that one word and hands it back at the end.
+// An operation that draws opens a fresh cursor off the page's own randomness,
+// through `Draws.fresh()`, draws from it, and lets it go. The unit tests lay a
+// cursor from a word of their own to pin a layout.
 
 /** One draw: the value, and the generator state that follows it. */
 export type Draw<T> = readonly [T, number];
+
+/** A fresh 32-bit state word off the page's own randomness. */
+export function randomState(): number {
+  return Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
+}
 
 /** The next float in `[0, 1)`, and the state that follows it. */
 export function nextFloat(state: number): Draw<number> {
@@ -28,11 +31,16 @@ export function nextFloat(state: number): Draw<number> {
  * A cursor over the generator, for a run of draws that belongs to one operation.
  *
  * It is a local, short-lived holder for the one word the generator is: an
- * operation opens a cursor on the state it was handed, draws from it, and writes
- * `cursor.state` back. Nothing keeps one across a frame.
+ * operation opens a cursor, draws from it, and lets it go. Nothing keeps one
+ * across a frame.
  */
 export class Draws {
   constructor(public state: number) {}
+
+  /** A cursor laid from the page's own randomness. */
+  static fresh(): Draws {
+    return new Draws(randomState());
+  }
 
   /** A float in `[0, 1)`. */
   float(): number {

@@ -1,14 +1,21 @@
-// Deepcore — a tiny deterministic PRNG (mulberry32).
+// Deepcore — the game's private random source.
 //
-// The mine is generated per game (specs/world.md) from a seed, so a given seed produces
-// the same mine — reproducible for verification while still varying seed to seed. Also
-// used for the small random jitters (particle offsets, spawn column) that keep the world
-// alive without breaking determinism.
+// The mine is generated fresh for each expedition (specs/world.md), and the small
+// jitters that keep the world alive (particle offsets) draw from the same source. It
+// is a tiny 32-bit mixing generator: fast, well-distributed enough for scattering
+// rock, and laid from the page's own randomness unless a caller lays it itself,
+// which the unit tests do to pin a layout.
+
+/** A fresh 32-bit state word off the page's own randomness. */
+export function randomState(): number {
+  return Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
+}
+
 export class Rng {
   private state: number;
 
-  constructor(seed: number) {
-    this.state = seed >>> 0;
+  constructor(state: number = randomState()) {
+    this.state = state >>> 0;
   }
 
   /** A float in [0, 1). */

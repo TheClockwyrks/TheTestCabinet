@@ -3,7 +3,7 @@
 // `specs/world.md` opens the lava ramp at the top of the deepstone and says
 // "none appears above the deepstone", and its band table lists lava as a hazard
 // of the deepstone and the coreshell alone. So the topsoil and the rockbed hold
-// no lava cell at all, at any seed and any world size, and a prospector learning
+// no lava cell at all, in any mine at any world size, and a prospector learning
 // the game meets gas before it meets molten rock.
 //
 // A share within a tolerance is the wrong reading for this: the specification
@@ -15,7 +15,7 @@ import { WORLD_SIZES, type WorldSize } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { bandRows, generatedMine, look, tallyBand } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 7, 19] as const;
+const MINES = 5;
 
 let h: Harness;
 
@@ -29,14 +29,14 @@ afterEach(async () => {
 
 it("puts no lava cell in the topsoil or the rockbed", async () => {
   for (const size of WORLD_SIZES) {
-    for (const seed of SEEDS) {
-      const scan = await generatedMine(h, seed, size as WorldSize);
+    for (let mine = 1; mine <= MINES; mine += 1) {
+      const scan = await generatedMine(h, size as WorldSize);
       for (const band of ["topsoil", "rockbed"] as const) {
         const tally = tallyBand(scan, band);
         assertEqual(
           tally.kinds.lava,
           0,
-          `${band} lava cells in the ${size} mine on seed ${seed}`,
+          `${band} lava cells in the ${size} mine, generation ${mine}`,
         );
       }
     }

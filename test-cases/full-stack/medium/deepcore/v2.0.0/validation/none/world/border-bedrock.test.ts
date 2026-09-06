@@ -27,7 +27,7 @@ import {
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look } from "../generation/mine-scan";
 
-const SEEDS = [1, 2, 7] as const;
+const MINES = 3;
 
 /** The two columns the specification gives to the border. */
 const BORDER_COLS = [0, WORLD_COLS - 1] as const;
@@ -44,9 +44,9 @@ afterEach(async () => {
 
 it("makes every cell of column 0 and column 31 bedrock", async () => {
   for (const size of WORLD_SIZES) {
-    for (const seed of SEEDS) {
-      const at = `the ${size} mine on seed ${seed}`;
-      const scan = await generatedMine(h, seed, size as WorldSize);
+    for (let mine = 1; mine <= MINES; mine += 1) {
+      const at = `the ${size} mine, generation ${mine}`;
+      const scan = await generatedMine(h, size as WorldSize);
 
       const wrong: string[] = [];
       for (const col of BORDER_COLS) {

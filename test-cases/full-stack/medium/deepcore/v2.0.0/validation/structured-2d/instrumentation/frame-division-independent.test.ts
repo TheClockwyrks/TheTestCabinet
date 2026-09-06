@@ -1,17 +1,16 @@
-// instrumentation/deterministic-core — an interval of game time is one interval.
+// instrumentation/frame-division-independent — an interval of game time is one interval.
 //
 // `specs/instrumentation.md`: "every rate is integrated against the delta time
 // the game is given, so an interval of game time reaches the same state however
-// it was divided into frames", and of `advance` in particular: "`advance(1, 1)`
-// and `advance(1, 60)` cover the same second of game time and reach the same
-// outcome, beyond the drift a change in step size explains."
+// it was divided into frames."
 //
 // It is the property every timed figure in this specification rests on. A build
 // that spends a rate PER FRAME rather than per second runs sixty times faster on
 // a fast display than on a slow one: the fuel drains in seconds, the drill breaks
 // rock at whatever the monitor's refresh happens to be, and the Core Sample's
 // ninety seconds are not ninety seconds. That is what this reads, by running the
-// same posed second at two step sizes a factor of sixty apart.
+// same posed second at two step sizes a factor of sixty apart — one frame of a
+// whole second against sixty frames of a sixtieth.
 //
 // WHAT IS COMPARED, AND WHY EACH READING IS THE FAIR ONE.
 //
@@ -37,8 +36,8 @@
 // is held, so the only thing acting is the integration under test.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertCloseTo } from "../assert";
 import { FALL_TERMINAL_EMPTY, GRAVITY, LIFE_SUPPORT_BURN } from "../constants";
+import { assertBetween, assertCloseTo } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -74,12 +73,12 @@ let h: Harness;
 
 /** Pose the fall at `vy` and run the interval in `frames` whole frames. */
 async function run(vy: number, frames: number): Promise<Run> {
-  await placeAt(h, minerXOn(COL), minerYOn(ROW));
-  await h.debug.setMinerVelocity(0, vy);
-  await h.debug.setFuel(100);
-  const before = await h.snapshot();
+  placeAt(h, minerXOn(COL), minerYOn(ROW));
+  h.debug.setMinerVelocity(0, vy);
+  h.debug.setFuel(100);
+  const before = h.snapshot();
   await h.advanceSeconds(SECONDS, frames);
-  const after = await h.snapshot();
+  const after = h.snapshot();
   return {
     y: after.miner.y,
     vy: after.miner.vy,
@@ -92,13 +91,13 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(async () => {
-  await h.dispose();
+afterEach(() => {
+  h?.dispose();
 });
 
 it("reaches the same second of game time in one frame and in sixty", async () => {
-  await openScene(h);
-  await pinDrill(h);
+  openScene(h);
+  pinDrill(h);
 
   const coarse = await run(-RISING, COARSE_FRAMES);
   const fine = await captureReplay(h, "drive", () => run(-RISING, FINE_FRAMES));

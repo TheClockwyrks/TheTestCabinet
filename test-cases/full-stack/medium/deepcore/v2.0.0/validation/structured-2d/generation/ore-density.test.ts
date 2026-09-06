@@ -34,7 +34,7 @@ import {
 import { generatedMine, look, poolTallies, tallyBand } from "./mine-scan";
 
 /** The mines the share is pooled over. */
-const SEEDS = [1, 2, 3, 4] as const;
+const MINES = 4;
 
 let h: Harness;
 
@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 it("fills 0.14 of every band's cells with ore veins", async () => {
-  const scans = SEEDS.map((seed) => generatedMine(h, seed));
+  const scans = Array.from({ length: MINES }, () => generatedMine(h));
 
   const low = ORE_DENSITY * (1 - DENSITY_TOLERANCE);
   const high = ORE_DENSITY * (1 + DENSITY_TOLERANCE);

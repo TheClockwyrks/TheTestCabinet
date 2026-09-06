@@ -15,13 +15,13 @@ else:
 
 | Call | Why it is not a pose |
 | --- | --- |
-| `reset({ seed })` | Chooses the seed and leaves the game on its title screen, exactly as a launched build opens. |
+| `reset()` | Leaves the game on its title screen, exactly as a launched build opens; the mine the expedition then generates is the game's own. |
 | `snapshot()`, `tileAt()`, `buildings()` | Readings. They change nothing. |
 | `sell()`, `fillFuel()` | The named counterparts of the two panel controls a player clicks. Each runs the game's own rule for that control on the game as it stands. |
 
 Everything else is keys, held and released through the engine's own input. No
 cell is posed, no ore is placed, and no fuel, hull or Credit is set: the mine is
-the one the seed generated, every unit in the bay was drilled out of a wall, and
+the one the game generated, every unit in the bay was drilled out of a wall, and
 the fuel left at the surface is what the descent and the climb actually cost.
 
 ## Running it
@@ -59,26 +59,25 @@ TCAB_VALIDATION_MEDIA_DIR=/tmp/deepcore-showcase-out \
 
 The outputs land under
 `$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`, and the last
-line of the log names the winning seed and what each of its files is committed
+line of the log names the winning take and what each of its files is committed
 as:
 
 | Take file | Committed as |
 | --- | --- |
-| `seed-NN.json.gz` | `showcase/base/expedition.json.gz` |
-| `seed-NN-shaft.png` | `showcase/base/loaded-at-depth.png` |
-| `seed-NN-market.png` | `showcase/base/the-haul-priced.png` |
+| `take-NN.json.gz` | `showcase/base/expedition.json.gz` |
+| `take-NN-shaft.png` | `showcase/base/loaded-at-depth.png` |
+| `take-NN-market.png` | `showcase/base/the-haul-priced.png` |
 
 Delete `$WORK` afterwards. It is a copy, so nothing in the case or the reference
 depends on it.
 
-## Why the audition is two phases
+## How the audition works
 
-Deepcore is deterministic: the same seed and the same sequence of held keys
-against the same clock reach the same state every time. So every seed is
-auditioned with the recorder OFF, which is roughly three times faster, and only
-the winner is played again under the recorder. That second playing is judged as
-well, and the driver fails if its result differs in any field from the audition
-it won on, so the take that was judged is provably the take that was committed.
+Every expedition opens on a mine the game generates afresh, so no take can be
+played twice. Each take is therefore played under the recorder and judged as it
+stands, the files of every take are kept, and the driver names the winner. The
+take that was judged is the take that was recorded, and the losers' files are
+simply not committed.
 
 The judge scores what makes this game read in one clip: the bay filled, the load
 carried, the Credits the haul paid, the hull brought home intact, a clip inside
@@ -93,7 +92,7 @@ another name and is punished as one.
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300` | The harness's replay cap, patched above to read it. |
-| `TCAB_SHOWCASE_SEEDS` | `1`–`24` | The seeds auditioned, comma separated. One seed is one generated mine. |
+| `TCAB_SHOWCASE_TAKES` | `24` | How many takes are auditioned. One take is one generated mine and one expedition. |
 | `TCAB_SHOWCASE_DEPTH` | `44` | How far down the plan looks. The turnaround is decided by the bay and the gauge, not by this. |
 | `TCAB_SHOWCASE_RESERVE_PER_ROW` | `1.25` | Fuel per row held back for the climb home. |
 | `TCAB_SHOWCASE_RESERVE_FLOOR` | `6` | Fuel held back on top of that, for the drift off the shaft. |
@@ -133,8 +132,8 @@ miner on the way up.
 
 ## What is committed
 
-Seed `6` of the twenty-four auditioned, at a cap of `1200`: a shaft sunk from the
-camp to row 32 (160 m), the bay filled to 15 of 15 slots at 244 kg, four ores
+The best of twenty-four takes auditioned, at a cap of `1200`: a shaft sunk from
+the camp to row 32 (160 m), the bay filled to 15 of 15 slots at 244 kg, four ores
 worth 1,024 Credits on the counter, the hull untouched, and the climb landing on
 12 of 100 fuel — 38.7 seconds end to end. It scored 191 against a field whose
 next best was 180.

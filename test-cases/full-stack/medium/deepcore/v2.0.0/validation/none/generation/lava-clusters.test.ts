@@ -20,7 +20,7 @@ import { PLAYABLE_COL_MAX, PLAYABLE_COL_MIN } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look, type MineScan } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 4] as const;
+const MINES = 4;
 
 /** How many lava cells touch another lava cell, and how many stand alone. */
 function pools(scan: MineScan): {
@@ -62,13 +62,13 @@ afterEach(async () => {
 
 it("places more lava cells beside another than standing alone", async () => {
   let last = null;
-  for (const seed of SEEDS) {
-    const scan = await generatedMine(h, seed);
+  for (let mine = 1; mine <= MINES; mine += 1) {
+    const scan = await generatedMine(h);
     last = pools(scan);
     assertGreaterThan(
       last.joined,
       last.alone,
-      `seed ${seed}: ${last.joined} lava cells in pools against ${last.alone} alone`,
+      `generation ${mine}: ${last.joined} lava cells in pools against ${last.alone} alone`,
     );
   }
 

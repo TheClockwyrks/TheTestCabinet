@@ -11,9 +11,8 @@
 // EVERY OUTCOME ON SCREEN IS THE GAME'S. What this driver touches on the debug
 // surface is INPUT and READINGS, and nothing else:
 //
-//   - `reset({ seed })` chooses the seed, which is the one thing a capture is
-//     allowed to arrange. It leaves the game on its title screen exactly as a
-//     launched build opens.
+//   - `reset()` leaves the game on its title screen exactly as a launched build
+//     opens, with the mine the expedition then generates its own.
 //   - `snapshot()`, `tileAt()` and `buildings()` are readings and change nothing.
 //   - `sell()` and `fillFuel()` are the named counterparts of the two panel
 //     controls a player clicks, and `specs/instrumentation.md` fixes them as
@@ -22,18 +21,16 @@
 //   - Everything else is keys, held and released through the engine's own input.
 //
 // No cell is posed, no ore is placed, no fuel or hull or Credit is set. The mine
-// is the one the seed generated, every unit in the bay was drilled out of a wall,
+// is the one the game generated, every unit in the bay was drilled out of a wall,
 // and the fuel left at the surface is what the descent and the climb actually
 // cost. Arranging the input is authoring; posing the outcome would be
 // fabrication.
 //
-// AUDITIONING, AND WHY IT IS TWO PHASES. Deepcore is deterministic: the same seed
-// and the same sequence of held keys against the same clock reach the same state
-// every time. So the seeds are auditioned with the recorder OFF, which is fast,
-// and only the winner is played again under the recorder. The second playing is
-// judged too, and the driver fails if the recorded take does not match the
-// audition it won on — so the take that was judged is provably the take that was
-// committed.
+// AUDITIONING. Every expedition opens on a mine the game generates afresh, so
+// no take can be played twice. Each take is therefore played under the recorder,
+// judged as it stands, and the files of every take are kept; the driver names the
+// winner, and the winner's files are the ones committed. The take that was
+// judged is the take that was recorded.
 //
 // Run from a PRIVATE COPY of the reference workspace, never from the reference
 // itself — `showcase/capture/README.md` has the staging steps and the knobs:
@@ -108,13 +105,8 @@ const RESERVE_PER_ROW = Number(
 const RESERVE_FLOOR = Number(process.env.TCAB_SHOWCASE_RESERVE_FLOOR ?? "6");
 const reserve = (row: number): number => row * RESERVE_PER_ROW + RESERVE_FLOOR;
 
-/** The seeds auditioned. Each is one generated mine, and one expedition. */
-const SEEDS = (
-  process.env.TCAB_SHOWCASE_SEEDS ??
-  "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24"
-)
-  .split(",")
-  .map((seed) => Number(seed.trim()));
+/** How many takes are auditioned. Each is one generated mine, and one expedition. */
+const TAKES = Number(process.env.TCAB_SHOWCASE_TAKES ?? "24");
 
 /** The clip is judged unwatchable outside this span, in seconds. */
 const MIN_SECONDS = Number(process.env.TCAB_SHOWCASE_MIN_SECONDS ?? "24");
@@ -125,7 +117,7 @@ const MAX_SECONDS = Number(process.env.TCAB_SHOWCASE_MAX_SECONDS ?? "40");
 /* -------------------------------------------------------------------------- */
 
 interface Take {
-  seed: number;
+  take: number;
   frames: number;
   /** The row the turnaround was made at, and its depth in meters. */
   rows: number;
@@ -279,12 +271,12 @@ class Session {
 }
 
 /** Play one expedition end to end and report what it produced. */
-async function play(h: Harness, seed: number, label: string): Promise<Take> {
+async function play(h: Harness, take: number, label: string): Promise<Take> {
   const g = new Session(h);
 
   // The title, then NEW EXPEDITION, then STANDARD, then QUICK — the first entry
   // of each menu, chosen with the confirm key, exactly as a player opens a game.
-  h.debug.reset({ seed });
+  h.debug.reset();
   await g.run(seconds(0.6));
   await g.tap(ACTION_KEY.activate);
   await g.run(seconds(0.45));
@@ -387,7 +379,7 @@ async function play(h: Harness, seed: number, label: string): Promise<Take> {
 
   const end = g.snapshot();
   return {
-    seed,
+    take,
     frames: g.spent,
     rows: deep.miner.row,
     meters: Math.round(deep.deepestDepthMeters),
@@ -411,11 +403,7 @@ async function play(h: Harness, seed: number, label: string): Promise<Take> {
  * counter, its camera, the cues still playing and whatever key edges the last
  * take left armed, so each take is played on an engine of its own.
  */
-async function runTake(
-  seed: number,
-  label: string,
-  record: boolean,
-): Promise<Take> {
+async function runTake(take: number, label: string): Promise<Take> {
   const h = await createHarness({
     clock: new ConstantClock(SHOW_MS),
     // The produced sprites, animations and tiles, off disk, so the clip is the
@@ -424,39 +412,26 @@ async function runTake(
   });
   try {
     await h.advance(1);
-    return record
-      ? await captureReplay(h, label, () => play(h, seed, label))
-      : await play(h, seed, label);
+    return await captureReplay(h, label, () => play(h, take, label));
   } finally {
     h.dispose();
   }
 }
 
 it("records an expedition clip", async () => {
-  // PHASE 1 — audition every seed with the recorder off.
-  let best: { seed: number; take: Take; score: number } | null = null;
-  for (const seed of SEEDS) {
-    const take = await runTake(seed, `audition-${seed}`, false);
+  // Every take is played under the recorder and judged as it stands; the winner
+  // is the one whose files are committed.
+  let best: { label: string; take: Take; score: number } | null = null;
+  for (let n = 1; n <= TAKES; n += 1) {
+    const label = `take-${String(n).padStart(2, "0")}`;
+    const take = await runTake(n, label);
     const score = judge(take);
-    console.log(describe(`seed ${String(seed).padStart(2, " ")}`, take, score));
-    if (best === null || score > best.score) best = { seed, take, score };
+    console.log(describe(label, take, score));
+    if (best === null || score > best.score) best = { label, take, score };
   }
-  if (best === null) throw new Error("no seed was auditioned");
+  if (best === null) throw new Error("no take was auditioned");
 
-  // PHASE 2 — play the winner again, under the recorder, and prove it is the
-  // same expedition the audition judged.
-  const label = `seed-${String(best.seed).padStart(2, "0")}`;
-  const recorded = await runTake(best.seed, label, true);
-  const score = judge(recorded);
-  console.log(describe(`RECORDED ${label}`, recorded, score));
-  if (JSON.stringify(recorded) !== JSON.stringify(best.take)) {
-    throw new Error(
-      `the recorded take differs from the audition it won on:\n` +
-        `  audition: ${JSON.stringify(best.take)}\n` +
-        `  recorded: ${JSON.stringify(recorded)}`,
-    );
-  }
-
+  const { label, score } = best;
   console.log(
     `best take: ${label} (${score.toFixed(0)}) — commit ` +
       `${label}.json.gz as expedition.json.gz, ` +

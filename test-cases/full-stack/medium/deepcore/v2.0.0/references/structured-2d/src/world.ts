@@ -1,8 +1,7 @@
 // Deepcore — the mine: its coordinate helpers and its generation
 // (specs/world.md).
 //
-// Generation draws every choice from the cursor it is handed, so the same seed
-// and the same sequence of calls rebuild the same mine exactly. It scatters ore
+// Generation draws every choice from the cursor it is handed. It scatters ore
 // at one constant share, stone and gas from the rockbed down and lava from the
 // deepstone down at shares that rise with depth, pools the lava rather than
 // scattering it, and places exactly one Resonite node and one Cryenite node. Two

@@ -7,7 +7,7 @@
 // same state.
 //
 // THE SCENARIO IS THE SAME ONE TWICE, not two similar ones. Both runs open from a
-// `reset` on the same seed, lay the same floor and the same ore cell, stand the
+// `reset`, lay the same floor and the same ore cell, stand the
 // miner on the same cell with its travel held, hold the same key until the cell
 // breaks, and then run the same span of game time. Everything the snapshot reports
 // about the miner, the bay and the clock is compared, and the cell that was cut is

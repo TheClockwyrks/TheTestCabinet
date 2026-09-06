@@ -810,7 +810,7 @@ export const EMERGENCY_FUEL = 30;
 /**
  * The Quantum Teleporter's two draws: a height above the camp ground in tiles
  * and a downward speed in units per second, both uniform over these inclusive
- * bounds. They are a live player action and are not reproducible from the seed.
+ * bounds.
  */
 export const TELEPORT_HEIGHT_TILES_MIN = 1;
 export const TELEPORT_HEIGHT_TILES_MAX = 8;
@@ -1141,8 +1141,6 @@ export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 /** The version the debug surface reports as `version`. */
 export const DEEPCORE_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
 
 /* ---- What the specification leaves to the build -------------------------- */
 //

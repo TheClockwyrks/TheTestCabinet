@@ -1,4 +1,4 @@
-// instrumentation/deterministic-core — an interval of game time is one interval.
+// instrumentation/frame-division-independent — an interval of game time is one interval.
 //
 // `specs/instrumentation.md`: "every rate is integrated against the delta time
 // the game is given, so an interval of game time reaches the same state however

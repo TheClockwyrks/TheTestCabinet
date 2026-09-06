@@ -31,7 +31,7 @@ import {
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look, poolTallies, tallyBand } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 4, 5, 6] as const;
+const MINES = 6;
 
 /** The three bands the ramp runs across, and the fraction each one's midpoint is. */
 const MIDPOINTS: readonly { band: Band; fraction: number }[] = [
@@ -52,7 +52,8 @@ afterEach(async () => {
 
 it("raises the boulder share from 0.03 in the rockbed to 0.07 in the coreshell", async () => {
   const scans = [];
-  for (const seed of SEEDS) scans.push(await generatedMine(h, seed));
+  for (let mine = 1; mine <= MINES; mine += 1)
+    scans.push(await generatedMine(h));
 
   const shares: number[] = [];
   for (const { band, fraction } of MIDPOINTS) {

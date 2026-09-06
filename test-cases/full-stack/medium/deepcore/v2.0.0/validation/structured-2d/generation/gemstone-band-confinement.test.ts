@@ -24,7 +24,7 @@ import {
 } from "../harness";
 import { bandOf, bandRows, generatedMine, look } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 4, 5, 6] as const;
+const MINES = 6;
 
 /** The band each gemstone's curve confines it to, from its peak and spread. */
 const GEM_BAND: Readonly<Record<string, Band>> = {
@@ -46,8 +46,8 @@ afterEach(() => {
 it("finds Verdite only in the rockbed, Roselite only in the deepstone and Aurite only in the coreshell", async () => {
   let found = 0;
   let seen: { col: number; row: number } | null = null;
-  for (const seed of SEEDS) {
-    const scan = generatedMine(h, seed);
+  for (let mine = 1; mine <= MINES; mine += 1) {
+    const scan = generatedMine(h);
     // Cleared each mine, so what the picture is taken of is a cell of the mine
     // the engine is left holding rather than one an earlier mine held.
     seen = null;
@@ -62,7 +62,7 @@ it("finds Verdite only in the rockbed, Roselite only in the deepstone and Aurite
         seen = { col: cell.col, row: cell.row };
       }
     }
-    assertDeepEqual(stray.slice(0, 5), [], `seed ${seed}`);
+    assertDeepEqual(stray.slice(0, 5), [], `generation ${mine}`);
   }
 
   // A rule that no gemstone was generated at all would satisfy vacuously, so the

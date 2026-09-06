@@ -29,7 +29,7 @@ import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look, poolTallies, tallyBand } from "./mine-scan";
 
 /** The mines the share is pooled over. */
-const SEEDS = [1, 2, 3, 4] as const;
+const MINES = 4;
 
 let h: Harness;
 
@@ -43,7 +43,8 @@ afterEach(async () => {
 
 it("fills 0.14 of every band's cells with ore veins", async () => {
   const scans = [];
-  for (const seed of SEEDS) scans.push(await generatedMine(h, seed));
+  for (let mine = 1; mine <= MINES; mine += 1)
+    scans.push(await generatedMine(h));
 
   const low = ORE_DENSITY * (1 - DENSITY_TOLERANCE);
   const high = ORE_DENSITY * (1 + DENSITY_TOLERANCE);

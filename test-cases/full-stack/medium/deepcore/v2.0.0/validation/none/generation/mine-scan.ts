@@ -317,17 +317,16 @@ export function cellKey(col: number, row: number): number {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Generate a mine from `seed` at `size` and read the whole grid back.
+ * Generate a fresh mine at `size` and read the whole grid back.
  *
  * The expedition is opened through the surface rather than through the menus, so
  * a build with a broken title screen still has its generation graded.
  */
 export async function generatedMine(
   h: Harness,
-  seed: number,
   size?: WorldSize,
 ): Promise<MineScan> {
-  await openExpedition(h, { seed, size });
+  await openExpedition(h, { size });
   return scanMine(h);
 }
 

@@ -1085,5 +1085,3 @@ export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 /** The version the surface reports. */
 export const DEEPCORE_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;

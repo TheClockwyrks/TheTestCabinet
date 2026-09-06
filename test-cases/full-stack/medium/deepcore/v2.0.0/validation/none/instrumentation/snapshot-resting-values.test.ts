@@ -5,7 +5,8 @@
 // rather than going missing: `summary` is `null` until the expedition ends,
 // `coreTimer` and `coreGround` are `null` while no Sample is live, `panel` is
 // `null` while no panel is open, `notice` is `null` while no card is armed or on
-// screen, and `menuIndex` rests at `0` on `in-mine`."
+// screen, `nextTeleportHeight` and `nextTeleportSpeed` are `null` while no outcome
+// is posed, and `menuIndex` rests at `0` on `in-mine`."
 //
 // WHY THIS IS ITS OWN POINT. A build that omits a field it is not using reads the
 // same as a build that has the field and sets it wrongly: `snapshot.summary` is
@@ -31,7 +32,7 @@ import {
 
 let h: Harness;
 
-/** The five fields the specification names, held at rest, plus the menu index. */
+/** The seven fields the specification names, held at rest, plus the menu index. */
 function assertResting(s: DeepcoreSnapshot, at: string): void {
   for (const field of [
     "summary",
@@ -39,6 +40,8 @@ function assertResting(s: DeepcoreSnapshot, at: string): void {
     "coreGround",
     "panel",
     "notice",
+    "nextTeleportHeight",
+    "nextTeleportSpeed",
     "menuIndex",
   ] as const) {
     assertHasProperty(s, field, `the snapshot on ${at}`);
@@ -48,6 +51,8 @@ function assertResting(s: DeepcoreSnapshot, at: string): void {
   assertNull(s.coreGround, `coreGround on ${at}`);
   assertNull(s.panel, `panel on ${at}`);
   assertNull(s.notice, `notice on ${at}`);
+  assertNull(s.nextTeleportHeight, `nextTeleportHeight on ${at}`);
+  assertNull(s.nextTeleportSpeed, `nextTeleportSpeed on ${at}`);
 }
 
 beforeEach(async () => {
@@ -58,7 +63,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("rests summary, coreTimer, coreGround, panel and notice at null rather than dropping them", async () => {
+it("rests summary, coreTimer, coreGround, panel, notice and the teleport poses at null rather than dropping them", async () => {
   // A fresh expedition: nothing has ended, no Sample is live, no panel is open
   // and no card is armed, and the in-mine screen has no menu.
   await openScene(h);

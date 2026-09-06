@@ -64,26 +64,19 @@ the screen takes effect at the call rather than riding a level transition.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic: every rate is integrated
-against the delta time the game is given, so an interval of game time reaches the
-same state however it was divided into frames. Two more properties make the game
-driveable from code:
+The surface rests on a render-free, fixed-timestep core. Game state advances from
+the elapsed time the game is handed, independent of a canvas, of the frame loop
+that measured it, and of wall-clock time, and every rate is integrated against
+that delta time, so an interval of game time reaches the same state however it
+was divided into frames. The dependency runs one way: the simulation reads
+nothing from the renderer.
 
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer.
-- Seeded randomness. Every draw the game makes runs off a generator the surface's
-  `reset` seeds, above all the mine's generation: the ore scatter, the hazard and
-  boulder placement, and the two material nodes' cells. The game keeps that
-  generator's whole state, so reseeding and replaying the same calls reproduces
-  the same mine and the same outcome exactly. The Quantum Teleporter's height and
-  speed draws are the one exception, and they are not reproducible from the seed.
-
-Given the same seed and the same sequence of calls and elapsed game time, the game
-reaches the same state every time.
+Where the game draws at random, the surface poses the outcome the draw decides
+rather than the draw itself. The mine's generation is posed a cell at a time
+through the tile poses below, and the Quantum Teleporter's height and speed draws
+through `setNextTeleportHeight` and `setNextTeleportSpeed`.
 
 ## What the runtime provides instead
 
@@ -247,7 +240,7 @@ and reach the same outcome, beyond the drift a change in step size explains.
 
 `seconds` is at least `0` and `frames` is a whole number of at least `1`.
 Advancing while the game is still stepping automatically adds to what the wall
-clock is already doing, so a scenario that must be reproducible calls
+clock is already doing, so a scenario that clocks the game itself calls
 `setAutoStep(false)` first.
 
 ### Input
@@ -263,7 +256,7 @@ Injecting a key never changes `autoStep`, and a key held across a call to
 {{/if}}
 ### Restoring the world
 
-#### `reset(options)`
+#### `reset()`
 
 Restores the whole observable state to its title-screen value: the `title` screen
 with `menuIndex` at `0`, no expedition in progress, mode `standard` and world size
@@ -272,10 +265,8 @@ standing on the camp ground at `SPAWN_COL` facing `east` at rest, tier `1` on
 every upgrade track, a full fuel tank and a full hull, `0` Credits, an empty cargo
 bay, an empty satchel, no field supplies, no rocket component installed, no live
 Core Sample, no ground item, neither hazard notice fired, the camera lead at `0`,
-both faculties running, and `simTime` and `elapsedSeconds` at `0`.
-
-`options.seed` seeds the game's generator, defaulting to `DEFAULT_SEED` (`1`).
-`options` is optional and an omitted `seed` takes the default.
+both faculties running, no Quantum Teleporter outcome posed, and `simTime` and
+`elapsedSeconds` at `0`.
 
 `muted` is untouched, because muting is a player preference rather than a value an
 expedition opens with. The save slot is untouched as well, because it outlives the
@@ -291,9 +282,9 @@ depends on is derivable from them.
 
 #### `generateMine()`
 
-Generates a fresh mine at the current world size, drawing from the game's
-generator exactly as a started expedition's own generation does, and replaces
-every cell of the grid with the result. It leaves the miner, the screen, the
+Generates a fresh mine at the current world size, drawn exactly as a started
+expedition's own generation draws one, and replaces every cell of the grid with
+the result. It leaves the miner, the screen, the
 Credits, the tiers, the holdings, and the ground items exactly as they stand, so a
 caller that wants the miner at the spawn places it itself.
 
@@ -417,6 +408,23 @@ health, its full health, and the band `tileAt` reports all follow the cell's own
 band. Generation is what makes every cell's band the band its row falls in, so a
 `generateMine` at the new depth restores the correspondence.
 
+### Posing the Quantum Teleporter
+
+The Quantum Teleporter's two draws, its height and its downward speed, are the
+draws `specs/items.md` states. Each is posed on its own, and a posed value stands
+in for the draw the next use would make.
+
+| Operation | Sets |
+| --- | --- |
+| `setNextTeleportHeight(tiles)` | The height above the camp ground, in tiles, the next Quantum Teleporter use places the miner at, from `1` to `8` as `specs/items.md` bounds the draw, or `null` to leave the height to the draw. |
+| `setNextTeleportSpeed(speed)` | The downward speed, in units per second, the next Quantum Teleporter use gives the miner, from `150` to `700` as `specs/items.md` bounds the draw, or `null` to leave the speed to the draw. |
+
+A posed value is consumed by the Quantum Teleporter use that places the miner
+with it, and reads `null` afterwards. Posing one value leaves the other as it
+stands, so a use with one posed draws only the other, and a use with neither
+posed draws both as `specs/items.md` states. Neither operation uses an item, so
+the count held changes only when a use spends one.
+
 ### The controls
 
 These are the named counterparts of the on-screen controls a player presses. Each
@@ -512,6 +520,9 @@ would.
     "quantum-teleporter": <number>, "matter-transmitter": <number>,
     "nanobots": <number>, "emergency-fuel": <number>,
   },
+  nextTeleportHeight: <number> | null,  // the posed height for the next
+                                        // Quantum Teleporter use, else null
+  nextTeleportSpeed: <number> | null,   // the posed downward speed for it, else null
   rocket: {
     installed: [ <componentId> ],       // in order: "hull-frame", "fuel-cells",
                                         // "guidance", "thruster", "ignition"
@@ -541,8 +552,9 @@ The shape is fixed and every field is present on every screen. A field the curre
 screen does not use reports its resting value rather than going missing: `summary`
 is `null` until the expedition ends, `coreTimer` and `coreGround` are `null` while
 no Sample is live, `panel` is `null` while no panel is open, `notice` is `null`
-while no card is armed or on screen, `elapsedSeconds` rests at `0` until an
-expedition begins, and `menuIndex` rests at `0` on `in-mine`.
+while no card is armed or on screen, `nextTeleportHeight` and
+`nextTeleportSpeed` are `null` while no outcome is posed, `elapsedSeconds` rests
+at `0` until an expedition begins, and `menuIndex` rests at `0` on `in-mine`.
 
 Several fields are derived rather than stored: `depthMeters` and
 `deepestDepthMeters` from the miner's position, `overloaded` from `loadKg` against

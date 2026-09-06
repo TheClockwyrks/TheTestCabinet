@@ -38,7 +38,7 @@ import {
 } from "./mine-scan";
 
 /** Sixteen mines: enough draws that the pooled share is the build's density. */
-const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] as const;
+const MINES = 16;
 
 const MIDPOINTS: readonly { band: Band; fraction: number }[] = [
   { band: "rockbed", fraction: 0.375 },
@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 it("raises the gas share from 0.00533 in the rockbed to 0.01067 in the coreshell", async () => {
-  const scans = SEEDS.map((seed) => generatedMine(h, seed));
+  const scans = Array.from({ length: MINES }, () => generatedMine(h));
 
   const shares: number[] = [];
   for (const { band, fraction } of MIDPOINTS) {

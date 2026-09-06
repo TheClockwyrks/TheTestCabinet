@@ -814,8 +814,7 @@ export const EMERGENCY_FUEL = 30;
 /**
  * The Quantum Teleporter's two draws: "a height drawn uniformly from `1` to `8`
  * tiles with a downward speed drawn uniformly from `150` to `700` units per
- * second", both inclusive. They are a live player action and are not required to
- * be reproducible from the seed.
+ * second", both inclusive.
  */
 export const TELEPORT_HEIGHT_TILES_MIN = 1;
 export const TELEPORT_HEIGHT_TILES_MAX = 8;
@@ -1176,8 +1175,6 @@ export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 /** "The surface carries `version` (`DEEPCORE_DEBUG_VERSION`, `1`)". */
 export const DEEPCORE_DEBUG_VERSION = 1;
 
-/** "`options.seed` seeds the game's generator, defaulting to `DEFAULT_SEED` (`1`)". */
-export const DEFAULT_SEED = 1;
 
 /* ---- What the specification leaves to the build --------------------------- */
 //

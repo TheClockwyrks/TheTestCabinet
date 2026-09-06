@@ -22,7 +22,7 @@ import {
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look } from "../generation/mine-scan";
 
-const SEEDS = [1, 5] as const;
+const MINES = 2;
 
 let h: Harness;
 
@@ -37,9 +37,9 @@ afterEach(async () => {
 it("lays the Core at column 16 and bedrock across the rest of the chamber", async () => {
   let deepest = 0;
   for (const size of WORLD_SIZES) {
-    for (const seed of SEEDS) {
-      const at = `the ${size} mine on seed ${seed}`;
-      const scan = await generatedMine(h, seed, size as WorldSize);
+    for (let mine = 1; mine <= MINES; mine += 1) {
+      const at = `the ${size} mine, generation ${mine}`;
+      const scan = await generatedMine(h, size as WorldSize);
       deepest = scan.coreRow;
 
       assertEqual(

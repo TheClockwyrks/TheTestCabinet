@@ -121,6 +121,30 @@ describe("using", () => {
     expect(game.miner.state).toBe("fall");
   });
 
+  it("places the miner at a posed height and speed, and consumes the pose", () => {
+    const game = emptyGame();
+    game.items["quantum-teleporter"] = 2;
+    game.nextTeleportHeight = 3;
+    game.nextTeleportSpeed = 420;
+    standOn(game, 10, 300);
+    expect(useItem(game, "quantum-teleporter")).toBe(true);
+    expect((SURFACE_Y - (game.miner.y + MINER_H)) / TILE).toBeCloseTo(3, 9);
+    expect(game.miner.vy).toBe(420);
+    expect(game.nextTeleportHeight).toBeNull();
+    expect(game.nextTeleportSpeed).toBeNull();
+  });
+
+  it("draws the value a pose leaves to the draw", () => {
+    const game = emptyGame();
+    game.items["quantum-teleporter"] = 1;
+    game.nextTeleportHeight = 8;
+    standOn(game, 10, 300);
+    expect(useItem(game, "quantum-teleporter")).toBe(true);
+    expect((SURFACE_Y - (game.miner.y + MINER_H)) / TILE).toBeCloseTo(8, 9);
+    expect(game.miner.vy).toBeGreaterThanOrEqual(QUANTUM_VEL_MIN);
+    expect(game.miner.vy).toBeLessThanOrEqual(QUANTUM_VEL_MAX);
+  });
+
   it("sets the miner down on the camp ground at rest", () => {
     const game = emptyGame();
     game.items["matter-transmitter"] = 1;

@@ -8,9 +8,8 @@
 // shot to shot.
 //
 // WHY THE POOL SITS OUTSIDE THE STATE. A running simulation is not part of the
-// game: it carries its own generator and its own live particles, nothing about a
-// rule depends on it, and reseeding the game reproduces the same outcome whatever
-// it is holding. So the bursts that are on screen live here rather than on the
+// game: it carries its own generator and its own live particles, and nothing
+// about a rule depends on it. So the bursts that are on screen live here rather than on the
 // world's game state, and the SIMULATION NEVER READS THEM. The traffic runs one
 // way: a frame's rules push `FxEvent`s onto the state, the game mode's tick
 // drains them here once those rules have all run, and the mine's effects layer

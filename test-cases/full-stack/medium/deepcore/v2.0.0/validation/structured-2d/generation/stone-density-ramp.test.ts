@@ -38,7 +38,7 @@ import {
   tallyBand,
 } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 4, 5, 6] as const;
+const MINES = 6;
 
 /** The three bands the ramp runs across, and the fraction each one's midpoint is. */
 const MIDPOINTS: readonly { band: Band; fraction: number }[] = [
@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 it("raises the boulder share from 0.03 in the rockbed to 0.07 in the coreshell", async () => {
-  const scans = SEEDS.map((seed) => generatedMine(h, seed));
+  const scans = Array.from({ length: MINES }, () => generatedMine(h));
 
   const shares: number[] = [];
   for (const { band, fraction } of MIDPOINTS) {

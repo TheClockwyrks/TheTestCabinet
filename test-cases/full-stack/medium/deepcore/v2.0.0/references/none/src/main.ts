@@ -9,8 +9,8 @@
 //
 // The loop also owns the clock the debug surface reaches: `setAutoStep(false)` stops
 // the wall clock advancing the simulation and `advance(seconds, frames)` runs an exact
-// number of whole frames at an exact delta, which is what makes a scenario driven from
-// code reproducible on any machine.
+// number of whole frames at an exact delta, so a scenario driven from code covers the
+// same game time on any machine.
 
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";

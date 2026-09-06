@@ -331,9 +331,9 @@ source = "specs/items.md"
 [[spec]]
 source = "specs/assets.md.hbs"
 
-# The debugging and automation surface every build exposes: a deterministic, render-free
-# core; an API to drive and inspect the game from code through its own real input path;
-# and a read-only debug overlay. Framed as an ordinary developer affordance of the game.
+# The debugging and automation surface every build exposes: a render-free, steppable
+# core; an API to drive and inspect the game from code through its own real input path,
+# posing the outcome of every draw a scenario touches; and a read-only debug overlay. Framed as an ordinary developer affordance of the game.
 # The `[instrumentation]` table above names the same handle for the reporter, and the
 # review items below drive it.
 [[spec]]
@@ -414,7 +414,7 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # expedition is driven and inspected from code, and every other suite on this
 # checklist poses its scenario through it. These points check that it is really
-# there, really wired to the running game, and really deterministic. A surface that
+# there, really wired to the running game, and really off the wall clock. A surface that
 # reports a plausible-looking object unconnected to what is on screen is the failure
 # mode worth naming, and it shows up as every other suite failing to run.
 [[review.categories]]
@@ -613,7 +613,7 @@ validation = { script = "instrumentation/buildings-report.test.ts", outputs = [
 [[review.categories.items]]
 id = "reset"
 title = "reset returns the game to its title-screen values"
-description = "After an expedition has dirtied Credits, tiers, cargo, satchel, supplies, rocket progress and the mine, reset({seed: 7}) restores the title screen with menuIndex 0, mode standard, world size standard, an empty mine, the miner on the camp ground at SPAWN_COL facing east at rest, tier 1 on every track, full fuel and hull, 0 Credits, nothing held, no live Core Sample, neither notice fired, camera lead 0, both faculties running and simTime 0, and leaves muted untouched."
+description = "After an expedition has dirtied Credits, tiers, cargo, satchel, supplies, rocket progress and the mine, reset() restores the title screen with menuIndex 0, mode standard, world size standard, an empty mine, the miner on the camp ground at SPAWN_COL facing east at rest, tier 1 on every track, full fuel and hull, 0 Credits, nothing held, no live Core Sample, neither notice fired, camera lead 0, both faculties running, no Quantum Teleporter outcome posed and simTime 0, and leaves muted untouched."
 domains = ["simulation"]
 failure_cap = "broken"
 # Automated validation: dirty every field reset restores, then reset and hold
@@ -623,19 +623,7 @@ validation = { script = "instrumentation/reset.test.ts", outputs = [
   { id = "title", name = "The title screen after reset", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "seeded-mine-reproducible"
-title = "The same seed reproduces the same mine"
-description = "Two expeditions reset to the same seed and started at the same world size generate identical mines cell for cell, including the ore scatter, the hazard and boulder placement and both material node cells; two different seeds do not."
-domains = ["simulation"]
-failure_cap = "scuffed"
-# Automated validation: reset to one seed, generate, sample a fixed set of
-# cells across all four bands, repeat with the same seed and then with
-# another, and compare the three samples.
-validation = { script = "instrumentation/seeded-mine-reproducible.test.ts", outputs = [
-  { id = "mine", name = "The mine the seed reproduces", kind = "image" },
-] }
-[[review.categories.items]]
-id = "deterministic-core"
+id = "frame-division-independent"
 title = "An interval of game time is independent of how it is divided into frames"
 description = "One second of game time advanced as a single frame and as sixty reaches the same state: from the same posed fall, the miner position and velocity agree to within the drift a change in step size explains."
 domains = ["simulation"]
@@ -643,7 +631,7 @@ failure_cap = "scuffed"
 # Automated validation: pose the same fall twice, advance one second in one
 # frame and in sixty, and compare the resulting miner position and velocity
 # within a stated tolerance.
-validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+validation = { script = "instrumentation/frame-division-independent.test.ts", outputs = [
   { id = "drive", name = "The fall the two clocks are compared over", kind = "replay" },
 ] }
 [[review.categories.items]]
@@ -682,13 +670,49 @@ failure_cap = "passable"
 validation = { script = "instrumentation/drill-faculty.test.ts", outputs = [
   { id = "inert", name = "The drill held inert against a solid cell", kind = "replay" },
 ] }
+[[review.categories.items]]
+id = "set-next-teleport-height-poses-the-height"
+title = "setNextTeleportHeight poses the height the next teleport places the miner at"
+description = "setNextTeleportHeight(tiles) with a height from 1 to 8 reads back as nextTeleportHeight, setNextTeleportHeight(null) reads back as null, and the next Quantum Teleporter use places the miner's feet exactly the posed number of tiles above the camp ground line."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a height, read it back, clear it and read null,
+# pose it again, use the teleporter from underground and read the placement
+# height off the snapshot on the call itself.
+validation = { script = "instrumentation/set-next-teleport-height-poses-the-height.test.ts", outputs = [
+  { id = "posed-height", name = "The teleporter placing the miner at the posed height", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "set-next-teleport-speed-poses-the-speed"
+title = "setNextTeleportSpeed poses the speed the next teleport gives the miner"
+description = "setNextTeleportSpeed(speed) with a speed from 150 to 700 reads back as nextTeleportSpeed, setNextTeleportSpeed(null) reads back as null, and the next Quantum Teleporter use gives the miner exactly the posed downward speed."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose a speed, read it back, clear it and read null,
+# pose it again, use the teleporter from underground and read the miner's
+# vertical velocity off the snapshot on the call itself.
+validation = { script = "instrumentation/set-next-teleport-speed-poses-the-speed.test.ts", outputs = [
+  { id = "posed-speed", name = "The teleporter giving the miner the posed speed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "next-teleport-consumed-by-the-use"
+title = "A teleport consumes the outcome posed for it"
+description = "The Quantum Teleporter use that places the miner with a posed height and speed consumes both, so nextTeleportHeight and nextTeleportSpeed read null afterwards and a following use draws its own placement inside the stated ranges."
+domains = ["simulation"]
+failure_cap = "passable"
+# Automated validation: pose both values, use the teleporter, read both fields
+# back as null, then use it again and read a placement inside the stated
+# ranges.
+validation = { script = "instrumentation/next-teleport-consumed-by-the-use.test.ts", outputs = [
+  { id = "consumed", name = "The pose consumed by its teleport", kind = "image" },
+] }
 
 # --- The Mine and the Camp ----------------------------------------------------
 # The fixed geometry every other suite poses its scenario inside: the tile grid and
 # its coordinate space, how depth is reported, where the borders and the Core
 # chamber sit, which band a row belongs to and how much health that band gives a
 # cell, and where the six camp buildings may stand. Nothing here is generated;
-# these are the invariants of the world at every seed and every size.
+# these are the invariants of the world in every mine and at every size.
 [[review.categories]]
 id = "world"
 title = "The Mine and the Camp"
@@ -806,9 +830,9 @@ validation = { script = "world/buildings-clear-of-the-cave-mouth.test.ts", outpu
 # --- Mine Generation ----------------------------------------------------------
 # What a fresh mine holds. There is no fixed map, so every point here is a property
 # of the generator rather than of one layout: the densities and where each kind may
-# and may not appear, the two material nodes, and the two properties every seed has
-# to satisfy for the mine to be winnable. These run over several seeds, because a
-# generator that happens to satisfy a rule on seed 1 has not satisfied it.
+# and may not appear, the two material nodes, and the two properties every mine has
+# to satisfy for the mine to be winnable. These run over several generated mines,
+# because a generator that happens to satisfy a rule on one mine has not satisfied it.
 [[review.categories]]
 id = "generation"
 title = "Mine Generation"
@@ -897,10 +921,10 @@ validation = { script = "generation/lava-density-ramp.test.ts", outputs = [
 [[review.categories.items]]
 id = "lava-none-above-the-deepstone"
 title = "No lava appears above the deepstone"
-description = "The topsoil and rockbed bands hold no lava cell at any seed, so lava is first met at the deepstone as specs/world.md states."
+description = "The topsoil and rockbed bands hold no lava cell in any generated mine, so lava is first met at the deepstone as specs/world.md states."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: generate mines at several seeds and read every cell of
+# Automated validation: generate several mines and read every cell of
 # the topsoil and rockbed bands, holding each kind against lava.
 validation = { script = "generation/lava-none-above-the-deepstone.test.ts", outputs = [
   { id = "upper", name = "The rockbed with no lava in it", kind = "image" },
@@ -911,7 +935,7 @@ title = "Lava forms pools rather than isolated cells"
 description = "Lava cells cluster: more lava cells have at least one orthogonally adjacent lava cell than do not, so a pool can be seen and routed around rather than appearing as single scattered cells."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: generate mines at several seeds, count lava cells with
+# Automated validation: generate several mines, count lava cells with
 # and without an orthogonal lava neighbor, and hold the first count above the
 # second.
 validation = { script = "generation/lava-clusters.test.ts", outputs = [
@@ -931,10 +955,10 @@ validation = { script = "generation/topsoil-clear.test.ts", outputs = [
 [[review.categories.items]]
 id = "resonite-node"
 title = "Exactly one Resonite node exists, in the rockbed"
-description = "Every generated mine holds exactly one material node holding resonite, and it sits at a minable cell of the rockbed band, at every seed and every world size."
+description = "Every generated mine holds exactly one material node holding resonite, and it sits at a minable cell of the rockbed band, in every generated mine at every world size."
 domains = ["simulation"]
 failure_cap = "broken"
-# Automated validation: generate mines at several seeds and sizes and count
+# Automated validation: generate several mines at every size and count
 # material cells holding resonite, holding the count at one and its band at
 # rockbed.
 validation = { script = "generation/resonite-node.test.ts", outputs = [
@@ -943,10 +967,10 @@ validation = { script = "generation/resonite-node.test.ts", outputs = [
 [[review.categories.items]]
 id = "cryenite-node"
 title = "Exactly one Cryenite node exists, in the deepstone"
-description = "Every generated mine holds exactly one material node holding cryenite, and it sits at a minable cell of the deepstone band, at every seed and every world size."
+description = "Every generated mine holds exactly one material node holding cryenite, and it sits at a minable cell of the deepstone band, in every generated mine at every world size."
 domains = ["simulation"]
 failure_cap = "broken"
-# Automated validation: generate mines at several seeds and sizes and count
+# Automated validation: generate several mines at every size and count
 # material cells holding cryenite, holding the count at one and its band at
 # deepstone.
 validation = { script = "generation/cryenite-node.test.ts", outputs = [
@@ -978,10 +1002,10 @@ validation = { script = "generation/diggable-path.test.ts", outputs = [
 [[review.categories.items]]
 id = "no-band-sealed"
 title = "No band is sealed across its full width"
-description = "No band is sealed across the playable columns by lava or unbreakable stone, so a route through every band exists at every seed and the descent is never blocked outright."
+description = "No band is sealed across the playable columns by lava or unbreakable stone, so a route through every band exists in every generated mine and the descent is never blocked outright."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: generate mines at several seeds and check each band
+# Automated validation: generate several mines and check each band
 # for a row-by-row crossing that avoids lava and stone, holding every band
 # crossable.
 validation = { script = "generation/no-band-sealed.test.ts", outputs = [

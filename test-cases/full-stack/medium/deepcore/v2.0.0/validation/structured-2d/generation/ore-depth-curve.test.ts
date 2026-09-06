@@ -31,7 +31,7 @@ import {
 } from "../harness";
 import { generatedMine, look } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 4] as const;
+const MINES = 4;
 
 let h: Harness;
 
@@ -44,8 +44,8 @@ afterEach(() => {
 });
 
 it("holds every vein to an ore whose curve is open at its depth", async () => {
-  for (const seed of SEEDS) {
-    const scan = generatedMine(h, seed);
+  for (let mine = 1; mine <= MINES; mine += 1) {
+    const scan = generatedMine(h);
     const slack = 2 / (scan.coreRow - 1);
     const wrong: string[] = [];
     for (const cell of scan.ores) {
@@ -61,7 +61,7 @@ it("holds every vein to an ore whose curve is open at its depth", async () => {
         );
       }
     }
-    assertDeepEqual(wrong.slice(0, 5), [], `seed ${seed}`);
+    assertDeepEqual(wrong.slice(0, 5), [], `generation ${mine}`);
   }
 
   // The picture: the mix at one depth, halfway down the mine.

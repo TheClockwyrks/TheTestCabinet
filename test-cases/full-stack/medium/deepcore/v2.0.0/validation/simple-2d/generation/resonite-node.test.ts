@@ -25,7 +25,7 @@ import { captureStill, createHarness, type Harness } from "../harness";
 import { bandOf, generatedMine, look } from "./mine-scan";
 
 /**
- * How many seeds each world size is swept at.
+ * How many fresh mines each world size is swept over.
  *
  * `specs/world.md` divides the minable rows into four equal bands, so the rule
  * bites hardest at the shallowest row of the node's band: that is the one row an
@@ -36,7 +36,7 @@ import { bandOf, generatedMine, look } from "./mine-scan";
  * and narrower at the two deeper sizes, each of which costs proportionally more
  * to generate and read for the same one node.
  */
-const SEEDS_PER_SIZE: Readonly<Record<WorldSize, number>> = {
+const MINES_PER_SIZE: Readonly<Record<WorldSize, number>> = {
   quick: 200,
   standard: 24,
   marathon: 12,
@@ -55,9 +55,9 @@ afterEach(() => {
 it("generates exactly one Resonite node, at a rockbed cell", async () => {
   let last: { col: number; row: number } | null = null;
   for (const size of WORLD_SIZES) {
-    for (let seed = 1; seed <= SEEDS_PER_SIZE[size]; seed += 1) {
-      const at = `the ${size} mine on seed ${seed}`;
-      const scan = generatedMine(h, seed, size);
+    for (let mine = 1; mine <= MINES_PER_SIZE[size]; mine += 1) {
+      const at = `the ${size} mine, generation ${mine}`;
+      const scan = generatedMine(h, size);
       const nodes = scan.materials.filter(
         (cell) => cell.material === "resonite",
       );

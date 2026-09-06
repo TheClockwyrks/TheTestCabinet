@@ -13,7 +13,7 @@ import { colCenterX, setCell } from "./world";
  */
 export function emptyGame(): Game {
   const game = new Game();
-  game.reset(1);
+  game.reset();
   game.screen = "in-mine";
   game.clearMine();
   return game;
