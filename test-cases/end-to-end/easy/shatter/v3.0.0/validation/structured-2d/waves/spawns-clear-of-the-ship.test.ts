@@ -1,9 +1,9 @@
 // waves/spawns-clear-of-the-ship — a wave never lands on top of the ship.
 //
 // THE RULE. `specs/progression.md`, "Waves": each rock of a wave "is placed at a
-// random position at least `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least
-// `WAVE_MIN_STAR_DIST` (`200`) from the star, both by the shortest wrapped
-// separation". `specs/field.md` defines that separation.
+// position drawn uniformly from the points of the field at least
+// `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least `WAVE_MIN_STAR_DIST`
+// (`200`) from the star, both by the shortest wrapped separation". `specs/field.md` defines that separation.
 //
 // WHAT IS MEASURED. The shortest WRAPPED distance from each arriving rock's centre
 // to the ship's, over every rock of several waves, against `300`. The ship's

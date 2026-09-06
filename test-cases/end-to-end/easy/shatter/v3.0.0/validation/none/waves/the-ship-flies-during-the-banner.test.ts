@@ -73,11 +73,12 @@ const THRUST_TICKS = ticksFor(THRUST_SECONDS);
 /**
  * How far the two speeds may differ: one percent, and half a unit either way.
  *
- * The two runs here are the same sequence of calls over the same empty field, and
- * `specs/simulation.md` fixes the timestep and the order of work inside a tick, so
- * a conformant build produces the same number twice and this is insurance against
- * a float that made a round trip through JSON rather than a real allowance. A
- * build that freezes the ship under the banner misses by a hundred percent.
+ * The two runs here hold the same thrust over the same span on the same empty
+ * field, and no draw is involved: `specs/simulation.md` fixes the timestep and
+ * the order of work inside a tick, so the speed each run integrates is the one
+ * `specs/ship.md` states and the allowance covers only a float that made a round
+ * trip through JSON. A build that freezes the ship under the banner misses by a
+ * hundred percent.
  */
 const MATCH_TOLERANCE = 0.01;
 const MATCH_FLOOR = 0.5;

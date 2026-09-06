@@ -2,9 +2,10 @@
 // path off its fresh drift speed.
 //
 // THE RULE, AND THE ONE THING THIS ITEM DECIDES. `specs/rocks.md`, Star recycling:
-// a recycled rock "re-enters at a random point on one of the four edges of the
-// field, heading inward into the field, at a fresh base drift speed drawn from its
-// size's range", and, under `warhead`, "Its speed is reset and its health is not."
+// a recycled rock "re-enters at a point on one of the four edges of the field
+// ... heading inward into the field, at a fresh base drift speed drawn uniformly
+// from its size's range", and, under `warhead`, "Its speed is reset and its health
+// is not."
 // Each half is already owned. `rocks/recycle-resets-speed` decides the reset
 // itself, on a whole rock; `armor/recycling-preserves-health` decides that the
 // damage survives. What neither of them takes is the recycle path with a DAMAGED

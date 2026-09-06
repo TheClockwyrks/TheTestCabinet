@@ -64,6 +64,7 @@ import {
   type RockSnapshot,
   type ShatterSnapshot,
 } from "../harness";
+import type { FieldEdge } from "../surface";
 
 /* -------------------------------------------------------------------------- */
 /* Quiet ground                                                               */
@@ -690,6 +691,27 @@ export function nearestEdge(p: Vec): Edge {
   return candidates.reduce((best, edge) =>
     edge.distance < best.distance ? edge : best,
   );
+}
+
+/**
+ * How far a point stands from one named edge of the field, in units.
+ *
+ * The reading a posed re-entry is graded by: `specs/rocks.md` draws the point
+ * uniformly along the whole length of the posed edge, so a rock coming back near
+ * a corner can stand nearer to the perpendicular edge than to the one it entered
+ * at, and only its distance from the edge that was posed says anything.
+ */
+export function distanceFromEdge(point: Vec, edge: FieldEdge): number {
+  switch (edge) {
+    case "left":
+      return point.x;
+    case "right":
+      return FIELD_W - point.x;
+    case "top":
+      return point.y;
+    case "bottom":
+      return FIELD_H - point.y;
+  }
 }
 
 /** A Large's whole circle, as the radius a still is framed against. */

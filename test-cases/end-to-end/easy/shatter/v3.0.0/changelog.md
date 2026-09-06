@@ -104,11 +104,12 @@ What that replaced:
   and the build's under `none`, so a check drives real key events at it instead.
 - `setMuted`. Mute is reached the way a player reaches it, through the `mute`
   binding, and `muted` is read back from the snapshot.
-- Seeding. `reset` took an option that fixed every draw the game makes, and the
-  checks on the saucer, the waves and the recycled rocks replayed chosen values of
-  it. `reset` takes no options now: the specification states each draw as the
-  distribution it is drawn from and nothing about how a build draws it, and the
-  surface poses the outcome of every draw a check touches. `setNextSaucerEdge`,
+- The `reset` option. `reset` took an option that fixed every draw the game
+  makes, and the checks on the saucer, the waves and the recycled rocks replayed
+  chosen values of it. `reset` takes no options now: the specification states
+  each draw as the distribution it is drawn from and nothing about how a build
+  draws it, and the surface poses the outcome of every draw a check touches.
+  `setNextSaucerEdge`,
   `setNextSaucerRow`, `setNextSaucerAim`, `setNextRockSpeed` and
   `setNextRecycleEdge` each set what the next draw of one kind decides and are
   consumed by it, `setSaucerDue` sets the figure the gap draw decides, and

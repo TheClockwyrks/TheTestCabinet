@@ -702,7 +702,7 @@ validation = { script = "instrumentation/next-rock-speed.test.ts", outputs = [
 [[review.categories.items]]
 id = "next-recycle-edge"
 title = "Posing the re-entry edge decides where the next recycle re-enters"
-description = "For a rock dropped onto the star, setNextRecycleEdge(left) and, on a second sling, setNextRecycleEdge(bottom) each read back as nextRecycleEdge, the rock re-enters within 100 units of the posed edge and nearer to it than to any other, and nextRecycleEdge is null once it has."
+description = "For a rock dropped onto the star, setNextRecycleEdge(left) and, on a second sling, setNextRecycleEdge(bottom) each read back as nextRecycleEdge, the rock re-enters within 100 units of the posed edge, and nextRecycleEdge is null once it has."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/next-recycle-edge.test.ts", outputs = [

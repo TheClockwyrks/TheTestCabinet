@@ -65,9 +65,9 @@ export function scoreFor(size: RockSize): number {
 /**
  * How fast a rock's drawn rotation turns, in radians per second.
  *
- * A function of the rock's id, so it is the same every time that rock is drawn
- * and costs no draw off the generator. The spin ANGLE a rock starts at is a real
- * draw, which is what `specs/simulation.md` lists.
+ * A function of the rock's id, so it is the same every time that rock is drawn.
+ * The spin is cosmetic (`specs/rocks.md`) and is not among the draws
+ * `specs/simulation.md` lists, so how a build picks it is its own.
  */
 export function spinRate(id: number): number {
   return (hashed(id) * 2 - 1) * ROCK_SPIN_RATE;

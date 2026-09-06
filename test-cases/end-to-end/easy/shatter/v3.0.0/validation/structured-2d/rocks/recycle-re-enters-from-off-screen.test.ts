@@ -1,8 +1,10 @@
 // rocks/recycle-re-enters-from-off-screen — the star gives a rock back at an edge.
 //
 // `specs/rocks.md`, Star recycling: a rock the star swallows "is taken from the core
-// and immediately re-placed at the same size. It re-enters at a random point on one
-// of the four edges of the field, heading inward into the field". This item decides
+// and immediately re-placed at the same size. It re-enters at a point on one of the
+// four edges of the field, the edge drawn with probability `1/4` each and the point
+// drawn uniformly along the whole length of that edge, heading inward into the
+// field". This item decides
 // WHERE it comes back: at an edge, and not on the star's doorstep. A build that
 // re-places the rock beside the core hands the player a rock that falls straight
 // back in, over and over, and the field silently jams.

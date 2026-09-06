@@ -10,9 +10,15 @@
 // from above, taken at the core, read on the tick it re-enters. Two edges, the
 // left and the bottom, on two slings, so a build that ignores the pose and draws
 // — which lands on the posed edge a quarter of the time — cannot land on both by
-// luck. The edge the rock stands nearest is read the way
-// `rocks/recycle-re-enters-from-off-screen` reads it, and it must be the posed
-// one within the hundred units that item allows a re-entry from the seam.
+// luck. What is read is the rock's distance from the POSED edge, within the
+// hundred units `rocks/recycle-re-enters-from-off-screen` allows a re-entry from
+// the seam.
+//
+// THE POSED EDGE, NOT THE NEAREST ONE. `specs/rocks.md` draws the point uniformly
+// along the whole length of the edge and pins no inset for the centre, so a rock
+// coming back near a corner may stand nearer the perpendicular edge than the one
+// it entered at. Which edge it is nearest is therefore not a reading of the pose;
+// how far it stands from the edge that was posed is.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
@@ -24,8 +30,8 @@ import {
   type Harness,
 } from "../harness";
 import {
+  distanceFromEdge,
   dropOntoTheStar,
-  nearestEdge,
   slingIntoTheStar,
   theOneRock,
 } from "../rocks/scenario";
@@ -69,15 +75,8 @@ it("returns the next recycled rock at the posed edge and consumes the pose", asy
     }
 
     const returned = theOneRock(recycle.at, "the recycled rock");
-    const nearest = nearestEdge(returned);
-    assertEqual(
-      nearest.name,
-      edge,
-      `the edge the rock posed to re-enter at the ${edge} stood nearest ` +
-        "(specs/instrumentation.md)",
-    );
     assertLessThanOrEqual(
-      nearest.distance,
+      distanceFromEdge(returned, edge),
       EDGE_REACH,
       `units the re-entering rock stands from the posed ${edge} edge ` +
         "(specs/rocks.md)",

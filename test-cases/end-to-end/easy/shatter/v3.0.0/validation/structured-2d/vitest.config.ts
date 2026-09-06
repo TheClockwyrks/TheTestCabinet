@@ -37,10 +37,11 @@ export default defineEngineValidationConfig({
   // WHAT EIGHT ACTUALLY COSTS, MEASURED. Against the `warhead` reference build,
   // 291 suite files and 342 checks finished in 14.7 s of wall clock at eight
   // workers, with the slowest FILE at 3.6 s (`saucer/at-most-one-at-a-time`,
-  // which samples two minutes of game time every tick). The reading was taken on a
-  // twenty-core box carrying four of these case worktrees at load average ~13 — a
-  // loaded host rather than an idle one, and it counted one suite since removed, so
-  // it is an upper bound rather than a best case. Against that, the fifteen minutes
+  // which marches two minutes of game time at `MARCH_TICKS` ticks a frame). The
+  // reading was taken on a twenty-core box carrying four of these case worktrees
+  // at load average ~13 — a loaded host rather than an idle one, and it counted
+  // one suite since removed, so it is an upper bound rather than a best case.
+  // Against that, the fifteen minutes
   // `guides/authoring/writing-debug-apis-and-validators.md` asks a case to finish
   // in, and the forty-five the runner caps the WHOLE suite run at
   // (`VITEST_TIMEOUT`, `crates/core/src/vitest_validator.rs`), are both orders of
@@ -54,9 +55,9 @@ export default defineEngineValidationConfig({
   // allowance is a check that failed a correct build for a fact about the
   // machine. The figure is therefore many times the longest scenario rather than
   // a snug fit around it: the longest here — `saucer/at-most-one-at-a-time`
-  // sampling two minutes of game time every tick, the avoidance sweep's 36
-  // crossings — run in a couple of seconds of processor time, and five minutes is
-  // room for a host twenty times oversubscribed.
+  // marching two minutes of game time at `MARCH_TICKS` ticks a frame, the
+  // avoidance sweep's 36 crossings — run in a couple of seconds of processor
+  // time, and five minutes is room for a host twenty times oversubscribed.
   testTimeout: 300_000,
   // The same allowance for a hook, which here builds an engine and awaits the
   // build's own `initialize`: a `beforeEach` that crosses a ceiling is a lost

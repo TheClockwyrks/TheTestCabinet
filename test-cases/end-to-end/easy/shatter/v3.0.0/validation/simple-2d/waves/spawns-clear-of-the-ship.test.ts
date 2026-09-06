@@ -1,9 +1,9 @@
 // waves/spawns-clear-of-the-ship — a wave spawns clear of the ship.
 //
-// `specs/progression.md`, Waves: each Large rock "is placed at a random position
-// at least `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least
-// `WAVE_MIN_STAR_DIST` (`200`) from the star, both by the shortest wrapped
-// separation". This item reads the first of those two; `spawns-clear-of-the-star`
+// `specs/progression.md`, Waves: each Large rock "is placed at a position drawn
+// uniformly from the points of the field at least `WAVE_MIN_SHIP_DIST` (`300`)
+// from the ship and at least `WAVE_MIN_STAR_DIST` (`200`) from the star, both by
+// the shortest wrapped separation". This item reads the first of those two; `spawns-clear-of-the-star`
 // reads the second, so a build that respects one and not the other loses one point
 // rather than two.
 //
