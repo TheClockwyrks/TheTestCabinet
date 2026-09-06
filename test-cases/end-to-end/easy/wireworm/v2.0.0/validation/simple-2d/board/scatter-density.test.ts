@@ -50,7 +50,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it.each(RUNS)("scatters 10–15%% of the scatter rows on run %i", async (run) => {
+it.each(RUNS)("scatters 10 to 15 percent of the scatter rows on run %i", async (run) => {
   const snapshot = await openRun(h);
   if (run === RUNS[0]) captureStill(h, "scatter");
 

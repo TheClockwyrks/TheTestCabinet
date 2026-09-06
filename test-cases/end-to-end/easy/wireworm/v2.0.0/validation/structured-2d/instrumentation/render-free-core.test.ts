@@ -1,6 +1,7 @@
 // Wireworm — instrumentation/render-free-core: the simulation advances on the
 // elapsed time it is handed and on nothing else, so one second of game time
-// reaches the same state however that second was divided into frames.
+// reaches the state the specs fix for it however that second was divided into
+// frames.
 //
 // specs/instrumentation.md rests the whole surface on it, under A render-free
 // core: "every rate integrated against the delta time the game is given, so an
@@ -12,36 +13,35 @@
 // several intervals runs several steps in order and the remainder carries into
 // the next frame."
 //
-// SO THE SAME SECOND IS SPENT TWICE, AT STEP SIZES SIXTY APART. One harness runs
-// a clock whose every frame is worth a whole second and takes one frame; the
-// other runs a clock at sixty frames a second and takes sixty. Both report the
-// second on `simTime`, which "accumulates every update's delta, whatever the
-// screen", and both leave the worm on the same tile — a build whose worm takes
-// one step per FRAME rather than per interval ends the two runs seven tiles
-// apart, and a build reading a clock of its own ends them anywhere at all.
+// SO THE SAME SECOND IS SPENT TWICE, AT STEP SIZES SIXTY APART, AND EACH RUN IS
+// HELD TO THE FIGURE THE SPECS FIX. One harness runs a clock whose every frame
+// is worth a whole second and takes one frame; the other runs a clock at sixty
+// frames a second and takes sixty. Each reports the second on `simTime`, which
+// "accumulates every update's delta, whatever the screen", and each leaves the
+// worm's head exactly `floor(1 / WORM_STEP_L1)` tiles along its row: at level 1
+// a step is `0.14` s, so one second is seven whole steps with `0.02` s carried.
+// A build whose worm takes one step per FRAME rather than per interval ends the
+// coarse run one tile along and the fine run sixty; a build that resets its
+// accumulator every frame loses the carried remainder; and a build reading a
+// clock of its own ends anywhere at all. The two runs are never compared with
+// each other: the figure is the specification's.
 //
 // THE WITNESS IS A WORM BECAUSE IT IS THE ONE CLOCKED THING. Everything else in
 // this game is a rate integrated against the delta, which reaches the same place
 // under either division by simple arithmetic; only the step clock has to carry a
-// remainder to do so. At level 1 the interval is `0.14` s (specs/worm.md), so one
-// second is seven whole steps with `0.02` s carried — a remainder a build that
-// merely resets its accumulator every frame would lose, and one that resets it
-// every step would keep. The worm is posed as a single segment, so the reading is
-// of the head's own clock and not of the body's follow.
+// remainder to do so. The worm is posed as a single segment on a clear row far
+// from the right edge, so the reading is of the head's own clock and not of the
+// body's follow or of a turn at the board's edge.
 //
 // WHY THIS CHECK BUILDS ITS OWN HARNESSES. Every other point in this suite runs
 // on the harness's own `ConstantClock` at a fixed 120 Hz, because a duration is
 // then a whole number of frames. This one is ABOUT the step size, so it supplies
-// two clocks of its own and compares what they reach.
-//
-// WHAT THIS DOES NOT DECIDE. Not the step interval itself: nothing here asserts
-// how many tiles the worm covered, only that both runs covered the same ground.
-// `worm/step-cadence` grades the figure.
+// two clocks of its own.
 
 import { afterEach, it } from "vitest";
 import { ConstantClock } from "@clockwyrks/structured-2d";
 import { WORM_STEP_L1 } from "../constants";
-import { assertCloseTo, assertEqual, assertNotEqual } from "../assert";
+import { assertCloseTo, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -66,6 +66,15 @@ const FINE_FRAMES = 60;
 /** The tile the worm's head starts on, on an otherwise empty row. */
 const WORM_C = 5;
 const WORM_R = 3;
+
+/**
+ * The whole steps a level-1 worm takes inside the span: seven, at WORM_STEP_L1
+ * (0.14 s) each, with the remainder carried (specs/worm.md).
+ */
+const STEPS_IN_SPAN = Math.floor(SPAN_SECONDS / WORM_STEP_L1);
+
+/** Where the head stands after the span: STEPS_IN_SPAN tiles along its row. */
+const EXPECTED_HEAD = `${WORM_C + STEPS_IN_SPAN},${WORM_R}`;
 
 /**
  * How far a run's accumulated `simTime` may sit from the second it was given, in
@@ -118,7 +127,28 @@ async function spendTheSecond(stepMs: number, frames: number): Promise<Run> {
   return { h, id, simTime: snapshot.simTime, head: headTile(snapshot, id) };
 }
 
-it("reaches the same state whether a second is one frame or sixty", async () => {
+/** Hold one run to the second it was given and the tile the specs fix for it. */
+function assertRun(run: Run, frames: number): void {
+  const division = `${frames} frame${frames === 1 ? "" : "s"} worth ${
+    SPAN_SECONDS / frames
+  } s each`;
+  assertCloseTo(
+    run.simTime,
+    SPAN_SECONDS,
+    SIM_DIGITS,
+    `the simulation time ${division} accumulated (specs/instrumentation.md)`,
+  );
+  assertEqual(
+    run.head,
+    EXPECTED_HEAD,
+    `the head tile after ${SPAN_SECONDS} s of game time spent as ${division} ` +
+      `— a step is WORM_STEP_L1 (${WORM_STEP_L1} s) at level 1 and the step ` +
+      `clock carries its remainder, so the second is ${STEPS_IN_SPAN} whole ` +
+      `steps along the row from (${WORM_C}, ${WORM_R}) (specs/worm.md)`,
+  );
+}
+
+it("reaches the state the specs fix whether a second is one frame or sixty", async () => {
   const coarse = await spendTheSecond(
     (SPAN_SECONDS * 1000) / COARSE_FRAMES,
     COARSE_FRAMES,
@@ -131,38 +161,6 @@ it("reaches the same state whether a second is one frame or sixty", async () => 
   // board the finely divided second reached.
   captureStill(fine.h, "stepped");
 
-  assertCloseTo(
-    coarse.simTime,
-    SPAN_SECONDS,
-    SIM_DIGITS,
-    `the simulation time ${COARSE_FRAMES} frame worth ${SPAN_SECONDS} s ` +
-      `accumulated`,
-  );
-  assertCloseTo(
-    fine.simTime,
-    SPAN_SECONDS,
-    SIM_DIGITS,
-    `the simulation time ${FINE_FRAMES} frames worth ${SPAN_SECONDS / FINE_FRAMES} s ` +
-      `each accumulated`,
-  );
-
-  // The witness moved at all, so "the same tile" is a reading rather than a
-  // tautology: at level 1 a step is WORM_STEP_L1 (0.14 s), and even a build
-  // seven times slower than that takes one inside a second.
-  assertNotEqual(
-    fine.head,
-    `${WORM_C},${WORM_R}`,
-    `the head tile after ${SPAN_SECONDS} s of game time, which is the tile it ` +
-      `was posed on — a step is WORM_STEP_L1 (${WORM_STEP_L1} s) at level 1 ` +
-      `(specs/worm.md), so a second carries the worm off it`,
-  );
-
-  assertEqual(
-    coarse.head,
-    fine.head,
-    `the head tile after the same ${SPAN_SECONDS} s spent as ` +
-      `${COARSE_FRAMES} frame, against the tile it reached spent as ` +
-      `${FINE_FRAMES} — the step clock carries its remainder, so both ` +
-      `divisions run the same number of steps (specs/worm.md)`,
-  );
+  assertRun(coarse, COARSE_FRAMES);
+  assertRun(fine, FINE_FRAMES);
 });

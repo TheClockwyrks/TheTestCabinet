@@ -166,16 +166,6 @@ function think(
   cues.critical = true;
 }
 
-/** Start the clocks the level's own spawners keep, as its play becomes active. */
-export function resetSpawnClocks(state: WirewormState): void {
-  state.glitchTimer = randomRange(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
-  state.corruptorTimer = randomRange(
-    CORRUPTOR_MIN_INTERVAL,
-    CORRUPTOR_MAX_INTERVAL,
-  );
-  state.dropperTimer = DROPPER_CHECK_INTERVAL;
-}
-
 /**
  * The level's own spawning of foes: the glitch's paced arrival, the corruptor's,
  * and the dropper's sparse-field check. This is the whole of what

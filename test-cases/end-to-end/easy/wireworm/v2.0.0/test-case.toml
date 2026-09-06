@@ -595,7 +595,7 @@ validation = { script = "instrumentation/reset-restores-title.test.ts", outputs 
 [[review.categories.items]]
 id = "render-free-core"
 title = "The simulation advances on elapsed time alone"
-description = "One second of game time covered as one frame and as sixty frames adds 1.0 to simTime either way, within 1e-6, and leaves the worm on the same tile, so the simulation advances on the elapsed time it is handed and reads nothing from the renderer."
+description = "One second of game time covered as one frame and as sixty frames adds 1.0 to simTime either way, within 1e-6, and carries a level-1 worm's head seven tiles along its row either way, WORM_STEP_L1 (0.14 s) a step with the remainder carried, so the simulation advances on the elapsed time it is handed and reads nothing from the renderer."
 domains = ["charge", "worm", "arcade", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/render-free-core.test.ts", outputs = [
@@ -1549,6 +1549,14 @@ validation = { script = "cursor/invulnerable-ignores-contact.test.ts", outputs =
 # outright — at each GLITCH_DART_INTERVAL the glitch reverses its horizontal
 # direction — rather than an unstated random re-pick. A validator that assumed
 # randomness would fail a spec-honouring build on an unlucky draw.
+#
+# The pacing points never wait on a draw. An ARRIVAL point poses the kind's clock
+# through `setSpawnTimer` and reads the entry it decides either side of the posed
+# moment; an INTERVAL point stands the clock at 0, lets one update draw it, and
+# reads the drawn clock off the snapshot against the range specs/foes.md fixes,
+# which holds for every draw; and `spawn-clock-holds-in-banner` poses a clock
+# during the banner and reads it after the banner has given way. The gate points
+# alone watch a whole minute, because "no foe over a minute" has no draw to pose.
 [[review.categories]]
 id = "foes"
 title = "The support foes"
@@ -1585,7 +1593,7 @@ validation = { script = "foes/glitch-descends.test.ts", outputs = [
 [[review.categories.items]]
 id = "glitch-darts"
 title = "The glitch reverses at each dart interval"
-description = "specs/foes.md states the rule outright — at each GLITCH_DART_INTERVAL (0.32 s) the glitch reverses its horizontal direction — and the item asserts that stated rule: over three seconds the reported vx reverses sign at each interval boundary, nine reversals in all, and the distance swept each way is reported so a failure names a number. The rule is stated rather than left to a random re-pick precisely so a spec-honouring build cannot fail on an unlucky seed."
+description = "specs/foes.md states the rule outright — at each GLITCH_DART_INTERVAL (0.32 s) the glitch reverses its horizontal direction — and the item asserts that stated rule: over three seconds the reported vx reverses sign at each interval boundary, nine reversals in all, and the distance swept each way is reported so a failure names a number. The rule is stated rather than left to a random re-pick precisely so a spec-honouring build cannot fail on an unlucky draw."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "foes/glitch-darts.test.ts", outputs = [
@@ -1610,13 +1618,22 @@ validation = { script = "foes/glitch-gate.test.ts", outputs = [
   { id = "gated", name = "The level-1 board no glitch joined", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "glitch-arrives"
-title = "A glitch arrives at level 2"
-description = "With setFoeSpawning(true) at level 2, a glitch joins the roster within GLITCH_MAX_INTERVAL (12 s)."
+id = "glitch-interval"
+title = "The glitch's clock is drawn inside its interval"
+description = "With setFoeSpawning(true) at level 2, a glitch clock posed at 0 and read one update of active play later stands between GLITCH_MIN_INTERVAL (7 s) less that update's delta and GLITCH_MAX_INTERVAL (12 s), on each of five fresh draws. The arrival the clock decides is instrumentation.set-spawn-timer's item."
 domains = ["arcade"]
 failure_cap = "passable"
-validation = { script = "foes/glitch-arrives.test.ts", outputs = [
-  { id = "arrival", name = "The glitch that joined at level 2", kind = "image" },
+validation = { script = "foes/glitch-interval.test.ts", outputs = [
+  { id = "drawn", name = "The level-2 board the clocks were drawn on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spawn-clock-holds-in-banner"
+title = "A spawner clock stands through the banner"
+description = "With setFoeSpawning(true) at level 2 and 0.5 s of banner left, a glitch clock posed at 1.5 s reads, 0.6 s later with play active, at most 1.5 s and at least 1.5 s less the 0.1 s of active play and two updates, so the clock stood through the banner and counted down only once play was active."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/spawn-clock-holds-in-banner.test.ts", outputs = [
+  { id = "held", name = "The active board the held clock was read on", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "glitch-cap"
@@ -1768,11 +1785,20 @@ validation = { script = "foes/corruptor-gate.test.ts", outputs = [
 [[review.categories.items]]
 id = "corruptor-arrives"
 title = "A corruptor arrives at level 5"
-description = "With setFoeSpawning(true) at level 5, a corruptor joins the roster within CORRUPTOR_MAX_INTERVAL (22 s)."
+description = "With setFoeSpawning(true) at level 5 and setSpawnTimer(\"corruptor\", 1.5), no corruptor is on the board 1.4 s later and one has joined the roster by 1.6 s."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "foes/corruptor-arrives.test.ts", outputs = [
-  { id = "arrival", name = "The corruptor that joined at level 5", kind = "image" },
+  { id = "arrival", name = "The corruptor the posed clock brought in at level 5", kind = "image" },
+] }
+[[review.categories.items]]
+id = "corruptor-interval"
+title = "The corruptor's clock is drawn inside its interval"
+description = "With setFoeSpawning(true) at level 5, a corruptor clock posed at 0 and read one update of active play later stands between CORRUPTOR_MIN_INTERVAL (14 s) less that update's delta and CORRUPTOR_MAX_INTERVAL (22 s), on each of five fresh draws."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "foes/corruptor-interval.test.ts", outputs = [
+  { id = "drawn", name = "The level-5 board the clocks were drawn on", kind = "image" },
 ] }
 
 # --- The run ------------------------------------------------------------------

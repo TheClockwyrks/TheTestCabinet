@@ -17,7 +17,7 @@ import {
   SCATTER_TOP_ROW,
   TILE,
 } from "./constants";
-import { randomInt, randomRange } from "./rng";
+import { randomInt } from "./rng";
 import type { FrameEvents, MutNode, Sim } from "./sim";
 
 /** The reading order the field is kept in: ascending row, then column. */
@@ -101,9 +101,10 @@ export const SCATTER_TILES = COLS * (SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1);
  */
 export function scatterField(sim: Sim): void {
   sim.nodes = [];
-  const fraction = randomRange(SCATTER_MIN_FRACTION, SCATTER_MAX_FRACTION);
-
-  const wanted = Math.round(fraction * SCATTER_TILES);
+  const wanted = randomInt(
+    Math.round(SCATTER_MIN_FRACTION * SCATTER_TILES),
+    Math.round(SCATTER_MAX_FRACTION * SCATTER_TILES),
+  );
   const taken = new Set<number>();
   // Bounded by construction: the tiles wanted are at most 15% of the rows, so
   // the draw runs out of fresh tiles long before it runs out of attempts.

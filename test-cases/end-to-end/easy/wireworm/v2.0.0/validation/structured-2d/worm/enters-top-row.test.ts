@@ -31,7 +31,7 @@
 // due, so what is read is the arrangement it entered in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../constants";
+import { BANNER_TIME, ENTRY_ROW } from "../constants";
 import { assertEqual, assertLength } from "../assert";
 import {
   captureStill,
@@ -41,9 +41,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-
-/** The row a worm enters along. */
-const ENTRY_ROW = 0;
 
 /**
  * How long the banner may take to give way, in frames. `BANNER_TIME` is `1.3` s

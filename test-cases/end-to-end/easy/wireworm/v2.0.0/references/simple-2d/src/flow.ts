@@ -229,7 +229,11 @@ export function clearLevel(sim: Sim, ev: FrameEvents): void {
   sim.dropperTimer = 0;
 }
 
-/** The banner or the respawn giving way to live play, which is when a worm enters. */
+/**
+ * The banner or the respawn giving way to live play, which is when a worm
+ * enters. The spawner clocks stand exactly where they were: only opening a run
+ * and clearing a level set them (specs/foes.md, The spawner clocks).
+ */
 export function beginActive(sim: Sim): void {
   const wasRespawn = sim.phase === "respawn";
   sim.phase = "active";
@@ -237,9 +241,6 @@ export function beginActive(sim: Sim): void {
   // Only a respawn grants the spawn-in invulnerability; a level's banner does
   // not, because nothing was standing in the cursor when the level opened.
   if (wasRespawn) sim.cursor.invulnerable = RESPAWN_INVULN;
-  sim.glitchTimer = 0;
-  sim.corruptorTimer = 0;
-  sim.dropperTimer = 0;
   if (sim.wormEntry) enterWorm(sim);
 }
 

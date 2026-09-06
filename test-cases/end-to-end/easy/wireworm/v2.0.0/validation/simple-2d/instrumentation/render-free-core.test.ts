@@ -9,35 +9,34 @@
 // that makes it obey the same property: a frame covering several intervals runs
 // several steps in order and the remainder carries into the next frame.
 //
-// ONE SECOND, TWO DIVISIONS. The same second of game time is covered as a single
-// 1000 ms frame and as sixty 1000/60 ms frames, over the same posed board, and the
-// two must agree on both readings the item names:
+// ONE SECOND, TWO DIVISIONS, ONE FIGURE. The same second of game time is covered
+// as a single 1000 ms frame and as sixty 1000/60 ms frames, over the same posed
+// board, and each run is held to what the specs fix for that second:
 //
 //   - `simTime`, which specs/instrumentation.md accumulates from every update's
-//     delta, gains 1.0 in each;
-//   - the worm's head is on the same tile in each.
+//     delta, gains 1.0;
+//   - the worm's head stands `floor(1 / WORM_STEP_L1)` tiles along its row: at
+//     level 1 a step is `0.14` s, so seven whole steps with `0.02` s carried.
+//
+// The two runs are never compared with each other; the figure is the spec's.
 //
 // WHY A WORM. It is the one thing in this game that does not move continuously,
 // so it is the reading that separates a genuine accumulate-and-carry clock from a
-// step taken once per frame: a per-frame stepper would move once under the single
-// frame and sixty times under the sixty, and a clock that dropped its remainder
-// would drift between the two. The worm is posed with its body gated off, so one
-// tile moves and the reading is the head alone, on an empty board where nothing
-// can block it.
-//
-// WHICH tile the two agree on is `worm.winds-horizontal`'s point and is not
-// asserted here. What is asserted is that they agree, and that the worm moved at
-// all — two runs that both stood still would agree vacuously.
+// step taken once per frame: a per-frame stepper would move one tile under the
+// single frame and sixty under the sixty, and a clock that dropped its remainder
+// would fall short under the sixty. The worm is posed with its body gated off, so
+// one tile moves and the reading is the head alone, on an empty row far from the
+// right edge, where nothing can block it and no turn is reached.
 
 import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
+import { WORM_STEP_L1 } from "../constants";
+import { assertCloseTo, assertDeepEqual } from "../assert";
 import {
   captureStill,
   createHarness,
   headOf,
   poseWorm,
-  sameTile,
   startPlaying,
   wormOf,
   type Harness,
@@ -52,11 +51,20 @@ const SIXTY_FRAME_MS = ONE_FRAME_MS / SIXTY_FRAMES;
 
 /**
  * Where the worm is posed: a clear row, far enough from the right edge that a
- * second of level-1 stepping (`0.14` s each, so seven steps) cannot reach it and
- * turn the run into a reading of the board's edge instead.
+ * second of level-1 stepping cannot reach it and turn the run into a reading of
+ * the board's edge instead.
  */
 const WORM_C = 5;
 const WORM_R = 5;
+
+/**
+ * The whole steps a level-1 worm takes inside the span: seven, at WORM_STEP_L1
+ * (0.14 s) each, with the remainder carried (specs/worm.md).
+ */
+const STEPS_IN_SPAN = Math.floor(SPAN_S / WORM_STEP_L1);
+
+/** Where the head stands after the span: STEPS_IN_SPAN tiles along its row. */
+const EXPECTED_HEAD: TileSnapshot = { c: WORM_C + STEPS_IN_SPAN, r: WORM_R };
 
 /**
  * The tolerance on the second `simTime` gained.
@@ -80,25 +88,43 @@ afterEach(() => {
   sixty?.dispose();
 });
 
-it("reaches the same simTime and the same tile however the second is divided", async () => {
+it("reaches the simTime and the tile the specs fix however the second is divided", async () => {
   /** Pose the board, cover one second, and answer what the run reached. */
   const cover = async (
     h: Harness,
     frames: number,
-  ): Promise<{ gained: number; posed: TileSnapshot; head: TileSnapshot }> => {
+  ): Promise<{ gained: number; head: TileSnapshot }> => {
     startPlaying(h);
     const id = poseWorm(h, WORM_C, WORM_R);
     h.debug.setWormBody(id, false);
 
     const opened = h.snapshot();
-    const posed = headOf(wormOf(opened, id));
     await h.advance(frames);
     const closed = h.snapshot();
     return {
       gained: closed.simTime - opened.simTime,
-      posed,
       head: headOf(wormOf(closed, id)),
     };
+  };
+
+  /** Hold one run to the second it was given and the tile the specs fix. */
+  const check = (run: { gained: number; head: TileSnapshot }, frames: number) => {
+    const division = `${frames} frame${frames === 1 ? "" : "s"}`;
+    assertCloseTo(
+      run.gained,
+      SPAN_S,
+      EXACT,
+      `one second covered as ${division} adds 1.0 to simTime ` +
+        `(specs/instrumentation.md)`,
+    );
+    assertDeepEqual(
+      run.head,
+      EXPECTED_HEAD,
+      `one second covered as ${division} carries a level-1 worm's head ` +
+        `${STEPS_IN_SPAN} tiles along its row from (${WORM_C}, ${WORM_R}) — a ` +
+        `step is WORM_STEP_L1 (${WORM_STEP_L1} s) and the step clock carries ` +
+        `its remainder (specs/worm.md)`,
+    );
   };
 
   const asOne = await cover(one, 1);
@@ -106,37 +132,6 @@ it("reaches the same simTime and the same tile however the second is divided", a
   // The board after one second of game time, as the sixty-frame run drew it.
   captureStill(sixty, "stepped");
 
-  assertCloseTo(
-    asOne.gained,
-    SPAN_S,
-    EXACT,
-    "one second covered as a single frame adds 1.0 to simTime",
-  );
-  assertCloseTo(
-    asSixty.gained,
-    SPAN_S,
-    EXACT,
-    "one second covered as sixty frames adds 1.0 to simTime",
-  );
-
-  // Neither run stood still, so the agreement below is an agreement about
-  // something that happened.
-  assertEqual(
-    sameTile(asOne.head, asOne.posed),
-    false,
-    "a second of game time covered as one frame steps the worm (specs/worm.md)",
-  );
-  assertEqual(
-    sameTile(asSixty.head, asSixty.posed),
-    false,
-    "a second of game time covered as sixty frames steps the worm " +
-      "(specs/worm.md)",
-  );
-
-  assertDeepEqual(
-    asSixty.head,
-    asOne.head,
-    "one second of game time leaves the worm on the same tile whether it was " +
-      "covered as one frame or as sixty (specs/instrumentation.md)",
-  );
+  check(asOne, 1);
+  check(asSixty, SIXTY_FRAMES);
 });

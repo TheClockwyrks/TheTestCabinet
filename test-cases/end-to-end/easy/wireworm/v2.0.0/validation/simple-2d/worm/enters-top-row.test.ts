@@ -32,7 +32,7 @@
 // the worm AS IT ENTERED rather than one that has since stepped.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../constants";
+import { BANNER_TIME, ENTRY_ROW } from "../constants";
 import { assertDeepEqual, assertEqual, assertLength } from "../assert";
 import {
   captureStill,
@@ -44,9 +44,6 @@ import {
 
 /** How long the banner may take to give way before the sweep gives up, in frames. */
 const ENTRY_TIMEOUT = ticksFor(BANNER_TIME * 2);
-
-/** The row a worm enters along. */
-const ENTRY_ROW = 0;
 
 /** The edge posed for the entry, and the column its tail stands on. */
 const EDGE = "left";

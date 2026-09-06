@@ -56,7 +56,7 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it.each(RUNS)("lays 10-15%% of the scatter rows on run %i", async (run) => {
+it.each(RUNS)("lays 10 to 15 percent of the scatter rows on run %i", async (run) => {
   await startRunFromTitle(h);
   await captureStill(h, "scatter");
 

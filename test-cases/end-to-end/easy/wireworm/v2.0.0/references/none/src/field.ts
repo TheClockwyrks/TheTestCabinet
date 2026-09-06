@@ -22,7 +22,7 @@ import {
   SCATTER_TOP_ROW,
   inBounds,
 } from "./constants";
-import { randomFloat, randomInt } from "./rng";
+import { randomInt } from "./rng";
 
 /** The value a tile holding no node carries. */
 export const EMPTY = -1;
@@ -84,10 +84,10 @@ export function clearNodes(field: Int8Array): void {
 export function scatterField(field: Int8Array): void {
   const rows = SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1;
   const tiles = rows * COLS;
-  const fraction =
-    SCATTER_MIN_FRACTION +
-    randomFloat() * (SCATTER_MAX_FRACTION - SCATTER_MIN_FRACTION);
-  let remaining = Math.round(tiles * fraction);
+  let remaining = randomInt(
+    Math.round(tiles * SCATTER_MIN_FRACTION),
+    Math.round(tiles * SCATTER_MAX_FRACTION),
+  );
   let guard = tiles * 8;
   while (remaining > 0 && guard > 0) {
     guard -= 1;

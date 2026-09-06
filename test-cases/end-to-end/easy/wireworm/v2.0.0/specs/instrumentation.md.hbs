@@ -233,7 +233,7 @@ random again until the next pose. `reset` clears every posed outcome.
 
 | Operation | Effect |
 | --- | --- |
-| `setSpawnTimer(kind, seconds)` | Sets the seconds left on the level's clock for `kind` (`"glitch"`, `"dropper"`, or `"corruptor"`): until the next glitch enters, until the next corruptor enters, or until the dropper's next sparse-field check. The clock then runs and is redrawn exactly as `specs/foes.md` states, so a clock posed at `0` is drawn afresh on the next update of active play. |
+| `setSpawnTimer(kind, seconds)` | Sets the seconds left on the level's clock for `kind` (`"glitch"`, `"dropper"`, or `"corruptor"`): until the next glitch enters, until the next corruptor enters, or until the dropper's next sparse-field check. The clock then runs, holds, and is redrawn exactly as `specs/foes.md` states, so a clock posed at `0` is drawn afresh on the next update of active play, and a clock posed during the banner or a respawn stands until play is active and counts down from there. |
 | `setNextFoeEntry(kind, c, r)` | Poses the tile the next foe of `kind` the level brings in enters on, with its center on that tile's center. For a glitch or a corruptor, `c` is `0`, entering from the left, or `39`, entering from the right, and `r` is a row of that kind's entry rows; for a dropper, `r` is `0` and `c` is any column. It is reported as `nextGlitchEntry`, `nextDropperEntry`, or `nextCorruptorEntry`, and reads `null` once that entry has consumed it. |
 | `setNextWormEntry(edge)` | Poses the edge, `"left"` or `"right"`, the next worm the level or the respawn brings in enters at. It is reported as `nextWormEntry`, and reads `null` once that entry has consumed it. |
 

@@ -28,10 +28,9 @@ import {
   TOTAL_LEVELS,
 } from "./constants";
 import type { FrameCues } from "./audio";
-import { resetSpawnClocks } from "./foes";
 import type { WirewormState } from "./game";
 import { putNode } from "./grid";
-import { randomInt, randomRange } from "./rng";
+import { randomInt } from "./rng";
 import { addScore } from "./scoring";
 import { enterLevelWorm } from "./worm";
 
@@ -57,8 +56,9 @@ export function clearBoard(state: WirewormState): void {
 export function scatterField(state: WirewormState): void {
   const rows = SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1;
   const tiles = rows * COLS;
-  const wanted = Math.round(
-    randomRange(SCATTER_MIN_FRACTION, SCATTER_MAX_FRACTION) * tiles,
+  const wanted = randomInt(
+    Math.round(SCATTER_MIN_FRACTION * tiles),
+    Math.round(SCATTER_MAX_FRACTION * tiles),
   );
   let laid = 0;
   // Rejection sampling: the field is at most 15% of the rows, so a draw lands on
@@ -105,14 +105,15 @@ export function startRun(state: WirewormState): void {
 }
 
 /**
- * The level's play becomes active: the spawner clocks start from this moment and
- * the level's worm enters, which is the one moment a worm enters.
+ * The level's play becomes active and the level's worm enters, which is the one
+ * moment a worm enters. The spawner clocks stand where they were: a clock at
+ * `0` is drawn on the first update of active play, and a clock above `0` counts
+ * down from where it stood (specs/foes.md, The spawner clocks).
  */
 export function enterActive(state: WirewormState, respawning: boolean): void {
   state.phase = "active";
   state.phaseTimer = 0;
   if (respawning) state.cursor.invulnerable = RESPAWN_INVULN;
-  else resetSpawnClocks(state);
   if (state.wormEntry) enterLevelWorm(state);
 }
 
@@ -162,6 +163,9 @@ export function clearLevel(state: WirewormState, cues: FrameCues): void {
 
   state.level += 1;
   state.reachedLevel = Math.max(state.reachedLevel, state.level);
+  state.glitchTimer = 0;
+  state.corruptorTimer = 0;
+  state.dropperTimer = 0;
   state.phase = "banner";
   state.phaseTimer = BANNER_TIME;
 }

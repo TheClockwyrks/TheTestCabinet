@@ -22,7 +22,7 @@
 // step is due, so what is read is the arrangement it entered in.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME, COLS } from "../constants";
+import { BANNER_TIME, COLS, ENTRY_ROW } from "../constants";
 import { assertEqual, assertLength, assertTrue } from "../assert";
 import {
   captureStill,
@@ -36,9 +36,6 @@ import {
 /** The edge posed, and the column its tail stands on. */
 const EDGE = "right";
 const TAIL_C = COLS - 1;
-
-/** The row a worm enters along. */
-const ENTRY_ROW = 0;
 
 /**
  * How long the banner may take to give way, in frames. `BANNER_TIME` is `1.3` s

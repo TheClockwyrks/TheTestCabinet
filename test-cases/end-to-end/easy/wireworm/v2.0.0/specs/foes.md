@@ -26,6 +26,11 @@ states, and a clock above `0` counts down against each update's delta while the
 level's play is active and its foe spawning is running. When a clock reaches `0`
 its kind's entry or check happens and the clock is drawn again the same way.
 
+A clock holds its value whenever it is not counting down: through the level's
+banner, through a respawn, on every other screen, and while foe spawning is off.
+Losing a life leaves all three clocks standing, and the banner or the respawn
+giving way to active play leaves them standing too.
+
 ## The glitch
 
 The glitch skitters through the lower board and eats the field.
