@@ -49,7 +49,7 @@ each reading the field as the last left it.
 
 The second half of the case is a direct-manipulation editor of real size: a
 tray measured in fixed slots, drags with legality ghosts, track laid hex by hex,
-a tape panel with a cursor, deterministic scroll rules, two macros computed from
+a tape panel with a cursor, fixed scroll rules, two macros computed from
 an arm's own pose history, and session-wide undo. The whole surface is driveable
 through the debug API's pointer operations and real key events, and whole
 machines load and read back as JSON. Validators can therefore smoke-test the
