@@ -58,6 +58,7 @@ import { assertCloseTo, assertEqual, assertNotEqual, fail } from "../assert";
 import {
   ENEMY_BULLET_SPEED,
   FLUX_SHIMMER,
+  SUBSTEP_MAX,
   bulletSpeedScale,
   fluxWindow,
 } from "../constants";
@@ -110,11 +111,14 @@ const ENEMY_Y_AFTER =
 /**
  * How far an integrated clock may sit from its figure, in seconds.
  *
- * A hundredth: a conforming build accumulates a hundred and twenty sub-steps of
- * `1/120` s and lands within the last bits of a double, and a build that lost or
- * doubled a single sub-step misses by nearly a hundredth on its own.
+ * One sub-step and a millisecond. specs/drones.md has the band clock return to
+ * `0` at the turnover and says nothing of the part of the sub-step the turnover
+ * landed inside, so a build that spends that sub-step on the flip reads one
+ * `SUBSTEP_MAX` behind one that carries it, and both are conforming. The
+ * millisecond is the rounding a hundred and twenty additions can carry, which is
+ * within the last bits of a double.
  */
-const CLOCK_TOLERANCE = 0.01;
+const CLOCK_TOLERANCE = SUBSTEP_MAX + 0.001;
 
 /**
  * How far an integrated position may sit from its figure, in logical units.
