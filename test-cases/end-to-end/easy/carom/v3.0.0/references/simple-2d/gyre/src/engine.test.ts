@@ -25,7 +25,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -351,8 +350,7 @@ describe("initialization", () => {
     expect(s.score).toEqual({ p1: 0, p2: 0 });
     expect(s.winner).toBeNull();
     expect(s.receiver).toBe("left");
-    expect(s.seed).toBe(DEFAULT_SEED);
-    expect(s.rngState).toBe(DEFAULT_SEED);
+    expect(Math.abs(s.ball?.serveSign ?? 0)).toBe(1);
     expect(s.ai).toEqual({ tracking: true, movement: true });
     expect(s.paddles.left).toEqual({
       cy: FIELD_CY,
@@ -370,6 +368,7 @@ describe("initialization", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
     expect(s.obstacles.map((o) => o.index)).toEqual([0, 1]);
@@ -811,21 +810,24 @@ describe("serving", () => {
     expect(ballOf(harness).trail).toEqual([]);
   });
 
-  it("replays the same serve from the same seed", async () => {
-    const other = await createHarness();
-    try {
-      for (const h of [harness, other]) {
-        openMatch(h, "versus");
-        h.apply((s) => h.debug.setSeed(s, 4242));
-        h.apply((s) => h.debug.setBallHoldTimer(s, 0));
-        await h.engine.advance(1);
-      }
-      expect(other.snapshot().seed).toBe(4242);
-      expect(ballOf(other).vy).toBe(ballOf(harness).vy);
-      expect(other.snapshot().rngState).toBe(harness.snapshot().rngState);
-    } finally {
-      other.dispose();
+  it("serves with the sign the ball holds, and leaves it as it is", async () => {
+    for (const sign of [-1, 1] as const) {
+      openMatch(harness, "versus");
+      harness.apply((s) => harness.debug.setBallServeSign(s, sign));
+      harness.apply((s) => harness.debug.setBallHoldTimer(s, 0));
+      await harness.engine.advance(1);
+      expect(Math.sign(ballOf(harness).vy)).toBe(sign);
+      expect(ballOf(harness).serveSign).toBe(sign);
     }
+  });
+
+  it("draws the serve sign afresh whenever the ball is parked", () => {
+    const signs = new Set<number>();
+    for (let i = 0; i < 200 && signs.size < 2; i++) {
+      harness.apply((s) => harness.debug.spawnBall(s));
+      signs.add(ballOf(harness).serveSign);
+    }
+    expect(signs).toEqual(new Set([-1, 1]));
   });
 });
 
@@ -1219,6 +1221,7 @@ describe("the debug surface", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
   });
@@ -1274,7 +1277,7 @@ describe("the debug surface", () => {
     harness.apply((s) => harness.debug.setBallHeld(s, false));
     harness.apply((s) => harness.debug.setBallHoldTimer(s, 0.25));
     harness.apply((s) => harness.debug.setBallSpin(s, -120));
-    harness.apply((s) => harness.debug.setSeed(s, 99));
+    harness.apply((s) => harness.debug.setBallServeSign(s, -1));
 
     const s = harness.snapshot();
     expect(s.screen).toBe("matchover");
@@ -1289,8 +1292,7 @@ describe("the debug surface", () => {
     expect(s.ball?.held).toBe(false);
     expect(s.ball?.holdTimer).toBe(0.25);
     expect(s.ball?.spin).toBe(-120);
-    expect(s.seed).toBe(99);
-    expect(s.rngState).toBe(99);
+    expect(s.ball?.serveSign).toBe(-1);
   });
 
   it("changes nothing when it reads", async () => {

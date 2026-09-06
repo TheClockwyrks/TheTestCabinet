@@ -74,7 +74,6 @@ import {
 import { readPointerMenu } from "./pointer";
 import { step } from "./physics";
 import { renderGame } from "./render";
-import { nextAngle } from "./rng";
 import { COLOR, HOWTO_ITEMS } from "./theme";
 import { recordTrail } from "./trail";
 import type {
@@ -186,6 +185,11 @@ export interface BallState {
    * counting down to 0, at which point it launches; 0 while it is in flight.
    */
   readonly holdTimer: number;
+  /**
+   * The angle, in radians, the next launch leaves along: drawn afresh whenever
+   * the ball is parked and posed by the debug surface (specs/balls.md).
+   */
+  readonly launchAngle: number;
   /** This ball's recent positions, oldest first, for its own motion trail. */
   readonly trail: readonly TrailSample[];
 }
@@ -272,13 +276,6 @@ export interface CaromState {
    * with it, so what `snapshot()` reports is what the player hears.
    */
   readonly muted: boolean;
-  /** The seed the game's random generator was last seeded from. */
-  readonly seed: number;
-  /**
-   * The whole state of that generator, as a single number. `setSeed` sets it, so
-   * reseeding and replaying the same calls reproduces the same result exactly.
-   */
-  readonly rngState: number;
 
   /**
    * The presses the menus are waiting on a release for. Not a declared field:
@@ -293,41 +290,31 @@ export type State = DeepReadonly<CaromState>;
 // ---- Screen transitions -------------------------------------------------
 
 /**
- * One ball launched from its home point at SERVE_SPEED, beside the generator
- * state after the draw.
+ * One ball launched from its home point at SERVE_SPEED along its own
+ * `launchAngle`.
  *
- * The direction is a fresh uniform draw over the full circle from the seeded
- * generator, the one piece of randomness this game has, and it is the same draw
- * for the first launch of a match and for every relaunch (specs/balls.md).
+ * The angle was drawn when the ball was parked, or posed since, and the launch
+ * leaves it as it is (specs/balls.md).
  */
-function launch(
-  ball: BallState,
-  rngState: number,
-): { ball: BallState; rngState: number } {
-  const [angle, next] = nextAngle(rngState);
+function launch(ball: BallState): BallState {
   return {
-    ball: {
-      ...ball,
-      vx: SERVE_SPEED * Math.cos(angle),
-      vy: SERVE_SPEED * Math.sin(angle),
-      spin: 0,
-      held: false,
-      holdTimer: 0,
-      trail: [],
-    },
-    rngState: next,
+    ...ball,
+    vx: SERVE_SPEED * Math.cos(ball.launchAngle),
+    vy: SERVE_SPEED * Math.sin(ball.launchAngle),
+    spin: 0,
+    held: false,
+    holdTimer: 0,
+    trail: [],
   };
 }
 
 /**
  * Every waiting ball's hold counted down, each launched the moment its own timer
  * elapses. The three are independent, so one relaunching leaves the others
- * alone. The generator threads through the launches in play order, so the state
- * returned carries the draw every launch this frame made.
+ * alone.
  */
 function tickHolds(state: State, dt: number): CaromState {
   const balls: BallState[] = [];
-  let rngState = state.rngState;
   for (const ball of state.balls) {
     if (!ball.held) {
       balls.push(ball);
@@ -338,11 +325,9 @@ function tickHolds(state: State, dt: number): CaromState {
       balls.push({ ...ball, holdTimer });
       continue;
     }
-    const launched = launch({ ...ball, holdTimer: 0 }, rngState);
-    balls.push(launched.ball);
-    rngState = launched.rngState;
+    balls.push(launch({ ...ball, holdTimer: 0 }));
   }
-  return { ...state, balls, rngState };
+  return { ...state, balls };
 }
 
 /** The ball the AI defends: of those flying at its goal, the one arriving first. */

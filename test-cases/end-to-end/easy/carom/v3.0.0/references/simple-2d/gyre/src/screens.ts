@@ -10,7 +10,7 @@
 //
 // Every function is a transition: the current state in, the next state out.
 
-import { DEFAULT_SEED, FIELD_CY } from "./constants";
+import { FIELD_CY } from "./constants";
 import { parkedBall } from "./entities";
 import type { CaromState, Mode, PaddleState } from "./game";
 import { menuItemCount } from "./menus";
@@ -42,15 +42,15 @@ function centered(paddle: DeepReadonly<PaddleState>): PaddleState {
 }
 
 /**
- * Every declared field at its title-screen value except the five a path back to
- * the title keeps: `titleIndex`, `simTime`, `muted`, `seed` and `rngState`.
+ * Every declared field at its title-screen value except the three a path back to
+ * the title keeps: `titleIndex`, `simTime` and `muted`.
  *
  * `menuIndex` is deliberately absent — the two callers disagree about it, which is
  * the whole difference between quitting to the menu and resetting.
  */
 function titleFields(): Omit<
   CaromState,
-  "menuIndex" | "titleIndex" | "simTime" | "muted" | "seed" | "rngState"
+  "menuIndex" | "titleIndex" | "simTime" | "muted"
 > {
   return {
     screen: "title",
@@ -75,8 +75,8 @@ function titleFields(): Omit<
 /**
  * The title screen as a MENU path reaches it (specs/ui.md).
  *
- * `titleIndex`, `simTime`, `muted`, `seed` and `rngState` keep their values —
- * time, the mute bit and the generator are not properties of a screen — and
+ * `titleIndex`, `simTime` and `muted` keep their values — time and the mute bit
+ * are not properties of a screen — and
  * `menuIndex` becomes `titleIndex`, so the entry that led away from the title is
  * the entry highlighted on the way back.
  */
@@ -87,9 +87,9 @@ export function toTitle(state: State): CaromState {
 /**
  * The title screen as `reset` reaches it (specs/instrumentation.md).
  *
- * Every declared field at its title value, including the five a menu path keeps:
- * the remembered selection is forgotten, the clock is back at zero, and the
- * generator is reseeded from DEFAULT_SEED. `muted` alone is left as it is —
+ * Every declared field at its title value, including the three a menu path
+ * keeps: the remembered selection is forgotten and the clock is back at zero.
+ * `muted` alone is left as it is —
  * muting is a player preference the runtime owns, and a reset is not a reason to
  * start making noise again.
  */
@@ -100,8 +100,6 @@ export function resetToTitle(state: State): CaromState {
     menuIndex: 0,
     titleIndex: 0,
     simTime: 0,
-    seed: DEFAULT_SEED,
-    rngState: DEFAULT_SEED,
   };
 }
 

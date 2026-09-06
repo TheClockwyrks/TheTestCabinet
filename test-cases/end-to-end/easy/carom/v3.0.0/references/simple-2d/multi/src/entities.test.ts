@@ -152,6 +152,7 @@ describe("the balls", () => {
         spin: 0,
         held: true,
         holdTimer: HOLD_TIME,
+        launchAngle: expect.any(Number),
         trail: [],
       });
     });
@@ -167,6 +168,7 @@ describe("the balls", () => {
       spin: 0,
       held: true,
       holdTimer: 1.0,
+      launchAngle: expect.any(Number),
       trail: [],
     });
   });
@@ -180,7 +182,7 @@ describe("the balls", () => {
   it("builds a fresh ball on every call, sharing nothing between them", () => {
     const one = parkBall(0, 1);
     const two = parkBall(0, 1);
-    expect(one).toEqual(two);
+    expect({ ...one, launchAngle: 0 }).toEqual({ ...two, launchAngle: 0 });
     expect(one).not.toBe(two);
     expect(one.trail).not.toBe(two.trail);
   });

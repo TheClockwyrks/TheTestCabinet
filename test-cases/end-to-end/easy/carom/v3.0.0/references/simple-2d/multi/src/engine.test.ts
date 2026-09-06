@@ -36,7 +36,6 @@ import {
   BALL_HOMES,
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -387,8 +386,6 @@ describe("initialization", () => {
     expect(state.score).toEqual({ p1: 0, p2: 0 });
     expect(state.winner).toBeNull();
     expect(state.ai).toEqual({ tracking: true, movement: true });
-    expect(state.seed).toBe(DEFAULT_SEED);
-    expect(state.rngState).toBe(DEFAULT_SEED);
     expect(state.balls).toHaveLength(BALL_COUNT);
     state.balls.forEach((ball, index) => {
       expect(ball).toEqual({
@@ -400,6 +397,7 @@ describe("initialization", () => {
         spin: 0,
         held: true,
         holdTimer: HOLD_TIME,
+        launchAngle: expect.any(Number),
         trail: [],
       });
     });
@@ -871,38 +869,33 @@ describe("launching", () => {
     }
   });
 
-  it("draws a fresh angle for every launch, over the whole circle", async () => {
+  it("draws a fresh angle over the whole circle whenever a ball is parked", () => {
     const quadrants = new Set<number>();
-    for (let seed = 1; seed <= 40; seed++) {
-      harness.engine.apply((s) => harness.debug.reset(s));
-      harness.engine.apply((s) => harness.debug.setSeed(s, seed));
-      harness.engine.apply((s) => harness.debug.setScreen(s, "countdown"));
-      endHolds(harness);
-      await harness.engine.advance(1);
-      for (const ball of harness.debug.snapshot(harness.engine.state).balls) {
-        const angle = Math.atan2(ball.vy, ball.vx) + Math.PI;
-        quadrants.add(Math.floor(angle / (Math.PI / 2)) % 4);
-      }
+    for (let i = 0; i < 200 && quadrants.size < 4; i++) {
+      harness.engine.apply((s) => harness.debug.spawnBall(s, 0));
+      const angle = harness.debug.snapshot(harness.engine.state).balls[0]
+        .launchAngle;
+      quadrants.add(Math.floor(angle / (Math.PI / 2)) % 4);
     }
     expect(quadrants).toEqual(new Set([0, 1, 2, 3]));
   });
 
-  it("replays the same three launches from the same seed", async () => {
-    const other = await createHarness();
-    try {
-      for (const h of [harness, other]) {
-        h.engine.apply((s) => h.debug.reset(s));
-        h.engine.apply((s) => h.debug.setSeed(s, 4242));
-        h.engine.apply((s) => h.debug.setScreen(s, "countdown"));
-        endHolds(h);
-        await h.engine.advance(1);
-      }
-      expect(other.debug.snapshot(other.engine.state).balls).toEqual(
-        harness.debug.snapshot(harness.engine.state).balls,
+  it("launches each ball along the angle it holds, and leaves it as it is", async () => {
+    openMatch(harness, "versus");
+    const angles = [0.4, 2.0, 4.5];
+    angles.forEach((angle, index) => {
+      harness.engine.apply((s) =>
+        harness.debug.setBallLaunchAngle(s, index, angle),
       );
-    } finally {
-      other.dispose();
-    }
+    });
+    endHolds(harness);
+    await harness.engine.advance(1);
+    const balls = harness.debug.snapshot(harness.engine.state).balls;
+    angles.forEach((angle, index) => {
+      expect(balls[index].launchAngle).toBe(angle);
+      const flown = Math.atan2(balls[index].vy, balls[index].vx);
+      expect(Math.cos(flown - angle)).toBeCloseTo(1, 3);
+    });
   });
 });
 

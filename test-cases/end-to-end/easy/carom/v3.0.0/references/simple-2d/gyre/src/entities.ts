@@ -20,6 +20,7 @@ import {
 } from "./constants";
 import type { BallState, Side } from "./game";
 import type { DeepReadonly } from "ts-essentials";
+import { drawServeSign } from "./random";
 
 /**
  * The part of a ball the physics moves: where it is, where it is going, and how
@@ -110,6 +111,7 @@ export function parkedBall(): BallState {
     spin: 0,
     held: true,
     holdTimer: HOLD_TIME,
+    serveSign: drawServeSign(),
     trail: [],
   };
 }

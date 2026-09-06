@@ -36,7 +36,6 @@
 import {
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CY,
   FIELD_W,
   PADDLE_SPEED,
@@ -67,7 +66,6 @@ import { poseObstacles } from "./obstacles";
 import { step } from "./physics";
 import { resolvePointer, type PointerPress } from "./pointer";
 import { renderGame } from "./render";
-import { nextSign } from "./rng";
 import {
   confirmMenuItem,
   pauseMatch,
@@ -178,6 +176,11 @@ export interface BallState {
   readonly held: boolean;
   /** Seconds remaining of that wait. */
   readonly holdTimer: number;
+  /**
+   * The vertical sign the serve takes, drawn afresh whenever the ball is parked
+   * and posed by the debug surface (specs/balls.md).
+   */
+  readonly serveSign: 1 | -1;
   /** Recent ball positions, oldest first, for the motion trail. */
   readonly trail: readonly TrailSample[];
 }
@@ -267,10 +270,6 @@ export interface CaromState {
    * with it, so what `snapshot()` reports is what the player hears.
    */
   readonly muted: boolean;
-  /** The seed the game's random generator was last seeded from. */
-  readonly seed: number;
-  /** The whole state of that generator, as a single number. */
-  readonly rngState: number;
 
   /**
    * The pointer and touch contacts currently pressed on a menu, and the item each
@@ -328,8 +327,6 @@ export function createInitialState(muted = false): CaromState {
     obstacleClockRunning: true,
     simTime: 0,
     muted,
-    seed: DEFAULT_SEED,
-    rngState: DEFAULT_SEED,
     pointerPresses: [],
   };
 }
@@ -338,15 +335,13 @@ export function createInitialState(muted = false): CaromState {
 
 /**
  * The ball launched toward the receiver at SERVE_SPEED, SERVE_ANGLE from
- * horizontal (specs/balls.md). The SIGN of the vertical component is the one
- * draw this game makes from its seeded generator, so the generator's next state
- * travels out beside the ball.
+ * horizontal (specs/balls.md). The SIGN of the vertical component is the ball's
+ * own `serveSign`, drawn when it was parked and left as it is by the serve.
  */
 function serve(state: CaromState): CaromState {
   const ball = state.ball;
   if (!ball) return state;
   const dir = state.receiver === "left" ? -1 : 1;
-  const [sign, rngState] = nextSign(state.rngState);
   return {
     ...state,
     // Exactly the four things specs/balls.md says a serve changes, plus the
@@ -355,12 +350,11 @@ function serve(state: CaromState): CaromState {
     ball: {
       ...ball,
       vx: dir * SERVE_SPEED * Math.cos(SERVE_ANGLE),
-      vy: sign * SERVE_SPEED * Math.sin(SERVE_ANGLE),
+      vy: ball.serveSign * SERVE_SPEED * Math.sin(SERVE_ANGLE),
       held: false,
       holdTimer: 0,
       trail: [],
     },
-    rngState,
     screen: "playing",
   };
 }

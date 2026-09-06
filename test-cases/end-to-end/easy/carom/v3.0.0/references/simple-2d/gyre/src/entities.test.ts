@@ -103,6 +103,7 @@ describe("the ball", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
     // A fresh value each time, never a shared one.

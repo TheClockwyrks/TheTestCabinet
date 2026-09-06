@@ -4,7 +4,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_SEED,
   FIELD_CY,
   HOLD_TIME,
   OBSTACLE_CENTERS,
@@ -45,8 +44,6 @@ function messy(): CaromState {
     obstacleClockRunning: false,
     simTime: 42,
     muted: true,
-    seed: 99,
-    rngState: 12345,
   };
 }
 
@@ -72,12 +69,10 @@ describe("toTitle", () => {
     expect(next.obstacleClockRunning).toBe(true);
     expect(next.pointerPresses).toEqual([]);
 
-    // The five it keeps.
+    // The three it keeps.
     expect(next.titleIndex).toBe(1);
     expect(next.simTime).toBe(42);
     expect(next.muted).toBe(true);
-    expect(next.seed).toBe(99);
-    expect(next.rngState).toBe(12345);
   });
 
   it("highlights the entry that led away from the title", () => {
@@ -86,13 +81,11 @@ describe("toTitle", () => {
 });
 
 describe("resetToTitle", () => {
-  it("restores the five a menu path keeps, and leaves only the mute bit", () => {
+  it("restores the three a menu path keeps, and leaves only the mute bit", () => {
     const next = resetToTitle(messy());
     expect(next.menuIndex).toBe(0);
     expect(next.titleIndex).toBe(0);
     expect(next.simTime).toBe(0);
-    expect(next.seed).toBe(DEFAULT_SEED);
-    expect(next.rngState).toBe(DEFAULT_SEED);
     expect(next.muted).toBe(true);
   });
 });
@@ -115,6 +108,7 @@ describe("startMatch", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
     expect(next.paddles.left.cy).toBe(FIELD_CY);
