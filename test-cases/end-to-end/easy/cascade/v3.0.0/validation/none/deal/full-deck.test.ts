@@ -8,19 +8,18 @@
 // cannot be won and a deck holding two of them cannot be finished either; and
 // specs/victory.md counts the win at exactly fifty-two cards home.
 //
-// HOW IT IS REACHED. The game is reset to the seed under test, put into play and
-// cleared of all thirteen piles, so every card counted is one this deal produced;
-// then `deal()`, the game's own deal path (specs/instrumentation.md), lays the
+// HOW IT IS REACHED. The game is reset, put into play and cleared of all
+// thirteen piles, so every card counted is one this deal produced; then
+// `deal()`, the game's own deal path (specs/instrumentation.md), lays the
 // board. The cards are read from all thirteen piles at once, because the deck is
 // the deck wherever the deal put it, and this check says nothing about which pile
 // that was.
 //
-// SEVERAL SEEDS, because the deck is drawn through the shuffle and a shuffle is
+// SEVERAL DEALS, because the deck is drawn through the shuffle and a shuffle is
 // where a duplicate comes from: an off-by-one swap or a draw-with-replacement
-// leaves the deck intact on some orderings and short on others. Each seed is one
-// draw of the same rule (specs/instrumentation.md seeds every deal from
-// `reset(options)`), so a build that is only sometimes wrong is caught rather than
-// sampled.
+// leaves the deck intact on some orderings and short on others. Each deal is one
+// draw of the same rule, so a build that is only sometimes wrong is caught rather
+// than sampled.
 //
 // The pair is reported as WHICH cards went missing and WHICH arrived twice, not
 // as a count, because those two lists are what say whether a build lost a card,
@@ -37,8 +36,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seeds the deck is read over. Each is one shuffle of the same deck. */
-const SEEDS = [1, 2, 3, 7, 11];
+/** The deals the deck is read over. Each is one shuffle of the same deck. */
+const DEALS = [1, 2, 3];
 
 /** Every suit-and-rank pair specs/deal.md puts in the deck, exactly once. */
 const FULL_DECK: readonly string[] = SUITS.flatMap((suit) =>
@@ -57,41 +56,38 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it.each(SEEDS)(
-  "deals one of each of the fifty-two from seed %i",
-  async (seed) => {
-    await h.debug.reset({ seed });
-    await h.debug.setScreen("playing");
-    await h.debug.clearTable();
-    await h.debug.deal();
-    await h.advance(1);
-    await captureStill(h, "dealt");
+it.each(DEALS)("deals one of each of the fifty-two (deal %i)", async (deal) => {
+  await h.debug.reset();
+  await h.debug.setScreen("playing");
+  await h.debug.clearTable();
+  await h.debug.deal();
+  await h.advance(1);
+  await captureStill(h, "dealt");
 
-    const dealt = everyCard(await h.snapshot());
-    assertLength(
-      dealt,
-      DECK_SIZE,
-      `cards the deal put on the table, from seed ${seed} (specs/deal.md)`,
-    );
+  const dealt = everyCard(await h.snapshot());
+  assertLength(
+    dealt,
+    DECK_SIZE,
+    `cards deal ${deal} put on the table (specs/deal.md)`,
+  );
 
-    const seen = new Map<string, number>();
-    for (const held of dealt) {
-      const key = cardKey(held);
-      seen.set(key, (seen.get(key) ?? 0) + 1);
-    }
+  const seen = new Map<string, number>();
+  for (const held of dealt) {
+    const key = cardKey(held);
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+  }
 
-    assertDeepEqual(
-      FULL_DECK.filter((key) => !seen.has(key)),
-      [],
-      `cards of the deck the deal never put on the table, from seed ${seed} (specs/deal.md)`,
-    );
-    assertDeepEqual(
-      [...seen.entries()]
-        .filter(([, count]) => count > 1)
-        .map(([key]) => key)
-        .sort(),
-      [],
-      `cards the deal put on the table more than once, from seed ${seed} (specs/deal.md)`,
-    );
-  },
-);
+  assertDeepEqual(
+    FULL_DECK.filter((key) => !seen.has(key)),
+    [],
+    `cards of the deck deal ${deal} never put on the table (specs/deal.md)`,
+  );
+  assertDeepEqual(
+    [...seen.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key)
+      .sort(),
+    [],
+    `cards deal ${deal} put on the table more than once (specs/deal.md)`,
+  );
+});

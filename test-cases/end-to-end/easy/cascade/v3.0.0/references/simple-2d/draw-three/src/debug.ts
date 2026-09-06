@@ -30,7 +30,6 @@ import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
-  DEFAULT_SEED,
   RANK_MAX,
   RANK_MIN,
   TURN_COUNT,
@@ -126,10 +125,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<CascadeState>,
-    options?: { seed?: number },
-  ): CascadeState;
+  reset(state: DeepReadonly<CascadeState>): CascadeState;
   snapshot(state: DeepReadonly<CascadeState>): CascadeSnapshot;
 
   /**
@@ -294,9 +290,9 @@ export function createDebugApi(): CascadeDebugApi {
   return {
     version: CASCADE_DEBUG_VERSION,
 
-    reset: (state, options) =>
+    reset: (state) =>
       pose(state, (sim) => {
-        resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
+        resetToTitle(sim);
       }),
 
     snapshot: (state) => ({

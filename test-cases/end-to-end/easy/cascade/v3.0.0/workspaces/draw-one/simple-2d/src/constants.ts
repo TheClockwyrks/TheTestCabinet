@@ -181,5 +181,3 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 /** The version the debug surface reports as `version`. */
 export const CASCADE_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;

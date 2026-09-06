@@ -191,7 +191,7 @@ beforeEach(() => {
   dropOffscreen = installOffscreenCanvas();
   h = createHarness();
   h.debug.setAutoStep(false);
-  h.debug.reset({ seed: 5 });
+  h.debug.reset();
 });
 
 afterEach(() => {
@@ -229,7 +229,7 @@ describe("the game the runtime is handed", () => {
   it("reaches the same time however the interval was divided", () => {
     h.run(1);
     const one = h.debug.snapshot().simTime;
-    h.debug.reset({ seed: 5 });
+    h.debug.reset();
     h.runtime.advance(TICK, 4);
     expect(h.debug.snapshot().simTime).toBeCloseTo(one, 9);
   });

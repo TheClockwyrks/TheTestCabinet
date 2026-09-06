@@ -42,7 +42,6 @@ import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
-  DEFAULT_SEED,
   TURN_COUNT,
 } from "./constants";
 import { dealGame } from "./deal";
@@ -151,7 +150,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): CascadeSnapshot;
 
   /**
@@ -252,8 +251,8 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
   return {
     version: CASCADE_DEBUG_VERSION,
 
-    reset(options) {
-      resetState(read(), options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(read());
     },
 
     snapshot() {

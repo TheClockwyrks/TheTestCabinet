@@ -36,9 +36,9 @@ afterEach(() => {
 });
 
 /** A won game whose cascade is about to run, with the trail's painting off. */
-function startCascade(h: Harness, seed = 1): void {
+function startCascade(h: Harness): void {
   const { debug } = h;
-  debug.reset({ seed });
+  debug.reset();
   debug.setScreen("playing");
   debug.clearTable();
   poseNearlyWon(debug);
@@ -143,7 +143,7 @@ describe("the launch", () => {
 
   it("sends cards to both sides over a whole cascade", async () => {
     const { debug } = h;
-    startCascade(h, 3);
+    startCascade(h);
     const signs = new Set<number>();
     let seen = 0;
     for (let frame = 0; frame < 700 && signs.size < 2; frame += 1) {
@@ -279,7 +279,7 @@ describe("the painted trail", () => {
   it("buries more of the table the longer the cascade runs", async () => {
     const { debug } = h;
     const painted = async (seconds: number): Promise<number> => {
-      debug.reset({ seed: 2 });
+      debug.reset();
       debug.setScreen("playing");
       debug.clearTable();
       poseNearlyWon(debug);
@@ -302,7 +302,7 @@ describe("the painted trail", () => {
 describe("the end of the cascade", () => {
   it("launches every card, retires every card, and stays painted", async () => {
     const { debug } = h;
-    debug.reset({ seed: 4 });
+    debug.reset();
     debug.setScreen("playing");
     debug.clearTable();
     poseNearlyWon(debug);

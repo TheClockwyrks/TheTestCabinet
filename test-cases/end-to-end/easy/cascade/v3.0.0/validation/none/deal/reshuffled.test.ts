@@ -7,18 +7,23 @@
 // layout cannot fake.
 //
 // HOW IT IS READ. The shuffle is not observed directly; two deals are, and they
-// are compared. specs/instrumentation.md seeds every deal from `reset(options)`
-// and requires that "reseeding and replaying the same calls reproduces the same
-// result exactly", so two deals from two DIFFERENT seeds are two draws of the
-// shuffle, and a build whose deal ignores its generator hands back the same board
-// twice. Each deal is taken on a table cleared first, so the arrangement read is
-// the one that deal produced.
+// are compared. `deal()` is the game's own deal path (specs/instrumentation.md),
+// so two deals in a row are two draws of the shuffle, and a build whose deal
+// lays out one fixed board hands back the same arrangement twice. Each deal is
+// taken on a table cleared first, so the arrangement read is the one that deal
+// produced.
 //
 // The comparison is POSITIONAL over the tableau, which is what the review item
 // names: for each of the twenty-eight column positions, whether the two deals put
 // the same card there. It is not a comparison of the two decks as sets, because
 // both deals hold the same fifty-two cards by deal/full-deck and a set comparison
 // would find nothing whatever the shuffle did.
+//
+// THREE PAIRS ARE READ, each a fresh pair of consecutive deals, so a build that
+// shuffles on every other deal is caught rather than sampled around. Two
+// independent uniform deals agree at a given position with probability 1/52, so
+// the chance that a conformant build fails the share below on any pair is far
+// below one in a trillion.
 //
 // A position one deal filled and the other did not counts as differing, so a
 // build that deals a different NUMBER of cards is not rewarded for it; what its
@@ -43,12 +48,8 @@ import { captureStill, cardKey, createHarness, type Harness } from "../harness";
  */
 const DIFFER_MIN_FRACTION = 0.5;
 
-/** The seed pairs the comparison is read over. Each pair is one draw of the rule. */
-const PAIRS = [
-  { first: 1, second: 2 },
-  { first: 3, second: 4 },
-  { first: 11, second: 29 },
-];
+/** The pairs of consecutive deals the comparison is read over. */
+const PAIRS = [1, 2, 3];
 
 let h: Harness;
 
@@ -61,14 +62,11 @@ afterEach(async () => {
 });
 
 /**
- * Deal from `seed` on a cleared table, and hand back what each tableau position
- * received, keyed `"column,row"` with the row counted from the top of the table.
+ * Deal on a cleared table, and hand back what each tableau position received,
+ * keyed `"column,row"` with the row counted from the top of the table.
  */
-async function dealFrom(
-  h: Harness,
-  seed: number,
-): Promise<Map<string, string>> {
-  await h.debug.reset({ seed });
+async function dealAfresh(h: Harness): Promise<Map<string, string>> {
+  await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.clearTable();
   await h.debug.deal();
@@ -85,11 +83,11 @@ async function dealFrom(
 }
 
 it.each(PAIRS)(
-  "deals different boards from seed $first and seed $second",
-  async ({ first, second }) => {
-    // The second seed's deal is the one the still shows, so it is dealt last.
-    const before = await dealFrom(h, first);
-    const after = await dealFrom(h, second);
+  "deals different boards on two consecutive deals (pair %i)",
+  async (pair) => {
+    // The second deal is the one the still shows, so it is dealt last.
+    const before = await dealAfresh(h);
+    const after = await dealAfresh(h);
 
     const positions = new Set([...before.keys(), ...after.keys()]);
     const differing = [...positions].filter(
@@ -99,8 +97,8 @@ it.each(PAIRS)(
     assertGreaterThan(
       differing,
       DIFFER_MIN_FRACTION * DEAL_TABLEAU_CARDS,
-      `tableau positions holding a different card between the deals from ` +
-        `seed ${first} and seed ${second} (specs/deal.md)`,
+      `tableau positions holding a different card between two consecutive ` +
+        `deals, pair ${pair} (specs/deal.md)`,
     );
   },
 );

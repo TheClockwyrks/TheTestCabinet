@@ -22,7 +22,7 @@
 //
 // THE COMPARISON IS THE READING, AND NO ABSOLUTE FRACTION IS ASSERTED. The
 // specification fixes no coverage figure, and it could not: how much felt is
-// buried after four seconds depends on the launch velocities the seeded generator
+// buried after four seconds depends on the launch velocities the cascade
 // drew. What it does fix is the direction.
 //
 // EVERY POINT IS READ AGAINST ITSELF. The whole grid is sampled on the `won`

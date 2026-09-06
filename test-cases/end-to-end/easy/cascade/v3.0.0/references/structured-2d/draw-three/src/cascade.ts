@@ -108,9 +108,9 @@ export function nextFoundation(state: CascadeState): number {
 /**
  * Launch the next card: it leaves the top of the foundation whose turn it is and
  * becomes a card in flight at that foundation's anchor, popping upward at
- * `LAUNCH_VY` with a horizontal speed drawn from the seeded generator — a
- * magnitude uniform in `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` and a sign chosen with
- * equal probability.
+ * `LAUNCH_VY` with a horizontal speed drawn afresh at the launch: a magnitude
+ * uniform in `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` and a sign chosen with equal
+ * probability.
  */
 export function launchOne(
   state: CascadeState,
@@ -122,8 +122,8 @@ export function launchOne(
   const card = state.foundations[index].pop();
   if (card === undefined) return null;
 
-  const magnitude = nextRange(state, LAUNCH_VX_MIN, LAUNCH_VX_MAX);
-  const sign = nextSign(state);
+  const magnitude = nextRange(LAUNCH_VX_MIN, LAUNCH_VX_MAX);
+  const sign = nextSign();
   // A launched card keeps the id it carried on the table
   // (`specs/instrumentation.md`, Identity), so it is followed from the
   // foundation into the flight.

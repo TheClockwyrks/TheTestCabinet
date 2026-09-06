@@ -41,7 +41,7 @@ import {
 import type { CascadeState, FlyerState, Suit } from "./game";
 import { takeId } from "./piles";
 import { drawCard } from "./render";
-import { cursor } from "./rng";
+import { nextRandom } from "./rng";
 
 /**
  * Enter the cascade. The launch clock starts holding a whole interval, so the
@@ -98,13 +98,11 @@ function launchNext(state: CascadeState, cues: FrameCues): boolean {
   const card = foundation[foundation.length - 1];
   foundation.pop();
 
-  // The magnitude and the sign both come off the seeded generator, so a seeded
-  // cascade replays exactly (specs/instrumentation.md).
-  const rng = cursor(state.rngState);
+  // The magnitude is drawn uniformly from its range and the sign with equal
+  // probability, each afresh at the launch (specs/victory.md).
   const magnitude =
-    LAUNCH_VX_MIN + rng.draw() * (LAUNCH_VX_MAX - LAUNCH_VX_MIN);
-  const sign = rng.draw() < 0.5 ? -1 : 1;
-  state.rngState = rng.state;
+    LAUNCH_VX_MIN + nextRandom() * (LAUNCH_VX_MAX - LAUNCH_VX_MIN);
+  const sign = nextRandom() < 0.5 ? -1 : 1;
 
   // A launched card keeps the id it carried on the table (specs/instrumentation.md).
   addFlyerTo(

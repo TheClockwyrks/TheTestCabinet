@@ -68,7 +68,7 @@ const TABLE = { x: 0, y: 0, w: STAGE_W, h: STAGE_H };
 /*
  * A cell counts as painted when it reads DIFFERENTLY from its own bare reading,
  * and nothing more is measured. The case fixes no palette, so how far a stamp
- * reads from the felt is the reviewer's; rendering is deterministic and each cell
+ * reads from the felt is the reviewer's; each cell
  * is compared against itself, so any difference at all is paint.
  */
 

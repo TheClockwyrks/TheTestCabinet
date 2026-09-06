@@ -57,14 +57,14 @@ export function unchanged(state: CascadeState): Outcome {
 /**
  * A fresh deal (specs/deal.md).
  *
- * The whole deck is shuffled from the seeded generator and dealt column by
+ * The whole deck is shuffled uniformly at random and dealt column by
  * column, one to the first and seven to the last, each column's last card face
  * up; the twenty-four cards left over form the face-down stock. It replaces the
  * thirteen piles and the waste's set memory, sets `launched` to `0`, and clears
  * the painted table, and it changes no other field.
  */
 export function deal(state: CascadeState): Outcome {
-  const [faces, rngState] = shuffledDeck(state.rngState);
+  const faces = shuffledDeck();
   const [ids, nextId] = takeIds(state, faces.length);
 
   const tableau: CardState[][] = [];
@@ -98,7 +98,6 @@ export function deal(state: CascadeState): Outcome {
       tableau,
       launched: 0,
       trailStamps: 0,
-      rngState,
       nextId,
     },
     cues: [CUES.deal],

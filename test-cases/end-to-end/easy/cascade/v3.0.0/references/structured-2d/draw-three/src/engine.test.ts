@@ -53,7 +53,7 @@ describe("the world the engine builds", () => {
   });
 });
 
-describe("the deterministic core", () => {
+describe("the render-free core", () => {
   it("accumulates game time on every screen", async () => {
     for (const screen of ["title", "howto", "playing", "won"] as const) {
       h.debug.reset();

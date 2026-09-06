@@ -36,8 +36,8 @@ export default defineEngineValidationConfig({
   // use a machine of any ordinary size properly, while leaving the host something
   // to run the build's own work with.
   maxWorkers: 8,
-  // WHAT THESE TWO BOUND, AND WHAT THEY MUST NOT DECIDE. A suite here is
-  // deterministic: it poses a board, steps a counted number of frames, and reads
+  // WHAT THESE TWO BOUND, AND WHAT THEY MUST NOT DECIDE. A suite here
+  // poses a board, steps a counted number of frames, and reads
   // what they left, and not one assertion in the project reads a wall clock. What
   // a timeout can therefore only ever measure is how much of this machine the
   // suite was given — so a figure that a correct build can cross on a busy host is

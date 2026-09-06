@@ -63,26 +63,16 @@ like one played by hand. `src/game.ts` declares and exports its type,
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic. Two properties make the
-game driveable from code:
-
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer. Every rate is per second and integrated against the delta the frame
-  supplies, so an interval of game time covered as one frame and as sixty frames
-  advances `simTime` by the same amount and carries a flyer the same distance
-  along `x` at a constant `vx`.
-- Seeded randomness. Any randomness the game uses runs off a generator seeded
-  from the state's generator field, and it keeps its whole generator state in
-  that field, so reseeding and replaying the same calls reproduces the same
-  result exactly. The deal's shuffle and the cascade's launch velocities are both
-  drawn from it.
-
-Given the same seed and the same sequence of calls and elapsed game time, the
-game reaches the same state every time.
+Game state advances from the elapsed simulation time the game is handed,
+independent of a canvas, of the frame loop that measured it, and of wall-clock
+time. The dependency runs one way: the simulation reads nothing from the
+renderer. Every rate is per second and integrated against the delta the frame
+supplies, so an interval of game time covered as one frame and as sixty frames
+advances `simTime` by the same amount and carries a flyer the same distance
+along `x` at a constant `vx`. A step means the same thing whatever the frame
+rate, which is what makes the game driveable from code.
 
 ## What the runtime provides instead
 
@@ -169,7 +159,7 @@ the live game and returns the verdict its row states.
 
 | Operation | Effect |
 | --- | --- |
-| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+| `reset()` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 | `menuItemRect(index)` | The hit region of item `index` on the menu the current screen shows. It changes nothing. |
 
@@ -187,9 +177,8 @@ that item from, as `specs/controls.md` states. It returns `null` on `won`, which
 shows no menu, and when `index` names no item of the menu the current screen
 shows.
 
-`options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
-game's randomness. `muted` is left exactly as it stands, because muting is a
-player preference the runtime owns.
+`reset` takes no parameters. `muted` is left exactly as it stands, because
+muting is a player preference the runtime owns.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -289,10 +278,10 @@ own rules decided.
 | `move(fromPile, fromIndex, fromRow, toPile, toIndex)` | Attempts a move and returns whether the rules accepted it. |
 | `autoMove(pile, index)` | Sends the named pile's playable card home, and returns whether it went. |
 
-`deal()` shuffles a full deck from the seeded generator and deals it. It replaces
-the contents of all thirteen piles, empties the waste's set memory, sets
-`launched` to `0`, and clears the painted layer, which is what a new deal does.
-It changes no other field, the screen included.
+`deal()` shuffles a full deck uniformly at random and deals it, as
+`specs/deal.md` states. It replaces the contents of all thirteen piles, empties
+the waste's set memory, sets `launched` to `0`, and clears the painted layer,
+which is what a new deal does. It changes no other field, the screen included.
 
 `turnStock()` turns the deal mode's turn count of cards from the stock onto the
 waste, or recycles the whole waste back into the stock when the stock is empty.

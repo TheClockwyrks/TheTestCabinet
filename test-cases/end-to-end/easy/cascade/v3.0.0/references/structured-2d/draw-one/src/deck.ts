@@ -7,7 +7,7 @@
 
 import { RANK_MAX, RANK_MIN, SUITS } from "./constants";
 import type { CardState, Suit } from "./game";
-import { cursor } from "./rng";
+import { shuffled } from "./rng";
 
 /** One of the fifty-two suit-and-rank pairs, before it is dealt a card's id. */
 export interface DeckEntry {
@@ -41,14 +41,11 @@ export function buildDeck(): DeckEntry[] {
 }
 
 /**
- * The deck shuffled uniformly from `seed`, beside the generator state that
- * follows the shuffle. Fisher-Yates over a seeded draw, so every ordering is as
- * likely as any other and the same seed deals the same board.
+ * The deck shuffled uniformly at random: Fisher-Yates over a fresh draw, so
+ * every ordering is as likely as any other.
  */
-export function shuffledDeck(seed: number): readonly [DeckEntry[], number] {
-  const rng = cursor(seed);
-  const shuffled = rng.shuffle(buildDeck());
-  return [shuffled, rng.state];
+export function shuffledDeck(): DeckEntry[] {
+  return shuffled(buildDeck());
 }
 
 /** The label a face-up card shows for its rank: `A`, `2` to `10`, `J`, `Q`, `K`. */

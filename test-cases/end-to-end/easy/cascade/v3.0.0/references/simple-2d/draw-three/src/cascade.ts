@@ -87,13 +87,8 @@ export function launchFrom(sim: Sim, index: number): void {
   const card = pile.pop();
   if (card === undefined) return;
 
-  const [magnitude, afterMagnitude] = nextRange(
-    sim.rngState,
-    LAUNCH_VX_MIN,
-    LAUNCH_VX_MAX,
-  );
-  const [sign, afterSign] = nextSign(afterMagnitude);
-  sim.rngState = afterSign;
+  const magnitude = nextRange(LAUNCH_VX_MIN, LAUNCH_VX_MAX);
+  const sign = nextSign();
 
   sim.flyers.push({
     id: card.id,

@@ -12,7 +12,7 @@
 // reading is checked against, so what is compared is the table against its own
 // earlier self rather than against any absolute figure — the specification fixes
 // no coverage, and could not, because what a cascade covers depends on the launch
-// velocities the seeded generator drew.
+// velocities its launches drew.
 //
 // EVERY POINT IS READ AGAINST ITSELF. The grid is sampled before a single card
 // has launched, and a point counts as painted when IT has moved from the colour it

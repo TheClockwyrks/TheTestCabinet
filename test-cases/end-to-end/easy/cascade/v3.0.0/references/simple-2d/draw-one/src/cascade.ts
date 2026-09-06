@@ -71,12 +71,8 @@ function launch(state: CascadeState, index: number): CascadeState {
   const pile = state.foundations[index];
   const card = pile[pile.length - 1];
   const anchor = pileAnchor("foundation", index);
-  const [magnitude, afterMagnitude] = nextRange(
-    state.rngState,
-    LAUNCH_VX_MIN,
-    LAUNCH_VX_MAX,
-  );
-  const [sign, rngState] = nextSign(afterMagnitude);
+  const magnitude = nextRange(LAUNCH_VX_MIN, LAUNCH_VX_MAX);
+  const sign = nextSign();
 
   return {
     ...state,
@@ -96,7 +92,6 @@ function launch(state: CascadeState, index: number): CascadeState {
       },
     ],
     launched: state.launched + 1,
-    rngState,
   };
 }
 

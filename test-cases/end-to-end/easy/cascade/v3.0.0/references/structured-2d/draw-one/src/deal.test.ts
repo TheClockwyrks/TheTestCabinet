@@ -99,10 +99,10 @@ describe("the deal", () => {
     );
   });
 
-  it("shuffles afresh, so two seeds lay out different columns", () => {
+  it("shuffles afresh, so two deals lay out different columns", () => {
     const { debug } = h;
-    const columns = (seed: number): string => {
-      debug.reset({ seed });
+    const columns = (): string => {
+      debug.reset();
       debug.deal();
       return JSON.stringify(
         debug
@@ -112,8 +112,7 @@ describe("the deal", () => {
           ),
       );
     };
-    expect(columns(1)).not.toBe(columns(2));
-    expect(columns(3)).not.toBe(columns(4));
+    expect(columns()).not.toBe(columns());
   });
 
   it("changes no other field, the screen included", () => {

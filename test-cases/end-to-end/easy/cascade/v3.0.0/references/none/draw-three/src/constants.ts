@@ -175,8 +175,6 @@ export const HOWTO_TOKENS = ["ACE", "KING", "STOCK", "DOUBLE-CLICK"] as const;
 
 /** The version `window.__cascade` reports. */
 export const CASCADE_DEBUG_VERSION = 1;
-/** The seed `reset()` uses when it is given none. */
-export const DEFAULT_SEED = 1;
 
 // ---- The cues (specs/audio.md) ------------------------------------------
 

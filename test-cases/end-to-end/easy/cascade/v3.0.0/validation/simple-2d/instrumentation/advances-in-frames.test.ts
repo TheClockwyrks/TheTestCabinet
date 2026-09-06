@@ -1,7 +1,7 @@
 // instrumentation/advances-in-frames — the simulation advances on the elapsed time
 // it is handed, and on nothing else.
 //
-// specs/instrumentation.md "A deterministic core": the game's state "advances from
+// specs/instrumentation.md "A render-free core": the game's state "advances from
 // the elapsed time the game is handed, independent of a canvas, of the frame loop
 // that measured it, and of wall-clock time. The dependency runs one way: the
 // simulation reads nothing from the renderer. Every rate is per second and

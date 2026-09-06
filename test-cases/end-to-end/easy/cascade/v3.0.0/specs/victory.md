@@ -52,9 +52,8 @@ A launched card leaves the foundation it came from and becomes a card in flight:
 | `vy` | `LAUNCH_VY` (`-120`) |
 | `vx` | A magnitude drawn uniformly from `[LAUNCH_VX_MIN, LAUNCH_VX_MAX]` (`[180, 420]`), with a sign chosen with equal probability |
 
-The magnitude and the sign are drawn from the game's seeded generator, as
-`specs/instrumentation.md` requires. A card launched in a frame takes no motion
-in that frame.
+The magnitude and the sign are drawn at the launch, independently of every
+other launch. A card launched in a frame takes no motion in that frame.
 
 ### Each frame of a running cascade
 

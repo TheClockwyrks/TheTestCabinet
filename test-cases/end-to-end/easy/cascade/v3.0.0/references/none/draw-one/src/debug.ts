@@ -31,7 +31,6 @@ import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
-  DEFAULT_SEED,
   TURN_COUNT,
 } from "./constants";
 import {
@@ -159,7 +158,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): CascadeSnapshot;
   menuItemRect(index: number): Rect | null;
 
@@ -275,16 +274,15 @@ export function createDebugApi(
     version: CASCADE_DEBUG_VERSION,
 
     /**
-     * Restore every declared field of the state to its title-screen value and
-     * reseed all of the game's randomness.
+     * Restore every declared field of the state to its title-screen value.
      *
      * It does not touch the clock: whether the game is stepping itself is not a
      * declared field, `setAutoStep` is how that is said, and a driver that
      * resets mid-scenario means to re-pose the table rather than hand it back
      * to real time. `muted` is left exactly as it stands.
      */
-    reset(options) {
-      resetState(state, options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(state);
     },
 
     /** A pure read of the state. It changes nothing. */
@@ -487,7 +485,7 @@ export function createDebugApi(
       state.wasteSets.length = 0;
     },
 
-    /** Deal a fresh game from the seeded generator, as `specs/deal.md` states. */
+    /** Deal a fresh game from a freshly shuffled deck, as `specs/deal.md` states. */
     deal() {
       dealCards(state);
     },

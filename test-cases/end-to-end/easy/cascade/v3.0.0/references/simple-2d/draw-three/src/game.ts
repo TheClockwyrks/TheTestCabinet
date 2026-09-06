@@ -150,7 +150,6 @@ export interface CascadeState {
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 
   /**
    * The persistent surface the cascade paints onto, built once by `initialize`

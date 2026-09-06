@@ -2,7 +2,7 @@
 // it is divided: covered as one frame and as sixty, it adds the same second to
 // `simTime` and carries a card in flight the same distance along `x`.
 //
-// THE RULE. `specs/instrumentation.md`, A deterministic core: "Render-free core.
+// THE RULE. `specs/instrumentation.md`, A render-free core: "Render-free core.
 // Game state advances from the elapsed time the game is handed, independent of a
 // canvas, of the frame loop that measured it, and of wall-clock time. The
 // dependency runs one way: the simulation reads nothing from the renderer. Every

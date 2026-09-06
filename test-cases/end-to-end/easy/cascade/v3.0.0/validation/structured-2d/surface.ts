@@ -202,7 +202,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): CascadeSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows, or

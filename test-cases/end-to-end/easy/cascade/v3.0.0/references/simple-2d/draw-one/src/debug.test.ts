@@ -283,17 +283,16 @@ describe("reset", () => {
     expect(snap.muted).toBe(true);
   });
 
-  it("seeds the deal, so the same seed deals the same board", () => {
+  it("deals afresh, so two deals lay out different boards", () => {
     const key = (state: CascadeState) =>
       debug
         .snapshot(state)
         .tableau.flat()
         .map((c) => `${c.suit}${c.rank}`)
         .join(",");
-    const dealt = (seed: number) =>
-      debug.deal(debug.reset(openingState(), { seed }));
-    expect(key(dealt(4))).toBe(key(dealt(4)));
-    expect(key(dealt(4))).not.toBe(key(dealt(5)));
+    const dealt = () => debug.deal(debug.reset(openingState()));
+    expect(key(dealt()).split(",")).toHaveLength(28);
+    expect(key(dealt())).not.toBe(key(dealt()));
   });
 });
 

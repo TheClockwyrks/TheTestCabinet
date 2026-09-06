@@ -5,7 +5,7 @@
 // (specs/screens.md, specs/victory.md).
 
 import type { FrameCues } from "./audio";
-import { DEFAULT_SEED, FOUNDATION_COUNT, TABLEAU_COLUMNS } from "./constants";
+import { FOUNDATION_COUNT, TABLEAU_COLUMNS } from "./constants";
 import { dealGame } from "./deal";
 import type { CardState, CascadeState } from "./game";
 import { wrapMenuIndex } from "./menus";
@@ -20,7 +20,7 @@ function emptyPiles(count: number): CardState[][] {
  * layer with them. `muted` is left exactly as it stands, because muting is a
  * player preference the runtime owns (specs/instrumentation.md).
  */
-export function resetState(state: CascadeState, seed = DEFAULT_SEED): void {
+export function resetState(state: CascadeState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.titleIndex = 0;
@@ -50,7 +50,6 @@ export function resetState(state: CascadeState, seed = DEFAULT_SEED): void {
 
   state.nextId = 1;
   state.simTime = 0;
-  state.rngState = seed;
 }
 
 /**

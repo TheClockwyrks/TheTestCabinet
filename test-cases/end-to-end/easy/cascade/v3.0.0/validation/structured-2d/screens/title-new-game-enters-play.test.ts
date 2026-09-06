@@ -36,9 +36,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed the deal runs off; nothing this point reads turns on it. */
-const SEED = 1;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -50,7 +47,7 @@ afterEach(() => {
 });
 
 it("deals a full deck and enters play when NEW GAME is clicked on the title", async () => {
-  resetTo(h, SEED);
+  resetTo(h);
   const opened = h.snapshot();
   assertEqual(
     opened.screen,

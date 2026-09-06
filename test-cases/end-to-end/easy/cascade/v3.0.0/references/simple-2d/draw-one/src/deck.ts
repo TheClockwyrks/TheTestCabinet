@@ -5,7 +5,7 @@
 // a color that disagrees with the suit beside it.
 
 import { RANK_MAX, RANK_MIN, SUITS } from "./constants";
-import { shuffle, type Draw } from "./rng";
+import { shuffle } from "./rng";
 import type { CardState, Suit } from "./game";
 
 /** One suit-and-rank pair, before it is dealt and given an identity. */
@@ -74,9 +74,9 @@ export function buildDeck(): readonly CardFace[] {
   return faces;
 }
 
-/** A full deck shuffled uniformly, and the generator state after the shuffle. */
-export function shuffledDeck(rngState: number): Draw<readonly CardFace[]> {
-  return shuffle(buildDeck(), rngState);
+/** A full deck shuffled uniformly. */
+export function shuffledDeck(): readonly CardFace[] {
+  return shuffle(buildDeck());
 }
 
 /** A card with an identity, ready to sit on a pile. */

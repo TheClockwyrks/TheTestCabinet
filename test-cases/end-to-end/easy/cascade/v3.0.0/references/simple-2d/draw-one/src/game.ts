@@ -14,7 +14,7 @@
 // second and is multiplied by `dt`, so there is no fixed timestep and no
 // accumulator: the same second of game time reaches the same state whether it
 // arrived as one long step or as sixty short ones, which is the property
-// specs/instrumentation.md requires of the deterministic core.
+// specs/instrumentation.md requires of the render-free core.
 //
 // THE STATE SHAPE BELOW IS A CONTRACT (specs/state.md). Every field is declared
 // here under its declared name, type, and meaning; `initialize` builds all of
@@ -144,7 +144,6 @@ export interface CascadeState {
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 
   /**
    * The persistent surface the victory cascade paints on, which specs/state.md
@@ -207,10 +206,7 @@ export const game: Game<CascadeState, CascadeDebugApi> = {
     for (const [name, keys] of Object.entries(MENU_BINDINGS)) {
       api.input.register(name, { keys: [...keys] });
     }
-    return [
-      openingState(undefined, false, createTrailLayer()),
-      createDebugApi(),
-    ];
+    return [openingState(false, createTrailLayer()), createDebugApi()];
   },
 
   /**

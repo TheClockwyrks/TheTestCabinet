@@ -22,8 +22,8 @@
 // drawn: a build that drew the slot under every pile and no card at all would
 // leave one there. So the frame with the card on the pile is compared against
 // the frame of the same pile empty as well, and the pixels at the anchor have to
-// have changed. Rendering is deterministic here — the same operations produce
-// the same buffer — so "changed" is any difference at all, and no threshold is
+// have changed. The same operations produce
+// the same buffer here, so "changed" is any difference at all, and no threshold is
 // needed or stated.
 //
 // THE PILE IS A FOUNDATION, which is squared: "every card sits at the pile's

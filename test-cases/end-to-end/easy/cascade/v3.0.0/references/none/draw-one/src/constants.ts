@@ -131,7 +131,6 @@ export const HOWTO_TOKENS = ["ACE", "KING", "STOCK", "DOUBLE-CLICK"] as const;
 /* ---- The debug surface (specs/instrumentation.md) ------------------------ */
 
 export const CASCADE_DEBUG_VERSION = 1;
-export const DEFAULT_SEED = 1;
 
 /* ---- Audio (specs/audio.md) ---------------------------------------------- */
 

@@ -35,7 +35,7 @@
 // its operations, so they mean the same thing in every build: `addCard` appends one
 // card to a pile's top with a fresh id, `clearTable` empties all thirteen piles,
 // `move` applies the game's own rules and reports what they decided, and `reset`
-// gives everything back. Posing through it is how a scenario is reproducible, and
+// gives everything back. Posing through it is how a scenario is arranged, and
 // it is the seam the case's specification documents. `surface.ts` is that
 // specification as types, and it is the only description of the surface this
 // harness reads: the build's own module for it is never imported.

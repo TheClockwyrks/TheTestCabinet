@@ -375,8 +375,8 @@ source = "specs/audio.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; every operation by name, signature and effect, the four faculty
+# The debugging and automation surface every build must expose: a render-free
+# core; every operation by name, signature and effect, the four faculty
 # gates among them; the snapshot shape; the identity rules for cards and flyers;
 # and a read-only debug overlay. Framed as an ordinary developer affordance of the
 # game. It branches on the engine for where the surface is reached, the operation
@@ -534,8 +534,7 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These points check that it is really there,
-# really wired to the running game, really deterministic, and that each pose reads
-# back. A surface that reports a plausible-looking object unconnected to what is on
+# really wired to the running game, and that each pose reads back. A surface that reports a plausible-looking object unconnected to what is on
 # screen is the failure mode worth naming.
 #
 # TWELVE OF THEM ARE THE FACULTY GATES. Cascade needs no world gates: nothing in
@@ -557,13 +556,9 @@ format = 2
 # `cascade.trail-persists` and nothing else, and a build that paints correctly but
 # never clears fails these five and nothing else.
 #
-# Three items cap at `passable` rather than `broken`, deliberately. A build whose
-# seeded deal does not reproduce, or whose cascade is not reproducible from a seed,
-# is a completely playable game of Klondike with a completely watchable ending: the
-# player loses nothing. This category names all four domains, so capping such an
-# item `broken` would rate an otherwise perfect build broken across the board for a
-# defect no player can see. `broken` here is reserved for the surface every other
-# suite drives through.
+# `broken` here is reserved for the surface every other suite drives through;
+# a pose that reads back wrongly is a playable game with a defect no player can
+# see, and such items cap at `passable`.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -697,24 +692,6 @@ domains = ["rules", "handling", "cascade", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/reset-clears-trail.test.ts", outputs = [
   { id = "cleared", name = "The clean table reset returned to", kind = "image" },
-] }
-[[review.categories.items]]
-id = "reset-seed-repeats-deal"
-title = "The same seed deals the same board"
-description = "reset({ seed }) then deal(), twice, produces the identical arrangement of all fifty-two cards."
-domains = ["rules", "handling", "cascade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seed-repeats-deal.test.ts", outputs = [
-  { id = "dealt", name = "The board the seed dealt, both times", kind = "image" },
-] }
-[[review.categories.items]]
-id = "reset-seed-differs"
-title = "Different seeds deal different boards"
-description = "Two different seeds produce different arrangements."
-domains = ["rules", "handling", "cascade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seed-differs.test.ts", outputs = [
-  { id = "dealt", name = "The two boards two seeds dealt", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "card-ids-distinct"
@@ -1070,15 +1047,6 @@ validation = { script = "instrumentation/sim-time-accumulates.test.ts", outputs 
   { id = "advanced", name = "The board after the advanced second", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "deterministic-cascade"
-title = "The same seed replays the same cascade"
-description = "Two runs from one seed, advanced identically, put every flyer at the same position within 0.5 units."
-domains = ["rules", "handling", "cascade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/deterministic-cascade.test.ts", outputs = [
-  { id = "replay", name = "One seed's cascade, replayed", kind = "replay" },
-] }
-[[review.categories.items]]
 id = "advances-in-frames"
 title = "The simulation advances on elapsed time alone"
 description = "With setLaunching(false) and one flyer posed clear of the floor and of both side edges, one second of game time covered as one frame and as sixty frames adds 1.0 to simTime either way and leaves the flyer's x the same within 0.5 units, so the simulation reads nothing from the renderer."
@@ -1325,11 +1293,11 @@ validation = { script = "deal/full-deck.test.ts", outputs = [
 [[review.categories.items]]
 id = "reshuffled"
 title = "Every deal is shuffled afresh"
-description = "Deals from two different seeds differ in the arrangement of their columns."
+description = "Two deals in a row differ in the arrangement of their columns."
 domains = ["rules"]
 failure_cap = "scuffed"
 validation = { script = "deal/reshuffled.test.ts", outputs = [
-  { id = "deals", name = "The two boards two seeds dealt", kind = "image" },
+  { id = "deals", name = "The two boards two deals laid out", kind = "image" },
 ] }
 # `specs/deal.md` states the clearing as part of what a new deal IS, so a build
 # that reads its specs puts it on the deal path and what `deal()` leaves behind is

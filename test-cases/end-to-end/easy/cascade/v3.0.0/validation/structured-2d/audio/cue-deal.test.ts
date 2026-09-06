@@ -56,9 +56,6 @@ import { playedSince } from "./cues";
  */
 const QUIET = framesFor(DOUBLE_CLICK_WINDOW);
 
-/** The seed the deal runs off; nothing this point reads turns on it. */
-const SEED = 1;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -70,7 +67,7 @@ afterEach(() => {
 });
 
 it("plays CUES.deal once when a fresh game is dealt, and not on the quiet frames either side", async () => {
-  openTable(h, SEED);
+  openTable(h);
   const cues = watchCues(h);
 
   await h.advance(QUIET);

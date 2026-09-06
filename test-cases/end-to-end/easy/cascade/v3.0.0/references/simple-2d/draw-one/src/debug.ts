@@ -24,7 +24,6 @@ import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
-  DEFAULT_SEED,
   TURN_COUNT,
 } from "./constants";
 import { colorOf, type CardColor } from "./deck";
@@ -131,10 +130,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<CascadeState>,
-    options?: { seed?: number },
-  ): CascadeState;
+  reset(state: DeepReadonly<CascadeState>): CascadeState;
   snapshot(state: DeepReadonly<CascadeState>): CascadeSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows.
@@ -306,12 +302,8 @@ export function createDebugApi(): CascadeDebugApi {
   return {
     version: CASCADE_DEBUG_VERSION,
 
-    reset(state, options) {
-      return openingState(
-        options?.seed ?? DEFAULT_SEED,
-        state.muted,
-        state.trail,
-      );
+    reset(state) {
+      return openingState(state.muted, state.trail);
     },
 
     snapshot(state): CascadeSnapshot {

@@ -12,8 +12,7 @@
 // WHAT IT LEAVES ALONE. The faces alone. How many cards the stock holds is
 // `deal/stock-count`, and the order they are in is not a claim this item makes:
 // specs/deal.md fixes the dealt order, but a shuffled deck makes any particular
-// order unobservable from outside, and `instrumentation/reset-seed-repeats-deal`
-// is what holds a build to dealing reproducibly.
+// order unobservable from outside.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";

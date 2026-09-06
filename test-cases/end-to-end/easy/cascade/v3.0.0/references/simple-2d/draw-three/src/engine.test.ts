@@ -581,14 +581,13 @@ describe("the debug surface", () => {
     expect(h.decide((s, d) => d.autoMove(s, "waste", 0))).toBe(false);
   });
 
-  it("deals the same board from one seed and different boards from two", () => {
-    const deal = (seed: number): string => {
-      h.pose((s, d) => d.reset(s, { seed }));
+  it("deals different boards on two deals in a row", () => {
+    const deal = (): string => {
+      h.pose((s, d) => d.reset(s));
       h.pose((s, d) => d.deal(s));
       return JSON.stringify(h.snapshot().tableau);
     };
-    expect(deal(7)).toBe(deal(7));
-    expect(deal(7)).not.toBe(deal(8));
+    expect(deal()).not.toBe(deal());
   });
 });
 

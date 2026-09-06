@@ -86,7 +86,7 @@ const PITCH_Y = STAGE_RECT.h / SAMPLE_ROWS;
 /*
  * A point counts as painted when it reads DIFFERENTLY from the same point on the
  * bare table, and how far apart the two sit is not measured: `specs/overview.md`
- * fixes no palette, so that is the reviewer's. Rendering is deterministic and each
+ * fixes no palette, so that is the reviewer's. Each
  * point is compared against itself, so any difference at all is the paint.
  */
 

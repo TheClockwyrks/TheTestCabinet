@@ -26,7 +26,7 @@
 //
 // WHAT THE READING MEASURES: NOTHING BEYOND THE DIFFERENCE. The two frames pose
 // the same card but for the one field under test, at the same anchor, and the
-// rendering is deterministic, so a build that drew the two alike differs at NO
+// same operations produce the same buffer, so a build that drew the two alike differs at NO
 // cell at all and a build that drew them apart differs at exactly the cells the
 // mark covers. Any difference is therefore the mark, and no threshold is needed
 // or stated. How large the mark is, how much of the card it covers and how far it

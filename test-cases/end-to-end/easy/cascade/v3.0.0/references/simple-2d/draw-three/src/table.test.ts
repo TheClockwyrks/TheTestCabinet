@@ -89,9 +89,8 @@ describe("the deal", () => {
     expect(sim.pendingCues).toContain(CUES.deal);
   });
 
-  it("shuffles afresh for a different seed", () => {
+  it("shuffles afresh on every deal", () => {
     const other = newSim();
-    other.rngState = 99;
     dealFresh(other);
     expect(other.tableau.map((c) => c.map((k) => k.rank).join())).not.toEqual(
       sim.tableau.map((c) => c.map((k) => k.rank).join()),

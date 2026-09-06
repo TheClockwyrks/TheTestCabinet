@@ -90,8 +90,8 @@ export function launchNext(state: CascadeState): boolean {
     const card = pile[pile.length - 1];
     pile.pop();
     const anchor = anchorOf("foundation", slot);
-    const speed = nextBetween(state, LAUNCH_VX_MIN, LAUNCH_VX_MAX);
-    const sign = nextSign(state);
+    const speed = nextBetween(LAUNCH_VX_MIN, LAUNCH_VX_MAX);
+    const sign = nextSign();
     state.flyers.push({
       id: card.id,
       suit: card.suit,

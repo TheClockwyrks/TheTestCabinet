@@ -48,7 +48,6 @@ function nearlyWon(missing: { suit: Suit; rank: number }): void {
 
 beforeEach(() => {
   state = createState(() => null);
-  state.rngState = 3;
 });
 
 describe("deal", () => {
@@ -102,15 +101,13 @@ describe("deal", () => {
     expect(state.screen).toBe("won");
   });
 
-  it("reaches the same board twice from the same seed", () => {
-    state.rngState = 21;
+  it("shuffles afresh, so two deals lay out different columns", () => {
     deal(state);
     const first = state.tableau.map((c) => c.map((e) => `${e.suit}${e.rank}`));
-    state.rngState = 21;
     deal(state);
     expect(
       state.tableau.map((c) => c.map((e) => `${e.suit}${e.rank}`)),
-    ).toEqual(first);
+    ).not.toEqual(first);
   });
 
   it("sounds the deal cue", () => {

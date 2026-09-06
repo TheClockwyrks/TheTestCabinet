@@ -61,8 +61,6 @@ Whatever its shape, the state carries the following.
 - The simulation time, in seconds, which every update adds its delta to whatever
   the screen.
 - Whether sound is muted, refreshed from the runtime's mute bit in every update.
-- The state of the seeded random generator, which the deal's shuffle and the
-  cascade's launch velocities are drawn from.
 - Whatever the game needs to hand a fresh id to the next card or flyer it
   creates, so no two entities live at one moment share an id.
 {{else if (eq engine.slug "simple-2d")}}
@@ -152,7 +150,6 @@ export interface CascadeState {
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 }
 ```
 {{else}}
@@ -170,7 +167,7 @@ single level, the game never opens another, and every screen is a value of
 framework's states are live objects: a tick writes the fields it advances in
 place, and each field initializer below is that field's title-screen value, the
 same value the debug surface's `reset` restores. `GameState` comes from the
-engine's package, and `DEFAULT_SEED` from `src/constants.ts`.
+engine's package.
 
 `src/constants.ts` fixes the vocabulary the world is built with. The one level is
 registered under its name in `LEVELS`, which is the level `startLevel` names, and
@@ -257,7 +254,6 @@ export class CascadeState extends GameState {
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 }
 ```
 {{/if}}
@@ -338,8 +334,6 @@ game begins.
 - `muted` — the game's readable copy of the runtime's mute bit, refreshed in
   every update. The runtime owns muting, and this field is what the debugging
   surface reports.
-- `rngState` — the state of the game's seeded random generator. The deal's
-  shuffle and the cascade's launch velocities are both drawn from it.
 
 ## The contract
 

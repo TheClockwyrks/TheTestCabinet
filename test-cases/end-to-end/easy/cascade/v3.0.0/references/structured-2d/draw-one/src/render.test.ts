@@ -272,7 +272,7 @@ describe("the screens", () => {
 
   it("draws the win message once the cascade is done, over the painted table", async () => {
     const { debug } = h;
-    debug.reset({ seed: 6 });
+    debug.reset();
     debug.setScreen("playing");
     debug.clearTable();
     for (const [index, suit] of (

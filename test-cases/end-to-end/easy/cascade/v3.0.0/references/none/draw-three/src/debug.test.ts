@@ -72,7 +72,7 @@ function stand(): void {
 beforeEach(() => {
   stand();
   debug.setAutoStep(false);
-  debug.reset({ seed: 5 });
+  debug.reset();
 });
 
 afterEach(() => {
@@ -139,18 +139,14 @@ describe("reset", () => {
     expect(shot.simTime).toBe(0);
   });
 
-  it("repeats a deal exactly from the same seed", () => {
-    debug.reset({ seed: 44 });
+  it("deals a full stock afresh on every deal", () => {
+    debug.reset();
     debug.deal();
     const first = debug
       .snapshot()
       .stock.map((card) => `${card.suit}${card.rank}`);
-    debug.reset({ seed: 44 });
-    debug.deal();
-    expect(
-      debug.snapshot().stock.map((card) => `${card.suit}${card.rank}`),
-    ).toEqual(first);
-    debug.reset({ seed: 45 });
+    expect(first).toHaveLength(24);
+    debug.reset();
     debug.deal();
     expect(
       debug.snapshot().stock.map((card) => `${card.suit}${card.rank}`),

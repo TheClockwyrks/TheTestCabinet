@@ -1,8 +1,8 @@
 // cascade/launch-vy — a launched card pops upward at -120.
 //
 // specs/victory.md's launch table fixes `vy` as `LAUNCH_VY` (`-120`) for every
-// launch, with no range and no randomness — the magnitude and the sign the
-// seeded generator draws are the HORIZONTAL component's, which
+// launch, with no range and no randomness — the magnitude and the sign
+// drawn at random are the HORIZONTAL component's, which
 // `launch-vx-magnitude` and `launch-vx-both-signs` read. And "a card launched in
 // a frame takes no motion in that frame", so the frame a card launches on is the
 // frame that reads its launch velocity before gravity has touched it.

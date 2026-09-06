@@ -30,7 +30,7 @@
 // posed flyer flies, bounces and paints through the game's own cascade rules. The
 // alternative — playing a real game out to a win and letting fifty-two cards
 // scatter — would decide this point on the move rules, the win test, the launch
-// cadence and the seeded velocities, all of which are other items, and would leave
+// cadence and the drawn velocities, all of which are other items, and would leave
 // where the paint landed to chance.
 //
 // THE FLYER IS CLEARED BEFORE THE DEAL, so what the sample after the deal reads is
@@ -90,7 +90,7 @@ const PAINT_FRAMES = 8;
  * The painted sample only has to have MOVED from the felt sample, and nothing
  * about it is measured. The case fixes no palette, so how far a stamp reads from
  * the felt is the reviewer's; both readings are the same point of the same screen
- * drawn by the same build, and rendering is deterministic, so any difference at
+ * drawn by the same build, so any difference at
  * all is the paint.
  */
 

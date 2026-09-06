@@ -1,8 +1,8 @@
 // Cascade — the deal (`specs/deal.md`).
 //
-// Every new game deals from a full deck shuffled uniformly at random from the
-// seeded generator, so every ordering of the fifty-two cards is as likely as any
-// other and each new game is dealt afresh.
+// Every new game deals from a full deck shuffled uniformly at random, so every
+// ordering of the fifty-two cards is as likely as any other and each new game is
+// dealt afresh.
 //
 // The shuffled deck is dealt column by column, left to right: column 0 receives
 // one card, column 1 two, and so on to column 6, which receives seven. In each
@@ -32,7 +32,7 @@ export function clearTrail(state: CascadeState): void {
  * changes no other field, the screen included.
  */
 export function dealGame(state: CascadeState, events: FrameEvents): void {
-  const deck = shuffle(state, buildDeck(state));
+  const deck = shuffle(buildDeck(state));
 
   state.tableau = Array.from({ length: TABLEAU_COLUMNS }, () => []);
   let cursor = 0;

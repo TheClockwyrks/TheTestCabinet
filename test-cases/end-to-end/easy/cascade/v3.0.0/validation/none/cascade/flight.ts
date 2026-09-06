@@ -375,7 +375,7 @@ export async function readFelt(h: Harness): Promise<Rgb[]> {
  * moment.
  *
  * THERE IS NO THRESHOLD. The case fixes no palette, so how far a stamp reads from
- * the felt is the reviewer's; rendering is deterministic and the point is compared
+ * the felt is the reviewer's; the point is compared
  * against ITSELF on the bare table, so any difference at all is paint. A single
  * pixel per point rather than an averaged cluster, because what is being counted
  * is area rather than the colour of one thing.

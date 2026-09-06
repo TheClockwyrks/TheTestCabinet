@@ -35,9 +35,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed the board is dealt from. Any seed the specification permits. */
-const SEED = 7;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -49,7 +46,7 @@ afterEach(() => {
 });
 
 it("gives every card of a dealt board an id no other card carries", async () => {
-  dealInPlay(h, SEED);
+  dealInPlay(h);
   const dealt = everyCard(h.snapshot());
   const ids = dealt.map((site) => site.card.id);
 

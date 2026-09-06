@@ -106,10 +106,10 @@ export function launchNext(state: CascadeState): boolean {
     const card = foundation.pop();
     if (card === undefined) continue;
     // The magnitude is drawn uniformly from its range and the sign with equal
-    // probability, both from the game's seeded generator.
+    // probability, each afresh at the launch.
     const magnitude =
-      LAUNCH_VX_MIN + nextFloat(state) * (LAUNCH_VX_MAX - LAUNCH_VX_MIN);
-    const sign = nextFloat(state) < 0.5 ? -1 : 1;
+      LAUNCH_VX_MIN + nextFloat() * (LAUNCH_VX_MAX - LAUNCH_VX_MIN);
+    const sign = nextFloat() < 0.5 ? -1 : 1;
     const flyer: Flyer = {
       // A card that launches keeps the id it carried on the table.
       id: card.id,

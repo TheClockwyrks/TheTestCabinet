@@ -68,24 +68,15 @@ describe("the deal", () => {
     expect(new Set(all.map((card) => card.id)).size).toBe(DECK_SIZE);
   });
 
-  it("deals the same board twice from one seed", () => {
-    h.debug.reset({ seed: 42 });
-    h.debug.deal();
-    const first = JSON.stringify(h.debug.snapshot().tableau);
-    h.debug.reset({ seed: 42 });
-    h.debug.deal();
-    expect(JSON.stringify(h.debug.snapshot().tableau)).toBe(first);
-  });
-
-  it("deals a different board from a different seed", () => {
-    h.debug.reset({ seed: 1 });
+  it("deals a different board on each deal", () => {
+    h.debug.reset();
     h.debug.deal();
     const first = h.debug
       .snapshot()
       .tableau.flat()
       .map((card) => `${card.suit}${card.rank}`)
       .join(",");
-    h.debug.reset({ seed: 2 });
+    h.debug.reset();
     h.debug.deal();
     const second = h.debug
       .snapshot()

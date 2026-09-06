@@ -91,7 +91,6 @@ export interface Sim {
   nextId: number;
   simTime: number;
   muted: boolean;
-  rngState: number;
 
   trail: TrailLayer;
   pendingCues: CueName[];
@@ -170,7 +169,6 @@ export function toSim(state: DeepReadonly<CascadeState>): Sim {
     nextId: state.nextId,
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
 
     // The painted layer is one handle for the life of the build, so it crosses
     // the copy by reference exactly as it stays the same object across frames.

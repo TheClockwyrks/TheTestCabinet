@@ -15,7 +15,7 @@
 // painted is the set the third is held against, so the table is compared with its
 // own earlier self rather than with any coverage figure: the specification fixes
 // none, and could not, because what a cascade covers depends on the launch
-// velocities the seeded generator drew.
+// velocities its launches drew.
 //
 // THE CARDS IN FLIGHT ARE TAKEN OUT of the second reading. A card is drawn at its
 // position whether or not the build kept a layer at all, so a build that cleared
@@ -85,7 +85,7 @@ function cellCentre(at: number): { x: number; y: number } {
  * same cell held on the bare table, and not underneath a card in flight.
  *
  * There is no threshold. The case fixes no palette, so how far a stamp reads from
- * the felt is the reviewer's; rendering is deterministic and each cell is compared
+ * the felt is the reviewer's; each cell is compared
  * against itself, so any difference at all is paint.
  */
 function paintedCells(

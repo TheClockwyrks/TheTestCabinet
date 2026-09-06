@@ -52,7 +52,6 @@ function run(frames: number): void {
 
 beforeEach(() => {
   state = createState(() => null);
-  state.rngState = 9;
 });
 
 describe("FLOOR_Y", () => {
@@ -228,7 +227,6 @@ describe("launching", () => {
   it("keeps the cadence, carrying the remainder rather than drifting", () => {
     for (const seconds of [0.5, 1, 2]) {
       state = createState(() => null);
-      state.rngState = 9;
       fillFoundations();
       state.screen = "won";
       state.launchClock = LAUNCH_INTERVAL;

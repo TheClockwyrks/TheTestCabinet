@@ -336,7 +336,7 @@ export interface CascadeSnapshot {
  * needs and what nothing else does.
  */
 export interface CascadeDebugApi {
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<CascadeSnapshot>;
   /** The region of item `index` on the current screen's menu, or `null`. */
   menuItemRect(index: number): Promise<MenuRect | null>;
