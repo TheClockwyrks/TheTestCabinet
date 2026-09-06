@@ -72,7 +72,7 @@ afterEach(() => {
 
 it("sounds the death cue on each of the three deaths", async () => {
   const die = async (
-    settle: () => Promise<void>,
+    arm: () => Promise<void>,
     blow: () => void,
     blowFrames: number = BLOW_FRAMES,
   ): Promise<{ cues: number; screen: string; cause: string | null }> => {
@@ -80,7 +80,7 @@ it("sounds the death cue on each of the three deaths", async () => {
     pinDrill(h);
     layFloor(h, ROW);
     standOn(h, COL, ROW);
-    await settle();
+    await arm();
     const window = await over(h, async () => {
       blow();
       await h.advance(blowFrames);

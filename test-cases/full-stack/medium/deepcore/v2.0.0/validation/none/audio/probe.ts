@@ -25,19 +25,22 @@
 // play any of them, which is work a page does asynchronously and off the game's
 // clock — so arming waits for the first sound to come out rather than assuming
 // the build is ready. That first sound is the music bed `specs/assets.md` runs
-// under the whole game.
+// under the whole game. The wait is on the probe itself, a paint at a time, and
+// the count of paints is its only cap: nothing here reads a clock.
 //
-// ARM BEFORE POSING THE SCENE. Waiting drives frames and burns real time, and a
-// scene opened afterwards resets the clock and the world, so nothing a check
+// ARM BEFORE POSING THE SCENE. Waiting drives frames and lets the page paint, and
+// a scene opened afterwards resets the clock and the world, so nothing a check
 // measures includes the arming.
 
-import type { Harness } from "../harness";
+import { nextPaint, type Harness } from "../harness";
 
-/** How long a build is given to open its audio and decode what it produced. */
-export const AUDIO_READY_MS = 15_000;
-
-/** How long each poll of that wait leaves the page to get on with it. */
-const POLL_MS = 50;
+/**
+ * How many paints a build is given to open its audio and decode what it produced.
+ *
+ * A failure cap rather than a measurement: a build that has not made a sound by
+ * the last of them has not armed, and every check that reads audio fails on that.
+ */
+export const AUDIO_READY_PAINTS = 400;
 
 /**
  * How many sounds the build has emitted since the page loaded.
@@ -57,13 +60,13 @@ export function soundsStarted(h: Harness): Promise<number> {
  */
 export async function armAudio(h: Harness): Promise<boolean> {
   await h.armAudio();
-  const deadline = Date.now() + AUDIO_READY_MS;
-  while (Date.now() < deadline) {
+  for (let paint = 0; paint < AUDIO_READY_PAINTS; paint += 1) {
     if ((await soundsStarted(h)) > 0) return true;
-    // A frame of no length: the page gets a render and a turn of its own event
-    // loop, and nothing on the game's clock moves.
+    // A frame of no length, then a paint: the page gets a render and a turn of
+    // its own event loop to get on with decoding, and nothing on the game's
+    // clock moves.
     await h.advanceSeconds(0, 1);
-    await h.page.waitForTimeout(POLL_MS);
+    await nextPaint(h);
   }
   return false;
 }

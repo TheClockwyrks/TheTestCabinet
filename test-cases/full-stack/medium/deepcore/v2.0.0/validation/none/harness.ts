@@ -63,8 +63,7 @@
 // takes the game off real time and `advance(seconds, frames)` runs whole frames of
 // a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of frames and gets exactly that number — no polling, no
-// waiting, and no measurement of the machine it ran on. A check that is ABOUT the
-// loop running itself hands it back with `runFor`.
+// waiting, and no measurement of the machine it ran on.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
@@ -343,6 +342,24 @@ export interface Harness extends BaseHarness<
 }
 
 /**
+ * Wait for the page's next paint, twice over.
+ *
+ * The one wait a check makes on the browser rather than on the game's clock: two
+ * animation frames, because the first is the one that may already have been
+ * scheduled before whatever the check just delivered landed. Nothing here
+ * advances the simulation: the game is off its clock, so the build's loop draws
+ * and drains its input and steps nothing.
+ */
+export function nextPaint(h: Pick<Harness, "page">): Promise<void> {
+  return h.page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => done()));
+      }),
+  );
+}
+
+/**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
  *
@@ -381,19 +398,9 @@ export async function createHarness(
    * specification requires the runtime to report whether an action went down THIS
    * FRAME, which is a frame the build's loop opens. `advance` is not that loop, so
    * a browser key followed straight by a read would be read before the page had
-   * had a chance to see it. Two animation frames, because the first is the one
-   * that may already have been scheduled before the key landed.
-   *
-   * Nothing here advances the simulation: the game is off its clock, so the
-   * build's loop draws and drains its input and steps nothing.
+   * had a chance to see it.
    */
-  const settlePage = (): Promise<void> =>
-    base.page.evaluate(
-      () =>
-        new Promise<void>((done) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => done()));
-        }),
-    );
+  const settlePage = (): Promise<void> => nextPaint(base);
 
   const harness: Harness = {
     ...base,

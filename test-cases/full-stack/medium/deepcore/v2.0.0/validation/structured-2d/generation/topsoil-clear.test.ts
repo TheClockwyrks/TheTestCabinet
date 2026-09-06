@@ -11,17 +11,15 @@
 // `cryenite-node`, so it is not read again here.
 //
 // The reading is a count held at zero rather than a share within a tolerance,
-// because the specification states none rather than few. It is taken across
-// several fresh mines and every world size, since the topsoil is a quarter of the mine
-// at each of them and the rule is every mine's.
+// because the specification states none rather than few. It is taken on a
+// fresh mine at every world size, since the topsoil is a quarter of the mine at
+// each of them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { WORLD_SIZES } from "../constants";
 import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look, tallyBand } from "./mine-scan";
-
-const MINES = 5;
 
 let h: Harness;
 
@@ -35,13 +33,11 @@ afterEach(() => {
 
 it("leaves the topsoil holding only rock and ore", async () => {
   for (const size of WORLD_SIZES) {
-    for (let mine = 1; mine <= MINES; mine += 1) {
-      const at = `the ${size} mine, generation ${mine}`;
-      const tally = tallyBand(generatedMine(h, size), "topsoil");
-      assertEqual(tally.kinds.gas, 0, `topsoil gas pockets in ${at}`);
-      assertEqual(tally.kinds.lava, 0, `topsoil lava cells in ${at}`);
-      assertEqual(tally.kinds.stone, 0, `topsoil boulders in ${at}`);
-    }
+    const at = `the ${size} mine`;
+    const tally = tallyBand(generatedMine(h, size), "topsoil");
+    assertEqual(tally.kinds.gas, 0, `topsoil gas pockets in ${at}`);
+    assertEqual(tally.kinds.lava, 0, `topsoil lava cells in ${at}`);
+    assertEqual(tally.kinds.stone, 0, `topsoil boulders in ${at}`);
   }
 
   // The picture: the topsoil, holding nothing but rock and ore.

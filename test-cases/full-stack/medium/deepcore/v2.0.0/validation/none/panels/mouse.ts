@@ -35,6 +35,7 @@
 
 import { fail } from "../assert";
 import {
+  nextPaint,
   touchPress,
   touchRelease,
   type ControlName,
@@ -54,17 +55,11 @@ export function regionCenter(rect: HitRect): { x: number; y: number } {
  * A pointer event delivered by the browser arrives as a DOM event, and an
  * engineless build is free to act on it in its own frame rather than in the
  * handler. `advance` is not that loop — the game is off its clock, so the build's
- * loop draws and drains its input and steps nothing — so the two animation frames
- * come first and the driven frame, the one the game's own update runs on, comes
- * after.
+ * loop draws and drains its input and steps nothing — so the paint comes first
+ * and the driven frame, the one the game's own update runs on, comes after.
  */
-async function settle(h: Harness): Promise<void> {
-  await h.page.evaluate(
-    () =>
-      new Promise<void>((done) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => done()));
-      }),
-  );
+async function pageSees(h: Harness): Promise<void> {
+  await nextPaint(h);
   await h.advance(1);
 }
 
@@ -76,7 +71,7 @@ export async function movePointer(
 ): Promise<void> {
   const at = h.css(x, y);
   await h.page.mouse.move(at.x, at.y);
-  await settle(h);
+  await pageSees(h);
 }
 
 /**
@@ -93,9 +88,9 @@ export async function clickStage(
 ): Promise<void> {
   await movePointer(h, x, y);
   await h.page.mouse.down();
-  await settle(h);
+  await pageSees(h);
   await h.page.mouse.up();
-  await settle(h);
+  await pageSees(h);
 }
 
 /** Move the pointer onto the middle of a reported region. */
@@ -127,10 +122,10 @@ export async function splitPress(
   const up = regionCenter(to);
   await movePointer(h, down.x, down.y);
   await h.page.mouse.down();
-  await settle(h);
+  await pageSees(h);
   await movePointer(h, up.x, up.y);
   await h.page.mouse.up();
-  await settle(h);
+  await pageSees(h);
 }
 
 /**
@@ -148,9 +143,9 @@ export async function splitPress(
 export async function touchRegion(h: Harness, rect: HitRect): Promise<void> {
   const at = regionCenter(rect);
   await touchPress(h, at.x, at.y);
-  await settle(h);
+  await pageSees(h);
   await touchRelease(h);
-  await settle(h);
+  await pageSees(h);
 }
 
 /** What the specification requires of a region a check asked the build for. */

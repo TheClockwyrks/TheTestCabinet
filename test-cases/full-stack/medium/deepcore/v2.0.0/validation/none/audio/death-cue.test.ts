@@ -60,14 +60,14 @@ it("sounds on each of the three deaths", async () => {
   const armed = await armAudio(h);
 
   const die = async (
-    settle: () => Promise<void>,
+    arm: () => Promise<void>,
     blow: () => Promise<void>,
   ): Promise<{ sounds: number; screen: string; cause: string | null }> => {
     await openScene(h);
     await pinDrill(h);
     await layFloor(h, ROW);
     await standOn(h, COL, ROW);
-    await settle();
+    await arm();
     await blow();
     const sounds = await countSounds(h, () => h.advance(2));
     await h.advanceSeconds(ENDING_SECONDS, ENDING_FRAMES);

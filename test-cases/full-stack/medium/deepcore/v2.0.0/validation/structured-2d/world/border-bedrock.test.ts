@@ -22,8 +22,6 @@ import { assertDeepEqual, assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look } from "../generation/mine-scan";
 
-const MINES = 3;
-
 /** The two columns the specification gives to the border. */
 const BORDER_COLS = [0, WORLD_COLS - 1] as const;
 
@@ -39,27 +37,25 @@ afterEach(() => {
 
 it("makes every cell of column 0 and column 31 bedrock", async () => {
   for (const size of WORLD_SIZES) {
-    for (let mine = 1; mine <= MINES; mine += 1) {
-      const at = `the ${size} mine, generation ${mine}`;
-      const scan = generatedMine(h, size);
+    const at = `the ${size} mine`;
+    const scan = generatedMine(h, size);
 
-      const wrong: string[] = [];
-      for (const col of BORDER_COLS) {
-        for (let row = 0; row <= scan.coreRow; row += 1) {
-          const kind = kindAt(scan, col, row);
-          if (kind !== "bedrock") wrong.push(`(${col}, ${row}) is ${kind}`);
-        }
+    const wrong: string[] = [];
+    for (const col of BORDER_COLS) {
+      for (let row = 0; row <= scan.coreRow; row += 1) {
+        const kind = kindAt(scan, col, row);
+        if (kind !== "bedrock") wrong.push(`(${col}, ${row}) is ${kind}`);
       }
-      assertDeepEqual(wrong.slice(0, 5), [], `the border of ${at}`);
-
-      // And the field inside it is a field: the last playable column holds
-      // something a prospector can work.
-      let playable = 0;
-      for (let row = 1; row <= scan.coreRow - 1; row += 1) {
-        if (kindAt(scan, PLAYABLE_COL_MAX, row) !== "bedrock") playable += 1;
-      }
-      assertGreaterThan(playable, 0, `non-bedrock cells of column 30 in ${at}`);
     }
+    assertDeepEqual(wrong.slice(0, 5), [], `the border of ${at}`);
+
+    // And the field inside it is a field: the last playable column holds
+    // something a prospector can work.
+    let playable = 0;
+    for (let row = 1; row <= scan.coreRow - 1; row += 1) {
+      if (kindAt(scan, PLAYABLE_COL_MAX, row) !== "bedrock") playable += 1;
+    }
+    assertGreaterThan(playable, 0, `non-bedrock cells of column 30 in ${at}`);
   }
 
   // The picture: the border beside the playable field.

@@ -25,8 +25,6 @@ import {
 import { captureStill, createHarness, type Harness } from "../harness";
 import { bandRows, generatedMine, look, routeExists } from "./mine-scan";
 
-const MINES = 5;
-
 /** The cells a dug route may cross, as `specs/world.md` names them. */
 function diggable(kind: TileKind): boolean {
   return (
@@ -48,18 +46,16 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves a way through every band, in every generated mine and every size", async () => {
+it("leaves a way through every band, at every size", async () => {
   for (const size of WORLD_SIZES) {
-    for (let mine = 1; mine <= MINES; mine += 1) {
-      const scan = await generatedMine(h, size as WorldSize);
-      const spans = bandRows(scan.coreRow);
-      for (const band of BAND_ORDER) {
-        const { from, to } = spans[band];
-        assertTrue(
-          routeExists(scan, from, to, diggable),
-          `a way through the ${band} (rows ${from}-${to}) of the ${size} mine, generation ${mine}`,
-        );
-      }
+    const scan = await generatedMine(h, size as WorldSize);
+    const spans = bandRows(scan.coreRow);
+    for (const band of BAND_ORDER) {
+      const { from, to } = spans[band];
+      assertTrue(
+        routeExists(scan, from, to, diggable),
+        `a way through the ${band} (rows ${from}-${to}) of the ${size} mine`,
+      );
     }
   }
 

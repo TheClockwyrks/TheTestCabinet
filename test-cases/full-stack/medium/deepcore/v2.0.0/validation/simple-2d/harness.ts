@@ -195,7 +195,6 @@ export {
   JitterClock,
   PacedClock,
   SequenceClock,
-  WallClock,
 } from "@clockwyrks/simple-2d";
 export type { Clock } from "@clockwyrks/simple-2d";
 
@@ -409,8 +408,6 @@ export interface DeepcoreSession {
    * CLOCK's, and the frames it runs are the kit's own driven frames.
    */
   advanceSeconds(s: number, frames?: number): Promise<void>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 }
 
 /** Everything a check reads off one engine running one build. */
@@ -659,9 +656,9 @@ const kit = createEngineCaseHarness<
  *     `initialize` can load what it produced, and given back by `dispose`;
  *   - the save slot, which `HarnessOptions.storage` asks for and nothing else in
  *     the package knows about;
- *   - `advanceSeconds` and `runFor`, which both need the clock THIS harness was
- *     built with — the one the caller passed, or the case's own 120 Hz — to put
- *     back after they have moved it.
+ *   - `advanceSeconds`, which needs the clock THIS harness was built with — the
+ *     one the caller passed, or the case's own 120 Hz — to put back after it has
+ *     moved it.
  */
 export async function createHarness(
   options: HarnessOptions = {},
@@ -686,14 +683,6 @@ export async function createHarness(
       } finally {
         h.engine.setClock(clock);
       }
-    },
-
-    async runFor(ms: number): Promise<void> {
-      const controller = new AbortController();
-      const running = h.engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
     },
 
     dispose(): void {

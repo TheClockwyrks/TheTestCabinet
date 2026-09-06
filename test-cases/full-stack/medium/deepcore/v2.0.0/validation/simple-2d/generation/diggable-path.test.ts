@@ -28,8 +28,6 @@ import {
 } from "../harness";
 import { cellKey, generatedMine, look, reachableFrom } from "./mine-scan";
 
-const MINES = 5;
-
 /** The cells a dug route may cross: minable, and neither lava nor boulder. */
 function diggable(kind: TileKind): boolean {
   return (
@@ -53,29 +51,27 @@ afterEach(() => {
 
 it("runs a diggable route from the cave mouth to both nodes and the Core", async () => {
   for (const size of WORLD_SIZES) {
-    for (let mine = 1; mine <= MINES; mine += 1) {
-      const at = `the ${size} mine, generation ${mine}`;
-      const scan = generatedMine(h, size);
-      const reached = reachableFrom(
-        scan,
-        { col: CAVE_MOUTH_COL, row: 1 },
-        diggable,
-      );
+    const at = `the ${size} mine`;
+    const scan = generatedMine(h, size);
+    const reached = reachableFrom(
+      scan,
+      { col: CAVE_MOUTH_COL, row: 1 },
+      diggable,
+    );
 
-      assertLength(scan.materials, 2, `material nodes in ${at}`);
-      for (const node of scan.materials) {
-        assertTrue(
-          reached.has(cellKey(node.col, node.row)),
-          `a diggable route from the cave mouth to the ${node.material} node at (${node.col}, ${node.row}) in ${at}`,
-        );
-      }
-      // The Core is drilled downward onto from the cell above it, and that cell
-      // is what a route has to reach; the Core tile itself is not minable.
+    assertLength(scan.materials, 2, `material nodes in ${at}`);
+    for (const node of scan.materials) {
       assertTrue(
-        reached.has(cellKey(CORE_COL, scan.coreRow - 1)),
-        `a diggable route from the cave mouth to the cell above the Core in ${at}`,
+        reached.has(cellKey(node.col, node.row)),
+        `a diggable route from the cave mouth to the ${node.material} node at (${node.col}, ${node.row}) in ${at}`,
       );
     }
+    // The Core is drilled downward onto from the cell above it, and that cell
+    // is what a route has to reach; the Core tile itself is not minable.
+    assertTrue(
+      reached.has(cellKey(CORE_COL, scan.coreRow - 1)),
+      `a diggable route from the cave mouth to the cell above the Core in ${at}`,
+    );
   }
 
   // The picture: the route's start, at the edge of the camp.

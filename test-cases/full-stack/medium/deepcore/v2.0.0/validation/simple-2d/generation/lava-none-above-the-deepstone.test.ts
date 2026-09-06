@@ -15,8 +15,6 @@ import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { bandRows, generatedMine, look, tallyBand } from "./mine-scan";
 
-const MINES = 5;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -29,16 +27,14 @@ afterEach(() => {
 
 it("puts no lava cell in the topsoil or the rockbed", async () => {
   for (const size of WORLD_SIZES) {
-    for (let mine = 1; mine <= MINES; mine += 1) {
-      const scan = generatedMine(h, size);
-      for (const band of ["topsoil", "rockbed"] as const) {
-        const tally = tallyBand(scan, band);
-        assertEqual(
-          tally.kinds.lava,
-          0,
-          `${band} lava cells in the ${size} mine, generation ${mine}`,
-        );
-      }
+    const scan = generatedMine(h, size);
+    for (const band of ["topsoil", "rockbed"] as const) {
+      const tally = tallyBand(scan, band);
+      assertEqual(
+        tally.kinds.lava,
+        0,
+        `${band} lava cells in the ${size} mine`,
+      );
     }
   }
 

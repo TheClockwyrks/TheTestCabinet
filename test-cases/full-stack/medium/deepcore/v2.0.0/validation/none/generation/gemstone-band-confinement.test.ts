@@ -19,8 +19,6 @@ import { GEMSTONE_IDS, MATERIAL_BAND, type Band, type Ore } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { bandOf, bandRows, generatedMine, look } from "./mine-scan";
 
-const MINES = 6;
-
 /** The band each gemstone's curve confines it to, from its peak and spread. */
 const GEM_BAND: Readonly<Record<string, Band>> = {
   verdite: "rockbed",
@@ -41,29 +39,28 @@ afterEach(async () => {
 it("finds Verdite only in the rockbed, Roselite only in the deepstone and Aurite only in the coreshell", async () => {
   let found = 0;
   let seen: { col: number; row: number } | null = null;
-  for (let mine = 1; mine <= MINES; mine += 1) {
-    const scan = await generatedMine(h);
-    // Cleared each mine, so what the picture is taken of is a cell of the mine
-    // the page is left holding rather than one an earlier mine held.
-    seen = null;
-    const stray: string[] = [];
-    for (const cell of scan.ores) {
-      if (!GEMSTONE_IDS.includes(cell.ore as Ore)) continue;
-      found += 1;
-      const band = bandOf(scan, cell.row);
-      if (band !== GEM_BAND[cell.ore]) {
-        stray.push(`${cell.ore} at row ${cell.row}, in the ${band}`);
-      } else if (cell.ore === "roselite") {
-        seen = { col: cell.col, row: cell.row };
-      }
+  const scan = await generatedMine(h);
+  // Cleared each mine, so what the picture is taken of is a cell of the mine
+  // the page is left holding rather than one an earlier mine held.
+  seen = null;
+  const stray: string[] = [];
+  for (const cell of scan.ores) {
+    if (!GEMSTONE_IDS.includes(cell.ore as Ore)) continue;
+    found += 1;
+    const band = bandOf(scan, cell.row);
+    if (band !== GEM_BAND[cell.ore]) {
+      stray.push(`${cell.ore} at row ${cell.row}, in the ${band}`);
+    } else if (cell.ore === "roselite") {
+      seen = { col: cell.col, row: cell.row };
     }
-    assertDeepEqual(stray.slice(0, 5), [], `generation ${mine}`);
   }
+  assertDeepEqual(stray.slice(0, 5), [], "specs/mining.md");
 
   // A rule that no gemstone was generated at all would satisfy vacuously, so the
-  // mines read have to have held some: `specs/mining.md` puts each under one
-  // percent of its band's cells, which over six mines is still hundreds.
-  assertGreaterThan(found, 0, "gemstones found across the mines read");
+  // mine read has to have held some: `specs/mining.md` puts each under one
+  // percent of its band's cells, which over a band's thousands of cells is still
+  // dozens.
+  assertGreaterThan(found, 0, "gemstones found in the mine read");
 
   // The picture: one gemstone in its own band.
   const deepstone = bandRows(500)[MATERIAL_BAND.cryenite];

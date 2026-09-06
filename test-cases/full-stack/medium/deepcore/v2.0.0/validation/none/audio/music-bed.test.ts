@@ -1,22 +1,23 @@
-// audio/music-bed — a bed plays under the game and keeps playing.
+// audio/music-bed — a bed plays under the game.
 //
 // `specs/assets.md`: the `music` cue plays "Looping under the whole game. A lonely,
-// industrial descent bed." Two halves, and both are readable from outside:
+// industrial descent bed." What is readable from outside an engineless build is
+// that it PLAYS: with the game standing at the camp and nothing happening — no key
+// down, nothing cut, nothing hit, the tank full so no alarm — a sound has to be
+// coming out. Every other cue `specs/assets.md` names belongs to an event, and
+// none of them is happening, so what is sounding is the bed.
 //
-//   1. IT PLAYS. With the game standing at the camp and nothing happening — no key
-//      down, nothing cut, nothing hit, the tank full so no alarm — a sound has to
-//      be coming out. Every other cue `specs/assets.md` names belongs to an event,
-//      and none of them is happening, so what is sounding is the bed.
-//   2. IT KEEPS PLAYING. A count of starts cannot separate a bed that loops from
-//      one that played through and stopped, so what is counted instead is how many
-//      sources are still RUNNING: started, less the ones that have announced they
-//      ended. A build whose only sound was a blip at the unlock has nothing running
-//      a few seconds later; a bed, however it is looped, does.
+// WHAT IS COUNTED. Not just how many sounds started but how many are still
+// RUNNING: started, less the ones that have announced they ended. A build whose
+// only sound was a blip at the unlock has nothing running once the scene is
+// posed; a bed does. Whether the bed then keeps playing across the whole game is
+// a question only real time can answer, since audio runs on the browser's clock
+// rather than the game's, so under this engine it is the reviewer's ear that
+// decides it and `music-bed-loops` is scoped to the engines whose bus announces a
+// cue's start and end on the game's own frames.
 //
-// The seconds pass in REAL time, through `runFor`, because audio runs on the
-// browser's clock rather than the game's and a bed cannot be fast-forwarded. The
-// game is handed back to its own loop for that stretch, which is also the truest
-// picture of "under the whole game".
+// The scene runs on the game's clock, over driven frames, so nothing here waits on
+// a duration.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -31,8 +32,9 @@ import {
 } from "../harness";
 import { armAudio, liveSounds, watchLiveSounds } from "./probe";
 
-/** How long the game is left playing itself, in real milliseconds. */
-const PLAYING_MS = 3000;
+/** How long the game is left standing at the camp, in seconds and in frames. */
+const WINDOW_SECONDS = 2;
+const WINDOW_FRAMES = 120;
 
 let h: Harness;
 
@@ -44,7 +46,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("keeps a sound running under an idle game", async () => {
+it("has a sound running under an idle game", async () => {
   await watchLiveSounds(h);
   const armed = await armAudio(h);
   await openScene(h);
@@ -53,7 +55,7 @@ it("keeps a sound running under an idle game", async () => {
   await standAtCamp(h);
 
   const heard = await captureReplay(h, "music", async () => {
-    await h.runFor(PLAYING_MS);
+    await h.advanceSeconds(WINDOW_SECONDS, WINDOW_FRAMES);
     return { sounds: await liveSounds(h), snapshot: await h.snapshot() };
   });
 

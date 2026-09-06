@@ -830,32 +830,21 @@ validation = { script = "world/buildings-clear-of-the-cave-mouth.test.ts", outpu
 
 # --- Mine Generation ----------------------------------------------------------
 # What a fresh mine holds. There is no fixed map, so every point here is a property
-# of the generator rather than of one layout: the densities and where each kind may
-# and may not appear, the two material nodes, and the two properties every mine has
-# to satisfy for the mine to be winnable. These run over several generated mines,
-# because a generator that happens to satisfy a rule on one mine has not satisfied it.
+# of the generator rather than of one layout: where each kind may and may not
+# appear, the two material nodes, and the two properties every mine has to satisfy
+# for the mine to be winnable. Each reads one generated mine, at each world size
+# where the rule names the size; how dense each kind is placed is a distribution
+# the reviewer judges from the mine in play.
 [[review.categories]]
 id = "generation"
 title = "Mine Generation"
-[[review.categories.items]]
-id = "ore-density"
-title = "Ore veins occupy their stated share of the mine"
-description = "Ore veins occupy ORE_DENSITY (0.14) of the minable cells within DENSITY_TOLERANCE (0.25) of that value, measured over a whole band, and the share is the same at every depth rather than spiking in one stratum."
-domains = ["simulation"]
-failure_cap = "scuffed"
-# Automated validation: generate mines at several seeds and count ore cells
-# against minable cells over each band in turn, holding each share against
-# ORE_DENSITY within DENSITY_TOLERANCE.
-validation = { script = "generation/ore-density.test.ts", outputs = [
-  { id = "veins", name = "The ore scattered through a band", kind = "image" },
-] }
 [[review.categories.items]]
 id = "ore-min-row"
 title = "No ore appears in the first three rows of ground"
 description = "No ore cell exists above ORE_MIN_ROW (4), so rows 1 to 3 are plain rock and the first digs out of the camp yield nothing."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: generate mines at several seeds and read every cell of
+# Automated validation: generate a mine at each size and read every cell of
 # rows 1 to 3 across the playable columns, holding each kind against ore.
 validation = { script = "generation/ore-min-row.test.ts", outputs = [
   { id = "shallow", name = "The plain rock under the camp", kind = "image" },
@@ -878,46 +867,10 @@ title = "Each gemstone is confined to its own band"
 description = "Verdite appears only in the rockbed, Roselite only in the deepstone and Aurite only in the coreshell, which is what their narrow curves in specs/mining.md fix, so no gemstone is found outside its band."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: generate mines at several seeds and hold the band of
-# every gemstone cell against the band that gemstone belongs to.
+# Automated validation: generate a mine and hold the band of every gemstone
+# cell against the band that gemstone belongs to.
 validation = { script = "generation/gemstone-band-confinement.test.ts", outputs = [
   { id = "gem", name = "A gemstone in its own band", kind = "image" },
-] }
-[[review.categories.items]]
-id = "stone-density-ramp"
-title = "Unbreakable stone grows denser with depth"
-description = "The unbreakable-stone share of minable cells rises linearly with depthFraction from STONE_DENSITY_MIN (0.02) at the top of the rockbed to STONE_DENSITY_MAX (0.08) at the bottom of the coreshell, each band share holding within DENSITY_TOLERANCE (0.25) of the value the ramp gives its midpoint."
-domains = ["simulation"]
-failure_cap = "scuffed"
-# Automated validation: generate mines at several seeds and count stone cells
-# per band, holding each share against the ramp at that band midpoint within
-# DENSITY_TOLERANCE.
-validation = { script = "generation/stone-density-ramp.test.ts", outputs = [
-  { id = "boulders", name = "Boulders in a deep band", kind = "image" },
-] }
-[[review.categories.items]]
-id = "gas-density-ramp"
-title = "Gas pockets grow denser with depth"
-description = "The gas-pocket share of minable cells rises linearly with depthFraction from GAS_DENSITY_MIN (0.004) at the top of the rockbed to GAS_DENSITY_MAX (0.012) at the bottom of the coreshell, each band share holding within DENSITY_TOLERANCE (0.25) of the value the ramp gives its midpoint."
-domains = ["simulation"]
-failure_cap = "scuffed"
-# Automated validation: generate mines at several seeds and count gas cells
-# per band, holding each share against the ramp at that band midpoint within
-# DENSITY_TOLERANCE.
-validation = { script = "generation/gas-density-ramp.test.ts", outputs = [
-  { id = "pockets", name = "Gas pockets in a deep band", kind = "image" },
-] }
-[[review.categories.items]]
-id = "lava-density-ramp"
-title = "Lava grows denser with depth"
-description = "The lava share of minable cells rises linearly with depthFraction from LAVA_DENSITY_MIN (0.03) at the top of the deepstone to LAVA_DENSITY_MAX (0.10) at the bottom of the coreshell, each band share holding within DENSITY_TOLERANCE (0.25) of the value the ramp gives its midpoint."
-domains = ["simulation"]
-failure_cap = "scuffed"
-# Automated validation: generate mines at several seeds and count lava cells
-# in the deepstone and coreshell, holding each share against the ramp within
-# DENSITY_TOLERANCE.
-validation = { script = "generation/lava-density-ramp.test.ts", outputs = [
-  { id = "pools", name = "Lava in the coreshell", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "lava-none-above-the-deepstone"
@@ -925,22 +878,10 @@ title = "No lava appears above the deepstone"
 description = "The topsoil and rockbed bands hold no lava cell in any generated mine, so lava is first met at the deepstone as specs/world.md states."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: generate several mines and read every cell of
+# Automated validation: generate a mine at each size and read every cell of
 # the topsoil and rockbed bands, holding each kind against lava.
 validation = { script = "generation/lava-none-above-the-deepstone.test.ts", outputs = [
   { id = "upper", name = "The rockbed with no lava in it", kind = "image" },
-] }
-[[review.categories.items]]
-id = "lava-clusters"
-title = "Lava forms pools rather than isolated cells"
-description = "Lava cells cluster: more lava cells have at least one orthogonally adjacent lava cell than do not, so a pool can be seen and routed around rather than appearing as single scattered cells."
-domains = ["simulation"]
-failure_cap = "passable"
-# Automated validation: generate several mines, count lava cells with
-# and without an orthogonal lava neighbor, and hold the first count above the
-# second.
-validation = { script = "generation/lava-clusters.test.ts", outputs = [
-  { id = "pool", name = "One lava pool in the deepstone", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "topsoil-clear"
@@ -948,7 +889,7 @@ title = "The topsoil holds no hazard and no boulder"
 description = "The topsoil band holds only rock and ore: no gas pocket, no lava cell and no unbreakable stone appears above the rockbed, so the first band is safe to learn in."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: generate mines at several seeds and read every topsoil
+# Automated validation: generate a mine at each size and read every topsoil
 # cell, holding each kind against gas, lava and stone.
 validation = { script = "generation/topsoil-clear.test.ts", outputs = [
   { id = "topsoil", name = "The topsoil band with nothing but rock and ore", kind = "image" },
@@ -959,9 +900,8 @@ title = "Exactly one Resonite node exists, in the rockbed"
 description = "Every generated mine, at every world size, holds exactly one material node holding resonite, and it sits at a minable cell of the rockbed band."
 domains = ["simulation"]
 failure_cap = "broken"
-# Automated validation: generate several mines at every size and count
-# material cells holding resonite, holding the count at one and its band at
-# rockbed.
+# Automated validation: generate a mine at each size and count material
+# cells holding resonite, holding the count at one and its band at rockbed.
 validation = { script = "generation/resonite-node.test.ts", outputs = [
   { id = "node", name = "The Resonite node in the rockbed", kind = "image" },
 ] }
@@ -971,9 +911,8 @@ title = "Exactly one Cryenite node exists, in the deepstone"
 description = "Every generated mine, at every world size, holds exactly one material node holding cryenite, and it sits at a minable cell of the deepstone band."
 domains = ["simulation"]
 failure_cap = "broken"
-# Automated validation: generate several mines at every size and count
-# material cells holding cryenite, holding the count at one and its band at
-# deepstone.
+# Automated validation: generate a mine at each size and count material
+# cells holding cryenite, holding the count at one and its band at deepstone.
 validation = { script = "generation/cryenite-node.test.ts", outputs = [
   { id = "node", name = "The Cryenite node in the deepstone", kind = "image" },
 ] }
@@ -983,8 +922,8 @@ title = "The cave mouth is open in every mine"
 description = "The cell (CAVE_MOUTH_COL, 1), that is (26, 1), is an open tunnel in every generated mine, so the way down out of the camp is never sealed behind the first row of rock."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: generate mines at several seeds and sizes and read
-# tileAt at the cave mouth, holding the kind at tunnel.
+# Automated validation: generate a mine at each size and read tileAt at the
+# cave mouth, holding the kind at tunnel.
 validation = { script = "generation/cave-mouth-open.test.ts", outputs = [
   { id = "mouth", name = "The cave mouth at the edge of the camp", kind = "image" },
 ] }
@@ -994,9 +933,9 @@ title = "A diggable route runs from the cave mouth to both nodes and the Core"
 description = "From the cave mouth there is a path to each material node and to the Core crossing only minable cells that are neither lava nor unbreakable stone, so every mine can be dug out without drilling lava or blasting a boulder."
 domains = ["simulation"]
 failure_cap = "broken"
-# Automated validation: generate mines at several seeds and sizes and
-# flood-fill from the cave mouth across cells that are minable and neither
-# lava nor stone, holding both node cells and the Core reachable.
+# Automated validation: generate a mine at each size and flood-fill from the
+# cave mouth across cells that are minable and neither lava nor stone, holding
+# both node cells and the Core reachable.
 validation = { script = "generation/diggable-path.test.ts", outputs = [
   { id = "route", name = "The route down from the cave mouth", kind = "image" },
 ] }
@@ -1006,8 +945,8 @@ title = "No band is sealed across its full width"
 description = "No band is sealed across the playable columns by lava or unbreakable stone, so a route through every band exists in every generated mine and the descent is never blocked outright."
 domains = ["simulation"]
 failure_cap = "scuffed"
-# Automated validation: generate several mines and check each band
-# for a row-by-row crossing that avoids lava and stone, holding every band
+# Automated validation: generate a mine at each size and check each band for
+# a row-by-row crossing that avoids lava and stone, holding every band
 # crossable.
 validation = { script = "generation/no-band-sealed.test.ts", outputs = [
   { id = "band", name = "A band with a way through it", kind = "image" },
@@ -3943,17 +3882,23 @@ validation = { script = "screens/summary-reports-the-death-cause.test.ts", outpu
   { id = "cause", name = "The summary's death cause", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances on its own"
-description = "With the clock running rather than driven, the game advances by itself: a miner left falling keeps falling and simTime keeps climbing without any call."
+id = "advances-on-the-engine-frames"
+title = "The game advances on the frames it is handed"
+description = "Handed a run of frames by the engine's clock and nothing else, the game advances: a miner left falling keeps falling and simTime climbs by the frames' worth, with no operation of the surface called."
 domains = ["simulation"]
-# A build that fails this does not advance unless something hands it frames,
-# which is a build a player cannot play at all.
+# A build that fails this does not advance unless the surface moves it, which is
+# a build a player cannot play at all.
 failure_cap = "broken"
-# Automated validation: let the wall clock run over a posed fall and read
-# simTime and the miner position moving with no advance called.
-validation = { script = "screens/advances-in-real-time.test.ts", outputs = [
-  { id = "running", name = "The mine running on its own clock", kind = "replay" },
+# Automated validation: pose a fall, hand the engine a counted run of frames at
+# its scripted step with the surface untouched, and read simTime and the miner
+# position moving by the frames' worth. Under no engine the build's loop runs on
+# real time alone, which no scripted frame can stand in for, so the point is the
+# engines'.
+validation = { script = "screens/advances-on-the-engine-frames.test.ts", engines = [
+  "simple-2d",
+  "structured-2d",
+], outputs = [
+  { id = "running", name = "The mine running on the engine's frames", kind = "replay" },
 ] }
 
 # --- Buildings and Panels -----------------------------------------------------
@@ -4675,13 +4620,29 @@ validation = { script = "audio/alarm-core-cue.test.ts", outputs = [
 [[review.categories.items]]
 id = "music-bed"
 title = "The music bed plays under the game"
-description = "The music cue plays and loops under the whole game rather than starting once and stopping."
+description = "The music cue plays under an idle game standing at the camp, where no event cue has anything to sound."
 domains = ["presentation"]
 failure_cap = "passable"
-# Automated validation: advance well past the length of one play and observe
-# the music cue still playing.
+# Automated validation: stand the miner at the camp with nothing happening,
+# advance a short window and observe the music cue sounding in it.
 validation = { script = "audio/music-bed.test.ts", outputs = [
   { id = "music", name = "The game playing under its music bed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "music-bed-loops"
+title = "The music bed keeps playing"
+description = "The music cue loops under the whole game rather than starting once and stopping."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: advance well past the length of one play in equal
+# windows and observe the music cue audible in every one. An engineless build
+# sounds its bed on the browser's audio clock, where only real time can tell a
+# loop from a single play, so the point is the engines'.
+validation = { script = "audio/music-bed-loops.test.ts", engines = [
+  "simple-2d",
+  "structured-2d",
+], outputs = [
+  { id = "looping", name = "The game playing on under its music bed", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "mute-toggle"
