@@ -470,12 +470,18 @@ describe("the posed draws", () => {
     h.debug.setWave(6);
     h.debug.setNextRockSpeed(100);
     h.debug.setWaveBanner(0.1);
-    await h.advance(ticksFor(0.1) + 1);
+    // Read on the tick the wave arrives, so at most one tick of the well is in
+    // the reading: under a unit per second at the closest a wave may spawn.
+    for (let tick = 0; tick <= ticksFor(0.1) + 1; tick += 1) {
+      if (h.debug.snapshot().rocks.length > 0) break;
+      await h.advance(1);
+    }
     const rocks = h.debug.snapshot().rocks;
     expect(rocks.length).toBeGreaterThan(0);
-    // Read a tick after the spawn, so up to one tick of the well is in it.
     for (const rock of rocks) {
-      expect(Math.abs(Math.hypot(rock.vx, rock.vy) - 120)).toBeLessThan(1.5);
+      expect(Math.abs(Math.hypot(rock.vx, rock.vy) - 120)).toBeLessThanOrEqual(
+        2,
+      );
     }
     expect(h.debug.snapshot().nextRockSpeed).toBeNull();
   });

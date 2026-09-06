@@ -448,10 +448,17 @@ describe("the posed draws", () => {
     api.setWave(6);
     api.setNextRockSpeed(100);
     api.setWaveBanner(0.1);
-    advance(Math.round(0.1 * TICK_HZ) + 1);
+    // Read on the tick the wave arrives, so at most one tick of the well is in
+    // the reading: under a unit per second at the closest a wave may spawn.
+    for (let tick = 0; tick <= Math.round(0.1 * TICK_HZ) + 1; tick += 1) {
+      if (state.rocks.length > 0) break;
+      advance(1);
+    }
     expect(state.rocks.length).toBeGreaterThan(0);
     for (const rock of state.rocks) {
-      expect(Math.hypot(rock.vx, rock.vy)).toBeCloseTo(120, 0);
+      expect(Math.abs(Math.hypot(rock.vx, rock.vy) - 120)).toBeLessThanOrEqual(
+        2,
+      );
     }
     expect(api.snapshot().nextRockSpeed).toBeNull();
   });

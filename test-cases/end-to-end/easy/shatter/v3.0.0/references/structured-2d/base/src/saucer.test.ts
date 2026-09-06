@@ -119,14 +119,18 @@ describe("the saucer's cadence", () => {
   it(
     "enters at an edge, on a row drawn across the field",
     async () => {
+      // Forty arrivals, each brought on with a posed due so the wait is a
+      // quarter of a second rather than a gap: forty uniform draws span less
+      // than half their range once in twenty billion runs.
       const rows: number[] = [];
       for (let game = 0; game < 4; game += 1) {
         const h = await createHarness();
         h.debug.reset();
         startPlaying(h.debug);
         h.debug.setSaucerSpawning(true);
-        for (let visit = 0; visit < 2; visit += 1) {
-          for (let tick = 0; tick < ticksFor(60); tick += 1) {
+        for (let visit = 0; visit < 10; visit += 1) {
+          h.debug.setSaucerDue(0.25);
+          for (let tick = 0; tick < ticksFor(2); tick += 1) {
             await h.advance(1);
             const saucer = h.debug.snapshot().saucer;
             if (saucer === null) continue;
@@ -140,7 +144,7 @@ describe("the saucer's cadence", () => {
         }
         h.dispose();
       }
-      expect(rows.length).toBeGreaterThanOrEqual(8);
+      expect(rows.length).toBeGreaterThanOrEqual(40);
       const span = Math.max(...rows) - Math.min(...rows);
       expect(span).toBeGreaterThan((FIELD_H - 2 * SAUCER_R) / 2);
     },
