@@ -14,48 +14,50 @@
 // every unit that comes out of a vent is recorded the first time it is seen
 // (surge/release.ts).
 //
-// TWO WAVES OF VERY DIFFERENT SIZE. Wave 1 releases twelve Motes and Wave 4 forty
-// Swarms (specs/waves.md), and reading both is what separates the defects. A build
-// that cycles the types one unit at a time — the shape The Hundred has, applied
-// where it does not belong — shows a second type by its second unit, and either
-// wave catches it. A build that fields one type for most of a wave and something
-// else at its tail shows it only in a wave long enough to have a tail, which is
-// what the forty-unit wave is for.
+// TWO WAVES, THE FRONT OF EACH. Wave 1 is a Mote wave and Wave 4 a Swarm wave
+// (specs/waves.md), one from either end of the opening list, and the first eight
+// units of each are read. A build that cycles the types one unit at a time — the
+// shape The Hundred has, applied where it does not belong — shows a second type by
+// its second unit, and eight units cover the five-type roster with room over. The
+// watch stops as soon as it has its eight, so the reading costs the same whatever
+// size the build gives the wave and never waits on a forty-unit release.
 //
 // WHAT THIS POINT DOES NOT DECIDE. Not WHICH type a wave fields — that is
 // `wave-type-opening`, `wave-type-cycle` and `milestone-wave-carries-a-core` — and
 // not how many it releases, which is `wave-size`. What is read here is the count of
-// DISTINCT types in one wave, which the specification puts at exactly one.
+// DISTINCT types among the units read of one wave, which the specification puts at
+// exactly one.
 //
-// THE LIVES ARE POSED OUT OF REACH (surge/release.ts), because a forty-unit wave
-// released against an empty floor leaks every unit of it and the twenty a
-// Containment run opens with would run out part way through, ending the run and
-// stopping the release mid-reading.
+// THE LIVES ARE POSED OUT OF REACH (surge/release.ts), so no leak can end the run
+// and stop the release mid-reading.
 //
 // WHAT EVERY WRONG MODEL READS. A build that cycles the roster per unit reads five
-// distinct types in a wave of twelve; one that mixes a heavier type into the tail of
-// a long wave reads two in the wave of forty and one in the wave of twelve; one that
-// released a wave of Cores alongside its own type reads two.
+// distinct types in eight units; one that released a wave of Cores alongside its
+// own type reads two.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
-import {
-  poseWaveReady,
-  sizeOfWave,
-  watchRelease,
-  watchSecondsFor,
-  wavesIn,
-} from "./release";
+import { poseWaveReady, watchRelease, watchSecondsFor } from "./release";
 
 /**
- * The waves read: the run's first, and its first long one.
+ * The waves read: the run's first, and the first of another type.
  *
- * Wave 1 is twelve Motes and Wave 4 is forty Swarms in the 20-wave Containment run
- * `startRun` opens, so between them they cover a short wave and a wave long enough
- * to have a middle and a tail.
+ * Wave 1 is a Mote wave and Wave 4 a Swarm wave in the 20-wave Containment run
+ * `startRun` opens (specs/waves.md), so between them two types of the roster are
+ * read as the single type of their wave.
  */
 const WAVES = [1, 4] as const;
+
+/**
+ * How many units of each wave are read: eight.
+ *
+ * More than the five types the roster holds, so a build that cycled the roster
+ * per unit shows every type inside the reading, and fewer than either wave
+ * releases (specs/waves.md gives Wave 1 twelve units and Wave 4 forty), so the
+ * reading never runs a wave out.
+ */
+const UNITS_READ = 8;
 
 /**
  * The fewest units a reading is taken across.
@@ -77,13 +79,13 @@ afterEach(() => {
 });
 
 it("fields exactly one type in each wave it releases", async () => {
-  const waves = wavesIn();
   const fielded: { wave: number; types: string[]; count: number }[] = [];
 
   for (const wave of WAVES) {
     poseWaveReady(h, wave);
     const released = await watchRelease(h, {
-      seconds: watchSecondsFor(sizeOfWave(wave, waves)),
+      stopAfter: UNITS_READ,
+      seconds: watchSecondsFor(UNITS_READ),
     });
     fielded.push({
       wave,

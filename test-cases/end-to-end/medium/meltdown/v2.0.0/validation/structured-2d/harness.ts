@@ -81,19 +81,18 @@
 //
 // AND A CHECK ABOUT WHETHER TIME PASSES MEASURES ON THE BUILD'S OWN CLOCK. Never
 // through a stepping operation, because a stepping operation is instrumentation
-// and the question is about the game. {@link WorldModel.settle} hands the loop
-// and a real-time clock back to the build for a window of wall-clock time, and
-// {@link windowOfRealTime} brackets that window with the ONE snapshot the reading
-// pair is taken from. That is what the pause, resume, own-clock and speed items
-// are measured with. See "Windows on the build's own clock" below.
+// and the question is about the game. Under this engine that clock is
+// `engine.advance`, the engine's own frame loop handing the build each frame's
+// elapsed time, and {@link windowOfFrames} brackets a stated number of those
+// frames with the ONE snapshot the reading pair is taken from. That is what the
+// pause, resume, own-clock and speed items are measured with, and nothing in this
+// project reads the wall clock. See "Windows on the build's own clock" below.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ConstantClock,
-  WallClock,
   createEngine,
-  type Clock,
   type Engine,
   type GameDefinition,
   type GameInstance,
@@ -308,32 +307,6 @@ export function driveSeconds(frames: number): number {
   return frames / DRIVE_HZ;
 }
 
-/**
- * How often {@link WorldModel.gain} asks whether the build's clock has got there
- * yet: ten times a second.
- *
- * Coarse enough that the poll is not competing for the same starved event loop as
- * the frame callback it is watching, and fine enough that a leg closes within a
- * frame or two of the game time it asked for.
- */
-const GAIN_POLL_MS = 100;
-
-/** What a leg spent on the build's own clock cost, and whether it closed. */
-export interface GainResult {
-  /** Whether the build's clock gained the seconds asked for before the deadline. */
-  reached: boolean;
-  /**
-   * The real time the leg took.
-   *
-   * NOT a reading about the build — it is how busy the machine was — so no check
-   * asserts on it. What it is for is giving a leg that must be spent in real time
-   * (a PAUSED window, which cannot be closed on a gain that must never happen)
-   * the same stretch of real time the running leg beside it needed, so the two
-   * offer a build the same opportunity to be caught however loaded the host is.
-   */
-  elapsedMs: number;
-}
-
 /* -------------------------------------------------------------------------- */
 /* The floor, in the space the surface speaks                                 */
 /* -------------------------------------------------------------------------- */
@@ -445,17 +418,6 @@ const SURFACE_REQUIREMENT =
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /**
- * The suite's own clock, by the engine it was handed to, so a real-time window
- * can put it back when it closes.
- *
- * The kit builds the engine and the harness for the case, so the case never sees
- * the clock a caller passed — and {@link WorldModel.settle} has to restore it.
- * Keyed on the engine rather than kept in a variable because two harnesses may be
- * under construction at once and a variable would answer for the wrong one.
- */
-const suiteClockOf = new WeakMap<object, Clock>();
-
-/**
  * Everything a check reads off one engine running one build, over and above the
  * package's neutral contract.
  *
@@ -479,46 +441,6 @@ interface WorldModel {
   readonly instance: GameInstance<MeltdownSurface>;
   /** Run whole frames covering `duration` seconds of game time. */
   advanceSeconds(duration: number): Promise<void>;
-  /**
-   * Hand the frame loop AND a real-time clock back to the build for `ms` of
-   * wall-clock time, then take both back.
-   *
-   * This is the measurement a question about whether time passes is decided on:
-   * nothing steps the game, the build's own loop runs it off the host's frame
-   * callback against a {@link WallClock}, and what the game does over the window
-   * is the game's. See {@link windowOfRealTime}, which brackets it with the
-   * snapshots a reading pair comes from.
-   *
-   * The suite's own clock is restored when the window closes, so a check may
-   * step normally on either side of one.
-   */
-  settle(ms: number): Promise<void>;
-  /**
-   * Hand the frame loop AND a real-time clock back to the build until ITS OWN
-   * clock has gained `seconds`, and report whether it got there before
-   * `deadlineMs` of wall clock ran out.
-   *
-   * THE READING THAT MAKES A REAL WINDOW REPEATABLE, and the form every leg a
-   * check actually asserts on should take. {@link WorldModel.settle} spends a
-   * fixed stretch of the HOST'S clock, so what a leg covers is however many
-   * frames this machine handed the loop, each of them worth at most the
-   * `WallClock`'s clamp; on a runner with a hundred other things on it that is a
-   * fraction of the game time the window really took, and a leg read that way
-   * fails a conformant build for the load on the machine that scored it. Closing
-   * the leg on `simTime` — which `specs/waves.md` says accumulates the game time
-   * every frame advances by — covers the same stretch of the game however long the
-   * host takes to deliver it, so everything read off the leg follows from the game
-   * rather than from the runner.
-   *
-   * Nothing steps the game: the loop is the build's own and the clock is real.
-   * What still fails is the only thing such a leg ever asked — a build whose
-   * simulation does not advance unless something steps it never gains the seconds
-   * and comes back with `reached` false when the deadline runs out.
-   *
-   * The suite's own clock is restored when the leg closes, exactly as
-   * {@link WorldModel.settle} restores it.
-   */
-  gain(seconds: number, deadlineMs: number): Promise<GainResult>;
 }
 
 /**
@@ -570,7 +492,6 @@ const kit = createEngineCaseHarness<
       clock,
       surface: surface as SurfaceMetrics,
     });
-    suiteClockOf.set(engine, clock as Clock);
     return engine;
   },
   driver: (_engine, raw) => identityDriver(raw as MeltdownSurface),
@@ -588,53 +509,6 @@ const kit = createEngineCaseHarness<
 
     advanceSeconds: (duration: number) => base.advance(ticksFor(duration)),
 
-    async settle(ms: number) {
-      // A real clock for a real window: the game is handed the elapsed time each
-      // frame actually took, exactly as it is in a browser.
-      engine.setClock(new WallClock());
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      try {
-        await new Promise((resolve) => setTimeout(resolve, ms));
-      } finally {
-        controller.abort();
-        await running;
-        engine.setClock(suiteClockOf.get(engine) as Clock);
-      }
-    },
-
-    async gain(seconds: number, deadlineMs: number) {
-      // The same handover `settle` makes, held open on the BUILD'S clock instead
-      // of on the host's.
-      engine.setClock(new WallClock());
-      const from = base.snapshot().simTime;
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      const startedMs = Date.now();
-      let reached = false;
-      try {
-        await new Promise<void>((resolve) => {
-          const check = (): void => {
-            if (base.snapshot().simTime - from >= seconds) {
-              reached = true;
-              resolve();
-              return;
-            }
-            if (Date.now() - startedMs >= deadlineMs) {
-              resolve();
-              return;
-            }
-            setTimeout(check, GAIN_POLL_MS);
-          };
-          setTimeout(check, GAIN_POLL_MS);
-        });
-      } finally {
-        controller.abort();
-        await running;
-        engine.setClock(suiteClockOf.get(engine) as Clock);
-      }
-      return { reached, elapsedMs: Date.now() - startedMs };
-    },
   }),
 });
 
@@ -1238,13 +1112,15 @@ export function pressTile(h: Harness, col: number, row: number): Promise<void> {
 // running — the actual defect the item exists to catch — passed outright whenever
 // the stepping operation happened to be gated.
 //
-// Under this engine `engine.advance` IS the player's frame loop running against a
-// different clock object, so {@link windowOfFrames} is a legitimate reading of
-// that rule. {@link windowOfRealTime} is the stronger one, and it is what the
-// `waves.pause-*`, `waves.resume-*`, `waves.game-runs-on-its-own-clock` and
-// `waves.speed-doubles-the-game-time` items are measured with: the loop and the
-// clock go back to the build, a real window of wall-clock time passes, and
-// nothing in the suite touches the game while it does.
+// Under this engine `engine.advance` IS the player's frame loop: the engine
+// runs the identical frame a player's frame runs and hands the build the elapsed
+// time its clock answers, and the build owns no loop of its own for the elapsed
+// time to go missing in. So {@link windowOfFrames} is that clock, and it is what
+// the `waves.pause-*`, `waves.resume-*`, `waves.game-runs-on-its-own-clock` and
+// `waves.speed-*` items are measured with: a stated number of frames of a stated
+// length, so the same game time lands on any machine, and nothing in the suite
+// touches the game while they run. No window in this project is spent against
+// the wall clock, which would measure the host that scored the build.
 //
 // BOTH READINGS COME FROM ONE SNAPSHOT. The window's `opened` snapshot is taken
 // once, after whatever act opened it, so a pair read off it — a unit's position
@@ -1252,7 +1128,7 @@ export function pressTile(h: Harness, col: number, row: number): Promise<void> {
 // snapshots would be comparing readings a round trip apart and could not say what
 // the interval between them was.
 
-/** One window on the build's own clock, with the snapshot on each side of it. */
+/** One window of the build's own clock, with the snapshot on each side of it. */
 export interface ClockWindow {
   /**
    * The ONE snapshot taken as the window opened, after the act that opened it.
@@ -1261,9 +1137,7 @@ export interface ClockWindow {
   opened: MeltdownSnapshot;
   /** The snapshot taken as the window closed. */
   closed: MeltdownSnapshot;
-  /** The wall-clock milliseconds the window was left open for, `0` for a stepped one. */
-  ms: number;
-  /** The frames of the suite's own clock the window spanned, `0` for a real one. */
+  /** The frames of the suite's own clock the window spanned. */
   frames: number;
 }
 
@@ -1285,76 +1159,7 @@ export async function windowOfFrames(
   if (act !== undefined) await act();
   const opened = h.snapshot();
   await h.advance(frames);
-  return { opened, closed: h.snapshot(), ms: 0, frames };
-}
-
-/**
- * Run `act`, snapshot, hand the loop and a real clock back to the build for `ms`
- * of wall-clock time, snapshot again.
- *
- * Nothing steps the game across the window: {@link Harness.settle} runs the
- * build's own loop off the host's frame callback against a `WallClock`, so what
- * the game does is the game's. This is the measurement the pause items rest on,
- * and the running leg of such a pair is what stops a dead floor passing
- * vacuously.
- *
- * The window's length and every tolerance read off it belong to the CHECK: a
- * build may clamp its per-frame delta, may lose a frame to the handover, and may
- * resolve an injected key on its next frame rather than inside the call, so the
- * figures that make room for those are stated where they are asserted.
- */
-export async function windowOfRealTime(
-  h: Harness,
-  ms: number,
-  act?: () => void | Promise<void>,
-): Promise<ClockWindow> {
-  if (act !== undefined) await act();
-  const opened = h.snapshot();
-  await h.settle(ms);
-  return { opened, closed: h.snapshot(), ms, frames: 0 };
-}
-
-/** One window on the build's own clock, closed on a gain rather than a stopwatch. */
-export interface GainWindow extends ClockWindow {
-  /** Whether the build's clock gained the seconds asked for before the deadline. */
-  reached: boolean;
-}
-
-/**
- * Run `act`, snapshot, hand the loop and a real clock back to the build until ITS
- * OWN clock has gained `seconds`, snapshot again.
- *
- * THE FORM EVERY RUNNING LEG A CHECK ASSERTS ON SHOULD TAKE, and the difference
- * from {@link windowOfRealTime} is only which clock decides when the window
- * closes. Nothing steps the game either way — that is the rule, and it is what
- * makes a pause item mean anything — but a window closed by a STOPWATCH covers
- * however much game time this machine's scheduler allowed the loop to produce,
- * which on a loaded runner is a fraction of what the same build produces idle. A
- * bound read off such a window fails a conformant build for the load on the
- * runner. A window closed on `simTime` covers the stretch of the game it names on
- * any machine, and takes longer on a slow one instead of covering less.
- *
- * `ms` reports the real time it took, which is a fact about the HOST and which
- * nothing asserts on; it is there so a PAUSED window beside it — the one window
- * that cannot be closed on a gain, since the whole claim is that the clock does
- * not move — can be given the same stretch of real time.
- */
-export async function windowOfClockGain(
-  h: Harness,
-  seconds: number,
-  deadlineMs: number,
-  act?: () => void | Promise<void>,
-): Promise<GainWindow> {
-  if (act !== undefined) await act();
-  const opened = h.snapshot();
-  const gained = await h.gain(seconds, deadlineMs);
-  return {
-    opened,
-    closed: h.snapshot(),
-    ms: gained.elapsedMs,
-    frames: 0,
-    reached: gained.reached,
-  };
+  return { opened, closed: h.snapshot(), frames };
 }
 
 /**

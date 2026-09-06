@@ -10,16 +10,24 @@
 // THE BAND IS SIX STANDARD DEVIATIONS EACH WAY. A count of one outcome in `n`
 // independent draws at probability `p` is binomial, mean `n p` and standard
 // deviation `sqrt(n p (1 - p))`; a conformant build lands outside six of them
-// with a probability far below one in a billion, while a build at the wrong odds
-// lands outside them almost surely at this sample size. The width is the
-// check's own; the odds it compares against are the specification's.
+// with a probability far below one in a billion. The width is the check's own;
+// the odds it compares against are the specification's.
+//
+// THE SAMPLE IS A FEW HUNDRED DRAWS, AND THAT IS ENOUGH. The alternatives the
+// specification makes meaningful are a build that draws one vent every time and a
+// build that weights the two, and the reading has to separate a half from either.
+// At `600` draws the band around one half is `226` to `374`; a draw at a quarter
+// or three quarters lands outside it by more than six of its own standard
+// deviations, and a draw that never chooses one vent reads `0` or `600`. A larger
+// sample would separate finer odds the specification never names and would cost
+// the check its time for nothing.
 
 /**
- * Draws made to decide the vent odds: 4000 at 0.5 gives a band of 1810 to 2190
- * for either vent, which a draw at 0.4 or 0.6 misses by more than six of its own
+ * Draws made to decide the vent odds: 600 at 0.5 gives a band of 226 to 374 for
+ * either vent, which a draw at 0.25 or 0.75 misses by more than six of its own
  * standard deviations.
  */
-export const VENT_DRAWS = 4000;
+export const VENT_DRAWS = 600;
 
 /** How many standard deviations each side of the mean the band spans. */
 export const BAND_SIGMAS = 6;

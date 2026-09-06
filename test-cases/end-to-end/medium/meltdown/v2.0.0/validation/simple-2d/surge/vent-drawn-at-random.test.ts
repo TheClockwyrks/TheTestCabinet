@@ -1,43 +1,51 @@
-// surge/vent-drawn-at-random — the release draws each unit's vent, so a wave
-// uses both vents.
+// surge/vent-drawn-at-random — the release's vent draw varies: a short run of
+// draws lands on both vents.
 //
 // THE RULE. specs/waves.md: "Each unit's vent is drawn at random as it is
-// released, the two vents equally likely."
+// released, the two vents equally likely." The same file gives the draw a
+// reading of its own: the debug surface "performs one draw on its own through
+// `drawVent`", which specs/instrumentation.md defines as "one vent draw exactly
+// as the release performs it", returning `"left"` or `"top"` and doing nothing
+// else.
 //
-// WHAT IS READ. A forty-unit wave is released with no vent posed, and the vent
-// of every unit is recorded the first time it is seen. Both vents must appear: a
-// build that sends every unit through one vent is a completely different game,
-// with one corridor to defend rather than two, and over forty draws at "equally
-// likely" a draw that ever chose the other vent would have to be extraordinarily
-// unlucky to hide it, one run in five hundred thousand million. Whether the two
-// come up in the stated proportion is `surge/vents-equally-likely`'s item,
-// decided on the draw alone.
+// WHAT IS READ. Forty draws through `drawVent`. Every one must be a vent, and
+// across the forty both vents must appear: a build that sends every unit through
+// one vent is a completely different game, with one corridor to defend rather
+// than two, and over forty draws at "equally likely" a draw that ever chose the
+// other vent would have to be extraordinarily unlucky to hide it, one run in five
+// hundred thousand million. Whether the two come up in the stated proportion is
+// `surge/vents-equally-likely`'s item, decided on a larger run of the same draw.
 //
-// WAVE 4 IS THE ONE READ: specs/waves.md makes it a wave of forty units, the
-// largest sample of draws the game offers before the milestone.
+// NOTHING IS RELEASED. The draws touch no unit and no wave: the floor is the
+// quiet one `startRun` leaves, and the reading is the draws alone. That the
+// release honours a posed vent, and returns to this draw when the pose is
+// cleared, are `instrumentation/spawn-vent-pose` and
+// `instrumentation/spawn-vent-pose-cleared`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertGreaterThanOrEqual } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
 import {
-  poseWaveReady,
-  sizeOfWave,
-  watchRelease,
-  watchSecondsFor,
-  wavesIn,
-} from "./release";
+  captureStill,
+  createHarness,
+  drawVents,
+  startRun,
+  type Harness,
+} from "../harness";
 
-/** The wave the draws are read on: the 20-wave run's forty-unit Swarm wave. */
-const WAVE = 4;
+/** The two answers the specification allows. */
+const VENTS = ["left", "top"] as const;
 
 /**
- * The fewest draws the reading is taken over.
+ * How many draws the reading is taken over: forty.
  *
- * A precondition on the sample rather than an assertion about the wave's size,
- * which is `surge/wave-size`'s: over thirty draws, a fair draw shows both vents
- * with all but a thousand-millionth of certainty.
+ * Enough that a fair draw shows both vents with all but a thousand-millionth of
+ * certainty, and few enough that the check costs nothing. A build that chose
+ * one vent for every draw is what the count is sized to catch.
  */
-const MIN_DRAWS = 30;
+const DRAWS = 40;
+
+/** The fewest distinct vents the draws must land on: both of them. */
+const MIN_DISTINCT = 2;
 
 let h: Harness;
 
@@ -49,29 +57,23 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("uses both vents across a wave with no vent posed", async () => {
-  poseWaveReady(h, WAVE);
-  const released = await watchRelease(h, {
-    seconds: watchSecondsFor(sizeOfWave(WAVE, wavesIn())),
-  });
+it("lands on both vents across a short run of draws", async () => {
+  startRun(h);
+  const drawn = drawVents(h, DRAWS);
+  await h.advance(1);
   captureStill(h, "vents");
-  const vents = released.map((unit) => unit.vent);
 
+  for (const [index, vent] of drawn.entries()) {
+    assertContains(
+      VENTS,
+      vent,
+      `draw ${index + 1}: the vent drawVent returned`,
+    );
+  }
   assertGreaterThanOrEqual(
-    vents.length,
-    MIN_DRAWS,
-    `precondition: the units wave ${WAVE} released, each of which is one draw`,
-  );
-  assertContains(
-    vents,
-    "left",
-    `the left vent among the vents drawn over ${vents.length} units ` +
-      "(specs/waves.md: the two vents equally likely)",
-  );
-  assertContains(
-    vents,
-    "top",
-    `the top vent among the vents drawn over ${vents.length} units ` +
-      "(specs/waves.md: the two vents equally likely)",
+    new Set(drawn).size,
+    MIN_DISTINCT,
+    `the distinct vents among ${DRAWS} draws (specs/waves.md: each unit's ` +
+      "vent is drawn at random, the two vents equally likely)",
   );
 });

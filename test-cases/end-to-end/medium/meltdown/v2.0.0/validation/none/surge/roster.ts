@@ -339,13 +339,18 @@ export const SAMPLE_HZ = 30;
  * predicate because a sample is one crossing into the page and a separate read
  * would double the cost of every one of them.
  *
- * The whole of one release goes through a SINGLE call, because each call starts
- * with an empty idea of what is on the floor and would count everything standing
- * there as having just arrived.
+ * A call starts with an empty idea of what is on the floor and counts everything
+ * standing there as having just arrived, so a caller watching one release in two
+ * legs sets the first leg's ids aside before reading the second.
+ *
+ * `stopAfter` stops the watch as soon as that many units have arrived, for a
+ * point that reads the front of a release and has no business waiting for units
+ * it is not going to read.
  */
 export async function watchRelease(
   h: Harness,
   seconds: number,
+  stopAfter = Infinity,
 ): Promise<Arrival[]> {
   const arrivals: Arrival[] = [];
   let present = new Set<number>();
@@ -366,10 +371,11 @@ export async function watchRelease(
   };
 
   gather(await h.snapshot());
+  if (arrivals.length >= stopAfter) return arrivals;
   await h.coastUntil(
     (snapshot) => {
       gather(snapshot);
-      return false;
+      return arrivals.length >= stopAfter;
     },
     { maxSeconds: seconds, pollSeconds: SAMPLE_SECONDS, hz: SAMPLE_HZ },
   );

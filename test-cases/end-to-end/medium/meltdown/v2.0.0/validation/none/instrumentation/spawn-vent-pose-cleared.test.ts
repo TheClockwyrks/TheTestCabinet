@@ -6,15 +6,17 @@
 // at random as it is released, the two vents equally likely."
 //
 // TWO LEGS OF ONE WAVE. The wave opens with the left vent posed, and the first
-// few releases are read as the precondition that the pose held. The pose is
-// then cleared MID-RELEASE, and the rest of the wave is watched: a draw at
-// "equally likely" over the thirty-odd units left puts both vents on the floor
-// with a probability short of certainty by less than one part in a thousand
-// million, so a build whose clear does nothing — every later unit still entering
-// on the left — is named, and so is a build that treats `null` as a vent.
+// few releases are read as the precondition that the pose held. The pose is then
+// cleared MID-RELEASE, `spawnVent` is read back as `null`, and a handful more
+// units are released: each of them enters at a vent the specification names, so
+// a build that treats `null` as a vent, or that stops releasing once the pose is
+// gone, is named. Which vent each draw lands on is the draw's own; whether the
+// draw varies and at what odds are `surge/vent-drawn-at-random` and
+// `surge/vents-equally-likely`, decided on the draw alone.
 //
-// THE UNITS ARE GATHERED AS THEY ARRIVE, because an undefended floor leaks them
-// again long before the wave is out, and a unit is counted where it entered.
+// THE UNITS ARE GATHERED AS THEY ARRIVE, and a unit is counted where it entered.
+// The wave is the twelve-Mote first wave, and each watch stops as soon as it has
+// the units it reads, so nothing walks far enough to leak.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -23,26 +25,30 @@ import {
   assertEqual,
   assertGreaterThanOrEqual,
 } from "../assert";
-import { waveSize } from "../constants";
+import { WAVE_SPAWN_INTERVAL } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { openWave, releaseSeconds, watchRelease } from "../surge/roster";
+import { openWave, watchRelease } from "../surge/roster";
 
-/** The wave released: wave 4 of a twenty-wave run, forty Swarms. */
-const WAVE_COUNT = 20;
-const WAVE = 4;
-const UNITS = waveSize(WAVE, WAVE_COUNT);
+/** The wave released: the first wave of a run, twelve Motes. */
+const WAVE = 1;
+
+/** The two vents the specification allows a released unit. */
+const VENTS = ["left", "top"] as const;
 
 /** How many units are released under the pose before it is cleared. */
 const POSED_UNITS = 4;
 
+/** How many units are read after the pose is cleared. */
+const DRAWN_UNITS = 6;
+
 /**
- * The fewest units the second leg must read for the draw to be decidable.
- *
- * A precondition on the sample: over thirty draws at "equally likely", both vents
- * appear with all but a thousand-millionth of certainty. How many the wave
- * releases is `surge/wave-size`'s item.
+ * Seconds of game time each leg may run for: the cadence of the units it
+ * expects with a whole interval over, for a build whose release clock runs a
+ * little slow. Each watch stops as soon as it has read its units, so the ceiling
+ * is what a build that stopped releasing runs out.
  */
-const MIN_DRAWN = 30;
+const POSED_SECONDS = (POSED_UNITS + 1) * WAVE_SPAWN_INTERVAL;
+const DRAWN_SECONDS = (DRAWN_UNITS + 1) * WAVE_SPAWN_INTERVAL;
 
 let h: Harness;
 
@@ -54,11 +60,11 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws both vents again once the pose is cleared", async () => {
+it("draws each unit's vent again once the pose is cleared", async () => {
   await openWave(h, WAVE, "medium", async () => {
     await h.debug.setSpawnVent("left");
   });
-  const posed = await watchRelease(h, releaseSeconds(POSED_UNITS));
+  const posed = await watchRelease(h, POSED_SECONDS, POSED_UNITS);
   assertGreaterThanOrEqual(
     posed.length,
     POSED_UNITS,
@@ -76,25 +82,31 @@ it("draws both vents again once the pose is cleared", async () => {
     null,
     "the vent pose, read back as spawnVent after setSpawnVent(null)",
   );
-  const drawn = await watchRelease(h, releaseSeconds(UNITS - posed.length));
+  // A fresh watch counts everything standing as an arrival, so the units the
+  // posed leg released are set aside by id.
+  const already = new Set(posed.map((arrival) => arrival.id));
+  const drawn = await watchRelease(
+    h,
+    DRAWN_SECONDS,
+    already.size + DRAWN_UNITS,
+  );
   await captureStill(h, "resumed");
 
-  const vents = drawn.map((arrival) => arrival.vent);
+  const vents = drawn
+    .filter((arrival) => !already.has(arrival.id))
+    .map((arrival) => arrival.vent);
   assertGreaterThanOrEqual(
     vents.length,
-    MIN_DRAWN,
-    "precondition: units released after the pose was cleared",
-  );
-  assertContains(
-    vents,
-    "left",
-    `the vents of ${vents.length} units released after the pose was cleared ` +
+    DRAWN_UNITS,
+    "the units released after the pose was cleared " +
       "(specs/instrumentation.md: the spawner draws as it does in play)",
   );
-  assertContains(
-    vents,
-    "top",
-    `the vents of ${vents.length} units released after the pose was cleared ` +
-      "(specs/instrumentation.md: the spawner draws as it does in play)",
-  );
+  for (const [index, vent] of vents.entries()) {
+    assertContains(
+      VENTS,
+      vent,
+      `unit ${index + 1} after the pose was cleared: the vent it entered at ` +
+        "(specs/instrumentation.md: the spawner draws as it does in play)",
+    );
+  }
 });

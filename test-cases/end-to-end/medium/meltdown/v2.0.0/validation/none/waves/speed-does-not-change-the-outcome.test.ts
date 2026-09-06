@@ -1,113 +1,95 @@
-// waves/speed-does-not-change-the-outcome — the speed changes the pace, not the
-// result.
+// waves/speed-does-not-change-the-outcome — the same game time delivered at
+// either speed leaves the floor in the same place.
 //
 // `specs/waves.md`, Pause and speed: "The speed changes how fast a run plays and
 // not what it reaches: the same game time delivered at either setting leaves the
-// floor in the same state."
+// floor in the same state." The same file's opening paragraph is the reason it
+// can: "Every rate in this specification is per second and is integrated against
+// that game time, so an interval of game time reaches the same state however it
+// was divided into frames."
 //
-// SO THE READING IS A DISTANCE PER SECOND OF GAME TIME, AT EACH SETTING. The
-// claim is that GAME TIME decides the state, so the honest way to ask it is to
-// deliver a stretch of it at each setting and compare how far the floor got PER
-// SECOND OF IT. Two windows are spent, one at each setting, and each window's
-// travel is divided by the `simTime` that same window gained — both taken from the
-// same pair of snapshots, so a leg's distance and its clock always describe the
-// same stretch of the run.
+// THE TWO LEGS DELIVER THE SAME GAME TIME OUT OF DIFFERENT ELAPSED TIME. The leg
+// at speed `1` spends `180` frames of the suite's `120` Hz clock, a second and a
+// half of elapsed time; the leg at speed `2` spends `90` of them, three quarters
+// of a second of elapsed time, and doubles it. `specs/instrumentation.md` makes
+// each frame `advance` runs "a real frame, the same update the loop runs", so a
+// frame delivered through it carries its elapsed time into the same
+// multiplication a frame the loop scheduled carries it into. Both legs should
+// hand the simulation `1.5` seconds of game time, and the walker should therefore
+// stand in the same place at the end of each.
 //
-// WHY NOT DELIVER A FIXED STRETCH OF GAME TIME INSTEAD. Because there is no way to
-// ask for one that does not beg the question. `advance(seconds, frames)` is
-// defined in terms of the game time it covers (`specs/instrumentation.md`), so a
-// build that applies its speed multiplier inside `advance` and one that does not
-// would both satisfy a check written that way while behaving differently for the
-// player. Reading the ratio of travel to elapsed GAME TIME on the build's own
-// clock asks the specification's question with nothing in between, and it is
-// therefore measured inside `withOwnClock` with nothing in the scope calling
-// `advance`.
+// THE EQUAL GAME TIME IS A PRECONDITION, and it is asserted as one. A build that
+// ignores the toggle delivers half as much in the second leg, and its Mote stands
+// half as far along: that build is broken at `waves/speed-doubles-the-game-time`,
+// which is the item that names the defect, and the precondition here says so in
+// the failure rather than letting this item claim a second verdict on the same
+// fault. What is left for the point itself is the defect only this item can see:
+// a build whose per-frame integration is not linear in the delta — a speed that
+// skips frames, a step clamped to a fixed size, a rate applied per FRAME rather
+// than per second — which reaches a different place from the same game time.
 //
-// THIS ITEM AND `waves/speed-doubles-the-game-time` ARE DELIBERATELY INDEPENDENT.
-// That one reads how much game time a real second buys; this one reads what a
-// second of game time buys on the floor. A build whose toggle does nothing at all
-// passes here and fails there, which is exactly the grade a reviewer wants: the
-// speed is broken, the simulation is not. A build that speeds the SURGE up rather
-// than the clock — the defect this item exists to catch — passes there and fails
-// here.
+// EACH LEG IS ITS OWN RUN. Both open from `startRun`, which resets first, and
+// pose their own Mote at the same vent on the same floor (`waves/run.ts`), so the
+// two legs differ in the speed and the frame count and in nothing else.
 //
 // THE SETTING IS POSED, NOT PRESSED, so this reading is about what the setting
-// does and not about which key `specs/controls.md` binds the toggle to. Posing a
-// field is not stepping a clock, so it is no part of what the clock rule forbids
-// inside the scope.
+// does and not about which key `specs/controls.md` binds the toggle to.
 //
-// EACH LEG IS A STRETCH OF THE BUILD'S OWN CLOCK, NOT OF THE HOST'S. The scope
-// still spends real time and still steps nothing, but a leg closes when `simTime`
-// has gained the seconds the leg asks for rather than when a stopwatch says so,
-// and the wall clock survives only as a deadline. A page whose frame callback is
-// starved by everything else on the machine advances less game time in a fixed
-// stretch of real time, and a build that clamps a long frame's delta advances
-// less still; a leg read off a stopwatch then divides a small travel by a small
-// clock and multiplies whatever noise the machine put into both. Closing each leg
-// on the same gain makes the two quotients below comparable by construction and
-// leaves nothing about the runner in either of them.
+// THE POSITION IS THE WHOLE FLOOR'S STAND-IN. The Mote's centre is the one thing
+// on this floor that a difference in integration moves, because nothing else is
+// on it: no tower to heat, no wave to release, no timer that matters.
 //
-// THE FLOOR HOLDS ONE MOTE with its motion on, no tower, and nothing that could
-// slow it, so the only thing that can change its pace between the two legs is the
-// setting.
-//
-// WHAT EVERY WRONG MODEL READS. A build that multiplies the surge's speed by the
-// setting AND the clock by it as well reads twice as far per second of game time
-// at `2`; one that multiplies the surge alone reads twice as far too, and is told
-// apart by `waves/speed-doubles-the-game-time` passing or failing beside it; one
-// that halves its integration to compensate reads half. Each is far outside the
-// band below.
+// WHAT EVERY WRONG MODEL READS. A build that advances a fixed step per frame
+// walks half as far in the leg of half the frames; one that applies its speeds
+// per frame rather than per second does the same; one that rounds its delta to
+// whole frames of some internal tick lands a tick apart, which is more than the
+// tolerance below.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertEqual, assertTrue } from "../assert";
+import { assertCloseTo, assertLessThan } from "../assert";
+import type { Speed } from "../constants";
 import {
   captureStill,
   createHarness,
   distance,
+  framesFor,
   requireUnit,
   startRun,
   type Harness,
 } from "../harness";
 import { poseRunningFloor } from "./run";
 
-/**
- * The game time each leg covers, on the build's own clock: a second and a half.
- *
- * Geometry rather than a tolerance. Both legs together carry the Mote about
- * fourteen tiles down a forty-nine-tile corridor (`specs/floor.md`), so it never
- * reaches its exhaust and neither reading is cut short.
- */
-const LEG_SECONDS = 1.5;
-
-/**
- * The real time a leg is given to gain {@link LEG_SECONDS} on the build's own
- * clock: a minute.
- *
- * A ceiling on the HOST and the only wall clock left in the item. A build running
- * at the wall clock's pace closes a leg in the second and a half it names, and one
- * on a machine handing its page a tenth of the frames takes fifteen and still
- * closes it. What a minute distinguishes is a build whose simulation does not
- * advance on its own at all — which is `waves/game-runs-on-its-own-clock`'s
- * verdict, and is why a leg that never closes is reported as a precondition here
- * rather than as this item's point.
- */
-const LEG_DEADLINE_MS = 60_000;
+/** The game time each leg delivers, in seconds. */
+const GAME_TIME = 1.5;
 
 /** The two settings the toggle offers (`specs/waves.md`). */
-const SLOW = 1;
-const FAST = 2;
+const SLOW: Speed = 1;
+const FAST: Speed = 2;
+
+/** The frames each leg spends: the same game time out of twice and half the elapsed. */
+const SLOW_FRAMES = framesFor(GAME_TIME);
+const FAST_FRAMES = SLOW_FRAMES / FAST;
 
 /**
- * How far the two legs' travel per second of game time may differ: a tenth.
+ * How far apart the two legs' game times may be, as decimal places of a second.
  *
- * The specification's claim is exact — the same game time leaves the floor in the
- * same state — so this is measurement slack. Each leg's distance and its clock
- * come from the same pair of snapshots, which removes the round trip from the
- * quotient entirely; what is left is the difference in how the two legs' frames
- * happened to be diced, which a per-second rate is insensitive to. A tenth is far
- * below the doubling or halving that every wrong model here produces.
+ * Two places is `0.005` of a second, under one frame of the suite's `120` Hz
+ * clock. It is a precondition on the arrangement rather than a bound on the
+ * build: the two legs deliver the same game time exactly, or the comparison below
+ * is between two different stretches of the game.
  */
-const RATIO_TOLERANCE = 0.1;
+const CLOCK_DIGITS = 2;
+
+/**
+ * How far apart the two legs may leave the Mote: `2` logical units.
+ *
+ * A tenth of one `TILE` (`19`), against the `90` units the Mote walks in either
+ * leg. The allowance is two frames of the faster leg — a frame at speed `2`
+ * carries the Mote one logical unit — which covers a build that resolves a posed
+ * field on the frame after the pose, at either speed. Every defect this point is
+ * looking for is a whole fraction of the distance out, not two units.
+ */
+const MAX_GAP = 2;
 
 let h: Harness;
 
@@ -119,70 +101,43 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("carries a walker the same distance per second of game time at either speed", async () => {
+/** Deliver `GAME_TIME` at `speed` on a fresh run, and report where the Mote stands. */
+async function legAt(
+  speed: Speed,
+  frames: number,
+): Promise<{ at: { x: number; y: number }; clock: number }> {
   await startRun(h);
   const mote = await poseRunningFloor(h);
-  await h.debug.setSpeed(SLOW);
+  await h.debug.setSpeed(speed);
 
-  const legs = await h.withOwnClock(async (clock) => {
-    // The state the scope opened in, taken in the same crossing that handed the
-    // clock back — see `OwnClock.opened` — so the slow leg's travel and its clock
-    // gain start at the same instant.
-    const slowOpened = clock.opened;
-    const slowGained = await clock.gain(LEG_SECONDS, LEG_DEADLINE_MS);
-    const slowSettled = await clock.read();
-    // A pose of one field, not a step of the clock.
-    await h.debug.setSpeed(FAST);
-    const fastOpened = await clock.read();
-    const fastGained = await clock.gain(LEG_SECONDS, LEG_DEADLINE_MS);
-    return {
-      slowOpened,
-      slowGained,
-      slowSettled,
-      fastOpened,
-      fastGained,
-      fastSettled: await clock.read(),
-    };
-  });
+  const opened = await h.snapshot();
+  await h.advance(frames);
+  const closed = await h.snapshot();
+
+  const unit = requireUnit(closed, mote, `the leg at speed ${speed}`);
+  return {
+    at: { x: unit.x, y: unit.y },
+    clock: closed.simTime - opened.simTime,
+  };
+}
+
+it("leaves the walker in the same place at either speed", async () => {
+  const slow = await legAt(SLOW, SLOW_FRAMES);
+  const fast = await legAt(FAST, FAST_FRAMES);
 
   await captureStill(h, "outcome");
 
-  const at = (snapshot: typeof legs.slowOpened) =>
-    requireUnit(snapshot, mote, "the two windows on the build's own clock");
-
-  const slowClock = legs.slowSettled.simTime - legs.slowOpened.simTime;
-  const fastClock = legs.fastSettled.simTime - legs.fastOpened.simTime;
-  const slowRate =
-    distance(at(legs.slowOpened), at(legs.slowSettled)) / slowClock;
-  const fastRate =
-    distance(at(legs.fastOpened), at(legs.fastSettled)) / fastClock;
-
-  assertEqual(
-    legs.slowSettled.speed,
-    SLOW,
-    `precondition: the first window ran at speed ${SLOW}`,
+  assertCloseTo(
+    fast.clock,
+    slow.clock,
+    CLOCK_DIGITS,
+    `precondition: the game time the leg at speed ${FAST} delivered, against ` +
+      `the leg at speed ${SLOW}`,
   );
-  assertEqual(
-    legs.fastOpened.speed,
-    FAST,
-    `precondition: the second window ran at speed ${FAST}`,
-  );
-  assertTrue(
-    legs.slowGained.reached,
-    `precondition: the build's own clock gained ${LEG_SECONDS} seconds at speed ` +
-      `${SLOW} within ${LEG_DEADLINE_MS / 1000}s of real time — it gained ` +
-      `${slowClock.toFixed(3)}`,
-  );
-  assertTrue(
-    legs.fastGained.reached,
-    `precondition: the build's own clock gained ${LEG_SECONDS} seconds at speed ` +
-      `${FAST} within ${LEG_DEADLINE_MS / 1000}s of real time — it gained ` +
-      `${fastClock.toFixed(3)}`,
-  );
-  assertBetween(
-    fastRate / slowRate,
-    1 - RATIO_TOLERANCE,
-    1 + RATIO_TOLERANCE,
-    `the units a Mote covered per second of game time at speed ${FAST} against speed ${SLOW}`,
+  assertLessThan(
+    distance(fast.at, slow.at),
+    MAX_GAP,
+    `the logical units between where ${GAME_TIME} s of game time left the Mote ` +
+      `at speed ${FAST} and where it left it at speed ${SLOW}`,
   );
 });

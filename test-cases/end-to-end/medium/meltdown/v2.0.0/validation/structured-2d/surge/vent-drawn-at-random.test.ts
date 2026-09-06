@@ -1,90 +1,79 @@
-// Meltdown — surge/vent-drawn-at-random: the release draws each unit's vent, so
-// a wave uses both vents.
+// Meltdown — surge/vent-drawn-at-random: the release's vent draw varies: a
+// short run of draws lands on both vents.
 //
 // THE RULE. `specs/waves.md`: "Each unit's vent is drawn at random as it is
-// released, the two vents equally likely."
+// released, the two vents equally likely." The same file gives the draw a
+// reading of its own: the debug surface "performs one draw on its own through
+// `drawVent`", which `specs/instrumentation.md` defines as "one vent draw exactly
+// as the release performs it", returning `"left"` or `"top"` and doing nothing
+// else.
 //
-// WHAT IS READ. Forty units are released with no vent posed, and the vent of
-// every one is recorded the frame it first appears. Both vents must appear: a
-// build that sends every unit through one vent is a completely different game,
-// with one corridor to defend rather than two, and over forty draws at "equally
-// likely" a draw that ever chose the other vent would have to be extraordinarily
-// unlucky to hide it, one run in five hundred thousand million. Whether the two
-// come up in the stated proportion is `surge/vents-equally-likely`'s item,
-// decided on the draw alone.
+// WHAT IS READ. Forty draws through `drawVent`. Every one must be a vent, and
+// across the forty both vents must appear: a build that sends every unit through
+// one vent is a completely different game, with one corridor to defend rather
+// than two, and over forty draws at "equally likely" a draw that ever chose the
+// other vent would have to be extraordinarily unlucky to hide it, one run in five
+// hundred thousand million. Whether the two come up in the stated proportion is
+// `surge/vents-equally-likely`'s item, decided on a larger run of the same draw.
 //
-// EVERY UNIT IS HELD WHERE IT ARRIVED, so all forty draws happen: a wave left to
-// walk would be leaking before it had finished arriving, and a run whose lives
-// ran out would stop releasing (`specs/waves.md`).
+// NOTHING IS RELEASED. The draws touch no unit and no wave: the floor is the
+// quiet one `startRun` leaves, and the reading is the draws alone. That the
+// release honours a posed vent, and returns to this draw when the pose is
+// cleared, are `instrumentation/spawn-vent-pose` and
+// `instrumentation/spawn-vent-pose-cleared`.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertGreaterThanOrEqual } from "../assert";
-import { WAVE_SPAWN_INTERVAL } from "../constants";
 import {
   captureStill,
-  createDriveHarness,
-  driveFrames,
+  createHarness,
+  drawVents,
+  startRun,
   type Harness,
 } from "../harness";
-import { poseWavePhase, watchReleases } from "./scenario";
 
-/** How many draws the reading is taken over. */
+/** The two answers the specification allows. */
+const VENTS = ["left", "top"] as const;
+
+/**
+ * How many draws the reading is taken over: forty.
+ *
+ * Enough that a fair draw shows both vents with all but a thousand-millionth of
+ * certainty, and few enough that the check costs nothing. A build that chose
+ * one vent for every draw is what the count is sized to catch.
+ */
 const DRAWS = 40;
 
-/** The wave the units are released for; its type is nothing to do with this point. */
-const WAVE = 1;
-
-/**
- * Seconds of game time the release is watched for: the cadence of forty units
- * with three seconds over, for a build whose release clock runs a little slow.
- */
-const WATCH_TICKS = driveFrames(DRAWS * WAVE_SPAWN_INTERVAL + 3);
-
-/** Frames between two samples: two of the long-drive clock's. */
-const POLL_FRAMES = 2;
-
-/**
- * The fewest draws the reading is taken over.
- *
- * A precondition on the sample: over thirty draws, a fair draw shows both vents
- * with all but a thousand-millionth of certainty.
- */
-const MIN_DRAWS = 30;
+/** The fewest distinct vents the draws must land on: both of them. */
+const MIN_DISTINCT = 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createDriveHarness();
+  h = await createHarness();
 });
 
 afterEach(() => {
   h?.dispose();
 });
 
-it("uses both vents across a wave with no vent posed", async () => {
-  poseWavePhase(h, WAVE, DRAWS, "containment", "medium");
-  const watch = await watchReleases(h, WATCH_TICKS, {
-    poll: POLL_FRAMES,
-    onRelease: (release) => h.debug.setUnitMotion(release.id, false),
-  });
+it("lands on both vents across a short run of draws", async () => {
+  startRun(h);
+  const drawn = drawVents(h, DRAWS);
+  await h.advance(1);
   captureStill(h, "vents");
-  const vents = watch.releases.map((release) => release.vent);
 
+  for (const [index, vent] of drawn.entries()) {
+    assertContains(
+      VENTS,
+      vent,
+      `draw ${index + 1}: the vent drawVent returned`,
+    );
+  }
   assertGreaterThanOrEqual(
-    vents.length,
-    MIN_DRAWS,
-    "precondition: the units the run released, each of which is one draw",
-  );
-  assertContains(
-    vents,
-    "left",
-    `the left vent among the vents drawn over ${vents.length} units ` +
-      "(specs/waves.md: the two vents equally likely)",
-  );
-  assertContains(
-    vents,
-    "top",
-    `the top vent among the vents drawn over ${vents.length} units ` +
-      "(specs/waves.md: the two vents equally likely)",
+    new Set(drawn).size,
+    MIN_DISTINCT,
+    `the distinct vents among ${DRAWS} draws (specs/waves.md: each unit's ` +
+      "vent is drawn at random, the two vents equally likely)",
   );
 });

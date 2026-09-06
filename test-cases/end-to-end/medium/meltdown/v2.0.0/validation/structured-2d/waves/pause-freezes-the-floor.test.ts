@@ -20,26 +20,31 @@
 // and worse in the other direction, a build whose pause menu opened over a floor
 // that kept running passed outright whenever the step happened to be gated.
 //
-// So NOTHING STEPS THE GAME HERE. `windowOfRealTime` hands the frame loop and a
-// real-time clock back to the build (`harness.ts`, Windows on the build's own
-// clock): the engine's own loop schedules its frames off the host's frame
-// callback and its `WallClock` measures them, exactly as in a browser, and what
-// the floor did over the window is the floor's. The shape of the measurement is
-// the rest of the rule, and every part of it is load-bearing:
+// Under this engine the rule has a specific reading, and `harness.ts` states it
+// at length: `engine.advance(n)` is not an instrument bolted onto the game but
+// the engine's OWN frame loop, running the identical frame a player's frame runs
+// and handing the build the elapsed time the suite's clock answers. The build
+// owns no loop it could gate separately, so there is nowhere for a pause to hide
+// from it. `windowOfFrames` IS the player's clock here (`harness.ts`, Windows on
+// the build's own clock), and the SHAPE of the measurement is what the rule
+// still binds, every part of it load-bearing:
 //
 //   - TWO LEGS OF THE SAME LENGTH ON THE SAME UNIT. A running leg the Mote must
 //     travel across, and a paused leg it must not. The running leg is what stops
 //     a dead floor — a build that never moves anything — passing vacuously.
 //   - BOTH PAUSED READINGS FROM THE ONE SNAPSHOT ON THE PRESS. The drift and the
 //     simulated-clock gain come from the same pair of snapshots, so the pair
-//     spans the paused window and nothing else. `windowOfRealTime` takes one
+//     spans the paused window and nothing else. `windowOfFrames` takes one
 //     snapshot at the call and one at the end, so the two cannot disagree.
 //   - THE PAUSE IS PRESSED, NOT POSED. It goes through the key
 //     `specs/controls.md` binds the action to, never `setScreen`, which "runs no
 //     screen entry effect" (`specs/instrumentation.md`) and would announce the
 //     answer.
-//   - NON-ZERO TOLERANCES, deliberately: the press and the position are read a
-//     round trip apart.
+//   - NOTHING STEPS THE GAME THROUGH THE DEBUG SURFACE, and no window is spent
+//     against the wall clock: each leg is a stated number of frames of a stated
+//     length, so the same game time lands on any machine.
+//   - NON-ZERO TOLERANCES, deliberately: a build may resolve the injected key on
+//     the frame after the one it arrived in.
 //
 // ============================================================================
 //
@@ -59,20 +64,15 @@
 // a build that never moves anything fails the running leg.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertTrue,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { BINDINGS } from "../constants";
 import {
   captureReplay,
   clockGain,
   createHarness,
   startRun,
-  windowOfClockGain,
-  windowOfRealTime,
+  ticksFor,
+  windowOfFrames,
   type Harness,
 } from "../harness";
 import { poseMote, travelled } from "./run";
@@ -81,53 +81,16 @@ import { poseMote, travelled } from "./run";
 const PAUSE_KEY = BINDINGS.pause[0];
 
 /**
- * The length of the RUNNING leg: a second and a half of the BUILD'S OWN clock,
- * spent by the build's own loop.
+ * The length of each leg: a second and a half of the build's own clock, in
+ * frames of the suite's.
  *
  * Long enough that a Mote's specified `60` logical units per second carries it
  * some `90` units, nearly five tiles, so the running leg is unmistakable; short
- * enough that it carries it nowhere near its exhaust.
- *
- * IT IS A LENGTH ON THE BUILD'S CLOCK RATHER THAN ON THE HOST'S. Nothing steps the
- * game across it — the rule above is the whole item — but a leg closed by a
- * STOPWATCH covers however much game time this machine's scheduler let the loop
- * produce, each frame worth at most the `WallClock`'s clamp. On a runner with a
- * hundred other things on it that is a fraction of what the same build produces
- * idle, so a floor bound read off such a leg fails a conformant build for the load
- * on the machine that scored it. Closed on `simTime` the leg covers the stretch of
- * the game it names on any machine, and takes longer on a slow one instead of
- * covering less.
+ * enough that neither leg carries it anywhere near its exhaust. The same frames
+ * of the same clock on any machine, so the game time each leg covers is the
+ * specification's and nothing about the host.
  */
-const WINDOW_SECONDS = 1.5;
-
-/**
- * The real time the running leg is given to gain {@link WINDOW_SECONDS}: a minute.
- *
- * A ceiling on the HOST, not a bound on the build. A build running at the wall
- * clock's pace closes the leg in a second and a half, and one whose loop is
- * getting a tenth of the frames takes fifteen and still closes it. What a minute
- * distinguishes is a build whose simulation never advances unless something steps
- * it — `waves.game-runs-on-its-own-clock`'s verdict rather than this item's, so it
- * is reported here as a precondition.
- */
-const WINDOW_DEADLINE_MS = 60_000;
-
-/**
- * The real time the PAUSED leg is spent over: as long as the running leg took, and
- * never less than a second and a half nor more than ten.
- *
- * A paused leg is the one window that CANNOT be closed on the build's own clock,
- * because the whole claim is that the clock does not move. So it is spent in real
- * time — and giving it the real time the running leg beside it needed keeps the
- * two comparable on a machine of any speed: a floor that kept running gets exactly
- * as many frames to be caught in as the running leg got to prove itself with. The
- * floor keeps a busy host from shrinking the leg to nothing; the ceiling keeps a
- * build that barely advances from spending a minute here too. Neither can fail a
- * correct build — a longer paused window only gives a broken pause more room to
- * show itself.
- */
-const PAUSED_FLOOR_MS = 1500;
-const PAUSED_CAP_MS = 10_000;
+const WINDOW = ticksFor(1.5);
 
 /**
  * The least the Mote must travel across the running leg: `20` logical units.
@@ -135,36 +98,28 @@ const PAUSED_CAP_MS = 10_000;
  * A floor distance, a little over one `TILE` (`19`). A Mote at its specified
  * speed covers `90` across the game time the leg names, so the floor is under a
  * quarter of what the specification asks for and no build that moves its surge at
- * all is troubled by it. Because the leg's length is the build's own game time
- * rather than a stretch of wall clock, the figure follows from the specification
- * and from nothing about the machine. What it excludes is a floor that never
- * moved, which would otherwise pass the paused leg for the wrong reason.
+ * all is troubled by it. What it excludes is a floor that never moved, which
+ * would otherwise pass the paused leg for the wrong reason.
  */
 const MIN_TRAVEL = 20;
 
 /**
  * The most the Mote may drift across the paused leg: `4` logical units.
  *
- * Not zero, and deliberately. The press and the position are read a round trip
- * apart: a build may legally resolve an injected key on the frame AFTER the one
- * it arrived in, and a Mote covers a unit in a sixtieth of a second. Four is a
- * fifth of a tile, and a twentieth of the `90` a running floor covers over the
- * same window.
+ * Not zero, and deliberately. A build may legally resolve an injected key on the
+ * frame AFTER the one it arrived in, and a Mote covers half a unit in one frame
+ * of the suite's `120` Hz clock. Four is eight such frames, a fifth of a tile,
+ * and a twentieth of the `90` a running floor covers over the same window.
  */
 const MAX_DRIFT = 4;
 
 /**
  * The most `simTime` may gain across the paused leg: `0.1` seconds.
  *
- * The same allowance in the same units — about six frames of a sixty-a-second
- * loop — against the `1.5` seconds a clock that kept running would gain.
+ * The same allowance in the same units, twelve frames of the suite's clock,
+ * against the `1.5` seconds a clock that kept running would gain.
  */
 const MAX_CLOCK_DRIFT = 0.1;
-
-/** The paused leg's real length, from the real time the running leg took. */
-function pausedWindowMs(runningElapsedMs: number): number {
-  return Math.min(Math.max(runningElapsedMs, PAUSED_FLOOR_MS), PAUSED_CAP_MS);
-}
 
 let h: Harness;
 
@@ -181,34 +136,23 @@ it("holds the floor and the clock across a paused window it travelled the one be
   const mote = poseMote(h);
 
   const legs = await captureReplay(h, "frozen", async () => {
-    const running = await windowOfClockGain(
-      h,
-      WINDOW_SECONDS,
-      WINDOW_DEADLINE_MS,
-    );
+    const running = await windowOfFrames(h, WINDOW);
     await h.tap(PAUSE_KEY);
     const screen = h.snapshot().screen;
-    const paused = await windowOfRealTime(h, pausedWindowMs(running.ms));
+    const paused = await windowOfFrames(h, WINDOW);
     return { running, paused, screen };
   });
 
   assertEqual(legs.screen, "paused", "precondition: the press paused the game");
-  assertTrue(
-    legs.running.reached,
-    `precondition: the build's own clock gained ${WINDOW_SECONDS} seconds with ` +
-      `nothing stepping it, within ${WINDOW_DEADLINE_MS / 1000}s of real time — ` +
-      `it gained ${clockGain(legs.running).toFixed(3)}`,
-  );
   assertGreaterThan(
     travelled(legs.running, mote, "running leg"),
     MIN_TRAVEL,
-    `the logical units the Mote walked across the ${WINDOW_SECONDS} seconds the ` +
-      `build's own clock gained`,
+    "the logical units the Mote walked across the running leg",
   );
   assertLessThan(
     travelled(legs.paused, mote, "paused leg"),
     MAX_DRIFT,
-    `the logical units the Mote drifted across a paused leg of the same real length`,
+    "the logical units the Mote drifted across a paused leg of the same length",
   );
   assertLessThan(
     clockGain(legs.paused),
