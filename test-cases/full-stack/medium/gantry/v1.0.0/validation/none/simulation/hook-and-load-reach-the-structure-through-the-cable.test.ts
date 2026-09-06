@@ -169,8 +169,13 @@ it("hands the structure the cable force rather than the weight of what hangs", a
     return { leg: force.force, cableY, snapshot: after };
   };
 
-  /** Hang the bob at rest below the pivot, twice over, so the tick read is settled. */
-  const settle = async () => {
+  /**
+   * Hang the bob at rest below the pivot, twice over, so the tick read is settled.
+   *
+   * The rounds are ticks the check drives, never a wait: nothing here reads the
+   * wall clock, so the same frames land on any host.
+   */
+  const hangAtRest = async () => {
     let state = await h.snapshot();
     for (let round = 0; round < 2; round += 1) {
       await h.debug.setBob(
@@ -183,7 +188,7 @@ it("hands the structure the cable force rather than the weight of what hangs", a
     }
   };
 
-  await settle();
+  await hangAtRest();
   const bare = await read(HOOK_MASS);
   assertNear(
     bare.cableY,
@@ -193,7 +198,7 @@ it("hands the structure the cable force rather than the weight of what hangs", a
   );
 
   await h.debug.setLoadPhase(0, "attached");
-  await settle();
+  await hangAtRest();
   const hanging = await read(HOOK_MASS + LOAD_MASS);
   assertNear(
     hanging.cableY,
