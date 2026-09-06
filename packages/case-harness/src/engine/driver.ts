@@ -105,8 +105,16 @@ export function promiseDriver<
  * A pose `(state, ...args) => Write` becomes `(...args) => void`: the driver runs
  * it through `apply`, so the state it returns is the state the next frame
  * receives, and there is nothing for a caller to do with the return. A reading
- * `(state) => R` becomes `() => R`: the driver hands it the current state.
+ * `(state, ...args) => R` becomes `(...args) => R`: the driver hands it the
+ * current state and forwards everything else the check passed.
  * Anything else — a `version` number — is carried as it is.
+ *
+ * A READING TAKES ARGUMENTS PAST THE STATE, and dropping them is silent. Ten
+ * cases ship one: `menuItemRect(index)` alone appears in eight, and Deepcore's
+ * `tileAt`, `findTile` and `controlRect` and Arc Foundry's `recipeEntries` are
+ * the same shape. A reading whose arguments were dropped answers about index
+ * zero — a plausible value, for the wrong question — so nothing throws and the
+ * check decides its point off the wrong rectangle.
  *
  * `Read` and `Write` are the two faces of the case's state: the deep-readonly
  * view an engine hands out, and the value a transition returns. They are
@@ -119,8 +127,8 @@ export type DrivenMember<Read, Write, M> = M extends (
   ...args: infer A
 ) => Write
   ? (...args: A) => void
-  : M extends (state: Read) => infer R
-    ? () => R
+  : M extends (state: Read, ...args: infer A) => infer R
+    ? (...args: A) => R
     : M;
 
 /**
@@ -156,8 +164,9 @@ export interface ApplyDriverOptions {
    * The members of the surface that are READINGS rather than poses — the case's
    * own `READINGS`, from its `surface.ts`.
    *
-   * A reading is handed `engine.state` and its answer comes back; everything else
-   * is a pose and is run through `engine.apply`.
+   * A reading is handed `engine.state` FOLLOWED BY whatever the check passed,
+   * and its answer comes back; everything else is a pose and is run through
+   * `engine.apply`.
    */
   readings: readonly string[];
   /**
@@ -194,8 +203,8 @@ export function applyDriver<Read, Write, D extends object>(
       if (passthrough(member)) return member;
       const op = member as (state: Read, ...args: unknown[]) => unknown;
       if (readings.has(name)) {
-        return (): unknown => {
-          const value = op.call(raw, engine.state);
+        return (...args: unknown[]): unknown => {
+          const value = op.call(raw, engine.state, ...args);
           return project === undefined ? value : project(name, value);
         };
       }

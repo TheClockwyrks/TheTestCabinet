@@ -12,10 +12,10 @@
 // This file stays because the 1065 suites next door say `from "../assert"`, and
 // that is the right thing for them to say: an assertion is the vocabulary a
 // check states its verdict in, not a package a check depends on. The two ENGINE
-// projects carry the same 26 names, the same signatures and the same message
-// shape in a file of their own, because the package is staged only into an
-// engineless project — so a suite deciding one review item reads the same either
-// way, which is Orrery's rule.
+// projects say the same one line over the same package — it is staged into every
+// engine's validator project, not only into an engineless one — so a suite
+// deciding one review item reads the same names, the same signatures and the
+// same message shape whichever project it sits in, which is Orrery's rule.
 //
 // ONE NOTE ABOUT `assertAngleNear`, WHICH ORRERY BARELY USES. Nothing the
 // snapshot reports is an angle: a part's rotation is a `DIRS` index `0` to `5`

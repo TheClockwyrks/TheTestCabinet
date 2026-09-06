@@ -69,6 +69,14 @@ interface PureSurface {
   setScreen(state: Readonly<State>, name: string): State;
   reset(state: Readonly<State>, seed: number): State;
   snapshot(state: Readonly<State>): { screen: string; seed: number };
+  /**
+   * A reading that takes an argument past the state, which ten cases ship —
+   * `menuItemRect(index)` in eight of them. See the spec below it pins.
+   */
+  menuItemRect(
+    state: Readonly<State>,
+    index: number,
+  ): { x: number; index: number };
   version: number;
 }
 
@@ -96,6 +104,7 @@ const RAW: PureSurface = {
   setScreen: (state, name) => ({ ...state, screen: name }),
   reset: (state, seed) => ({ ...state, seed }),
   snapshot: (state) => ({ screen: state.screen, seed: state.seed }),
+  menuItemRect: (_state, index) => ({ x: index * 10, index }),
   version: 4,
 };
 
@@ -180,4 +189,36 @@ it("every driver is LAZY, so a missing surface fails the check and not the hook"
     readings: ["snapshot"],
   });
   expect(() => driver.snapshot).toThrow(/none returned/);
+});
+
+/**
+ * A READING'S ARGUMENTS REACH THE SURFACE, and this is the check that says so.
+ *
+ * The driver's reading arm used to call `op(engine.state)` and forward nothing
+ * else, so `menuItemRect(2)` asked the build about item ZERO. Nothing threw: a
+ * rectangle came back, for the wrong item, and the check decided its point off
+ * it. Ten cases ship a reading of this shape — `menuItemRect(index)` in eight,
+ * plus Deepcore's `tileAt`, `findTile` and `controlRect` and Arc Foundry's
+ * `recipeEntries` — so the failure would have been silent in most of them.
+ */
+it("a reading is handed the state AND everything else the check passed", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const driver = applyDriver<Readonly<State>, State, Driver>(engine, RAW, {
+    readings: ["snapshot", "menuItemRect"],
+  });
+  expect(driver.menuItemRect(2)).toEqual({ x: 20, index: 2 });
+  // Still a reading, so nothing was posed through `apply`.
+  expect(engine.applied).toBe(0);
+});
+
+it("an argument-taking reading is narrowed by `project` like any other", () => {
+  const engine = engineOver({ screen: "title", seed: 1 });
+  const driver = applyDriver<Readonly<State>, State, Driver>(engine, RAW, {
+    readings: ["snapshot", "menuItemRect"],
+    project: (op, value) =>
+      op === "menuItemRect"
+        ? { ...(value as { x: number; index: number }), x: 0 }
+        : value,
+  });
+  expect(driver.menuItemRect(3)).toEqual({ x: 0, index: 3 });
 });
