@@ -38,9 +38,7 @@ it("generates exactly one Resonite node, at a rockbed cell", async () => {
   for (const size of WORLD_SIZES) {
     const at = `the ${size} mine`;
     const scan = generatedMine(h, size);
-    const nodes = scan.materials.filter(
-      (cell) => cell.material === "resonite",
-    );
+    const nodes = scan.materials.filter((cell) => cell.material === "resonite");
     assertLength(nodes, 1, `Resonite nodes in ${at}`);
     const node = nodes[0];
     assertEqual(

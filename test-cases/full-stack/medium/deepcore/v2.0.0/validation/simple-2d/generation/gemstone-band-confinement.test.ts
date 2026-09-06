@@ -45,9 +45,6 @@ it("finds Verdite only in the rockbed, Roselite only in the deepstone and Aurite
   let found = 0;
   let seen: { col: number; row: number } | null = null;
   const scan = generatedMine(h);
-  // Cleared each mine, so what the picture is taken of is a cell of the mine
-  // the engine is left holding rather than one an earlier mine held.
-  seen = null;
   const stray: string[] = [];
   for (const cell of scan.ores) {
     if (!(GEMSTONE_IDS as readonly string[]).includes(cell.ore)) continue;

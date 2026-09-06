@@ -38,9 +38,7 @@ it("generates exactly one Cryenite node, at a deepstone cell", async () => {
   for (const size of WORLD_SIZES) {
     const at = `the ${size} mine`;
     const scan = generatedMine(h, size);
-    const nodes = scan.materials.filter(
-      (cell) => cell.material === "cryenite",
-    );
+    const nodes = scan.materials.filter((cell) => cell.material === "cryenite");
     assertLength(nodes, 1, `Cryenite nodes in ${at}`);
     const node = nodes[0];
     assertEqual(

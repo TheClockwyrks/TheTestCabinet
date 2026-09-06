@@ -179,29 +179,8 @@ export function drillHitsFor(health: number, damagePerHit: number): number {
 /* What generation places (specs/world.md)                                    */
 /* -------------------------------------------------------------------------- */
 
-/** The share of minable cells that hold an ore vein, the same at every depth. */
-export const ORE_DENSITY = 0.14;
-
 /** "No ore appears above `ORE_MIN_ROW`", so the first three rows are plain rock. */
 export const ORE_MIN_ROW = 4;
-
-/** Unbreakable stone's share, rising linearly across the rockbed and below. */
-export const STONE_DENSITY_MIN = 0.02;
-export const STONE_DENSITY_MAX = 0.08;
-
-/** A gas pocket's share, over the same span. */
-export const GAS_DENSITY_MIN = 0.004;
-export const GAS_DENSITY_MAX = 0.012;
-
-/** Lava's share, rising linearly from the top of the deepstone. */
-export const LAVA_DENSITY_MIN = 0.03;
-export const LAVA_DENSITY_MAX = 0.1;
-
-/**
- * "Every measurable share above holds within `DENSITY_TOLERANCE` of the stated
- * value, measured relative to that value over a whole band."
- */
-export const DENSITY_TOLERANCE = 0.25;
 
 /* -------------------------------------------------------------------------- */
 /* Tile kinds (specs/world.md)                                                */
@@ -1054,7 +1033,9 @@ export const SURFACE_SPRITES: readonly string[] = [
 
 /** The material sprites, the Core, and the Core Sample. */
 export const MATERIAL_SPRITES: readonly (
-  MaterialId | "core" | "core-sample"
+  | MaterialId
+  | "core"
+  | "core-sample"
 )[] = [...MATERIALS, "core", "core-sample"];
 
 /** The ten ores and the three gemstones, whose overlays are named in lower case. */

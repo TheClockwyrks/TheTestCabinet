@@ -3277,11 +3277,12 @@ validation = { script = "world-size/bands-quarter-at-every-size.test.ts", output
 [[review.categories.items]]
 id = "size-scales-depth-alone"
 title = "The size changes nothing but the depth"
-description = "The ore mix at a depth fraction, the economy prices, the upgrade ladder and the rocket costs are identical at every size, so only the distance changes."
+description = "The economy prices, the upgrade ladder and the rocket costs are identical at every size, so only the distance changes."
 domains = ["simulation"]
 failure_cap = "passable"
-# Automated validation: read the ore available at one depth fraction, the
-# upgrade prices and the rocket prices at each size and hold them equal.
+# Automated validation: buy a lot of fuel, a lot of repair, the first upgrade
+# rung and the first rocket component at each size and hold what each took
+# equal.
 validation = { script = "world-size/size-scales-depth-alone.test.ts", outputs = [
   { id = "same", name = "The shop at two different sizes", kind = "image" },
 ] }
@@ -4624,8 +4625,14 @@ description = "The music cue plays under an idle game standing at the camp, wher
 domains = ["presentation"]
 failure_cap = "passable"
 # Automated validation: stand the miner at the camp with nothing happening,
-# advance a short window and observe the music cue sounding in it.
-validation = { script = "audio/music-bed.test.ts", outputs = [
+# advance a short window and observe the music cue sounding in it. An engineless
+# build sounds its bed on the browser's audio clock, where only real time can
+# tell a bed still playing from a blip that already stopped, so the point is the
+# engines'.
+validation = { script = "audio/music-bed.test.ts", engines = [
+  "simple-2d",
+  "structured-2d",
+], outputs = [
   { id = "music", name = "The game playing under its music bed", kind = "replay" },
 ] }
 [[review.categories.items]]
