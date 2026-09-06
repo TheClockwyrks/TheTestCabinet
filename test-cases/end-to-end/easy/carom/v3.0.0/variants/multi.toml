@@ -144,17 +144,33 @@ validation = { script = "multi/waiting-ball-solid.test.ts", outputs = [
   { id = "bounce", name = "A moving ball bouncing off a waiting one", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "launch-angle"
-title = "Launches are drawn over the full circle"
-description = "Over twenty-four launches under eight seeds, launches leave in both horizontal directions, at least a third leave at over 30 degrees from horizontal, and no two launches of one match share an angle."
+id = "launch-angle-posed"
+title = "A launch leaves along the ball's launch angle"
+description = "With each of the three balls' launchAngle posed to an angle of its own, every ball leaves its launch along the angle it holds, within 1 degree."
 domains = ["single-player", "versus"]
 failure_cap = "passable"
-# Automated validation: open a match under eight seeds, read all three launches of
-# each, and hold the sample of twenty-four to what a full-circle draw gives — both
-# directions, most of them steep, and each angle drawn afresh. See
-# validation/<engine>/multi/launch-angle.test.ts.
-validation = { script = "multi/launch-angle.test.ts", outputs = [
-  { id = "launch", name = "Three balls leaving on three unrelated headings", kind = "replay" },
+# Automated validation: open a match over the three balls alone, pose three
+# unrelated angles through `setBallLaunchAngle`, cut the holds, and read each
+# ball's heading on the launch frame. See
+# validation/<engine>/multi/launch-angle-posed.test.ts.
+validation = { script = "multi/launch-angle-posed.test.ts", outputs = [
+  { id = "launch", name = "Three balls leaving along three posed headings", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "launch-angle-drawn"
+title = "Launch angles are drawn over the full circle"
+description = "Over seventy-two draws of drawBallLaunchAngle on one ball, every launchAngle reads back inside [0, 2*PI), at least twenty-four are steeper than 30 degrees from horizontal, and at least one heads each way across the field."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: draw the angle seventy-two times through the operation
+# that performs parking's one draw and nothing else, reading it back off the
+# snapshot each time, and hold the sample to what a full-circle draw gives: a
+# uniform draw puts two thirds of its angles outside a +/-30 degree band, 48 of
+# the 72, and the bar of 24 is six standard deviations below that; one each way
+# is missed one time in 2^71. A build that aims its launches fails both. See
+# validation/<engine>/multi/launch-angle-drawn.test.ts.
+validation = { script = "multi/launch-angle-drawn.test.ts", outputs = [
+  { id = "launch", name = "Three balls leaving on their last drawn headings", kind = "replay" },
 ] }
 
 # Multi's launch, hold and scoring are not the case's common ones, so — like base

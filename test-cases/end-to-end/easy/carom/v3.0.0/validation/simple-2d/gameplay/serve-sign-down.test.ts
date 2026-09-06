@@ -1,0 +1,61 @@
+// gameplay/serve-sign-down — a serve whose `serveSign` is `1` leaves downward.
+//
+// specs/balls.md: the serve leaves with `vy = serveSign * SERVE_SPEED *
+// sin(SERVE_ANGLE)`, and `serveSign` is the ball's own field, drawn afresh when
+// the ball is parked and posed by `setBallServeSign`. Posing it `1` therefore
+// fixes the draw, and the serve that follows leaves with `vy > 0`, downward on
+// screen. The sign is posed AFTER the field is arranged, because spawning the
+// ball parks it and parking draws the sign afresh.
+//
+// Nothing about the serve itself is posed: the hold is cut to zero, and the
+// LAUNCH is the build's own on the frame after. The field holds that one ball
+// and nothing else, so the recorded flight crosses an empty court.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  ball0,
+  captureReplay,
+  createHarness,
+  driveServe,
+  openCountdown,
+  poseWorld,
+  stageServe,
+  type Harness,
+} from "../harness";
+
+/** The sign posed, and the vertical direction the serve must then take. */
+const POSED_SIGN = 1;
+
+/** Frames of the hold recorded before the serve, for the replay's context. */
+const HELD_TICKS = 24; // 0.2 s
+/** Frames of the flight recorded after the launch frame, for the replay. */
+const FLIGHT_TICKS = 90; // 0.75 s
+
+let harness: Harness;
+
+beforeEach(async () => {
+  harness = await createHarness();
+});
+
+afterEach(() => {
+  harness?.dispose();
+});
+
+it("serves downward when the ball's serve sign is posed 1", async () => {
+  openCountdown(harness, "versus");
+  poseWorld(harness, { live: false });
+  harness.debug.setBallServeSign(POSED_SIGN);
+  assertEqual(ball0(harness.snapshot()).serveSign, POSED_SIGN);
+
+  const launched = await captureReplay(harness, "serve", async () => {
+    await harness.advance(HELD_TICKS);
+    stageServe(harness);
+    const swept = await driveServe(harness);
+    await harness.advance(FLIGHT_TICKS);
+    return swept;
+  });
+
+  assertEqual(launched.hit, true);
+  assertGreaterThan(ball0(launched.snapshot).vy, 0);
+});

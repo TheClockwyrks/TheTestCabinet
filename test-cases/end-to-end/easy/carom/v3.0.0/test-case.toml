@@ -248,7 +248,7 @@ test = "npx vitest run --coverage"
 # elapsed time of each frame — and a validator supplies its own clock object and
 # calls `engine.advance(n)`, so the size of a step is stated in the validator that
 # takes it and differs on purpose between suites (a steady clock, an uneven
-# sequence, seeded jitter). A single case-wide rate could only get them wrong, and the
+# sequence, a jittered clock). A single case-wide rate could only get them wrong, and the
 # key is optional precisely so a case whose build is clocked in real time omits it.
 [instrumentation]
 handle = "__carom"

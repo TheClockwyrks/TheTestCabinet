@@ -62,9 +62,6 @@ import type { DeepReadonly } from "ts-essentials";
 /** The surface's version, reported as `version`. */
 export const CAROM_DEBUG_VERSION = 1;
 
-/** The seed a title-screen state carries, which `reset` restores. */
-export const DEFAULT_SEED = 1;
-
 /** The screens the state machine moves between. */
 export type Screen =
   "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
@@ -120,6 +117,10 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** `base` and `gyre`: the vertical sign the serve takes, `1` or `-1`. */
+  serveSign?: 1 | -1;
+  /** `multi`: the angle, in radians, the next launch leaves along. */
+  launchAngle?: number;
   /** The ball's trail samples, oldest first. */
   trail: TrailSample[];
 }
@@ -174,10 +175,6 @@ export interface CaromSnapshot {
   winner: Side | null;
   /** Whether the mute toggle is currently on. */
   muted: boolean;
-  /** The seed the generator was last seeded from. */
-  seed: number;
-  /** That generator's current state, as a single number. */
-  rngState: number;
   paddles: {
     left: PaddleSnapshot;
     right: PaddleSnapshot;
@@ -224,6 +221,10 @@ export interface SingleBallOps<S = unknown> {
   setBallHeld(state: DeepReadonly<S>, held: boolean): S;
   /** Sets the seconds remaining of the ball's hold. `0` ends it. */
   setBallHoldTimer(state: DeepReadonly<S>, seconds: number): S;
+  /** Sets the vertical sign the ball's serve takes, `1` or `-1`. */
+  setBallServeSign(state: DeepReadonly<S>, sign: 1 | -1): S;
+  /** Draws the ball's `serveSign` afresh, as parking it does. */
+  drawBallServeSign(state: DeepReadonly<S>): S;
 }
 
 /**
@@ -259,6 +260,10 @@ export interface MultiBallOps<S = unknown> {
   setBallHeld(state: DeepReadonly<S>, index: number, held: boolean): S;
   /** Sets the seconds remaining of ball `index`'s hold. `0` ends it. */
   setBallHoldTimer(state: DeepReadonly<S>, index: number, seconds: number): S;
+  /** Sets the angle, in radians, ball `index`'s next launch leaves along. */
+  setBallLaunchAngle(state: DeepReadonly<S>, index: number, angle: number): S;
+  /** Draws ball `index`'s `launchAngle` afresh, as parking it does. */
+  drawBallLaunchAngle(state: DeepReadonly<S>, index: number): S;
 }
 
 /**
@@ -291,8 +296,6 @@ export interface CaromDebugApi<
   spawnObstacle(state: DeepReadonly<S>, index: number): S;
   /** Returns the game to its title-screen state. Leaves `muted` alone. */
   reset(state: DeepReadonly<S>): S;
-  /** Seeds the game's random generator, setting `seed` and `rngState`. */
-  setSeed(state: DeepReadonly<S>, seed: number): S;
 
   /* Screens and menus. */
 
@@ -330,6 +333,18 @@ export interface CaromDebugApi<
   setBallSpin: B["setBallSpin"];
   setBallHeld: B["setBallHeld"];
   setBallHoldTimer: B["setBallHoldTimer"];
+  /** `base`, `gyre`: the serve sign. `multi`: absent; see `setBallLaunchAngle`. */
+  setBallServeSign: B extends SingleBallOps<S> ? B["setBallServeSign"] : never;
+  drawBallServeSign: B extends SingleBallOps<S>
+    ? B["drawBallServeSign"]
+    : never;
+  /** `multi`: the launch angle. `base`, `gyre`: absent; see `setBallServeSign`. */
+  setBallLaunchAngle: B extends MultiBallOps<S>
+    ? B["setBallLaunchAngle"]
+    : never;
+  drawBallLaunchAngle: B extends MultiBallOps<S>
+    ? B["drawBallLaunchAngle"]
+    : never;
 
   /* The AI opponent: one operation per faculty. */
 
@@ -389,7 +404,6 @@ export const REQUIRED_OPS = [
   "spawnBall",
   "spawnObstacle",
   "reset",
-  "setSeed",
   "setScreen",
   "setMode",
   "setMenuIndex",

@@ -3,8 +3,8 @@
 The scripts here (re)record each variant's `showcase/<variant>/gameplay.json.gz`
 replay and `mid-match.png` still from its reference implementation, playing a
 REAL Solo match: the left paddle is driven with scripted keyboard input against
-the build's own AI, several takes are auditioned (seed × rally-book phase), and
-the most watchable take is replayed under the engine's recorder. Nothing is
+the build's own AI, several takes are auditioned (one per rally-book phase), and
+every take is recorded under the engine's recorder as it plays. Nothing is
 posed mid-play.
 
 To run one, stage the validator project into the reference workspace and drop
@@ -24,15 +24,17 @@ TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
   npx vitest run --config validation/vitest.config.ts validation/showcase-capture.test.ts
 ```
 
-The outputs land under `$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`;
-copy `gameplay.json.gz` and `mid-match.png` into `showcase/<variant>/`, then
-delete the staged `validation/` copy. `TCAB_SHOWCASE_MIN_SECONDS` /
+The outputs land under `$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`,
+one `take-<n>.json.gz` and `take-<n>-mid-match.png` per take; the driver names
+the winning take at the end. Copy that take's files into `showcase/<variant>/`
+as `gameplay.json.gz` and `mid-match.png`, then delete the staged `validation/`
+copy. `TCAB_SHOWCASE_MIN_SECONDS` /
 `TCAB_SHOWCASE_MAX_SECONDS` bound the clip (gyre and multi shipped with
 `18`/`32`-ish bounds so the thinned replay stays near 60 fps), and
 `TCAB_SHOWCASE_QA_STILLS=1` writes a still every 4 s for eyeballing the take.
 
-The capture is deterministic: the same seed and phase replay the identical
-match, which is what lets a take be auditioned recorder-off and then re-run
-recorder-on. The committed clips: base seed 1 phase 1 (cap 1500), gyre seed 1
-phase 2 (cap 1500, min 18 max 32), multi seed 1 phase 1 (cap 1500, min 18
-max 30).
+No two takes play out the same, because the serve's own draw differs from one
+to the next, which is why every take is recorded as it is auditioned rather
+than replayed afterwards. The committed clips were captured with: base phase 1
+(cap 1500), gyre phase 2 (cap 1500, min 18 max 32), multi phase 1 (cap 1500,
+min 18 max 30).

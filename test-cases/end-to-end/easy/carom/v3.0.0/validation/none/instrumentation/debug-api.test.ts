@@ -24,7 +24,7 @@
 // by setting a value and reading it back". So the pose half below writes a value
 // through one operation and reads that same field back off the snapshot, and it
 // does that for the world, the paddles' two separate faculties, the score, the
-// seed, and the whole of what `reset` restores.
+// draw a serve or a launch rests on, and the whole of what `reset` restores.
 //
 // The third is the CLOCK, which exists only under this engine. Nothing outside an
 // engineless build owns its loop, so `setAutoStep` and `advance` are on the
@@ -53,8 +53,10 @@ import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThan,
+  assertGreaterThanOrEqual,
   assertHasProperty,
   assertLength,
+  assertLessThan,
   assertNear,
   assertNull,
 } from "../assert";
@@ -66,7 +68,6 @@ import {
   CAROM_DEBUG_VERSION,
   clearField,
   createHarness,
-  DEFAULT_SEED,
   failSurface,
   HANDLE,
   openCountdown,
@@ -76,6 +77,7 @@ import {
   takePaddle,
   TICK_HZ,
   type Harness,
+  type MultiBallOps,
 } from "../harness";
 
 /** Real time allowed to pass with the game off the clock and nothing advancing it. */
@@ -123,8 +125,9 @@ const DRIVE_TOL = Math.abs(DRIVE_VY) * seconds(1);
  */
 const POSE_TOL = 0.5;
 
-/** A seed that is not the title state's, so reading it back means something. */
-const POSED_SEED = 20_260_903;
+/** The draw posed on the ball: a serve sign under `base` and `gyre`, a launch angle under `multi`. */
+const POSED_SIGN = -1;
+const POSED_ANGLE = 2.5;
 
 /** The scores posed through `setScore`, which is a fixed pair rather than a patch. */
 const POSED_SCORE = { p1: 3, p2: 4 } as const;
@@ -180,6 +183,16 @@ it("carries a version and every required operation, as functions", async () => {
   for (const op of REQUIRED_OPS) {
     assertEqual(probed.ops[op], "function", `window.${HANDLE}.${op}`);
   }
+  // The draw operations differ by variant: the serve sign under `base` and
+  // `gyre`, the launch angle under `multi` (specs/instrumentation.md).
+  const drawOps =
+    (await h.snapshot()).balls !== undefined
+      ? ["setBallLaunchAngle", "drawBallLaunchAngle"]
+      : ["setBallServeSign", "drawBallServeSign"];
+  const drawProbe = await h.probe(drawOps);
+  for (const op of drawOps) {
+    assertEqual(drawProbe.ops[op], "function", `window.${HANDLE}.${op}`);
+  }
 });
 
 it("takes the game off the wall clock, and runs whole frames on demand", async () => {
@@ -232,8 +245,6 @@ it("reports the whole documented snapshot shape, from a live match", async () =>
   assertEqual(typeof snapshot.score.p2, "number");
   assertHasProperty(snapshot, "winner");
   assertEqual(typeof snapshot.muted, "boolean");
-  assertEqual(typeof snapshot.seed, "number");
-  assertEqual(typeof snapshot.rngState, "number");
 
   // The AI's two faculties are reported separately, because they are gated
   // separately (specs/instrumentation.md).
@@ -316,6 +327,24 @@ it("poses the game through the state the build declared", async () => {
   assertEqual(served.hit, true);
   assertEqual(ball0(served.snapshot).held, false);
 
+  // The draw a serve or a launch rests on is posed as the ball's own field and
+  // drawn afresh on its own: the posed value reads back, and a fresh draw lands
+  // inside the range specs/balls.md fixes.
+  if ((await h.snapshot()).balls !== undefined) {
+    const multi = h.debug as unknown as MultiBallOps;
+    await multi.setBallLaunchAngle(0, POSED_ANGLE);
+    assertEqual(ball0(await h.snapshot()).launchAngle, POSED_ANGLE);
+    await multi.drawBallLaunchAngle(0);
+    const drawn = ball0(await h.snapshot()).launchAngle as number;
+    assertGreaterThanOrEqual(drawn, 0);
+    assertLessThan(drawn, 2 * Math.PI);
+  } else {
+    await h.debug.setBallServeSign(POSED_SIGN);
+    assertEqual(ball0(await h.snapshot()).serveSign, POSED_SIGN);
+    await h.debug.drawBallServeSign();
+    assertContains([1, -1], ball0(await h.snapshot()).serveSign);
+  }
+
   // The world operations really empty the field and put bodies back on it, which
   // is what every posed scenario in this project stands on: a cleared field
   // reports no ball and no obstacle, and a spawn returns exactly the entity it
@@ -369,16 +398,11 @@ it("poses the game through the state the build declared", async () => {
   await h.advance(1);
   assertDeepEqual((await h.snapshot()).score, POSED_SCORE);
 
-  // A posed seed is the seed the generator was last seeded from.
-  await h.debug.setSeed(POSED_SEED);
-  await h.advance(1);
-  assertEqual((await h.snapshot()).seed, POSED_SEED);
-
   // And a reset returns the whole of it to the title state `specs/state.md`
   // fixes, in one operation: the title screen in Solo, no score, no winner, both
   // menus at their first item, both paddles centered with nothing driving them,
-  // the AI holding both faculties, the generator back at DEFAULT_SEED, the world
-  // placed as the two spawns place it, and the clock's accumulator at zero. Read
+  // the AI holding both faculties, the world placed as the two spawns place it,
+  // and the clock's accumulator at zero. Read
   // without advancing a frame, because `simTime` is one of the figures restored
   // and the next frame would add its own delta time to it.
   await h.debug.reset();
@@ -397,7 +421,6 @@ it("poses the game through the state the build declared", async () => {
   assertNear(title.paddles.left.drivenVy, 0, POSE_TOL);
   assertNear(title.paddles.right.drivenVy, 0, POSE_TOL);
   assertDeepEqual(title.ai, { tracking: true, movement: true });
-  assertEqual(title.seed, DEFAULT_SEED);
   assertLength(title.obstacles, OBSTACLE_CENTERS.length);
   assertEqual(ball0(title).held, true);
   assertEqual(title.simTime, 0);

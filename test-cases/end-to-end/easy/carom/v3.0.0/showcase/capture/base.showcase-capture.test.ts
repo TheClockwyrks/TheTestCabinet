@@ -214,7 +214,7 @@ class LeftPlayer {
   private lastThreatT = Infinity;
   private plan: Intent | null = null;
 
-  /** `phase` rotates the rally book, so takes differ beyond what the seed varies. */
+  /** `phase` rotates the rally book, so the takes auditioned differ. */
   constructor(
     private readonly h: Harness,
     private readonly phase = 0,
@@ -322,14 +322,12 @@ afterEach(() => {
 it("records a gameplay clip", async () => {
   const h = harness;
 
-  // One take: reset to `seed`, start a real solo match, and play it out. The
-  // same seed replays the identical match (that is the debug surface's
-  // contract), so a take can be auditioned without the recorder running and
-  // then re-run under it exactly.
+  // One take: reset, start a real solo match, and play it out under the
+  // recorder. Every take is recorded under its own output id, and the winner is
+  // named at the end, so the operator copies that take's recording.
   const runTake = async (
-    seed: number,
+    take: number,
     phase: number,
-    record: boolean,
   ): Promise<{
     frames: number;
     score: { p1: number; p2: number };
@@ -338,10 +336,10 @@ it("records a gameplay clip", async () => {
     endedOnBeat: boolean;
   }> => {
     // A prior take can end mid-press; clear the real keyboard state so no held
-    // key leaks into this take (which would break same-seed reproducibility).
+    // key leaks into this take.
     h.release("KeyW");
     h.release("KeyS");
-    h.debug.reset({ seed });
+    h.debug.reset();
     await h.advance(1);
     await startSoloMatch(h);
     const player = new LeftPlayer(h, phase);
@@ -367,7 +365,7 @@ it("records a gameplay clip", async () => {
       await play(h, player, 1);
       frames += 1;
       // Track rally liveliness: paddle contact cadence and its widest lull.
-      for (; paddleHits + cuesBefore < h.cues.length; ) {
+      for (; paddleHits + cuesBefore < h.cues.length;) {
         const cue = h.cues[paddleHits + cuesBefore];
         paddleHits += 1;
         if (cue.cue === "paddle-hit") lastHitFrame = frames;
@@ -378,18 +376,17 @@ it("records a gameplay clip", async () => {
         lastScore = scoreOf(snapshot);
         lastScoreFrame = frames;
       }
-      if (record && !stillTaken && frames > Math.round(minFrames * 0.6)) {
-        captureStill(h, "mid-match");
+      if (!stillTaken && frames > Math.round(minFrames * 0.6)) {
+        captureStill(h, `take-${take}-mid-match`);
         stillTaken = true;
       }
       if (
-        record &&
         process.env.TCAB_SHOWCASE_QA_STILLS === "1" &&
         frames % (TICK_HZ * 4) === 0
       ) {
         captureStill(
           h,
-          `qa-${String(frames / (TICK_HZ * 4)).padStart(2, "0")}`,
+          `take-${take}-qa-${String(frames / (TICK_HZ * 4)).padStart(2, "0")}`,
         );
       }
       // End on a settled beat: the first point that lands past the minimum
@@ -425,40 +422,30 @@ it("records a gameplay clip", async () => {
     t.maxGap * 3 +
     (t.endedOnBeat ? 10 : -10);
 
-  const candidates: Array<{ seed: number; phase: number }> = [];
-  for (const seed of [1, 5]) {
-    for (const phase of [0, 1, 2, 3]) candidates.push({ seed, phase });
-  }
-  let best: { seed: number; phase: number; score: number } | null = null;
-  for (const { seed, phase } of candidates) {
-    const take = await runTake(seed, phase, false);
-    const rating = judge(take);
+  // Every take is recorded as it is auditioned, under `take-<n>`, because no
+  // two takes play out the same: the serve's own draw differs from one to the
+  // next. The winner is named at the end, and the operator copies its files.
+  const phases = [0, 1, 2, 3, 0, 1, 2, 3];
+  let best: { take: number; phase: number; score: number } | null = null;
+  for (const [take, phase] of phases.entries()) {
+    const result = await captureReplay(h, `take-${take}`, () =>
+      runTake(take, phase),
+    );
+    const rating = judge(result);
     console.log(
-      `take seed=${seed} phase=${phase}: ${take.score.p1}-${take.score.p2}, ` +
-        `${take.paddleHits} paddle hits, gap ${take.maxGap.toFixed(1)}s, ` +
-        `${(take.frames / TICK_HZ).toFixed(1)}s, ` +
-        `${take.endedOnBeat ? "clean end" : "ran out"} -> ${rating.toFixed(0)}`,
+      `take ${take} phase=${phase}: ${result.score.p1}-${result.score.p2}, ` +
+        `${result.paddleHits} paddle hits, gap ${result.maxGap.toFixed(1)}s, ` +
+        `${(result.frames / TICK_HZ).toFixed(1)}s, ` +
+        `${result.endedOnBeat ? "clean end" : "ran out"} -> ${rating.toFixed(0)}`,
     );
     if (best === null || rating > best.score) {
-      best = { seed, phase, score: rating };
+      best = { take, phase, score: rating };
     }
   }
 
-  // The winning take again, this time under the recorder.
-  console.log(`recording take seed=${best!.seed} phase=${best!.phase}`);
-  const final = await captureReplay(h, "gameplay", () =>
-    runTake(best!.seed, best!.phase, true),
-  );
   console.log(
     JSON.stringify(
-      {
-        seed: best!.seed,
-        phase: best!.phase,
-        seconds: final.frames / TICK_HZ,
-        score: final.score,
-        paddleHits: final.paddleHits,
-        maxGap: final.maxGap,
-      },
+      { winner: `take-${best!.take}`, phase: best!.phase, rating: best!.score },
       null,
       2,
     ),

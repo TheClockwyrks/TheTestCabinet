@@ -60,8 +60,10 @@ import {
   assertDoesNotThrow,
   assertEqual,
   assertGreaterThan,
+  assertGreaterThanOrEqual,
   assertHasProperty,
   assertLength,
+  assertLessThan,
   assertLessThanOrEqual,
   assertNotEqual,
   assertNotNull,
@@ -70,6 +72,7 @@ import {
 import {
   allBalls,
   ball0,
+  ballsAreIndexed,
   captureStill,
   createHarness,
   drivePaddleAt,
@@ -80,15 +83,16 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { CAROM_DEBUG_VERSION, DEFAULT_SEED, REQUIRED_OPS } from "../surface";
+import { CAROM_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
 
 /** The velocity the driven paddle is posed at, and how long it holds it. */
 const DRIVEN_CY = 200;
 const DRIVEN_VY = -60;
 const DRIVEN_TICKS = 24; // 0.2 s
 
-/** A seed that is not the one `reset` restores, so a read-back means something. */
-const OTHER_SEED = 12345;
+/** The draw posed on the ball: a serve sign under `base` and `gyre`, a launch angle under `multi`. */
+const POSED_SIGN = -1;
+const POSED_ANGLE = 2.5;
 
 let h: Harness;
 
@@ -123,6 +127,14 @@ it("carries a version and every required operation, as functions", () => {
   assertEqual(typeof api.version, "number");
   assertEqual(api.version, CAROM_DEBUG_VERSION);
   for (const op of REQUIRED_OPS) {
+    assertEqual(typeof api[op], "function");
+  }
+  // The draw operations differ by variant: the serve sign under `base` and
+  // `gyre`, the launch angle under `multi` (specs/instrumentation.md).
+  const drawOps = ballsAreIndexed(h)
+    ? ["setBallLaunchAngle", "drawBallLaunchAngle"]
+    : ["setBallServeSign", "drawBallServeSign"];
+  for (const op of drawOps) {
     assertEqual(typeof api[op], "function");
   }
 });
@@ -172,8 +184,6 @@ it("reports the whole documented snapshot shape, from a live match", async () =>
   assertEqual(typeof snapshot.score.p2, "number");
   assertHasProperty(snapshot, "winner");
   assertEqual(typeof snapshot.muted, "boolean");
-  assertEqual(typeof snapshot.seed, "number");
-  assertEqual(typeof snapshot.rngState, "number");
 
   // A paddle carries its integrated `vy` and the `drivenVy` a pose last set for
   // that side as two separate fields, beside whether the surface is moving it.
@@ -194,6 +204,14 @@ it("reports the whole documented snapshot shape, from a live match", async () =>
   }
   assertEqual(typeof ball0(snapshot).held, "boolean");
   assertEqual(typeof ball0(snapshot).holdTimer, "number");
+  // The draw a serve or a launch rests on is the ball's own field: the sign a
+  // serve takes under `base` and `gyre`, the angle a launch leaves along under
+  // `multi` (specs/state.md).
+  if (ballsAreIndexed(h)) {
+    assertEqual(typeof ball0(snapshot).launchAngle, "number");
+  } else {
+    assertContains([1, -1], ball0(snapshot).serveSign);
+  }
   assertEqual(Array.isArray(ball0(snapshot).trail), true);
   for (const sample of ball0(snapshot).trail) {
     assertEqual(typeof sample.x, "number");
@@ -285,12 +303,22 @@ it("poses the game through the state the build declared", async () => {
   await h.advance(1);
   assertDeepEqual(h.snapshot().ai, { tracking: false, movement: false });
 
-  // The generator is seeded by `setSeed` alone, and the seed it was last given is
-  // reported beside the generator's own state.
-  h.debug.setSeed(OTHER_SEED);
-  await h.advance(1);
-  assertEqual(h.snapshot().seed, OTHER_SEED);
-  assertEqual(typeof h.snapshot().rngState, "number");
+  // The draw a serve or a launch rests on is posed as the ball's own field and
+  // drawn afresh on its own: the posed value reads back, and a fresh draw lands
+  // inside the range specs/balls.md fixes.
+  if (ballsAreIndexed(h)) {
+    h.multi.setBallLaunchAngle(0, POSED_ANGLE);
+    assertEqual(ball0(h.snapshot()).launchAngle, POSED_ANGLE);
+    h.multi.drawBallLaunchAngle(0);
+    const drawn = ball0(h.snapshot()).launchAngle as number;
+    assertGreaterThanOrEqual(drawn, 0);
+    assertLessThan(drawn, 2 * Math.PI);
+  } else {
+    h.debug.setBallServeSign(POSED_SIGN);
+    assertEqual(ball0(h.snapshot()).serveSign, POSED_SIGN);
+    h.debug.drawBallServeSign();
+    assertContains([1, -1], ball0(h.snapshot()).serveSign);
+  }
 
   // The menu fields are posed on a screen that shows a menu, so the index posed
   // names a real item: the last entry of `PAUSE_ITEMS`, and the last of
@@ -345,7 +373,6 @@ it("poses the game through the state the build declared", async () => {
   assertEqual(title.resumeScreen, "playing");
   assertDeepEqual(title.score, { p1: 0, p2: 0 });
   assertNull(title.winner);
-  assertEqual(title.seed, DEFAULT_SEED);
   assertEqual(title.simTime, 0);
   assertDeepEqual(title.ai, { tracking: true, movement: true });
   for (const side of ["left", "right"] as const) {

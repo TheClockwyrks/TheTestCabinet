@@ -30,7 +30,7 @@
 // fixes its operations, so they mean the same thing in every build: a screen is
 // set by `setScreen`, a paddle is taken from the player by `setPaddleDriven`,
 // and `reset` gives everything back. Posing through it is how a scenario is
-// reproducible, and it is the seam the case's specification documents.
+// posed, and it is the seam the case's specification documents.
 // `surface.ts` is that specification as types, and it is the only description of
 // the surface this harness reads: the build's own module for it is never
 // imported.
@@ -342,7 +342,7 @@ export function isMultiBall(h: Harness): boolean {
  * ball asked for, rather than reaching a build operation that has no such
  * argument.
  */
-export function ballOps(h: Harness, index = 0): SingleBallOps {
+export function ballOps(h: Harness, index = 0): SharedBallOps {
   if (!isMultiBall(h)) {
     assertEqual(
       index,
@@ -362,6 +362,16 @@ export function ballOps(h: Harness, index = 0): SingleBallOps {
     setBallHoldTimer: (seconds) => many.setBallHoldTimer(index, seconds),
   };
 }
+
+/**
+ * The ball operations every variant spells the same way, once `index` is bound:
+ * the six the facade forwards. The serve sign is `base` and `gyre`'s alone and
+ * the launch angle `multi`'s, so neither is part of a shared scenario.
+ */
+export type SharedBallOps = Omit<
+  SingleBallOps,
+  "setBallServeSign" | "drawBallServeSign"
+>;
 
 /* -------------------------------------------------------------------------- */
 /* The harness                                                                */
