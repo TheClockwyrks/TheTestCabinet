@@ -25,9 +25,11 @@ TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
 ```
 
 The outputs land under `$TCAB_VALIDATION_MEDIA_DIR/validation/showcase-capture.test.ts/`,
-one `take-<n>.json.gz` and `take-<n>-mid-match.png` per take; the driver names
-the winning take at the end. Copy that take's files into `showcase/<variant>/`
-as `gameplay.json.gz` and `mid-match.png`, then delete the staged `validation/`
+one `take-<n>.json.gz` and `take-<n>-mid-match.png` per take, beside a
+`takes.json` that scores every take and names the winner. The runner's
+reporter keeps console output out of its log, so the file is where the
+audition is read. Copy the chosen take's files into `showcase/<variant>/` as
+`gameplay.json.gz` and `mid-match.png`, then delete the staged `validation/`
 copy. `TCAB_SHOWCASE_MIN_SECONDS` /
 `TCAB_SHOWCASE_MAX_SECONDS` bound the clip (gyre and multi shipped with
 `18`/`32`-ish bounds so the thinned replay stays near 60 fps), and
@@ -35,6 +37,8 @@ copy. `TCAB_SHOWCASE_MIN_SECONDS` /
 
 No two takes play out the same, because the serve's own draw differs from one
 to the next, which is why every take is recorded as it is auditioned rather
-than replayed afterwards. The committed clips were captured with: base phase 1
-(cap 1500), gyre phase 2 (cap 1500, min 18 max 32), multi phase 1 (cap 1500,
-min 18 max 30).
+than replayed afterwards, and a rerun records a different set of takes. The
+committed clips were captured with: base phase 0 (cap 1500), gyre phase 2 (cap
+1500, min 18 max 32), multi phase 2 (cap 1500, min 18 max 30). The multi clip is
+the audition's second-rated take, chosen over the first because it shows points
+conceded on both sides, which is what its `showcase.md` describes.

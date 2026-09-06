@@ -20,13 +20,14 @@
 //   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2400 \
 //     npx vitest run --config validation/vitest.config.ts validation/showcase-capture.test.ts
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, it } from "vitest";
 import { aiVelocity } from "../src/ai";
 import { obstaclePose, poseObstacles } from "../src/obstacles";
 import {
   BALL_R,
   FIELD_CY,
-  FIELD_H,
   FIELD_W,
   MAX_BOUNCE_ANGLE,
   OBSTACLE_SPIN_RATE,
@@ -62,6 +63,9 @@ interface Sim {
   spin: number;
 }
 
+/** The AI with both faculties on, as it plays a real match. */
+const FACULTIES = { tracking: true, movement: true };
+
 /** A paddle parked far off the field, so a prediction never collides with it. */
 const PARKED = { cy: -10_000, vy: 0 };
 
@@ -91,7 +95,7 @@ function threat(snapshot: CaromSnapshot): BallSnapshot | null {
  */
 function obstacleClock(snapshot: CaromSnapshot): number {
   const live = snapshot.obstacles?.[0];
-  if (live === undefined) return 0;
+  if (live?.theta === undefined) return 0;
   let t = live.theta / OBSTACLE_SPIN_RATE;
   const wrap = (2 * Math.PI) / OBSTACLE_SPIN_RATE;
   for (let k = 0; k < 40; k++) {
@@ -156,7 +160,7 @@ function playForward(exit: Sim, aiCy: number, clock: number): number | null {
   let sim = { ...exit };
   let cy = aiCy;
   for (let frame = 0; frame < TICK_HZ * 6; frame++) {
-    const vy = aiVelocity(cy, sim, true, DT);
+    const vy = aiVelocity(cy, sim, true, DT, FACULTIES);
     cy = clamp(cy + vy * DT, PADDLE_MIN_CY, PADDLE_MAX_CY);
     const margin = Math.abs(sim.y - cy);
     sim = step(
@@ -396,7 +400,7 @@ it("records a gameplay clip", async () => {
       await play(h, player, 1);
       frames += 1;
       // Track rally liveliness: paddle contact cadence and its widest lull.
-      for (; paddleHits + cuesBefore < h.cues.length;) {
+      for (; paddleHits + cuesBefore < h.cues.length; ) {
         const cue = h.cues[paddleHits + cuesBefore];
         paddleHits += 1;
         if (cue.cue === "paddle-hit") lastHitFrame = frames;
@@ -458,11 +462,22 @@ it("records a gameplay clip", async () => {
   // next. The winner is named at the end, and the operator copies its files.
   const phases = [0, 1, 2, 3, 0, 1, 2, 3];
   let best: { take: number; phase: number; score: number } | null = null;
+  const audition: object[] = [];
   for (const [take, phase] of phases.entries()) {
     const result = await captureReplay(h, `take-${take}`, () =>
       runTake(take, phase),
     );
     const rating = judge(result);
+    audition.push({
+      take: `take-${take}`,
+      phase,
+      score: result.score,
+      paddleHits: result.paddleHits,
+      maxGapSeconds: Number(result.maxGap.toFixed(2)),
+      seconds: Number((result.frames / TICK_HZ).toFixed(1)),
+      endedOnBeat: result.endedOnBeat,
+      rating: Number(rating.toFixed(1)),
+    });
     console.log(
       `take ${take} phase=${phase}: ${result.score.p1}-${result.score.p2}, ` +
         `${result.paddleHits} paddle hits, gap ${result.maxGap.toFixed(1)}s, ` +
@@ -474,11 +489,20 @@ it("records a gameplay clip", async () => {
     }
   }
 
-  console.log(
-    JSON.stringify(
-      { winner: `take-${best!.take}`, phase: best!.phase, rating: best!.score },
-      null,
-      2,
-    ),
-  );
+  // The audition is written beside the recordings as `takes.json`, because the
+  // runner's reporter keeps console output out of its log: the winner is read
+  // from the file, and the operator copies that take's recording and still.
+  const summary = {
+    winner: `take-${best!.take}`,
+    phase: best!.phase,
+    rating: Number(best!.score.toFixed(1)),
+    takes: audition,
+  };
+  const mediaDir = process.env.TCAB_VALIDATION_MEDIA_DIR;
+  if (mediaDir !== undefined) {
+    const dir = join(mediaDir, "validation", "showcase-capture.test.ts");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "takes.json"), JSON.stringify(summary, null, 2));
+  }
+  console.log(JSON.stringify(summary, null, 2));
 }, 600_000);
