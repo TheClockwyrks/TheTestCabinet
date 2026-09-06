@@ -10,9 +10,9 @@
 //   - specs/world.md ("The drop roll"): "each common enemy killed by a weapon
 //     rolls for a pickup on the tick it dies ... The roll drops bread with
 //     probability `BREAD_CHANCE` (`0.02`), and only when it dropped no bread
-//     it drops a draft with probability `DRAFT_CHANCE` (`0.005`). A kill
-//     therefore drops at most one of the two, and the pickup lands at the
-//     enemy's position beside its gem."
+//     it drops a draft with probability `DRAFT_CHANCE` (`0.005`), so a kill
+//     drops one pickup or none. The pickup lands at the enemy's position
+//     beside its gem."
 //   - specs/instrumentation.md ("Drawn outcomes"), `setNextDrop(kind)`: "The
 //     next common enemy killed by a weapon while `drops` is on drops that
 //     pickup beside its gem, or nothing for `none`, in place of its roll, and

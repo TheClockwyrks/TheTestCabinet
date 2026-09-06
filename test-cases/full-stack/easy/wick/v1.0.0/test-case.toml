@@ -939,7 +939,7 @@ validation = { script = "instrumentation/set-screen-keeps-offers.test.ts", outpu
 [[review.categories.items]]
 id = "set-screen-levelup"
 title = "setScreen('levelup') stands the game on the level-up screen"
-description = "setScreen('levelup') from playing stands the game on levelup with menuIndex 0, drawing no offers and spending nothing from the generator; opening the overlay for real is a queued level-up and a tick."
+description = "setScreen('levelup') from playing stands the game on levelup with menuIndex 0, with offers, nextOffers, and the pool empty; opening the overlay for real is a queued level-up and a tick."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-levelup.test.ts", outputs = [ { id = "levelup", name = "The level-up screen the pose stands on", kind = "image" } ] }
@@ -3861,7 +3861,7 @@ validation = { script = "spark/fewer-when-fewer.test.ts", outputs = [ { id = "fe
 [[review.categories.items]]
 id = "target-varies"
 title = "The target is chosen at random"
-description = "With four moths within range and Spark firing forty times at level 1, with nothing posed for the target, each of the four is struck at least once."
+description = "With four enemies within range and Spark firing eighty times at level 1, with nothing posed for the target, each of the four is struck at least once."
 domains = ["arsenal"]
 failure_cap = "passable"
 validation = { script = "spark/target-varies.test.ts", outputs = [ { id = "random", name = "The strikes spread across the targets", kind = "image" } ] }

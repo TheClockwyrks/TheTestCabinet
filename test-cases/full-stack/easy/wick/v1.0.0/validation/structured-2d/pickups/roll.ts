@@ -5,9 +5,9 @@
 // WHAT EVERY DROP-ROLL CHECK SHARES. `specs/world.md` ("The drop roll"): "each
 // common enemy killed by a weapon rolls for a pickup on the tick it dies ...
 // The roll drops bread with probability `BREAD_CHANCE`, and only when it
-// dropped no bread it drops a draft with probability `DRAFT_CHANCE`. A kill
-// therefore drops at most one of the two, and the pickup lands at the enemy's
-// position beside its gem." A rate is a probability, so the rate checks read
+// dropped no bread it drops a draft with probability `DRAFT_CHANCE`, so a kill
+// drops one pickup or none. The pickup lands at the enemy's position beside
+// its gem." A rate is a probability, so the rate checks read
 // a sample of `DROP_TRIALS` (`4000`) common kills and say something about the
 // whole of it; what one kill drops is posed through `setNextDrop`
 // (`specs/instrumentation.md`, Drawn outcomes) and read off that kill. This

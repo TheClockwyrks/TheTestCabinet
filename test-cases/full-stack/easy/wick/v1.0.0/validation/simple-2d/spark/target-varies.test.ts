@@ -42,7 +42,7 @@ import { armSpark, sparkRow, strikesIn, targetOf, targetsFor } from "./strike";
 /** The level held: amount 1, one strike a firing. */
 const LEVEL = 1;
 
-/** The enemy at every post: HP 2000, alive through forty strikes of 15. */
+/** The enemy at every post: HP 2000, alive through eighty strikes of 15. */
 const TYPE = "owl";
 
 /** How many owls stand within range. */

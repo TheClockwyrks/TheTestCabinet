@@ -4,16 +4,15 @@
 // `amount` strikes land, each on a distinct enemy chosen uniformly at random
 // among the live enemies within `SPARK_RANGE` (`600`) of the player's
 // center". A choice uniform over four moths strikes each of them, so over
-// forty firings every one of the four is struck at least once; a build that
+// eighty firings every one of the four is struck at least once; a build that
 // always strikes the nearest, the lowest id, or the first in its list
-// strikes one moth forty times and fails here.
+// strikes one moth eighty times and fails here.
 //
-// WHY FORTY. Under a uniform choice the chance that some one of four moths
-// goes unstruck in forty independent draws is at most `4 × (3/4)^40`, about
-// four in a hundred thousand, so a conformant build fails this by chance
-// about never, while any fixed rule fails it outright. A larger count would
-// lower that chance further at the price of a longer scenario; forty is what
-// the checklist states.
+// WHY EIGHTY. Under a uniform choice the chance that some one of four moths
+// goes unstruck in eighty independent draws is at most `4 × (3/4)^80`, about
+// `4e-10`, which is the tolerance this check accepts: a conformant build
+// fails this by chance about never, while any fixed rule fails it outright.
+// Eighty is what the checklist states.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated run posed once by `isolate`
 // and never reset again. Nothing is posed for the target, so every draw is
@@ -53,7 +52,7 @@ const LEVEL = 1;
 const ROW = SPARK_LEVELS[LEVEL - 1];
 
 /** How many firings the draw is watched over. */
-const FIRINGS = 40;
+const FIRINGS = 80;
 
 let h: Harness;
 
@@ -65,7 +64,7 @@ afterEach(() => {
   h.dispose();
 });
 
-it("strikes each of four moths at least once over forty firings", async () => {
+it("strikes each of four moths at least once over eighty firings", async () => {
   assertEqual(ROW.amount, 1, "the amount SPARK_LEVELS row 1 gives");
   isolate(h);
   const slot = holdWeapon(h, "spark", LEVEL);

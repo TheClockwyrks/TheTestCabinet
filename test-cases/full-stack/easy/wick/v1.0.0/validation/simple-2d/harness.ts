@@ -1208,8 +1208,8 @@ const kit = createEngineCaseHarness<WickSnapshot, WickDriver, WickEngine>({
  * passes, the design size, the build's exported `BACKGROUND`, and the touch
  * layout, plus the clock and the surface metrics a headless run needs. Nothing
  * is reset: the state handed back is the one the build booted into, and a
- * check that wants a known seed calls {@link Harness.reset} or one of the
- * scenario helpers, every one of which resets first.
+ * check that wants the title-screen state calls {@link Harness.reset} or one of
+ * the scenario helpers, every one of which resets first.
  *
  * A WRAPPER OVER THE KIT'S HARNESS RATHER THAN ITS `extend`, for one reason:
  * this project's vocabulary is `h.tick(n)` for a DRIVE that answers a snapshot,

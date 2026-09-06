@@ -283,8 +283,8 @@ the others wait for the next `playing` tick.
 While `drops` is on, each common enemy killed by a weapon rolls for a pickup
 on the tick it dies; while it is off no kill rolls. The roll drops bread with
 probability `BREAD_CHANCE`, and only when it dropped no bread it drops a draft
-with probability `DRAFT_CHANCE`. A kill therefore drops at most one of the two,
-and the pickup lands at the enemy's position beside its gem. Elites and the
-Dark make no roll; an elite drops its chest, and the Dark drops nothing.
+with probability `DRAFT_CHANCE`, so a kill drops one pickup or none. The pickup
+lands at the enemy's position beside its gem. Elites and the Dark make no roll;
+an elite drops its chest, and the Dark drops nothing.
 `specs/instrumentation.md` states how a scenario poses what the next roll
 drops.

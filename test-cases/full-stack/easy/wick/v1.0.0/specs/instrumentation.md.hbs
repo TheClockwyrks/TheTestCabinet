@@ -418,12 +418,11 @@ Sets `spawnTimer` to `seconds`, at least `0`. Applies on a run screen.
 ### Drawn outcomes
 
 Where the game draws at random, each operation below sets what the next such
-draw decides, so a scenario poses the outcome rather than waiting on it. Each
-value is held in the run under the name its snapshot field carries, is `null`
-on the idle run and after the draw that consumed it, is left standing by
-`setScreen`, and is consumed by one draw alone. A value that is not valid at
-the moment its draw is made is discarded and the draw is made at random. Each
-operation applies on a run screen.
+draw decides. Each value is held in the run under the name its snapshot field
+carries, is `null` on the idle run and after the draw that consumed it, is left
+standing by `setScreen`, and is consumed by one draw alone. A value that is not
+valid at the moment its draw is made is discarded and the draw is made at
+random. Each operation applies on a run screen.
 
 {{#if (eq engine.slug "simple-2d")}}
 #### `setNextSpawnAngle(state, degrees)`

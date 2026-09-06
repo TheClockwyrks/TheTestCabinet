@@ -2,9 +2,9 @@
 // at its center, beside its gem, and nothing else.
 //
 // WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"): "The roll
-// drops bread with probability `BREAD_CHANCE` ... A kill therefore drops at
-// most one of the two, and the pickup lands at the enemy's position beside its
-// gem." Which way the roll falls is posed: specs/instrumentation.md ("Drawn
+// drops bread with probability `BREAD_CHANCE` ... so a kill drops one pickup
+// or none. The pickup lands at the enemy's position beside its gem." Which
+// way the roll falls is posed: specs/instrumentation.md ("Drawn
 // outcomes"), `setNextDrop(kind)`: "The next common enemy killed by a weapon
 // while `drops` is on drops that pickup beside its gem ... in place of its
 // roll". So a moth killed under a posed `bread` leaves exactly one gem and
