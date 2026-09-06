@@ -40,6 +40,7 @@ import {
 import { resetSession, type CoilState } from "./game";
 import { HAS_OBSTACLES } from "./mode";
 import { menuItemRect, menuItems, type MenuRect } from "./menus";
+import { drawPelletCell } from "./sim";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The state every operation is handed: the engine's read-only view of it. */
@@ -94,6 +95,7 @@ export interface CoilDebugApi {
   clearPellet(state: View): CoilState;
   setPelletRespawn(state: View, enabled: boolean): CoilState;
   setNextPellet(state: View, col: number, row: number): CoilState;
+  drawPelletCell(state: View): Cell | null;
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(state: View): CoilState;
   addObstacle?(state: View, col: number, row: number): CoilState;
@@ -386,6 +388,15 @@ export function createDebugApi(): CoilDebugApi {
     setNextPellet(state, col, row) {
       const cell = requireCell("setNextPellet(col, row)", col, row);
       return { ...state, nextPellet: cell };
+    },
+
+    /**
+     * The pellet draw alone: a cell drawn uniformly from the valid set as the
+     * board stands, or `null` when that set is empty. A reading, so it returns
+     * no state: nothing is placed and a posed next cell is left standing.
+     */
+    drawPelletCell(state) {
+      return drawPelletCell(state);
     },
   };
 

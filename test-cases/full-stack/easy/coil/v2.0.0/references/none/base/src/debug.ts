@@ -95,6 +95,7 @@ export interface CoilDebugApi {
   clearPellet(): void;
   setPelletRespawn(enabled: boolean): void;
   setNextPellet(col: number, row: number): void;
+  drawPelletCell(): Cell | null;
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(): void;
   addObstacle?(col: number, row: number): void;
@@ -411,6 +412,15 @@ export function createDebugApi(game: Game, clock: DebugClock): CoilDebugApi {
     setNextPellet(col, row) {
       const cell = requireCell("setNextPellet(col, row)", col, row);
       sim.setNextPellet(cell.col, cell.row);
+    },
+
+    /**
+     * The pellet draw alone: a cell drawn uniformly from the valid set as the
+     * board stands, or `null` when that set is empty. It places nothing, and a
+     * posed next cell is left standing.
+     */
+    drawPelletCell() {
+      return sim.drawPelletCell();
     },
   };
 

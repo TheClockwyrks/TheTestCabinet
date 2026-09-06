@@ -33,7 +33,9 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLength,
+  assertNotNull,
   assertNull,
+  assertTrue,
   fail,
 } from "../assert";
 import {
@@ -44,6 +46,7 @@ import {
   START_CELLS,
   TICK_SECONDS,
   TITLE_ITEM_COUNT,
+  type Cell,
 } from "../constants";
 import {
   captureStill,
@@ -51,6 +54,7 @@ import {
   clearObstacles,
   createHarness,
   FRAMES_PER_TICK,
+  isInterior,
   obstacleSurface,
   poseScene,
   type Harness,
@@ -214,6 +218,28 @@ it("poses the running game through each of its operations", async () => {
   assertEqual(posed.pelletRespawn, false, "setPelletRespawn");
   assertDeepEqual(posed.nextPellet, { col: 24, row: 13 }, "setNextPellet");
   assertEqual(posed.screen, "playing", "setScreen");
+
+  // And the reading that performs the draw alone, which specs/instrumentation.md
+  // words as a cell drawn from the valid set on the board as it stands. What is
+  // read here is that it answers a cell of that set: an interior cell off the
+  // chain and off the live pellet. That it changes nothing is
+  // `draw-pellet-cell-changes-nothing`, and that the draw moves is
+  // `growth/respawn-varies`.
+  const drawn = debug.drawPelletCell();
+  assertNotNull(drawn, "drawPelletCell on a board with free cells");
+  const cell = drawn as Cell;
+  assertTrue(
+    isInterior(cell.col, cell.row),
+    `drawPelletCell answering an interior cell, got (${cell.col}, ${cell.row})`,
+  );
+  assertTrue(
+    !chain.some((c) => c.col === cell.col && c.row === cell.row),
+    "drawPelletCell answering a cell off the chain",
+  );
+  assertTrue(
+    cell.col !== 20 || cell.row !== 6,
+    "drawPelletCell answering a cell other than the live pellet's",
+  );
 
   // A pose holds across frames rather than being a one-frame nudge.
   await h.advance(FRAMES_PER_TICK);

@@ -80,8 +80,9 @@ properties make it so.
 
 The one draw the game makes is the cell a pellet spawns on, drawn uniformly from
 the valid set `specs/board.md` defines. `setNextPellet` below poses the outcome
-of the next such draw, and `pelletRespawn` holds the automatic draw off while a
-scenario is arranged.
+of the next such draw, `pelletRespawn` holds the automatic draw off while a
+scenario is arranged, and `drawPelletCell` performs the draw on its own, apart
+from any spawn.
 
 ## What the runtime provides instead
 
@@ -439,7 +440,9 @@ first pellet a fresh round lays, places the pellet on that cell in place of the
 random draw when the cell is in the valid set `specs/board.md` defines at that
 moment. A posed cell outside the valid set at that moment is discarded and the
 spawn draws at random. Either way that spawn consumes the pose, and every spawn
-after it draws at random again until the next call.
+after it draws at random again until the next call. A spawn that finds the valid
+set empty, which is the board-cleared ending, places no pellet and consumes the
+pose the same way.
 
 Whether the cell is valid is decided at the spawn rather than at the call, so a
 posed cell may be a wall cell, or hold a snake segment or an obstacle, when it
@@ -448,6 +451,22 @@ screens and through any eat that places no pellet until a spawn consumes it or a
 `reset` clears it. Posing the next spawn moves nothing: the live pellet, the
 chain, and every figure are left as they stand. The snapshot reports the pose as
 `nextPellet`, and `null` once it is consumed.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `drawPelletCell(state)`
+{{else}}
+### `drawPelletCell()`
+{{/if}}
+
+A reading that performs the pellet draw alone. It returns a cell drawn uniformly
+from the valid set `specs/board.md` defines on the board as it stands at the
+call, as `{ col, row }`, and `null` when that set is empty. Each call is a fresh
+draw, so two calls may answer different cells.
+
+It is the draw and nothing else, so it places nothing and changes nothing: the
+live pellet, the chain, every figure, and a cell `setNextPellet` posed are left
+as they stand. The pose is neither taken nor consumed, because a pose replaces a
+spawn's draw and this reading is no spawn.
 {{#if (eq variant.slug "maze")}}
 
 {{#if (eq engine.slug "simple-2d")}}

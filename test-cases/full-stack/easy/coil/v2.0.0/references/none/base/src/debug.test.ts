@@ -3,6 +3,11 @@ import {
   COIL_DEBUG_VERSION,
   COMBO_MAX,
   COMBO_WINDOW,
+  INTERIOR_COL_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MAX,
+  INTERIOR_ROW_MIN,
+  isInterior,
   START_CELLS,
   TICK_SECONDS,
   type Cell,
@@ -215,6 +220,70 @@ describe("the posed spawn", () => {
     expect(() => debug.setNextPellet(30, 8)).toThrow();
     expect(() => debug.setNextPellet(5, 18)).toThrow();
     expect(() => debug.setNextPellet(1.5, 8)).toThrow();
+  });
+});
+
+describe("the draw alone", () => {
+  /** A round with a chain along row 8 and a live pellet elsewhere. */
+  function arrangeBoard(): void {
+    debug.reset();
+    debug.clearObstacles?.();
+    debug.setSnake(chain(10, 8, 3));
+    debug.setDirection("right");
+    debug.setPellet(20, 6);
+    debug.setScreen("playing");
+  }
+
+  /** Every interior cell as one chain, row by row and back the next. */
+  function fullChain(): Cell[] {
+    const path: Cell[] = [];
+    for (let row = INTERIOR_ROW_MIN; row <= INTERIOR_ROW_MAX; row++) {
+      for (let i = INTERIOR_COL_MIN; i <= INTERIOR_COL_MAX; i++) {
+        const col =
+          row % 2 === 1 ? i : INTERIOR_COL_MAX - (i - INTERIOR_COL_MIN);
+        path.push({ col, row });
+      }
+    }
+    return path;
+  }
+
+  it("answers a cell of the valid set", () => {
+    arrangeBoard();
+    const body = chain(10, 8, 3);
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = debug.drawPelletCell();
+      expect(cell).not.toBeNull();
+      expect(isInterior(cell!.col, cell!.row)).toBe(true);
+      expect(body).not.toContainEqual(cell);
+      expect(cell).not.toEqual({ col: 20, row: 6 });
+    }
+  });
+
+  it("answers more than one cell over repeated draws", () => {
+    arrangeBoard();
+    const seen = new Set<string>();
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = debug.drawPelletCell()!;
+      seen.add(`${cell.col},${cell.row}`);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("leaves the board and a standing pose as they were", () => {
+    arrangeBoard();
+    debug.setNextPellet(20, 4);
+    const before = debug.snapshot();
+    debug.drawPelletCell();
+    expect(debug.snapshot()).toEqual(before);
+  });
+
+  it("answers null when the valid set is empty", () => {
+    debug.reset();
+    debug.clearObstacles?.();
+    debug.clearPellet();
+    debug.setSnake(fullChain());
+    debug.setScreen("playing");
+    expect(debug.drawPelletCell()).toBeNull();
   });
 });
 

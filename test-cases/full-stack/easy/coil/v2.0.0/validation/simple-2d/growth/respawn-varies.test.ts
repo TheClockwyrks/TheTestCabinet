@@ -9,44 +9,37 @@
 // WHAT IS READ, AND WHY IT IS NOT A DISTRIBUTION. Randomness cannot be decided
 // from a sample without a statistic, and a statistic over a build's own draws
 // would fail a conformant build now and then. What the specification supports
-// without qualification is that the draw MOVES: over twenty eats, the cells the
-// game chose are not all one cell. That is the failure worth naming, and a build
+// without qualification is that the draw MOVES: over twenty draws, the cells
+// answered are not all one cell. That is the failure worth naming, and a build
 // drawing uniformly from a valid set of hundreds of cells lands twenty draws on
 // one cell with a probability far too small to ever cost it the point.
 //
-// HOW THE RUN IS DRIVEN. Every tick eats, along the harness's walk over the
-// interior, so the chain after `k` eats is exactly the first `START + k` cells
-// of that walk, laid head-last: consecutive cells are adjacent by construction,
-// no cell repeats, and the cell each eat enters is free because the walk has not
-// reached it yet. The meal is placed by hand each tick with `setPellet`, which
-// specs/instrumentation.md says "is not spawning one: no draw is made", so the
-// head is steered along a known path without touching the draw under test, and
-// nothing is posed for the spawn. What is recorded is the pellet the game itself
-// placed at step 5.
+// HOW THE DRAW IS REACHED. specs/instrumentation.md gives the surface
+// `drawPelletCell`, "the draw and nothing else": a reading that performs the
+// spawn's draw on the board as it stands and changes nothing. So one board is
+// posed, holding a short chain, no pellet, and nothing posed for the spawn, and
+// the draw is read off it twenty times with no eat, no tick, and no spawn in
+// between. A build whose draw is right but whose eat is broken passes here and
+// fails the `growth` points about the eat, which is the separation a grade
+// needs. A draw that answers no cell on a board full of free cells is a fault
+// of the reading, and is named as one.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertNotNull } from "../assert";
-import type { Cell, Dir } from "../constants";
+import type { Cell } from "../constants";
 import {
-  captureReplay,
+  captureStill,
+  chainFrom,
   createHarness,
   poseScene,
-  serpentine,
   type Harness,
 } from "../harness";
 
-/** Cells of the interior walk the chain starts as. */
-const START = 3;
+/** Draws read off the one posed board. */
+const DRAWS = 20;
 
-/** Draws the game makes over the run. */
-const EATS = 20;
-
-/** The direction from `from` to the orthogonally adjacent cell `to`. */
-function facing(from: Cell, to: Cell): Dir {
-  if (to.col > from.col) return "right";
-  if (to.col < from.col) return "left";
-  return to.row > from.row ? "down" : "up";
-}
+/** The head of the short chain the board holds, well inside the interior. */
+const HEAD: Cell = { col: 12, row: 8 };
 
 let h: Harness;
 
@@ -58,36 +51,29 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** Drive `EATS` real eats along the walk, and keep the cell each spawn chose. */
-async function driveEats(): Promise<Cell[]> {
-  const walk = serpentine();
+it("answers more than one distinct cell over repeated draws", async () => {
+  // A held chain and no pellet, so the valid set is nearly the whole interior
+  // and nothing on the board moves between one draw and the next.
   poseScene(h, {
-    snake: walk.slice(0, START).reverse(),
-    dir: facing(walk[START - 1], walk[START]),
+    snake: chainFrom(HEAD, "right", 3),
+    dir: "right",
     pellet: null,
-    pelletRespawn: true,
+    travel: false,
   });
+  await h.tick();
 
-  const placed: Cell[] = [];
-  for (let eat = 0; eat < EATS; eat += 1) {
-    const head = walk[START + eat - 1];
-    const meal = walk[START + eat];
-    h.debug.setDirection(facing(head, meal));
-    h.debug.setPellet(meal.col, meal.row);
-    const after = await h.tick();
-    assertNotNull(after.pellet, `a replacement pellet after eat ${eat + 1}`);
-    placed.push(after.pellet as Cell);
+  const drawn: Cell[] = [];
+  for (let draw = 0; draw < DRAWS; draw += 1) {
+    const cell = h.debug.drawPelletCell();
+    assertNotNull(cell, `a cell answered by draw ${draw + 1}`);
+    drawn.push(cell as Cell);
   }
-  return placed;
-}
+  captureStill(h, "varied");
 
-it("places its pellets on more than one distinct cell", async () => {
-  const placed = await captureReplay(h, "varied", driveEats);
-
-  const distinct = new Set(placed.map(({ col, row }) => `${col},${row}`));
+  const distinct = new Set(drawn.map(({ col, row }) => `${col},${row}`));
   assertGreaterThan(
     distinct.size,
     1,
-    `distinct cells across ${EATS} pellets the game placed`,
+    `distinct cells across ${DRAWS} draws the game answered`,
   );
 });

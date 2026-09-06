@@ -3,10 +3,15 @@
 // nothing, and every claim is read back through the surface's own `snapshot`.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { isInterior } from "./board";
 import {
   COIL_DEBUG_VERSION,
   COMBO_MAX,
   COMBO_WINDOW,
+  INTERIOR_MAX_COL,
+  INTERIOR_MAX_ROW,
+  INTERIOR_MIN_COL,
+  INTERIOR_MIN_ROW,
   MODE,
   OBSTACLE_CELLS,
   SCREENS,
@@ -231,6 +236,66 @@ describe("the posed spawn", () => {
     expect(() => h.debug.setNextPellet(30, 8)).toThrow();
     expect(() => h.debug.setNextPellet(5, 18)).toThrow();
     expect(() => h.debug.setNextPellet(1.5, 8)).toThrow();
+  });
+});
+
+describe("the draw alone", () => {
+  /** A round with a chain along row 8 and a live pellet elsewhere. */
+  function arrangeBoard(): void {
+    round();
+    h.state.obstacles = [];
+    h.debug.setSnake(chain(10, 8, 3));
+    h.debug.setPellet(20, 6);
+  }
+
+  /** Every interior cell as one chain, row by row and back the next. */
+  function fullChain(): Cell[] {
+    const path: Cell[] = [];
+    for (let row = INTERIOR_MIN_ROW; row <= INTERIOR_MAX_ROW; row++) {
+      for (let i = INTERIOR_MIN_COL; i <= INTERIOR_MAX_COL; i++) {
+        const col =
+          row % 2 === 1 ? i : INTERIOR_MAX_COL - (i - INTERIOR_MIN_COL);
+        path.push({ col, row });
+      }
+    }
+    return path;
+  }
+
+  it("answers a cell of the valid set", () => {
+    arrangeBoard();
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = h.debug.drawPelletCell();
+      expect(cell).not.toBeNull();
+      expect(isInterior(cell!.col, cell!.row)).toBe(true);
+      expect(h.state.snake).not.toContainEqual(cell);
+      expect(cell).not.toEqual({ col: 20, row: 6 });
+    }
+  });
+
+  it("answers more than one cell over repeated draws", () => {
+    arrangeBoard();
+    const seen = new Set<string>();
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = h.debug.drawPelletCell()!;
+      seen.add(`${cell.col},${cell.row}`);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("leaves the state and a standing pose as they were", () => {
+    arrangeBoard();
+    h.debug.setNextPellet(20, 4);
+    const before = h.debug.snapshot();
+    h.debug.drawPelletCell();
+    expect(h.debug.snapshot()).toEqual(before);
+  });
+
+  it("answers null when the valid set is empty", () => {
+    round();
+    h.state.obstacles = [];
+    h.debug.clearPellet();
+    h.debug.setSnake(fullChain());
+    expect(h.debug.drawPelletCell()).toBeNull();
   });
 });
 

@@ -85,6 +85,7 @@ export const REQUIRED_OPS = [
   "clearPellet",
   "setPelletRespawn",
   "setNextPellet",
+  "drawPelletCell",
 ] as const;
 
 /** The operations a mode that lays obstacle cells adds, and no other mode has. */
@@ -102,7 +103,7 @@ export type OperationName =
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot", "menuItemRect"] as const;
+export const READINGS = ["snapshot", "menuItemRect", "drawPelletCell"] as const;
 
 /**
  * The hit region a menu item occupies, in the logical units of
@@ -209,6 +210,11 @@ export interface CoilDebugApi<S = unknown> {
   setPelletRespawn(state: DeepReadonly<S>, enabled: boolean): S;
   /** Poses the cell the next spawn places the pellet on. */
   setNextPellet(state: DeepReadonly<S>, col: number, row: number): S;
+  /**
+   * The pellet draw alone: a cell drawn uniformly from the valid set as the
+   * board stands, or `null` when that set is empty. It changes nothing.
+   */
+  drawPelletCell(state: DeepReadonly<S>): Cell | null;
 
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(state: DeepReadonly<S>): S;

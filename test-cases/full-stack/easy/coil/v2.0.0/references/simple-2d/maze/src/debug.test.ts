@@ -6,10 +6,15 @@
 import { describe, expect, it } from "vitest";
 import { NO_SPRITES } from "./assets";
 import { createDebugApi, type CoilDebugApi } from "./debug";
+import { isInterior } from "./board";
 import {
   COIL_DEBUG_VERSION,
   COMBO_MAX,
   COMBO_WINDOW,
+  INTERIOR_MAX_COL,
+  INTERIOR_MAX_ROW,
+  INTERIOR_MIN_COL,
+  INTERIOR_MIN_ROW,
   MODE,
   OBSTACLE_CELLS,
   SCREENS,
@@ -211,6 +216,67 @@ describe("the posed spawn", () => {
     expect(() => debug.setNextPellet(opening(), 30, 8)).toThrow();
     expect(() => debug.setNextPellet(opening(), 5, 18)).toThrow();
     expect(() => debug.setNextPellet(opening(), 1.5, 8)).toThrow();
+  });
+});
+
+describe("the draw alone", () => {
+  /** A round with a chain along row 8 and a live pellet elsewhere. */
+  function arrangedBoard(): CoilState {
+    let state = startRound(opening());
+    state = { ...state, obstacles: [] };
+    state = debug.setSnake(state, chain(10, 8, 3));
+    return debug.setPellet(state, 20, 6);
+  }
+
+  /** Every interior cell as one chain, row by row and back the next. */
+  function fullChain(): Cell[] {
+    const path: Cell[] = [];
+    for (let row = INTERIOR_MIN_ROW; row <= INTERIOR_MAX_ROW; row++) {
+      for (let i = INTERIOR_MIN_COL; i <= INTERIOR_MAX_COL; i++) {
+        const col =
+          row % 2 === 1 ? i : INTERIOR_MAX_COL - (i - INTERIOR_MIN_COL);
+        path.push({ col, row });
+      }
+    }
+    return path;
+  }
+
+  it("answers a cell of the valid set", () => {
+    const state = arrangedBoard();
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = debug.drawPelletCell(state);
+      expect(cell).not.toBeNull();
+      expect(isInterior(cell!.col, cell!.row)).toBe(true);
+      expect(state.snake).not.toContainEqual(cell);
+      expect(cell).not.toEqual(state.pellet);
+    }
+  });
+
+  it("answers more than one cell over repeated draws", () => {
+    const state = arrangedBoard();
+    const seen = new Set<string>();
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = debug.drawPelletCell(state)!;
+      seen.add(`${cell.col},${cell.row}`);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("leaves the state and a standing pose as they were", () => {
+    const state = debug.setNextPellet(arrangedBoard(), 20, 4);
+    const before = debug.snapshot(state);
+    debug.drawPelletCell(state);
+    expect(debug.snapshot(state)).toEqual(before);
+  });
+
+  it("answers null when the valid set is empty", () => {
+    const state: CoilState = {
+      ...startRound(opening()),
+      obstacles: [],
+      snake: fullChain(),
+      pellet: null,
+    };
+    expect(debug.drawPelletCell(state)).toBeNull();
   });
 });
 

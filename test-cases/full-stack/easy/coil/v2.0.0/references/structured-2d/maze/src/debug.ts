@@ -39,6 +39,7 @@ import { resetSession } from "./flow";
 import { coilState, type CoilState } from "./game";
 import { menuItemRect, menuItems, type MenuRect } from "./menus";
 import { HAS_OBSTACLES } from "./mode";
+import { drawPelletCell } from "./sim";
 import type { World } from "@clockwyrks/structured-2d";
 
 // ---- The snapshot shape (specs/instrumentation.md) ------------------------
@@ -90,6 +91,7 @@ export interface CoilDebugApi {
   clearPellet(): void;
   setPelletRespawn(enabled: boolean): void;
   setNextPellet(col: number, row: number): void;
+  drawPelletCell(): Cell | null;
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(): void;
   addObstacle?(col: number, row: number): void;
@@ -385,6 +387,15 @@ export function createDebugApi(world: () => World): CoilDebugApi {
     setNextPellet(col, row) {
       const cell = requireCell("setNextPellet(col, row)", col, row);
       state().nextPellet = cell;
+    },
+
+    /**
+     * The pellet draw alone: a cell drawn uniformly from the valid set as the
+     * board stands, or `null` when that set is empty. A reading, so nothing is
+     * placed and a posed next cell is left standing.
+     */
+    drawPelletCell() {
+      return drawPelletCell(state());
     },
   };
 

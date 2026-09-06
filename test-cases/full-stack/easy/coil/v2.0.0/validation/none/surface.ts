@@ -53,6 +53,7 @@ export const REQUIRED_OPS = [
   "clearPellet",
   "setPelletRespawn",
   "setNextPellet",
+  "drawPelletCell",
 ] as const;
 
 /** The operations a mode that lays obstacle cells adds, and no other mode has. */
@@ -170,6 +171,11 @@ export interface CoilDebugApi {
   setPelletRespawn(enabled: boolean): void;
   /** Poses the cell the next spawn places the pellet on. */
   setNextPellet(col: number, row: number): void;
+  /**
+   * The pellet draw alone: a cell drawn uniformly from the valid set as the
+   * board stands, or `null` when that set is empty. It changes nothing.
+   */
+  drawPelletCell(): Cell | null;
 
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(): void;

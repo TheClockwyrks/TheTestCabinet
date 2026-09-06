@@ -114,7 +114,8 @@ The pellet draw is the one thing the state does not decide on its own:
 `src/rng.ts` draws the spawn cell from the build's own random source, and a
 scenario that needs a particular cell poses it with the surface's
 `setNextPellet`, which `CoilState.nextPellet` carries until the spawn that takes
-it.
+it. The surface's `drawPelletCell` performs the draw on its own, off the board as
+it stands, and places nothing.
 
 ## Rendering, as two layers
 
@@ -152,12 +153,13 @@ const { score, snake } = engine.debug.snapshot();
 
 The operations are `reset`, `snapshot`, `setScreen`, `setMenuIndex`,
 `setScore`, `setBest`, `setCombo`, `setComboWindow`, `setSnake`, `setDirection`,
-`clearTurns`, `setPellet`, `clearPellet`, `setNextPellet`, and the three driver
-switches `setSnakeSteering`, `setSnakeTravel`, and `setPelletRespawn`. A pose sets one
-thing and the game's own tick, turning, collision, pellet placement and scoring
-run from there exactly as they do in play. Everything about _driving a browser
-game_ — the clock, exact frames, key events — is the engine's, which is why the
-surface carries no `advance` and no `keyDown`. It is inert during normal play.
+`clearTurns`, `setPellet`, `clearPellet`, `setNextPellet`, `drawPelletCell`, and
+the three driver switches `setSnakeSteering`, `setSnakeTravel`, and
+`setPelletRespawn`. A pose sets one thing and the game's own tick, turning,
+collision, pellet placement and scoring run from there exactly as they do in
+play. Everything about _driving a browser game_ — the clock, exact frames, key
+events — is the engine's, which is why the surface carries no `advance` and no
+`keyDown`. It is inert during normal play.
 
 Classic lays no obstacle cell, so it carries no obstacle operation. The Maze
 variant beside this one adds `clearObstacles` and `addObstacle`.

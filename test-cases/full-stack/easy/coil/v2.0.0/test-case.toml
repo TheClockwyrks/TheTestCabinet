@@ -553,6 +553,19 @@ validation = { script = "instrumentation/next-pellet-consumed-by-the-spawn.test.
   { id = "consumed", name = "The pose gone once the spawn took it", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "draw-pellet-cell-changes-nothing"
+title = "drawPelletCell leaves the game as it stands"
+description = "A call of drawPelletCell answers a cell and leaves every field of the snapshot as it stood, the live pellet, the chain, the figures, and a posed next cell included."
+domains = ["gameplay"]
+failure_cap = "passable"
+# Automated validation: pose a board carrying a chain, a live pellet, a score,
+# and a posed next cell, read the snapshot, call drawPelletCell, and read the
+# snapshot again. See
+# validation/<engine>/instrumentation/draw-pellet-cell-changes-nothing.test.ts.
+validation = { script = "instrumentation/draw-pellet-cell-changes-nothing.test.ts", outputs = [
+  { id = "standing", name = "The board standing as posed after the draw", kind = "image" },
+] }
+[[review.categories.items]]
 id = "next-pellet-outside-the-valid-set-is-discarded"
 title = "A posed cell outside the valid set is discarded"
 description = "When the posed cell holds a snake segment at the moment of the spawn, the spawn discards the pose, places the pellet on a cell of the valid set instead, and leaves nextPellet at null."
@@ -860,14 +873,14 @@ validation = { script = "growth/respawn-off-snake.test.ts", outputs = [
 [[review.categories.items]]
 id = "respawn-varies"
 title = "The respawn cell is drawn, not fixed"
-description = "Across a run of twenty eats with nothing posed the placed pellets occupy more than one distinct cell, so the next pellet is drawn from the valid set rather than always placed on the same cell."
+description = "Across twenty calls of drawPelletCell on one board with nothing posed, the cells answered occupy more than one distinct cell, so the spawn's draw moves over the valid set rather than always answering the same cell."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: drive a run of eats with no spawn posed and count the
-# distinct cells the pellets landed on. See
-# validation/<engine>/growth/respawn-varies.test.ts.
+# Automated validation: pose one board with nothing posed for the spawn, perform
+# the draw twenty times through drawPelletCell, and count the distinct cells
+# answered. See validation/<engine>/growth/respawn-varies.test.ts.
 validation = { script = "growth/respawn-varies.test.ts", outputs = [
-  { id = "varied", name = "A run of pellets landing on different cells", kind = "replay" },
+  { id = "varied", name = "The board the draws were read from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "first-pellet-off-start-chain"
