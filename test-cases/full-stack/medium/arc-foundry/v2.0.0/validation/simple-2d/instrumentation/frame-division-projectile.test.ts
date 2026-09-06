@@ -29,9 +29,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed both halves of the comparison run under. */
-const SEED = 3;
-
 /** Where the firing structure stands, and where its target is held. */
 const TOWER_AT = { col: 20, row: 10 };
 const TARGET_AT = { x: 600, y: 276 };
@@ -68,7 +65,7 @@ it("flies a projectile the same distance however the interval is divided", async
     // The same arming step in both halves: only the interval under test below is
     // divided differently.
     h.engine.setClock(new ConstantClock(ARM_STEP_SECONDS * 1000));
-    openYard(h, { seed: SEED, wave: 1 });
+    openYard(h, { wave: 1 });
     standComponent(h, "discharge", 5, TOWER_AT.col, TOWER_AT.row);
     parkUnit(h, "overload", TARGET_AT);
 

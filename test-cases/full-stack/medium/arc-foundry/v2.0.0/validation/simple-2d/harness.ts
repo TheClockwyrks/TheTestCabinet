@@ -32,7 +32,7 @@
 // stands one permanent component up and appends it to the snapshot,
 // `setUnitFrozen` holds one unit's travel and nothing else about it, and
 // `spawnUnit` releases through the real spawner into a wave whose schedule is
-// empty. Posing through it is how a scenario is reproducible, and it is the seam
+// empty. Posing through it is how a scenario is arranged, and it is the seam
 // the case's specification documents. `surface.ts` is that specification as types,
 // and it is the only description of the surface this harness reads: the build's
 // own module for it is never imported.
@@ -875,8 +875,6 @@ export interface YardOptions {
   map?: MapId;
   /** The difficulty. Defaults to the reset value, `medium`. */
   difficulty?: DifficultyId;
-  /** The seed every random draw runs off. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /** The wave units released from now on scale to. */
   wave?: number;
   /** Charge in the bank. */
@@ -899,9 +897,7 @@ export interface YardOptions {
  * because `startRun` takes the path confirming the difficulty select takes.
  */
 export function openRun(h: Harness, options: YardOptions = {}): void {
-  h.debug.reset(
-    options.seed === undefined ? undefined : { seed: options.seed },
-  );
+  h.debug.reset();
   if (options.map !== undefined) h.debug.setMap(options.map);
   if (options.difficulty !== undefined)
     h.debug.setDifficulty(options.difficulty);

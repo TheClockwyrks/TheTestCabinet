@@ -10,8 +10,8 @@
 //
 // SO THE SAME FLIGHT IS FLOWN TWICE, once over an empty yard and once under a
 // maze heavy enough to move the ground route a long way, and the two are compared
-// sample for sample and frame for frame. Nothing else about the two runs differs:
-// the same seed, the same speed multiplier, the same unit.
+// sample for sample and frame for frame. Nothing else about the two flights
+// differs: the same speed multiplier, the same unit, released from the same entry.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLength, assertLessThan } from "../assert";

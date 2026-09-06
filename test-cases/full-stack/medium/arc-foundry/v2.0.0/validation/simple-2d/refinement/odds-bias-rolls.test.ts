@@ -8,40 +8,20 @@
 // build that draws from the table and one that shows the table and rolls from
 // something else.
 //
-// The press is set to `R8` and several hundred rocks are dropped through the real
-// placement path, five to a stamp allowance, each read and then dismantled so the
-// next rock lands on Open tiles again. What is read is only what the row makes
-// certain: no Scrap at all, and every reachable tier seen at least once. Those two
-// readings hold whatever seed the run was opened at — over this many rolls, a
-// conformant build missing a tier is a one-in-a-billion event — so the check is
-// not resting on one particular sequence of draws.
+// The press is set to `R8` and a bounded sample of rolls is drawn through
+// `rollPress`, the operation `specs/instrumentation.md` carries for performing
+// the one draw alone. What is read is only what the row makes certain: no Scrap
+// at all, and every reachable tier seen at least once. The rarest tier is
+// weighted `0.10`, so over this many rolls its count sits at `40 ± 6`, and a
+// conformant build missing it is nearly seven standard deviations out.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertContains, assertEqual, assertLength } from "../assert";
-import {
-  DEFAULT_SEED,
-  REFINEMENT_MAX,
-  REFINEMENT_ODDS,
-  STAMPS_PER_LEVEL,
-} from "../constants";
-import {
-  captureStill,
-  clearHand,
-  createHarness,
-  type Harness,
-  lastStructure,
-  openYard,
-  refillStamps,
-} from "../harness";
+import { REFINEMENT_MAX, REFINEMENT_ODDS } from "../constants";
+import { captureStill, createHarness, type Harness, openYard } from "../harness";
 
-/** One anchor per stamp of an allowance, each footprint two tiles clear. */
-const ANCHORS = Array.from({ length: STAMPS_PER_LEVEL }, (_, index) => ({
-  col: 8 + index * 4,
-  row: 10,
-}));
-
-/** How many rocks are rolled. Forty allowances of five. */
-const ROLLS = 200;
+/** How many rolls are drawn. */
+const ROLLS = 400;
 
 /** The tiers `REFINEMENT_ODDS[8]` gives a non-zero weight. */
 const REACHABLE = REFINEMENT_ODDS[REFINEMENT_MAX]!.map((weight, index) =>
@@ -59,42 +39,27 @@ afterEach(() => {
 });
 
 it("rolls no Scrap at R8 and reaches every tier the row allows", async () => {
-  openYard(h, { seed: DEFAULT_SEED, refinement: REFINEMENT_MAX });
+  openYard(h, { refinement: REFINEMENT_MAX });
 
   const rolled: number[] = [];
   while (rolled.length < ROLLS) {
-    refillStamps(h);
-    const placed: number[] = [];
-    for (const anchor of ANCHORS) {
-      h.debug.placeRock(anchor.col, anchor.row);
-      const candidate = lastStructure(h.snapshot());
-      assertEqual(
-        candidate.kind,
-        "candidate",
-        "a dropped rock rolls into a candidate (specs/scrap-press.md)",
-      );
-      rolled.push(candidate.quality ?? 0);
-      placed.push(candidate.id);
-    }
-    if (rolled.length >= ROLLS) break;
-    for (const id of placed) h.debug.dismantle(id);
+    rolled.push(h.debug.rollPress().quality);
   }
-  clearHand(h);
   await h.advance(1);
   captureStill(h, "rolls");
 
-  assertLength(rolled, ROLLS, "rocks rolled");
+  assertLength(rolled, ROLLS, "rolls drawn");
   assertEqual(
     rolled.filter((tier) => tier === 1).length,
     0,
-    `Scrap rolls over ${ROLLS} rocks at R${REFINEMENT_MAX}, whose row weights ` +
+    `Scrap rolls over ${ROLLS} draws at R${REFINEMENT_MAX}, whose row weights ` +
       `Scrap at 0 (specs/scrap-press.md)`,
   );
   for (const tier of REACHABLE) {
     assertContains(
       rolled,
       tier,
-      `tier ${tier} among ${ROLLS} rolls at R${REFINEMENT_MAX}, whose row ` +
+      `tier ${tier} among ${ROLLS} draws at R${REFINEMENT_MAX}, whose row ` +
         `weights it at ${REFINEMENT_ODDS[REFINEMENT_MAX]![tier - 1]!}`,
     );
   }

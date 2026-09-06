@@ -8,31 +8,21 @@
 // build whose type roll drifts toward a favourite makes half the recipe book
 // unreachable while the recipe overlay goes on offering it.
 //
-// A LONG RUN, ON ONE FOOTPRINT. Each rock is dropped, read and dismantled, so the
-// run is as long as the count below rather than as long as the yard has room for
-// — dismantling returns nothing and reopens the tiles, which is exactly what a
-// repeated draw needs. The bounds are the item's: every type appears, and no type
-// takes more than a quarter of the draws. At this many rolls a uniform press
-// clears both by a distance no plausible run of luck closes.
+// A BOUNDED SAMPLE OF THE ONE DRAW. `specs/instrumentation.md` carries
+// `rollPress`, which performs one press roll exactly as a dropped rock rolls and
+// lands nothing, so the sample is the draw alone rather than four hundred trips
+// through the placement path. The bounds are the item's: every type appears, and
+// no type takes more than a quarter of the draws. At this many rolls a uniform
+// press clears both by a distance no plausible run of luck closes — a type's
+// count sits at `50 ± 6.6`, so a quarter of the draws is seven standard
+// deviations out, and a type never drawn at all is beyond any count.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
-import {
-  COMPONENT_TYPES,
-  REFINEMENT_MAX,
-  STAMPS_PER_LEVEL,
-  TYPE_ROLL_ODDS,
-} from "../constants";
-import {
-  captureStill,
-  createHarness,
-  lastStructure,
-  openYard,
-  refillStamps,
-  type Harness,
-} from "../harness";
+import { assertContains, assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import { COMPONENT_TYPES, REFINEMENT_MAX, TYPE_ROLL_ODDS } from "../constants";
+import { captureStill, createHarness, openYard, type Harness } from "../harness";
 
-/** How many rocks are rolled. */
+/** How many rolls are drawn. */
 const ROLLS = 400;
 
 /**
@@ -43,9 +33,6 @@ const ROLLS = 400;
  * than the sampling noise a fair roll leaves.
  */
 const CEILING = TYPE_ROLL_ODDS * 2;
-
-/** The footprint every rock is dropped on. */
-const AT = { col: 20, row: 8 };
 
 let h: Harness;
 
@@ -64,17 +51,11 @@ it("draws every base type, and none of them more than a quarter of the time", as
 
   const drawn = new Map<string, number>();
   for (let roll = 0; roll < ROLLS; roll += 1) {
-    if (roll % STAMPS_PER_LEVEL === 0) await refillStamps(h);
-    await h.debug.placeRock(AT.col, AT.row);
-    const candidate = lastStructure(await h.snapshot());
-    const type = String(candidate.type);
+    const { type } = await h.debug.rollPress();
+    assertContains(COMPONENT_TYPES, type, `the type roll ${roll + 1} drew`);
     drawn.set(type, (drawn.get(type) ?? 0) + 1);
-    // Dismantling returns nothing and reopens the tiles, so the next rock lands
-    // on the same footprint and the run is as long as it needs to be.
-    await h.debug.dismantle(candidate.id);
   }
 
-  await h.debug.placeRock(AT.col, AT.row);
   await h.advance(1);
   await captureStill(h, "spread");
 

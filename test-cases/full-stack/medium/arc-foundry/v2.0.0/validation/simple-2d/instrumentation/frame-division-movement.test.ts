@@ -33,9 +33,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed both halves of the comparison run under. */
-const SEED = 3;
-
 /** The interval the comparison covers, and its two divisions. */
 const SECOND_MS = 1000;
 const FINE_FRAMES = 60;
@@ -64,7 +61,7 @@ it("covers a second in one frame and in sixty, and reaches the same place", asyn
   // One walking unit on an otherwise empty yard: nothing fires at it, nothing
   // stands in its way, and its travel is the only thing moving.
   for (const h of [coarse, fine]) {
-    openYard(h, { seed: SEED, wave: 1 });
+    openYard(h, { wave: 1 });
     h.debug.spawnUnit("mote");
   }
 

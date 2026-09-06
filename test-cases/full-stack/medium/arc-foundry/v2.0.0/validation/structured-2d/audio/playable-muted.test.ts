@@ -4,110 +4,94 @@
 // belong to the engine: the game binds the mute action to the engine's mute bit,
 // toggles it from any screen, and stays fully playable with sound muted."
 //
-// WHAT "FULLY PLAYABLE" IS READ AS. That the same run, driven the same way from the
-// same seed, reaches the same state muted as unmuted. `specs/instrumentation.md`
-// makes that comparable: the simulation is deterministic — "Given the same seed and
-// the same sequence of calls and elapsed simulation time, the game reaches the same
-// state every time" — and the snapshot reports every field an operation can set. So
-// two runs that differ only in the mute bit must produce two snapshots that differ
-// only in the mute bit, and a build whose audio layer is load-bearing — a cue whose
-// completion advances something, a sound that throws when the bus is off — produces
-// two that differ elsewhere.
-//
-// TWO HARNESSES, NOT ONE. The mute bit is a player preference the runtime holds,
-// and `specs/instrumentation.md` deliberately leaves it untouched by `reset`, so a
-// muted run and an unmuted one cannot share an engine. Each harness stands a game
-// up fresh, which is also where the preference rests off.
-//
-// THE TWO DRIVES ARE FRAME FOR FRAME THE SAME. A key press only reaches the game
-// inside `update`, so the frame that carries the mute press is a frame of
-// simulation the muted run has taken and the unmuted one would not have. That would
-// separate the two clocks by itself and say nothing about the audio, so the unmuted
-// harness takes the same frame with a key no action is bound to: the same one frame
-// runs on both, and one of them carries a press the game reads.
+// WHAT "FULLY PLAYABLE" IS READ AS. That a run driven with the mute bit engaged
+// keeps playing: the structure fires, its shots land and tally damage, the units
+// it hits lose health, and the simulation clock advances over the drive. A build
+// whose audio layer is load-bearing — a cue whose completion advances something, a
+// sound that throws when the bus is off — stalls one of those readings, and each
+// is read off the snapshot rather than off anything the audio layer reports.
 //
 // THE DRIVE IS ORDINARY PLAY, on purpose: a structure firing, two units taking
 // damage, statuses running down and the economy paying out over two seconds of
-// simulation, so the comparison covers the systems a cue is played from rather than
+// simulation, so the reading covers the systems a cue is played from rather than
 // an idle yard.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual, assertEqual } from "../assert";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
-  type FoundrySnapshot,
   type Harness,
   openYard,
   parkUnit,
   pressAction,
   standComponent,
+  structureById,
 } from "../harness";
-import { structureCenter, UNBOUND_KEY } from "../constants";
+import { structureCenter } from "../constants";
 
 /** Clear ground, well away from the map's waypoint platforms and its chain. */
 const ANCHOR = { col: 21, row: 17 };
 const HEAD = structureCenter(ANCHOR.col, ANCHOR.row);
 
-/** One seed for both runs, so every random draw the game makes matches. */
-const SEED = 7;
+/** How long the yard is driven, in seconds of simulation. */
+const SPAN = 2;
 
-let unmuted: Harness;
-let muted: Harness;
+/** Digits the clock is held to: floating point, not a rule about the game. */
+const DIGITS = 3;
+
+let h: Harness;
 
 beforeEach(async () => {
-  unmuted = await createHarness();
-  muted = await createHarness();
+  h = await createHarness();
 });
 
 afterEach(() => {
-  unmuted?.dispose();
-  muted?.dispose();
+  h.dispose();
 });
 
-/** Everything the snapshot reports except the mute bit itself. */
-function apartFromMuting(snapshot: FoundrySnapshot): unknown {
-  const { muted: _muted, ...rest } = snapshot;
-  return rest;
-}
+it("keeps playing with the mute bit engaged", async () => {
+  openYard(h, { wave: 3, charge: 500 });
 
-/** The same two seconds of play, on one harness. */
-async function play(h: Harness): Promise<FoundrySnapshot> {
-  standComponent(h, "choke", 2, ANCHOR.col, ANCHOR.row);
-  parkUnit(h, "slug", { x: HEAD.x + 80, y: HEAD.y });
-  parkUnit(h, "mote", { x: HEAD.x + 60, y: HEAD.y + 40 });
-  await h.advanceSeconds(2);
-  return h.snapshot();
-}
-
-it("reaches the same state muted as unmuted", async () => {
-  openYard(unmuted, { seed: SEED, wave: 3, charge: 500 });
-  openYard(muted, { seed: SEED, wave: 3, charge: 500 });
-
-  await pressAction(muted, "mute");
-  // The same frame on the other harness, carrying a key nothing is bound to.
-  await unmuted.tap(UNBOUND_KEY);
-
+  await pressAction(h, "mute");
   assertEqual(
-    muted.snapshot().muted,
+    h.snapshot().muted,
     true,
     "the mute action to engage the mute bit the snapshot reports " +
       "(specs/ui.md, specs/instrumentation.md)",
   );
-  assertEqual(
-    unmuted.snapshot().muted,
-    false,
-    "a freshly stood-up build to be unmuted (specs/instrumentation.md)",
+
+  const id = standComponent(h, "choke", 2, ANCHOR.col, ANCHOR.row);
+  const units = [
+    parkUnit(h, "slug", { x: HEAD.x + 80, y: HEAD.y }),
+    parkUnit(h, "mote", { x: HEAD.x + 60, y: HEAD.y + 40 }),
+  ];
+  const opened = h.snapshot();
+
+  const played = await captureReplay(h, "muted", async () => {
+    await h.advanceSeconds(SPAN);
+    return h.snapshot();
+  });
+
+  assertCloseTo(
+    played.simTime - opened.simTime,
+    SPAN,
+    DIGITS,
+    `the simulation clock over ${SPAN}s of play with sound muted (specs/ui.md)`,
   );
-
-  const loud = await play(unmuted);
-  const quiet = await captureReplay(muted, "muted", () => play(muted));
-
-  assertDeepEqual(
-    apartFromMuting(quiet),
-    apartFromMuting(loud),
-    "the same drive from the same seed to reach the same state with sound " +
-      "muted as without it, so nothing about the game depends on the audio " +
-      "being audible (specs/ui.md)",
+  assertGreaterThan(
+    structureById(played, id).damageDealt,
+    0,
+    "the damage the Choke tallied with sound muted: a muted run keeps firing " +
+      "(specs/ui.md)",
+  );
+  const removed = units
+    .map((unit) => played.units.find((u) => u.id === unit))
+    .reduce((sum, u) => sum + (u === undefined ? 0 : u.maxHp - u.hp), 0);
+  assertGreaterThan(
+    removed,
+    0,
+    "the health the held units lost with sound muted: a muted run keeps " +
+      "landing its shots (specs/ui.md)",
   );
 });

@@ -34,9 +34,6 @@ import {
   standComponent,
 } from "../harness";
 
-/** The seed the reset under test is given. */
-const SEED = 7;
-
 /** Two clear anchors on the map the dirtied run opens on. */
 const FIRST_AT = { col: 20, row: 10 };
 const SECOND_AT = { col: 24, row: 10 };
@@ -115,7 +112,7 @@ it("restores every title-screen value after a run has been driven", async () => 
 
   /* ---- Then reset, and read the title state back ------------------------ */
 
-  h.debug.reset({ seed: SEED });
+  h.debug.reset();
   await h.advance(1);
   captureStill(h, "title");
 

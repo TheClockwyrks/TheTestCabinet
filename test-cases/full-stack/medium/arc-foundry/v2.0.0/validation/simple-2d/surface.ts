@@ -62,7 +62,7 @@ import type {
   Tier,
 } from "./constants";
 
-export { FOUNDRY_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
+export { FOUNDRY_DEBUG_VERSION } from "./constants";
 export type {
   ComboId,
   ComponentType,
@@ -255,6 +255,8 @@ export interface StructureView {
   auraRadius: number;
   auraBonus: number;
   abilities: string[];
+  /** The crit outcome `setNextCrit` armed for its next shot, or `null`. */
+  nextCrit: boolean | null;
 }
 
 /** One projectile in flight. */
@@ -287,6 +289,12 @@ export interface HeldView {
 
 /** The exact component the next placed rock will roll, or `null`. */
 export interface NextRollView {
+  type: ComponentType;
+  quality: number;
+}
+
+/** What one press roll decided, as `rollPress` returns it. */
+export interface PressRoll {
   type: ComponentType;
   quality: number;
 }
@@ -387,8 +395,14 @@ export interface FoundryDebugApi<S = unknown> {
    */
   waveCount(state: DeepReadonly<S>, type: SpawnType): number;
 
+  /**
+   * One press roll at the current refinement level, exactly as a dropped rock
+   * rolls. It lands nothing, spends nothing, and leaves an armed roll standing.
+   */
+  rollPress(state: DeepReadonly<S>): PressRoll;
+
   /* The run. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   setMap(state: DeepReadonly<S>, map: MapId): S;
   setDifficulty(state: DeepReadonly<S>, difficulty: DifficultyId): S;
   startRun(state: DeepReadonly<S>): S;
@@ -437,6 +451,8 @@ export interface FoundryDebugApi<S = unknown> {
   dismantle(state: DeepReadonly<S>, id: number): S;
   setTargeting(state: DeepReadonly<S>, id: number, priority: Targeting): S;
   setComboLevel(state: DeepReadonly<S>, id: number, level: number): S;
+  setNextCrit(state: DeepReadonly<S>, id: number, crit: boolean): S;
+  clearNextCrit(state: DeepReadonly<S>, id: number): S;
   upgradeQuality(state: DeepReadonly<S>): S;
   upgradeCombo(state: DeepReadonly<S>, id: number): S;
 
@@ -478,6 +494,7 @@ export const READINGS = [
   "statusReadouts",
   "recipeEntries",
   "waveCount",
+  "rollPress",
 ] as const;
 
 /**
@@ -500,6 +517,7 @@ export const REQUIRED_OPS = [
   "statusReadouts",
   "recipeEntries",
   "waveCount",
+  "rollPress",
   // The run.
   "reset",
   "setMap",
@@ -537,6 +555,8 @@ export const REQUIRED_OPS = [
   "dismantle",
   "setTargeting",
   "setComboLevel",
+  "setNextCrit",
+  "clearNextCrit",
   "upgradeQuality",
   "upgradeCombo",
   // The Load.

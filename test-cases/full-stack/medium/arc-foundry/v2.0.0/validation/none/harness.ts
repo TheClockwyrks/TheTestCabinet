@@ -82,7 +82,6 @@ import {
   BOARD_Y,
   type ComboId,
   type ComponentType,
-  DEFAULT_SEED,
   type DifficultyId,
   keyFor,
   type MapId,
@@ -210,12 +209,6 @@ const kit = createCaseHarness<FoundrySnapshot, DrivenFoundryDebugApi>({
   // every declared field, so a check that asked for it starts where every other
   // check does.
   arm: { kind: "key", code: UNBOUND_KEY },
-  // The seed the opening `reset` fixes, so a scenario driven from a fresh harness
-  // is reproducible from that line on. `specs/instrumentation.md` defaults
-  // `options.seed` to `DEFAULT_SEED` itself, and the harness passes it explicitly
-  // so the call the build sees is the same one whether or not a check named a
-  // seed of its own.
-  defaultSeed: DEFAULT_SEED,
   replayBackground: REPLAY_BACKGROUND,
   surfaceTimeoutMs: SURFACE_TIMEOUT_MS,
   projectRoot: PROJECT_ROOT,
@@ -445,8 +438,6 @@ export interface YardOptions {
   map?: MapId;
   /** The difficulty. Defaults to the reset value, `medium`. */
   difficulty?: DifficultyId;
-  /** The seed every random draw runs off. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /** The wave units released from now on scale to. */
   wave?: number;
   /** Charge in the bank. */
@@ -472,7 +463,7 @@ export async function openRun(
   h: Harness,
   options: YardOptions = {},
 ): Promise<void> {
-  await h.debug.reset({ seed: options.seed ?? DEFAULT_SEED });
+  await h.debug.reset();
   if (options.map !== undefined) await h.debug.setMap(options.map);
   if (options.difficulty !== undefined) {
     await h.debug.setDifficulty(options.difficulty);

@@ -1022,6 +1022,3 @@ export const SPEEDS: readonly number[] = [1, 2, 4, 8];
 /* -------------------------------------------------------------------------- */
 /* The surface itself (specs/instrumentation.md)                              */
 /* -------------------------------------------------------------------------- */
-
-/** The seed `reset` uses when it is given none. */
-export const DEFAULT_SEED = 1;
