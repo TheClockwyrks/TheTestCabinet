@@ -246,7 +246,7 @@ shows, and sets its own field alone.
 
 Sets `state.solvedCount`, the boards-solved count of the cascade run, to `count`,
 a whole number from `0`, and sets its own field alone. `state.tier` is left as it
-is; the ladder in `specs/modes/cascade.md` recomputes it on the next solve.
+is.
 
 {{#if (eq engine.slug "none")}}
 ### `setTier(tier)`
@@ -274,7 +274,7 @@ board: the game moves to `playing` with that board in play, every beam empty, an
 no trace live. The board is a board the generator emits for that tier, so it
 meets every requirement the generator's contract and the tier's rows of the
 ladder and the floor state. `mode`, `solvedCount`, `tier`, and every other field
-are left as they are, so the run's progression is untouched.
+are left as they are.
 
 {{#if (eq engine.slug "none")}}
 ### `loadBoard(board)`

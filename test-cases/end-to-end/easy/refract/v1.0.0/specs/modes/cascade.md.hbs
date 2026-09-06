@@ -146,16 +146,11 @@ and the player never sees it.
 
 ## Drawing a board
 
-Boards are generated when they are needed, one at a time: on starting Cascade,
-on `NEXT BOARD`, and on `RESTART`. Nothing about the sequence is decided in
-advance.
-
-- Each board is drawn at random from the boards its tier admits: its grid size
-  is drawn from the tier's stated range, `cols` and `rows` each drawn
-  independently, and the nodes and the charges on its crystals are drawn within
-  the tier's rows of the ladder and the floor.
-- The generator is the only part of the game that draws at random. Presentation
-  and audio draw nothing.
+A board is generated on starting Cascade, on `NEXT BOARD`, and on `RESTART`.
+Each board is drawn at random from the boards its tier admits: its grid size is
+drawn from the tier's stated range, `cols` and `rows` each drawn independently,
+and the nodes and the charges on its crystals are drawn within the tier's rows
+of the ladder and the floor.
 
 The debug surface in `specs/instrumentation.md` poses a generated board at a
 chosen tier through `generateBoard`, and the run's progression through
