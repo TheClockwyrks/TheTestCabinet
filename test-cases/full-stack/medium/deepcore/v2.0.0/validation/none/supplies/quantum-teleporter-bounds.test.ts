@@ -13,7 +13,8 @@
 // which is the world `y` `specs/world.md` gives the camp's ground line.
 //
 // The draws are the game's own, so this reads the RANGE over many draws rather
-// than any particular value; `supplies/quantum-teleporter-posed` reads a posed one. Two distinct heights are required
+// than any particular value; the instrumentation checks on `setNextTeleportHeight`
+// and `setNextTeleportSpeed` read a posed one. Two distinct heights are required
 // across them: a build that returns one fixed height every time is not drawing
 // from a range. The last draw is then let fall, because the rest of the sentence
 // is that ordinary physics takes it down, and it must come to rest on the camp.
