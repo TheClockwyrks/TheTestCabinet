@@ -63,28 +63,25 @@ and exports its type, `CoilDebugApi`.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic and steppable. Three
+The surface rests on the simulation being steppable apart from its drawing. Two
 properties make it so.
 
 - A fixed timestep, decoupled from rendering. The simulation advances in whole
   ticks of `TICK_SECONDS` (`0.125`), fed by the elapsed time the game is handed
-  and carrying the remainder, as `specs/movement.md` states. An interval of game
-  time therefore reaches the same state however it was divided into updates, and
-  drawing advances nothing.
+  and carrying the remainder, as `specs/movement.md` states. A step therefore
+  means the same thing whatever the frame rate, and drawing advances nothing.
 - A render-free core. Game state advances from the elapsed time the game is
-  handed, independent of a canvas, of the loop that measured it, and of
-  wall-clock time. The dependency runs one way: the simulation reads nothing from
-  the renderer. Where the next pellet lands is decided from the board alone,
-  never from anything the renderer holds.
-- Seeded randomness. Every draw the game makes, which is the cell each pellet
-  spawns on, runs off a generator `reset` seeds, and the game keeps that
-  generator's whole state, so reseeding and replaying the same calls reproduces
-  the same pellet sequence exactly.
+  handed, with no canvas and no wall clock, so a driver steps it headlessly. The
+  dependency runs one way: the simulation reads nothing from the renderer. Where
+  the next pellet lands is decided from the board alone, never from anything the
+  renderer holds.
 
-Given the same seed and the same sequence of calls and elapsed game time, the
-game reaches the same state every time.
+The one draw the game makes is the cell a pellet spawns on, drawn uniformly from
+the valid set `specs/board.md` defines. `setNextPellet` below poses the outcome
+of the next such draw, and `pelletRespawn` holds the automatic draw off while a
+scenario is arranged.
 
 ## What the runtime provides instead
 
@@ -129,7 +126,7 @@ snapshot.
 | --- | --- | --- |
 | `steering` | Step 1 of the tick takes the oldest buffered turn and applies it, and a steering request the player makes is taken into the buffer. | Step 1 takes nothing and no request is taken into the buffer, so `turns` stays empty and `dir` holds the value it carries. The head still advances each tick along `dir`. |
 | `travel` | Steps 2 to 5 of the tick run: the head advances one cell, collision resolves, the chain grows or drops its tail, and an eaten pellet scores. | The head does not advance, so steps 2 to 5 do not run: nothing collides, nothing is eaten, and the chain holds the cells it stands on however long the scenario runs. |
-| `pelletRespawn` | Step 5 places the next pellet as soon as one is eaten, drawn from the valid set `specs/board.md` defines. | Step 5 places none, so an eaten pellet leaves the board without one. No cell is looked for, so the board-cleared ending is not reached this way. |
+| `pelletRespawn` | Step 5 places the next pellet as soon as one is eaten, on the cell `setNextPellet` posed when that cell is valid and otherwise on a cell drawn uniformly from the valid set `specs/board.md` defines. | Step 5 places none, so an eaten pellet leaves the board without one. No cell is looked for, so the board-cleared ending is not reached this way, and a cell `setNextPellet` posed stays posed. |
 
 Step 6 runs on every tick whatever the switches say, so the combo window drains
 by `TICK_SECONDS` and lapses on schedule even while the snake is held still, and
@@ -198,14 +195,14 @@ state.
 
 `seconds` is at least `0` and `frames` is a whole number of at least `1`.
 Advancing while the game is still stepping automatically adds to what the wall
-clock is already doing, so a reproducible scenario calls `setAutoStep(false)`
-first.
+clock is already doing, so a scenario driven from code calls
+`setAutoStep(false)` first.
 
 {{/if}}
 {{#if (eq engine.slug "simple-2d")}}
-### `reset(state, options)`
+### `reset(state)`
 {{else}}
-### `reset(options)`
+### `reset()`
 {{/if}}
 
 Restores every field the snapshot reports to its opening value: the `title`
@@ -218,8 +215,7 @@ the obstacle course back to `OBSTACLE_CELLS`,
 {{else}}
 no obstacle cell on the board,
 {{/if}}
-and all three driver switches on. `options` is optional, and `options.seed` seeds
-the pellet generator, defaulting to `DEFAULT_SEED` (`1`).
+no posed pellet cell, and all three driver switches on.
 {{#if (eq engine.slug "none")}}
 A reset also re-arms manual stepping, leaving the game off the wall clock, so
 `autoStep` reads `false` after one rather than the `true` a freshly loaded build
@@ -405,8 +401,8 @@ Places the live pellet on cell `(col, row)`, replacing whatever pellet was on th
 board. The cell is an interior cell holding no snake segment and no obstacle. The
 next tick eats it normally when the head advances into it, and the eat scores,
 grows the chain, and places the next pellet exactly as an ordinary eat does.
-Placing a pellet is not spawning one, so the generator is not drawn from and the
-seeded sequence is left where it stands.
+Placing a pellet is not spawning one: no draw is made, so a cell `setNextPellet`
+posed stays posed.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `clearPellet(state)`
@@ -429,6 +425,29 @@ Turns the pellet's respawn on or off, as the driver above describes. Respawn is
 on by default and a `reset` restores it. With it off an eaten pellet is not
 replaced, so a scenario watching one eat is not met by a pellet landing somewhere
 it did not choose.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setNextPellet(state, col, row)`
+{{else}}
+### `setNextPellet(col, row)`
+{{/if}}
+
+Poses the outcome of the next pellet spawn. `(col, row)` is a cell of the grid,
+`col` in `[0, GRID_COLS - 1]` and `row` in `[0, GRID_ROWS - 1]`. The next spawn
+the game makes, which is step 5 of the tick that eats with respawn on or the
+first pellet a fresh round lays, places the pellet on that cell in place of the
+random draw when the cell is in the valid set `specs/board.md` defines at that
+moment. A posed cell outside the valid set at that moment is discarded and the
+spawn draws at random. Either way that spawn consumes the pose, and every spawn
+after it draws at random again until the next call.
+
+Whether the cell is valid is decided at the spawn rather than at the call, so a
+posed cell may be a wall cell, or hold a snake segment or an obstacle, when it
+is posed. A call before the spawn replaces the pose, and the pose stands across
+screens and through any eat that places no pellet until a spawn consumes it or a
+`reset` clears it. Posing the next spawn moves nothing: the live pellet, the
+chain, and every figure are left as they stand. The snapshot reports the pose as
+`nextPellet`, and `null` once it is consumed.
 {{#if (eq variant.slug "maze")}}
 
 {{#if (eq engine.slug "simple-2d")}}
@@ -489,6 +508,7 @@ way.
   steering: <boolean>,       // whether the snake's steering is running
   travel: <boolean>,         // whether the snake's body travels
   pelletRespawn: <boolean>,  // whether an eaten pellet is replaced
+  nextPellet: { col: <number>, row: <number> } | null,  // the posed next spawn
 }
 ```
 
@@ -497,7 +517,8 @@ chain from the head at index `0` to the tail at the last index, so its length is
 the snake's length in cells. `turns` lists the steering requests waiting on the
 buffer, oldest first, and holds at most `TURN_QUEUE_MAX` of them. `pellet` is the
 live pellet, and it is `null` only when no pellet is on the board, which is the
-case on the `cleared` screen.
+case on the `cleared` screen. `nextPellet` is the cell the last `setNextPellet`
+posed for the next spawn, and `null` while no pose stands.
 {{#if (eq variant.slug "maze")}}
 `obstacles` lists the obstacle cells currently on the board, in any order, which
 is the course `specs/mode.md` fixes until a call changes it.
