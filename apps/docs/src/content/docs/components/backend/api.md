@@ -413,8 +413,10 @@ empty for a version that declares no scripted items.
 ### `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
 
 Fetch one reference build's committed baseline validation media
-(`<item>__<output>.<ext>`), synthesized from the reference implementation. This
-is the case-scoped invariant counterpart to a run's own validation media. The
+(`<item>__<output>.<ext>`, or one of the `img.<id>.<ext>` files of the shared
+image store its recordings draw from), synthesized from the reference
+implementation. This is the case-scoped invariant counterpart to a run's own
+validation media. The
 engine is part of the address because a variant has one reference implementation
 per [engine](/components/core/engines/), and a run is only comparable against
 the one it was itself built on.

@@ -59,6 +59,10 @@ function media(): ValidationMedia {
     kind: "replay",
     actualUrl: "https://example.test/runs/r1/movement__walk.json",
     baselineUrl: "https://example.test/cases/movement__walk.json",
+    // Each side resolves a stored image out of its own namespace, exactly as the
+    // gallery builds them: run-scoped for the actual, case-scoped for the baseline.
+    actualStoreUrl: (file) => `https://example.test/runs/r1/${file}`,
+    baselineStoreUrl: (file) => `https://example.test/cases/${file}`,
   };
 }
 
@@ -92,6 +96,32 @@ describe("the replay comparison", () => {
     expect(screen.getAllByRole("slider")).toHaveLength(1);
     expect(screen.getAllByRole("combobox")).toHaveLength(1);
     expect(screen.getByText("1 / 5")).toBeInTheDocument();
+  });
+
+  it("holds its loaded recordings when the gallery hands it new resolvers", async () => {
+    serve(5, 5);
+    // Exactly what the console does: `validationMediaFor` mints a fresh pair of
+    // store resolvers on every call, and the gallery context is rebuilt on every
+    // render of the app shell. If either resolver reached the fetch effect's
+    // dependencies, this re-render would blank both panes to a spinner and
+    // re-download the recordings — and every stored image beside them — losing the
+    // reviewer's place each time a run finished anywhere in the console.
+    const { rerender } = render(<ValidationReplayPair media={media()} />);
+    await waitFor(() => {
+      expect(screen.getAllByRole("img", { name: /Walk cycle/ })).toHaveLength(
+        2,
+      );
+    });
+    const fetched = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls
+      .length;
+
+    rerender(<ValidationReplayPair media={media()} />);
+
+    expect(screen.getAllByRole("img", { name: /Walk cycle/ })).toHaveLength(2);
+    expect(screen.getByText("1 / 5")).toBeInTheDocument();
+    expect(
+      (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBe(fetched);
   });
 
   it("moves both panes when the one scrubber moves", async () => {

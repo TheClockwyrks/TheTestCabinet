@@ -108,6 +108,15 @@ declare module "virtual:tcab-snapshot" {
    */
   export const validationMediaUrls: Record<string, Record<string, string>>;
   /**
+   * Where a run's recordings keep their shared image store, as an absolute URL
+   * prefix, keyed by run id. One string per run rather than one entry per file: a
+   * store holds a file per unique image a run's recordings drew, this module is
+   * inlined into the chunk every visitor downloads, and the names are content
+   * addressed and published verbatim — so the prefix plus the name a recording
+   * carries is the URL.
+   */
+  export const validationStorePrefixes: Record<string, string>;
+  /**
    * Resolved showcase media URLs (the run's carousel media plus any image the
    * description references), keyed by run id then by the recorded file name (a
    * video's `.webm` request resolving to its published `.mp4`).
@@ -137,6 +146,12 @@ declare module "virtual:tcab-snapshot" {
    * subject key then by the flat `<item>__<output>.<ext>` name. Case-scoped.
    */
   export const validationBaselineUrls: Record<string, Record<string, string>>;
+  /**
+   * Where a case version's committed baselines keep their shared image store, as an
+   * absolute URL prefix, keyed by the same `<slug>/<version>/<engine>/<variant>`
+   * subject key. The case-scoped counterpart of {@link validationStorePrefixes}.
+   */
+  export const baselineStorePrefixes: Record<string, string>;
   /**
    * Resolved **asset-reference** media URLs (an asset-generation case variant's
    * published reference frames), keyed by a `<slug>/<version>/<variant>` subject key

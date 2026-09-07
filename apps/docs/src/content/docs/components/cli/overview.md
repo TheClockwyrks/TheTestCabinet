@@ -134,8 +134,10 @@ works in is the variant/engine pair. For each targeted pair it runs the case's
 produces every [scripted review
 item](/testing/end-to-end/manifests/#automated-validation)'s declared outputs
 from it, and writes them under the version folder's
-`validation-baseline/<engine>/<variant>/`. That directory is regenerated
-wholesale, so a renamed or removed output never lingers. The media is the
+`validation-baseline/<engine>/<variant>/`, together with the
+[shared image store](/components/core/validation/#the-shared-image-store) the
+recordings among them draw from. That directory is regenerated wholesale, so a
+renamed or removed output never lingers. The media is the
 expected-behavior half of the reviewer's side-by-side and is a fixed property of
 the case version.
 

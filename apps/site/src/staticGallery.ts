@@ -31,9 +31,11 @@ import {
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
   validationMediaUrls as publishedValidationMediaUrls,
+  validationStorePrefixes as publishedValidationStorePrefixes,
   showcaseMediaUrls as publishedShowcaseMediaUrls,
   caseShowcaseMediaUrls as publishedCaseShowcaseMediaUrls,
   validationBaselineUrls as publishedValidationBaselineUrls,
+  baselineStorePrefixes as publishedBaselineStorePrefixes,
   referenceMediaUrls as publishedReferenceMediaUrls,
 } from "virtual:tcab-snapshot";
 
@@ -47,6 +49,28 @@ import {
 // `canExecute` is false and `inProgress` is empty.
 
 const LOCAL_RUNS_URL = "/__local-runs__/index.json";
+
+/**
+ * Where one file of a recording's shared image store is, under `prefix`.
+ *
+ * The store is the one media the snapshot does NOT list file by file. A run's — or
+ * a case version's — store holds a distinct file per unique image its recordings
+ * drew, and this module's lookup tables are inlined into the chunk every visitor
+ * downloads before the home page renders, so listing them would put hundreds of
+ * kilobytes of JavaScript in front of every visitor for URLs one replay on one page
+ * will ever ask for. Instead each namespace carries a single URL prefix and the name
+ * the recording itself carries completes it, which works because a store file's name
+ * is a hash of its bytes and is published verbatim.
+ *
+ * The `img.` prefix MIRRORS `IMAGE_STORE_PREFIX` in
+ * `packages/case-harness/src/replay/store.ts` and `VALIDATION_IMAGE_PREFIX` in
+ * `crates/core/src/validator.rs`; a declared output never carries it, so asking here
+ * first costs a declared name nothing.
+ */
+function storeUrl(prefix: string | undefined, file: string): string | null {
+  if (prefix === undefined || !file.startsWith("img.")) return null;
+  return `${prefix}${file}`;
+}
 
 interface LocalRunsResponse {
   runs?: RunRecord[];
@@ -365,7 +389,8 @@ export function useStaticGallery(): GalleryDataInput {
   // dev-only) runs are not published, so they have no snapshot media.
   const validationMediaUrl = useCallback(
     (runId: string, file: string): string | null =>
-      publishedValidationMediaUrls[runId]?.[file] ?? null,
+      publishedValidationMediaUrls[runId]?.[file] ??
+      storeUrl(publishedValidationStorePrefixes[runId], file),
     [],
   );
 
@@ -409,7 +434,10 @@ export function useStaticGallery(): GalleryDataInput {
   const validationBaselineUrl = useCallback(
     (subject: RunSubject, file: string): string | null => {
       const subjectKey = `${subject.testCaseSlug}/${subject.testCaseVersion}/${subject.engineSlug}/${subject.variant}`;
-      return publishedValidationBaselineUrls[subjectKey]?.[file] ?? null;
+      return (
+        publishedValidationBaselineUrls[subjectKey]?.[file] ??
+        storeUrl(publishedBaselineStorePrefixes[subjectKey], file)
+      );
     },
     [],
   );

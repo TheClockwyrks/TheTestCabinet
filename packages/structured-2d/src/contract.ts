@@ -1412,10 +1412,24 @@ export type DrawValue =
  * draws (`src` is a `data:image/png;base64,…` URL), and a `pixels` entry
  * rebuilds byte-for-byte as the `ImageData` a `putImageData` writes (`data` is
  * base64 RGBA, four bytes per pixel in row order).
+ *
+ * Either kind may name its pixels instead of holding them: `store` is the flat
+ * file name of the bytes sitting beside the recording, written once per run
+ * under a name derived from the bytes themselves, so a sprite drawn in forty
+ * recordings is one file and opening one replay costs the images that replay
+ * draws rather than the run's.
+ *
+ * This engine's recorder writes inline entries, since a recording it hands back
+ * is assembled in memory and has no directory to write beside. The stored forms
+ * are named here because there is one captured-image type and one player that
+ * reads it, and a player that cannot resolve a stored entry reports it and
+ * skips the operations that name it, exactly as it does an `$opaque` value.
  */
 export type CapturedImage =
   | { kind: "bitmap"; width: number; height: number; src: string }
-  | { kind: "pixels"; width: number; height: number; data: string };
+  | { kind: "bitmap"; width: number; height: number; store: string }
+  | { kind: "pixels"; width: number; height: number; data: string }
+  | { kind: "pixels"; width: number; height: number; store: string };
 
 /**
  * The recipe for a value the context produced — a gradient or a pattern: the

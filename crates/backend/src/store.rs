@@ -1667,7 +1667,9 @@ impl DefinitionStore {
     }
 
     /// Persist one synthesized validation media file for a run under
-    /// `runs/<run_id>/validation/<file>` (`file` is the flat `<item>__<output>.<ext>`).
+    /// `runs/<run_id>/validation/<file>` (`file` is the flat `<item>__<output>.<ext>`,
+    /// or an `img.<id>.<ext>` file of the recordings' shared image store, which shares
+    /// this flat namespace and cannot collide with a declared output's name).
     /// Keyed by the run id a publish carries, so a re-publish overwrites identical bytes.
     pub fn write_run_validation(&self, run_id: &str, file: &str, bytes: &[u8]) -> Result<()> {
         if !is_safe_segment(run_id) || !is_safe_segment(file) {
@@ -1681,8 +1683,39 @@ impl DefinitionStore {
         Ok(())
     }
 
+    /// List a run's stored synthesized validation media file names, sorted. A run
+    /// with none stored yields an empty list.
+    ///
+    /// The declared outputs are on the run record, so the snapshot builder does not
+    /// need this to find them. What it needs it for is the recordings' **shared
+    /// image store** (`img.<id>.png` / `img.<id>.bin` — see
+    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)),
+    /// whose files back no verdict and are named by their own bytes, so they appear
+    /// on no declaration and can only be found by asking the directory. Sorted, so
+    /// the set a refresh publishes is stable.
+    pub fn list_run_validation(&self, run_id: &str) -> Result<Vec<String>> {
+        let dir = self.run_validation_dir(run_id);
+        let read = match std::fs::read_dir(&dir) {
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        let mut names = Vec::new();
+        for entry in read {
+            let entry = entry?;
+            if entry.file_type()?.is_file()
+                && let Some(name) = entry.file_name().to_str()
+            {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
     /// Read one synthesized validation media file for a run
-    /// (`<item>__<output>.<ext>`).
+    /// (`<item>__<output>.<ext>`, or an `img.<id>.<ext>` file of its shared image
+    /// store).
     pub fn read_run_validation(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
         if !is_safe_segment(run_id) || !is_safe_segment(file) {
             return Err(BackendError::BadRequest(

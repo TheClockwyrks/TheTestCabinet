@@ -3,8 +3,8 @@
 use std::io::BufWriter;
 
 use super::{
-    Image, ScriptedValidation, decode_png, image_similarity, score, script_verdicts,
-    scripted_validation, validation_media_name,
+    Image, ScriptedValidation, decode_png, image_similarity, is_validation_image_name, score,
+    script_verdicts, scripted_validation, validation_media_name,
 };
 use crate::browser::ScriptVerdict;
 use crate::engine::{EngineCatalog, EngineSelection};
@@ -227,6 +227,32 @@ fn validation_media_name_is_flat() {
         MediaKind::from_path(std::path::Path::new("ball-spin.no-tunnel__serve.json.gz")),
         Some(MediaKind::Replay),
     );
+}
+
+#[test]
+fn a_shared_image_store_file_is_told_apart_from_a_declared_output() {
+    // The store shares the declared outputs' flat namespace on purpose — one
+    // directory, one route, one resolver — so the *only* thing that separates them is
+    // this predicate, and both publish paths lean their whole enumeration on it.
+    assert!(is_validation_image_name("img.9f2c1ab4.png"));
+    assert!(is_validation_image_name("img.9f2c1ab4.bin"));
+
+    // A declared output is never mistaken for a store file, in either direction. The
+    // separation is structural rather than lucky: a declared name always carries the
+    // `__` that joins its verdict to its output, and a store name — derived from
+    // nothing but the bytes' digest — never can.
+    assert!(!is_validation_image_name("ball-spin__still.png"));
+    assert!(!is_validation_image_name(
+        "ball-spin.no-tunnel__serve.json.gz"
+    ));
+    assert!(!validation_media_name("img", "still", MediaKind::Image).starts_with("img."));
+
+    // The store holds two shapes of bytes and no others, so a name carrying the
+    // prefix but an extension this side cannot label a content type for is left
+    // where it is rather than published as an unlabelled blob.
+    assert!(!is_validation_image_name("img.9f2c1ab4.json.gz"));
+    assert!(!is_validation_image_name("img.9f2c1ab4"));
+    assert!(!is_validation_image_name("images.9f2c1ab4.png"));
 }
 
 #[test]

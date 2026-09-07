@@ -67,6 +67,16 @@
  * afterwards. A reset that lands inside a frame also invalidates the operations
  * that frame has already recorded, because the wipe erased the pixels they drew.
  *
+ * WHICH SURFACE A RECORDING IS ABOUT. The largest canvas attached to the
+ * document — unless that canvas is doing nothing but copying another surface the
+ * recorder also tracks over the whole of itself. That is the ordinary letterboxed
+ * pattern: a build renders the game into a design-sized canvas it never attaches
+ * and blits it onto the visible one, so the visible one's whole frame is a fill
+ * and a `drawImage` and the game's own drawing is nowhere in it. The recording
+ * then follows that blit, ONE HOP, to the surface the game is actually drawn on.
+ * `choose()` in the installation block carries the reasoning and the cases the
+ * rule must not move.
+ *
  * WHAT `frameCalls` READS IS NOT WHAT THE RECORDING HOLDS. A check asking which
  * calls one frame made must get the same answer whether or not a capture happens
  * to be running around it, and it cannot resolve an index into pools it never
@@ -143,6 +153,27 @@
    * constant states.
    */
   const CAPTURE_BUDGET = 16 * 1024 * 1024;
+
+  /**
+   * The image bytes ONE PAGE captures across every recording it drives.
+   *
+   * {@link CAPTURE_BUDGET} is emptied at each arm, so it bounds one section and
+   * says nothing at all about a suite file that drives forty of them. That gap is
+   * what let one measured run of 166 individually-bounded recordings come to
+   * 1.75 GB between them, every one of them inside its own ceiling.
+   *
+   * Four full sections is already far past anything a real build produces: the
+   * whole of a reference's 170 recordings carry twenty-odd megabytes of image
+   * payload BETWEEN them. It is a judgement rather than a reading, though, and it
+   * should be revisited against a regenerated corpus rather than defended as a
+   * measurement.
+   *
+   * Counted FORWARD ONLY, and never given back. What this bounds is the work a
+   * page does turning surfaces into PNGs — the most expensive thing the recorder
+   * does — rather than the bytes any one document ends up holding, and a frame
+   * dropped by decimation does not un-do the encode that produced it.
+   */
+  const SESSION_BUDGET = 64 * 1024 * 1024;
 
   /**
    * The mutation steps one produced value's recipe keeps.
@@ -335,6 +366,26 @@
     "strokeRect",
     "fillText",
     "strokeText",
+  ]);
+
+  /**
+   * Every 2D call that puts pixels on the surface.
+   *
+   * A SUPERSET of {@link PAINTERS} rather than a widening of it. That set answers
+   * a different question — which calls need a style property resolved as of the
+   * paint — and a `drawImage` or a `clearRect` needs no such resolution, so
+   * growing it to answer this one would make every blit correct a style it does
+   * not read.
+   *
+   * What this set is for is the frame's LAST paint: see
+   * {@link ContextRecorder.observePaint}, and `choose()` in the installation
+   * block below, which is what reads the answer.
+   */
+  const PAINTING = new Set([
+    ...PAINTERS,
+    "drawImage",
+    "putImageData",
+    "clearRect",
   ]);
 
   /**
@@ -913,6 +964,79 @@
        */
       this.inherited = null;
       this.lastInherited = null;
+
+      /**
+       * How many painting calls this context has ever taken.
+       *
+       * A fact about the CONTEXT, counted whether or not a frame is open and never
+       * reset — which is the whole of why it is useful. A surface the recorder is
+       * not bound to receives no frames at all (only the surfaces `driven()` names
+       * do), so a build's offscreen stage draws its entire game outside any frame
+       * and nothing frame-shaped can say whether it is drawing. Read against
+       * {@link paintedAtFrame} rather than against zero: the question the
+       * selection rule needs answered is whether a surface is painting NOW, and a
+       * lifetime tally alone would answer it "yes" forever for a layer drawn once
+       * at load.
+       */
+      this.painted = 0;
+
+      /**
+       * What {@link painted} stood at when the driven frame now open was opened.
+       *
+       * The difference between the two is "has this surface painted during THIS
+       * frame", which is the question the selection rule actually has to ask — a
+       * lifetime tally cannot tell a stage that is repainted every frame from an
+       * atlas that was painted once at load and has been static ever since, and
+       * following a blit to the second records a game as nothing at all.
+       *
+       * Taken across EVERY tracked surface at each frame boundary rather than in
+       * {@link beginFrame}, because the surface being asked about is by
+       * construction not one a frame is driven on: see `openObservation()` in the
+       * installation block.
+       */
+      this.paintedAtFrame = 0;
+
+      /**
+       * What the open frame, and the last frame closed, were left BLITTING.
+       *
+       * The entry of another tracked surface that the frame's last painting call
+       * copied over the whole of this one, or null where the frame painted
+       * something of its own last. `blit` is the running observation of the open
+       * frame and `lastBlit` the settled answer of the last closed one; both are
+       * facts about the context rather than about a recording, so neither is reset
+       * by {@link resetPools}.
+       *
+       * Written by {@link observePaint}, read by `choose()` in the installation
+       * block, which is where the reasoning for the rule lives.
+       */
+      this.blit = null;
+      this.lastBlit = null;
+
+      /**
+       * Whether a frame has ever CLOSED on this recorder.
+       *
+       * The difference between "this surface blitted nothing last frame" and
+       * "nothing is known about this surface yet" — which `lastBlit` alone cannot
+       * state, being null for both, and which the selection rule has to keep
+       * apart. A candidate that closed a frame and was left blitting nothing is a
+       * build drawing straight onto its canvas: a settled answer, and a recording
+       * binds there. A candidate no frame has ever closed on is not an answer at
+       * all, and treating it as one is the defect `arm()` in the installation
+       * block defers around.
+       */
+      this.settled = false;
+
+      /**
+       * The image bytes this recorder has captured across every recording it has
+       * driven, against {@link SESSION_BUDGET}.
+       *
+       * Never reset and never given back. {@link resetPools} empties `captured` at
+       * each arm, which is what makes {@link CAPTURE_BUDGET} a bound on ONE
+       * recording and nothing on the page that drives forty; this is the other
+       * half.
+       */
+      this.sessionCaptured = 0;
+
       this.resetPools();
       this.watch();
       this.context = this.wrap(target, false);
@@ -985,10 +1109,14 @@
      * the section held.
      *
      * What does NOT reset: the recipes, the clip, the current path, the save
-     * stack, what each style property was last stated to hold, and the operations
-     * of the last frame closed. Those are facts about the context rather than
-     * about a recording, and the next recording inherits them exactly as the next
-     * frame does.
+     * stack, what each style property was last stated to hold, the operations of
+     * the last frame closed, what that frame was left BLITTING, how many painting
+     * calls the context has ever taken, and the image bytes this page has captured
+     * across every recording. Those are facts about the context rather than about
+     * a recording, and the next recording inherits them exactly as the next frame
+     * does. The last two are also what the two page-lifetime rules are read from —
+     * which surface a recording binds to, and {@link SESSION_BUDGET} — and both
+     * would be defeated outright by being emptied at each arm.
      *
      * The last frame's operations belong in that list because `last()` answers
      * them "whether or not a capture was running": a check that drives its frame
@@ -1000,7 +1128,14 @@
       /** Every image captured while armed, and where each lives. */
       this.imagePool = [];
       this.imageAt = new Map();
-      /** Where each fixed source was captured to, and under what identity. */
+      /**
+       * Where each fixed source was captured to, and under what identity.
+       *
+       * A `null` index records a source a budget REFUSED under that identity, so
+       * it is not encoded again on every draw for the rest of the section. Without
+       * that a build past its ceiling paid a full PNG encode per blit per frame to
+       * be told the same no each time.
+       */
       this.fixedImages = new WeakMap();
       /** How many held frames name each pooled image. */
       this.imageRefs = new Map();
@@ -1060,6 +1195,33 @@
         states: tables.states,
         frames: tables.frames,
       };
+    }
+
+    /**
+     * Give up a recording without building it: a speculation that LOST.
+     *
+     * `arm()` may start a recording on more than one surface at once — see the
+     * deferred binding in the installation block — and exactly one of them is the
+     * recording. This is how the others go away. It is {@link stop} without the
+     * compaction: nothing reads the frames, so nothing pays to turn the pools into
+     * tables, and the megabytes of captured PNG they hold are dropped rather than
+     * copied into a document no one asked for.
+     *
+     * What it does NOT touch is what {@link resetPools} does not touch either —
+     * the operations of the last frame closed, what that frame was left blitting,
+     * whether a frame has ever closed here, and this page's captured total. Those
+     * are facts about the CONTEXT, and a speculation that lost still observed a
+     * real frame: the evidence it took is exactly what the decision to abandon it
+     * was made from.
+     */
+    abandon() {
+      this.frames = null;
+      this.calls = null;
+      this.pending = null;
+      this.pendingState = null;
+      this.pendingStack = null;
+      this.tail = null;
+      this.resetPools();
     }
 
     /**
@@ -1214,6 +1376,10 @@
       const carried = this.carried;
       this.carried = null;
       this.calls = [];
+      // The observation is the OPEN frame's, and is started empty at every frame
+      // whether or not this one is armed: what a frame was left blitting is only
+      // ever an answer about that frame.
+      this.blit = null;
       if (this.frames === null) {
         this.pending = null;
         this.pendingState = null;
@@ -1329,8 +1495,17 @@
       this.pendingStack = null;
       this.pendingTruncated = false;
       if (calls === null) return;
+      // Past the guard, so it states "a frame closed HERE" rather than "a frame
+      // ran somewhere". Everything settled below is an answer about this surface;
+      // this is the flag that says those answers exist to be read.
+      this.settled = true;
       this.lastOps = calls;
       this.lastInherited = this.inherited;
+      // Settled beside the operations, and AFTER the guard above, so a recorder
+      // that never had a frame opened on it never states an answer at all: a
+      // surface with no frames is not evidence about what it drew.
+      this.lastBlit = this.blit;
+      this.blit = null;
       if (this.frames === null || pooled === null) return;
 
       const index = this.seen;
@@ -1407,7 +1582,15 @@
     retain(at) {
       const count = (this.imageRefs.get(at) ?? 0) + 1;
       this.imageRefs.set(at, count);
-      if (count === 1) this.captured += payload(this.imagePool[at]).length;
+      if (count !== 1) return;
+      const bytes = payload(this.imagePool[at]).length;
+      this.captured += bytes;
+      // The page-lifetime total is charged here and NEVER given back, so an image
+      // whose last naming frame was decimated away and which a later frame names
+      // again is charged for twice. That is deliberate: this ceiling bounds the
+      // work the page did turning surfaces into bytes, and the page did that work
+      // both times.
+      this.sessionCaptured += bytes;
     }
 
     release(at) {
@@ -2109,10 +2292,26 @@
     }
 
     /**
+     * Whether a NEW capture is past one of the two ceilings.
+     *
+     * Two of them, because they bound two different things:
+     * {@link CAPTURE_BUDGET} the bytes ONE recording's document will hold, and
+     * {@link SESSION_BUDGET} the bytes this page has turned into PNGs across every
+     * recording it has driven. Either one reached refuses a new entry, and leaves
+     * everything already pooled resolving.
+     */
+    get overBudget() {
+      return (
+        this.captured >= CAPTURE_BUDGET ||
+        this.sessionCaptured >= SESSION_BUDGET
+      );
+    }
+
+    /**
      * Put one captured entry in the image pool, and answer where it lives.
      *
-     * The budget refuses a NEW entry rather than the capture, so a source whose
-     * bytes the recording already holds keeps resolving after the ceiling is
+     * A budget refuses a NEW entry rather than the capture, so a source whose
+     * bytes the recording already holds keeps resolving after a ceiling is
      * reached — which is what makes the degradation past it partial rather than
      * total.
      */
@@ -2120,7 +2319,7 @@
       const key = imageKey(entry);
       let at = this.imageAt.get(key);
       if (at === undefined) {
-        if (this.captured >= CAPTURE_BUDGET) return null;
+        if (this.overBudget) return null;
         at = this.imagePool.length;
         this.imagePool.push(entry);
         this.imageAt.set(key, at);
@@ -2146,10 +2345,23 @@
         kind === "pixels" ||
         MUTABLE_SOURCES.some((name) => isHostInstance(value, name));
 
+      // PAST A CEILING, A MUTABLE SOURCE IS REFUSED BEFORE IT IS ENCODED. It is
+      // the one kind of source least likely to be already pooled — it is
+      // re-captured at every use precisely because its content may have changed —
+      // so encoding it to find out is paying the most expensive operation the
+      // recorder has for an answer that is thrown away. Until this, a build past
+      // its budget paid a full-screen `drawImage` and `toDataURL` on every blit of
+      // every remaining frame of the section. The budget now bounds the WORK as
+      // well as the bytes, and what a refusal degrades to is the opaque marker the
+      // format already defines.
+      if (mutable && this.overBudget) return null;
+
       const named = mutable ? "" : identity(value, size);
       if (!mutable) {
         const seen = this.fixedImages.get(value);
         if (seen !== undefined && seen.key === named) {
+          // A refusal is remembered as well as a capture — see below.
+          if (seen.index === null) return null;
           this.use(seen.index);
           return seen.index;
         }
@@ -2158,7 +2370,17 @@
       const entry = this.bytesOf(value, kind, size);
       if (entry === null) return null;
       const at = this.poolImage(entry);
-      if (at === null) return null;
+      if (at === null) {
+        // A FIXED source the budget turned down is remembered as refused, under
+        // the identity it was refused for. A fixed source cannot be refused for
+        // having changed — its identity is what it was looked up by — so asking
+        // again on the next draw could only encode the same bytes to reach the
+        // same no, once per blit for the rest of the section. Re-pointing the
+        // source changes its identity and asks again, which is exactly the rule a
+        // capture is remembered under.
+        if (!mutable) this.fixedImages.set(value, { key: named, index: null });
+        return null;
+      }
       if (!mutable) this.fixedImages.set(value, { key: named, index: at });
       return at;
     }
@@ -2248,6 +2470,12 @@
      * build's call ran, by {@link resolveCall}.
      */
     recordCall(name, resolved) {
+      // Counted HERE rather than in {@link observePaint}, because this runs
+      // whether or not a frame is open and that is the whole point of it: a
+      // surface no frame is driven on still draws, and whether it has ever drawn
+      // anything is what decides whether the selection rule may follow a blit to
+      // it.
+      if (PAINTING.has(name)) this.painted += 1;
       if (resolved.described !== null && this.calls !== null) {
         this.calls.push(resolved.described);
       }
@@ -2388,6 +2616,188 @@
     }
 
     /**
+     * Keep track of whether this frame is a PASS-THROUGH of another surface.
+     *
+     * ONE SLOT, NOT A TALLY. Everything a frame paints before an OPAQUE blit that
+     * covers the whole backing store is overpainted by that blit, so the only
+     * question worth carrying is what the frame's LAST painting call was. A frame
+     * whose last paint is a full-surface `drawImage` from a canvas the recorder
+     * also tracks drew nothing of its own that survived, and the drawing a
+     * reviewer wants is on the other side of that blit — which is what `choose()`
+     * in the installation block follows. "Opaque" is doing real work in that
+     * sentence and {@link passThroughSource} is where it is established: a canvas
+     * source is RGBA, and a translucent or composited full-rect blit leaves every
+     * one of the frame's own paints showing.
+     *
+     * Every other painting call clears the slot. So a build that draws its game
+     * straight onto its canvas never states a pass-through however many sprites it
+     * blits along the way, and the surface such a build binds to is byte for byte
+     * the one it bound to before any of this existed.
+     */
+    observePaint(name, args) {
+      // Only a driven frame has an answer to give, and only the surfaces
+      // `driven()` names have a frame open at all.
+      if (!this.insideFrame) return;
+      // Sets, transforms and path operations put no pixels anywhere: a frame is
+      // still whatever it last PAINTED.
+      if (!PAINTING.has(name)) return;
+      this.blit = name === "drawImage" ? this.passThroughSource(args) : null;
+    }
+
+    /**
+     * The tracked entry this `drawImage` copies over the whole surface, or null.
+     *
+     * Five conditions, and the order they are tested in is deliberate: the cheap,
+     * refusing ones first, because {@link readTransform} allocates a `DOMMatrix`
+     * and this runs on every blit of every driven frame. A build with no
+     * tracked-canvas source among its sources never reads a transform here at all.
+     *
+     *   1. THE SOURCE IS ANOTHER TRACKED SURFACE. An `<img>`, a video, an
+     *      `ImageBitmap` and an `OffscreenCanvas` are none of them tracked, so an
+     *      ordinary sprite blit can never be mistaken for a pass-through; and a
+     *      surface blitting ITSELF — which is how a build draws trails — is not
+     *      another surface, so it is refused by the same line.
+     *   2. THE SOURCE IS DRAWING NOW. Not "has ever drawn": {@link painted} is a
+     *      page-lifetime tally, and a surface painted once at load — a sprite
+     *      atlas, a pre-rendered background layer, a static scanline overlay —
+     *      would satisfy that forever while having nothing whatever to record.
+     *      Binding to one answers `frameCalls()` with an empty list for a build
+     *      that is drawing correctly, which is the very failure this rule exists to
+     *      remove, so the question asked is whether the source has painted since
+     *      THIS driven frame opened ({@link paintedAtFrame}, taken across every
+     *      tracked surface at each frame boundary). A build's real offscreen stage
+     *      is repainted every frame by construction; a layer that has gone static
+     *      is not followed, and the recording stays on the surface the player sees.
+     *   3. THE BLIT REPLACES RATHER THAN COMPOSITES. A canvas is RGBA, so a
+     *      full-surface `drawImage` from one does NOT necessarily overpaint what
+     *      the frame drew before it — and the whole correctness argument for this
+     *      rule is that it does. A translucent lighting pass, a rain or CRT
+     *      overlay, a damage tint, a `"lighter"` bloom: each is a full-rect blit of
+     *      a tracked canvas under which the game's own text and sprites remain
+     *      perfectly visible. Only `source-over` at full alpha (or `copy`, which
+     *      replaces the destination outright) may be followed; anything else is a
+     *      composite and the frame's earlier paints demonstrably survive it.
+     *   4. NO CLIP IS IN FORCE. The coverage test below compares the destination
+     *      rectangle against the backing store, and a clip region is invisible to
+     *      it: a whole-surface rectangle drawn inside a 40x30 minimap box reads as
+     *      covering the surface while touching one part in seventy of it. The
+     *      recorder already shadows the clip, so a clipped blit is refused rather
+     *      than measured — the same failure direction as conjunct 6.
+     *   5. THE DESTINATION RECTANGLE IS READABLE. `drawImage` takes three, five or
+     *      nine arguments and nothing else, and every number of the rectangle has
+     *      to be finite for the comparison below to mean anything.
+     *   6. THE TRANSFORM IS AXIS-ALIGNED. A rotated or skewed blit is not a
+     *      letterbox pass-through, and refusing it keeps the coverage test EXACT
+     *      rather than approximate. A context with no `getTransform` refuses for
+     *      the same reason: without it there is nothing to place the rectangle
+     *      with, and a guess would be a surface bound on no evidence.
+     *   7. THE RECTANGLE COVERS THE BACKING STORE. No epsilon and no slack. A blit
+     *      that leaves so much as a bar of this surface showing left something of
+     *      this surface's own on the screen, and the rule then declines rather than
+     *      binding to a surface that is only most of the picture. That is the
+     *      deliberate failure direction, and it has a cost worth naming: a build
+     *      that genuinely letterboxes — real bars, a non-zero offset — is recorded
+     *      exactly as badly as it is today. It is refused rather than followed
+     *      because every relaxation that admits it also admits a build that renders
+     *      a static background layer offscreen, blits it, and draws its whole game
+     *      in `fillRect`s on top — and that build would be bound to its background.
+     *
+     * Nothing here may throw. It runs inside the recorder's own guard, but a throw
+     * there costs the operation its entire description, and reading a build's
+     * exotic argument is not worth a missing operation.
+     */
+    passThroughSource(args) {
+      try {
+        const length = args.length;
+        if (length !== 3 && length !== 5 && length !== 9) return null;
+        const entry = byCanvas.get(args[0]);
+        if (entry === undefined || entry.recorder === this) return null;
+        // Painted DURING this frame, not ever — see conjunct 2. `paintedAtFrame`
+        // is the source's tally as this driven frame opened.
+        if (entry.recorder.painted <= entry.recorder.paintedAtFrame)
+          return null;
+
+        // Both are tracked state properties and both are direct reads off the
+        // context, so this stays on the cheap side of the `DOMMatrix` the
+        // transform read below allocates.
+        const composite = this.target.globalCompositeOperation;
+        if (composite !== "source-over" && composite !== "copy") return null;
+        if (this.target.globalAlpha !== 1) return null;
+
+        // The shadow the recorder already keeps, rather than a question put to the
+        // context — a clip region cannot be read back out of a 2D context at all.
+        // `truncated` is a clip the shadow gave up describing, which is exactly a
+        // clip whose extent is unknown.
+        if (this.clip.ops > 0 || this.clip.truncated) return null;
+
+        let dx = args[1];
+        let dy = args[2];
+        let dw;
+        let dh;
+        if (length === 3) {
+          // The three-argument form draws the source at its natural size, which is
+          // the only place the destination extent is not written down.
+          const size = sourceSize(args[0]);
+          if (size === null) return null;
+          dw = size.width;
+          dh = size.height;
+        } else if (length === 5) {
+          dw = args[3];
+          dh = args[4];
+        } else {
+          dx = args[5];
+          dy = args[6];
+          dw = args[7];
+          dh = args[8];
+        }
+        if (
+          !Number.isFinite(dx) ||
+          !Number.isFinite(dy) ||
+          !Number.isFinite(dw) ||
+          !Number.isFinite(dh)
+        ) {
+          return null;
+        }
+
+        const transform = this.readTransform();
+        if (transform === null) return null;
+        const [a, b, c, d, e, f] = transform;
+        if (b !== 0 || c !== 0) return null;
+        // A read-back transform carries a non-finite term through unchanged —
+        // rounding refuses those rather than inventing a number — and every term
+        // here is arithmetic the comparison below depends on.
+        if (!Number.isFinite(a) || !Number.isFinite(d)) return null;
+        if (!Number.isFinite(e) || !Number.isFinite(f)) return null;
+
+        // Read off the ELEMENT rather than from `this.surface`, which is a
+        // fallback for canvases the accessors could not be installed on, is null
+        // until something has been shadowed, and which {@link resolveCall} runs one
+        // operation ahead of.
+        const canvas = this.target.canvas;
+        const width = canvas === null ? undefined : canvas.width;
+        const height = canvas === null ? undefined : canvas.height;
+        if (typeof width !== "number" || typeof height !== "number")
+          return null;
+        if (width < 1 || height < 1) return null;
+
+        // The destination rectangle in device space. A negative scale flips it, so
+        // the edges are ordered before they are compared.
+        const left = a * dx + e;
+        const top = d * dy + f;
+        const right = left + a * dw;
+        const bottom = top + d * dh;
+        if (Math.min(left, right) > 0 || Math.min(top, bottom) > 0) return null;
+        if (Math.max(left, right) < width) return null;
+        if (Math.max(top, bottom) < height) return null;
+        return entry;
+      } catch {
+        // A source that refuses to be looked at is a source nothing can be
+        // followed through.
+        return null;
+      }
+    }
+
+    /**
      * Every form of one call's arguments the recorder needs, taken BEFORE the
      * build's call runs.
      *
@@ -2408,6 +2818,13 @@
       // Taken before the call, which is what makes the state put aside the one the
       // last driven frame left rather than the one this call is about to leave.
       this.carry();
+      // Here rather than in {@link observe}, because this is the one place the RAW
+      // arguments are — in issue order, exactly once per call, before the context
+      // has had a chance to change what any of them holds. The described form is
+      // no use for it: a canvas source describes as `{ $opaque: ... }`, which says
+      // that a picture was blitted and nothing whatever about which surface it came
+      // from.
+      this.observePaint(name, args);
       return {
         described: this.describeCall(name, args),
         // Nothing is pooled with no recording running: interning is the expensive
@@ -2579,27 +2996,45 @@
 
   const entries = []; // { canvas, raw, recorder }
 
+  /**
+   * The entry each tracked canvas belongs to.
+   *
+   * The same set `entries` holds, keyed for lookup. The selection rule below asks
+   * "is the source of this `drawImage` a surface I am also recording?" once per
+   * blit of every driven frame, and answering that by scanning `entries` would
+   * make the question cost the number of canvases the page has ever made — which
+   * on a build that keeps dozens of small effect surfaces is the wrong shape
+   * entirely.
+   *
+   * ONLY `HTMLCanvasElement` IS IN IT. `OffscreenCanvas.prototype.getContext` is
+   * not patched, so an offscreen surface is not tracked, cannot be followed, and a
+   * build that renders into one and blits it is recorded as the blit — the same
+   * answer it got before any of this. Patching it too is coherent and is
+   * deliberately not done here: `isConnected` and "the largest attached canvas"
+   * have no meaning for a surface that is in no document, so it needs a selection
+   * rule of its own rather than a wider `entries`.
+   */
+  const byCanvas = new Map();
+
   HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
     const ctx = nativeGetContext.call(this, type, ...rest);
     if (type !== "2d" || ctx === null) return ctx;
     const existing = entries.find((e) => e.raw === ctx);
     if (existing) return existing.recorder.context;
     const recorder = new ContextRecorder(ctx);
-    entries.push({ canvas: this, raw: ctx, recorder });
+    const entry = { canvas: this, raw: ctx, recorder };
+    entries.push(entry);
+    byCanvas.set(this, entry);
     return recorder.context;
   };
 
   /**
-   * The one surface a recording is about: the largest canvas attached to the
-   * document.
+   * The largest canvas ATTACHED to the document.
    *
-   * The engine records the context it handed the game and nothing a game drew to
-   * a scratch surface of its own, so this makes the same cut rather than
-   * interleaving two surfaces into one operation list. An engineless build draws
-   * the game into the page's `<canvas>`, and anything else it creates — an
-   * offscreen buffer for a glow, say — is smaller and unattached.
+   * The surface a build shows the player. It is where the search starts and, for
+   * every build that draws its game straight onto its canvas, where it ends.
    */
-  function choose() {
+  function largestAttached() {
     let best = null;
     let bestArea = -1;
     for (const entry of entries) {
@@ -2614,6 +3049,97 @@
   }
 
   /**
+   * The one surface a recording is about: the surface the game is DRAWN on.
+   *
+   * The engine records the context it handed the game and nothing a game drew to
+   * a scratch surface of its own, so this makes the same cut rather than
+   * interleaving two surfaces into one operation list.
+   *
+   * WHY THIS IS NOT SIMPLY THE LARGEST ATTACHED CANVAS, WHICH IS WHAT IT WAS. That
+   * rule rested on the assumption that a build's own surfaces are "smaller and
+   * unattached". The ordinary letterboxed pattern breaks it outright: a build
+   * renders the whole game into a design-sized canvas it NEVER attaches, and blits
+   * that one canvas onto the visible one each frame. Every frame the recorder then
+   * held was a transform, a background fill and one `drawImage` — so `frameCalls()`
+   * reported no text, no sprites and no shapes however correct the game was, and
+   * every check reading the operation list failed while the pixel checks in the
+   * same suite passed. That split is the signature. It cost one measured run some
+   * thirty false failures, and — because a canvas source is re-rasterized to a PNG
+   * at every use — 1.75 GB of recordings where a build drawing straight onto its
+   * canvas produced 56 MB.
+   *
+   * SO THE RULE FOLLOWS THE PASS-THROUGH BLIT, ONE HOP. If the last painting call
+   * of the candidate's last CLOSED frame was a `drawImage` that copied another
+   * tracked, actively drawing surface OPAQUELY and UNCLIPPED over the whole of the
+   * candidate's backing store, then that frame drew nothing of its own that
+   * survived — everything painted before such a blit is overpainted by it — and the
+   * drawing a reviewer wants is on the other side of it.
+   * {@link ContextRecorder.observePaint} and
+   * {@link ContextRecorder.passThroughSource} are where the observation is taken
+   * and what all seven of its conditions are for; each of the three qualifiers in
+   * that sentence is one of them, and each is load-bearing rather than defensive.
+   * A composited overlay, a clipped minimap and a static pre-rendered layer are
+   * all full-rect blits of a tracked canvas, and following any of them would
+   * answer `frameCalls()` with the wrong surface — the same failure, in a
+   * different shape, as the one this rule removes.
+   *
+   * WHY THAT CONDITION AND NOT A SCORE OVER WHAT EACH SURFACE DREW. Op counts
+   * cannot separate a 1280x720 stage that issued four hundred operations from a
+   * 128x128 particle field that issued four hundred, and a real build keeps dozens
+   * of the latter — one reference in this repository keeps up to forty-eight, each
+   * a tracked 2D context, each composited onto the visible canvas every frame. Any
+   * tie-break on area or attachment there is a tuned constant, and a tuned constant
+   * is a build losing points for being busy. "Covered the whole surface, last"
+   * needs no threshold, is answered from the raw arguments in constant time, and is
+   * CORRECT rather than merely discriminating: a frame that satisfies it provably
+   * drew nothing a reviewer could have seen.
+   *
+   * WHY ONE HOP AND NEVER A CHAIN. The pattern this answers is a single
+   * compositing indirection. Each further hop is a guess the evidence does not
+   * support, and the one line that stops a chain is the same one that stops a
+   * surface which somehow named itself.
+   *
+   * THE ANSWER IS ONE FRAME OLD, AND UNTIL THE FIRST FRAME CLOSES THERE IS NO
+   * ANSWER AT ALL. This used to say that frames run between the arming gesture and
+   * the opening reset, so a check always reaches a capture with the evidence
+   * already taken. THAT WAS FALSE, and it cost about half of one measured run's
+   * recordings. Nothing on the path from page load to a check's first capture
+   * brackets a recorder frame: the recorder is in "manual" mode from installation
+   * so the build's own animation frames close nothing, the surface probe, the
+   * `setAutoStep`, the arming gesture's settle step and the opening `reset` all go
+   * through the debug surface rather than through `begin`/`end`, and a check that
+   * poses its scene with debug calls alone — `openScene`, `layFloor`, `standOn` —
+   * drives no frame either. Such a check armed its capture with `lastBlit` null,
+   * bound to the visible canvas, and recorded its whole section as the
+   * pass-through. Which checks hopped and which did not came down to whether the
+   * check happened to drive a frame before it armed.
+   *
+   * So this answers honestly — no evidence, no hop — and the two callers that
+   * cannot live with "no answer yet" deal with it themselves: `driven()` opens the
+   * blind frame on every tracked surface so that whichever one the evidence then
+   * names has an operation list to answer with, and `arm()` DEFERS the binding to
+   * the close of that frame. {@link ContextRecorder.settled} is what separates "no
+   * evidence" from "the evidence says do not hop".
+   */
+  function choose() {
+    const candidate = largestAttached();
+    if (candidate === null) return null;
+    const followed = candidate.recorder.lastBlit;
+    return followed === null || followed === candidate ? candidate : followed;
+  }
+
+  /**
+   * Whether the page has produced the evidence the selection rule reads.
+   *
+   * One closed frame on the surface the search starts from. Before that, `choose`
+   * has nothing and everything below is in the blind window.
+   */
+  function evidenced() {
+    const candidate = largestAttached();
+    return candidate !== null && candidate.recorder.settled;
+  }
+
+  /**
    * The surface a running recording is about, held from `arm` to `disarm`.
    *
    * A recording belongs to ONE surface for its whole length. Re-deciding which
@@ -2622,6 +3148,10 @@
    * one recorder, `disarm()` would ask an idle one and answer `null`, and the
    * declared replay output would simply never turn up — a review point handed to a
    * reviewer with no evidence under it, and nothing said about why.
+   *
+   * The hop {@link choose} may take is decided at `arm` like everything else about
+   * a recording: the question is asked once, and the surface it answers is the
+   * surface the whole recording is about.
    */
   let bound = null;
 
@@ -2630,10 +3160,161 @@
     return bound !== null ? bound : choose();
   }
 
+  /**
+   * A recording started before the evidence existed, and every surface it might
+   * still turn out to be. Null whenever the binding is settled.
+   *
+   * THE BLIND WINDOW. A capture can be armed before ANY frame has closed on the
+   * page — which is not the corner case the old rule took it for but the ordinary
+   * one, since a check that poses its scene through the debug surface drives no
+   * frame at all before it arms. `choose()` has nothing to answer with there, and
+   * pinning the visible canvas on the strength of it recorded a letterboxed build
+   * as its own pass-through blit: five operations a frame, and a full-viewport PNG
+   * of every one.
+   *
+   * So the question is asked one frame later instead, at the close of the first
+   * frame the recording drives — the earliest instant an answer exists. THE
+   * RECORDING STILL BELONGS TO ONE SURFACE, which is the invariant `bound` is for.
+   * It is kept by starting the recording on every surface the answer could name
+   * and keeping the one it does: each of them records the SAME first frame from
+   * its own side, one is chosen before a second frame is ever driven, and the
+   * losers are {@link ContextRecorder.abandon}ed without being built. No recording
+   * ever changes surface mid-flight, `disarm()` hands back the surface its frames
+   * were recorded on, and the frame that decided the binding is IN the recording
+   * rather than spent on deciding it — which is what a capture that drives exactly
+   * one frame needs, and what dropping the blind frame instead would have cost it.
+   *
+   * WHAT IT COSTS is one frame, once, per page: from the close of that frame the
+   * candidate is {@link ContextRecorder.settled} and every later arm takes the
+   * answer straight from `choose()`. That is the whole reason this is affordable
+   * where recording every surface EVERY frame is not.
+   */
+  let awaiting = null;
+
   /** The recorder for the primary surface, or null before one exists. */
   function recorderOf() {
     const entry = primary();
     return entry === null ? null : entry.recorder;
+  }
+
+  /**
+   * The recorders a driven frame is opened and closed on.
+   *
+   * The surface being recorded, and — when that surface was reached by FOLLOWING a
+   * blit — the attached surface the blit was seen on.
+   *
+   * The second one is what keeps the decision honest. Frames are opened and closed
+   * on the primary alone, and the observation {@link choose} reads is taken inside
+   * a frame; so a candidate the rule has just hopped away from would stop closing
+   * frames, stop observing, and latch its last answer for the rest of the page. Go
+   * on driving it and it goes on observing, so a build that stops compositing
+   * through an offscreen stage is answered by the attached surface again on the
+   * very next frame — and a build that starts is followed on the next one.
+   *
+   * It costs one short operation list per frame, which is exactly what a
+   * pass-through frame IS. Opening a frame on every tracked recorder instead would
+   * build tens of thousands of described operations per frame, on a build with
+   * dozens of effect surfaces, for evidence nobody reads — which is why the ONE
+   * frame below that does exactly that is bounded to the blind window and to
+   * nothing else. Every frame after it is this pair.
+   *
+   * A frame on the candidate CHARGES NOTHING and grows no recording: it is not the
+   * armed recorder, so its `endFrame` returns at the guard before a frame is
+   * counted, kept, or charged against the capture budget.
+   */
+  function driven() {
+    const chosen = primary();
+    if (chosen === null) return [];
+    // THE BLIND FRAME, and the one place every tracked surface is worth what it
+    // costs. Until a frame has closed on the attached candidate there is no
+    // evidence and `choose()` can only answer with the candidate itself — so a
+    // frame opened on its answer alone leaves whichever surface the evidence names
+    // one line later with no operation list at all. That is not a hypothetical:
+    // `frameCalls()` is one driven frame and then a read, and read as the first
+    // frame of a page it answered a perfectly correct build with nothing
+    // whatsoever, because the read hopped to a stage the frame was never opened
+    // on. Opening this ONE frame everywhere is what makes the answer readable the
+    // instant it exists, whichever surface it turns out to be.
+    //
+    // It happens once per page — the close of this very frame settles the
+    // candidate — which is why the cost argument against doing it every frame does
+    // not reach it.
+    if (!evidenced()) return entries.slice();
+    const candidate = largestAttached();
+    return candidate === null || candidate === chosen
+      ? [chosen]
+      : [candidate, chosen];
+  }
+
+  /**
+   * Start the deferred recording on every surface the answer could name.
+   *
+   * Called with the recorders the blind frame is about to be opened on, which is
+   * every tracked surface — so the set the binding is chosen from is exactly the
+   * set the frame is recorded on, and the winner has a real frame of its own
+   * however the decision goes.
+   *
+   * The recording `arm()` already started on the candidate is among them and is
+   * not restarted: restarting it would empty pools it is about to fill.
+   */
+  function speculate(pair) {
+    if (awaiting === null) return;
+    for (const entry of pair) {
+      if (awaiting.started.includes(entry)) continue;
+      awaiting.started.push(entry);
+      entry.recorder.start(awaiting.design);
+    }
+  }
+
+  /**
+   * Decide, at the close of the blind frame, which surface the recording is on.
+   *
+   * The evidence now exists — the frame that just closed on the candidate settled
+   * it — so `choose()` answers for real. The surface it names keeps its frames and
+   * becomes `bound` for the rest of the recording; every other speculation is
+   * abandoned unbuilt.
+   *
+   * A surface `choose()` names that was NOT among them is a context the build
+   * created and painted inside the blind frame itself. It has no frame of its own
+   * to keep, so its recording starts here and its first kept frame is the next one
+   * — the only shape in which this loses a frame, and one no build produces on
+   * purpose.
+   */
+  function settleBinding() {
+    if (awaiting === null) return;
+    const { design, started } = awaiting;
+    awaiting = null;
+    const winner = choose();
+    if (winner === null) {
+      for (const entry of started) entry.recorder.abandon();
+      return;
+    }
+    if (!started.includes(winner)) winner.recorder.start(design);
+    for (const entry of started) {
+      if (entry !== winner) entry.recorder.abandon();
+    }
+    bound = winner;
+  }
+
+  /**
+   * Mark where every tracked surface's painting stood as a driven frame opens.
+   *
+   * The selection rule may only follow a blit to a surface that is DRAWING, and
+   * the surface it would follow to is by construction one no frame is driven on —
+   * so it cannot take that mark in its own `beginFrame`, and this takes it for
+   * everything at once instead. A surface painted once at load and static ever
+   * since then has a zero difference across every later frame and is never
+   * followed, which is the whole point: binding to it would answer `frameCalls()`
+   * with nothing at all for a build that is drawing perfectly well.
+   *
+   * One field written per tracked canvas per frame. The busiest reference in this
+   * repository keeps some fifty of them, against the tens of thousands of
+   * described operations a frame of it already builds.
+   */
+  function openObservation() {
+    for (const entry of entries) {
+      entry.recorder.paintedAtFrame = entry.recorder.painted;
+    }
   }
 
   const state = {
@@ -2641,6 +3322,15 @@
     mode: "manual",
     /** Whether an animation frame currently has a frame open, in "raf" mode. */
     open: false,
+    /**
+     * The recorders the frame now open was opened on, or empty between frames.
+     *
+     * Held rather than asked for again at the close, because {@link driven} is
+     * answered from the page as it is NOW and a build is free to attach a canvas
+     * in the middle of a frame. A frame has to be closed on whatever it was opened
+     * on, or a recorder is left with an operation list nothing will ever settle.
+     */
+    openPair: [],
     lastTs: 0,
     count: 0,
     timeMs: 0,
@@ -2653,20 +3343,30 @@
   function tick(ts) {
     requestAnimationFrame(tick); // re-registered first, so this stays ahead of the page
     if (state.mode !== "raf") return;
-    const entry = primary();
-    if (entry === null) return;
     if (state.open) {
       const delta = ts - state.lastTs;
       state.count += 1;
       state.timeMs += delta;
-      entry.recorder.endFrame(
-        { count: state.count, timeMs: state.timeMs, deltaMs: delta },
-        surfaceOf(entry),
-      );
+      // ONE `info` for both: the pair is one driven frame observed on two
+      // surfaces, not two frames, and a recording's counts and clock must not
+      // depend on how many recorders happened to see it.
+      const info = { count: state.count, timeMs: state.timeMs, deltaMs: delta };
+      for (const entry of state.openPair) {
+        entry.recorder.endFrame(info, surfaceOf(entry));
+      }
+      // After every close, so the evidence the decision reads is settled.
+      settleBinding();
       state.open = false;
+      state.openPair = [];
     }
+    const pair = driven();
+    if (pair.length === 0) return;
     state.lastTs = ts;
-    entry.recorder.beginFrame();
+    openObservation();
+    // Before the frames open, so a speculation records this frame from its start.
+    speculate(pair);
+    for (const entry of pair) entry.recorder.beginFrame();
+    state.openPair = pair;
     state.open = true;
   }
   requestAnimationFrame(tick);
@@ -2677,26 +3377,42 @@
 
     /** Open a frame. Paired with {@link end}, around one driven frame. */
     begin() {
-      const recorder = recorderOf();
-      if (recorder !== null) recorder.beginFrame();
+      const pair = driven();
+      state.openPair = pair;
+      openObservation();
+      // Before the frames open, so a deferred recording holds this frame whichever
+      // surface the close of it turns out to name.
+      speculate(pair);
+      for (const entry of pair) entry.recorder.beginFrame();
     },
 
     /** Close the frame `begin` opened, `deltaMs` of game time after it. */
     end(deltaMs) {
-      const entry = primary();
-      if (entry === null) return;
+      // The pair the frame was OPENED on, so a canvas attached in the middle of a
+      // driven frame cannot leave a recorder holding an operation list nothing
+      // closes. An `end` with no `begin` before it falls back to the page as it is
+      // now, which is what it always did and which each recorder answers by
+      // returning at its own guard.
+      const open = state.openPair.length > 0 ? state.openPair : driven();
+      state.openPair = [];
+      if (open.length === 0) return;
       state.count += 1;
       state.timeMs += deltaMs;
-      entry.recorder.endFrame(
-        { count: state.count, timeMs: state.timeMs, deltaMs },
-        surfaceOf(entry),
-      );
+      // One `info` for both — see {@link tick}.
+      const info = { count: state.count, timeMs: state.timeMs, deltaMs };
+      for (const entry of open) {
+        entry.recorder.endFrame(info, surfaceOf(entry));
+      }
+      // The evidence is settled by the closes above and by nothing else, so this
+      // is the earliest instant a deferred binding can be decided.
+      settleBinding();
     },
 
     /** Hand the frame boundary to the animation frame, or take it back. */
     setMode(mode) {
       state.mode = mode === "raf" ? "raf" : "manual";
       state.open = false;
+      state.openPair = [];
     },
 
     /**
@@ -2719,18 +3435,62 @@
       return recorder === null ? null : recorder.lastInherited;
     },
 
-    /** Begin keeping frames. `design` is the logical field and its background. */
+    /**
+     * Begin keeping frames. `design` is the logical field and its background.
+     *
+     * The recording starts on `choose()`'s answer either way. What the evidence
+     * decides is whether that answer is BINDING: with a closed frame behind it the
+     * surface is settled here and now, and without one the recording is started on
+     * the candidate as a speculation and the binding is deferred to the close of
+     * the first frame it drives — see {@link awaiting}, which is where the whole
+     * of that reasoning lives.
+     */
     arm(design) {
       const entry = choose();
       if (entry === null) return false;
-      bound = entry;
+      // A deferred binding left over from an arm that was never disarmed belongs
+      // to no recording anyone will ask for. Its speculations go away here rather
+      // than staying armed for the rest of the page.
+      if (awaiting !== null) {
+        for (const held of awaiting.started) {
+          if (held !== entry) held.recorder.abandon();
+        }
+        awaiting = null;
+      }
       entry.recorder.start(design);
+      if (evidenced()) {
+        awaiting = null;
+        bound = entry;
+        return true;
+      }
+      bound = null;
+      awaiting = { design: { ...design }, started: [entry] };
       return true;
     },
 
-    /** Stop keeping frames and hand back the recording. */
+    /**
+     * Stop keeping frames and hand back the recording.
+     *
+     * A capture disarmed while the binding is still deferred drove no frame at
+     * all, so there is nothing to decide and nothing to decide it from: the
+     * candidate's speculation is the recording — an empty one, which is what a
+     * capture that drove no frames has always handed back — and the rest go away
+     * unbuilt.
+     */
     disarm() {
-      const recorder = recorderOf();
+      let recorder = recorderOf();
+      if (awaiting !== null) {
+        // The one `arm` itself started, rather than whatever `choose()` answers
+        // now: with no frame closed there is still no evidence, and a canvas the
+        // build attached in between would otherwise move the answer onto an idle
+        // recorder and lose the recording to `active`.
+        const kept = awaiting.started[0];
+        recorder = kept === undefined ? null : kept.recorder;
+        for (const entry of awaiting.started) {
+          if (entry.recorder !== recorder) entry.recorder.abandon();
+        }
+        awaiting = null;
+      }
       bound = null;
       if (recorder === null || !recorder.active) return null;
       return recorder.stop();

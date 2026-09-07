@@ -320,10 +320,18 @@ pub async fn upload_proofs_to_backend(
 /// video is the `.webm` Playwright records; the snapshot transcodes it to `.mp4` at
 /// publish (as it does a video proof), so what is mirrored here stays the raw webm.
 ///
-/// Best-effort and driven purely off the produced record: a no-op for a run that
-/// declares no debug scripts, and skips any output the build did not produce or whose
-/// file is unreadable. The backend upload route is ungated on the private network, so
-/// the client carries no token. A rejected upload is surfaced so the caller can log it.
+/// The recordings' **shared image store** (`img.<id>.png` / `img.<id>.bin` — see
+/// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)) is
+/// mirrored too, and is the one thing here that is *not* driven off the record: a
+/// store file backs no verdict and is named by its own bytes, so it appears on no
+/// output declaration and is enumerated off the directory instead. Without it the
+/// published replays resolve nothing and draw holes where their sprites were.
+///
+/// Best-effort and driven off the produced record (plus that one directory listing):
+/// a no-op for a run that declares no debug scripts, and skips any output the build
+/// did not produce or whose file is unreadable. The backend upload route is ungated
+/// on the private network, so the client carries no token. A rejected upload is
+/// surfaced so the caller can log it.
 pub async fn upload_validation_to_backend(
     backend_url: &str,
     record: &RunRecord,
@@ -354,6 +362,30 @@ pub async fn upload_validation_to_backend(
             };
             client
                 .publish_run_validation(&record.id, &file, bytes)
+                .await?;
+        }
+    }
+
+    // The recordings' shared image store travels with them, or the published replays
+    // draw holes where their sprites were. It cannot be driven off the record like
+    // everything above: a store file backs no verdict and is named by its own bytes,
+    // so it is on no output declaration and is enumerated off the directory instead
+    // (`is_validation_image_name` is the one place that judgement lives). Same
+    // best-effort stance as the declared outputs — an unreadable entry is skipped
+    // rather than failing the mirror.
+    if let Ok(read) = std::fs::read_dir(&validation_dir) {
+        for entry in read.flatten() {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            if !test_cabinet_core::is_validation_image_name(&name) {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(entry.path()) else {
+                continue;
+            };
+            client
+                .publish_run_validation(&record.id, &name, bytes)
                 .await?;
         }
     }

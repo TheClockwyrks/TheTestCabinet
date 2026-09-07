@@ -1547,6 +1547,113 @@ async fn per_run_file_exports_actual_validation_media_from_the_record() {
 }
 
 #[tokio::test]
+async fn per_run_file_exports_the_recordings_shared_image_store_the_record_cannot_name() {
+    // A recording's image entries name flat `img.<id>.<ext>` files beside it rather
+    // than carrying base64 of their pixels — the same file for a sprite every one of a
+    // run's recordings draws. Those files back no verdict and are named by their own
+    // bytes, so they are on no output declaration: the record-driven loop cannot see
+    // them, and the listing is what carries them. A published replay whose store did
+    // not travel resolves nothing and draws holes.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_validation("v1", "spin__still.png", b"png:spin-still")
+        .unwrap();
+    store
+        .write_run_validation("v1", "img.9f2c1ab4.png", b"png:sprite")
+        .unwrap();
+    store
+        .write_run_validation("v1", "img.7ee01d33.bin", b"rgba")
+        .unwrap();
+
+    let run = validation_run("v1", "spin", true, false);
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    // Published under the very name it is served under — no published-extension and
+    // no transcode branch, because that identity is what lets an entry inside a
+    // recording resolve through the resolver the recording itself came from.
+    let sprite = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/v1/validation/img.9f2c1ab4.png")
+        .expect("the stored bitmap exported");
+    assert_eq!(sprite.content_type, "image/png");
+    assert_eq!(sprite.bytes, b"png:sprite");
+
+    let pixels = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/v1/validation/img.7ee01d33.bin")
+        .expect("the stored pixel buffer exported");
+    assert_eq!(pixels.content_type, "application/octet-stream");
+    assert_eq!(pixels.bytes, b"rgba");
+
+    // The per-run document names the store beside the declared output, under the same
+    // flat file names, so every console's `(runId, file) => url` resolver reaches both
+    // with no new plumbing.
+    let parsed = run_document_json(&snapshot, "v1");
+    let mut files: Vec<&str> = parsed["validationMedia"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["file"].as_str().unwrap())
+        .collect();
+    files.sort_unstable();
+    assert_eq!(
+        files,
+        vec!["img.7ee01d33.bin", "img.9f2c1ab4.png", "spin__still.png"],
+    );
+    // A declared output is published once, by the record-driven loop, and is not
+    // published a second time by the listing that follows it.
+    assert_eq!(
+        parsed["validationMedia"].as_array().unwrap().len(),
+        3,
+        "the union is a union, not a concatenation",
+    );
+}
+
+#[tokio::test]
+async fn per_run_validation_ignores_a_stored_file_that_is_neither_declared_nor_a_store_file() {
+    // The listing exists for one thing: the shared image store, which no record can
+    // name. Everything else in the directory is either already on the record or is not
+    // media at all, so the filter is what keeps a stray file out of the published set
+    // — a scratch file publishing as an unlabelled blob is a leak, not a degradation.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_validation("v1", "spin__still.png", b"png:spin-still")
+        .unwrap();
+    store
+        .write_run_validation("v1", "notes.txt", b"scratch")
+        .unwrap();
+    // The prefix alone is not enough: the store holds a PNG bitmap and a headerless
+    // RGBA buffer and nothing else, so a name this side cannot label a content type
+    // for stays where it is.
+    store
+        .write_run_validation("v1", "img.9f2c1ab4.json.gz", b"\x1f\x8bgz")
+        .unwrap();
+
+    let run = validation_run("v1", "spin", true, false);
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let parsed = run_document_json(&snapshot, "v1");
+    let media = parsed["validationMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "spin__still.png");
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.contains("/validation/notes.txt")
+                || o.key.contains("/validation/img.9f2c1ab4.json.gz")),
+    );
+}
+
+#[tokio::test]
 async fn a_published_recording_carries_its_framing_onto_the_object() {
     // R2 hands back what the object records, so a recording published without its
     // framing declared would reach the gallery as an opaque gzip blob. The compound
@@ -1680,6 +1787,73 @@ async fn case_metadata_exports_validation_baselines_keyed_by_engine_variant_and_
     assert_eq!(baselines[0]["variant"], "base");
     assert_eq!(baselines[0]["file"], "spin__still.png");
     assert_eq!(baselines[0]["key"], key);
+}
+
+#[tokio::test]
+async fn case_metadata_exports_the_baselines_shared_image_store_too() {
+    // The baseline walk enumerates the whole committed directory rather than the
+    // outputs some record declares, and that is what carries a baseline recording's
+    // shared image store along with the recordings that name it. A store file takes
+    // the verbatim branch (it is not a `.webm`) and publishes under its requested
+    // name — but WITHOUT the content digest every other case-scoped media key
+    // carries. That name is a hash of its own bytes already, so a digest would add
+    // nothing a re-publish could change, and a key a consumer can compose is what
+    // lets the gallery carry one URL prefix per subject instead of an entry per
+    // image: a busy reference's store runs to a file per unique image its whole
+    // baseline corpus drew, and the static site inlines those tables into the chunk
+    // every visitor downloads.
+    let m = manifest();
+    let (_tmp, store) = empty_store();
+    let baseline_dir = store
+        .version_dir(&m.slug, &m.version)
+        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_core::engine::NONE_SLUG)
+        .join("base");
+    std::fs::create_dir_all(&baseline_dir).unwrap();
+    std::fs::write(baseline_dir.join("spin__serve.json.gz"), b"\x1f\x8bgz").unwrap();
+    std::fs::write(baseline_dir.join("img.9f2c1ab4.png"), b"png:sprite").unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    let key = "media/cases/pong/v1.0.0/validation-baseline/none/base/img.9f2c1ab4.png";
+    let obj = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == key)
+        .expect("the baseline's stored bitmap exported");
+    // The declared output beside it keeps its digest: the exemption is the store's
+    // alone, and a recording is re-captured under one name across versions.
+    assert!(
+        snapshot.objects.iter().any(|o| o.key
+            == format!(
+                "media/cases/pong/v1.0.0/validation-baseline/none/base/{}-spin__serve.json.gz",
+                content_digest(b"\x1f\x8bgz")
+            )),
+        "a declared baseline output is still keyed by a digest of its bytes"
+    );
+    assert_eq!(obj.content_type, "image/png");
+    assert_eq!(obj.bytes, b"png:sprite");
+
+    // Named in the case metadata by its flat file name — the very name the entry
+    // inside the baseline recording spells — so the gallery's lookup resolves it.
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let baselines = parsed["validationBaselines"].as_array().unwrap();
+    let stored = baselines
+        .iter()
+        .find(|b| b["file"] == "img.9f2c1ab4.png")
+        .expect("the store file is named beside the recording that draws it");
+    assert_eq!(stored["engine"], "none");
+    assert_eq!(stored["variant"], "base");
+    assert_eq!(stored["key"], key);
 }
 
 /// A stored showcase whose carousel is `files`, each entry keyed under the

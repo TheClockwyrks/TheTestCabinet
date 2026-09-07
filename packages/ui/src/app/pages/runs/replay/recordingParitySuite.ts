@@ -147,7 +147,12 @@ import {
   type SKRSContext2D,
 } from "@napi-rs/canvas";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { drawFrame, prepareRecording, type ReplayResources } from "./drawFrame";
+import {
+  drawFrame,
+  prepareRecording,
+  type ReplayResources,
+  type StoredImageResolver,
+} from "./drawFrame";
 import { parseRecording, type Recording } from "./format";
 
 /** The logical surface every scenario draws on, in device pixels. */
@@ -559,6 +564,66 @@ async function verify(build: () => Script, context = ""): Promise<void> {
       throw new Error(`frame ${at} seeked to cold: ${differs}${suffix}`);
     }
   });
+}
+
+/**
+ * The same recording with every image kept BESIDE it, and the resolver that
+ * reaches them.
+ *
+ * A writer with a directory to put them in stores an image's bytes in a flat file
+ * and leaves the entry naming that file, instead of carrying a base64 payload the
+ * gzip around the document cannot compress. Both forms are members of one
+ * `CapturedImage` union and the player is meant to draw them identically; this
+ * turns a recording the engine actually wrote into its stored twin so a scenario
+ * can hold the two to that.
+ *
+ * The rewritten document goes back through `parseRecording`, exactly as the
+ * recorder's own output does, because the stored form has to be a document this
+ * player accepts and not merely a shape it can be handed in memory.
+ *
+ * The resolver answers data URLs rather than served ones. What is under test is the
+ * routing — a `store` name reaching the resolver and coming back as bytes through
+ * the same rebuild the inline form uses — and a data URL is the one kind of URL
+ * this host can both load into an image element and `fetch`, with no server to
+ * stand up and nothing to keep in step with what a console would serve.
+ */
+function storedAside(recording: Recording): {
+  readonly recording: Recording;
+  readonly resolve: StoredImageResolver;
+} {
+  const bytes = new Map<string, string>();
+  const images = recording.images.map((image, at) => {
+    if ("store" in image) {
+      throw new Error(`image ${at} is already stored beside the recording`);
+    }
+    // Named the way the harness names them: a flat single segment, `img.` and the
+    // extension the kind implies. Nothing here depends on the name being a content
+    // hash, which is what a real writer derives it from.
+    const file = image.kind === "bitmap" ? `img.${at}.png` : `img.${at}.bin`;
+    bytes.set(
+      file,
+      image.kind === "bitmap"
+        ? image.src
+        : `data:application/octet-stream;base64,${image.data}`,
+    );
+    return {
+      kind: image.kind,
+      width: image.width,
+      height: image.height,
+      store: file,
+    };
+  });
+  const written = { ...recording, images };
+  const parsed = parseRecording(JSON.parse(JSON.stringify(written)) as unknown);
+  if (!parsed.ok) {
+    throw new Error(
+      `the player refused the stored recording: ${parsed.message}`,
+    );
+  }
+  return {
+    recording: parsed.recording,
+    resolve: (file) => bytes.get(file) ?? null,
+  };
 }
 
 /**
@@ -986,6 +1051,111 @@ function namedScenarios(): void {
           },
         ],
       }));
+    });
+
+    it("draws the same picture from images kept beside the recording", async () => {
+      // The one scenario about WHERE an image's bytes came from rather than about
+      // what the operations did with them. An entry carries its pixels inline or
+      // names a file beside the recording, both are members of one union, and a
+      // reviewer opening a replay must not be able to tell which — so the same
+      // recording is replayed twice, once each way, and both are held to the pixels
+      // the build actually drew.
+      //
+      // It belongs in this file for the reason the file exists: the stored form is a
+      // second way into the same decode, and two ways into one picture is exactly
+      // the shape that drifts silently. Nothing else in the tree compares a stored
+      // replay's pixels against the recording it came from.
+      const build = (): Script => ({
+        frames: [
+          (ctx) => {
+            clearFrame(ctx);
+            // A bitmap and a pixel buffer in one frame: the two kinds are stored in
+            // different files, fetched down different paths (an image element for
+            // the PNG, raw bytes for the buffer), and rebuilt by different code.
+            ctx.drawImage(sprite, 10, 10);
+            const pixels = new Uint8ClampedArray(8 * 8 * 4);
+            for (let at = 0; at < 8 * 8; at += 1) {
+              pixels[at * 4] = 30 + at;
+              pixels[at * 4 + 1] = 200 - at;
+              pixels[at * 4 + 2] = 90;
+              pixels[at * 4 + 3] = 255;
+            }
+            ctx.putImageData(new ImageData(pixels, 8, 8), 40, 30);
+          },
+          (ctx) => {
+            clearFrame(ctx);
+            ctx.drawImage(sprite, 24, 6, 32, 32);
+          },
+        ],
+      });
+
+      const { recording, shots } = record(build);
+      // The scenario proves nothing if the recorder carried no images at all, and a
+      // narrowed recorder would make it pass silently.
+      expect(recording.images.length).toBeGreaterThan(1);
+      for (const image of recording.images) {
+        expect("store" in image).toBe(false);
+      }
+
+      const inline = await prepareRecording(recording);
+      const aside = storedAside(recording);
+      const kept = await prepareRecording(
+        aside.recording,
+        undefined,
+        aside.resolve,
+      );
+
+      const inlinePlayed = replayInOrder(recording, inline);
+      const keptPlayed = replayInOrder(aside.recording, kept);
+
+      shots.forEach((expected, at) => {
+        const same = inlinePlayed[at];
+        const beside = keptPlayed[at];
+        if (same === undefined || beside === undefined)
+          throw new Error(`a replay drew no frame ${at}`);
+        expect(same.unreproducible, `frame ${at} replayed inline`).toEqual([]);
+        expect(beside.unreproducible, `frame ${at} replayed stored`).toEqual(
+          [],
+        );
+        expect(beside.skipped, `frame ${at} replayed stored`).toBe(0);
+        expect(difference(expected, same.shot)).toBeNull();
+        expect(difference(expected, beside.shot)).toBeNull();
+      });
+    });
+
+    it("reports an image kept beside the recording that it cannot reach", async () => {
+      // The degradation channel, and the whole reason a stored entry is safe to
+      // introduce: a host with no way to reach the files — a static gallery that
+      // serves none, a resolver that answers nothing for this name — draws the rest
+      // of the frame and SAYS what is missing, rather than drawing a hole and
+      // reporting the frame clean. It is the same outcome an undecodable PNG has.
+      const { recording } = record(() => ({
+        frames: [
+          (ctx) => {
+            clearFrame(ctx);
+            ctx.drawImage(sprite, 10, 10);
+          },
+        ],
+      }));
+      const aside = storedAside(recording);
+      const unreachable = await prepareRecording(
+        aside.recording,
+        undefined,
+        () => null,
+      );
+      const played = replayInOrder(aside.recording, unreachable);
+      const frame = played[0];
+      if (frame === undefined) throw new Error("the replay drew no frame");
+      expect(frame.skipped).toBeGreaterThan(0);
+      expect(frame.unreproducible).toContain(
+        "an image that could not be loaded",
+      );
+
+      // And with no resolver at all, which is what every showcase call site passes.
+      const none = await prepareRecording(aside.recording);
+      const bare = replayInOrder(aside.recording, none)[0];
+      if (bare === undefined) throw new Error("the replay drew no frame");
+      expect(bare.skipped).toBeGreaterThan(0);
     });
 
     it("seeks cold to the last frame of a long recording", async () => {

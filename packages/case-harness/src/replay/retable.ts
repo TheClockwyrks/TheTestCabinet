@@ -10,6 +10,7 @@ import {
   type RecordedState,
   type Recording,
 } from "./format";
+import type { ImageStore } from "./store";
 
 /**
  * An entry of a table the recording carries, by the index something names it at.
@@ -19,6 +20,10 @@ import {
  * better than rewriting `undefined` into the file: the writer runs this inside
  * the `try` it already swallows, so a malformed recording is reported as an
  * output that could not be written, exactly as any other failure of the write is.
+ *
+ * The images table is the one exception and deliberately: see `takeImage` below,
+ * which answers `null` for an entry it cannot carry so that the shared store has
+ * somewhere to refuse to.
  */
 function at<T>(table: readonly T[], index: number, what: string): T {
   const found = table[index];
@@ -82,6 +87,14 @@ export function intern<T>(
  * identically is written once and named two hundred times, and every index a
  * frame carries addresses the table it was interned into.
  *
+ * A `store`, when there is one, is where each distinct image's BYTES go: the
+ * table then carries a reference to a file beside the recording rather than a
+ * base64 payload inside it, so an image forty recordings draw is written once for
+ * the run and travels as PNG rather than as base64 inside a gzip that cannot
+ * compress it. Omitting it — or passing `null`, which is what `openImageStore`
+ * answers outside a run — writes every entry inline, which is the shape a
+ * recording has always had and still a first-class member of the format.
+ *
  * Exported for the package's own suite, which drives it over a recording a
  * browser cannot deliver: Playwright's serializer drops an own field named
  * `__proto__` on the way out of the page, so handing one to this directly is the
@@ -90,9 +103,10 @@ export function intern<T>(
 export function retable(
   recording: Recording,
   frames: RecordedFrame[],
+  store?: ImageStore | null,
 ): Recording {
   const images: unknown[] = [];
-  const imageAt = new Map<number, number>();
+  const imageAt = new Map<string, number>();
   const resources: RecordedResource[] = [];
   const resourceAt = new Map<number, number>();
   const ops: RecordedOp[] = [];
@@ -100,12 +114,56 @@ export function retable(
   const states: RecordedState[] = [];
   const stateAt = new Map<string, number>();
 
-  const takeImage = (source: number): number => {
-    const found = imageAt.get(source);
+  /**
+   * What an image entry is deduplicated on, and NOT through {@link canonical}.
+   *
+   * An entry's payload is the whole of its weight — a PNG data URL or a base64
+   * pixel buffer, either of them megabytes — so a JSON re-encoding to answer
+   * "have I seen this" would copy those megabytes once per lookup. This is the
+   * same key the page-side pool shares an image on, for the same reason.
+   *
+   * An entry that carries no payload of a shape this recognises falls back to the
+   * canonical form. That is the small case by construction — a stored entry names
+   * a file rather than carrying one — so the copy is a file name.
+   */
+  const imageKeyOf = (entry: unknown): string => {
+    if (entry === null || typeof entry !== "object") return canonical(entry);
+    const record = entry as Record<string, unknown>;
+    const payload = record.kind === "pixels" ? record.data : record.src;
+    if (typeof payload !== "string") return canonical(entry);
+    return `${String(record.kind)}|${String(record.width)}x${String(record.height)}|${payload}`;
+  };
+
+  /**
+   * Where the entry `source` names lives in the rebuilt table, or `null` when the
+   * recording does not carry it and nothing can be written for it.
+   *
+   * CONTENT-KEYED, like the `ops` and `states` beside it and unlike the source
+   * index this used to hold: a build that redraws the same sprite through a fresh
+   * capture each frame names a different index every time for the same picture,
+   * and keying on the index writes that picture once per frame.
+   *
+   * IT ANSWERS `null` RATHER THAN RAISING through {@link at}, which is the one
+   * place this file departs from its neighbours. An index the recording does not
+   * carry degrades to the opaque marker the player already reports and skips, so
+   * a reviewer loses one draw and is told about it, rather than losing the whole
+   * replay to an output that could not be written. A store that REFUSES is a
+   * different thing and not this one: the entry stays inline, which costs the run
+   * bytes and never a picture.
+   */
+  const takeImage = (source: number): number | null => {
+    const raw = recording.images[source];
+    if (raw === undefined) return null;
+    const key = imageKeyOf(raw);
+    const found = imageAt.get(key);
     if (found !== undefined) return found;
+    // A store that refused — an undecodable payload, a run past its ceiling, a
+    // write the host would not take — hands back `null`, and the entry stays
+    // exactly as it was recorded.
+    const written = store ? store.put(raw) : null;
     const index = images.length;
-    images.push(recording.images[source]);
-    imageAt.set(source, index);
+    images.push(written ?? raw);
+    imageAt.set(key, index);
     return index;
   };
 
@@ -129,8 +187,12 @@ export function retable(
     if (Array.isArray(entry)) return entry.map(value);
     if (entry === null || typeof entry !== "object") return entry;
     const record = entry as Record<string, unknown>;
-    if (typeof record.$img === "number")
-      return { $img: takeImage(record.$img) };
+    if (typeof record.$img === "number") {
+      const at = takeImage(record.$img);
+      return at === null
+        ? { $opaque: "an image this replay could not carry" }
+        : { $img: at };
+    }
     if (typeof record.$res === "number")
       return { $res: takeResource(record.$res) };
     const rewritten: Record<string, unknown> = {};
@@ -220,9 +282,14 @@ export function retable(
  * time.
  *
  * What survives is then re-expressed against tables of its own, so the file
- * carries what the kept frames draw with and nothing the dropped ones did.
+ * carries what the kept frames draw with and nothing the dropped ones did — and,
+ * when a `store` is given, with the images it draws written beside it rather than
+ * inside it. See {@link retable}.
  */
-export function thinReplay(recording: Recording): Recording {
+export function thinReplay(
+  recording: Recording,
+  store?: ImageStore | null,
+): Recording {
   const { frames } = recording;
   const first = frames[0];
   if (first === undefined) return recording;
@@ -253,5 +320,5 @@ export function thinReplay(recording: Recording): Recording {
     keep(last);
   }
 
-  return retable(recording, kept);
+  return retable(recording, kept, store);
 }

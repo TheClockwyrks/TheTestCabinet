@@ -1215,6 +1215,50 @@ fn a_suites_declared_media_is_flattened_out_of_the_directory_it_wrote_it_to() {
 }
 
 #[test]
+fn the_shared_image_store_written_beside_the_suites_survives_collection() {
+    // The recordings' shared image store is a set of flat, content-addressed files the
+    // harness writes DIRECTLY into the media directory, beside the collected outputs
+    // rather than under a suite's own scaffolding — which is the whole reason it needs
+    // no sidecar document, no new route, and no key shape of its own.
+    //
+    // That only works because collection sweeps the per-suite scaffolding and stops at
+    // the media directory itself, so a flat file in it is untouched. Nothing else in
+    // the tree states that, and a store swept away with the scaffolding would leave
+    // every published replay resolving nothing — so it is pinned here.
+    let media = tempfile::tempdir().expect("a scratch media root");
+    let items = vec![item_with_outputs(
+        "no-tunnel",
+        "validation/simple-2d/ball/no-tunnel.test.ts",
+        vec![output("serve", MediaKind::Replay)],
+    )];
+    let suite = suite_for(&items);
+    let wrote = suite_media_dir(media.path(), "validation/ball/no-tunnel.test.ts");
+    std::fs::write(wrote.join("serve.json.gz"), GZIPPED_RECORDING).expect("the recording");
+    // The store the recording's image entries name, written flat beside it.
+    std::fs::write(media.path().join("img.9f2c1ab4.png"), b"png:sprite").expect("a stored bitmap");
+    std::fs::write(media.path().join("img.7ee01d33.bin"), b"rgba").expect("a stored pixel buffer");
+
+    let outputs = suite.collect_media(media.path());
+
+    assert!(
+        outputs[0].actual_present,
+        "the declared output still collects"
+    );
+    assert!(
+        !media.path().join("validation").exists(),
+        "the per-suite scaffolding is still removed",
+    );
+    assert_eq!(
+        std::fs::read(media.path().join("img.9f2c1ab4.png")).expect("the bitmap is still there"),
+        b"png:sprite",
+    );
+    assert_eq!(
+        std::fs::read(media.path().join("img.7ee01d33.bin")).expect("the buffer is still there"),
+        b"rgba",
+    );
+}
+
+#[test]
 fn a_declared_output_the_suite_did_not_write_is_absent_rather_than_a_failure() {
     // Media is the evidence beside a verdict; the assertions are what decide the
     // point. A suite that passed every check while writing nothing still earns its

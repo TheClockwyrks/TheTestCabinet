@@ -31,8 +31,15 @@ import exec from "../RunExec.module.scss";
 // row carries its own recording's length, so two different figures across the row
 // are what say the two builds did not draw for the same span.
 export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
-  const baseline = useRecording(media.baselineUrl);
-  const actual = useRecording(media.actualUrl);
+  // Each side is given the resolver for its OWN namespace: the baseline's images
+  // are case-scoped media of the case version, the actual's are run-scoped media of
+  // this run, and each was resolved by the same function that produced the
+  // recording's URL beside it. Crossing them would ask the run for the case's files.
+  // Neither is memoized and neither needs to be: the gallery context mints a fresh
+  // pair of these on every render of the app shell, and `useRecording` reads the
+  // resolver through a ref precisely so that churn cannot restart a load.
+  const baseline = useRecording(media.baselineUrl, media.baselineStoreUrl);
+  const actual = useRecording(media.actualUrl, media.actualStoreUrl);
 
   // One timeline over both recordings — the longer one paces the pair, so none of
   // its frames is unreachable. Memoized on the recordings so the array is built when

@@ -308,7 +308,9 @@ answers the same input with the same document.
 ```ts
 type CapturedImage =
   | { kind: "bitmap"; width: number; height: number; src: string }
-  | { kind: "pixels"; width: number; height: number; data: string };
+  | { kind: "bitmap"; width: number; height: number; store: string }
+  | { kind: "pixels"; width: number; height: number; data: string }
+  | { kind: "pixels"; width: number; height: number; store: string };
 ```
 
 | Field    | Meaning                                                                                  |
@@ -318,6 +320,7 @@ type CapturedImage =
 | `height` | The captured height in pixels.                                                           |
 | `src`    | A `data:image/png;base64,…` URL holding a `bitmap` entry's pixels.                       |
 | `data`   | A `pixels` entry's RGBA bytes, base64 encoded, four bytes per pixel in row order.        |
+| `store`  | The file beside the recording holding a stored entry's bytes.                            |
 
 A `bitmap` entry rebuilds where a `CanvasImageSource` is expected, for
 `drawImage` and `createPattern`. A `pixels` entry rebuilds as the `ImageData` a
@@ -330,6 +333,17 @@ pixel's alpha, and reading the pixels back un-premultiplies them, so a partially
 transparent pixel is quantized to eight bits twice and comes back a different
 color. `ImageData` is the one kind of image a check compares byte for byte, so
 it is carried byte for byte.
+
+An entry carries its pixels inline or names them. An inline entry holds them in
+`src` or `data`, which is what the recorder writes, since a recording it hands
+back is assembled in memory. A stored entry holds `store`, the flat file name of
+the bytes sitting beside the recording, which a writer with a directory to put
+them in produces after the recording is closed. Those bytes are written once per
+run under a name derived from the bytes themselves, so a sprite drawn in forty
+recordings is one file and opening one replay costs the images that replay
+draws. A player resolves `store` through the same lookup it resolved the
+recording with, and reports and skips the operations naming an entry it cannot
+resolve.
 
 A fixed source is keyed on its identity and encoded once, so the common sprite
 case is carried a single time however many frames draw it. An `HTMLImageElement`

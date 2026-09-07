@@ -54,6 +54,10 @@ const gallery = {
       kind: "image" as const,
       actualUrl: "https://media.example/actual.png",
       baselineUrl: "https://media.example/baseline.png",
+      // A still carries no table of images, so neither side has anything stored
+      // beside it to resolve.
+      actualStoreUrl: null,
+      baselineStoreUrl: null,
     },
   ],
 };

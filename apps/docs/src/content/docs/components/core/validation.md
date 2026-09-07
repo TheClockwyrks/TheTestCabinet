@@ -265,6 +265,44 @@ recordings of a scenario are indexed the same way, a 2D frame by its place in
 the recording and a 3D frame by its simulated-time timestamp, so the reviewer
 scrubs the build's recording and the reference's in step.
 
+### The shared image store
+
+A draw-command recording's images are the bulk of its weight, and a run's
+recordings draw the same sprites over and over. Each unique image is therefore
+written once into the media directory as a flat file, `img.<id>.png`, and the
+entry inside the recording names that file rather than carrying the bytes as
+base64. The id is derived from the bytes themselves, so two recordings drawing
+one sprite name one file and a re-publish writes the same names.
+
+Bitmaps only. The recording's other image kind is a raw RGBA pixel buffer, and
+that one stays inline: RGBA is the most compressible payload a recording carries,
+so the gzip the recording already lands under beats anything a flat file could
+be served as — a framebuffer that costs a few kilobytes inline would cost most of
+a megabyte as a file. The format and the store's namespace both admit a stored
+buffer (`img.<id>.bin`) and a player resolves one, so the decision is the
+writer's alone and can be revisited without a format change.
+
+Store files share the flat namespace declared outputs live in. Every declared
+output's name carries `__` and a store file's name carries none, so the two can
+never collide, and a store file travels the routes declared media already
+travels: served by the per-run validation media route, published with the run and
+with a case's committed baselines, and resolved in a console through the same
+lookup that resolved the recording naming it. A console fetches the images one
+replay draws rather than the run's, and the browser's own cache carries a sprite
+across every replay a reviewer opens.
+
+Both publish paths are driven off the run record's declared outputs. A store file
+backs no verdict and appears on no record, so each path enumerates the media
+directory for the store beside the outputs the record named.
+
+The store is bounded, per recording, per page and per run. An image the writer
+declines to store stays inline in the recording, and one it can neither store nor
+carry is replaced by an opaque marker the player reports and skips, so a partly
+drawn replay says which images are missing. The bounds are about the bytes a run
+carries; the verdict and its assertions are decided by the checks alone. A suite
+driven outside a run has no media directory, so every entry stays inline and the
+recording travels alone.
+
 ## Checks
 
 A check scores a screenshot of a driven view against a rendered reference
@@ -302,6 +340,44 @@ the media outputs it declares. Media is captured from the model's build as the
 actual result; the matching baseline is captured once by running the same script
 against the case's reference implementation and is served case-scoped, so a
 reviewer sees the two side by side.
+
+### The surface a recording binds to
+
+The harness wraps every 2D context the page creates, and a recording binds to one
+surface: the largest canvas attached to the document, which is the one the
+reviewer is looking at.
+
+A build that renders into an unattached canvas and blits the result onto the
+attached one submits its drawing to the offscreen surface, so the attached
+canvas's frames hold the blit alone. A recording therefore follows that blit.
+When the candidate's last closed frame ended in a `drawImage` that covered the
+whole of its backing store, drawn from another canvas the harness also wraps, the
+recording binds to that source. It is a single hop, because the pattern it
+answers is a single compositing indirection.
+
+The blit has to be one that leaves nothing of the frame beneath it, and three
+further conditions establish that. The source must have painted during the frame
+in question, so a pre-rendered layer — a sprite atlas, a static background or
+overlay — is never followed; a canvas is RGBA, so the blit must be `source-over`
+at full alpha (or `copy`), never a translucent or `lighter` overlay pass under
+which the game's own drawing plainly survives; and no clip may be in force, since
+a whole-surface rectangle drawn into a small clipped inset — a minimap — covers
+the surface on paper and a fraction of it on screen. Each of these is a
+full-surface blit of a wrapped canvas, and following any of them would answer a
+check with a surface the player never looked at.
+
+The observation is taken frame by frame from the arguments the build passed, and
+frames go on being opened and closed on the attached candidate as well as on the
+surface the recording bound to, so a build that stops compositing is answered by
+the attached surface again on its next frame. The choice is settled when a
+recording is armed and held until it is disarmed, so every frame of one recording
+comes from one surface.
+
+Binding to the surface the build drew into is what makes the operations a check
+reads the build's own. A compositing build recorded off its attached canvas
+submits a clear and a blit per frame while the pixel readback of that frame stays
+correct, so a suite whose operation-based checks all fail while its pixel checks
+pass has bound one surface too early.
 
 ### Validation that fails to complete
 
