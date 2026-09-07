@@ -86,17 +86,14 @@ export function openMidWave(h: Harness): MidWave {
 }
 
 /**
- * Take an action the wave is entitled to refuse.
+ * WHY THE ACTS ARE TAKEN THROUGH THE PLAYER'S CONTROL AND NOT THE SURFACE.
  *
- * `specs/instrumentation.md` leaves an operation two conformant answers when its
- * subject is not in the condition it states: refuse and do nothing, or fail
- * loudly. What each point decides is the yard either answer leaves behind, so the
- * yard is read back after the call and the reading is what decides.
+ * A debug operation is UNCONDITIONAL (`specs/instrumentation.md`): it commits the
+ * control's own transaction from wherever the game stands, and the phase running
+ * is the route a player takes rather than a condition on the call. So the surface
+ * is not what any of these four points can decide; what they decide is the
+ * player's route, and each takes its act with the key `specs/controls.md` binds
+ * to it. A selection is still posed through the surface, because selecting a
+ * structure is a pose rather than a control and picks the inspector's target
+ * without committing anything.
  */
-export function attempt(act: () => void): void {
-  try {
-    act();
-  } catch {
-    // The loud refusal, which is the other conformant answer.
-  }
-}

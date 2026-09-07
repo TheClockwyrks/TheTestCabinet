@@ -127,6 +127,16 @@ The surface carries `version` (`SPECTRA_DEBUG_VERSION`, `1`), a plain number, an
 operations below. Values are plain numbers, strings, and booleans, and every `x` and
 `y` the surface takes or reports for an entity is that entity's center in the stage's
 logical units.
+
+An operation applies its effect every time it is called. A pose reaches the value it
+names whatever the game's own rules would have allowed, so it is not clamped to a
+legal alternative and it is never declined; where a row fixes a range, that range is
+the argument's domain rather than an edge to snap to. A call the game has no defined
+state for fails loudly instead, throwing where the caller sees it: an argument that
+is not a finite number, a name outside the set its row lists, a figure outside the
+domain its row fixes, an id no live entity carries, or a field the entity named does
+not have. What no operation here does is refuse quietly, so none of them returns
+having left the state as it was.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<SpectraState>`, as its first
@@ -147,6 +157,7 @@ and changes nothing.
 | --- | --- |
 | `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the snapshot reports into agreement with the game as it stands, without advancing anything. |
 | `menuItemRect(index)` | A pure read of the hit region of item `index` on the menu the current screen shows. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `phase` to `"live"`, `phaseTimer` to `0`,
@@ -165,6 +176,38 @@ report the same ids for the same scenario.
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
 randomness. `muted` is left exactly as it stands, because muting is a player
 preference the runtime owns.
+
+`reconcile` brings every value the snapshot reports into agreement with the game as
+it now stands, without advancing anything. `isChallenge`, `droneSpeedScale`,
+`bulletSpeedScale`, `diveGapScale`, and `fluxHold` follow the stage; `dischargeReady`
+follows the resonance; `inversionActive` follows the inversion; `ship.alive` follows
+the phase; and every `effectiveBand`, a Flux's `shimmer`, and a burst's `particles`
+follow the bands, the clocks, and the effects they are read from. After a pose, each
+of them answers for the game as it is now rather than as it was before the pose.
+
+A build that works those out at the call has nothing to do here, and the call changes
+nothing at all. A build that keeps any of them as a stored copy rewrites that copy
+from what it is a copy of.
+
+It moves no clock and runs no system. `simTime` holds, no frame and no sub-step runs,
+no drone flies its entrance, rides the sway, dives, or returns, no bullet travels, no
+contact is tested, no stage clears, no burst ages, and `phaseTimer`, `diveClock`, the
+ship's lockout and cooldown, the inversion, and every drone's band clock all hold. No
+held action is consumed and the generator is not drawn from. It launches no dive,
+releases no drone, destroys nothing, scores nothing, discharges nothing, plays no
+cue, and changes no screen or phase. It moves nothing to make a reading agree either:
+a drone posed away from its slot stays where it was put and reads as it is, and a
+Flux posed past the end of its band window keeps the clock it was given rather than
+flipping its band. Calling it twice leaves the same state as calling it once.
+
+It is never an error, and it may be called on any screen, whether or not the clock is
+held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `SpectraState`, built from the one it was handed,
+which it leaves as it was. A build that works every one of those readings out at the
+call returns a state equal to the one it was given.
+{{/if}}
 
 `menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
 region's top-left corner and `w` and `h` its size: the region a pointer or a touch
@@ -250,7 +293,7 @@ inferring it from when a dive went.
 
 | Operation | Effect |
 | --- | --- |
-| `setShipX(x)` | Places the ship's center at `x` along its lane. The lane's clamp applies, so the ship never lands outside `[SHIP_X_MIN, SHIP_X_MAX]`. |
+| `setShipX(x)` | Places the ship's center at `x` along its lane. `x` is within `[SHIP_X_MIN, SHIP_X_MAX]`, the lane's own fixed bounds; the value is placed as given rather than snapped to the nearer end, and a call outside those bounds fails loudly. |
 | `setShipBand(band)` | Sets the ship's band to `"cyan"` or `"magenta"`. It starts no fire lockout: it is the band the ship holds, and `setFireLockout` is what poses the lockout. |
 | `setFireLockout(seconds)` | Sets the seconds of post-flip fire lockout remaining, `0` for none. |
 | `setFireCooldown(seconds)` | Sets the seconds until the ship may fire again, `0` for none. |
@@ -283,8 +326,8 @@ A drone is built one field at a time, so no operation takes a layout.
 | `setDroneBand(id, band)` | Sets the drone's stored band, on every kind. For a Prism it is the shell's band, and the core's is always the opposite. For a Flux it is the band the drone is holding, or, mid-shimmer, the one it is leaving. It moves the band and nothing else: `bandClock` stays exactly where it stands. |
 | `setDronePhase(id, phase)` | Sets the phase: `"entering"`, `"formation"`, `"diving"`, or `"returning"`. |
 | `setDroneSlot(id, x, y)` | Sets the center of the drone's resting formation slot. |
-| `setDroneBandClock(id, seconds)` | Sets how far a Flux is into its current band window, from `0` to `fluxWindow(stage)`. It moves the clock and nothing else: `shimmer` follows it, and `band` does not change. A Shard and a Prism have no band window to be in, so on either of those `bandClock` stays `0` whatever this is called with. |
-| `setDroneShell(id, intact)` | Sets whether a Prism's outer shell stands. A Shard and a Flux have no shell, so on either of those `shellAlive` stays `true` whatever this is called with. |
+| `setDroneBandClock(id, seconds)` | Sets how far a Flux is into its current band window, in seconds from `0`. The figure is taken as given, whatever `fluxWindow(stage)` is at the time, so a clock posed past the end of the window stays where it was put until the oscillation reaches it. It moves the clock and nothing else: `shimmer` follows it, and `band` does not change. A Shard and a Prism have no band window to be in, so calling this on either of those fails loudly rather than passing quietly. |
+| `setDroneShell(id, intact)` | Sets whether a Prism's outer shell stands. A Shard and a Flux have no shell, so calling this on either of those fails loudly rather than passing quietly. |
 {{#if (eq variant.slug "overload")}}
 | `setDroneCharge(id, charge)` | Sets the drone's charge, a whole number from `0` to `OVERLOAD_AT` (`3`). |
 {{/if}}
@@ -297,7 +340,8 @@ A drone is built one field at a time, so no operation takes a layout.
 A drone's `band` and its `bandClock` are two independent fields, and each has exactly
 one setter. `setDroneBand` is the only thing that writes the stored band, and
 `setDroneBandClock` is the only thing that writes the position inside the current
-band window. The oscillation runs the clock forward, and when it reaches
+band window, and it writes the seconds it is handed rather than a figure trimmed to
+the window. The oscillation runs the clock forward, and when it reaches
 `fluxWindow(stage)` the Flux flips `band` and returns the clock to `0`, as
 `specs/drones.md` states.
 
@@ -442,6 +486,9 @@ their own, and the notes that go with them:
   at the call from `stage`, `resonance`, `inversion`, and `phase` by the formulas in
   `specs/stages.md`, `specs/resonance.md`, and `specs/bands.md`. Each follows the
   operation that sets what it is derived from.
+- A build is free to work any of the entries above out at the read or to keep it as
+  a stored copy of what it follows, and `reconcile` is what brings a stored copy back
+  into agreement after a pose.
 - The four stage-scaled figures are the formulas read at the stage the snapshot was
   taken at, and nothing else. A challenge stage runs at the stage-1 figures whatever
   stage it falls on, as `specs/stages.md` states, so on a challenge stage what these

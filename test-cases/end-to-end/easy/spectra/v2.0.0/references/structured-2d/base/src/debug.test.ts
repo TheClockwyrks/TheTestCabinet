@@ -14,7 +14,6 @@ import {
   diveGapScale,
   droneSpeedScale,
   fluxHold,
-  fluxWindow,
   isChallengeStage,
 } from "./constants";
 import {
@@ -118,10 +117,17 @@ describe("every pose reads back", () => {
     expect(s.ship.cooldown).toBe(0.1);
   });
 
-  it("holds the ship inside its lane", () => {
-    h.debug.setShipX(-500);
+  // The lane's bounds are the argument's DOMAIN, so both ends are reached exactly
+  // and a value outside them FAILS LOUDLY rather than snapping to the nearer end.
+  // A snap would leave the ship somewhere nobody asked for and report a pose that
+  // never happened as one that did.
+  it("takes the ship across its lane, and fails loudly outside it", () => {
+    h.debug.setShipX(SHIP_X_MIN);
     expect(h.debug.snapshot().ship.x).toBe(SHIP_X_MIN);
-    h.debug.setShipX(5000);
+    h.debug.setShipX(SHIP_X_MAX);
+    expect(h.debug.snapshot().ship.x).toBe(SHIP_X_MAX);
+    expect(() => h.debug.setShipX(-500)).toThrow(RangeError);
+    expect(() => h.debug.setShipX(5000)).toThrow(RangeError);
     expect(h.debug.snapshot().ship.x).toBe(SHIP_X_MAX);
   });
 
@@ -147,7 +153,8 @@ describe("every pose reads back", () => {
     h.debug.setDronePhase(id, "diving");
     h.debug.setDroneSlot(id, 600, 300);
     h.debug.setDroneBandClock(id, 0.5);
-    h.debug.setDroneShell(id, false);
+    // `setDroneShell` is NOT called here: this drone is a Flux, which has no
+    // shell, so the call would fail loudly. It is posed on a Prism below.
     h.debug.setDroneTravel(id, false);
     h.debug.setDroneOscillation(id, false);
     h.debug.setDroneFire(id, false);
@@ -160,33 +167,44 @@ describe("every pose reads back", () => {
     expect(drone?.slotX).toBe(600);
     expect(drone?.slotY).toBe(300);
     expect(drone?.bandClock).toBe(0.5);
-    // A Flux has no shell, so setDroneShell moves nothing on one
-    // (specs/instrumentation.md); it is posed on a Prism below.
     expect(drone?.shellAlive).toBe(true);
     expect(drone?.travel).toBe(false);
     expect(drone?.oscillation).toBe(false);
     expect(drone?.fire).toBe(false);
   });
 
-  it("poses a Prism's shell, and leaves the other kinds' shells standing", () => {
-    for (const kind of ["shard", "flux", "prism"] as const) {
+  // A SHELL BELONGS TO A PRISM. On a Shard or a Flux the call names no state to
+  // reach, so it FAILS LOUDLY rather than passing quietly with nothing written
+  // (`specs/instrumentation.md`): a call that vanished would grade a check that
+  // never posed what it meant to as one that did.
+  it("poses a Prism's shell, and fails loudly on any other kind", () => {
+    h.debug.clearDrones();
+    h.debug.addDrone("prism", 400, 200);
+    h.debug.setDroneShell(lastDroneId(h.debug), false);
+    expect(h.debug.snapshot().drones[0]?.shellAlive).toBe(false);
+
+    for (const kind of ["shard", "flux"] as const) {
       h.debug.clearDrones();
       h.debug.addDrone(kind, 400, 200);
       const id = lastDroneId(h.debug);
-      h.debug.setDroneShell(id, false);
-      expect(h.debug.snapshot().drones[0]?.shellAlive).toBe(kind !== "prism");
+      expect(() => h.debug.setDroneShell(id, false)).toThrow(RangeError);
+      expect(h.debug.snapshot().drones[0]?.shellAlive).toBe(true);
     }
   });
 
-  it("poses a Flux's band clock, and leaves the other kinds' at zero", () => {
-    for (const kind of ["shard", "flux", "prism"] as const) {
+  // A BAND WINDOW BELONGS TO A FLUX, on the same terms as the shell above.
+  it("poses a Flux's band clock, and fails loudly on any other kind", () => {
+    h.debug.clearDrones();
+    h.debug.addDrone("flux", 400, 200);
+    h.debug.setDroneBandClock(lastDroneId(h.debug), 0.5);
+    expect(h.debug.snapshot().drones[0]?.bandClock).toBe(0.5);
+
+    for (const kind of ["shard", "prism"] as const) {
       h.debug.clearDrones();
       h.debug.addDrone(kind, 400, 200);
       const id = lastDroneId(h.debug);
-      h.debug.setDroneBandClock(id, 0.5);
-      expect(h.debug.snapshot().drones[0]?.bandClock).toBe(
-        kind === "flux" ? 0.5 : 0,
-      );
+      expect(() => h.debug.setDroneBandClock(id, 0.5)).toThrow(RangeError);
+      expect(h.debug.snapshot().drones[0]?.bandClock).toBe(0);
     }
   });
 
@@ -330,15 +348,16 @@ describe("what a pose removes", () => {
     expect(h.debug.snapshot().drones).toHaveLength(1);
   });
 
-  it("ignores a pose naming an entity that is not there", () => {
-    expect(() => {
-      h.debug.setDronePosition(9999, 1, 1);
-      h.debug.setDroneBand(9999, "magenta");
-      h.debug.setBulletVelocity(9999, 1, 1);
-      h.debug.removeDrone(9999);
-      h.debug.removeBullet(9999);
-      h.debug.removeBurst(9999);
-    }).not.toThrow();
+  // AN ID NOTHING HOLDS NAMES NO STATE TO REACH, so the call fails loudly where
+  // the caller sees it rather than returning with the roster exactly as it was
+  // (`specs/instrumentation.md`).
+  it("fails loudly on a pose naming an entity that is not there", () => {
+    expect(() => h.debug.setDronePosition(9999, 1, 1)).toThrow(RangeError);
+    expect(() => h.debug.setDroneBand(9999, "magenta")).toThrow(RangeError);
+    expect(() => h.debug.setBulletVelocity(9999, 1, 1)).toThrow(RangeError);
+    expect(() => h.debug.removeDrone(9999)).toThrow(RangeError);
+    expect(() => h.debug.removeBullet(9999)).toThrow(RangeError);
+    expect(() => h.debug.removeBurst(9999)).toThrow(RangeError);
   });
 });
 
@@ -407,11 +426,65 @@ describe("every derived field follows what it is derived from", () => {
     expect(bullets[1]?.effectiveBand).toBe("magenta");
   });
 
-  it("holds a band clock inside the current window", () => {
+  // THE WINDOW IS NOT THE ARGUMENT'S DOMAIN. `fluxWindow(stage)` is a live figure
+  // the stage moves, so it is a game rule rather than a bound on this pose: the
+  // clock takes the seconds it was handed and the oscillation is what carries it
+  // over (`specs/instrumentation.md`).
+  it("takes a band clock past the end of the window as given", () => {
     h.debug.addDrone("flux", 400, 200);
     const id = lastDroneId(h.debug);
     h.debug.setDroneBandClock(id, 99);
-    expect(h.debug.snapshot().drones[0]?.bandClock).toBe(fluxWindow(1));
+    expect(h.debug.snapshot().drones[0]?.bandClock).toBe(99);
+  });
+});
+
+// `reconcile` brings every reported reading into agreement with the game without
+// advancing anything. This build works every derived reading out at the READ, so
+// the call has nothing to rewrite; what these two cases pin is that it still
+// ANSWERS for a posed game and that it costs no simulation time, which is the
+// whole difference between it and stepping a frame.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed source", () => {
+    h.debug.setStage(5);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().fluxHold).toBeCloseTo(fluxHold(5), 10);
+
+    h.debug.setResonance(RESONANCE_MAX);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().dischargeReady).toBe(true);
+
+    h.debug.setInversion(2);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().inversionActive).toBe(true);
+
+    h.debug.setPhase("ready");
+    h.debug.reconcile();
+    expect(h.debug.snapshot().ship.alive).toBe(false);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    h.debug.setScreen("inWave");
+    h.debug.setStage(3);
+    h.debug.setPhaseTimer(1.25);
+    h.debug.setDiveClock(0.4);
+    h.debug.setInversion(2.5);
+    h.debug.setFireLockout(0.24);
+    h.debug.setShipX(500);
+    h.debug.addDrone("flux", 400, 200);
+    h.debug.setDroneBandClock(lastDroneId(h.debug), 0.5);
+    h.debug.addDrone("prism", 600, 200);
+    h.debug.addPlayerBullet(400, 500, "magenta");
+
+    const before = JSON.stringify(h.debug.snapshot());
+    h.debug.reconcile();
+    const once = JSON.stringify(h.debug.snapshot());
+    h.debug.reconcile();
+    const twice = JSON.stringify(h.debug.snapshot());
+
+    // The clock, the positions and every timer are untouched, so the whole
+    // snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
   });
 });
 

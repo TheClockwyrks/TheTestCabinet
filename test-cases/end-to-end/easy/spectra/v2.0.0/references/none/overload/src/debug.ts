@@ -4,6 +4,19 @@
 // installed by `src/main.ts` as soon as the game has initialized, and it is inert
 // during normal play: nothing below runs until something calls it.
 //
+// AN OPERATION IS UNCONDITIONAL. Every call below applies its effect, reaching the
+// value it was given rather than one the game's own rules would have preferred: a
+// pose is never clamped into range and never declined. Where the specification fixes
+// a domain — the lane's own bounds, `0` to `RESONANCE_MAX`, `0` to `OVERLOAD_AT`, a
+// floor of zero on a timer, an id a live drone, bullet or burst carries, a field
+// only one KIND of drone has — that domain is checked and a call outside it THROWS,
+// where the caller sees it. A bound that reads a LIVE game figure is not a domain at
+// all: `fluxWindow(stage)` moves with the stage, so `setDroneBandClock` takes the
+// seconds it was handed and leaves the carry-over to the oscillation. What nothing
+// below does is refuse quietly: no operation returns having left the state as it
+// was, because a surface that does that hides the very systems a check drove it to
+// reach.
+//
 // EVERY OPERATION IS A READ, A POSE OF ONE FIELD, OR A MOVE OF THE CLOCK. That is
 // the whole design. A pose ARRANGES THE FIELD and never fabricates an outcome: it
 // puts the game into a situation, and the game's own update — the real sub-step, the
@@ -39,9 +52,10 @@ import {
   SPECTRA_HANDLE,
   bulletSpeedScale,
   diveGapScale,
+  SHIP_X_MAX,
+  SHIP_X_MIN,
   droneSpeedScale,
   fluxHold,
-  fluxWindow,
   isChallengeStage,
 } from "./constants";
 import { shimmering } from "./drones";
@@ -49,12 +63,10 @@ import {
   addDrone,
   addEnemyBullet,
   addPlayerBullet,
-  findBullet,
   findDrone,
   removeBulletById,
   removeDroneById,
 } from "./entities";
-import { clampShipX } from "./field";
 import { resetState } from "./game";
 import { menuItemRect, type MenuRect } from "./menus";
 import { dischargeReady } from "./resonance";
@@ -62,6 +74,7 @@ import { poseScore } from "./scoring";
 import { shipAlive } from "./progression";
 import type {
   Band,
+  Drone,
   DroneKind,
   DronePhase,
   Phase,
@@ -178,6 +191,8 @@ export interface SpectraDebugApi {
   // The core.
   reset(options?: { seed?: number }): void;
   snapshot(): SpectraSnapshot;
+  /** Bring every reported reading into agreement with the game as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): MenuRect | null;
 
   // The screen and the run.
@@ -325,7 +340,82 @@ export function createDebugApi(
   state: SpectraState,
   clock: DebugClock,
 ): SpectraDebugApi {
-  const drone = (id: number) => findDrone(state, id);
+  /**
+   * The drone with that id, or a caller error naming the id.
+   *
+   * An id no live drone carries names no state to reach, so it THROWS where the
+   * caller sees it rather than leaving the pose to return with the roster exactly
+   * as it was: a call that vanished would grade a check that never posed what it
+   * meant to as one that did.
+   */
+  const drone = (op: string, id: number): Drone => {
+    const found = findDrone(state, id);
+    if (found === undefined) {
+      throw new RangeError(`Spectra: ${op} names no live drone with id ${id}`);
+    }
+    return found;
+  };
+
+  /**
+   * The drone with that id, of that kind, or a caller error naming both.
+   *
+   * A band window belongs to a Flux and a shell to a Prism, so posing either on a
+   * drone that has none names no state to reach.
+   */
+  const droneOfKind = (op: string, id: number, kind: DroneKind): Drone => {
+    const found = drone(op, id);
+    if (found.kind !== kind) {
+      throw new RangeError(
+        `Spectra: ${op} needs a ${kind}, and drone ${id} is a ${found.kind}`,
+      );
+    }
+    return found;
+  };
+
+  /** One entry of a roster by id, or a caller error naming the id. */
+  const requireId = <T extends { id: number }>(
+    op: string,
+    roster: readonly T[],
+    id: number,
+  ): T => {
+    const found = roster.find((entry) => entry.id === id);
+    if (found === undefined) {
+      throw new RangeError(`Spectra: ${op} names no live entry with id ${id}`);
+    }
+    return found;
+  };
+
+  /**
+   * The finite number the caller passed, at or above `floor`.
+   *
+   * The floor is a bound `specs/instrumentation.md` fixes as a constant, so it is
+   * the argument's DOMAIN rather than an edge to snap to: a call outside it fails
+   * loudly rather than being clamped into range, which would leave the state
+   * holding a value nobody asked for.
+   */
+  const atLeast = (op: string, value: number, floor: number): number => {
+    if (!Number.isFinite(value) || value < floor) {
+      throw new RangeError(
+        `Spectra: ${op} needs a finite number at or above ${floor}, got ${String(value)}`,
+      );
+    }
+    return value;
+  };
+
+  /** The finite number the caller passed, inside the closed range the specs fix. */
+  const inRange = (
+    op: string,
+    value: number,
+    lo: number,
+    hi: number,
+  ): number => {
+    if (!Number.isFinite(value) || value < lo || value > hi) {
+      throw new RangeError(
+        `Spectra: ${op} needs a finite number in [${lo}, ${hi}], got ${String(value)}`,
+      );
+    }
+    return value;
+  };
 
   return {
     version: SPECTRA_DEBUG_VERSION,
@@ -371,6 +461,24 @@ export function createDebugApi(
     },
 
     /**
+     * Bring every reported reading into agreement with the game as it stands.
+     *
+     * Every derived reading this build reports — `isChallenge`, the four
+     * stage-scaled figures, `dischargeReady`, `inversionActive`, `ship.alive`,
+     * every `effectiveBand`, a Flux's `shimmer` and a burst's `particles` — is
+     * worked out at the READ, in `snapshotOf`, from the stage, the resonance, the
+     * inversion, the phase and the bands beside it. Nothing is held that a pose
+     * can leave behind, so there is nothing here to rewrite and this body is the
+     * answer rather than an omission.
+     *
+     * The operation is required of EVERY build, including one that keeps those
+     * readings as stored copies and must rewrite them from their sources here.
+     * This is what it comes to in a build that does not. It advances no clock,
+     * runs no system, fires nothing, and corrects nothing.
+     */
+    reconcile() {},
+
+    /**
      * A pure read of the hit region of item `index` on the menu the current screen
      * shows, in logical units. It changes nothing.
      *
@@ -392,11 +500,11 @@ export function createDebugApi(
     },
 
     setPhaseTimer(seconds) {
-      state.phaseTimer = seconds;
+      state.phaseTimer = atLeast("setPhaseTimer(seconds)", seconds, 0);
     },
 
     setMenuIndex(index) {
-      state.menuIndex = index;
+      state.menuIndex = atLeast("setMenuIndex(n)", index, 0);
     },
 
     /**
@@ -422,7 +530,7 @@ export function createDebugApi(
      * `isChallenge` all follow it, because each is derived at the call.
      */
     setStage(stage) {
-      state.stage = Math.max(1, Math.round(stage));
+      state.stage = Math.round(atLeast("setStage(n)", stage, 1));
     },
 
     setExtraLifeAwarded(awarded) {
@@ -436,7 +544,7 @@ export function createDebugApi(
      * bonus belongs to the scoring path.
      */
     setChallengeHits(hits) {
-      state.challengeHits = Math.max(0, Math.round(hits));
+      state.challengeHits = Math.round(atLeast("setChallengeHits(n)", hits, 0));
     },
 
     setWaveEntry(enabled) {
@@ -457,17 +565,23 @@ export function createDebugApi(
 
     /** Set the wave's own dive timer. It launches nothing itself. */
     setDiveClock(seconds) {
-      state.diveClock = Math.max(0, seconds);
+      state.diveClock = atLeast("setDiveClock(seconds)", seconds, 0);
     },
 
     /** Set the figure that timer must reach. It launches nothing and redraws nothing. */
     setDiveGap(seconds) {
-      state.nextDiveGap = Math.max(0, seconds);
+      state.nextDiveGap = atLeast("setDiveGap(seconds)", seconds, 0);
     },
 
-    /** Place the ship's centre; the lane's own clamp still applies. */
+    /**
+     * Place the ship's centre at the `x` it was GIVEN.
+     *
+     * The lane's bounds are the argument's domain rather than an edge to snap to,
+     * so a value outside them fails loudly instead of landing the ship somewhere
+     * nobody asked for.
+     */
     setShipX(x) {
-      state.ship.x = clampShipX(x);
+      state.ship.x = inRange("setShipX(x)", x, SHIP_X_MIN, SHIP_X_MAX);
     },
 
     /**
@@ -480,21 +594,21 @@ export function createDebugApi(
     },
 
     setFireLockout(seconds) {
-      state.ship.lockout = Math.max(0, seconds);
+      state.ship.lockout = atLeast("setFireLockout(seconds)", seconds, 0);
     },
 
     setFireCooldown(seconds) {
-      state.ship.cooldown = Math.max(0, seconds);
+      state.ship.cooldown = atLeast("setFireCooldown(seconds)", seconds, 0);
     },
 
     /** Set the meter. `dischargeReady` follows it. */
     setResonance(value) {
-      state.resonance = Math.max(0, Math.min(RESONANCE_MAX, value));
+      state.resonance = inRange("setResonance(value)", value, 0, RESONANCE_MAX);
     },
 
     /** Set the seconds of inversion left. `inversionActive` follows it. */
     setInversion(seconds) {
-      state.inversion = Math.max(0, seconds);
+      state.inversion = atLeast("setInversion(seconds)", seconds, 0);
     },
 
     /**
@@ -510,8 +624,7 @@ export function createDebugApi(
     },
 
     setDronePosition(id, x, y) {
-      const target = drone(id);
-      if (target === undefined) return;
+      const target = drone("setDronePosition", id);
       target.x = x;
       target.y = y;
     },
@@ -522,8 +635,7 @@ export function createDebugApi(
      * It moves the band and nothing else: `bandClock` stays exactly where it stands.
      */
     setDroneBand(id, band) {
-      const target = drone(id);
-      if (target !== undefined) target.band = band;
+      drone("setDroneBand", id).band = band;
     },
 
     /**
@@ -534,8 +646,7 @@ export function createDebugApi(
      * launch turns `diveLaunching` on instead.
      */
     setDronePhase(id, phase) {
-      const target = drone(id);
-      if (target === undefined) return;
+      const target = drone("setDronePhase", id);
       target.phase = phase;
       target.phaseTime = 0;
       target.pathDist = 0;
@@ -549,8 +660,7 @@ export function createDebugApi(
     },
 
     setDroneSlot(id, x, y) {
-      const target = drone(id);
-      if (target === undefined) return;
+      const target = drone("setDroneSlot", id);
       target.slotX = x;
       target.slotY = y;
     },
@@ -562,42 +672,42 @@ export function createDebugApi(
      * change.
      */
     setDroneBandClock(id, seconds) {
-      const target = drone(id);
-      if (target === undefined) return;
-      target.bandClock = Math.max(
+      // The seconds it was HANDED, whatever `fluxWindow(stage)` is at the time:
+      // the window is a live figure the stage moves, so it is a game rule rather
+      // than this argument's domain, and a clock posed past the end of the window
+      // stays where it was put until the oscillation reaches it.
+      droneOfKind("setDroneBandClock", id, "flux").bandClock = atLeast(
+        "setDroneBandClock(seconds)",
+        seconds,
         0,
-        Math.min(fluxWindow(state.stage), seconds),
       );
     },
 
     setDroneShell(id, intact) {
-      const target = drone(id);
-      if (target !== undefined) target.shellAlive = Boolean(intact);
+      droneOfKind("setDroneShell", id, "prism").shellAlive = Boolean(intact);
     },
 
     /** Set the charge a mismatched shot feeds, from `0` to `OVERLOAD_AT`. */
     setDroneCharge(id, charge) {
-      const target = drone(id);
-      if (target === undefined) return;
-      target.charge = Math.max(0, Math.min(OVERLOAD_AT, Math.round(charge)));
+      drone("setDroneCharge", id).charge = Math.round(
+        inRange("setDroneCharge(charge)", charge, 0, OVERLOAD_AT),
+      );
     },
 
     setDroneTravel(id, enabled) {
-      const target = drone(id);
-      if (target !== undefined) target.travel = Boolean(enabled);
+      drone("setDroneTravel", id).travel = Boolean(enabled);
     },
 
     setDroneOscillation(id, enabled) {
-      const target = drone(id);
-      if (target !== undefined) target.oscillation = Boolean(enabled);
+      drone("setDroneOscillation", id).oscillation = Boolean(enabled);
     },
 
     setDroneFire(id, enabled) {
-      const target = drone(id);
-      if (target !== undefined) target.fire = Boolean(enabled);
+      drone("setDroneFire", id).fire = Boolean(enabled);
     },
 
     removeDrone(id) {
+      requireId("removeDrone", state.drones, id);
       removeDroneById(state, id);
     },
 
@@ -615,13 +725,13 @@ export function createDebugApi(
     },
 
     setBulletVelocity(id, vx, vy) {
-      const target = findBullet(state, id);
-      if (target === undefined) return;
+      const target = requireId("setBulletVelocity", state.bullets, id);
       target.vx = vx;
       target.vy = vy;
     },
 
     removeBullet(id) {
+      requireId("removeBullet", state.bullets, id);
       removeBulletById(state, id);
     },
 
@@ -634,6 +744,7 @@ export function createDebugApi(
     },
 
     removeBurst(id) {
+      requireId("removeBurst", state.bursts, id);
       state.bursts = state.bursts.filter((burst) => burst.id !== id);
     },
 

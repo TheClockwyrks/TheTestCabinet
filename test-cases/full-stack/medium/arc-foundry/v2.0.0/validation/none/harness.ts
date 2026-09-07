@@ -20,6 +20,18 @@
 // snapshot, the operations `specs/instrumentation.md` requires, the snapshot
 // readers, and the compound sequences that pose an isolated yard.
 //
+// RECONCILING AFTER A POSE. `specs/instrumentation.md` says what a build REPORTS,
+// not how it holds it, so a derived reading — `qualityOdds`, `mazeLength`, a
+// structure's `range`, `damage`, `fireRate` and `auraBonus`, a unit's `speed` and
+// `progress`, `held.legal` — may be worked out at the read in one build and kept
+// as a stored copy in another. Both are conformant, and they part company the
+// moment a pose writes what such a reading is derived from. `reconcile` closes
+// that gap: it brings every reported reading into agreement with the yard as it
+// stands without advancing anything. A helper here that poses something a reading
+// derives from calls it before it returns, so a check that poses through the
+// helpers never calls `reconcile` itself; a check that poses with `h.debug.set…`
+// directly calls it once before its first read or sweep.
+//
 // The seam is one call. `createCaseHarness` takes the case's TYPES as type
 // arguments and the case's VALUES as one object, and hands back the machinery
 // with Arc Foundry's names and Arc Foundry's types on it. The suites next door
@@ -494,6 +506,7 @@ export async function openRun(
     await h.debug.setDifficulty(options.difficulty);
   }
   await h.debug.startRun();
+  await h.debug.reconcile();
 }
 
 /**
@@ -508,6 +521,7 @@ export async function emptyYard(h: Harness): Promise<void> {
   await h.debug.clearStructures();
   await h.debug.clearUnits();
   await h.debug.clearProjectiles();
+  await h.debug.reconcile();
 }
 
 /**
@@ -535,6 +549,7 @@ export async function openYard(
   }
   if (options.stamps !== undefined) await h.debug.setStamps(options.stamps);
   if (options.speed !== undefined) await h.debug.setSpeed(options.speed);
+  await h.debug.reconcile();
 }
 
 /**
@@ -555,6 +570,7 @@ export async function openYard(
  */
 export async function clearHand(h: Harness): Promise<void> {
   await h.debug.clearHeld();
+  await h.debug.reconcile();
 }
 
 /** Refill the level's stamp allowance, for a scenario that needs a sixth rock. */
@@ -580,6 +596,7 @@ export async function standComponent(
 ): Promise<number> {
   const before = (await h.snapshot()).structures.length;
   await h.debug.placeComponent(type, quality, col, row);
+  await h.debug.reconcile();
   return placed(
     await h.snapshot(),
     before,
@@ -597,12 +614,16 @@ export async function standCombo(
 ): Promise<number> {
   const before = (await h.snapshot()).structures.length;
   await h.debug.placeCombo(combo, col, row);
+  await h.debug.reconcile();
   const id = placed(
     await h.snapshot(),
     before,
     `placeCombo(${combo}, ${col}, ${row})`,
   );
-  if (level !== 0) await h.debug.setComboLevel(id, level);
+  if (level !== 0) {
+    await h.debug.setComboLevel(id, level);
+    await h.debug.reconcile();
+  }
   return id;
 }
 
@@ -614,6 +635,7 @@ export async function standBlocker(
 ): Promise<number> {
   const before = (await h.snapshot()).structures.length;
   await h.debug.placeBlocker(col, row);
+  await h.debug.reconcile();
   return placed(await h.snapshot(), before, `placeBlocker(${col}, ${row})`);
 }
 
@@ -638,6 +660,7 @@ export async function standCandidate(
   await h.debug.placeRock(col, row);
   await h.debug.clearNextRoll();
   await clearHand(h);
+  await h.debug.reconcile();
   return placed(
     await h.snapshot(),
     before,
@@ -742,6 +765,7 @@ export async function releaseUnit(
   if (pose.frozen !== undefined) {
     await h.debug.setUnitFrozen(id, pose.frozen);
   }
+  await h.debug.reconcile();
   return id;
 }
 
@@ -784,6 +808,7 @@ export async function parkUnit(
 export async function holdWaveOpen(h: Harness): Promise<void> {
   await h.debug.setPhase("wave");
   await h.debug.setWaveHold(true);
+  await h.debug.reconcile();
 }
 
 /**
@@ -804,6 +829,7 @@ export async function startWave(
 ): Promise<number> {
   const candidate = await standCandidate(h, type, quality, col, row);
   await h.debug.keep(candidate);
+  await h.debug.reconcile();
   return candidate;
 }
 

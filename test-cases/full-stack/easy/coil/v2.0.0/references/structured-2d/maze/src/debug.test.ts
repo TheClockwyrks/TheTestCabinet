@@ -350,3 +350,41 @@ describe("the obstacle operations", () => {
     },
   );
 });
+
+describe("reconcile", () => {
+  it("re-derives the mute mirror from the bit it is a copy of", () => {
+    // `muted` is the game's readable copy of the engine's bit, refreshed by the
+    // frame. Moving the engine's bit without running a frame leaves the copy
+    // stale, which is the situation `reconcile` exists for: no frame is run, and
+    // the reading answers for the engine as it is now.
+    h.engine.world.audio.setMuted(true);
+    expect(h.debug.snapshot().muted).toBe(false);
+
+    h.debug.reconcile();
+
+    expect(h.debug.snapshot().muted).toBe(true);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    h.debug.setScreen("playing");
+    h.debug.setSnake(chain(10, 8, 3));
+    h.debug.setDirection("right");
+    h.debug.setPellet(14, 8);
+    h.debug.setComboWindow(2);
+    const before = h.debug.snapshot();
+
+    h.debug.reconcile();
+    const once = h.debug.snapshot();
+
+    expect(once.ticks).toBe(before.ticks);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.snake).toEqual(before.snake);
+    expect(once.pellet).toEqual(before.pellet);
+    expect(once.turns).toEqual(before.turns);
+    expect(once.comboWindow).toBe(before.comboWindow);
+    expect(once).toEqual(before);
+
+    h.debug.reconcile();
+    expect(h.debug.snapshot()).toEqual(once);
+  });
+});

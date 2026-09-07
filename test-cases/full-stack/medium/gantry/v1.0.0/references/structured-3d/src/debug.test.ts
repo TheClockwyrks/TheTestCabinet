@@ -148,13 +148,15 @@ describe("the screens", () => {
     expect(() => harness().debug.setScreen("yard")).toThrow(/screen/);
   });
 
-  it("sets the menu index only on the three screens with a menu", () => {
+  it("takes the menu index against the menu the screen showing carries", () => {
     const h = harness();
     h.debug.setMenuIndex(1);
     expect(h.debug.snapshot().menuIndex).toBe(1);
     expect(() => h.debug.setMenuIndex(9)).toThrow(/index/);
+    // A screen carrying no menu has no entry to name, so there is no defined
+    // state to reach and the call fails loudly (`specs/instrumentation.md`).
     h.debug.setScreen("build");
-    h.debug.setMenuIndex(9);
+    expect(() => h.debug.setMenuIndex(0)).toThrow(/menu/);
     expect(h.debug.snapshot().menuIndex).toBe(1);
     expect(() => h.debug.setMenuIndex(1.5)).toThrow(/integer/);
   });
@@ -185,15 +187,15 @@ describe("the screens", () => {
     expect(() => h.debug.menuItemRect(0)).toThrow();
   });
 
-  it("poses the check action on the build screen alone", () => {
+  it("poses the check action from wherever the game stands", () => {
     const h = onSite(0);
     h.debug.showCheck();
     expect(h.debug.snapshot().checkResult).toEqual(h.debug.check());
-    // The `check` action reaches the build screen and nothing else, and so
-    // does this pose (`specs/instrumentation.md`).
+    // The build screen is how a PLAYER reaches the `check` action and is not a
+    // condition on this pose (`specs/instrumentation.md`, The operations).
     const elsewhere = harness();
     elsewhere.debug.showCheck();
-    expect(elsewhere.debug.snapshot().checkResult).toBeNull();
+    expect(elsewhere.debug.snapshot().checkResult).not.toBeNull();
   });
 
   it("sets and clears a site's cleared flag and its best score", () => {
@@ -209,15 +211,20 @@ describe("the screens", () => {
     );
   });
 
-  it("sets the camera through the orbit's own limits", () => {
+  it("wraps the yaw and holds the pitch and distance to their domains", () => {
     const h = harness();
-    h.debug.setCamera(-30, 500, 5);
+    h.debug.setCamera(-30, 80, 10);
     expect(h.debug.snapshot().camera).toEqual({
       yaw: 330,
       pitch: 80,
       dist: 10,
     });
-    expect(() => h.debug.setCamera(Number.NaN, 0, 0)).toThrow(/yaw/);
+    // The pitch and distance limits are constants, so they are the operation's
+    // domain: a value outside either fails loudly rather than being snapped
+    // back inside it (`specs/instrumentation.md`).
+    expect(() => h.debug.setCamera(0, 500, 10)).toThrow(/pitch/);
+    expect(() => h.debug.setCamera(0, 40, 5)).toThrow(/dist/);
+    expect(() => h.debug.setCamera(Number.NaN, 40, 10)).toThrow(/yaw/);
   });
 
   it("returns to the title state on reset, leaving muted alone", () => {
@@ -232,6 +239,56 @@ describe("the screens", () => {
     expect(s.tool).toBe("strut");
     expect(s.cleared[0]).toBe(false);
     expect(s.muted).toBe(true);
+  });
+});
+
+describe("reconciling derived state", () => {
+  it("carries every core operation", () => {
+    const h = harness();
+    for (const op of ["reset", "reconcile", "snapshot"] as const) {
+      expect(typeof h.debug[op]).toBe("function");
+    }
+  });
+
+  it("agrees with the world a pose left, advancing nothing", () => {
+    const h = onSite();
+    h.debug.addMember(0, 0, 0, 0, 2, 0, "strut");
+    h.debug.setBob(1, 2, 3);
+
+    const before = h.debug.snapshot();
+    const cues = h.cues.length;
+    h.debug.reconcile();
+    const once = h.debug.snapshot();
+    h.debug.reconcile();
+    const twice = h.debug.snapshot();
+
+    // Every derived reading is worked out at the read here, so nothing moves,
+    // and twice is the same as once.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.run.tick).toBe(before.run.tick);
+    expect(once.simTime).toBe(before.simTime);
+    expect(h.cues).toHaveLength(cues);
+  });
+
+  it("moves nothing to make a reading agree", () => {
+    // The bob is left where it was put; the pendulum's constraint is the next
+    // tick's, and this call is not that tick.
+    const h = onSite();
+    h.debug.setBob(9, 9, 9);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().run.bob.pos).toEqual({ x: 9, y: 9, z: 9 });
+  });
+
+  it("answers for the structure a pose left", () => {
+    const h = onSite();
+    expect(h.debug.snapshot().structure.issues).toContain("no-ring");
+    h.debug.setRing(0, 2, 0);
+    h.debug.reconcile();
+    const posed = h.debug.snapshot().structure;
+    expect(posed.ring).toEqual({ corner: { x: 0, y: 2, z: 0 } });
+    expect(posed.cost).toBeGreaterThan(0);
+    expect(posed.issues).not.toContain("no-ring");
   });
 });
 
@@ -278,7 +335,9 @@ describe("the structure poses", () => {
     expect(h.cues).toEqual([]);
   });
 
-  it("does nothing on a screen that is not build", () => {
+  it("edits the open site's structure from whatever screen is showing", () => {
+    // The build screen is how a PLAYER reaches the tools and is not a condition
+    // on these (`specs/instrumentation.md`, The operations).
     const h = onSite();
     h.debug.setScreen("program");
     h.debug.addMember(0, 0, 0, 0, 2, 0, "strut");
@@ -286,10 +345,10 @@ describe("the structure poses", () => {
     h.debug.setTool("delete");
     h.debug.setPendingNode(0, 2, 0);
     const s = h.debug.snapshot();
-    expect(s.structure.members).toEqual([]);
-    expect(s.structure.ring).toBeNull();
-    expect(s.tool).toBe("strut");
-    expect(s.pendingNode).toBeNull();
+    expect(s.structure.members).toHaveLength(1);
+    expect(s.structure.ring).toEqual({ corner: { x: 0, y: 2, z: 0 } });
+    expect(s.tool).toBe("delete");
+    expect(s.pendingNode).toEqual({ x: 0, y: 2, z: 0 });
   });
 
   it("holds and clears a pending node", () => {
@@ -313,10 +372,13 @@ describe("the structure poses", () => {
 });
 
 describe("the tape poses", () => {
-  it("appends steps and commands on the program screen alone", () => {
+  it("appends steps and commands from whatever screen is showing", () => {
+    // The program screen is how a PLAYER reaches the tape editor and is not a
+    // condition on these (`specs/instrumentation.md`, The operations).
     const h = onSite();
     h.debug.addMoveStep("slew", 90, 10);
-    expect(h.debug.snapshot().program).toEqual([]);
+    expect(h.debug.snapshot().program).toHaveLength(1);
+    h.debug.clearProgram();
     h.debug.setScreen("program");
     h.debug.addMoveStep("slew", 90, 10);
     h.debug.addCommand(0, "hoist", 6, 2);
@@ -381,24 +443,28 @@ describe("the site poses", () => {
     expect(() => h.debug.setLoadTarget(9, 0, 0, 0, 0)).toThrow(/index/);
   });
 
-  it("does nothing on the title screen", () => {
+  it("reaches the yard from the title screen", () => {
+    // The screen is a player's route to the yard and is not a condition on
+    // these (`specs/instrumentation.md`, The operations).
     const h = harness();
-    const before = h.debug.snapshot().site.loads.length;
     h.debug.clearLoads();
-    expect(h.debug.snapshot().site.loads).toHaveLength(before);
+    expect(h.debug.snapshot().site.loads).toEqual([]);
   });
 });
 
 describe("the run poses", () => {
-  it("do nothing with no run in progress", () => {
+  it("pose the run the snapshot reports, run or no run", () => {
+    // With no run in progress the snapshot reports the idle placeholder, and
+    // posing it is a defined state to reach (`specs/instrumentation.md`).
     const h = onSite();
     h.debug.setAxis("slew", 45);
     h.debug.setAxisRate("slew", 3);
     h.debug.setBob(1, 2, 3);
     h.debug.setBobVelocity(1, 2, 3);
     const s = h.debug.snapshot();
-    expect(s.run.axes.slew).toEqual({ value: 0, rate: 0, command: null });
-    expect(s.run.bob.pos).toEqual({ x: 0, y: 0, z: 0 });
+    expect(s.run.phase).toBe("idle");
+    expect(s.run.axes.slew).toEqual({ value: 45, rate: 3, command: null });
+    expect(s.run.bob.pos).toEqual({ x: 1, y: 2, z: 3 });
   });
 
   it("pose the axes and the bob while one is running", () => {
@@ -436,13 +502,13 @@ describe("the run poses", () => {
     expect(() => h.debug.setLoadPose(1, 0, 0, 0, 0)).toThrow(/index/);
   });
 
-  it("sets the watch speed on the run screen alone", () => {
+  it("sets the watch speed from whatever screen is showing", () => {
     const h = onSite();
     h.debug.setSpeedIndex(2);
-    expect(h.debug.snapshot().run.speedIndex).toBe(0);
-    h.debug.setScreen("run");
-    h.debug.setSpeedIndex(2);
     expect(h.debug.snapshot().run.speedIndex).toBe(2);
+    h.debug.setScreen("run");
+    h.debug.setSpeedIndex(1);
+    expect(h.debug.snapshot().run.speedIndex).toBe(1);
     expect(() => h.debug.setSpeedIndex(RUN_SPEEDS.length)).toThrow(/index/);
   });
 });
@@ -457,10 +523,14 @@ describe("startRun and abortRun", () => {
     expect(h.cues).toEqual([]);
   });
 
-  it("does nothing on a screen the run action does not apply on", () => {
+  it("starts from whatever screen is showing, the readiness deciding", () => {
+    // The screen is how a PLAYER reaches the `run` action; what still decides
+    // the start is the structure's readiness, which is the act itself.
     const h = harness();
     h.debug.startRun();
-    expect(h.debug.snapshot().screen).toBe("title");
+    const s = h.debug.snapshot();
+    expect(s.run.phase).toBe("idle");
+    expect(h.debug.check().issues).toContain("no-ring");
   });
 
   it("aborts only a run in progress", () => {

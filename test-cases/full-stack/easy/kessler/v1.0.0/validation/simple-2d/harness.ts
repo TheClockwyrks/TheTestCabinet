@@ -27,6 +27,15 @@
 // hit, destruction, catch, burn-up, life loss, and clearing comes from the ticks
 // run after the pose".
 //
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the field a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy
+// answers for the field as posed rather than as it was. A helper below that
+// poses anything a reading derives from — a ball, a pod, a target, an effect
+// timer — reconciles before it returns, so a check posing through the helpers
+// never calls it itself. A check that poses with `h.debug.set…` directly calls
+// it once before its first read or sweep.
+//
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. `specs/instrumentation.md`
 // fixes its operations, so they mean the same thing in every build; posing
 // through it is how a scenario is reproducible, and it is the seam the case's
@@ -967,6 +976,7 @@ export function isolate(h: Harness, seed?: number): KesslerSnapshot {
   h.debug.clearPods();
   h.debug.setWaveAdvance(false);
   h.debug.setPodSpawn(false);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1021,6 +1031,7 @@ export function spawnBallPolar(
   const at = polarToXy(r, deg);
   const v = polarVelocity(deg, vr, vt);
   h.debug.spawnBall(at.x, at.y, v.vx, v.vy);
+  h.debug.reconcile();
 }
 
 /** Spawn a pod of `kind` at radius `r` and angle `deg`. It falls inward. */
@@ -1032,6 +1043,7 @@ export function spawnPodPolar(
 ): void {
   const at = polarToXy(r, deg);
   h.debug.spawnPod(kind, at.x, at.y);
+  h.debug.reconcile();
 }
 
 /**
@@ -1050,6 +1062,7 @@ export function startFreshSession(h: Harness, seed?: number): KesslerSnapshot {
   h.reset(seed);
   h.debug.setScreen("playing");
   h.debug.parkBall();
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1074,6 +1087,7 @@ export function poseInterstitial(
   h.debug.setShield(false);
   h.debug.setInterstitialTicks(ticks);
   h.debug.setScreen("waveclear");
+  h.debug.reconcile();
   return h.snapshot();
 }
 

@@ -94,16 +94,17 @@ import {
   clearMine,
   regenerateMine,
   resizeMine,
+  performSave,
   startLaunch,
-  trySave,
 } from "./flow";
 import type { BuildingBox } from "./flow";
 import { deepcoreState, emptyCargo, emptyItems } from "./game";
 import type { DeepcoreState, MaterialNode, ScanResult } from "./game";
-import { buyItem, coreGround, jettisonCoreSample, useItem } from "./items";
+import { buyItem, coreGround, performJettison, performUseItem } from "./items";
 import { menuItems } from "./menus";
 import { isGrounded, minerCol, minerRow } from "./physics";
 import { fabricate, nextComponent } from "./rocket";
+import { computeScan } from "./scanner";
 import { clearSave as clearSaveSlot, hasSave } from "./save";
 import { putTile, tileAt as gridTileAt } from "./state";
 import { coreRowFor } from "./tuning";
@@ -307,6 +308,8 @@ export interface DeepcoreDebugApi {
 
   // Restoring the world
   reset(options?: { seed?: number }): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   generateMine(): void;
   clearMine(): void;
   clearCargo(): void;
@@ -730,6 +733,27 @@ export function createDebugApi(world: () => World): DeepcoreDebugApi {
       });
     },
 
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Nearly every derived reading this build reports — the miner's `grounded`,
+     * `col` and `row`, `depthMeters`, `overloaded`, `maxFuel`, `maxHull`,
+     * `drilling.progress`, and the cargo's `slotsUsed`, `loadKg` and
+     * `liftLimitKg` — is worked out at the read, in `readSnapshot`, so there is
+     * nothing to rewrite for those. The scanner is the one reading this build
+     * keeps as a stored copy: `scan` is written by the update alone, so a pose of
+     * the miner, the nodes, the satchel, or the tiers leaves it answering for the
+     * world as it was. It is rewritten here from the same `computeScan` the
+     * update calls, and nothing else is touched: no clock moves, no system runs,
+     * and nothing is moved to make a reading agree.
+     */
+    reconcile() {
+      const live = state();
+      live.scan = {
+        ...computeScan(live.miner, live.nodes, live.satchel, live.tiers),
+      };
+    },
+
     generateMine: () => pose((d) => regenerateMine(d)),
 
     clearMine: () => pose((d) => clearMine(d)),
@@ -875,27 +899,18 @@ export function createDebugApi(world: () => World): DeepcoreDebugApi {
       });
     },
 
+    // The tier's maximum is a live game value rather than a domain, so the fuel
+    // and hull poses apply what they are given and leave the game's own systems
+    // to make of it what they will (`specs/instrumentation.md`, The operations).
     setFuel(value) {
-      const fuel = requireRange(
-        "setFuel",
-        "value",
-        value,
-        0,
-        maxFuel(state().tiers),
-      );
+      const fuel = requireNumber("setFuel", "value", value);
       pose((d) => {
         d.miner.fuel = fuel;
       });
     },
 
     setHull(value) {
-      const hull = requireRange(
-        "setHull",
-        "value",
-        value,
-        0,
-        maxHull(state().tiers),
-      );
+      const hull = requireNumber("setHull", "value", value);
       pose((d) => {
         d.miner.hull = hull;
       });
@@ -1175,13 +1190,13 @@ export function createDebugApi(world: () => World): DeepcoreDebugApi {
     useItem(item) {
       const id = requireOneOf("useItem", "item", item, ITEM_IDS);
       pose((d) => {
-        useItem(d, id);
+        performUseItem(d, id);
       });
     },
 
     jettison: () =>
       pose((d) => {
-        jettisonCoreSample(d);
+        performJettison(d);
       }),
 
     fabricate: () =>
@@ -1196,7 +1211,7 @@ export function createDebugApi(world: () => World): DeepcoreDebugApi {
 
     save: () =>
       pose((d) => {
-        trySave(d);
+        performSave(d);
       }),
 
     dismissNotice: () =>

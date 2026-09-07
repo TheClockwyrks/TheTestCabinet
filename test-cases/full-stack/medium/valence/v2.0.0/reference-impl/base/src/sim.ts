@@ -23,6 +23,7 @@ import {
   TARGETING_ORDER,
   TOTAL_ROUNDS,
   TOWERS,
+  TOWER_ORDER,
   UPGRADE_MULT,
   atomRadius,
   atomSpeed,
@@ -66,6 +67,22 @@ import type {
 // How long a snapshot-visible burst lingers in `effects` (specs/instrumentation.md) — long
 // enough that a driven scenario can step onto the hit and read the burst back.
 const FX_EFFECT_LIFE = 0.4;
+// The two tier-III branches, as an enumerated domain `upgradeTower` checks its argument
+// against (specs/instrumentation.md).
+const BRANCHES: readonly Branch[] = ["A", "B"];
+// The matter type names `spawnUnit` takes, exactly the snapshot's own vocabulary
+// (specs/matter.md): the internal "heavy" isotope is named "isotope" on the surface.
+const SPAWNABLE_TYPES = [
+  "atom",
+  "dimer",
+  "polymer",
+  "lattice",
+  "noble",
+  "isotope",
+  "chelate",
+  "shroud",
+  "macromass",
+] as const;
 // Which presentation bursts surface in the snapshot's `effects`, and under which name. A
 // shell strip (any damage-type burst) reads as "strip"; a leak burst is not a decomposition
 // event, so it is presentation-only.
@@ -393,14 +410,31 @@ export class Game {
   }
 
   // ---- Auras (Catalyst / Moderator) and detection, applied before movement ----
+  //
+  // Two halves, split so `reconcile()` (specs/instrumentation.md) can call the second
+  // without the first: the timers are the CLOCK's and only a tick may move them, while
+  // `excite`, `slowFactor` and `revealed` are DERIVED — each is a function of where the
+  // units and the towers stand right now, and re-deriving them costs no simulation time.
   private stepAuras(dt: number): void {
     for (const u of this.units) {
-      u.excite = 0;
-      u.slowFactor = 1;
       u.markTimer = Math.max(0, u.markTimer - dt);
       u.hitSlowTimer = Math.max(0, u.hitSlowTimer - dt);
       if (this.hasTrait(u, "inert")) {
         u.revealTimer = Math.max(0, u.revealTimer - dt);
+      }
+    }
+    this.deriveAuras(true);
+  }
+
+  // Re-derive every per-unit reading the auras and the detectors decide, from the board
+  // exactly as it stands. `emit` is false when nothing may be fired — a reveal burst is a
+  // consequence of a detector FINDING a unit during a tick, not of the reading being
+  // brought up to date.
+  private deriveAuras(emit: boolean): void {
+    for (const u of this.units) {
+      u.excite = 0;
+      u.slowFactor = 1;
+      if (this.hasTrait(u, "inert")) {
         u.revealed = u.revealTimer > 0; // reveal lingers after leaving a field
       }
     }
@@ -409,7 +443,7 @@ export class Game {
       if (t.kind === "catalyst") {
         for (const u of this.unitsInRange(t)) {
           if (this.hasTrait(u, "inert")) {
-            if (!u.revealed)
+            if (emit && !u.revealed)
               this.emitFx(
                 "reveal",
                 this.board.sample(u.lane, u.s).x,
@@ -440,6 +474,21 @@ export class Game {
 
   private eff(t: Tower): EffStats {
     return deriveStats(t.kind, t.level, t.branch);
+  }
+
+  // Point one damage tower at the matter on the board and answer what it would shoot.
+  // `targetId` and `aimAngle` are DERIVED — a function of this tower's priority over the
+  // live units — so this is shared by the firing step and by `reconcile()`, which brings
+  // them up to date without advancing anything.
+  private aimTower(t: Tower, s: EffStats): Unit[] {
+    const targets = this.pickTargets(t, s, s.multiTarget);
+    const primary = targets[0] ?? null;
+    t.targetId = primary ? primary.id : null;
+    if (primary) {
+      const p = this.board.sample(primary.lane, primary.s);
+      t.aimAngle = Math.atan2(p.y - (t.y - 4), p.x - t.x);
+    }
+    return targets;
   }
 
   private stepZones(dt: number): void {
@@ -483,13 +532,8 @@ export class Game {
       t.fireAnim += dt;
       if (t.kind === "catalyst" || t.kind === "moderator") continue; // auras don't fire or aim
       const s = this.eff(t);
-      const targets = this.pickTargets(t, s, s.multiTarget);
+      const targets = this.aimTower(t, s);
       const primary = targets[0] ?? null;
-      t.targetId = primary ? primary.id : null;
-      if (primary) {
-        const p = this.board.sample(primary.lane, primary.s);
-        t.aimAngle = Math.atan2(p.y - (t.y - 4), p.x - t.x);
-      }
       t.cooldown -= dt;
       if (t.cooldown > 0 || !primary) continue;
       t.cooldown = 1 / t.fireRate;
@@ -980,8 +1024,13 @@ export class Game {
   // spent AND the board is clear — has no wave to call spent, so an empty board never ends
   // it. Everything else is an ordinary round: the phase is `round`, so every entity system
   // runs, and losing still resolves through the real containment check in `fixedStep`.
+  //
+  // RULE B (specs/instrumentation.md, "Control operations"): it opens the round from
+  // WHEREVER THE GAME STANDS. The screen the game is on and the phase it is in are how a
+  // player would have reached a control, and this is not a control a player has — nothing
+  // but the debug API opens a scenario round — so there is nothing here to gate on and it
+  // never declines. It answers `true` because it always did the thing it names.
   startScenario(): boolean {
-    if (this.state !== "playing" || this.phase !== "build") return false;
     this.phase = "round";
     this.paused = false; // as launching a round does
     this.wave = null;
@@ -1062,13 +1111,106 @@ export class Game {
     return this.towers.find((t) => t.id === id) ?? null;
   }
 
-  // Set the round the next startRound() will build (a precondition — does not spawn anything).
+  // ---- Loud failure (specs/instrumentation.md, "Control operations") ----------
+  //
+  // "What no operation does is refuse quietly. A call the game has no defined state for
+  // fails loudly, throwing an `Error` the caller sees." These four are how every debug
+  // operation below says so, and each names the operation, the argument and the value, so
+  // a caller reads what it got wrong rather than guessing at a state that did not move.
+
+  private invalid(operation: string, message: string): never {
+    throw new Error(`${operation}: ${message}`);
+  }
+
+  private requireNumber(operation: string, name: string, v: unknown): number {
+    if (typeof v !== "number" || !Number.isFinite(v))
+      this.invalid(
+        operation,
+        `${name} must be a finite number, got ${String(v)}`,
+      );
+    return v;
+  }
+
+  private requireOneOf<T extends string>(
+    operation: string,
+    name: string,
+    v: unknown,
+    allowed: readonly T[],
+  ): T {
+    if (typeof v !== "string" || !allowed.includes(v as T))
+      this.invalid(
+        operation,
+        `${name} must be one of ${allowed.join(", ")}; got ${String(v)}`,
+      );
+    return v as T;
+  }
+
+  // The tower `id` names, or the loud failure that no tower carries it.
+  private requireTower(operation: string, id: unknown): Tower {
+    const t = typeof id === "number" ? (this.towerById(id) ?? null) : null;
+    if (t === null)
+      this.invalid(operation, `no tower carries the id ${String(id)}`);
+    return t;
+  }
+
+  // A DAMAGE tower: a support aura affects every unit in range at once and so carries no
+  // targeting and no inert priority. Asking one for either names no state the game has.
+  private requireDamageTower(operation: string, id: unknown): Tower {
+    const t = this.requireTower(operation, id);
+    if (TOWERS[t.kind].support)
+      this.invalid(
+        operation,
+        `a ${t.kind} is a support aura and carries no single target`,
+      );
+    return t;
+  }
+
+  // ---- reconcile (specs/instrumentation.md, "Reconciling derived state") -----
+  //
+  // Bring every value the surface reports into agreement with the board as it now stands,
+  // WITHOUT ADVANCING ANYTHING. A control operation writes what a derived reading depends
+  // on — `spawnUnit` puts a unit inside a detector's field, `placeTower` puts an aura over
+  // one, `upgradeTower` changes what a tower's stats derive from — and this build keeps
+  // several of those readings as stored copies, refreshed once per tick. Without this call
+  // a caller that poses a board and reads it straight back reads the board BEFORE the pose.
+  //
+  // Every line here is a re-derivation through the SAME helper the tick uses, so the
+  // reading is the one the tick would have produced. Nothing is advanced: `deriveAuras`
+  // reads the timers rather than decrementing them and is told to emit nothing, `aimTower`
+  // picks a target without touching a cooldown or launching a shot, and `deriveStats` is a
+  // pure function of a tower's kind, tier and branch. Nothing is corrected either: a unit
+  // stays exactly where it was posed, and nothing is clamped back into a legal range.
+  //
+  // The simulation's own accumulators — energy, integrity, score, the round, hit points,
+  // bond pools, cooldowns, `spent` and `simTime` — are not derived and are not touched.
+  reconcile(): void {
+    for (const t of this.towers) {
+      const s = this.eff(t);
+      t.range = s.range;
+      t.fireRate = s.fireRate;
+    }
+    this.deriveAuras(false);
+    for (const t of this.towers) {
+      if (TOWERS[t.kind].support) continue; // auras neither aim nor fire
+      this.aimTower(t, this.eff(t));
+    }
+  }
+
+  // Set the round the next startRound() will build (a precondition — does not spawn
+  // anything). `n` is a whole round number from 1 to TOTAL_ROUNDS: a value outside that
+  // names no round the campaign holds, so it fails loudly rather than being nudged to one.
   debugSetRound(n: number): void {
-    this.round = Math.max(0, Math.round(n) - 1);
+    this.requireNumber("setRound", "n", n);
+    if (!Number.isInteger(n) || n < 1 || n > TOTAL_ROUNDS)
+      this.invalid(
+        "setRound",
+        `n must be a whole number 1 to ${TOTAL_ROUNDS}; got ${n}`,
+      );
+    this.round = n - 1;
     this.phase = "build";
     this.buildTimed = false;
     this.buildTimer = 0;
-    this.nextWave = this.makeWave(Math.max(1, Math.round(n)));
+    this.nextWave = this.makeWave(n);
   }
 
   // Put one real unit onto a path through the real construction path, so it flows, is
@@ -1080,15 +1222,37 @@ export class Game {
     pathId?: number;
     progress?: number;
   }): number {
-    const raw = spec.type ?? "atom";
+    // Each of the three is a STATED DOMAIN (specs/instrumentation.md): the matter types,
+    // the in-play map's path ids, and an arc length along the named path. A value outside
+    // one names no unit the board can hold, so it fails loudly rather than being nudged to
+    // the nearest legal one — a silently relocated unit would make every measurement taken
+    // from where it was posed answer for somewhere else.
+    const raw = this.requireOneOf(
+      "spawnUnit",
+      "type",
+      spec.type ?? "atom",
+      SPAWNABLE_TYPES,
+    );
     const type = (raw === "isotope" ? "heavy" : raw) as MatterType;
     const lanes = this.board.pathCount;
-    const lane = Math.max(0, Math.min(lanes - 1, Math.round(spec.pathId ?? 0)));
+    const lane = spec.pathId ?? 0;
+    if (!Number.isInteger(lane) || lane < 0 || lane >= lanes)
+      this.invalid(
+        "spawnUnit",
+        `pathId must be a whole number 0 to ${lanes - 1}; got ${String(lane)}`,
+      );
+    const length = this.board.pathLength(lane);
+    const progress = spec.progress ?? 0;
+    this.requireNumber("spawnUnit", "progress", progress);
+    if (progress < 0 || progress > length)
+      this.invalid(
+        "spawnUnit",
+        `progress must be between 0 and path ${lane}'s length (${length}); got ${progress}`,
+      );
+    if (spec.electrons !== undefined)
+      this.requireNumber("spawnUnit", "electrons", spec.electrons);
     const u = this.makeUnit(type, lane, spec.electrons, Boolean(spec.inert));
-    u.s = Math.max(
-      0,
-      Math.min(this.board.pathLength(lane), spec.progress ?? 0),
-    );
+    u.s = progress;
     this.units.push(u);
     return u.id;
   }
@@ -1103,6 +1267,12 @@ export class Game {
     id: number | null;
     reason: "path" | "overlap" | "bounds" | "cost" | null;
   } {
+    // The four reasons below are the placement TRANSACTION's own rules and the return
+    // value is how the caller is told which one decided — that is a loud answer, not a
+    // quiet refusal. A `kind` naming no tower is a different thing: it names nothing the
+    // game could build, so it fails loudly. Nothing about the phase, the screen, or a
+    // tower being held in build mode is consulted; that is a player's route, not a rule.
+    this.requireOneOf("placeTower", "type", kind, TOWER_ORDER);
     if (this.energy < TOWERS[kind].cost)
       return { ok: false, id: null, reason: "cost" };
     const reason = this.board.placementReason(x, y, this.towers);
@@ -1112,43 +1282,77 @@ export class Game {
     return { ok: true, id: t.id, reason: null };
   }
 
+  // Upgrade one tier, whatever is selected and whatever phase the run is in. `false` is
+  // the UPGRADE TRANSACTION deciding against it — already at tier III, no branch named for
+  // a tier-III upgrade, or the cost unaffordable — which is a stated outcome the caller
+  // reads. An id no tower carries is not that: it names nothing to upgrade, and fails.
   debugUpgradeTower(id: number, branch?: Branch): boolean {
-    const t = this.towerById(id);
-    return t ? this.upgrade(t, branch) : false;
+    const t = this.requireTower("upgradeTower", id);
+    if (branch !== undefined)
+      this.requireOneOf("upgradeTower", "branch", branch, BRANCHES);
+    return this.upgrade(t, branch);
   }
 
   debugSellTower(id: number): number {
-    const t = this.towerById(id);
-    if (!t) return 0;
+    const t = this.requireTower("sellTower", id);
     const refund = this.sellRefund(t);
     this.sell(t);
     return refund;
   }
 
+  // `null` deselects; any other value names a tower, and one no tower carries fails
+  // loudly rather than quietly deselecting — those are different outcomes and a caller
+  // reading the snapshot back cannot tell them apart.
   debugSelectTower(id: number | null): void {
-    this.selectedTowerId = id != null && this.towerById(id) ? id : null;
+    if (id == null) {
+      this.selectedTowerId = null;
+      return;
+    }
+    this.selectedTowerId = this.requireTower("selectTower", id).id;
   }
 
   debugSetTargeting(id: number, priority: TargetingMode): void {
-    const t = this.towerById(id);
-    if (t) this.setTargeting(t, priority);
+    const t = this.requireDamageTower("setTargeting", id);
+    t.targeting = this.requireOneOf(
+      "setTargeting",
+      "priority",
+      priority,
+      TARGETING_ORDER,
+    );
   }
 
-  // Set (not toggle) a damage tower's inert-priority; auras have no single target, so no-op.
+  // Set (not toggle) a damage tower's inert-priority. A support aura has no single target
+  // and so no such toggle, which is a state the specification does not describe.
   debugSetInertPriority(id: number, on: boolean): void {
-    const t = this.towerById(id);
-    if (t && !TOWERS[t.kind].support) t.prioritizeInert = Boolean(on);
+    this.requireDamageTower("setInertPriority", id).prioritizeInert =
+      Boolean(on);
   }
 
+  // 1, 2 or 3 — the three speeds the spec fixes. A fourth names no speed, so it fails
+  // rather than being clamped into one the caller did not ask for.
   debugSetSpeed(multiplier: number): void {
-    this.speed = Math.max(1, Math.min(3, Math.round(multiplier)));
+    this.requireNumber("setSpeed", "multiplier", multiplier);
+    if (multiplier !== 1 && multiplier !== 2 && multiplier !== 3)
+      this.invalid(
+        "setSpeed",
+        `multiplier must be 1, 2 or 3; got ${multiplier}`,
+      );
+    this.speed = multiplier;
   }
 
+  // Applied AS GIVEN: no cap on what the run has earned, and no clamp. Below zero is
+  // outside the stated domain, so it fails rather than silently becoming zero.
   debugSetEnergy(amount: number): void {
-    this.energy = Math.max(0, amount);
+    this.requireNumber("setEnergy", "amount", amount);
+    if (amount < 0)
+      this.invalid("setEnergy", `amount must be at least 0; got ${amount}`);
+    this.energy = amount;
   }
 
+  // Applied AS GIVEN, above the run's starting integrity included; reaching zero still
+  // resolves through the real containment check on the next tick.
   debugSetIntegrity(amount: number): void {
+    this.requireNumber("setIntegrity", "amount", amount);
     this.integrity = amount;
     this.maxIntegrity = Math.max(this.maxIntegrity, amount);
   }
@@ -1288,12 +1492,24 @@ export class Game {
   }
 
   // ---- Player actions (called by input, routed via clickables) ----------------
-  startRound(): void {
-    if (this.state !== "playing" || this.phase !== "build") return;
+  //
+  // The round-start TRANSACTION: launch the next round, paying the early-send bonus a
+  // running countdown has left. Its own rules are all that decide it, so this is what the
+  // debug API's `startRound()` calls — specs/instrumentation.md, "Control operations":
+  // an operation carries out its transaction from wherever the game stands.
+  performStartRound(): void {
     const early = this.buildTimed
       ? Math.max(0, Math.floor(this.buildTimer))
       : 0;
     this.beginRound(early);
+  }
+
+  // The PLAYER's route to it: the START ROUND control is only on screen, and only live,
+  // while a run is in its build phase. That is the reach, and it belongs here rather than
+  // in the transaction above.
+  startRound(): void {
+    if (this.state !== "playing" || this.phase !== "build") return;
+    this.performStartRound();
   }
 
   selectShop(kind: TowerKind): void {

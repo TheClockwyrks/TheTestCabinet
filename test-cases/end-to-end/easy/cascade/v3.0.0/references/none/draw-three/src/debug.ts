@@ -38,6 +38,7 @@ import {
   deal as dealGame,
   turnStock as turnTheStock,
 } from "./moves";
+import { refreshDropTarget } from "./input";
 import { menuItemRect } from "./menus";
 import type { PointerPhase } from "./pointer";
 import { takeId } from "./state";
@@ -48,6 +49,7 @@ import {
   pileOf,
   resetState,
   type CascadeState,
+  type Flyer,
   type PileKind,
   type Screen,
 } from "./state";
@@ -159,6 +161,8 @@ export interface CascadeDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): CascadeSnapshot;
+  /** Bring every reported reading into agreement with the table as it stands. */
+  reconcile(): void;
 
   menuItemRect(index: number): Rect | null;
 
@@ -246,6 +250,34 @@ function requireFinite(op: string, name: string, value: number): number {
     );
   }
   return value;
+}
+
+/**
+ * The flyer an id names, or a thrown complaint.
+ *
+ * An id no flyer in flight carries names nothing the surface can act on, so the
+ * call fails loudly rather than passing quietly with the state unchanged
+ * (`specs/instrumentation.md`, The operations).
+ */
+function requireFlyer(state: CascadeState, op: string, id: number): Flyer {
+  const flyer = state.flyers.find((entry) => entry.id === id);
+  if (flyer === undefined) {
+    throw new RangeError(`Cascade: ${op}() has no flyer with id ${id}`);
+  }
+  return flyer;
+}
+
+/** The card an id names, or a thrown complaint. */
+function requireCard(
+  state: CascadeState,
+  op: string,
+  id: number,
+): { pile: Card[]; row: number } {
+  const found = findCard(state, id);
+  if (found === null) {
+    throw new RangeError(`Cascade: ${op}() has no card with id ${id}`);
+  }
+  return found;
 }
 
 /** The pile a `(kind, index)` pair names, or a thrown complaint. */
@@ -370,6 +402,28 @@ export function createDebugApi(
     },
 
     /**
+     * Bring every reported reading into agreement with the table as it stands,
+     * without advancing anything (specs/instrumentation.md, The core).
+     *
+     * Of this build's derived readings, `wasteVisibleCount` and a card's
+     * `color` are worked out at the read, so there is nothing to rewrite for
+     * either. `dropTarget` is the one it keeps: the pointer path writes it as a
+     * gesture moves, so a pose that changes what the pile beneath a held run
+     * holds leaves it answering for the table as it was. `refreshDropTarget` is
+     * the rule the pointer path itself calls, so this is the same answer that
+     * path would have written rather than a restatement of the drop rule.
+     *
+     * It runs no system and moves no clock. `simTime` and `launchClock` stand
+     * where they were, no flyer moves or paints, no card turns, no win is
+     * detected, no cue is raised, and nothing is drawn from the generator. It
+     * corrects nothing either: a run held over a pile that no longer accepts it
+     * is left in hand and simply reports no drop target.
+     */
+    reconcile() {
+      refreshDropTarget(state);
+    },
+
+    /**
      * The hit region of item `index` on the menu the current screen shows.
      *
      * `null` on `won`, which shows no menu, and for an index naming no item of
@@ -434,16 +488,14 @@ export function createDebugApi(
      * follows.
      */
     removeCard(id) {
-      const found = findCard(state, id);
-      if (found === null) return;
+      const found = requireCard(state, "removeCard", id);
       found.pile.splice(found.row, 1);
       if (found.pile === state.waste) takeFromNewestSet(state);
     },
 
     /** Set one card's face. */
     setCardFaceUp(id, faceUp) {
-      const found = findCard(state, id);
-      if (found === null) return;
+      const found = requireCard(state, "setCardFaceUp", id);
       found.pile[found.row].faceUp = Boolean(faceUp);
     },
 
@@ -471,9 +523,20 @@ export function createDebugApi(
       state.dropTarget = null;
     },
 
-    /** Append one set of `count` cards to the newest end of the memory. */
+    /**
+     * Append one set of `count` cards to the newest end of the memory.
+     *
+     * A count that is not a whole number of at least zero names no set the
+     * memory could hold, so it fails loudly rather than being trimmed into one
+     * (specs/instrumentation.md, The operations).
+     */
     addWasteSet(count) {
-      pushWasteSet(state, Math.max(0, Math.trunc(count)));
+      if (!Number.isInteger(count) || count < 0) {
+        throw new RangeError(
+          `Cascade: addWasteSet() needs a whole, non-negative count, got ${count}`,
+        );
+      }
+      pushWasteSet(state, count);
     },
 
     /** Empty the memory, leaving the cards on the waste standing. */
@@ -562,16 +625,14 @@ export function createDebugApi(
 
     /** Set one flyer's top-left. */
     setFlyerPosition(id, x, y) {
-      const flyer = state.flyers.find((entry) => entry.id === id);
-      if (flyer === undefined) return;
+      const flyer = requireFlyer(state, "setFlyerPosition", id);
       flyer.x = requireFinite("setFlyerPosition", "x", x);
       flyer.y = requireFinite("setFlyerPosition", "y", y);
     },
 
     /** Set one flyer's velocity, in logical units per second. */
     setFlyerVelocity(id, vx, vy) {
-      const flyer = state.flyers.find((entry) => entry.id === id);
-      if (flyer === undefined) return;
+      const flyer = requireFlyer(state, "setFlyerVelocity", id);
       flyer.vx = requireFinite("setFlyerVelocity", "vx", vx);
       flyer.vy = requireFinite("setFlyerVelocity", "vy", vy);
     },
@@ -579,7 +640,12 @@ export function createDebugApi(
     /** Remove the flyer with that id. */
     removeFlyer(id) {
       const at = state.flyers.findIndex((entry) => entry.id === id);
-      if (at >= 0) state.flyers.splice(at, 1);
+      if (at < 0) {
+        throw new RangeError(
+          `Cascade: removeFlyer() has no flyer with id ${id}`,
+        );
+      }
+      state.flyers.splice(at, 1);
     },
 
     /** Remove every flyer in flight. */

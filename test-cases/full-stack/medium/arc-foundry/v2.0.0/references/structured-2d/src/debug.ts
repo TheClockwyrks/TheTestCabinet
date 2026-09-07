@@ -16,9 +16,15 @@
 //
 // TWO RULES COVER EVERY OPERATION. An argument outside the domain its operation states is
 // invalid and the call fails loudly rather than guessing what was meant, and so is a call
-// whose subject is not in the condition the operation states. An operation standing for a
-// control a player operates commits through that same control, so it is refused wherever
-// the control is refused and does nothing when it is.
+// whose subject is not in the condition the operation states. And an operation is
+// UNCONDITIONAL: it carries out its effect every time it is called, on the world as it
+// stands. Which screen is up, which phase is running, which panel is drawn, and where the
+// pointer is are the route a PLAYER takes to a control and are not an operation's
+// conditions, so every control operation here commits through its transaction —
+// `perform…` — rather than through the `try…` a click runs. The transaction's OWN rules
+// stay: an unaffordable purchase still buys nothing, a track already at its top gains
+// none, an illegal footprint stands nothing up, and a spent allowance drops no rock. What
+// never happens is a quiet refusal that leaves the world as it was with nothing said.
 //
 // The surface is inert during normal play: nothing here runs until something calls it.
 
@@ -75,16 +81,18 @@ import {
   combineSet,
   comboById,
   difficulty,
-  downgrade,
+  candidateById,
+  performDowngrade,
+  reconcile,
   firingStructureById,
-  keep,
+  performKeep,
   liveUnitById,
   liveWaveCount,
   placeBlocker,
   placeCombo,
   placeComponent,
-  placeStamp,
-  removeStructure,
+  performPlaceStamp,
+  performRemoveStructure,
   reportedPhase,
   resetWorld,
   select,
@@ -114,8 +122,8 @@ import {
   statsOf,
   structureById,
   unbuffedStats,
-  upgradeCombo,
-  upgradeQuality,
+  performUpgradeCombo,
+  performUpgradeQuality,
 } from "./sim";
 import {
   barState,
@@ -286,6 +294,9 @@ export interface FoundryDebugApi {
 
   // Readings.
   snapshot(): FoundrySnapshot;
+
+  /** Bring every reported reading into agreement with the yard as it stands. */
+  reconcile(): void;
   panelButtons(): ButtonSnapshot[];
   pressControls(): ButtonSnapshot[];
   menuButtons(): ButtonSnapshot[];
@@ -418,6 +429,17 @@ function structure(op: string, state: FoundryState, id: unknown): number {
   const n = num(op, "id", id);
   if (!structureById(state, n))
     invalid(op, "an id a live structure carries", id);
+  return n;
+}
+
+/**
+ * A candidate the yard currently carries, or a loud failure. `keep` and `downgrade`
+ * harvest a CANDIDATE, so a standing component, a combination tower and a blocker each
+ * name a subject the operation has nothing to do with.
+ */
+function candidate(op: string, state: FoundryState, id: unknown): number {
+  const n = num(op, "id", id);
+  if (!candidateById(state, n)) invalid(op, "an id a candidate carries", id);
   return n;
 }
 
@@ -607,6 +629,17 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
     // ---- Readings ---------------------------------------------------------
 
     snapshot: () => snapshot(live()),
+
+    /**
+     * Bring every reported reading into agreement with the yard as it stands, without
+     * advancing anything: the cached occupancy and the maze readout from the structures,
+     * each tower's aura bonus from the sources near it, and each unit's route and
+     * `progress` from where it is and the checkpoint it heads for. A build that works all
+     * of those out at the read has nothing to do here.
+     */
+    reconcile() {
+      reconcile(live());
+    },
 
     panelButtons: () =>
       panelButtonControls(live()).map((c) => ({
@@ -811,7 +844,7 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
     // pointer press would be when the footprint is illegal or the allowance is spent.
     placeRock(col, row) {
       const at = anchor("placeRock", col, row);
-      placeStamp(live(), at.col, at.row);
+      performPlaceStamp(live(), at.col, at.row);
     },
 
     placeComponent(type, quality, col, row) {
@@ -861,12 +894,18 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     keep(id) {
       const state = live();
-      keep(state, structure("keep", state, id));
+      performKeep(state, candidate("keep", state, id));
     },
 
     downgrade(id) {
       const state = live();
-      downgrade(state, structure("downgrade", state, id));
+      const n = candidate("downgrade", state, id);
+      // There is no rung below Scrap, so a Scrap candidate names a state the
+      // specification does not define rather than a transaction that comes out negative.
+      if ((candidateById(state, n)?.quality ?? 0) <= 1) {
+        invalid("downgrade", "an id a candidate above Scrap carries", id);
+      }
+      performDowngrade(state, n);
     },
 
     combine(id) {
@@ -876,7 +915,7 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
 
     dismantle(id) {
       const state = live();
-      removeStructure(state, structure("dismantle", state, id));
+      performRemoveStructure(state, structure("dismantle", state, id));
     },
 
     setTargeting(id, priority) {
@@ -911,7 +950,7 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
     },
 
     upgradeQuality() {
-      upgradeQuality(live());
+      performUpgradeQuality(live());
     },
 
     upgradeCombo(id) {
@@ -920,7 +959,7 @@ export function createDebugApi(world: () => World): FoundryDebugApi {
       if (!comboById(state, n)) {
         invalid("upgradeCombo", "an id a combination tower carries", id);
       }
-      upgradeCombo(state, n);
+      performUpgradeCombo(state, n);
     },
 
     // ---- The Load ---------------------------------------------------------

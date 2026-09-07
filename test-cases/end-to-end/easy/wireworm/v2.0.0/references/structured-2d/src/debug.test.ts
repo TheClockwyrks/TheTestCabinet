@@ -1,9 +1,18 @@
-// The surface's own edges: what each removal takes away, what each pose refuses,
-// and the guard the action registration puts on the engine it is given.
+// The surface's own edges: what each removal takes away, what a pose fails
+// loudly on, and the guard the action registration puts on the engine it is
+// given.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { InitApi } from "@clockwyrks/structured-2d";
-import { CHARGE_MAX, LAYOUT, TOTAL_LEVELS, tileCX, tileCY } from "./constants";
+import {
+  CHARGE_MAX,
+  LAYOUT,
+  TOTAL_LEVELS,
+  tileCX,
+  tileCY,
+  wormLength,
+  wormStepInterval,
+} from "./constants";
 import { createHarness, poseWorm, startPlaying, type Harness } from "./harness";
 import { registerActions } from "./input";
 
@@ -65,61 +74,76 @@ describe("removing what a scenario is done with", () => {
     expect(h.debug.snapshot().nodes).toEqual([{ c: 4, r: 3, charge: 2 }]);
   });
 
-  it("does nothing for an id no entity carries", () => {
+  it("fails loudly for an id no entity carries", () => {
     startPlaying(h.debug);
     const id = poseWorm(h.debug, 8, 6, 2);
-    h.debug.removeWorm(id + 999);
-    h.debug.removeFoe(id + 999);
-    h.debug.removeBolt(id + 999);
-    h.debug.setWormHeading(id + 999, -1);
-    h.debug.setFoeVelocity(id + 999, 1, 1);
-    h.debug.setFoeHit(id + 999, true);
-    h.debug.setFoeMind(id + 999, false);
-    h.debug.setFoeTravel(id + 999, false);
-    h.debug.appendSegment(id + 999, 1, 1);
+    expect(() => h.debug.removeWorm(id + 999)).toThrow(RangeError);
+    expect(() => h.debug.removeFoe(id + 999)).toThrow(RangeError);
+    expect(() => h.debug.removeBolt(id + 999)).toThrow(RangeError);
+    expect(() => h.debug.setWormHeading(id + 999, -1)).toThrow(RangeError);
+    expect(() => h.debug.setFoeVelocity(id + 999, 1, 1)).toThrow(RangeError);
+    expect(() => h.debug.setFoeHit(id + 999, true)).toThrow(RangeError);
+    expect(() => h.debug.setFoeMind(id + 999, false)).toThrow(RangeError);
+    expect(() => h.debug.setFoeTravel(id + 999, false)).toThrow(RangeError);
+    expect(() => h.debug.appendSegment(id + 999, 1, 1)).toThrow(RangeError);
     expect(h.debug.snapshot().worms).toHaveLength(1);
   });
 });
 
-describe("what a pose refuses", () => {
-  it("keeps a charge inside the field's own range", () => {
+describe("what a pose fails loudly on", () => {
+  it("a charge outside the field's own range", () => {
     startPlaying(h.debug);
-    h.debug.setNode(5, 5, 9);
+    expect(() => h.debug.setNode(5, 5, CHARGE_MAX + 1)).toThrow(RangeError);
+    expect(() => h.debug.setNode(5, 5, -4)).toThrow(RangeError);
+    // The scale's own ends are inside the domain and land.
+    h.debug.setNode(5, 5, CHARGE_MAX);
     expect(h.debug.snapshot().nodes[0].charge).toBe(CHARGE_MAX);
-    h.debug.setNode(5, 5, -4);
-    expect(h.debug.snapshot().nodes[0].charge).toBe(0);
-  });
-
-  it("lays nothing off the board", () => {
-    startPlaying(h.debug);
-    h.debug.setNode(-1, 5, 2);
-    h.debug.setNode(5, 40, 2);
+    h.debug.clearNode(5, 5);
     expect(h.debug.snapshot().nodes).toHaveLength(0);
   });
 
-  it("keeps the level inside the run", () => {
+  it("a tile off the board", () => {
     startPlaying(h.debug);
-    h.debug.setLevel(99);
-    expect(h.debug.snapshot().level).toBe(TOTAL_LEVELS);
-    h.debug.setLevel(0);
+    expect(() => h.debug.setNode(-1, 5, 2)).toThrow(RangeError);
+    expect(() => h.debug.setNode(5, 40, 2)).toThrow(RangeError);
+    expect(() => h.debug.clearNode(-1, 5)).toThrow(RangeError);
+    expect(h.debug.snapshot().nodes).toHaveLength(0);
+  });
+
+  it("a level outside the run", () => {
+    startPlaying(h.debug);
+    expect(() => h.debug.setLevel(TOTAL_LEVELS + 1)).toThrow(RangeError);
+    expect(() => h.debug.setLevel(0)).toThrow(RangeError);
     expect(h.debug.snapshot().level).toBe(1);
   });
 
-  it("clamps a posed cursor into the band", () => {
+  it("a cursor position outside the band", () => {
     startPlaying(h.debug);
-    h.debug.setCursor(-90, 900);
-    const { cursor } = h.debug.snapshot();
-    expect(cursor.x).toBe(16);
-    expect(cursor.y).toBe(704);
+    // The band is the operation's domain, so the pose fails loudly rather than
+    // landing the cursor on the nearest bound and reading back a position the
+    // caller never posed.
+    expect(() => h.debug.setCursor(-90, 900)).toThrow(RangeError);
   });
 
-  it("takes no negative time on a timer", () => {
+  it("but takes a value the specs fix no bound on exactly as given", () => {
     startPlaying(h.debug);
     h.debug.setCursorInvulnerable(-3);
     h.debug.setFireCooldown(-3);
     const shot = h.debug.snapshot();
-    expect(shot.cursor.invulnerable).toBe(0);
-    expect(shot.fireCooldown).toBe(0);
+    expect(shot.cursor.invulnerable).toBe(-3);
+    expect(shot.fireCooldown).toBe(-3);
+  });
+
+  it("reconcile re-derives a reading and advances nothing", () => {
+    startPlaying(h.debug);
+    h.debug.setLevel(7);
+    h.debug.reconcile();
+    const once = h.debug.snapshot();
+    expect(once.wormStepInterval).toBeCloseTo(wormStepInterval(7), 10);
+    expect(once.wormLength).toBe(wormLength(7));
+    h.debug.reconcile();
+    // Twice is once, and no clock moved.
+    expect(h.debug.snapshot()).toEqual(once);
   });
 
   it("appends a segment to the tail end of the worm it names", () => {

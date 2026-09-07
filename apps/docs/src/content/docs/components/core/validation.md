@@ -330,8 +330,9 @@ A run under no engine decides its objective points by driving the case's require
 installs on a case-specific global, backed by a deterministic core. This is what
 lets it check requirements a screenshot cannot. A script resets the build to a
 known state, calls the case's control operations to set up a verdict's
-precondition, steps the real simulation forward, and reads the outcome back from
-a state snapshot and the rendered canvas.
+precondition, reconciles the build's readings with it, steps the real simulation
+forward, and reads the outcome back from a state snapshot and the rendered
+canvas.
 
 A script runs per verdict unit, meaning a whole review item or an individual
 sub-item, so each independently graded point gets its own script and its own

@@ -1,12 +1,16 @@
 // instrumentation/pose-refusal-is-silent — a pose the game's rules refuse changes
 // nothing and reports nothing.
 //
-// `specs/instrumentation.md` § A deterministic core: "Silent refusal as data. A
-// pose the game's own rules refuse leaves the state exactly as it was, so a
-// caller reads the outcome of any pose back from `snapshot` rather than from a
-// return value." The rule over every operation says what "exactly as it was"
-// covers: "The refusal is silent and readable in the snapshot: no member appears,
-// no cost is spent, no step joins the tape, and no run begins."
+// `specs/instrumentation.md` § Three rules cover every operation: "A pose that
+// stands for an EDIT — a member, the ring, a counterweight, a tape step, a run
+// started — commits through the same rule the edit itself passes, because that
+// rule is the edit and not a gate on reaching it: an over-budget member costs
+// nothing and appears nowhere, a rate above an axis's maximum joins no step, and
+// a run the structure is not ready for does not begin. Each of those outcomes is
+// readable in the snapshot." § A deterministic core names the edit rule as the
+// one thing that still decides: "an edit the rule refuses leaves the yard exactly
+// as it was, and a caller reads that from `snapshot` … rather than from a return
+// value."
 //
 // THE REFUSED POSE IS A MEMBER LONGER THAN ITS MATERIAL ALLOWS, which
 // `specs/structure.md` refuses outright — "A member placement is refused when …

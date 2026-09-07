@@ -51,6 +51,18 @@
 // `surface.ts` is what tells the two apart — nothing about a pure surface does
 // so at run time.
 //
+// RECONCILING AFTER A POSE. `specs/instrumentation.md` says what a build
+// REPORTS, not how it holds it, so a derived reading — `time`, `xpToNext`,
+// `maxHp`, `armor`, `moveSpeed`, `pickupRadius`, `spawnWindow`, `aliveCommons`,
+// `pool` — may be worked out at the read in one build and kept as a stored copy
+// in another. Both are conformant, and they part company the moment a pose
+// writes what such a reading is derived from. `reconcile` closes that gap: it
+// brings every reported reading into agreement with the run as it stands
+// without advancing anything. A helper here that poses something a reading
+// derives from calls it before it returns, so a check that poses through the
+// helpers never calls `reconcile` itself; a check that poses with `h.debug.set…`
+// directly calls it once before its first read or sweep.
+//
 // WHAT THE HARNESS OWNS THAT THE SURFACE MUST NOT. The surface is ATOMIC by
 // design, one field per operation, so every compound sequence lives here:
 // {@link isolate} (the empty posed night with every driver switch off),
@@ -1907,6 +1919,7 @@ export function isolate(
   if (options.keepTaper ?? false) h.debug.setWeapon(0, "taper", 1);
   for (const name of SWITCH_NAMES) setSwitch(h, name, false);
   if (options.level !== undefined) h.debug.setLevel(options.level);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1955,6 +1968,7 @@ export function poseScene(
 ): WickSnapshot {
   h.reset();
   h.debug.setScreen(screen);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1971,6 +1985,7 @@ export function freshRun(h: Harness, seed?: number): WickSnapshot {
   h.reset(seed);
   h.debug.setScreen("playing");
   h.debug.setWeapon(0, "taper", 1);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -2024,6 +2039,7 @@ export async function openChest(h: Harness): Promise<WickSnapshot> {
 export function holdWeapon(h: Harness, id: WeaponId, level = 1): number {
   const slot = h.snapshot().run.weapons.length;
   h.debug.setWeapon(slot, id, level);
+  h.debug.reconcile();
   return slot;
 }
 
@@ -2031,6 +2047,7 @@ export function holdWeapon(h: Harness, id: WeaponId, level = 1): number {
 export function holdPassive(h: Harness, id: PassiveId, level = 1): number {
   const slot = h.snapshot().run.passives.length;
   h.debug.setPassive(slot, id, level);
+  h.debug.reconcile();
   return slot;
 }
 
@@ -2063,6 +2080,7 @@ export function spawnEnemyAt(
 ): number {
   const id = h.snapshot().run.nextId;
   h.debug.spawnEnemy(type, x, y);
+  h.debug.reconcile();
   return id;
 }
 

@@ -144,6 +144,15 @@ distinguishable from the next.
 The surface carries `version` (`SHATTER_DEBUG_VERSION`, `1`), a plain number, and
 the operations below. Values are plain numbers, strings, booleans, and the two
 records the readings below return.
+
+An operation applies its effect every time it is called. A pose reaches the value
+it names whatever the game's own rules would have allowed, so it is not clamped
+to a legal alternative and it is never declined; where a row fixes a range, that
+range is the argument's domain rather than a limit to snap to. A call the game
+has no defined state for fails loudly instead, throwing where the caller sees it:
+an argument that is not a finite number, a name outside the set its row lists, or
+an id no live entity carries. What no operation here does is refuse quietly, so
+none of them returns having left the state as it was.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<ShatterState>`, as its first
@@ -166,6 +175,7 @@ read and changes nothing.
 {{#if (eq engine.slug "none")}}| `reset(options)` | Restores the state to the title-screen values listed below. |
 {{else}}| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
 {{/if}}| `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the snapshot reports into agreement with the field as it stands, without advancing anything. |
 | `menuItemRect(index)` | The hit region of the entry at `index` on the menu the current screen shows. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `menuIndex` to `0`, `score` to `0`,
@@ -181,6 +191,42 @@ It empties the torpedo roster and sets `torpedoCharge` to `1`.
 
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
 game's randomness. `muted` is left exactly as it stands; muting is the runtime's.
+
+{{#if (eq variant.slug "warhead")}}
+`reconcile` brings every value the snapshot reports into agreement with the field
+as it now stands, without advancing anything. `ship.speed` follows the ship's
+velocity, `rocks[].radius` follows each rock's size, and `torpedoReady` follows
+the stored charge, so after a pose the three of them answer for the field as it
+is now rather than as it was before the pose.
+{{else}}
+`reconcile` brings every value the snapshot reports into agreement with the field
+as it now stands, without advancing anything. `ship.speed` follows the ship's
+velocity and `rocks[].radius` follows each rock's size, so after a pose the pair
+of them answer for the field as it is now rather than as it was before the pose.
+{{/if}}
+
+A build that works those out at the call has nothing to do here, and the call
+changes nothing at all. A build that keeps any of them as a stored copy rewrites
+that copy from what it is a copy of.
+
+It moves no clock and runs no system. `simTime` holds, no tick runs, the star's
+well pulls nothing, nothing travels and nothing wraps, no collision is resolved,
+no bullet's life runs down, the ship's respawn grace and its gun's gate hold, the
+saucer's three clocks and the arrival cadence hold, no key is consumed, and the
+generator is not drawn from. It raises no banner, spawns no wave, destroys
+nothing, scores nothing, plays no sound, and changes no screen. It moves nothing
+to make a reading agree either: a ship posed on top of a rock stays exactly where
+it was put and reads as it is. Calling it twice leaves the same state as calling
+it once.
+
+It is never an error, and it may be called on any screen, whether or not the
+clock is held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `ShatterState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
 
 `menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
 region's top-left corner and `w` and `h` its size: the region a pointer selects
@@ -410,6 +456,9 @@ what the game holds. Some entries need a note:
 - `ship.speed` and `rocks[].radius` are built at the call from the fields beside
   them. No operation sets either.
 {{/if}}
+- A build is free to work any of those out at the read or to keep it as a stored
+  copy of what it follows, and `reconcile` is what brings a stored copy back into
+  agreement after a pose.
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every update.
   No operation sets it; the mute key does.
 {{#if (eq engine.slug "none")}}

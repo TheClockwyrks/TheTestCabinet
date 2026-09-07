@@ -23,6 +23,10 @@
 // until something calls it.
 
 import {
+  CAMERA_DIST_MAX,
+  CAMERA_DIST_MIN,
+  CAMERA_PITCH_MAX,
+  CAMERA_PITCH_MIN,
   GANTRY_DEBUG_VERSION,
   LATTICE_PITCH,
   RUN_SPEEDS,
@@ -48,8 +52,6 @@ import type {
   MaterialName,
   MemberForce,
   PointReport,
-  ReadonlyGantryState,
-  Screen,
   Snapshot,
   Tool,
 } from "./game";
@@ -216,15 +218,13 @@ const checkReport = (result: {
 
 // ---- The surface -----------------------------------------------------------
 
-/** Whether the state is showing one of the named screens. */
-const onScreen = (
-  state: ReadonlyGantryState,
-  ...screens: readonly Screen[]
-): boolean => screens.includes(state.screen);
-
-/** Whether a run is in progress. */
-const running = (state: ReadonlyGantryState): boolean =>
-  state.run.phase === "running";
+// NO REACH PREDICATES HERE. Which screen is showing, whether a run is in
+// progress, and which tool is selected are how a PLAYER reaches a control, and
+// `specs/instrumentation.md` (The operations) says they are not an operation's
+// conditions: every operation below acts from wherever the game stands. What
+// stays is each edit's own rule — the editor's placement rules, the tape
+// editor's, and the run's readiness — because those are the edit rather than a
+// gate on reaching it.
 
 /**
  * The surface, built once in `initialize` and returned beside the state.
@@ -387,6 +387,24 @@ export function createDebugSurface(): GantryDebugApi {
       return s;
     },
 
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Every derived reading this build reports — the structure's `cost` and
+     * `issues`, the `pick` a click at the pointer would take, and the `check` —
+     * is worked out at the read, in `snapshot` and `check` above, from the open
+     * site's structure, its anchors and the pointer. Nothing is held that a pose
+     * can leave behind and there is nothing here to rewrite. `run.forces` is the
+     * latest solve's and `run.pivot` is the most recent tick's geometry, so both
+     * are the tick's rather than this call's. The operation is required of every
+     * build, including one that keeps those readings as stored copies, and this
+     * is what it comes to in a build that does not: the state it was handed,
+     * thawed and returned unchanged.
+     */
+    reconcile(state): GantryState {
+      return thaw(state);
+    },
+
     setScreen(state, screen): GantryState {
       const name = requireString("screen", screen);
       if (!st.isScreen(name)) {
@@ -397,11 +415,12 @@ export function createDebugSurface(): GantryDebugApi {
 
     setMenuIndex(state, index): GantryState {
       const count = st.menuLength(state);
-      // The three screens that show a menu take it; the other four do
-      // nothing, whatever the index.
+      // The domain is the entry count of the menu the screen showing carries. A
+      // screen carrying none has no entry to name, so there is no defined state
+      // to reach and the call fails loudly rather than passing quietly.
       if (count === 0) {
         requireInteger("index", index);
-        return thaw(state);
+        invalid(`the ${state.screen} screen carries no menu`);
       }
       return st.setMenuIndex(state, requireIndex("index", index, count));
     },
@@ -432,34 +451,39 @@ export function createDebugSurface(): GantryDebugApi {
     },
 
     setCamera(state, yaw, pitch, dist): GantryState {
-      return st.setCamera(
-        state,
-        requireNumber("yaw", yaw),
-        requireNumber("pitch", pitch),
-        requireNumber("dist", dist),
-      );
+      // `specs/controls.md` fixes the pitch and distance limits as constants, so
+      // they are this operation's domain rather than a live rule: a value
+      // outside either fails loudly rather than being snapped back inside it.
+      const turn = requireNumber("yaw", yaw);
+      const tilt = requireNumber("pitch", pitch);
+      const away = requireNumber("dist", dist);
+      if (tilt < CAMERA_PITCH_MIN || tilt > CAMERA_PITCH_MAX) {
+        invalid(
+          `pitch must be within [${CAMERA_PITCH_MIN}, ${CAMERA_PITCH_MAX}]`,
+        );
+      }
+      if (away < CAMERA_DIST_MIN || away > CAMERA_DIST_MAX) {
+        invalid(`dist must be within [${CAMERA_DIST_MIN}, ${CAMERA_DIST_MAX}]`);
+      }
+      return st.setCamera(state, turn, tilt, away);
     },
 
     startRun(state): GantryState {
-      if (!onScreen(state, "build", "program")) return thaw(state);
       return st.beginRun(state) ?? thaw(state);
     },
 
     abortRun(state): GantryState {
-      if (!running(state)) return thaw(state);
       return st.abortRun(state);
     },
 
     showCheck(state): GantryState {
-      // The `check` action, on the screen the action applies to.
-      if (!onScreen(state, "build")) return thaw(state);
+      // The `check` action, from wherever the game stands.
       return edits.showCheck(state);
     },
 
     // ---- The structure ----------------------------------------------------
 
     clearStructure(state): GantryState {
-      if (!onScreen(state, "build")) return thaw(state);
       return edits.clearStructure(state).state;
     },
 
@@ -467,7 +491,6 @@ export function createDebugSurface(): GantryDebugApi {
       const a = requireNode(ax, ay, az);
       const b = requireNode(bx, by, bz);
       const what = requireMaterial(material);
-      if (!onScreen(state, "build")) return thaw(state);
       return edits.addMember(state, a, b, what).state;
     },
 
@@ -477,30 +500,25 @@ export function createDebugSurface(): GantryDebugApi {
       if (!members.some((m) => m.id === wanted)) {
         invalid(`no member carries id ${wanted}`);
       }
-      if (!onScreen(state, "build")) return thaw(state);
       return edits.removeMember(state, wanted).state;
     },
 
     setRing(state, x, y, z): GantryState {
       const corner = requireNode(x, y, z);
-      if (!onScreen(state, "build")) return thaw(state);
       return edits.setRing(state, corner).state;
     },
 
     clearRing(state): GantryState {
-      if (!onScreen(state, "build")) return thaw(state);
       return edits.clearRing(state).state;
     },
 
     addCounterweight(state, x, y, z): GantryState {
       const node = requireNode(x, y, z);
-      if (!onScreen(state, "build")) return thaw(state);
       return edits.addCounterweight(state, node).state;
     },
 
     removeCounterweight(state, x, y, z): GantryState {
       const node = requireNode(x, y, z);
-      if (!onScreen(state, "build")) return thaw(state);
       return edits.removeCounterweight(state, node).state;
     },
 
@@ -509,25 +527,21 @@ export function createDebugSurface(): GantryDebugApi {
       if (!st.isTool(name)) {
         invalid(`tool must be one of ${st.TOOLS.join(", ")}`);
       }
-      if (!onScreen(state, "build")) return thaw(state);
       return st.setTool(state, name as Tool);
     },
 
     setPendingNode(state, x, y, z): GantryState {
       const node = requireNode(x, y, z);
-      if (!onScreen(state, "build")) return thaw(state);
       return st.setPendingNode(state, node);
     },
 
     clearPendingNode(state): GantryState {
-      if (!onScreen(state, "build")) return thaw(state);
       return st.clearPendingNode(state);
     },
 
     // ---- The tape ---------------------------------------------------------
 
     clearProgram(state): GantryState {
-      if (!onScreen(state, "program")) return thaw(state);
       return st.clearProgram(state);
     },
 
@@ -535,7 +549,6 @@ export function createDebugSurface(): GantryDebugApi {
       const name = requireAxis(axis);
       const to = requireNumber("target", target);
       const at = requireNumber("rate", rate);
-      if (!onScreen(state, "program")) return thaw(state);
       return st.addMoveStep(state, name, to, at);
     },
 
@@ -548,7 +561,6 @@ export function createDebugSurface(): GantryDebugApi {
       const name = requireAxis(axis);
       const to = requireNumber("target", target);
       const at = requireNumber("rate", rate);
-      if (!onScreen(state, "program")) return thaw(state);
       return st.addCommand(state, step, name, to, at);
     },
 
@@ -557,7 +569,6 @@ export function createDebugSurface(): GantryDebugApi {
         "attach",
         "release",
       ] as const);
-      if (!onScreen(state, "program")) return thaw(state);
       return st.addActionStep(state, what);
     },
 
@@ -567,16 +578,12 @@ export function createDebugSurface(): GantryDebugApi {
         index,
         state.sites[state.siteIndex].program.length,
       );
-      if (!onScreen(state, "program")) return thaw(state);
       return st.removeStep(state, step);
     },
 
     // ---- The site ---------------------------------------------------------
 
     clearLoads(state): GantryState {
-      if (!onScreen(state, "build", "program") || running(state)) {
-        return thaw(state);
-      }
       return st.clearLoads(state);
     },
 
@@ -585,9 +592,6 @@ export function createDebugSurface(): GantryDebugApi {
       const weight = requireNumber("mass", mass);
       const at = requireVector(["x", "y", "z"], x, y, z);
       const turn = requireNumber("yaw", yaw);
-      if (!onScreen(state, "build", "program") || running(state)) {
-        return thaw(state);
-      }
       return st.addLoad(state, what, weight, at, turn);
     },
 
@@ -595,25 +599,16 @@ export function createDebugSurface(): GantryDebugApi {
       const load = requireIndex("index", index, state.site.loads.length);
       const at = requireVector(["x", "y", "z"], x, y, z);
       const turn = requireNumber("yaw", yaw);
-      if (!onScreen(state, "build", "program") || running(state)) {
-        return thaw(state);
-      }
       return st.setLoadTarget(state, load, at, turn);
     },
 
     clearObstacles(state): GantryState {
-      if (!onScreen(state, "build", "program") || running(state)) {
-        return thaw(state);
-      }
       return st.clearObstacles(state);
     },
 
     addObstacle(state, x, y, z, w, h, d): GantryState {
       const min = requireVector(["x", "y", "z"], x, y, z);
       const size = requireVector(["w", "h", "d"], w, h, d);
-      if (!onScreen(state, "build", "program") || running(state)) {
-        return thaw(state);
-      }
       return st.addObstacle(state, min, size);
     },
 
@@ -622,26 +617,22 @@ export function createDebugSurface(): GantryDebugApi {
     setAxis(state, axis, value): GantryState {
       const name = requireAxis(axis);
       const to = requireNumber("value", value);
-      if (!running(state)) return thaw(state);
       return st.setAxis(state, name, to);
     },
 
     setAxisRate(state, axis, rate): GantryState {
       const name = requireAxis(axis);
       const at = requireNumber("rate", rate);
-      if (!running(state)) return thaw(state);
       return st.setAxisRate(state, name, at);
     },
 
     setBob(state, x, y, z): GantryState {
       const at = requireVector(["x", "y", "z"], x, y, z);
-      if (!running(state)) return thaw(state);
       return st.setBob(state, at);
     },
 
     setBobVelocity(state, vx, vy, vz): GantryState {
       const v = requireVector(["vx", "vy", "vz"], vx, vy, vz);
-      if (!running(state)) return thaw(state);
       return st.setBobVelocity(state, v);
     },
 
@@ -649,20 +640,17 @@ export function createDebugSurface(): GantryDebugApi {
       const load = requireIndex("index", index, state.run.loads.length);
       const at = requireVector(["x", "y", "z"], x, y, z);
       const turn = requireNumber("yaw", yaw);
-      if (!running(state)) return thaw(state);
       return st.setLoadPose(state, load, at, turn);
     },
 
     setLoadPhase(state, index, phase): GantryState {
       const load = requireIndex("index", index, state.run.loads.length);
       const what = requireOneOf("phase", phase, LOAD_PHASES);
-      if (!running(state)) return thaw(state);
       return st.setLoadPhase(state, load, what);
     },
 
     setSpeedIndex(state, index): GantryState {
       const speed = requireIndex("index", index, RUN_SPEEDS.length);
-      if (!onScreen(state, "run")) return thaw(state);
       return st.setSpeedIndex(state, speed);
     },
   };

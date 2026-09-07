@@ -4,6 +4,17 @@
 // installed by `src/main.ts` as soon as the game has initialized, and it is inert
 // during normal play: nothing below runs until something calls it.
 //
+// AN OPERATION IS UNCONDITIONAL. Every call below applies its effect, reaching the
+// value it was given rather than one the game's own rules would have preferred: a
+// pose is never clamped into range and never declined. Where the specification
+// fixes a domain — the lane's own bounds, `0` to `RESONANCE_MAX`, a floor of zero
+// on a timer, one of the two bands, an id a live drone or bullet carries, a field
+// only one KIND of drone has — that domain is checked and a call outside it
+// THROWS, where the caller sees it. What nothing below does is refuse quietly: no
+// operation returns having left the state as it was, and none of them substitutes
+// a value the caller never asked for, because a surface that does either hides the
+// very systems a check drove it to reach.
+//
 // EVERY OPERATION IS A READ, A POSE OF ONE FIELD, OR A MOVE OF THE CLOCK. A pose
 // ARRANGES THE WORLD and never fabricates an outcome: it puts the game into a
 // situation, and the game's own stepping, contact, band, scoring and stage rules
@@ -157,6 +168,8 @@ export interface SpectraDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): SpectraSnapshot;
+  /** Bring every reported reading into agreement with the game as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): MenuRect | null;
 
   setAutoStep(enabled: boolean): void;
@@ -211,14 +224,44 @@ export interface SpectraDebugApi {
   clearBursts(): void;
 }
 
-/** A finite number, or the fallback where the caller handed something else. */
-function finite(value: number, fallback = 0): number {
-  return Number.isFinite(value) ? value : fallback;
+/** The finite number the caller passed, or a caller error naming it. */
+function finite(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`Spectra: ${String(value)} is not a finite number`);
+  }
+  return value;
 }
 
-/** A finite, non-negative number of seconds. */
-function seconds(value: number): number {
-  return Math.max(0, finite(value));
+/**
+ * The finite number the caller passed, at or above `floor`.
+ *
+ * The floor is a bound `specs/instrumentation.md` fixes as a constant, so it is
+ * the argument's DOMAIN rather than an edge to snap to: a call outside it fails
+ * loudly rather than being clamped into range, which would leave the state
+ * holding a value nobody asked for.
+ */
+function atLeast(op: string, value: number, floor: number): number {
+  if (!Number.isFinite(value) || value < floor) {
+    throw new RangeError(
+      `Spectra: ${op} needs a finite number at or above ${floor}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** The finite number the caller passed, inside the closed range the specs fix. */
+function inRange(op: string, value: number, lo: number, hi: number): number {
+  if (!Number.isFinite(value) || value < lo || value > hi) {
+    throw new RangeError(
+      `Spectra: ${op} needs a finite number in [${lo}, ${hi}], got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** A finite, non-negative number of seconds; below zero is a caller error. */
+function seconds(op: string, value: number): number {
+  return atLeast(op, value, 0);
 }
 
 /** One of the two bands; anything else is a caller error. */
@@ -243,6 +286,37 @@ export function createDebugApi(
     return found;
   }
 
+  /**
+   * The drone with that id, of that kind, or a caller error naming both.
+   *
+   * A band window belongs to a Flux and a shell to a Prism, so posing either on
+   * a drone that has none names no state to reach. It THROWS rather than passing
+   * quietly with nothing written: a call that vanished would grade a check that
+   * never posed what it meant to as one that did.
+   */
+  function droneOfKind(op: string, id: number, kind: DroneKind): Drone {
+    const found = drone(id);
+    if (found.kind !== kind) {
+      throw new RangeError(
+        `Spectra: ${op} needs a ${kind}, and drone ${id} is a ${found.kind}`,
+      );
+    }
+    return found;
+  }
+
+  /** One entry of a roster by id, or a caller error naming the id. */
+  function requireId<T extends { id: number }>(
+    op: string,
+    roster: readonly T[],
+    id: number,
+  ): T {
+    const found = roster.find((entry) => entry.id === id);
+    if (found === undefined) {
+      throw new RangeError(`Spectra: ${op} names no live entry with id ${id}`);
+    }
+    return found;
+  }
+
   return {
     version: SPECTRA_DEBUG_VERSION,
 
@@ -259,6 +333,24 @@ export function createDebugApi(
     reset(options) {
       resetState(state, options?.seed ?? DEFAULT_SEED);
     },
+
+    /**
+     * Bring every reported reading into agreement with the game as it stands.
+     *
+     * Every derived reading this build reports — `isChallenge`, the four
+     * stage-scaled figures, `dischargeReady`, `inversionActive`, `ship.alive`,
+     * every `effectiveBand`, a Flux's `shimmer` and a burst's `particles` — is
+     * worked out at the READ, in `snapshot` below, from the stage, the resonance,
+     * the inversion, the phase and the bands beside it. Nothing is held that a
+     * pose can leave behind, so there is nothing here to rewrite and this body is
+     * the answer rather than an omission.
+     *
+     * The operation is required of EVERY build, including one that keeps those
+     * readings as stored copies and must rewrite them from their sources here.
+     * This is what it comes to in a build that does not. It advances no clock,
+     * runs no system, fires nothing, and corrects nothing.
+     */
+    reconcile() {},
 
     /** A pure read of the state. It changes nothing. */
     snapshot() {
@@ -396,11 +488,11 @@ export function createDebugApi(
     },
 
     setPhaseTimer(value) {
-      state.phaseTimer = finite(value);
+      state.phaseTimer = seconds("setPhaseTimer(seconds)", value);
     },
 
     setMenuIndex(index) {
-      state.menuIndex = Math.max(0, Math.floor(finite(index)));
+      state.menuIndex = Math.floor(atLeast("setMenuIndex(n)", index, 0));
     },
 
     /**
@@ -426,7 +518,7 @@ export function createDebugApi(
      * `isChallenge` all follow it, since each is derived from the stage.
      */
     setStage(stage) {
-      state.stage = Math.max(1, Math.floor(finite(stage, 1)));
+      state.stage = Math.floor(atLeast("setStage(n)", stage, 1));
     },
 
     setExtraLifeAwarded(awarded) {
@@ -440,7 +532,7 @@ export function createDebugApi(
      * bonus belongs to the scoring path.
      */
     setChallengeHits(hits) {
-      state.challengeHits = Math.max(0, Math.floor(finite(hits)));
+      state.challengeHits = Math.floor(atLeast("setChallengeHits(n)", hits, 0));
     },
 
     /* ---- The world gates and the dive clock ------------------------------ */
@@ -463,19 +555,19 @@ export function createDebugApi(
 
     /** The seconds the wave's dive timer has accumulated. It launches nothing. */
     setDiveClock(value) {
-      state.diveClock = seconds(value);
+      state.diveClock = seconds("setDiveClock(seconds)", value);
     },
 
     /** The figure that timer must reach. It launches nothing and redraws nothing. */
     setDiveGap(value) {
-      state.diveGap = seconds(value);
+      state.diveGap = seconds("setDiveGap(seconds)", value);
     },
 
     /* ---- The ship and its cannon ---------------------------------------- */
 
     /** Place the ship along its lane; the lane's clamp applies. */
     setShipX(x) {
-      state.ship.x = Math.min(SHIP_X_MAX, Math.max(SHIP_X_MIN, finite(x)));
+      state.ship.x = inRange("setShipX(x)", x, SHIP_X_MIN, SHIP_X_MAX);
     },
 
     /** The band the ship holds. It starts no fire lockout. */
@@ -484,21 +576,21 @@ export function createDebugApi(
     },
 
     setFireLockout(value) {
-      state.ship.lockout = seconds(value);
+      state.ship.lockout = seconds("setFireLockout(seconds)", value);
     },
 
     setFireCooldown(value) {
-      state.ship.cooldown = seconds(value);
+      state.ship.cooldown = seconds("setFireCooldown(seconds)", value);
     },
 
     /* ---- Resonance and the inversion ------------------------------------ */
 
     setResonance(value) {
-      state.resonance = Math.min(RESONANCE_MAX, Math.max(0, finite(value)));
+      state.resonance = inRange("setResonance(value)", value, 0, RESONANCE_MAX);
     },
 
     setInversion(value) {
-      state.inversion = seconds(value);
+      state.inversion = seconds("setInversion(seconds)", value);
     },
 
     /* ---- The drones ----------------------------------------------------- */
@@ -576,11 +668,18 @@ export function createDebugApi(
      * not change.
      */
     setDroneBandClock(id, value) {
-      drone(id).bandClock = seconds(value);
+      // The seconds it was HANDED, whatever `fluxWindow(stage)` is at the time:
+      // the window is a live figure the stage moves, so it is a game rule rather
+      // than this argument's domain, and a clock posed past the end of the window
+      // stays where it was put until the oscillation reaches it.
+      droneOfKind("setDroneBandClock", id, "flux").bandClock = seconds(
+        "setDroneBandClock(seconds)",
+        value,
+      );
     },
 
     setDroneShell(id, intact) {
-      drone(id).shellAlive = Boolean(intact);
+      droneOfKind("setDroneShell", id, "prism").shellAlive = Boolean(intact);
     },
 
     /**
@@ -609,6 +708,7 @@ export function createDebugApi(
     },
 
     removeDrone(id) {
+      requireId("removeDrone", state.drones, id);
       state.drones = state.drones.filter((entry) => entry.id !== id);
     },
 
@@ -636,15 +736,13 @@ export function createDebugApi(
     },
 
     setBulletVelocity(id, vx, vy) {
-      const found = state.bullets.find((entry) => entry.id === id);
-      if (found === undefined) {
-        throw new RangeError(`Spectra: no bullet with id ${id}`);
-      }
+      const found = requireId("setBulletVelocity", state.bullets, id);
       found.vx = finite(vx);
       found.vy = finite(vy);
     },
 
     removeBullet(id) {
+      requireId("removeBullet", state.bullets, id);
       state.bullets = state.bullets.filter((entry) => entry.id !== id);
     },
 
@@ -661,6 +759,7 @@ export function createDebugApi(
     /* ---- The bursts ----------------------------------------------------- */
 
     removeBurst(id) {
+      requireId("removeBurst", state.bursts, id);
       state.bursts = state.bursts.filter((entry) => entry.id !== id);
     },
 

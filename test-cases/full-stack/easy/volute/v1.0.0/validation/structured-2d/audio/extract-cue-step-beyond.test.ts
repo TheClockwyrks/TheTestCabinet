@@ -15,8 +15,8 @@
 // before the merge resolves it at 6. `audio/merge.ts` carries the merge
 // itself, on a tick no other cue of the table can reach.
 //
-// THE EDGE IT SITS ON. `specs/instrumentation.md`'s `setChainStep` clamps only
-// "to at least `1`", and `specs/extraction.md` puts no ceiling on the chain
+// THE EDGE IT SITS ON. `specs/instrumentation.md`'s `setChainStep` bounds `k`
+// only "of at least `1`", and `specs/extraction.md` puts no ceiling on the chain
 // either — "a third extraction reached by a further merge scores at step 3",
 // and so on — so a sixth step is a step the specification permits and a
 // chaining player reaches.

@@ -49,11 +49,15 @@ export function buyItem(d: DeepcoreState, id: ItemId): boolean {
 }
 
 /**
- * Use one supply. Holding none of it, or using one that would change nothing,
- * shows a note and consumes nothing.
+ * Use one supply, from wherever the game stands.
+ *
+ * This is the transaction the hotkey and the inventory's `USE` control name, and
+ * it is what the debug surface calls. Holding none of it, or using one that
+ * would change nothing, shows a note and consumes nothing — those are the
+ * supply's own rules. Whether the game is in live play is the player's route and
+ * lives in `useItem` (`specs/instrumentation.md`, The controls).
  */
-export function useItem(d: DeepcoreState, id: ItemId): boolean {
-  if (d.screen !== "in-mine" || d.dying || d.launchAnim !== null) return false;
+export function performUseItem(d: DeepcoreState, id: ItemId): boolean {
   if (d.items[id] <= 0) {
     note(d, `NO ${ITEM_BY_ID[id].name.toUpperCase()}`);
     return false;
@@ -61,6 +65,12 @@ export function useItem(d: DeepcoreState, id: ItemId): boolean {
   const applied = applyItem(d, id);
   if (applied) d.items[id] -= 1;
   return applied;
+}
+
+/** The player's route to a supply: live play, then the transaction. */
+export function useItem(d: DeepcoreState, id: ItemId): boolean {
+  if (d.screen !== "in-mine" || d.dying || d.launchAnim !== null) return false;
+  return performUseItem(d, id);
 }
 
 function applyItem(d: DeepcoreState, id: ItemId): boolean {
@@ -168,11 +178,14 @@ export function coreGround(d: {
 }
 
 /**
- * Drop the carried Core Sample onto the miner's cell. It cannot be picked back
- * up (specs/items.md).
+ * Drop the carried Core Sample onto the miner's cell, from wherever the game
+ * stands. It cannot be picked back up (specs/items.md).
+ *
+ * This is the transaction the jettison control names, and it is what the debug
+ * surface calls. Whether the game is in live play is the player's route and
+ * lives in `jettisonCoreSample` (`specs/instrumentation.md`, The controls).
  */
-export function jettisonCoreSample(d: DeepcoreState): boolean {
-  if (d.screen !== "in-mine" || d.dying || d.launchAnim !== null) return false;
+export function performJettison(d: DeepcoreState): boolean {
   if (!d.satchel.coreSample) {
     note(d, "NO CORE SAMPLE CARRIED");
     return false;
@@ -187,6 +200,12 @@ export function jettisonCoreSample(d: DeepcoreState): boolean {
   cue(d, CUES.impact);
   note(d, "CORE SAMPLE JETTISONED — CLEAR THE BLAST");
   return true;
+}
+
+/** The player's route to the jettison control: live play, then the transaction. */
+export function jettisonCoreSample(d: DeepcoreState): boolean {
+  if (d.screen !== "in-mine" || d.dying || d.launchAnim !== null) return false;
+  return performJettison(d);
 }
 
 /**

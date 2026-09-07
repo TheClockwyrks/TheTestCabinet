@@ -37,7 +37,7 @@ import {
   repairFull,
   sellCargo,
 } from "./economy";
-import { buyItem, useItem } from "./items";
+import { buyItem, performUseItem } from "./items";
 import { menuItems } from "./menus";
 import { clearSave as clearSaveSlot } from "./save";
 import { fabricate } from "./rocket";
@@ -205,6 +205,8 @@ export interface DeepcoreDebugApi {
 
   // Restoring the world
   reset(options?: { seed?: number }): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   generateMine(): void;
   clearMine(): void;
   clearCargo(): void;
@@ -481,6 +483,21 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
       game.reset(seed);
     },
 
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Every derived reading this build reports — the miner's `grounded`, `col`
+     * and `row`, `depthMeters`, `overloaded`, `maxFuel`, `maxHull`,
+     * `drilling.progress`, the cargo's `slotsUsed`, `loadKg` and `liftLimitKg`,
+     * the scanner's lock, and the rocket's `nextComponent` — is worked out at the
+     * read, in `Game.snapshot`, from the miner, the grid, the cargo and the
+     * tiers. Nothing is held that a pose can leave behind, so there is nothing
+     * here to rewrite. The operation is required of every build, including one
+     * that keeps those readings as stored copies, and this is what it comes to in
+     * a build that does not.
+     */
+    reconcile() {},
+
     generateMine() {
       game.regenerateMine();
     },
@@ -589,24 +606,15 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
       ] as const);
     },
 
+    // The tier's maximum is a live game value rather than a domain, so the fuel
+    // and hull poses apply what they are given and leave the game's own systems
+    // to make of it what they will (`specs/instrumentation.md`, The operations).
     setFuel(value) {
-      game.miner.fuel = requireRange(
-        "setFuel",
-        "value",
-        value,
-        0,
-        game.maxFuel(),
-      );
+      game.miner.fuel = requireNumber("setFuel", "value", value);
     },
 
     setHull(value) {
-      game.miner.hull = requireRange(
-        "setHull",
-        "value",
-        value,
-        0,
-        game.maxHull(),
-      );
+      game.miner.hull = requireNumber("setHull", "value", value);
     },
 
     setMinerTravel(enabled) {
@@ -827,11 +835,11 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
     },
 
     useItem(item) {
-      useItem(game, requireOneOf("useItem", "item", item, ITEM_IDS));
+      performUseItem(game, requireOneOf("useItem", "item", item, ITEM_IDS));
     },
 
     jettison() {
-      game.jettisonCoreSample();
+      game.performJettison();
     },
 
     fabricate() {
@@ -843,7 +851,7 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
     },
 
     save() {
-      game.trySave();
+      game.performSave();
     },
 
     dismissNotice() {

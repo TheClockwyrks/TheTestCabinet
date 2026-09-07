@@ -159,6 +159,14 @@ and `row` are the integer cell coordinates `specs/board.md` defines.
 Each pose sets one thing and leaves the rest of the game as it stands, so a
 caller that wants several things arranged makes several calls, in the order it
 wants them. Nothing a caller does not ask for happens.
+
+A pose reaches the value it names whatever the game's own rules would have
+allowed a player to arrive at, and it never declines, clamps, or quietly settles
+for something nearer. Where the game stands is not a condition on it either: no
+operation asks which screen is up, where the snake is, or whether what it writes
+could have been reached by playing, because a player's route to a thing is not
+this surface's route to it. What the game's own systems make of a world posed
+that way is the next tick's answer rather than this call's.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation's first parameter is the current state, `DeepReadonly<CoilState>`.
@@ -170,7 +178,10 @@ parameters that follow the state.
 An argument outside the domain its operation states is invalid, and the call
 fails loudly rather than guessing what was meant. So is a call whose subject is
 not in the condition the operation states, such as a menu index no menu on the
-current screen holds.
+current screen holds. A call the game has no defined state for is the one thing
+an operation does not carry out, and it says so by failing: no operation returns
+with the state as it was and no operation settles for a value nearer than the
+one it was given.
 
 {{#if (eq engine.slug "none")}}
 ### `setAutoStep(enabled)`
@@ -232,6 +243,52 @@ round opens with.
 A reset leaves the game indistinguishable from a freshly started session, so
 anything else the build keeps across frames is derived from what a reset
 restores.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `reconcile(state)`
+{{else}}
+### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the game as it now
+stands, without advancing anything. Coil reports its board, its switches and its
+figures straight off the state, so the readings that follow from something else
+are few and named here.
+{{#if (eq engine.slug "simple-2d")}}
+They are the hit regions `menuItemRect` answers with, which follow from the
+screen the game is on, so after a pose they answer for the screen the game shows
+now rather than the one it showed before.
+{{else}}
+They are the hit regions `menuItemRect` answers with, which follow from the
+screen the game is on, and `muted`, which is the game's copy of the mute bit the
+layer beneath it owns; after a pose each answers for the game as it is now
+rather than as it was before.
+{{/if}}
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `ticks` and `simTime` are untouched, no
+tick resolves, the head advances nowhere, nothing collides, nothing is eaten,
+the combo window drains by nothing, no buffered turn is taken, and the pellet
+generator is not drawn from. It plays no cue, changes no screen, and places no
+pellet. It moves nothing to make a reading agree, so a chain posed across a
+cell an obstacle was added to afterwards stays exactly where it was posed and
+reads as it is. The best score is the update's, so a score posed above it is
+still the next update's to raise, and nothing here flips the mute bit itself.
+Calling it twice leaves the same state as calling it once.
+
+It is never an error and may be called on any screen, whether or not the
+simulation is on the wall clock.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `CoilState`, built from the one it was
+handed, which it leaves as it was, so a build that works every one of those
+readings out at the call returns a state equal to the one it was given. `muted`
+is not this call's: the mute bit is the {{engine.name}} engine's, and it reaches
+the state through the frame that carries it.
+{{/if}}
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `snapshot(state)`
@@ -520,6 +577,13 @@ is what the game holds. Four are kept honest rather than posed.
 | `ticks` | Counting every tick the simulation resolves, from `0` at a `reset`. |
 | `simTime` | Accumulating the delta time of every update on the `playing` screen, from `0` at a `reset`. |
 | `mode` | The one mode the game ships, so it is the same on every screen. |
+
+Of those four, `muted` is the only one that follows from something outside the
+state: `ticks` and `simTime` accumulate and `mode` is fixed, so neither is a
+reading a call could bring into agreement with anything. A build is free to read
+the mute bit — and the hit regions `menuItemRect` reports — at the read or to
+keep either as a stored copy, and `reconcile` is what brings a stored copy back
+into agreement after a pose.
 
 ## Diagnostics
 

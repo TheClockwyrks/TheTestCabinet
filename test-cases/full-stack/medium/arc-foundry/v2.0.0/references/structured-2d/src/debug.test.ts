@@ -78,7 +78,7 @@ describe("the surface", () => {
   it("fails loudly on a subject no live structure or unit carries", () => {
     api.startRun();
     expect(() => api.select(999)).toThrow(/an id a live structure carries/);
-    expect(() => api.keep(999)).toThrow(/an id a live structure carries/);
+    expect(() => api.keep(999)).toThrow(/an id a candidate carries/);
     expect(() => api.dismantle(999)).toThrow(/an id a live structure carries/);
     expect(() => api.setUnitHp(999, 1)).toThrow(/an id a live unit carries/);
     expect(() => api.setUnitFrozen(999, true)).toThrow(
@@ -100,24 +100,83 @@ describe("the surface", () => {
     );
   });
 
-  it("refuses a player's control rather than throwing", () => {
+  it("carries out a transaction the arithmetic comes out against", () => {
     api.startRun();
     api.placeComponent("capacitor", 1, 10, 10);
+    // A standing component is no candidate, so a harvest of it names no subject at all
+    // and fails loudly rather than passing quietly.
     const id = api.snapshot().structures[0]!.id;
-    // A standing component is no candidate, so keeping and downgrading are refused.
-    expect(() => api.keep(id)).not.toThrow();
-    expect(() => api.downgrade(id)).not.toThrow();
+    expect(() => api.keep(id)).toThrow(/an id a candidate carries/);
+    expect(() => api.downgrade(id)).toThrow(/an id a candidate carries/);
     expect(api.snapshot().phase).toBe("build");
     expect(api.snapshot().wave).toBe(0);
-    // Charge is short, so refining is refused and nothing leaves the bank.
+    // Charge short of the price is the PURCHASE's own rule, so it buys nothing and
+    // nothing leaves the bank.
     api.setCharge(0);
     api.upgradeQuality();
     expect(api.snapshot().refinement).toBe(0);
     expect(api.snapshot().charge).toBe(0);
-    // The allowance is spent, so no rock lands.
+    // A spent allowance is the drop's own rule, so no rock lands.
     api.setStamps(0);
     api.placeRock(20, 20);
     expect(api.snapshot().structures).toHaveLength(1);
+  });
+
+  it("commits a control from wherever the game stands", () => {
+    api.startRun();
+    api.placeComponent("capacitor", 1, 10, 10);
+    const id = api.snapshot().structures[0]!.id;
+    // A live wave is exactly where a PLAYER cannot dismantle; an operation is not a
+    // player and does not ask how the caller got here.
+    api.spawnUnit("mote");
+    expect(api.snapshot().phase).toBe("wave");
+    api.dismantle(id);
+    expect(api.snapshot().structures.some((s) => s.id === id)).toBe(false);
+
+    // And the title draws no build panel at all.
+    api.reset();
+    expect(api.snapshot().screen).toBe("title");
+    api.setCharge(1000);
+    api.upgradeQuality();
+    expect(api.snapshot().refinement).toBe(1);
+    expect(api.snapshot().charge).toBeLessThan(1000);
+  });
+
+  it("re-derives the readings from the yard as it stands", () => {
+    api.startRun();
+    api.placeComponent("capacitor", 1, 10, 10);
+    api.placeComponent("regulator", 1, 14, 10);
+    api.spawnUnit("mote");
+    const before = api.snapshot();
+    api.reconcile();
+    const once = api.snapshot();
+    api.reconcile();
+    const twice = api.snapshot();
+    // This build rewrites its stored derived readings at every pose that could stale
+    // them, so the call finds nothing left to rewrite; what it must never do is move
+    // something to make a reading agree, and calling it twice must match calling it once.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+  });
+
+  it("advances nothing and is legal on any screen", () => {
+    api.reset();
+    expect(api.snapshot().screen).toBe("title");
+    const idle = api.snapshot();
+    api.reconcile();
+    expect(api.snapshot()).toEqual(idle);
+
+    api.startRun();
+    api.spawnUnit("mote");
+    const mid = api.snapshot();
+    api.reconcile();
+    const after = api.snapshot();
+    expect(after.simTime).toBe(mid.simTime);
+    expect(after.units[0]!.x).toBe(mid.units[0]!.x);
+    expect(after.units[0]!.y).toBe(mid.units[0]!.y);
+    expect(after.units[0]!.hp).toBe(mid.units[0]!.hp);
+    expect(after.charge).toBe(mid.charge);
+    expect(after.integrity).toBe(mid.integrity);
   });
 
   it("counts the live wave's own schedule (specs/instrumentation.md)", () => {

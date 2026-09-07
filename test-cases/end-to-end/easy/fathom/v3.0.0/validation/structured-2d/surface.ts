@@ -287,6 +287,17 @@ export interface FathomDebugApi {
   /** A pure read of the game. */
   snapshot(): FathomSnapshot;
   /**
+   * Brings every value the surface reports into agreement with the dive as it
+   * stands, advancing nothing (`specs/instrumentation.md`).
+   *
+   * A body's `tx` and `ty`, `visionRadius`, `sonar.range`, the two `ready`
+   * flags, `planktonRemaining` and a predator's `speed`, `detectRange` and
+   * `hearingRange` are all functions of the world as it stands, and a build is
+   * free to keep any of them as a copy — this is what rewrites such a copy from
+   * what it is a copy of after a pose.
+   */
+  reconcile(): void;
+  /**
    * The hit region of item `index` on the menu the current screen shows, and
    * `null` on the four screens that show no menu or for an index that menu does
    * not hold. A pure reading: it changes nothing.
@@ -377,6 +388,7 @@ export const READINGS = ["snapshot", "menuItemRect"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   "setScreen",
   "setMenuIndex",

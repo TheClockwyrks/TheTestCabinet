@@ -53,6 +53,7 @@ export type EffectKind = "widen" | "narrow" | "pierce";
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "menuItemRect",
   "setScreen",
@@ -183,7 +184,15 @@ export interface KesslerSnapshot {
  * that changes the screen takes effect at the call. A pose changes the state
  * alone and sounds nothing; the cues a scenario hears come from the ticks run
  * after it. An argument outside its stated domain fails loudly, except where
- * an operation states that it normalizes or ignores the call.
+ * an operation states that it normalizes the call.
+ *
+ * No operation declines. The screen showing, the entry
+ * highlighted, and where the deflector and the balls sit are how a PLAYER
+ * reaches a thing and are not an operation's conditions, so an operation acts
+ * from wherever the game stands; a call the field has no state for — a launch
+ * with nothing parked, a second parked ball, a seventh ball where six is the
+ * whole capacity, a menu entry on a screen carrying no menu — fails loudly
+ * rather than passing quietly.
  */
 export interface KesslerDebugApi {
   /**
@@ -195,6 +204,14 @@ export interface KesslerDebugApi {
    * pod generator, defaulting to `DEFAULT_SEED` (`1`).
    */
   reset(seed?: number): void;
+
+  /**
+   * Brings every value the surface reports into agreement with the field as it
+   * stands, without advancing anything. A build that works its derived
+   * readings out at the read has nothing to do; one that keeps any of them as
+   * a stored copy rewrites that copy from its source.
+   */
+  reconcile(): void;
 
   /** A pure read of the state; changes nothing. */
   snapshot(): KesslerSnapshot;

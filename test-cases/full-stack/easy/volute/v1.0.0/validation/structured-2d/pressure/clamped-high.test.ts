@@ -3,10 +3,10 @@
 // WHAT THE SPEC FIXES. `specs/channel.md` ("Pressure") states the bound and the
 // clamp: "`pressure` is a real number held between `0` and `100` inclusive,
 // clamped at both ends", and the per-tick rule ends in
-// `clamp(pressure + (rise - bleed) x dt, 0, 100)`. `setPressure` is held to the
-// same bound (`specs/instrumentation.md`: "Sets the pressure to `value`, clamped
-// to `0` through `100`"), so no value a scenario poses can carry the reading past
-// it either.
+// `clamp(pressure + (rise - bleed) x dt, 0, 100)`. `setPressure` takes the same
+// range as its domain (`specs/instrumentation.md`: "Sets the pressure to
+// `value`, `0` through `100`"), so no value a scenario poses can carry the
+// reading past it either.
 //
 // THE DRIVE. An isolated hall with the inlet held, the pressure posed
 // just under the ceiling at 99.9, and 100 cores on the channel in one segment.

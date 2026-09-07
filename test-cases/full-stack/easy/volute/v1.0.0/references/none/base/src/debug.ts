@@ -12,8 +12,19 @@
 // ending a scenario reads comes from the ticks it ran, not from the call that set
 // it up.
 //
-// NO POSE DECLINES. Each applies at the call whatever the screen, and an argument
-// outside its range is clamped to the nearest legal value or normalized.
+// NO OPERATION DECLINES. Each applies at the call whatever the screen: the screen
+// showing, the interlude running and where the train stands are how a PLAYER
+// reaches a thing and are not an operation's conditions. A numeric argument
+// outside a range the specification FIXES AS A CONSTANT names no state the hall
+// has, so the call THROWS rather than snapping to the nearest legal value; an
+// angle names a heading whatever its value, so it is normalized rather than
+// refused. A bound that reads a LIVE figure of the run — the level's quota — is a
+// rule of the run rather than a domain, so the value given is applied whatever
+// the run stands at. A call naming nothing the
+// game holds a state for — an argument that is not a number, or a screen, charge,
+// mark or machinery kind outside the set that names them — THROWS, so a caller
+// never reads a call that did nothing as a call that did. Nothing here refuses
+// quietly by handing back the value it was already holding.
 //
 // THE TWO CLOCK OPERATIONS reach past the state into the runtime, because this
 // build stands on no engine and nothing outside it owns its clock. Everything else
@@ -40,7 +51,7 @@ import { pointAt } from "./channel";
 import { newReport } from "./events";
 import { inDanger, fire as fireCore, grantMachinery } from "./sim";
 import { levelSpec, normalizeAngle, startLevel, toTitle } from "./state";
-import { clamp, effectiveFeed, resegment, spaced } from "./train";
+import { effectiveFeed, resegment, spaced } from "./train";
 import type { CueName } from "./constants";
 import type { FxEvent } from "./events";
 import type { VoluteState } from "./types";
@@ -141,6 +152,8 @@ export interface VoluteDebugApi {
   setAutoStep(enabled: boolean): void;
   step(ticks?: number): void;
   reset(options?: { seed?: number }): void;
+  /** Bring every reported reading into agreement with the hall as it stands. */
+  reconcile(): void;
   snapshot(): VoluteSnapshot;
   setScreen(name: string): void;
   setLevel(level: number): void;
@@ -163,18 +176,28 @@ export interface VoluteDebugApi {
   resume(): void;
 }
 
-/** A charge id, or the first of the five when the argument names none. */
-function asCharge(value: unknown): ChargeId {
-  return CHARGE_IDS.includes(value as ChargeId)
-    ? (value as ChargeId)
-    : CHARGE_IDS[0];
+/** A charge id. A value naming none of the five fails loudly. */
+function mustCharge(where: string, value: unknown): ChargeId {
+  if (!CHARGE_IDS.includes(value as ChargeId)) {
+    throw new Error(
+      `${where}: charge must be one of ${CHARGE_IDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as ChargeId;
 }
 
-/** A machinery kind, or `null` when the argument names none. */
-function asMark(value: unknown): MachineryKind | null {
-  return MACHINERY_KINDS.includes(value as MachineryKind)
-    ? (value as MachineryKind)
-    : null;
+/**
+ * A core's mark: one of the four machinery kinds, or `null` for an unmarked
+ * core. Anything else names no mark and fails loudly.
+ */
+function mustMark(where: string, value: unknown): MachineryKind | null {
+  if (value === null || value === undefined) return null;
+  if (!MACHINERY_KINDS.includes(value as MachineryKind)) {
+    throw new Error(
+      `${where}: mark must be null or one of ${MACHINERY_KINDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as MachineryKind;
 }
 
 /** The three kinds `grantMachinery` grants; `bore` is not one of them. */
@@ -184,23 +207,86 @@ const TIMED_KINDS: readonly MachineryKind[] = [
   "sightline",
 ];
 
-/** One of the three timed kinds, or the first of them when the name is none. */
-function asTimedKind(value: unknown): MachineryKind {
-  return TIMED_KINDS.includes(value as MachineryKind)
-    ? (value as MachineryKind)
-    : TIMED_KINDS[0];
+/** One of the three timed kinds. A name outside them fails loudly. */
+function mustTimedKind(value: unknown): MachineryKind {
+  if (!TIMED_KINDS.includes(value as MachineryKind)) {
+    throw new Error(
+      `grantMachinery: kind must be one of ${TIMED_KINDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as MachineryKind;
 }
 
-/** A screen name, or `title` when the argument names none. */
-function asScreen(value: unknown): ScreenName {
-  return SCREENS.includes(value as ScreenName)
-    ? (value as ScreenName)
-    : SCREENS[0];
+/** A screen name. A name outside the seven names no screen and fails loudly. */
+function mustScreen(value: unknown): ScreenName {
+  if (!SCREENS.includes(value as ScreenName)) {
+    throw new Error(
+      `setScreen: name must be one of ${SCREENS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as ScreenName;
 }
 
-/** A finite number, or a stated fallback. */
-function asNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+/**
+ * A finite number. Anything else is not a figure the game has a state for, so
+ * the call fails loudly rather than quietly keeping the value it already held.
+ */
+function mustNumber(where: string, name: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(
+      `${where}: ${name} must be a finite number; got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/**
+ * A finite number inside a range the specification FIXES AS A CONSTANT. That
+ * range is the argument's domain rather than a rule of the run, so a value
+ * outside it names no state the hall has and the call fails loudly rather than
+ * snapping to the nearest legal value.
+ */
+function mustRange(
+  where: string,
+  name: string,
+  value: unknown,
+  lo: number,
+  hi: number,
+): number {
+  const n = mustNumber(where, name, value);
+  if (n < lo || n > hi) {
+    throw new Error(`${where}: ${name} must be ${lo} through ${hi}; got ${n}`);
+  }
+  return n;
+}
+
+/**
+ * A finite number no greater than a maximum the specification FIXES AS A
+ * CONSTANT. The maximum is the argument's domain rather than a rule of the run,
+ * so a value past it names no state the hall has and the call fails loudly
+ * rather than snapping back to it.
+ */
+function mustAtMost(
+  where: string,
+  name: string,
+  value: unknown,
+  hi: number,
+): number {
+  const n = mustNumber(where, name, value);
+  if (n > hi) {
+    throw new Error(`${where}: ${name} must be at most ${hi}; got ${n}`);
+  }
+  return n;
+}
+
+/** A finite number, or `fallback` when the argument was left out entirely. */
+function mustNumberOr(
+  where: string,
+  name: string,
+  value: unknown,
+  fallback: number,
+): number {
+  return value === undefined ? fallback : mustNumber(where, name, value);
 }
 
 /** Build the surface over one live state and the runtime driving it. */
@@ -231,7 +317,7 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      * `setAutoStep(false)` first.
      */
     step(ticks = 1) {
-      host.step(asNumber(ticks, 1));
+      host.step(mustNumberOr("step", "ticks", ticks, 1));
     },
 
     /**
@@ -246,8 +332,27 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      */
     reset(options) {
       toTitle(state);
-      state.rngState = asNumber(options?.seed, DEFAULT_SEED) >>> 0;
+      state.rngState =
+        mustNumberOr("reset", "options.seed", options?.seed, DEFAULT_SEED) >>>
+        0;
       host.clearEffects();
+    },
+
+    /**
+     * Bring every reported reading into agreement with the hall as it stands,
+     * without advancing anything.
+     *
+     * Most of what this surface reports is worked out at the read — `emitted`,
+     * `feedSpeed`, `danger`, each core's point on the channel and its segment
+     * index — so a pose leaves nothing of those behind. The SEGMENTS are the
+     * exception: this build keeps them, and a write to the cores can leave them
+     * describing a channel that no longer stands. `resegment` is the same rule
+     * the tick builds them by, reading the spacing between consecutive cores and
+     * nothing else, so no core moves, no time is spent, nothing sounds, and
+     * running it twice leaves what running it once left.
+     */
+    reconcile() {
+      resegment(state);
     },
 
     /** A pure read of the running game. It changes nothing. */
@@ -263,7 +368,7 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      * it stands at, which is what lets a caller pose one and dismiss it.
      */
     setScreen(name) {
-      state.screen = asScreen(name);
+      state.screen = mustScreen(name);
     },
 
     /**
@@ -273,44 +378,50 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      * read off `state.level` where they are needed rather than copied out of it.
      */
     setLevel(level) {
-      state.level = clamp(
-        Math.round(asNumber(level, state.level)),
-        1,
-        LEVEL_COUNT,
+      state.level = Math.round(
+        mustRange("setLevel", "level", level, 1, LEVEL_COUNT),
       );
     },
 
-    /** Set the run's score, clamped to at least `0`. */
+    /** Set the run's score, which the specification fixes at `0` or above. */
     setScore(n) {
-      state.score = Math.max(0, Math.round(asNumber(n, state.score)));
+      state.score = Math.round(
+        mustRange("setScore", "n", n, 0, Number.MAX_SAFE_INTEGER),
+      );
     },
 
     /**
-     * Set the cells remaining, clamped to `0` through `CELLS`.
+     * Set the cells remaining, which the specification fixes at `0` through
+     * `CELLS`.
      *
      * It ends no run: `setCells(0)` leaves the screen where it stands, and the
      * ending a spent last cell reaches comes from the ticks run after the pose.
      */
     setCells(n) {
-      state.cells = clamp(Math.round(asNumber(n, state.cells)), 0, CELLS);
+      state.cells = Math.round(mustRange("setCells", "n", n, 0, CELLS));
     },
 
     /**
-     * Set the chain step an extraction scores at, clamped to at least `1`, and
-     * restart the window that returns it to `1`.
+     * Set the chain step an extraction scores at, which the specification fixes
+     * at `1` or above, and restart the window that returns it to `1`.
      *
      * The window is restarted because that is what a step above `1` means: the
      * step is the standing value of a chain that is still running, and a step
      * posed under a window already at `0` would hold for the rest of the level.
      */
     setChainStep(k) {
-      state.chainStep = Math.max(1, Math.round(asNumber(k, state.chainStep)));
+      state.chainStep = Math.round(
+        mustRange("setChainStep", "k", k, 1, Number.MAX_SAFE_INTEGER),
+      );
       state.chainTimer = CHAIN_RESET;
     },
 
     /** Open `level`, exactly as the interlude before it opens it. */
     startLevel(level) {
-      startLevel(state, clamp(Math.round(asNumber(level, 1)), 1, LEVEL_COUNT));
+      startLevel(
+        state,
+        Math.round(mustRange("startLevel", "level", level, 1, LEVEL_COUNT)),
+      );
       host.clearEffects();
     },
 
@@ -323,10 +434,10 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      * posed train advances on the tick after the call.
      */
     poseTrain(cores) {
-      const posed = [...(cores ?? [])].map((core) => ({
-        charge: asCharge(core?.[1]),
-        s: Math.min(PATH_LENGTH, asNumber(core?.[0], 0)),
-        mark: asMark(core?.[2]),
+      const posed = [...(cores ?? [])].map((core, index) => ({
+        charge: mustCharge(`poseTrain: core ${index}`, core?.[1]),
+        s: mustAtMost("poseTrain", `core ${index}'s s`, core?.[0], PATH_LENGTH),
+        mark: mustMark(`poseTrain: core ${index}`, core?.[2]),
         hold: 0,
       }));
       posed.sort((a, b) => b.s - a.s);
@@ -348,17 +459,19 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
 
     /** Set the charge the injector holds loaded. The generator is untouched. */
     setLoaded(charge) {
-      state.loaded = asCharge(charge);
+      state.loaded = mustCharge("setLoaded", charge);
     },
 
     /** Set the charge the injector holds queued. The generator is untouched. */
     setQueued(charge) {
-      state.queued = asCharge(charge);
+      state.queued = mustCharge("setQueued", charge);
     },
 
     /** Set the aim, normalized into `[0, 360)`, and do nothing else. */
     setAim(angleDegrees) {
-      state.aim = normalizeAngle(asNumber(angleDegrees, state.aim));
+      state.aim = normalizeAngle(
+        mustNumber("setAim", "angleDegrees", angleDegrees),
+      );
     },
 
     /**
@@ -378,10 +491,12 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
       for (const event of report.fx) host.spawnFx(event);
     },
 
-    /** Set the pressure, clamped to its range. */
+    /** Set the pressure, whose range the specification fixes as a constant. */
     setPressure(value) {
-      state.pressure = clamp(
-        asNumber(value, state.pressure),
+      state.pressure = mustRange(
+        "setPressure",
+        "value",
+        value,
         PRESSURE_MIN,
         PRESSURE_MAX,
       );
@@ -393,12 +508,14 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      * The count of cores emitted this level is the level's quota less what remains,
      * so which of the following emissions carry a mark, and which kind each mark is,
      * follow the new value.
+     *
+     * The level's quota does NOT bound the argument. It is a live figure of the
+     * run rather than a domain the specification fixes, so the count given is the
+     * count the inlet is left with and the hall runs from there.
      */
     setQuotaRemaining(n) {
-      state.quotaRemaining = clamp(
-        Math.round(asNumber(n, 0)),
-        0,
-        levelSpec(state.level).quota,
+      state.quotaRemaining = Math.round(
+        mustRange("setQuotaRemaining", "n", n, 0, Number.MAX_SAFE_INTEGER),
       );
     },
 
@@ -433,7 +550,7 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      */
     grantMachinery(kind) {
       const report = newReport();
-      grantMachinery(state, asTimedKind(kind), report);
+      grantMachinery(state, mustTimedKind(kind), report);
       for (const cue of report.cues) host.queueCue(cue);
       for (const event of report.fx) host.spawnFx(event);
     },

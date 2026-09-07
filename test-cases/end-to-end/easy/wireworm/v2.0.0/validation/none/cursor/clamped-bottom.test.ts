@@ -6,8 +6,8 @@
 //
 // THE POSE IS THE OPPOSITE BOUND, for the reason `cursor.clamped-top` states:
 // the band is 32 units tall, so the 120-unit inset the horizontal pair uses
-// cannot be posed on this axis at all — `setCursor` applies the real clamp and
-// the pose would land on the bound being tested. Starting at `CURSOR_Y_MIN` is
+// cannot be posed on this axis at all — `setCursor` takes a position inside the
+// band and fails loudly outside it. Starting at `CURSOR_Y_MIN` is
 // the widest separation the band allows, and crossing it inside a one-second
 // hold asks for 32 units per second, under a tenth of `CURSOR_SPEED`.
 //

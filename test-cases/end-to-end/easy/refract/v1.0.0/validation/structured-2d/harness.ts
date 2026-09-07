@@ -20,6 +20,16 @@
 // object — including the engine itself, which arrives as values (`createEngine`,
 // `ConstantClock`, the game definition), because the package names no engine.
 //
+// RECONCILING AFTER A POSE. A helper below that poses anything a reading derives
+// from — a node's `x`/`y`, a crystal's `spent`, a beam's `complete`, `solved`,
+// `targets` — reconciles before it returns, and before the frame that draws the
+// pose, so a check posed through the helpers never calls `reconcile` itself. A
+// check that poses with `h.debug.setScreen`/`loadBoard` directly calls it once
+// before its first read. THE POINTER HELPERS DELIBERATELY DO NOT: a pointer
+// operation is the player's own route, and a build that leaves a reading stale
+// after one has left it stale for a player too, which is the defect rather than
+// something the harness should hide.
+//
 // WHAT A CHECK READS. The game's own state (through the debug surface's
 // `snapshot`), the engine's object model — the open world, its game state, its
 // tagged actors — the events the engine broadcast (the cues), and — for the
@@ -438,6 +448,7 @@ export const captureStill = kit.captureStill;
  */
 export async function resetTo(h: Harness, seed?: number): Promise<void> {
   h.debug.reset(seed === undefined ? undefined : { seed });
+  h.debug.reconcile();
   await h.advance(1);
 }
 
@@ -461,6 +472,9 @@ export function notationRows(notation: string): string[] {
  */
 export async function loadBoard(h: Harness, notation: string): Promise<Board> {
   h.debug.loadBoard(notationRows(notation));
+  // The board, the beams and the screen are what a reading derives from, so
+  // the readings are brought into agreement before the frame that draws them.
+  h.debug.reconcile();
   await h.advance(1);
   return parseBoard(notation);
 }
@@ -599,6 +613,7 @@ export async function playerDraw(
  */
 export async function poseMode(h: Harness, mode: Mode): Promise<void> {
   h.debug.setMode(mode);
+  h.debug.reconcile();
   await h.advance(1);
 }
 
@@ -636,6 +651,8 @@ export async function startCampaign(h: Harness, seed?: number): Promise<void> {
   await resetTo(h, seed);
   h.debug.setMode("campaign");
   h.debug.setScreen("select");
+  // `targets` derives from the screen.
+  h.debug.reconcile();
   await h.advance(1);
 }
 
@@ -667,6 +684,8 @@ export async function startCascade(h: Harness, seed?: number): Promise<void> {
  */
 export async function enterCascade(h: Harness): Promise<void> {
   h.debug.setScreen("title");
+  // `targets` derives from the screen, and the title's target is read below.
+  h.debug.reconcile();
   await h.advance(1);
   const cascade = targetCenter(targetById(h.snapshot(), "menu-1"));
   await pressRelease(h, cascade);

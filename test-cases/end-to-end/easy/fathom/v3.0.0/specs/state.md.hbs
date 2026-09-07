@@ -358,6 +358,14 @@ game rendering every frame and advancing only when the debugging surface says so
 - Anything the build keeps beyond the fields above is refreshed by every
   operation that could invalidate it, so a single-field pose leaves the game
   consistent.
+- A field above that is a function of the world as it stands — a body's `tx` and
+  `ty`, `visionRadius`{{#if (eq variant.slug "kindle")}} and `windowRadius`{{/if}},
+  `sonar.range`, `sonar.ready`, `ink.ready`, `planktonRemaining`, and a
+  predator's `speed`, `detectRange` and `hearingRange` — may be worked out at the
+  read or kept as a stored copy, whichever the build prefers, and the debugging
+  surface's `reconcile` is what brings a stored copy back into agreement after a
+  pose. `visibility` and `lit` are not among them: both follow the frame that
+  draws them, as `specs/sensing.md` fixes.
 - A `reset` restores the fields above to their title-screen values and reseeds
   the game's random generator, leaving the game indistinguishable from one
   freshly started, so anything else the build keeps across frames follows from

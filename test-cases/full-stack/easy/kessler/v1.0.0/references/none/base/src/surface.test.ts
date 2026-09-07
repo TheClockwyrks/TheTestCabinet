@@ -77,11 +77,13 @@ describe("determinism through the surface", () => {
       api.reset(42);
       api.setScreen("playing");
       api.setPaddleAngle(15);
+      api.parkBall();
       api.launchBall();
       api.setRingSpeed(3, -21.5);
       api.spawnBall(100, 500, 180, -120);
       api.spawnPod("widen", 300, 640);
       api.setEffectTicks("pierce", 90);
+      api.reconcile();
       api.step(240);
       return api.snapshot();
     };

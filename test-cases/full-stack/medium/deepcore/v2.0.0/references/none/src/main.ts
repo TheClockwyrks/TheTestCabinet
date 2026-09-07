@@ -176,7 +176,7 @@ async function main(): Promise<void> {
         game.toggleInventory();
         break;
       case "jettison":
-        game.jettisonCoreSample();
+        game.tryJettison();
         break;
       case "sys:mute":
         game.muted = !game.muted;
@@ -252,7 +252,7 @@ async function main(): Promise<void> {
         return;
       }
       if (actions.includes("jettison")) {
-        game.jettisonCoreSample();
+        game.tryJettison();
         return;
       }
       if (actions.includes("pause")) openPauseMenu();

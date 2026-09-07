@@ -324,12 +324,17 @@ export class Game {
 
   /**
    * Poses the highlight on entry `n` of the current screen's menu, exactly
-   * where `up` and `down` would leave it, silently. On a screen with no menu
-   * the call changes nothing (`specs/instrumentation.md`).
+   * where `up` and `down` would leave it, silently. A screen carrying no menu
+   * has no entry to highlight, so the call fails loudly there rather than
+   * passing quietly (`specs/instrumentation.md`).
    */
   poseMenuIndex(n: number): void {
     const entries = menuEntries(this.screen);
-    if (entries === null) return;
+    if (entries === null) {
+      throw new Error(
+        `setMenuIndex: ${this.screen} carries no menu, so it has no entry to highlight`,
+      );
+    }
     if (!Number.isInteger(n) || n < 0 || n >= entries.length) {
       throw new Error(
         `setMenuIndex n must be 0 to ${entries.length - 1}; got ${String(n)}`,

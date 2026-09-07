@@ -177,11 +177,26 @@ takes none and returns what it read. Each operation acts on the live world at th
 moment of the call.
 {{/if}}
 
-No pose declines. Each applies at the call whatever the screen, and an argument
-outside its range is clamped to the nearest legal value or normalized as its
-heading states. No pose decides an outcome either: every insertion, extraction,
-score, chain step, mark, cell, clear, and ending comes from the ticks run after
-the pose, so a scenario reads what happened from the snapshot.
+No operation declines. Each applies at the call whatever the screen, because the
+screen showing, the interlude running, and where the train stands are how a
+player would have reached the thing and are not the operation's conditions: a
+`fire` releases from a paused hall, and a `poseTrain` seeds the channel on
+`title` exactly as it seeds one in play.
+
+A range the specification fixes as a constant is the argument's domain, so a
+value outside one fails loudly rather than being brought back inside it. An angle
+names a heading whatever its value, so it is normalized rather than refused, as
+its heading states. A bound that reads a live figure of the run is a rule of the
+run rather than a domain of the argument, so `setQuotaRemaining` takes the count
+it is given whatever the level's quota stands at, and the hall's own tick makes
+of that what it makes of it. A call naming nothing the game holds a state for — an
+argument that is not a number, or a screen, charge, mark, or machinery kind
+outside the set that names them — fails loudly rather than passing quietly, so a
+caller never reads a call that did nothing as a call that did.
+
+No pose decides an outcome either: every insertion, extraction, score, chain
+step, mark, cell, clear, and ending comes from the ticks run after the pose, so a
+scenario reads what happened from the snapshot.
 
 {{#if (eq engine.slug "none")}}
 ### `setAutoStep(enabled)`
@@ -232,6 +247,43 @@ clock and the scenario stays reproducible.
 {{/if}}
 
 {{#if (eq engine.slug "simple-2d")}}
+### `reconcile(state)`
+{{else}}
+### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the hall as it now
+stands, without advancing anything. `emitted`, `feedSpeed`, `danger`, each core's
+`(x, y)` and its `segment`, and each segment's `count` and `hold` all follow from
+the level, the pressure, the active machinery, and where the cores sit on the
+channel, so after a pose they answer for the hall as it is rather than as it was
+before the call.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy — the segments
+are the one a build most often keeps — rewrites that copy from what it is a copy
+of, by the same rule that builds it during a tick.
+
+It moves no clock and runs no tick: `simTime`, the chain timer, the interlude,
+the injector's cooldown, and the active machinery's seconds left all stand where
+they stood, no segment advances, no projectile flies, no strike seats, no core is
+extracted, no cell is spent, the pressure neither rises nor bleeds, the inlet
+emits nothing, and the generator is not drawn from. It scores nothing, sounds no
+cue, plays no effect, and changes neither the screen nor the interlude. It moves
+nothing to make a reading agree: a core posed past the intake stays where it was
+posed and `danger` answers for where it is. Calling it twice leaves the same
+state as calling it once.
+
+It is never an error and may be called on any screen, whether or not the hall is
+held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `VoluteState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
+
+{{#if (eq engine.slug "simple-2d")}}
 ### `snapshot(state)`
 
 A pure reading of `state`, returned as the plain object under Snapshot shape
@@ -249,7 +301,8 @@ shape below. It changes nothing.
 
 Sets the screen to `name`, one of the seven the state carries, and changes
 nothing else: no level is opened, no channel is seeded, no timer is started, and
-no interlude is set. A name outside the seven is taken as `title`.
+no interlude is set. A name outside the seven names no screen, so the call fails
+loudly.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setLevel(state, level)`
@@ -257,10 +310,10 @@ no interlude is set. A name outside the seven is taken as `title`.
 ### `setLevel(level)`
 {{/if}}
 
-Sets the level in play to `level`, a whole number clamped to `1` through
-`LEVEL_COUNT` (`5`), and changes nothing else: the screen, the channel, the
-quota, the pressure, the chain step, the active machinery, the projectiles, and
-the injector are all left as they are. The level's feed speed and its charge set
+Sets the level in play to `level`, a whole number `1` through `LEVEL_COUNT`
+(`5`), and changes nothing else: the screen, the channel, the quota, the
+pressure, the chain step, the active machinery, the projectiles, and the injector
+are all left as they are. The level's feed speed and its charge set
 follow the new value at once.
 
 {{#if (eq engine.slug "simple-2d")}}
@@ -269,9 +322,9 @@ follow the new value at once.
 ### `setScore(n)`, `setCells(n)`
 {{/if}}
 
-`setScore` sets the run's score to `n`, a whole number clamped to at least `0`.
-`setCells` sets the cells remaining to `n`, a whole number clamped to `0` through
-`CELLS` (`3`). Neither ends a run or opens one: `setCells(0)` leaves the screen
+`setScore` sets the run's score to `n`, a whole number of at least `0`.
+`setCells` sets the cells remaining to `n`, a whole number `0` through `CELLS`
+(`3`). Neither ends a run or opens one: `setCells(0)` leaves the screen
 exactly as it stands, and the ending a spent last cell reaches comes from the
 ticks run after the pose.
 
@@ -281,9 +334,9 @@ ticks run after the pose.
 ### `setChainStep(k)`
 {{/if}}
 
-Sets the chain step an extraction scores at to `k`, a whole number clamped to at
-least `1`, and restarts the window that returns the step to `1`, so the posed
-step holds for `CHAIN_RESET` (`2.0` s) of play from the call.
+Sets the chain step an extraction scores at to `k`, a whole number of at least
+`1`, and restarts the window that returns the step to `1`, so the posed step
+holds for `CHAIN_RESET` (`2.0` s) of play from the call.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `startLevel(state, level)`
@@ -291,8 +344,8 @@ step holds for `CHAIN_RESET` (`2.0` s) of play from the call.
 ### `startLevel(level)`
 {{/if}}
 
-Opens `level`, a whole number clamped to `1` through `LEVEL_COUNT` (`5`), exactly
-as the interlude before it opens it: the screen becomes `playing`, the channel
+Opens `level`, a whole number `1` through `LEVEL_COUNT` (`5`), exactly as the
+interlude before it opens it: the screen becomes `playing`, the channel
 holds the cores a level opens with, the quota is what a level start leaves it,
 the pressure becomes `0`,
 the chain step becomes `1`, the active machinery clears, every projectile is
@@ -311,7 +364,7 @@ assembles it from the single-field poses above.
 {{/if}}
 
 Replaces every core on the channel with the cores given. `cores` is a list of
-`[s, charge, mark]` triples: `s` is an arc position, clamped to at most `5000`;
+`[s, charge, mark]` triples: `s` is an arc position, at most `5000`;
 `charge` is one of the five charge ids; and `mark` is one of the four machinery
 kinds or `null` for an unmarked core. The cores are placed at exactly the arc
 positions given, and the train orders them by descending `s` whatever order the
@@ -375,9 +428,9 @@ come from the ticks that follow.
 ### `setPressure(value)`
 {{/if}}
 
-Sets the pressure to `value`, clamped to `0` through `100`. The feed speed the
-snapshot reports follows the new value at once, and the rise, the bleed, and the
-drop per extracted core run from it on the next tick.
+Sets the pressure to `value`, `0` through `100`. The feed speed the snapshot
+reports follows the new value at once, and the rise, the bleed, and the drop per
+extracted core run from it on the next tick.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setQuotaRemaining(state, n)`
@@ -385,10 +438,11 @@ drop per extracted core run from it on the next tick.
 ### `setQuotaRemaining(n)`
 {{/if}}
 
-Sets the cores the inlet has left to emit this level to `n`, a whole number
-clamped to `0` through the level's quota. The count of cores emitted this level
-is the level's quota less what remains, so which of the following emissions carry
-a mark, and which kind each mark is, follow the new value.
+Sets the cores the inlet has left to emit this level to `n`, a whole number of at
+least `0`. The level's quota is a rule of the run rather than a bound on the
+argument, so a count above it is taken as given and the hall runs from there. The count of cores emitted this level is the level's quota less what
+remains, so which of the following emissions carry a mark, and which kind each
+mark is, follow the new value.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setEmission(state, enabled)`
@@ -434,8 +488,8 @@ the inlet's gate is left alone.
 Grants `kind`, one of the three timed machinery kinds — `choke`, `backflow`, or
 `sightline` — exactly as extracting a run holding a mark of that kind grants it:
 it becomes the active machinery at its full duration, replacing whatever was
-active and restarting its timer. A `kind` naming none of the three is taken as
-`choke`.
+active and restarting its timer. A `kind` naming none of the three names no
+grant, so the call fails loudly.
 
 `bore` is not granted here. It removes cores and scores the moment it resolves,
 and no pose decides an outcome, so a caller that wants a bore poses a run
@@ -515,7 +569,7 @@ again, returning the screen to `playing`. Neither touches anything else.
 The shape is fixed, and every field is present whatever the screen. `charge` is a
 charge id, `mark` and `machinery.kind` are machinery kinds, and `machinery` is
 `null` while no timed machinery is active. Every field is read straight off the
-game's state, so what the snapshot reports is what the game holds. Seven are
+game's state, so what the snapshot reports is what the game holds. Eight are
 derived rather than stored:
 
 | Field | Derived from |
@@ -526,6 +580,11 @@ derived rather than stored:
 | `train[].x`, `train[].y` | The core's arc position walked along the channel |
 | `train[].segment` | The spacing between consecutive cores |
 | `segments[].count` | How many cores the segment holds |
+| `segments[].hold` | The recoil hold the segment's cores stand under |
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile` is what brings a stored copy back into agreement after a
+pose.
 
 {{#if (eq engine.slug "structured-2d")}}
 Two of the snapshot's figures are live reads rather than kept copies: `muted` is

@@ -107,9 +107,7 @@ describe("the surface", () => {
     expect(() => api.select(missing, 999)).toThrow(
       /an id a live structure carries/,
     );
-    expect(() => api.keep(missing, 999)).toThrow(
-      /an id a live structure carries/,
-    );
+    expect(() => api.keep(missing, 999)).toThrow(/an id a candidate carries/);
     expect(() => api.dismantle(missing, 999)).toThrow(
       /an id a live structure carries/,
     );
@@ -136,24 +134,87 @@ describe("the surface", () => {
     );
   });
 
-  it("refuses a player's control rather than throwing", () => {
+  it("carries out a transaction the arithmetic comes out against", () => {
     d.apply((s) => api.startRun(s));
     d.apply((s) => api.placeComponent(s, "capacitor", 1, 10, 10));
+    // A standing component is no candidate, so a harvest of it names no subject at all
+    // and fails loudly rather than passing quietly.
     const id = d.snapshot().structures[0]!.id;
-    // A standing component is no candidate, so keeping and downgrading are refused.
-    expect(() => d.apply((s) => api.keep(s, id))).not.toThrow();
-    expect(() => d.apply((s) => api.downgrade(s, id))).not.toThrow();
+    expect(() => d.read((s) => api.keep(s, id))).toThrow(
+      /an id a candidate carries/,
+    );
+    expect(() => d.read((s) => api.downgrade(s, id))).toThrow(
+      /an id a candidate carries/,
+    );
     expect(d.snapshot().phase).toBe("build");
     expect(d.snapshot().wave).toBe(0);
-    // Charge is short, so refining is refused and nothing leaves the bank.
+    // Charge short of the price is the PURCHASE's own rule, so it buys nothing and
+    // nothing leaves the bank.
     d.apply((s) => api.setCharge(s, 0));
     d.apply((s) => api.upgradeQuality(s));
     expect(d.snapshot().refinement).toBe(0);
     expect(d.snapshot().charge).toBe(0);
-    // The allowance is spent, so no rock lands.
+    // A spent allowance is the drop's own rule, so no rock lands.
     d.apply((s) => api.setStamps(s, 0));
     d.apply((s) => api.placeRock(s, 20, 20));
     expect(d.snapshot().structures).toHaveLength(1);
+  });
+
+  it("commits a control from wherever the game stands", () => {
+    d.apply((s) => api.startRun(s));
+    d.apply((s) => api.placeComponent(s, "capacitor", 1, 10, 10));
+    const id = d.snapshot().structures[0]!.id;
+    // A live wave is exactly where a PLAYER cannot dismantle; an operation is not a
+    // player and does not ask how the caller got here.
+    d.apply((s) => api.spawnUnit(s, "mote"));
+    expect(d.snapshot().phase).toBe("wave");
+    d.apply((s) => api.dismantle(s, id));
+    expect(d.snapshot().structures.some((x) => x.id === id)).toBe(false);
+
+    // And the title draws no build panel at all.
+    d.apply((s) => api.reset(s));
+    expect(d.snapshot().screen).toBe("title");
+    d.apply((s) => api.setCharge(s, 1000));
+    d.apply((s) => api.upgradeQuality(s));
+    expect(d.snapshot().refinement).toBe(1);
+    expect(d.snapshot().charge).toBeLessThan(1000);
+  });
+
+  it("re-derives the readings from the yard as it stands", () => {
+    d.apply((s) => api.startRun(s));
+    d.apply((s) => api.placeComponent(s, "capacitor", 1, 10, 10));
+    d.apply((s) => api.placeComponent(s, "regulator", 1, 14, 10));
+    d.apply((s) => api.spawnUnit(s, "mote"));
+    const before = d.snapshot();
+    d.apply((s) => api.reconcile(s));
+    const once = d.snapshot();
+    d.apply((s) => api.reconcile(s));
+    const twice = d.snapshot();
+    // This build rewrites its stored derived readings at every pose that could stale
+    // them, so the call finds nothing left to rewrite; what it must never do is move
+    // something to make a reading agree, and calling it twice must match calling it once.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+  });
+
+  it("advances nothing and is legal on any screen", () => {
+    d.apply((s) => api.reset(s));
+    expect(d.snapshot().screen).toBe("title");
+    const idle = d.snapshot();
+    d.apply((s) => api.reconcile(s));
+    expect(d.snapshot()).toEqual(idle);
+
+    d.apply((s) => api.startRun(s));
+    d.apply((s) => api.spawnUnit(s, "mote"));
+    const mid = d.snapshot();
+    d.apply((s) => api.reconcile(s));
+    const after = d.snapshot();
+    expect(after.simTime).toBe(mid.simTime);
+    expect(after.units[0]!.x).toBe(mid.units[0]!.x);
+    expect(after.units[0]!.y).toBe(mid.units[0]!.y);
+    expect(after.units[0]!.hp).toBe(mid.units[0]!.hp);
+    expect(after.charge).toBe(mid.charge);
+    expect(after.integrity).toBe(mid.integrity);
   });
 
   it("counts the live wave's own schedule (specs/instrumentation.md)", () => {

@@ -26,6 +26,12 @@
 // through the debug surface, and the real rules the build wrote are what decide
 // every hop, every glide and every catch from there.
 //
+// RECONCILING AFTER A POSE. A helper below that poses anything a reading derives
+// from — `timerMax`, the critter's `col`, `row` and `footing`, a bear's
+// `swimming` — calls `h.debug.reconcile()` before it returns, so a check posed
+// through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build:
 // `addVehicle` puts a vehicle the covering rule reads unchanged, `addBear`
@@ -1023,6 +1029,8 @@ export const captureStill = kit.captureStill;
  */
 export function resetTo(h: Harness, seed?: number): void {
   h.debug.reset(seed === undefined ? undefined : { seed });
+  // `reset` rewrites the whole strait, and every derived reading with it.
+  h.debug.reconcile();
 }
 
 /**
@@ -1102,6 +1110,9 @@ export function startCrossing(h: Harness, level = 1, seed?: number): void {
   h.debug.setScore(0);
   h.debug.setTimer(crossingTimer(level));
   h.debug.addCritter(START_COL, ROW_NEAR);
+  // The level, the rosters and the critter are all things a reading derives
+  // from, so the readings are brought into agreement before this returns.
+  h.debug.reconcile();
 }
 
 /**
@@ -1169,6 +1180,9 @@ export function poseVehicle(
       "the vehicle roster is empty",
     );
   }
+  // The critter's footing and a bear's swimming flag both derive from what
+  // covers a tile, so the reading is reconciled before anything reads it.
+  h.debug.reconcile();
   return vehicles[vehicles.length - 1].id;
 }
 
@@ -1191,6 +1205,9 @@ export function poseFloe(
       "the floe roster is empty",
     );
   }
+  // The critter's footing and a bear's swimming flag both derive from the
+  // floes, so the reading is reconciled before anything reads it.
+  h.debug.reconcile();
   return floes[floes.length - 1].id;
 }
 
@@ -1244,6 +1261,8 @@ export function poseBear(
   if (faculties.travel !== undefined) {
     h.debug.setBearTravel(id, faculties.travel);
   }
+  // A bear's `swimming` derives from the tile it is travelling into.
+  h.debug.reconcile();
   return id;
 }
 

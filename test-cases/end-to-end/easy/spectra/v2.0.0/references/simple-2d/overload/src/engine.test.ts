@@ -209,8 +209,12 @@ describe("the debug surface", () => {
       h.pose((s, d) => d.setDroneBand(s, id, "magenta"));
       h.pose((s, d) => d.setDronePhase(s, id, "diving"));
       h.pose((s, d) => d.setDroneSlot(s, id, 500, 300));
-      h.pose((s, d) => d.setDroneBandClock(s, id, 0.5));
-      h.pose((s, d) => d.setDroneShell(s, id, false));
+      // A BAND WINDOW BELONGS TO A FLUX AND A SHELL TO A PRISM, so each of those
+      // two poses is made only on the kind that has the field: the surface fails
+      // LOUDLY on any other kind rather than passing quietly with nothing written
+      // (`specs/instrumentation.md`).
+      if (kind === "flux") h.pose((s, d) => d.setDroneBandClock(s, id, 0.5));
+      if (kind === "prism") h.pose((s, d) => d.setDroneShell(s, id, false));
       h.pose((s, d) => d.setDroneCharge(s, id, 2));
       h.pose((s, d) => d.setDroneTravel(s, id, true));
       h.pose((s, d) => d.setDroneOscillation(s, id, true));
@@ -223,11 +227,26 @@ describe("the debug surface", () => {
       expect(drone?.phase).toBe("diving");
       expect(drone?.slotX).toBe(500);
       expect(drone?.slotY).toBe(300);
-      // The band clock is a Flux's and the shell a Prism's; on the other kinds
-      // the surface reports the fixed figure whatever the setter was called with
-      // (specs/instrumentation.md).
+      // The band clock is a Flux's and the shell a Prism's; on every other kind
+      // the surface reports the fixed figure, and the pose was never made.
       expect(drone?.bandClock).toBeCloseTo(kind === "flux" ? 0.5 : 0, 6);
       expect(drone?.shellAlive).toBe(kind !== "prism");
+
+      for (const wrong of ["shard", "flux", "prism"] as const) {
+        if (wrong === kind) continue;
+        const other = poseDrone(h, wrong, 900, 200);
+        if (kind === "flux") {
+          expect(() =>
+            h.pose((s, d) => d.setDroneBandClock(s, other, 0.5)),
+          ).toThrow(RangeError);
+        }
+        if (kind === "prism") {
+          expect(() =>
+            h.pose((s, d) => d.setDroneShell(s, other, false)),
+          ).toThrow(RangeError);
+        }
+        h.pose((s, d) => d.removeDrone(s, other));
+      }
       expect(drone?.charge).toBe(2);
       expect(drone?.travel).toBe(true);
       expect(drone?.oscillation).toBe(true);
@@ -245,19 +264,34 @@ describe("the debug surface", () => {
     expect(bullet?.vy).toBe(-34);
   });
 
-  it("holds the lane clamp on a posed ship", () => {
-    h.pose((s, d) => d.setShipX(s, -400));
+  // The lane's bounds are the argument's DOMAIN, so both ends are reached exactly
+  // and a value outside them FAILS LOUDLY rather than snapping to the nearer end.
+  // A snap would leave the ship somewhere nobody asked for and report a pose that
+  // never happened as one that did.
+  it("takes a posed ship across its lane, and fails loudly outside it", () => {
+    h.pose((s, d) => d.setShipX(s, SHIP_X_MIN));
     expect(h.snapshot().ship.x).toBe(SHIP_X_MIN);
-    h.pose((s, d) => d.setShipX(s, 4000));
+    h.pose((s, d) => d.setShipX(s, SHIP_X_MAX));
+    expect(h.snapshot().ship.x).toBe(SHIP_X_MAX);
+    expect(() => h.pose((s, d) => d.setShipX(s, -400))).toThrow(RangeError);
+    expect(() => h.pose((s, d) => d.setShipX(s, 4000))).toThrow(RangeError);
     expect(h.snapshot().ship.x).toBe(SHIP_X_MAX);
   });
 
-  it("holds a posed charge inside its range", () => {
+  // `0` to `OVERLOAD_AT` is the charge argument's DOMAIN, on the same terms.
+  it("takes a posed charge across its range, and fails loudly outside it", () => {
     startPosed(h);
     const id = poseDrone(h, "shard", 400, 200);
-    h.pose((s, d) => d.setDroneCharge(s, id, 99));
+    h.pose((s, d) => d.setDroneCharge(s, id, OVERLOAD_AT));
     expect(droneOf(h, id)?.charge).toBe(OVERLOAD_AT);
-    h.pose((s, d) => d.setDroneCharge(s, id, -4));
+    h.pose((s, d) => d.setDroneCharge(s, id, 0));
+    expect(droneOf(h, id)?.charge).toBe(0);
+    expect(() => h.pose((s, d) => d.setDroneCharge(s, id, 99))).toThrow(
+      RangeError,
+    );
+    expect(() => h.pose((s, d) => d.setDroneCharge(s, id, -4))).toThrow(
+      RangeError,
+    );
     expect(droneOf(h, id)?.charge).toBe(0);
   });
 
@@ -312,6 +346,57 @@ describe("the debug surface", () => {
     expect(snap.bulletSpeedScale).toBeCloseTo(bulletSpeedScale(9), 6);
     expect(snap.diveGapScale).toBeCloseTo(diveGapScale(9), 6);
     expect(snap.fluxHold).toBeCloseTo(fluxHold(9), 6);
+  });
+});
+
+// `reconcile` brings every reported reading into agreement with the game without
+// advancing anything. This build works every derived reading out at the READ, so
+// the call has nothing to rewrite; what these two cases pin is that it still
+// ANSWERS for a posed game and that it costs no simulation time, which is the
+// whole difference between it and stepping a frame.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed source", () => {
+    startPosed(h);
+
+    h.pose((s, d) => d.setStage(s, 5));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().fluxHold).toBeCloseTo(fluxHold(5), 6);
+
+    h.pose((s, d) => d.setResonance(s, RESONANCE_MAX));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().dischargeReady).toBe(true);
+
+    h.pose((s, d) => d.setInversion(s, 2));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().inversionActive).toBe(true);
+
+    h.pose((s, d) => d.setPhase(s, "ready"));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().ship.alive).toBe(false);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    startPosed(h);
+    h.pose((s, d) => d.setStage(s, 3));
+    h.pose((s, d) => d.setPhaseTimer(s, 1.25));
+    h.pose((s, d) => d.setDiveClock(s, 0.4));
+    h.pose((s, d) => d.setInversion(s, 2.5));
+    h.pose((s, d) => d.setFireLockout(s, 0.24));
+    h.pose((s, d) => d.setShipX(s, 500));
+    poseDrone(h, "flux", 400, 200, { bandClock: 0.5 });
+    poseDrone(h, "prism", 600, 200);
+    h.pose((s, d) => d.addPlayerBullet(s, 400, 500, "magenta"));
+
+    const before = JSON.stringify(h.snapshot());
+    h.pose((s, d) => d.reconcile(s));
+    const once = JSON.stringify(h.snapshot());
+    h.pose((s, d) => d.reconcile(s));
+    const twice = JSON.stringify(h.snapshot());
+
+    // The clock, the positions and every timer are untouched, so the whole
+    // snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
   });
 });
 

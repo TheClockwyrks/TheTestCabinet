@@ -1,20 +1,21 @@
 // The debug and automation surface (specs/instrumentation.md): that every
 // operation is there, that a pose arranges the hall without deciding an outcome,
-// that an argument outside its range is clamped rather than refused, and that the
-// same seed with the same calls reaches the same state every time.
+// that an argument outside a range the specification fixes as a constant fails
+// loudly, as does any other call naming nothing the game holds a state for,
+// and that the same seed with the same calls reaches the same state every time.
 
 import { describe, expect, it } from "vitest";
 import {
   CELLS,
-  CHARGE_IDS,
   DEFAULT_SEED,
   LEVELS,
   LEVEL_COUNT,
-  MACHINERY_DURATIONS,
   PATH_LENGTH,
   PRESSURE_MAX,
+  SCREENS,
   SEEDED_CORES,
   SEEDED_HEAD_S,
+  SPACING,
   VOLUTE_DEBUG_VERSION,
 } from "./constants";
 import type { VoluteDebug, VoluteSnapshot } from "./debug";
@@ -32,6 +33,7 @@ useHarness();
 /** Every operation `specs/instrumentation.md` names, beside `version`. */
 const OPERATIONS: readonly (keyof VoluteDebug)[] = [
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setLevel",
@@ -175,37 +177,43 @@ describe("a pose decides nothing", () => {
   });
 });
 
-describe("clamping", () => {
-  it("clamps a level outside the table", async () => {
+describe("argument domains", () => {
+  it("fails loudly on a level outside the table", async () => {
     const h = current();
-    await openLevel(h, 0);
-    expect(h.snapshot().level).toBe(1);
-    await openLevel(h, 99);
+    await openLevel(h, LEVEL_COUNT);
+    expect(h.snapshot().level).toBe(LEVEL_COUNT);
+    expect(() => h.debug.startLevel(0)).toThrow();
+    expect(() => h.debug.startLevel(99)).toThrow();
     expect(h.snapshot().level).toBe(LEVEL_COUNT);
   });
 
-  it("clamps the pressure to its range", async () => {
+  it("fails loudly on a pressure outside its range", async () => {
     const h = current();
     await openLevel(h, 1);
-    h.debug.setPressure(-50);
-    expect(h.snapshot().pressure).toBe(0);
-    h.debug.setPressure(500);
+    h.debug.setPressure(PRESSURE_MAX);
+    expect(h.snapshot().pressure).toBe(PRESSURE_MAX);
+    expect(() => h.debug.setPressure(-50)).toThrow();
+    expect(() => h.debug.setPressure(500)).toThrow();
     expect(h.snapshot().pressure).toBe(PRESSURE_MAX);
   });
 
-  it("clamps the quota to the level's own", async () => {
+  it("takes the quota as given, since the level's own is a rule, not a domain", async () => {
     const h = current();
     await openLevel(h, 1);
-    h.debug.setQuotaRemaining(-4);
-    expect(h.snapshot().quotaRemaining).toBe(0);
     h.debug.setQuotaRemaining(9999);
+    expect(h.snapshot().quotaRemaining).toBe(9999);
+    h.debug.setQuotaRemaining(LEVELS[0].quota);
+    expect(h.snapshot().quotaRemaining).toBe(LEVELS[0].quota);
+    expect(() => h.debug.setQuotaRemaining(-4)).toThrow();
     expect(h.snapshot().quotaRemaining).toBe(LEVELS[0].quota);
   });
 
-  it("clamps a posed arc position to the intake", async () => {
+  it("fails loudly on a posed arc position past the intake", async () => {
     const h = current();
     await isolate(h);
-    poseTrain(h, [[99999, "halide", null]]);
+    poseTrain(h, [[PATH_LENGTH, "halide", null]]);
+    expect(h.snapshot().train[0].s).toBe(PATH_LENGTH);
+    expect(() => poseTrain(h, [[99999, "halide", null]])).toThrow();
     expect(h.snapshot().train[0].s).toBe(PATH_LENGTH);
   });
 
@@ -221,31 +229,31 @@ describe("clamping", () => {
     expect(h.snapshot().injector.aim).toBe(5);
   });
 
-  it("falls back for a charge or a mark it does not know", async () => {
+  it("fails loudly on a charge or a mark it does not know", async () => {
     const h = current();
     await isolate(h);
-    poseTrain(h, [[1000, "quartz", "flywheel"]]);
-    expect(h.snapshot().train[0].charge).toBe(CHARGE_IDS[0]);
-    expect(h.snapshot().train[0].mark).toBeNull();
-    h.debug.setLoaded("quartz");
-    expect(h.snapshot().injector.loaded).toBe(CHARGE_IDS[0]);
+    expect(() => poseTrain(h, [[1000, "quartz", null]])).toThrow();
+    expect(() => poseTrain(h, [[1000, "halide", "flywheel"]])).toThrow();
+    expect(() => h.debug.setLoaded("quartz")).toThrow();
+    expect(h.snapshot().injector.loaded).not.toBe("quartz");
   });
 
-  it("grants a kind it does not know as the first of the four", async () => {
+  it("fails loudly on a machinery kind it does not know", async () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1000, "halide", null]]);
-    h.debug.grantMachinery("flywheel");
-    expect(h.snapshot().machinery?.kind).toBe("choke");
-    expect(h.snapshot().machinery?.remaining).toBe(MACHINERY_DURATIONS.choke);
+    const held = h.snapshot().machinery;
+    expect(() => h.debug.grantMachinery("flywheel")).toThrow();
+    expect(h.snapshot().machinery).toEqual(held);
   });
 
-  it("takes `bore` as `choke`, since only the timed kinds are granted", async () => {
+  it("fails `bore` loudly, since only the timed kinds are granted", async () => {
     const h = current();
     await isolate(h);
     poseTrain(h, [[1000, "halide", null]]);
-    h.debug.grantMachinery("bore");
-    expect(h.snapshot().machinery?.kind).toBe("choke");
+    const held = h.snapshot().machinery;
+    expect(() => h.debug.grantMachinery("bore")).toThrow();
+    expect(h.snapshot().machinery).toEqual(held);
     expect(h.snapshot().train).toHaveLength(1);
     expect(h.snapshot().score).toBe(0);
   });
@@ -383,5 +391,57 @@ describe("startLevel", () => {
     expect(h.snapshot().train).toEqual(before.train);
     h.debug.resume();
     expect(h.snapshot().screen).toBe("playing");
+  });
+});
+
+describe("reconcile", () => {
+  it("re-derives the segments the hall carries from the cores as they stand", async () => {
+    const h = current();
+    await isolate(h);
+    poseTrain(h, [
+      [3000, "halide", null],
+      [3000 - SPACING, "halide", null],
+      [2000, "cobalt", null],
+    ]);
+    const before = h.snapshot();
+    h.debug.reconcile();
+    const after = h.snapshot();
+    expect(after.segments.map((entry) => entry.count)).toEqual([2, 1]);
+    expect(after.segments).toEqual(before.segments);
+    expect(after.train).toEqual(before.train);
+  });
+
+  it("advances nothing, and twice matches once", async () => {
+    const h = current();
+    await openLevel(h, 1);
+    h.debug.setPressure(40);
+    h.debug.setAim(90);
+    h.debug.fire();
+    await h.engine.advance(4);
+
+    const before = h.snapshot();
+    h.debug.reconcile();
+    const once = h.snapshot();
+    h.debug.reconcile();
+    const twice = h.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.train).toEqual(before.train);
+    expect(once.projectiles).toEqual(before.projectiles);
+    expect(once.pressure).toBe(before.pressure);
+    expect(once.chainTimer).toBe(before.chainTimer);
+    expect(once.injector.cooldown).toBe(before.injector.cooldown);
+    expect(once.rngState).toBe(before.rngState);
+  });
+
+  it("is legal on every screen", async () => {
+    const h = current();
+    await openLevel(h, 1);
+    for (const screen of SCREENS) {
+      h.debug.setScreen(screen);
+      expect(() => h.debug.reconcile()).not.toThrow();
+    }
   });
 });

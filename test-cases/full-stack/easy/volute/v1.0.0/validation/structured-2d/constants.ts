@@ -495,6 +495,7 @@ export const DEFAULT_SEED = 1;
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setLevel",

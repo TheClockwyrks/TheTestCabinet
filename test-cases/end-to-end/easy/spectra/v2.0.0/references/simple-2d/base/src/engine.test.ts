@@ -577,6 +577,58 @@ describe("the debug surface", () => {
 
 // ---- the frame ----------------------------------------------------------
 
+// `reconcile` brings every reported reading into agreement with the game without
+// advancing anything. This build works every derived reading out at the READ, so
+// the call has nothing to rewrite; what these two cases pin is that it still
+// ANSWERS for a posed game and that it costs no simulation time, which is the
+// whole difference between it and stepping a frame.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed source", () => {
+    startPosed();
+
+    h.pose((s, d) => d.setStage(s, 5));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().fluxHold).toBeCloseTo(fluxHold(5), 6);
+
+    h.pose((s, d) => d.setResonance(s, RESONANCE_MAX));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().dischargeReady).toBe(true);
+
+    h.pose((s, d) => d.setInversion(s, 2));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().inversionActive).toBe(true);
+
+    h.pose((s, d) => d.setPhase(s, "ready"));
+    h.pose((s, d) => d.reconcile(s));
+    expect(h.snapshot().ship.alive).toBe(false);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    startPosed();
+    h.pose((s, d) => d.setStage(s, 3));
+    h.pose((s, d) => d.setPhaseTimer(s, 1.25));
+    h.pose((s, d) => d.setDiveClock(s, 0.4));
+    h.pose((s, d) => d.setInversion(s, 2.5));
+    h.pose((s, d) => d.setFireLockout(s, 0.24));
+    h.pose((s, d) => d.setShipX(s, 500));
+    const flux = addDrone("flux", 400, 200);
+    h.pose((s, d) => d.setDroneBandClock(s, flux, 0.5));
+    addDrone("prism", 600, 200);
+    h.pose((s, d) => d.addPlayerBullet(s, 400, 500, "magenta"));
+
+    const before = JSON.stringify(h.snapshot());
+    h.pose((s, d) => d.reconcile(s));
+    const once = JSON.stringify(h.snapshot());
+    h.pose((s, d) => d.reconcile(s));
+    const twice = JSON.stringify(h.snapshot());
+
+    // The clock, the positions and every timer are untouched, so the whole
+    // snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
+  });
+});
+
 describe("the frame", () => {
   it("reaches the same state however the same interval was divided", async () => {
     startPosed();
@@ -1167,8 +1219,16 @@ describe("stages", () => {
     const score = h.snapshot().score;
     h.pose((s, d) => d.setDronePosition(s, survivor?.id ?? 0, 400, 400));
     h.pose((s, d) => d.setDroneBand(s, survivor?.id ?? 0, "cyan"));
-    h.pose((s, d) => d.setDroneShell(s, survivor?.id ?? 0, false));
-    h.pose((s, d) => d.setDroneBandClock(s, survivor?.id ?? 0, 0));
+    // A SHELL BELONGS TO A PRISM AND A BAND WINDOW TO A FLUX, so each pose is made
+    // only on the kind that has the field: `setDroneShell` and `setDroneBandClock`
+    // fail loudly on any other kind rather than passing quietly with nothing
+    // written (`specs/instrumentation.md`).
+    if (survivor?.kind === "prism") {
+      h.pose((s, d) => d.setDroneShell(s, survivor.id, false));
+    }
+    if (survivor?.kind === "flux") {
+      h.pose((s, d) => d.setDroneBandClock(s, survivor.id, 0));
+    }
     h.pose((s, d) =>
       d.addPlayerBullet(
         s,

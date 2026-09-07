@@ -353,7 +353,7 @@ it("holds the inlet and the train with the driver's two gates", async () => {
 it("opens a named level with startLevel", async () => {
   await h.debug.reset({ seed: DEFAULT_SEED });
 
-  // "Opens `level`, a whole number clamped to `1` through `LEVEL_COUNT` (`5`)".
+  // "Opens `level`, a whole number `1` through `LEVEL_COUNT` (`5`)".
   // Level 3 rather than 1, so a build that ignores the argument fails.
   await h.debug.startLevel(3);
   const opened = await h.snapshot();
@@ -467,7 +467,7 @@ it("holds the charges it is given and releases the loaded one on fire", async ()
 it("sets the pressure and the quota it is given", async () => {
   await h.debug.startLevel(1);
 
-  // "Sets the pressure to `value`, clamped to `0` through `100`." The clamp is
+  // "Sets the pressure to `value`, `0` through `100`." The game's own clamp is
   // `pressure/clamped-high` and `pressure/clamped-low`; this is the plain read
   // back, at the case's standing pressure tolerance.
   await h.debug.setPressure(40);

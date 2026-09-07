@@ -218,16 +218,32 @@ export function pointerUp(
 }
 
 /**
- * The `clear` action (specs/controls.md, Clearing): every beam emptied at
- * once, the board's nodes untouched, any live trace ended. It applies on the
- * `playing` screen alone, and the returned flag reports whether there was a
- * segment to remove, which is the one case the clear cue plays for
- * (specs/ui.md).
+ * THE `clear` TRANSACTION (specs/controls.md, Clearing): every beam emptied at
+ * once, the board's nodes untouched, any live trace ended. The returned flag
+ * reports whether there was a segment to remove, which is the one case the
+ * clear cue plays for (specs/ui.md).
+ *
+ * This is the effect on its own, with no question of how the caller reached it.
+ * The screen the action is read on is the PLAYER'S ROUTE to this transaction and
+ * lives in {@link tryClearBeams}; the debug surface's `clear()` calls this one
+ * directly, because an operation never asks whether a player could have pressed
+ * it (specs/instrumentation.md, "The operations").
  */
-export function clearBeams(state: RefractState): boolean {
-  if (state.screen !== "playing") return false;
+export function performClearBeams(state: RefractState): boolean {
   const cleared = state.beams.some((beam) => beam.cells.length >= 2);
   for (const beam of state.beams) beam.cells = [];
   state.tracing = null;
   return cleared;
+}
+
+/**
+ * THE PLAYER'S ROUTE to the `clear` action: it "is read on the `playing` screen
+ * and does nothing on any other screen" (specs/controls.md, Clearing).
+ *
+ * Every path a player takes — the key binding, and the playing screen's clear
+ * target — comes through here. Nothing else does.
+ */
+export function tryClearBeams(state: RefractState): boolean {
+  if (state.screen !== "playing") return false;
+  return performClearBeams(state);
 }

@@ -9,7 +9,15 @@
 // built at the call; no pose decides an outcome, and no pose sounds a cue —
 // the cues a scenario hears come from the ticks run after it. An argument
 // outside the domain its operation states fails loudly, except where the
-// specification says the operation normalizes or ignores the call.
+// specification says the operation normalizes the call.
+//
+// NO OPERATION DECLINES. The screen showing, the entry highlighted, and where
+// the deflector and the balls sit are how a PLAYER reaches a thing; they are
+// not an operation's conditions, and nothing here inspects them before acting.
+// A call the field has no state for — a launch with nothing parked, a second
+// parked ball, a seventh ball where six is the whole capacity, a menu entry on
+// a screen carrying no menu — throws, so a caller never reads a call that did
+// nothing as a call that did. The one thing never done is refusing quietly.
 
 import {
   BALL_CAP,
@@ -72,6 +80,8 @@ export interface KesslerSnapshot {
 /** The debug and automation surface, exactly as the specification lists it. */
 export interface KesslerDebugApi {
   reset(seed?: number): void;
+  /** Bring every reported reading into agreement with the field as it stands. */
+  reconcile(): void;
   snapshot(): KesslerSnapshot;
   menuItemRect(index: number): MenuItemRect | null;
   setScreen(name: Screen): void;
@@ -187,6 +197,20 @@ export function createDebugApi(worldOf: () => World): KesslerDebugApi {
       worldOf().find(FxActor)?.fx.clear();
     },
 
+    /**
+     * Bring every reported reading into agreement with the field as it stands.
+     *
+     * Every derived reading this build reports — the deflector's `spanDeg`,
+     * each ball's `piercing`, each pod's `(x, y)`, and each ring's list of live
+     * targets — is worked out at the read, in `snapshotOf` above, from the
+     * effect timers, the pods' polar positions and the ring slots, so nothing is
+     * held that a pose can leave behind and there is nothing here to rewrite.
+     * The operation is required of every build, including one that keeps those
+     * readings as stored copies, and this is what it comes to in a build that
+     * does not.
+     */
+    reconcile() {},
+
     snapshot() {
       return snapshotOf(stateOf());
     },
@@ -222,7 +246,11 @@ export function createDebugApi(worldOf: () => World): KesslerDebugApi {
     setMenuIndex(n) {
       const state = stateOf();
       const entries = menuEntries(state.screen);
-      if (entries === null) return;
+      if (entries === null) {
+        throw new Error(
+          `setMenuIndex: ${state.screen} carries no menu, so it has no entry to highlight`,
+        );
+      }
       const value = mustWhole("setMenuIndex n", n, 0);
       if (value >= entries.length) {
         throw new Error(
@@ -265,7 +293,13 @@ export function createDebugApi(worldOf: () => World): KesslerDebugApi {
     },
 
     launchBall() {
-      launchParkedBall(stateOf());
+      const state = stateOf();
+      if (!state.balls.some((ball) => ball.parked)) {
+        throw new Error(
+          "launchBall: no ball is parked, so there is none to serve",
+        );
+      }
+      launchParkedBall(state);
     },
 
     clearBalls() {
@@ -278,7 +312,11 @@ export function createDebugApi(worldOf: () => World): KesslerDebugApi {
       mustFinite("vx", vx);
       mustFinite("vy", vy);
       const state = stateOf();
-      if (state.balls.length >= BALL_CAP) return;
+      if (state.balls.length >= BALL_CAP) {
+        throw new Error(
+          `spawnBall: the field holds ${BALL_CAP} balls at most and holds that many now`,
+        );
+      }
       state.nextId += 1;
       state.balls.push({
         id: state.nextId,
@@ -293,8 +331,16 @@ export function createDebugApi(worldOf: () => World): KesslerDebugApi {
 
     parkBall() {
       const state = stateOf();
-      if (state.balls.some((ball) => ball.parked)) return;
-      if (state.balls.length >= BALL_CAP) return;
+      if (state.balls.some((ball) => ball.parked)) {
+        throw new Error(
+          "parkBall: a ball is already parked, and only one may be",
+        );
+      }
+      if (state.balls.length >= BALL_CAP) {
+        throw new Error(
+          `parkBall: the field holds ${BALL_CAP} balls at most and holds that many now`,
+        );
+      }
       const at = pointAt(DEFLECTOR_BALL_CONTACT_RADIUS, state.paddleAngleDeg);
       state.nextId += 1;
       state.balls.push({

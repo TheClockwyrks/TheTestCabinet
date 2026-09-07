@@ -157,6 +157,8 @@ export interface CaromDebug {
   spawnBall(): void;
   spawnObstacle(index: number): void;
   reset(): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   setSeed(seed: number): void;
 
   /* Screens and menus. */
@@ -229,10 +231,23 @@ function ballSnapshot(ball: Ball | null): BallSnapshot | null {
 export function createDebugSurface(game: CaromGame): CaromDebug {
   const world = (): World => game.engine.world;
   const state = (): CaromState => caromState(world());
-  /** A pose on the ball has no effect while the ball is absent. */
-  const withBall = (pose: (ball: Ball) => void): void => {
+  /**
+   * A pose on the ball, or a thrown error naming the operation that wanted it.
+   *
+   * An absent ball is no ball to pose. An operation that quietly did nothing
+   * would leave a caller reading its own pose back off a field that never took
+   * it, and every check driving that operation would grade a world it did not
+   * arrange — so this fails where the caller can see it
+   * (specs/instrumentation.md). `spawnBall` is how a field of one is posed.
+   */
+  const withBall = (op: string, pose: (ball: Ball) => void): void => {
     const ball = ballOf(world());
-    if (ball !== null) pose(ball);
+    if (ball === null) {
+      throw new Error(
+        `Carom: ${op} — no ball is on the field; spawnBall places one`,
+      );
+    }
+    pose(ball);
   };
 
   return {
@@ -310,6 +325,21 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
       mode.setPhase("playing");
     },
 
+    /**
+     * Bring every reported reading into agreement with the world as it stands,
+     * without advancing anything.
+     *
+     * Every derived reading this build reports is worked out at the read: a
+     * ball's `speed` is `Math.hypot(ball.vx, ball.vy)` in the snapshot, and
+     * every other field is read off the actor or the state that owns it.
+     * Nothing is held that a pose can leave behind, so there is nothing here to
+     * rewrite. The operation is required of every build, including one that
+     * keeps those readings as stored copies, and an empty body is what it comes
+     * to in a build that keeps none — not an omission. Advancing the engine
+     * would be wrong: a frame moves the very thing a pose has just placed.
+     */
+    reconcile() {},
+
     /** The generator seeded: `seed` is the value given, `rngState` its start. */
     setSeed(seed) {
       game.setSeed(seed);
@@ -381,27 +411,27 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
     // ---- The ball --------------------------------------------------------
 
     setBallPosition(x, y) {
-      withBall((ball) => {
+      withBall("setBallPosition", (ball) => {
         ball.transform.x = x;
         ball.transform.y = y;
       });
     },
 
     setBallVelocity(vx, vy) {
-      withBall((ball) => {
+      withBall("setBallVelocity", (ball) => {
         ball.vx = vx;
         ball.vy = vy;
       });
     },
 
     setBallSpin(spin) {
-      withBall((ball) => {
+      withBall("setBallSpin", (ball) => {
         ball.spin = spin;
       });
     },
 
     setBallHeld(held) {
-      withBall((ball) => {
+      withBall("setBallHeld", (ball) => {
         ball.held = held;
       });
     },
@@ -413,7 +443,7 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
      * surface carries no `serve`.
      */
     setBallHoldTimer(seconds) {
-      withBall((ball) => {
+      withBall("setBallHoldTimer", (ball) => {
         ball.holdTimer = seconds;
       });
     },

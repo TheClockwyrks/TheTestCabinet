@@ -133,6 +133,15 @@ and `r` are tile coordinates as `specs/board.md` defines them, and every `x` and
 `y` the surface takes or reports is an entity's center in the stage's logical
 units, so a caller aiming at a tile passes that tile's center,
 `(32c + 16, 80 + 32r + 16)`.
+
+Every operation acts. A pose reaches the value it names whatever the game's own
+rules would have allowed a player to reach, so nothing here clamps a posed value
+onto a legal neighbour, quietly declines, or leaves the state as it was and calls
+that an answer. A call the game has no defined state for fails loudly instead,
+and the caller sees the failure: a tile off the board, a charge outside `0` to
+`CHARGE_MAX`, a level outside `1` to `TOTAL_LEVELS`, a cursor position outside
+the player band, a heading that is neither `+1` nor `-1`, a name outside the set
+its row lists, or an id no live entity carries.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<WirewormState>`, as its
@@ -154,6 +163,7 @@ read and changes nothing.
 | --- | --- |
 | `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the snapshot reports into agreement with the game as it now stands, without advancing anything. |
 
 `reset` restores `screen` to `"title"`, `phase` to `"banner"`, `phaseTimer` to
 `0`, `menuIndex` to `0`, `score` to `0`, `lives` to `START_LIVES` (`3`), `level`
@@ -166,6 +176,35 @@ gates back on: the cursor's contact test, `foeSpawning`, and `wormEntry`.
 `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
 game's randomness. `muted` is left exactly as it stands, because muting is a
 player preference the runtime owns.
+
+`reconcile()` brings every value this surface reports into agreement with the
+game as it now stands, without advancing anything. `wormStepInterval` and
+`wormLength` follow the level, `arcs` follows the live discharge, and a foe's
+`vx` and `vy` follow whatever its motion is doing at the call, so after a pose
+they answer for the board as it is now rather than as it was before it.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `simTime` and `phaseTimer` are untouched,
+no worm takes a step, no body follows, no bolt travels, no foe thinks or moves,
+no node loses charge, no cooldown or invulnerability counts down, and the
+generator is not drawn from. It plays no sound, changes no screen or phase, costs
+no life, and scores nothing. It moves nothing to make a reading agree: a worm
+posed onto an occupied tile stays lodged there and reads as it is, and a cursor
+posed on a bound stays on it. `muted` is the update's copy of the runtime's bit
+and stays the update's. Calling it twice leaves the same state as calling it
+once.
+
+It is never an error and may be called on any screen, whether or not the game is
+stepping itself.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `WirewormState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -233,7 +272,7 @@ and restored to on by `reset`, and each is reported by `snapshot`.
 
 | Operation | Effect |
 | --- | --- |
-| `setCursor(x, y)` | Places the cursor's center at a logical stage position. The band's clamp applies, so the cursor never lands outside the player band. |
+| `setCursor(x, y)` | Places the cursor's center at a logical stage position inside the player band. The band is the cursor's own fixed bound, so a position outside it fails loudly rather than landing on the nearest edge. |
 | `setCursorInvulnerable(seconds)` | Sets the seconds of spawn-in invulnerability remaining, `0` for none. |
 | `setFireCooldown(seconds)` | Sets the seconds until the cursor may fire again. |
 | `addBolt(x, y)` | Adds one bolt in flight, its center at a logical stage position, travelling up. It is appended to the bolt roster and takes a fresh id, and it then travels and resolves through the game's own shot rules. |
@@ -355,6 +394,10 @@ a field of their own:
 | `wormStepInterval` | `wormStepInterval(level)` in `specs/worm.md` |
 | `wormLength` | `wormLength(level)` in `specs/worm.md` |
 | `arcs` | The live arcs, with each one's remaining life left out |
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile()` is what brings a stored copy back into agreement after a
+pose.
 
 Four more need a note:
 

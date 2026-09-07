@@ -45,7 +45,13 @@ import {
   type PredatorKind,
 } from "./constants";
 import { DIRS, centerX, centerY, tileIndex } from "./grid";
-import { SCREENS, enterScreen, housePredators, openingState } from "./flow";
+import {
+  SCREENS,
+  countPlankton,
+  enterScreen,
+  housePredators,
+  openingState,
+} from "./flow";
 import {
   foragerCanEnter,
   isDen,
@@ -82,6 +88,8 @@ export interface FathomDebugApi {
   version: number;
   reset(state: DeepReadonly<FathomState>, seed?: number): FathomState;
   snapshot(state: DeepReadonly<FathomState>): FathomSnapshot;
+  /** Bring every reported reading into agreement with the dive as it stands. */
+  reconcile(state: DeepReadonly<FathomState>): FathomState;
   menuItemRect(state: DeepReadonly<FathomState>, index: number): Rect | null;
   setScreen(state: DeepReadonly<FathomState>, s: Screen): FathomState;
   setMenuIndex(state: DeepReadonly<FathomState>, index: number): FathomState;
@@ -287,6 +295,41 @@ export function createDebugApi(): FathomDebugApi {
     /** A pure read. It poses nothing, so it returns no state. */
     snapshot(state) {
       return snapshotOf(state, FATHOM_DEBUG_VERSION);
+    },
+
+    /**
+     * Bring every reported reading into agreement with the dive as it stands,
+     * without advancing anything (`specs/instrumentation.md`).
+     *
+     * Almost everything this build reports is worked out inside `snapshot`, so
+     * there is nothing to rewrite for it: a body's `tx` and `ty` come from its
+     * center and the tile grid, `visionRadius`, `sonar.range`, `detectRange`
+     * and `hearingRange` are computed there, and `sonar.ready` and `ink.ready`
+     * are read off the cooldowns. `planktonRemaining` is the one reading the
+     * state keeps as a count rather than reading off the layer it counts, so it
+     * is the one line here, taken from `countPlankton` — the count
+     * `plantPlankton` itself plants by.
+     *
+     * A predator's `speed` needs no line. Every pose that writes a mode writes
+     * the rate that mode carries with it — `posePredator` and `addedPredator`
+     * both do — and a chasing Gloamfin's speed is the value its ramp has
+     * reached and a corner has knocked down, which is the update's to carry
+     * rather than a reading of the world as it stands.
+     *
+     * WHAT IS NOT HERE, deliberately. `hearingLock` and `alert` are the
+     * predator's MIND, and a predator whose mind is off senses nothing and
+     * keeps the fix it was posed with, so bringing them into agreement here
+     * would be sensing. `score`, `lives`, `depth` and `simTime` are figures the
+     * dive has accumulated, and `muted` is the runtime's bit.
+     *
+     * It advances nothing and fires nothing: no tick is run, no body travels,
+     * no timer runs down, and the generator is not drawn from. It corrects
+     * nothing: a body standing on a tile closed to it holds that tile. Calling
+     * it twice leaves the same state as calling it once, and a state already in
+     * agreement comes back equal to the one it was handed.
+     */
+    reconcile(state) {
+      return { ...state, planktonRemaining: countPlankton(state.plankton) };
     },
 
     /**

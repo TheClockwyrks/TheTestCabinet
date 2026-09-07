@@ -46,6 +46,7 @@ describe("the surface itself (specs/instrumentation.md)", () => {
     const operations = [
       "reset",
       "snapshot",
+      "reconcile",
       "setCompletion",
       "setScreen",
       "setMode",
@@ -202,6 +203,56 @@ describe("session (specs/instrumentation.md)", () => {
       quiet.game.update(1 / 60);
     }
     expect(watched.api.snapshot()).toEqual(quiet.api.snapshot());
+  });
+
+  it("reconciles every derived reading to the world a pose left", () => {
+    const { api } = opened();
+    api.placePart("arm", 0, 0, 0);
+    api.startRun();
+    api.spawnMote(3, 0, "sol");
+    api.reconcile();
+    const snapshot = api.snapshot();
+    const editor = snapshot.editor as { parts: unknown[]; cost: number };
+    const sim = snapshot.sim as {
+      motes: { q: number; r: number; x: number; y: number }[];
+    };
+    // The cost follows from the parts, and a resting mote's drawn position from
+    // the hex it was posed on — both for the machine and the field as they are
+    // NOW, with no frame having been advanced to make them so.
+    expect(editor.parts).toHaveLength(1);
+    expect(editor.cost).toBeGreaterThan(0);
+    expect(sim.motes[0]).toMatchObject({
+      q: 3,
+      r: 0,
+      x: hexX(3, 0),
+      y: hexY(3, 0),
+    });
+  });
+
+  it("advances nothing, and twice leaves what once leaves", () => {
+    const { game, api } = opened();
+    api.placePart("arm", 0, 0, 0);
+    api.startRun();
+    api.spawnMote(3, 0, "sol");
+    const before = api.snapshot();
+    api.reconcile();
+    const once = api.snapshot();
+    api.reconcile();
+    const twice = api.snapshot();
+    // The clock is exactly where it was: no cycle ran, no fraction moved, no
+    // frame time accumulated, nothing faulted, and no mote went anywhere.
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.sim).toMatchObject({
+      status: "running",
+      cycle: (before.sim as { cycle: number }).cycle,
+      fraction: (before.sim as { fraction: number }).fraction,
+      fault: null,
+    });
+    expect(game.state.sim?.motes).toHaveLength(1);
+    // This build works every derived reading out at the read, so there is
+    // nothing for the call to rewrite and the whole snapshot matches.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 });
 

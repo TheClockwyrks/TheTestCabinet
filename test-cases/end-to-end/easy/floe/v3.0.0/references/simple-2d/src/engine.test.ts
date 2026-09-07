@@ -67,6 +67,7 @@ import {
   TIMER_BASE,
   TITLE_ITEMS,
   TOTAL_LEVELS,
+  WATER_TOP,
   crossingTimer,
   laneSpeed,
   tileCX,
@@ -1648,6 +1649,111 @@ describe("the debug surface", () => {
     expect(s.catchTest).toBe(false);
     expect(s.fishCadence).toBe(false);
     expect(s.timerRunning).toBe(false);
+  });
+
+  it("re-derives a stored reading from a posed position", () => {
+    startCrossing();
+    // A water row with no floe under the critter: its footing, its tile and a
+    // bear's swimming flag are all functions of where the bodies are, and this
+    // pose moves what all three read from.
+    h.pose((s) => h.debug.clearFloes(s));
+    h.pose((s) => h.debug.addCritter(s, 20, WATER_TOP));
+    h.pose((s) => h.debug.addBear(s, 22, WATER_TOP));
+    h.pose((s) => h.debug.reconcile(s));
+    let s = h.snapshot();
+    expect(s.critter.footing).toBe("water");
+    expect(s.critter.col).toBe(20);
+    expect(s.critter.row).toBe(WATER_TOP);
+    expect(s.bears[0].swimming).toBe(true);
+
+    const bear = lastBear();
+    h.pose((st) => h.debug.setCritterTile(st, 20, ICE_TOP));
+    h.pose((st) => h.debug.setBearTile(st, bear, 22, ICE_TOP));
+    h.pose((st) => h.debug.reconcile(st));
+    s = h.snapshot();
+    expect(s.critter.footing).toBe("solid");
+    expect(s.critter.row).toBe(ICE_TOP);
+    expect(s.bears[0].swimming).toBe(false);
+  });
+
+  it("advances nothing, and reconciling twice matches reconciling once", () => {
+    startCrossing();
+    h.pose((s) => h.debug.setLevel(s, 3));
+    h.pose((s) => h.debug.addCritter(s, 20, ROW_MEDIAN));
+    h.pose((s) => h.debug.addBear(s, 24, ROW_MEDIAN));
+    h.pose((s) => h.debug.setHopCooldown(s, 0.07));
+    h.pose((s) => h.debug.setPhaseTimer(s, 0.4));
+    h.pose((s) => h.debug.setTimer(s, 9));
+    h.pose((s) => h.debug.setFishBay(s, 2));
+
+    const before = h.snapshot();
+    h.pose((s) => h.debug.reconcile(s));
+    const once = h.snapshot();
+    expect(once).toEqual(before);
+    h.pose((s) => h.debug.reconcile(s));
+    expect(h.snapshot()).toEqual(once);
+    // Named explicitly, because "equal snapshots" is only as strong as the
+    // clock, the bodies and the timers being in it.
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.timer).toBe(before.timer);
+    expect(once.phaseTimer).toBe(before.phaseTimer);
+    expect(once.critter.hopCooldown).toBe(before.critter.hopCooldown);
+    expect(once.critter.x).toBe(before.critter.x);
+    expect(once.critter.y).toBe(before.critter.y);
+    expect(once.bears[0].x).toBe(before.bears[0].x);
+    expect(once.bears[0].y).toBe(before.bears[0].y);
+    expect(once.vehicles).toEqual(before.vehicles);
+    expect(once.floes).toEqual(before.floes);
+    expect(once.fishBay).toBe(before.fishBay);
+  });
+
+  it("fails loudly on an id, a row and a value the strait has no state for", () => {
+    startCrossing();
+    const absent = 9999;
+    const boom = (call: () => unknown): void => {
+      expect(call).toThrow(RangeError);
+    };
+    boom(() => h.debug.setBearTile(h.state, absent, 3, 3));
+    boom(() => h.debug.setBearPosition(h.state, absent, 0, 0));
+    boom(() => h.debug.setBearStep(h.state, absent, "up"));
+    boom(() => h.debug.setBearTarget(h.state, absent, 3, 3));
+    boom(() => h.debug.setBearSense(h.state, absent, false));
+    boom(() => h.debug.setBearRouting(h.state, absent, false));
+    boom(() => h.debug.setBearTravel(h.state, absent, false));
+    boom(() => h.debug.removeBear(h.state, absent));
+    boom(() => h.debug.setVehicleX(h.state, absent, 0));
+    boom(() => h.debug.removeVehicle(h.state, absent));
+    boom(() => h.debug.setFloeX(h.state, absent, 0));
+    boom(() => h.debug.removeFloe(h.state, absent));
+    // The shores and the median carry no lane at all.
+    boom(() => h.debug.setLaneSpeed(h.state, ROW_MEDIAN, 1));
+    boom(() => h.debug.setLaneDirection(h.state, ROW_MEDIAN, 1));
+    // The domains the specification fixes: a level of 1..8, a bay of 0..4, a
+    // speed at or above 0, and a direction that is exactly 1 or -1.
+    boom(() => h.debug.setLevel(h.state, 0));
+    boom(() => h.debug.setLevel(h.state, TOTAL_LEVELS + 1));
+    boom(() => h.debug.setBay(h.state, -1, true));
+    boom(() => h.debug.setFishBay(h.state, 5));
+    boom(() => h.debug.setLaneSpeed(h.state, ICE_TOP, -1));
+    boom(() => h.debug.setLaneDirection(h.state, ICE_TOP, 0));
+  });
+
+  it("takes a pose as given rather than holding it inside the game's own rules", () => {
+    startCrossing();
+    h.pose((s) => h.debug.addCritter(s, 20, ROW_MEDIAN));
+    // None of these is a domain the specification fixes, so each is applied
+    // verbatim: a pose reaches the value it names.
+    h.pose((s) => h.debug.setLives(s, -2));
+    h.pose((s) => h.debug.setTimer(s, -5));
+    h.pose((s) => h.debug.setPhaseTimer(s, -1));
+    h.pose((s) => h.debug.setHopCooldown(s, -0.5));
+    h.pose((s) => h.debug.setReachedLevel(s, TOTAL_LEVELS + 4));
+    const s = h.snapshot();
+    expect(s.lives).toBe(-2);
+    expect(s.timer).toBe(-5);
+    expect(s.phaseTimer).toBe(-1);
+    expect(s.critter.hopCooldown).toBe(-0.5);
+    expect(s.reachedLevel).toBe(TOTAL_LEVELS + 4);
   });
 
   it("carries every field of the documented shape", () => {

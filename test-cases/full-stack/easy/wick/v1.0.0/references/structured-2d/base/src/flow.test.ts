@@ -13,7 +13,7 @@ import {
   type CueName,
 } from "./constants";
 import {
-  choose,
+  tryChoose,
   endRun,
   handleAction,
   openLevelUpNow,
@@ -330,7 +330,7 @@ describe("the overlays", () => {
     b.state.run.pendingLevelUps = 1;
     pause(b.state);
     expect(openLevelUpNow(b.state, () => undefined)).toBe(false);
-    expect(choose(b.state, 0, () => undefined)).toBe(false);
+    expect(tryChoose(b.state, 0, () => undefined)).toBe(false);
   });
 
   it("closes the chest overlay on confirm alone", () => {
@@ -430,8 +430,8 @@ describe("reset", () => {
       startRun(state);
       state.run.pendingLevelUps = 3;
       runFrame(state, TICK_DT, () => undefined);
-      choose(state, 1, () => undefined);
-      choose(state, 0, () => undefined);
+      tryChoose(state, 1, () => undefined);
+      tryChoose(state, 0, () => undefined);
     }
     expect(a.run.offers).toEqual(b.run.offers);
     expect(a.rngState).toBe(b.rngState);

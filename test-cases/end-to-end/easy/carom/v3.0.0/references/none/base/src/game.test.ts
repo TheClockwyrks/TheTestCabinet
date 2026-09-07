@@ -1178,6 +1178,7 @@ describe("window.__carom", () => {
     debug.setBallHoldTimer(0.25);
     debug.setAiTracking(false);
     debug.setAiMovement(false);
+    debug.reconcile();
 
     const posed = debug.snapshot();
     expect(posed).toMatchObject({
@@ -1296,20 +1297,48 @@ describe("window.__carom", () => {
     });
   });
 
-  it("ignores an index this field has no obstacle for", () => {
+  it("fails on an index this field has no obstacle for", () => {
     harness.debug.clearWorld();
-    harness.debug.spawnObstacle(7);
+    expect(() => harness.debug.spawnObstacle(7)).toThrow();
     expect(harness.debug.snapshot().obstacles).toEqual([]);
   });
 
-  it("leaves a cleared field alone when a ball pose names no ball", () => {
+  // An absent ball is no ball to pose. A surface that quietly did nothing would
+  // let a caller read its own pose back off a field that never took it, so every
+  // ball operation fails where the caller can see it instead.
+  it("fails loudly when a ball pose names no ball", () => {
     harness.debug.clearWorld();
-    harness.debug.setBallPosition(100, 100);
-    harness.debug.setBallVelocity(10, 10);
-    harness.debug.setBallSpin(10);
-    harness.debug.setBallHeld(false);
-    harness.debug.setBallHoldTimer(0);
+    expect(() => harness.debug.setBallPosition(100, 100)).toThrow();
+    expect(() => harness.debug.setBallVelocity(10, 10)).toThrow();
+    expect(() => harness.debug.setBallSpin(10)).toThrow();
+    expect(() => harness.debug.setBallHeld(false)).toThrow();
+    expect(() => harness.debug.setBallHoldTimer(0)).toThrow();
     expect(harness.debug.snapshot().ball).toBeNull();
+  });
+
+  // `reconcile` is required of every build. This one works every derived reading
+  // out at the read, so the call has nothing to rewrite — which is exactly what
+  // these two assert: the readings agree with the pose, and nothing moved.
+  it("re-derives a reading from a posed velocity", () => {
+    harness.debug.spawnBall();
+    harness.debug.setBallVelocity(30, 40);
+    harness.debug.reconcile();
+    expect(harness.debug.snapshot().ball?.speed).toBeCloseTo(50, 10);
+  });
+
+  it("advances nothing", () => {
+    rally(harness, "versus", { x: 400, y: 300, vx: 250, vy: -120 });
+    harness.debug.setPaddleCy("left", 240);
+    harness.debug.setBallHoldTimer(0.4);
+
+    const before = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const once = harness.debug.snapshot();
+    harness.debug.reconcile();
+    const twice = harness.debug.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 
   it("returns the whole state to the title on reset", () => {

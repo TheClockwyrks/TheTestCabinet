@@ -347,6 +347,8 @@ export interface WickDebugApi {
     options?: { readonly seed?: number },
   ): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(state: DeepReadonly<WickState>): WickState;
   menuRects(state: DeepReadonly<WickState>): readonly WickRect[];
   tabRects(state: DeepReadonly<WickState>): readonly WickRect[];
   setScreen(state: DeepReadonly<WickState>, name: Screen): WickState;

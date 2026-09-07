@@ -8,6 +8,17 @@
 // passes: a validator asks for a number of frames and gets exactly that number, at
 // exactly the deltas its clock supplied.
 //
+// RECONCILING AFTER A POSE. A helper here that poses anything a reading derives
+// from ends with `reconcile`, so a check that poses through these helpers never
+// calls it itself. Spectra's derived readings are `isChallenge`, the four
+// stage-scaled figures, `dischargeReady`, `inversionActive`, `ship.alive`, every
+// `effectiveBand`, a Flux's `shimmer` and a burst's `particles` — so `startPosed`
+// and the drone and bullet poses carry the call. A check that poses with
+// `h.debug.set...` DIRECTLY, outside these helpers, calls `reconcile` once itself
+// before its first read or sweep. It costs no simulation time, so it never moves
+// a measurement that begins at a posed rest state, which is exactly what stepping
+// a frame to refresh a reading would do.
+//
 // THE MACHINERY THAT DOES THAT IS NOT SPECTRA'S. The draw-command recorder, the
 // debug surface read off the engine and the stand-in for a missing one, the driver
 // that threads a PURE surface through `engine.apply`, the frame sweep, the cue
@@ -1187,6 +1198,11 @@ export function startPosed(h: Harness): void {
   h.debug.setExtraLifeAwarded(false);
   h.debug.setChallengeHits(0);
   h.debug.setDiveClock(0);
+
+  // The stage, the resonance, the inversion, the phase and the ship's band are
+  // all posed above, and the derived figures follow every one of them, so the
+  // readings are brought into agreement before anything reads them back.
+  h.debug.reconcile();
 }
 
 /**
@@ -1341,6 +1357,10 @@ export function poseDrone(
   h.debug.setDroneTravel(id, opts.travel ?? false);
   h.debug.setDroneOscillation(id, opts.oscillation ?? false);
   h.debug.setDroneFire(id, opts.fire ?? false);
+
+  // The band, the shell and the band clock posed above are what a drone's
+  // `effectiveBand` and its `shimmer` follow.
+  h.debug.reconcile();
 
   return id;
 }

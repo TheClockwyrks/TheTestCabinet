@@ -28,7 +28,7 @@ import {
 import { refractState, type RefractState } from "./game";
 import { COMPLETE_ITEMS, SELECT_COLS } from "./layout";
 import { applySample } from "./pointer";
-import { clearBeams, mergeEvents, noEvents } from "./tracing";
+import { tryClearBeams, mergeEvents, noEvents } from "./tracing";
 
 /** The next index on a vertical menu, wrapping at both ends. */
 function wrap(index: number, delta: number, count: number): number {
@@ -95,7 +95,7 @@ export class RefractController extends PlayerController {
           goBack(state);
           return false;
         }
-        return clearNow ? clearBeams(state) : false;
+        return clearNow ? tryClearBeams(state) : false;
       }
       case "solved": {
         if (this.input.pressed("back")) {

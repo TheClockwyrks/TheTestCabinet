@@ -157,6 +157,50 @@ describe("the debug surface", () => {
   });
 });
 
+// `reconcile` brings every reported reading into agreement with the field without
+// advancing anything. This build works its two derived readings — the ship's
+// `speed` and each rock's `radius` — out at the READ, so the call has nothing to
+// rewrite; what these two cases pin is that it still ANSWERS for a posed field and
+// that it costs no simulation time, which is the whole difference between it and
+// stepping a tick.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed velocity", async () => {
+    const h = await open();
+    startPlaying(h.debug);
+    h.debug.setShipVelocity(30, 40);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().ship.speed).toBeCloseTo(50, 10);
+
+    h.debug.addRock("medium", 300, 300);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().rocks[0].radius).toBe(ROCK_RADIUS.medium);
+  });
+
+  it("advances nothing, and twice matches once", async () => {
+    const h = await open();
+    startPlaying(h.debug);
+    h.debug.setShipPosition(400, 300);
+    h.debug.setShipVelocity(120, -90);
+    h.debug.setShipInvuln(2);
+    h.debug.setFireCooldown(7);
+    h.debug.setWaveBanner(1.5);
+    h.debug.addRock("large", 700, 200);
+    h.debug.addBullet(100, 100, 50, 0);
+    h.debug.addSaucer(200, 500);
+
+    const before = JSON.stringify(h.debug.snapshot());
+    h.debug.reconcile();
+    const once = JSON.stringify(h.debug.snapshot());
+    h.debug.reconcile();
+    const twice = JSON.stringify(h.debug.snapshot());
+
+    // The clock, the positions, the velocities and every timer are untouched, so
+    // the whole snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
+  });
+});
+
 describe("reset", () => {
   it("restores every declared field to its title value", async () => {
     const h = await open();

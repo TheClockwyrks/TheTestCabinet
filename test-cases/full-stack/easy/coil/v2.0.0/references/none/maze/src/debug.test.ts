@@ -32,9 +32,11 @@ class TestClock implements DebugClock {
 
 let game: Game;
 let debug: CoilDebugApi;
+let bus: SilentBus;
 
 beforeEach(() => {
-  game = new Game(new SilentBus());
+  bus = new SilentBus();
+  game = new Game(bus);
   debug = createDebugApi(game, new TestClock(game));
 });
 
@@ -345,5 +347,47 @@ describe("the obstacle operations", () => {
     const head = debug.snapshot().snake[0]!;
     expect(() => debug.addObstacle!(head.col, head.row)).toThrow();
     expect(() => debug.addObstacle!(0, 0)).toThrow();
+  });
+});
+
+describe("reconcile", () => {
+  it("re-derives the mute mirror from the bit it is a copy of", () => {
+    // `muted` is the game's readable copy of the runtime's bit, refreshed by the
+    // update. Moving the runtime's bit under a held clock leaves the copy stale,
+    // which is the situation `reconcile` exists for: no frame is run, and the
+    // reading answers for the runtime as it is now.
+    bus.muted = true;
+    expect(debug.snapshot().muted).toBe(false);
+
+    debug.reconcile();
+
+    expect(debug.snapshot().muted).toBe(true);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    debug.setScreen("playing");
+    debug.setSnake([
+      { col: 10, row: 8 },
+      { col: 9, row: 8 },
+      { col: 8, row: 8 },
+    ]);
+    debug.setDirection("right");
+    debug.setPellet(14, 8);
+    debug.setComboWindow(2);
+    const before = debug.snapshot();
+
+    debug.reconcile();
+    const once = debug.snapshot();
+
+    expect(once.ticks).toBe(before.ticks);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.snake).toEqual(before.snake);
+    expect(once.pellet).toEqual(before.pellet);
+    expect(once.turns).toEqual(before.turns);
+    expect(once.comboWindow).toBe(before.comboWindow);
+    expect(once).toEqual(before);
+
+    debug.reconcile();
+    expect(debug.snapshot()).toEqual(once);
   });
 });

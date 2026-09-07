@@ -391,6 +391,19 @@ export interface GantryDebugApi {
 
   /** Returns the game to its title state, `muted` aside. */
   reset(): void;
+  /**
+   * Brings every value this surface reports into agreement with the world as it
+   * now stands, without advancing anything.
+   *
+   * A build is free to work a derived reading out at the read or to keep it as
+   * a stored copy, and this is what brings a stored copy back into agreement
+   * after a pose: the structure's `cost` and `issues`, the `pick` a click at the
+   * pointer would take, and the run's `forces` all follow from the world as it
+   * stands. It moves no clock, runs no tick, plays no cue, and moves nothing to
+   * make a reading agree. Calling it twice leaves the same state as calling it
+   * once.
+   */
+  reconcile(): void;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
   /**

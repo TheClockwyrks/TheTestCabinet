@@ -312,6 +312,12 @@ export interface MeltdownDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>, seed?: number): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): MeltdownSnapshot;
+  /**
+   * Bring every value the snapshot reports into agreement with the floor as it
+   * now stands, without advancing anything. Written in the shape of a pose: it
+   * takes the current state, leaves it as it was, and returns the next one.
+   */
+  reconcile(state: DeepReadonly<S>): S;
 
   // ---- The screen and the run --------------------------------------------
 
@@ -435,6 +441,7 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
 
   "setScreen",
   "setPhase",

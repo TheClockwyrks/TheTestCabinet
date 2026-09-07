@@ -60,8 +60,16 @@ export async function startMatch(h: Harness, mode: Mode): Promise<void> {
   await h.debug.setScore(0, 0);
   await centerPaddles(h);
   await parkBall(h);
+  await h.debug.reconcile();
 }
 ```
+
+A helper that poses anything a reading is derived from ends with
+[`reconcile()`](/testing/end-to-end/instrumentation/#reconciling-derived-state),
+so the readings describe the world the helper posed and no validator has to
+remember the call. A helper that writes only state nothing is derived from has
+nothing to reconcile. A validator posing with the debug operations directly
+calls it once before its first read.
 
 A validator that needs all of a sequence calls the shared helper. A validator
 that needs only part of it calls the operations it needs. A validator that
@@ -81,6 +89,9 @@ State a build keeps beyond the declared fields is derived from them or refreshed
 by every operation that could invalidate it. A build that caches a trail,
 remembers which screen a pause returns to, or latches input holds that data in
 a form that a single-field operation leaves consistent.
+[`reconcile()`](/testing/end-to-end/instrumentation/#reconciling-derived-state)
+is what a build that keeps such a value refreshes it in, and what a validator
+calls after posing a world and before reading it.
 
 ### A build reports the layout a spec leaves loose
 
@@ -102,6 +113,31 @@ Atomic operations are setup verbs, and the
 applies to each one. Setting the score to `10–8` is a precondition; an
 operation that ends the match is an outcome, and the outcome is what the
 validator observes after the real systems run.
+
+### Operations do not ask permission
+
+An operation never declines to act. A condition belongs to the player's route,
+and so is not the operation's, when a player would have had to change the world
+to satisfy it before the control could be pressed: the screen, the open panel,
+the selected tool, where an actor stands, whether a control is drawn. The
+operation acts from wherever the game is, and its effect does not lean on state
+only that route would have established. A pose applies the value it is given
+rather than the value a rule would allow.
+
+The transaction a control names is a different thing from the route to it, and
+the transaction runs unchanged. A purchase still computes its price and an
+unaffordable one still buys nothing, because that is the requirement a review
+item decides.
+
+A call whose argument names no state the game has, such as an unknown name, an
+index past the structure, or a subject that is not there, throws so the caller
+sees it. A call whose arguments all name something real carries out its
+transaction however that transaction comes out. What an operation must not do is
+decline because of the route it was reached by, leaving the state as it was and
+showing the note a player standing in the wrong place would have been shown;
+that hides the system every check driving the operation was written to reach.
+See
+[An operation is unconditional](/testing/end-to-end/instrumentation/#an-operation-is-unconditional).
 
 ## Validators
 
@@ -365,6 +401,12 @@ than past it. What it varies instead is the host: the frame lengths a real
 machine delivers are the case's to state and the validator's to drive, because
 the frame is the world's, not the ball's.
 
+This is a rule on the validator. The build's side of the same line is that a
+pose applies whatever value it is handed, so a validator staying inside the
+stated range and a build
+[acting unconditionally](/testing/end-to-end/instrumentation/#an-operation-is-unconditional)
+hold at once.
+
 ### Every produced file loads
 
 The produced files are a requirement of the build rather than a condition a
@@ -559,9 +601,16 @@ When designing or revising a case's debug API and validators:
 - Every debug API operation sets one field, reads the state, or moves the
   clock, and takes scalar arguments.
 - No operation takes a partial object or arranges several fields at once.
+- No operation gates its effect on the screen, the open panel, an actor's
+  position, or anything else that decides a player's route to it, no operation's
+  effect depends on state only that route establishes, and no operation declines
+  on the strength of the route.
 - The shared harness owns every compound sequence, built from atomic
   operations.
 - `snapshot()` reports every field an operation can set.
+- Every reading derived from state a pose can write is answered by
+  `reconcile()`, and every compound pose helper in the harness ends with a call
+  to it.
 - A layout a spec leaves to the build, such as a menu item's hit region, is
   reported by a read the validators drive.
 - Each assertion traces to a statement in the specs, not to the reference

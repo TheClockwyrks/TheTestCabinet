@@ -183,11 +183,19 @@ Two rules cover every operation below.
 - An argument outside the domain its operation states is invalid, and the call fails
   loudly rather than guessing what was meant. So is a call whose subject is not in the
   condition the operation states, such as an `id` no live structure or unit carries.
-- An operation that stands for a control a player operates commits through that same
-  control, so it is refused wherever the control is refused and does nothing when it is.
-  The refusal is readable in the snapshot: no structure appears, no stamp is spent, no
-  Charge leaves the bank, and no wave starts. `keep`, `downgrade`, `combine`,
-  `dismantle`, `placeRock`, `upgradeQuality`, and `upgradeCombo` are those operations.
+- An operation carries out its effect every time it is called, on the game as it stands.
+  An operation that stands for a control a player operates commits that control's own
+  TRANSACTION, and how a player would have reached the control is no condition on it: the
+  screen showing, the phase running, whether the panel draws the control at all, and where
+  the pointer is are the route a player takes and not the operation's. `keep`,
+  `downgrade`, `combine`, `dismantle`, `placeRock`, `upgradeQuality`, and `upgradeCombo`
+  each commit from wherever the game stands, so a structure is dismantled during a live
+  wave and the press is refined from the title screen. The transaction's OWN rules stay,
+  because they are the effect rather than a gate on it: an unaffordable purchase buys
+  nothing, a track already at `REFINEMENT_MAX` gains none, an illegal footprint stands
+  nothing up, and a spent allowance drops no rock. Each of those is readable in the
+  snapshot — no structure appears, no stamp is spent, no Charge leaves the bank. What no
+  operation ever does is decline quietly, leaving the game as it was with nothing said.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -210,6 +218,42 @@ Advancing while the game is still stepping automatically adds to what the wall c
 already doing, so a scenario that must be reproducible calls `setAutoStep(false)` first.
 
 {{/if}}
+### Reconciling
+
+| Operation | Effect |
+| --- | --- |
+| `reconcile` | Brings every value this surface reports into agreement with the yard as it now stands, without advancing anything. |
+
+`qualityOdds`, `mazeLength`, a structure's `range`, `damage`, `fireRate`, `auraRadius` and
+`auraBonus`, a unit's `speed` and `progress`, `held.legal`, `waveActive` and `totalWaves`
+all follow from the yard, the roster, the refinement track and the difficulty as they
+stand, so after a pose they answer for the run as it is now rather than as it was before
+it.
+
+A build that works those out at the read has nothing to do here and this call changes
+nothing. A build that keeps any of them as a stored copy — a cached occupancy, a cached
+route, a cached aura bonus — rewrites that copy from what it is a copy of.
+
+It moves no clock and runs no system: `simTime` is untouched, no unit travels, no
+structure fires, no projectile flies, no burn or slow runs down, no wave is composed or
+cleared, no bounty is paid, no Grid Integrity is lost, and the seeded generator is not
+drawn from. It plays no cue, opens and closes no overlay, changes no screen or phase, and
+resolves neither victory nor defeat. It moves nothing to make a reading agree: a unit
+posed inside a wall stays where it was posed and is re-routed from there, and a health
+posed past a unit's maximum is not brought back under it. `mazeRating`, `kills` and
+`damageDealt` are what the run has accumulated rather than readings of the yard as it
+stands, so they are the advance's and this call leaves them where they are. Calling it
+twice leaves the same state as calling it once.
+
+It is never an error and may be called on any screen, in any phase, and whether or not the
+game is stepping itself.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `FoundryState`, built from the one it was handed,
+which it leaves as it was. A build that works every one of those readings out at the call
+returns a state equal to the one it was given.
+{{/if}}
+
 ### Readings
 
 | Operation | Returns |
@@ -401,8 +445,8 @@ release it.
 | `clearSelection` | Clears the selection and the combine set. |
 | `addToCombineSet(id)` | Adds one base structure to the explicit combine set, or removes it when it is already in the set, as a press on it with `modify` held would. |
 | `clearCombineSet` | Empties the explicit combine set and leaves the selection as it is. |
-| `keep(id)` | Harvests a candidate as a permanent component. It is the level's harvest, so it starts the wave. |
-| `downgrade(id)` | Harvests a candidate as a permanent component one quality tier lower. It is the harvest, so it starts the wave. |
+| `keep(id)` | Harvests a candidate as a permanent component. It is the level's harvest, so it starts the wave. `id` names a candidate; any other structure fails loudly. |
+| `downgrade(id)` | Harvests a candidate as a permanent component one quality tier lower. It is the harvest, so it starts the wave. `id` names a candidate above quality `1`, there being no tier below it; anything else fails loudly. |
 | `combine(id)` | Commits a combine from the initiating structure, as `specs/scrap-press.md` states: a quality fold of a matching pair, or a reachable recipe. It starts the wave when it consumes a candidate and leaves the phase running when it folds standing structures only. |
 | `dismantle(id)` | Removes a structure, reopens its tiles, and recomputes the route. |
 | `setTargeting(id, priority)` | Sets a firing structure's targeting priority to one of the five of `specs/components.md`. |
@@ -413,14 +457,18 @@ release it.
 The three `place` operations stand a structure up directly, so a scenario holds exactly
 the structures its requirement is about. Each takes the anchor tile of a `2` by `2`
 footprint and is subject to the placement conditions of `specs/yard.md` and to the
-never-seal rule of `specs/pathing.md`, and is refused when either fails. Each is
-available in every phase. None of them spends a stamp, consumes the level's harvest,
-costs Charge, or starts a wave, and each recomputes the route. A structure they stand up
-is appended to the snapshot's `structures`, so the new structure is its last entry.
+never-seal rule of `specs/pathing.md`, which are the placement's own rules rather than a
+gate on the call, so a footprint failing either stands nothing up. Each is available in
+every phase and from every screen. None of them spends a stamp, consumes the level's
+harvest, costs Charge, or starts a wave, and each recomputes the route. A structure they
+stand up is appended to the snapshot's `structures`, so the new structure is its last
+entry.
 
-`placeRock` is refused exactly as a pointer press would be when the footprint is illegal
-or the allowance is spent. Dropping it onto the footprint of an existing blocker rerolls
-that blocker in place, as `specs/scrap-press.md` states.
+`placeRock` drops a rock from wherever the game stands, the build phase being how a player
+reaches the press rather than a condition on the call. An illegal footprint stands nothing
+up and a spent allowance drops nothing, because those are the drop's own rules. Dropping
+it onto the footprint of an existing blocker rerolls that blocker in place, as
+`specs/scrap-press.md` states.
 
 `setNextRoll` fixes the roll and nothing else, so the type-and-quality distribution of
 `specs/scrap-press.md` is what an unarmed press draws from. The arming survives until a
@@ -443,7 +491,7 @@ refunds none, changes no other state, and does nothing when nothing is held.
 | `spawnUnit(type)` | Releases one unit at the map's entry through the real spawner, scaled to the current wave. `type` is `"mote"`, `"spark"`, `"slug"`, `"cluster"`, `"filament"`, `"dynamo"`, or `"overload"`. |
 | `setUnitPosition(id, x, y)` | Moves a live unit to a logical position and leaves it there. Its health, its statuses, and the checkpoint it is heading for are untouched. |
 | `setUnitWaypoint(id, index)` | Sets the checkpoint a live unit is heading for, `1` through `7`: `1` through `6` are the numbered waypoints and `7` is the collector. It moves the unit nowhere. |
-| `setUnitHp(id, hp)` | Sets a live unit's current health, at least `1` and at most its maximum. It never changes the maximum, so the unit stays the same type at the same wave scaling and its health bar reads the fraction it is on. |
+| `setUnitHp(id, hp)` | Sets a live unit's current health, at least `1`. There is no upper bound: a unit's maximum is scaled by the wave it was released on, so it is what ordinary play holds the unit under rather than a limit on this pose, and a value above it is applied as it was given. It never changes the maximum, so the unit stays the same type at the same wave scaling and its health bar reads the fraction it is on. |
 | `setUnitSlow(id, amount, seconds)` | Applies a slow of `amount` for `seconds` to a live unit, through the rule `specs/enemies.md` fixes for an applied slow, so `slowFactor` becomes `min(slowFactor, 1 - amount)` and `slowUntil` becomes the simulation clock plus `seconds`. `amount` is `0` to `1`. |
 | `setUnitBurn(id, dps, seconds)` | Applies a burn of `dps` per second for `seconds` to a live unit, through the rule `specs/enemies.md` fixes for an applied burn, so `burnDps` becomes `max(burnDps, dps)` and `burnUntil` becomes the simulation clock plus `seconds`. Its damage is credited to no structure. |
 | `setUnitFrozen(id, frozen)` | Holds a live unit's travel, or releases it, as the driver above states. |
@@ -613,9 +661,11 @@ does not use reports its resting value rather than going missing.
 - `simTime` is the simulation clock of `specs/controls.md`, so it does not advance while
   paused or off the `playing` screen.
 
-Every field is read straight off the game's own state or derived from it at the call, so
-what the snapshot reports is what the game holds. Every field an operation above sets is
-reported here, so a call can be checked by setting a value and reading it back.
+Every field is read straight off the game's own state or derived from it, so what the
+snapshot reports is what the game holds. Every field an operation above sets is reported
+here, so a call can be checked by setting a value and reading it back. A build is free to
+work a derived field out at the read or to keep it as a stored copy, and `reconcile` is
+what brings a stored copy back into agreement after a pose.
 
 ## Diagnostics
 

@@ -78,6 +78,8 @@ export interface CuePlay {
  */
 export interface Driver {
   reset(options?: { seed?: number }): void;
+  /** Bring every reported reading into agreement with the hall as it stands. */
+  reconcile(): void;
   setScreen(name: string): void;
   setLevel(level: number): void;
   setScore(n: number): void;
@@ -315,6 +317,7 @@ export async function harness(options: HarnessOptions = {}): Promise<Harness> {
 
   const api: Driver = {
     reset: (options) => void engine.apply((s) => debug.reset(s, options)),
+    reconcile: () => void engine.apply((s) => debug.reconcile(s)),
     setScreen: (name) => void engine.apply((s) => debug.setScreen(s, name)),
     setLevel: (level) => void engine.apply((s) => debug.setLevel(s, level)),
     setScore: (n) => void engine.apply((s) => debug.setScore(s, n)),

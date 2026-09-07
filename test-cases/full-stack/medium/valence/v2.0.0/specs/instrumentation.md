@@ -93,9 +93,54 @@ space of `specs/overview.md`.
 - `snapshot()` returns a plain, JSON-serializable object describing the current
   game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and
   never changes anything.
+- `reconcile()` brings every value the API reports into agreement with the state
+  it is derived from, without advancing the simulation by any amount. A reading
+  the build works out at the read already agrees and is left as it is; a reading
+  it keeps as a stored copy is rewritten from its source, so a unit's `revealed`
+  flag answers for the detectors covering it now and a tower's `targetId` for
+  the matter on the board now. It is the call to make after posing a situation
+  and before reading it. See
+  [Reconciling derived state](#reconciling-derived-state).
 - `setAutoStep(enabled)` sets the `autoStep` flag (see
   [The manual clock](#the-manual-clock)): `true` lets the game advance itself in
   real time, `false` returns to manual stepping.
+
+### Reconciling derived state
+
+A specification says what a build reports, not how it holds it, so a value this
+one describes as derived may be worked out at the read in one build and kept as
+a stored flag in another. Both are conformant, and they part company the moment
+a control operation writes what the derived value depends on: the working build
+answers for the board as posed, and the storing build answers for the board
+before the pose. A caller that poses a situation and reads it straight back is
+reading the wrong board, and whatever it concluded decides nothing.
+
+`reconcile()` closes that gap. It re-derives every reading the API reports from
+the state that reading is a function of, and it does so without moving the
+clock, so a caller poses a board, reconciles it, and reads a description of the
+board it posed. A build that works everything out at the read has nothing to do
+and is fully conformant with an implementation that does nothing.
+
+What it does not do is as fixed as what it does. It advances nothing: no tick
+runs, no matter moves, no tower fires, no cooldown or timer counts down, no
+build countdown ticks, no injected key is consumed, and `simTime` is where it
+was. It fires nothing: no shot, no damage, no decomposition, no particle burst,
+no sound, no screen or phase change, and no draw from the seeded generator. It
+corrects nothing: a reading derived from a unit's position is re-derived from
+where the unit is, and the unit is not moved to make that reading agreeable, nor
+is a posed value clamped to what a rule would have allowed. An accumulated
+figure — the energy, the integrity, the score, the round number, a tower's
+`spent` — is the simulation's and is left alone. Calling it twice leaves the
+same state as calling it once, and it is never an error: it may be called on any
+screen, in either phase, paused or running.
+
+`step()` is not a substitute. A step advances the clock and runs every system,
+which moves the very thing a pose has just placed, so a measurement taken from a
+posed board — how far a unit travelled under fire, how many ticks a kill took,
+the first tick a tower acquired on — comes out wrong by the step that was meant
+to refresh the reading. A step also spends cooldowns, consumes a held key, and
+can fire the very event the caller is waiting for. `reconcile()` costs no
+simulation time, so a measurement starts exactly where it was posed.
 
 ### Control operations
 
@@ -107,24 +152,53 @@ is the real wave. A control operation never announces the outcome a scenario is
 meant to produce; you arrange the situation, `step()` runs the real systems, and
 `snapshot()` reads the result.
 
+A control operation carries out its own transaction from wherever the game
+stands, and it never asks how the caller got there. Which screen is up, which
+phase the run is in, whether a tower is selected, whether the control is drawn
+or enabled, and where a pointer would have had to be are all how a PLAYER
+reaches the control; none of them is a condition on the operation, so
+`startRound()` starts a round and `startScenario()` opens a scenario board
+whatever screen and phase the game is on. What the transaction's own rules
+decide is the effect rather than a gate on it, and those stand: a placement
+still costs what it costs, an unaffordable one still builds nothing, and a tower
+already at tier III still gains no tier. A pose applies the value it is given
+rather than the value a rule would allow.
+
+What no operation does is refuse quietly. A call the game has no defined state
+for fails loudly, throwing an `Error` the caller sees: an argument that is not a
+number, a name outside a stated set, an index outside a fixed structural range,
+or a subject that does not exist — a tower id no tower carries, a targeting
+priority on a support aura, which has none. Where an operation's own return
+value states the outcome, as `placeTower` and `upgradeTower` do below, that
+return value is the answer and the caller reads it; what never happens is a call
+that returns with the state exactly as it was and says nothing about why.
+
 - `selectMap(mapId)` begins a run on the map whose `id` matches `mapId`, exactly
   as choosing it at the map select would, opening on the untimed opening build
-  phase. The available map ids are the `id`s in the snapshot's `maps` list.
+  phase, and from whatever screen the game is on. The available map ids are the
+  `id`s in the snapshot's `maps` list, and an id naming none of them fails
+  loudly rather than falling back to a map the caller did not ask for.
 - `goToMapSelect()` opens the map-select screen from the title, as choosing the
   campaign start would, without beginning a run (useful for capturing that
   screen).
 - `setEnergy(amount)` sets the current spendable energy directly, as a
-  precondition (for example to afford a tower a scenario needs). Energy still
-  cannot go below `0`.
+  precondition (for example to afford a tower a scenario needs). The amount is
+  applied as given and is not capped by anything the run has earned; `amount` is
+  a number of at least `0`, and a negative one is outside the domain and fails
+  loudly.
 - `setIntegrity(amount)` sets the current integrity directly, as a precondition
   (for example just above zero to observe a leak fail containment). Reaching `0`
   still resolves through the real containment check.
 - `setRound(n)` sets the round number the next `startRound()` will build, as a
   precondition. It does not spawn anything; the wave for round `n` is generated
-  by the real wave system when the round starts.
+  by the real wave system when the round starts. `n` is a whole number from `1`
+  to `totalRounds`, and a value outside that fails loudly.
 - `startRound()` starts (or, during a between-round countdown, sends early) the
   next round exactly as the START ROUND control would, spawning the real wave
-  over time and paying the early-send bonus when a countdown is running.
+  over time and paying the early-send bonus when a countdown is running. It runs
+  the round-start transaction from wherever the game stands: the screen the game
+  is on and the phase it is in are the player's route to the START ROUND control
+  and are not conditions on this call.
 - `startScenario()` opens a **scenario round**: a live round the wave system
   leaves empty and that does not end on its own. Everything else about it is an
   ordinary round. `phase` reads `"round"`, and the simulation behaves exactly as
@@ -135,8 +209,9 @@ meant to produce; you arrange the situation, `step()` runs the real systems, and
   clear when the board is (or becomes) empty, so a scenario may kill, leak, and
   pose further matter without the run sliding back to the build phase. Losing is
   unaffected — integrity reaching `0` still fails containment and ends the run.
-  Call it from a build phase during a run; it returns `true` once the scenario
-  round is live. To leave one, begin another run with `selectMap` or `reset()`.
+  It opens the scenario round from wherever the game stands — the screen and the
+  phase are not conditions on it — and returns `true` once that round is live.
+  To leave one, begin another run with `selectMap` or `reset()`.
 
   This is the board a scripted scenario runs on, and the reason it exists is that
   `startRound()` cannot be one: it always sends the round's real wave, and a
@@ -151,38 +226,55 @@ meant to produce; you arrange the situation, `step()` runs the real systems, and
   `inert` (release it shielded, the way a round-table row can shield any type —
   `specs/matter.md`; a type that is already inert is unaffected),
   `pathId` (which path, defaulting to path `0`), and `progress` (arc length
-  along that path toward its collector, defaulting to the inlet). It returns the
-  new unit's `id`. This is how a scenario poses an exact unit (a lone heavy, a
-  single Dimer, a shielded Dimer, a revealed-or-not Noble) at a chosen point on
-  a path and then
-  runs the real sim over it.
+  along that path toward its collector, defaulting to the inlet). `type` is one
+  of the matter types, `pathId` is one of the in-play map's path ids, and
+  `progress` is between `0` and that path's `length`; each is a stated domain,
+  so a value outside one fails loudly rather than being nudged to the nearest
+  legal one. It returns the new unit's `id`. This is how a scenario poses an
+  exact unit (a lone heavy, a single Dimer, a shielded Dimer, a revealed-or-not
+  Noble) at a chosen point on a path and then runs the real sim over it.
 - `placeTower(type, x, y)` builds a tower of `type` at board position `(x, y)`
   through the real placement path, enforcing the real legality (off the paths,
   no overlap, in bounds, affordable) and deducting the cost. It returns
   `{ ok, id, reason }`: on success `ok` is `true` and `id` is the new tower's
-  id; on refusal `ok` is `false` and `reason` names why (`"path"`, `"overlap"`,
-  `"bounds"`, or `"cost"`).
+  id; when the spot or the bank will not carry it `ok` is `false` and `reason`
+  names why (`"path"`, `"overlap"`, `"bounds"`, or `"cost"`). Those four are the
+  placement transaction's own rules and the return value is how the caller is
+  told which one decided; nothing about where a player would have had to click,
+  which phase the run is in, or whether a tower is held in build mode is
+  consulted. A `type` naming no tower fails loudly.
 - `upgradeTower(id, branch)` upgrades the tower with the given `id` through the
-  real upgrade path, deducting its cost. At tier III `branch` is required and is
-  `"A"` or `"B"` (the tower's two branches in the order `specs/towers.md` lists
-  them); below tier III `branch` is ignored. It returns `true` if the upgrade
-  was applied.
+  real upgrade path, deducting its cost, whatever is selected and whatever phase
+  the run is in. At tier III `branch` is required and is `"A"` or `"B"` (the
+  tower's two branches in the order `specs/towers.md` lists them); below tier
+  III `branch` is ignored. It returns `true` if the upgrade was applied and
+  `false` where the upgrade transaction itself decides against it — the tower is
+  already at tier III, the branch a tier-III upgrade needs was not named, or the
+  cost cannot be afforded. An `id` no tower carries fails loudly.
 - `sellTower(id)` sells the tower with the given `id` through the real sell
-  path, freeing its spot and returning the refund it paid.
+  path, freeing its spot and returning the refund it paid, whatever is selected
+  and whatever phase the run is in. An `id` no tower carries fails loudly.
 - `selectTower(id)` selects the built tower with the given `id` so the inspector
-  shows it (as clicking it would); passing `null` deselects.
+  shows it (as clicking it would); passing `null` deselects. An `id` no tower
+  carries fails loudly rather than quietly deselecting.
 - `setTargeting(id, priority)` sets a damage tower's targeting priority
   (`"first"`, `"last"`, `"nearest"`, `"farthest"`, `"strongest"`, or
-  `"weakest"`), as the inspector's targeting control would.
+  `"weakest"`), as the inspector's targeting control would, whether or not that
+  tower is the selected one. An `id` no tower carries, a `priority` outside the
+  six, and a support aura — which has no single target and so no targeting to
+  set — each fail loudly.
 - `setInertPriority(id, on)` sets a damage tower's inert-priority toggle on or
-  off, as the inspector's toggle would.
-- `setSpeed(multiplier)` sets the game speed (for example `1`, `2`, or `3`), as
-  the speed control would.
+  off, as the inspector's toggle would, whether or not that tower is the
+  selected one. An `id` no tower carries and a support aura each fail loudly.
+- `setSpeed(multiplier)` sets the game speed, as the speed control would.
+  `multiplier` is `1`, `2`, or `3`, and a value outside those three fails
+  loudly.
 
 A typical check calls `selectMap` and `startScenario` to open a live board with
 nothing on it, `setEnergy` and `placeTower` to build a tower beside a lane,
-`spawnUnit` to pose a unit in its range, `step()` a few ticks to run the real
-firing and damage, and reads the result from `snapshot()`. The scenario round is
+`spawnUnit` to pose a unit in its range, `reconcile()` to bring the readings
+into agreement with the board it has just posed, `step()` a few ticks to run the
+real firing and damage, and reads the result from `snapshot()`. The scenario round is
 what makes the reading unambiguous: the only matter on the board is the unit the
 check posed, so the energy, integrity and targeting it observes are that unit's
 and nothing else's.
@@ -290,6 +382,26 @@ lasts. `slow` reflects the strongest slow currently on the unit, and
 `damageBonus` the extra per-hit damage from an excite, brittle, or mark effect.
 `effects` lists the decomposition and muzzle bursts playing this frame, so a
 caller can read which burst is playing and where.
+
+Several of these readings are DERIVED rather than stored — each is a function of
+the board as it now stands, whatever the build happens to hold:
+
+- a unit's `x` and `y`, from its `pathId` and `progress` along that path;
+- its `speed`, from `baseSpeed` and the `slow` in effect;
+- its `traits`, from its type and its bond;
+- its `revealed`, `slow` and `damageBonus`, from the detectors, auras and
+  effects reaching it where it now is;
+- a tower's `range`, `damage` and `fireRate`, from its type, tier, branch and
+  any aura over it;
+- its `targetId` and `angle`, from its targeting priority over the live matter;
+- `paths`, from the map in play.
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile()` is what brings a stored copy back into agreement after a
+pose. The accumulated figures are not derived and no call re-derives them: the
+`energy`, the `integrity`, the `score`, the `round`, a unit's `hp`, `electrons`
+and `bond`, a tower's `cooldown` and `spent`, and `simTime` are the
+simulation's, and only running it moves them.
 
 ## The debug overlay
 

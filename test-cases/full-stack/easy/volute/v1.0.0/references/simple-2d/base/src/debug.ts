@@ -20,8 +20,19 @@
 // no effect either: the cues and the effects a scenario sees come from the ticks
 // run after it.
 //
-// NO POSE DECLINES. Each applies at the call whatever the screen, and an argument
-// outside its range is clamped to the nearest legal value or normalized.
+// NO OPERATION DECLINES. Each applies at the call whatever the screen: the screen
+// showing, the interlude running and where the train stands are how a PLAYER
+// reaches a thing and are not an operation's conditions. A numeric argument
+// outside a range the specification FIXES AS A CONSTANT names no state the hall
+// has, so the call THROWS rather than snapping to the nearest legal value; an
+// angle names a heading whatever its value, so it is normalized rather than
+// refused. A bound that reads a LIVE figure of the run — the level's quota — is a
+// rule of the run rather than a domain, so the value given is applied whatever
+// the run stands at. A call naming nothing the
+// game holds a state for — an argument that is not a number, or a screen, charge,
+// mark or machinery kind outside the set that names them — THROWS, so a caller
+// never reads a call that did nothing as a call that did. Nothing here refuses
+// quietly by handing back the state it was given.
 
 import {
   CELLS,
@@ -39,14 +50,7 @@ import {
 import type { ChargeId, MachineryKind, ScreenName } from "./constants";
 import type { DeepReadonly } from "ts-essentials";
 import { pointAt } from "./channel";
-import {
-  clamp,
-  freeze,
-  resegment,
-  spaced,
-  thaw,
-  type DraftCore,
-} from "./draft";
+import { freeze, resegment, spaced, thaw, type DraftCore } from "./draft";
 import { newReport } from "./events";
 import type { VoluteDebugApi, VoluteState } from "./game";
 import { levelSpec, normalizeAngle, startLevel, toTitle } from "./level";
@@ -124,18 +128,28 @@ export interface VoluteSnapshot {
   rngState: number;
 }
 
-/** A charge id, or the first of the five when the argument names none. */
-function asCharge(value: unknown): ChargeId {
-  return CHARGE_IDS.includes(value as ChargeId)
-    ? (value as ChargeId)
-    : CHARGE_IDS[0];
+/** A charge id. A value naming none of the five fails loudly. */
+function mustCharge(where: string, value: unknown): ChargeId {
+  if (!CHARGE_IDS.includes(value as ChargeId)) {
+    throw new Error(
+      `${where}: charge must be one of ${CHARGE_IDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as ChargeId;
 }
 
-/** A machinery kind, or `null` when the argument names none. */
-function asMark(value: unknown): MachineryKind | null {
-  return MACHINERY_KINDS.includes(value as MachineryKind)
-    ? (value as MachineryKind)
-    : null;
+/**
+ * A core's mark: one of the four machinery kinds, or `null` for an unmarked
+ * core. Anything else names no mark and fails loudly.
+ */
+function mustMark(where: string, value: unknown): MachineryKind | null {
+  if (value === null || value === undefined) return null;
+  if (!MACHINERY_KINDS.includes(value as MachineryKind)) {
+    throw new Error(
+      `${where}: mark must be null or one of ${MACHINERY_KINDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as MachineryKind;
 }
 
 /** The three timed kinds a grant may name; anything else is taken as `choke`. */
@@ -145,23 +159,86 @@ const TIMED_KINDS: readonly TimedMachineryKind[] = [
   "sightline",
 ];
 
-/** A timed machinery kind, or `choke` when the argument names none. */
-function asTimedKind(value: unknown): TimedMachineryKind {
-  return TIMED_KINDS.includes(value as TimedMachineryKind)
-    ? (value as TimedMachineryKind)
-    : TIMED_KINDS[0];
+/** One of the three timed kinds. A name outside them fails loudly. */
+function mustTimedKind(value: unknown): TimedMachineryKind {
+  if (!TIMED_KINDS.includes(value as TimedMachineryKind)) {
+    throw new Error(
+      `grantMachinery: kind must be one of ${TIMED_KINDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as TimedMachineryKind;
 }
 
-/** A screen name, or `title` when the argument names none. */
-function asScreen(value: unknown): ScreenName {
-  return SCREENS.includes(value as ScreenName)
-    ? (value as ScreenName)
-    : SCREENS[0];
+/** A screen name. A name outside the seven names no screen and fails loudly. */
+function mustScreen(value: unknown): ScreenName {
+  if (!SCREENS.includes(value as ScreenName)) {
+    throw new Error(
+      `setScreen: name must be one of ${SCREENS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as ScreenName;
 }
 
-/** A finite number, or a stated fallback. */
-function asNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+/**
+ * A finite number. Anything else is not a figure the game has a state for, so
+ * the call fails loudly rather than quietly handing the state back unchanged.
+ */
+function mustNumber(where: string, name: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(
+      `${where}: ${name} must be a finite number; got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/**
+ * A finite number inside a range the specification FIXES AS A CONSTANT. That
+ * range is the argument's domain rather than a rule of the run, so a value
+ * outside it names no state the hall has and the call fails loudly rather than
+ * snapping to the nearest legal value.
+ */
+function mustRange(
+  where: string,
+  name: string,
+  value: unknown,
+  lo: number,
+  hi: number,
+): number {
+  const n = mustNumber(where, name, value);
+  if (n < lo || n > hi) {
+    throw new Error(`${where}: ${name} must be ${lo} through ${hi}; got ${n}`);
+  }
+  return n;
+}
+
+/**
+ * A finite number no greater than a maximum the specification FIXES AS A
+ * CONSTANT. The maximum is the argument's domain rather than a rule of the run,
+ * so a value past it names no state the hall has and the call fails loudly
+ * rather than snapping back to it.
+ */
+function mustAtMost(
+  where: string,
+  name: string,
+  value: unknown,
+  hi: number,
+): number {
+  const n = mustNumber(where, name, value);
+  if (n > hi) {
+    throw new Error(`${where}: ${name} must be at most ${hi}; got ${n}`);
+  }
+  return n;
+}
+
+/** A finite number, or `fallback` when the argument was left out entirely. */
+function mustNumberOr(
+  where: string,
+  name: string,
+  value: unknown,
+  fallback: number,
+): number {
+  return value === undefined ? fallback : mustNumber(where, name, value);
 }
 
 /** The whole snapshot, read straight off the state. */
@@ -256,9 +333,30 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
     reset(state, options) {
       const draft = thaw(state);
       toTitle(draft);
-      draft.rngState = asNumber(options?.seed, DEFAULT_SEED) >>> 0;
+      draft.rngState =
+        mustNumberOr("reset", "options.seed", options?.seed, DEFAULT_SEED) >>>
+        0;
       reopen();
       return freeze(draft);
+    },
+
+    /**
+     * Bring every reported reading into agreement with the hall as it stands,
+     * without advancing anything.
+     *
+     * Most of what this surface reports is worked out at the read — `emitted`,
+     * `feedSpeed`, `danger`, each core's point on the channel and its segment
+     * index — so a pose leaves nothing of those behind. The SEGMENTS are the
+     * exception: they are carried in the state, and a write to the cores can
+     * leave them describing a channel that no longer stands. The draft round
+     * trip is the same rule every pose here builds them by — `thaw` spreads each
+     * segment's hold over its cores and normalizes the grouping, `freeze` reads
+     * the grouping back off the spacing — so no core moves, no time is spent,
+     * nothing sounds, and running it twice returns what running it once
+     * returned.
+     */
+    reconcile(state) {
+      return freeze(thaw(state));
     },
 
     /** A pure reading of the running game. It poses nothing. */
@@ -270,7 +368,7 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      */
     setScreen(state, name) {
       const draft = thaw(state);
-      draft.screen = asScreen(name);
+      draft.screen = mustScreen(name);
       return freeze(draft);
     },
 
@@ -283,26 +381,31 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      */
     setLevel(state, level) {
       const draft = thaw(state);
-      draft.level = clamp(Math.round(asNumber(level, 1)), 1, LEVEL_COUNT);
+      draft.level = Math.round(
+        mustRange("setLevel", "level", level, 1, LEVEL_COUNT),
+      );
       return freeze(draft);
     },
 
-    /** Set the run's score, clamped to at least `0`. */
+    /** Set the run's score, which the specification fixes at `0` or above. */
     setScore(state, n) {
       const draft = thaw(state);
-      draft.score = Math.max(0, Math.round(asNumber(n, draft.score)));
+      draft.score = Math.round(
+        mustRange("setScore", "n", n, 0, Number.MAX_SAFE_INTEGER),
+      );
       return freeze(draft);
     },
 
     /**
-     * Set the cells remaining, clamped to `0` through `CELLS`.
+     * Set the cells remaining, which the specification fixes at `0` through
+     * `CELLS`.
      *
      * It ends no run: `setCells(0)` leaves the screen exactly as it stands, and
      * the ending a spent last cell reaches comes from the ticks that follow.
      */
     setCells(state, n) {
       const draft = thaw(state);
-      draft.cells = clamp(Math.round(asNumber(n, draft.cells)), 0, CELLS);
+      draft.cells = Math.round(mustRange("setCells", "n", n, 0, CELLS));
       return freeze(draft);
     },
 
@@ -312,7 +415,9 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      */
     setChainStep(state, k) {
       const draft = thaw(state);
-      draft.chainStep = Math.max(1, Math.round(asNumber(k, draft.chainStep)));
+      draft.chainStep = Math.round(
+        mustRange("setChainStep", "k", k, 1, Number.MAX_SAFE_INTEGER),
+      );
       draft.chainTimer = CHAIN_RESET;
       return freeze(draft);
     },
@@ -320,7 +425,10 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
     /** Open `level`, exactly as the interlude before it opens it. */
     startLevel(state, level) {
       const draft = thaw(state);
-      startLevel(draft, clamp(Math.round(asNumber(level, 1)), 1, LEVEL_COUNT));
+      startLevel(
+        draft,
+        Math.round(mustRange("startLevel", "level", level, 1, LEVEL_COUNT)),
+      );
       reopen();
       return freeze(draft);
     },
@@ -335,10 +443,10 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      */
     poseTrain(state, cores) {
       const draft = thaw(state);
-      const posed: DraftCore[] = [...(cores ?? [])].map((core) => ({
-        charge: asCharge(core?.[1]),
-        s: Math.min(PATH_LENGTH, asNumber(core?.[0], 0)),
-        mark: asMark(core?.[2]),
+      const posed: DraftCore[] = [...(cores ?? [])].map((core, index) => ({
+        charge: mustCharge(`poseTrain: core ${index}`, core?.[1]),
+        s: mustAtMost("poseTrain", `core ${index}'s s`, core?.[0], PATH_LENGTH),
+        mark: mustMark(`poseTrain: core ${index}`, core?.[2]),
         hold: 0,
       }));
       // A stable sort, which every engine's `Array.prototype.sort` is, so two
@@ -366,14 +474,14 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
     /** Set the charge the injector holds loaded. The generator is untouched. */
     setLoaded(state, charge) {
       const draft = thaw(state);
-      draft.loaded = asCharge(charge);
+      draft.loaded = mustCharge("setLoaded", charge);
       return freeze(draft);
     },
 
     /** Set the charge the injector holds queued. The generator is untouched. */
     setQueued(state, charge) {
       const draft = thaw(state);
-      draft.queued = asCharge(charge);
+      draft.queued = mustCharge("setQueued", charge);
       return freeze(draft);
     },
 
@@ -384,7 +492,9 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      */
     setAim(state, angleDegrees) {
       const draft = thaw(state);
-      draft.aim = normalizeAngle(asNumber(angleDegrees, draft.aim));
+      draft.aim = normalizeAngle(
+        mustNumber("setAim", "angleDegrees", angleDegrees),
+      );
       return freeze(draft);
     },
 
@@ -406,11 +516,13 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
       return freeze(draft);
     },
 
-    /** Set the pressure, clamped to its range. */
+    /** Set the pressure, whose range the specification fixes as a constant. */
     setPressure(state, value) {
       const draft = thaw(state);
-      draft.pressure = clamp(
-        asNumber(value, draft.pressure),
+      draft.pressure = mustRange(
+        "setPressure",
+        "value",
+        value,
         PRESSURE_MIN,
         PRESSURE_MAX,
       );
@@ -423,13 +535,15 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      * The count of cores emitted this level is the level's quota less what
      * remains, so which of the following emissions carry a mark, and which kind
      * each mark is, follow the new value.
+     *
+     * The level's quota does NOT bound the argument. It is a live figure of the
+     * run rather than a domain the specification fixes, so the count given is
+     * the count the inlet is left with and the hall runs from there.
      */
     setQuotaRemaining(state, n) {
       const draft = thaw(state);
-      draft.quotaRemaining = clamp(
-        Math.round(asNumber(n, 0)),
-        0,
-        levelSpec(draft.level).quota,
+      draft.quotaRemaining = Math.round(
+        mustRange("setQuotaRemaining", "n", n, 0, Number.MAX_SAFE_INTEGER),
       );
       return freeze(draft);
     },
@@ -471,7 +585,7 @@ export function createDebugApi(reopen: ReopenHall): VoluteDebugApi {
      */
     grantMachinery(state, kind) {
       const draft = thaw(state);
-      grantTimedMachinery(draft, asTimedKind(kind), newReport());
+      grantTimedMachinery(draft, mustTimedKind(kind), newReport());
       return freeze(draft);
     },
 

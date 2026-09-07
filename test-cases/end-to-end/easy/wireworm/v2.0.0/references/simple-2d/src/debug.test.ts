@@ -36,30 +36,39 @@ describe("a pose", () => {
     expect(after).not.toBe(before);
   });
 
-  it("refuses a tile off the board", () => {
-    expect(debug.setNode(blankState(), -1, 4, 2).nodes).toHaveLength(0);
-    expect(debug.setNode(blankState(), 40, 4, 2).nodes).toHaveLength(0);
-    expect(debug.setNode(blankState(), 4, 20, 2).nodes).toHaveLength(0);
+  it("fails loudly on a tile off the board", () => {
+    expect(() => debug.setNode(blankState(), -1, 4, 2)).toThrow(RangeError);
+    expect(() => debug.setNode(blankState(), 40, 4, 2)).toThrow(RangeError);
+    expect(() => debug.setNode(blankState(), 4, 20, 2)).toThrow(RangeError);
+    expect(() => debug.clearNode(blankState(), -1, 4)).toThrow(RangeError);
   });
 
-  it("holds a charge and a level inside the range the spec states", () => {
-    expect(
-      debug.snapshot(debug.setNode(blankState(), 4, 4, 9)).nodes[0]?.charge,
-    ).toBe(CHARGE_MAX);
-    expect(debug.snapshot(debug.setLevel(blankState(), 40)).level).toBe(
-      TOTAL_LEVELS,
+  it("fails loudly outside a range the spec fixes as a constant", () => {
+    expect(() => debug.setNode(blankState(), 4, 4, CHARGE_MAX + 1)).toThrow(
+      RangeError,
     );
-    expect(debug.snapshot(debug.setLevel(blankState(), -3)).level).toBe(1);
-    expect(debug.snapshot(debug.setLives(blankState(), -5)).lives).toBe(0);
+    expect(() => debug.setNode(blankState(), 4, 4, -1)).toThrow(RangeError);
+    expect(() => debug.setLevel(blankState(), TOTAL_LEVELS + 1)).toThrow(
+      RangeError,
+    );
+    expect(() => debug.setLevel(blankState(), -3)).toThrow(RangeError);
+    expect(() => debug.setCursor(blankState(), -500, 0)).toThrow(RangeError);
+  });
+
+  it("applies a value the specs fix no bound on exactly as it is given", () => {
+    // Neither a life count, a menu index, nor a timer is bounded by the specs,
+    // so each pose lands the figure it was handed rather than a nearer legal
+    // one: what the game's own systems then make of it is theirs to decide.
+    expect(debug.snapshot(debug.setLives(blankState(), -5)).lives).toBe(-5);
     expect(
       debug.snapshot(debug.setCursorInvulnerable(blankState(), -2)).cursor
         .invulnerable,
-    ).toBe(0);
+    ).toBe(-2);
     expect(
       debug.snapshot(debug.setFireCooldown(blankState(), -2)).fireCooldown,
-    ).toBe(0);
+    ).toBe(-2);
     expect(debug.snapshot(debug.setMenuIndex(blankState(), -4)).menuIndex).toBe(
-      0,
+      -4,
     );
   });
 
@@ -79,10 +88,8 @@ describe("a pose", () => {
       { c: 10, r: 5 },
       { c: 9, r: 5 },
     ]);
-    // An id no worm carries leaves the roster as it was.
-    expect(
-      debug.snapshot(debug.appendSegment(state, 999, 1, 1)).worms[0]?.segments,
-    ).toHaveLength(1);
+    // An id no worm carries names nothing, so the call fails loudly.
+    expect(() => debug.appendSegment(state, 999, 1, 1)).toThrow(RangeError);
   });
 
   it("sets each worm field on its own", () => {
@@ -100,13 +107,10 @@ describe("a pose", () => {
       body: false,
     });
 
-    // Either sign is read as the heading it names.
-    expect(
-      debug.snapshot(debug.setWormHeading(state, wormId, 5)).worms[0]?.dh,
-    ).toBe(1);
-    expect(
-      debug.snapshot(debug.setWormDescent(state, wormId, 5)).worms[0]?.dv,
-    ).toBe(1);
+    // A heading is one of two directions, so anything else names nothing and
+    // the call fails loudly rather than being read as the nearer direction.
+    expect(() => debug.setWormHeading(state, wormId, 5)).toThrow(RangeError);
+    expect(() => debug.setWormDescent(state, wormId, 5)).toThrow(RangeError);
   });
 
   it("sets each foe field on its own", () => {
@@ -136,21 +140,37 @@ describe("a pose", () => {
     });
   });
 
-  it("leaves the rosters alone for an id nothing carries", () => {
+  it("fails loudly for an id nothing carries", () => {
     const { state } = posed();
-    expect(
-      debug.snapshot(debug.setFoeVelocity(state, 999, 1, 1)).foes[0]?.vx,
-    ).toBe(0);
-    expect(debug.snapshot(debug.setFoeHit(state, 999, true)).foes[0]?.hit).toBe(
-      false,
+    expect(() => debug.setFoeVelocity(state, 999, 1, 1)).toThrow(RangeError);
+    expect(() => debug.setFoeHit(state, 999, true)).toThrow(RangeError);
+    expect(() => debug.setFoeMind(state, 999, false)).toThrow(RangeError);
+    expect(() => debug.setFoeTravel(state, 999, false)).toThrow(RangeError);
+    expect(() => debug.removeFoe(state, 999)).toThrow(RangeError);
+    expect(() => debug.removeWorm(state, 999)).toThrow(RangeError);
+    expect(() => debug.removeBolt(state, 999)).toThrow(RangeError);
+    // And the loud failure left the state it was handed exactly as it was.
+    expect(debug.snapshot(state).foes).toHaveLength(1);
+  });
+
+  it("reconcile re-derives a reading and returns the same world", () => {
+    const state = debug.setLevel(blankState(), 7);
+    const reconciled = debug.reconcile(state);
+    expect(debug.snapshot(reconciled)).toEqual(debug.snapshot(state));
+    // Twice is once.
+    expect(debug.snapshot(debug.reconcile(reconciled))).toEqual(
+      debug.snapshot(reconciled),
     );
-    expect(
-      debug.snapshot(debug.setFoeMind(state, 999, false)).foes[0]?.mind,
-    ).toBe(true);
-    expect(
-      debug.snapshot(debug.setFoeTravel(state, 999, false)).foes[0]?.travel,
-    ).toBe(true);
-    expect(debug.snapshot(debug.removeFoe(state, 999)).foes).toHaveLength(1);
+  });
+
+  it("reconcile advances nothing", () => {
+    const { state } = posed();
+    const before = debug.snapshot(state);
+    const after = debug.snapshot(debug.reconcile(state));
+    expect(after.simTime).toBe(before.simTime);
+    expect(after.phaseTimer).toBe(before.phaseTimer);
+    expect(after.fireCooldown).toBe(before.fireCooldown);
+    expect(after).toEqual(before);
   });
 
   it("removes one entity at a time by its id", () => {

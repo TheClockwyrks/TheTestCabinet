@@ -100,36 +100,32 @@ describe("an argument outside its domain", () => {
   });
 });
 
-describe("a pose off the screens its section names", () => {
-  it("does nothing, and the state comes back equal", () => {
+describe("a pose from a screen its section does not name", () => {
+  it("acts anyway, because the screen is a player's route and not a condition", () => {
+    // `specs/instrumentation.md`, The operations: no operation asks which
+    // screen is showing. The title screen is as far from every one of these
+    // sections as a screen gets, and each still reaches the state it names.
     const title = titleState();
-    for (const posed of [
-      debug.clearStructure(title),
-      debug.addMember(title, 0, 0, 0, 0, 2, 0, "strut"),
-      debug.setRing(title, 0, 2, 0),
-      debug.clearRing(title),
-      debug.setTool(title, "cable"),
-      debug.setPendingNode(title, 0, 0, 0),
-      debug.clearPendingNode(title),
-      debug.clearProgram(title),
-      debug.addMoveStep(title, "slew", 90, 10),
-      debug.addActionStep(title, "attach"),
-      debug.clearLoads(title),
-      debug.clearObstacles(title),
-      debug.addObstacle(title, 0, 0, 0, 1, 1, 1),
-      debug.setAxis(title, "slew", 4),
-      debug.setBob(title, 1, 1, 1),
-      debug.setSpeedIndex(title, 1),
-      debug.startRun(title),
-      debug.abortRun(title),
-    ]) {
-      expect(posed).toEqual(title);
-    }
+    expect(debug.setTool(title, "cable").tool).toBe("cable");
+    expect(debug.setPendingNode(title, 0, 0, 0).pendingNode).not.toBeNull();
+    expect(debug.addActionStep(title, "attach").sites[0].program).toHaveLength(
+      1,
+    );
+    expect(
+      debug.addObstacle(title, 0, 0, 0, 1, 1, 1).site.obstacles,
+    ).toHaveLength(1);
+    expect(debug.setAxis(title, "slew", 4).run.axes.slew.value).toBe(4);
+    expect(debug.setBob(title, 1, 1, 1).run.bob.pos).toEqual({
+      x: 1,
+      y: 1,
+      z: 1,
+    });
+    expect(debug.setSpeedIndex(title, 1).run.speedIndex).toBe(1);
   });
 
-  it("leaves the menu index alone on the four screens with no menu", () => {
-    const build = debug.setMenuIndex(yard(), 4);
-    expect(build.menuIndex).toBe(titleState().menuIndex);
+  it("fails loudly on a menu index for a screen carrying no menu", () => {
+    // There is no entry to name, so there is no defined state to reach.
+    expect(() => debug.setMenuIndex(yard(), 4)).toThrow();
   });
 
   it("takes the menu index on the three screens that show one", () => {
@@ -186,16 +182,46 @@ describe("menuItemRect", () => {
 });
 
 describe("showCheck", () => {
-  it("leaves the check the action would show, on the build screen alone", () => {
+  it("leaves the check the action would show, from wherever it is called", () => {
     const shown = debug.showCheck(yard());
     expect(shown.checkResult).not.toBeNull();
     expect(debug.snapshot(shown).checkResult).toEqual(debug.check(shown));
-    // The `check` action reaches the build screen and nothing else, and so
-    // does this pose (`specs/instrumentation.md`).
-    expect(debug.showCheck(titleState()).checkResult).toBeNull();
+    // The build screen is how a PLAYER reaches the `check` action and is not a
+    // condition on this pose (`specs/instrumentation.md`, The operations).
+    expect(debug.showCheck(titleState()).checkResult).not.toBeNull();
     expect(
       debug.showCheck(setScreen(yard(), "program")).checkResult,
-    ).toBeNull();
+    ).not.toBeNull();
+  });
+});
+
+describe("reconciling derived state", () => {
+  it("carries every core operation", () => {
+    for (const op of ["reset", "reconcile", "snapshot"] as const) {
+      expect(typeof debug[op]).toBe("function");
+    }
+  });
+
+  it("agrees with the world a pose left, advancing nothing", () => {
+    const s = debug.setBob(debug.setAxis(yard(), "slew", 30), 1, 2, 3);
+    const before = debug.snapshot(s);
+    const once = debug.reconcile(s);
+    const twice = debug.reconcile(once);
+
+    // Every derived reading is worked out at the read here, so the state comes
+    // back equal to the one it was handed, and twice is the same as once.
+    expect(debug.snapshot(once)).toEqual(before);
+    expect(debug.snapshot(twice)).toEqual(debug.snapshot(once));
+    expect(once.run.tick).toBe(s.run.tick);
+    expect(once.simTime).toBe(s.simTime);
+    expect(once.cues).toEqual(s.cues);
+  });
+
+  it("moves nothing to make a reading agree", () => {
+    // The bob is left where it was put; the pendulum's constraint is the next
+    // tick's, and this call is not that tick.
+    const posed = debug.setBob(yard(), 9, 9, 9);
+    expect(debug.reconcile(posed).run.bob.pos).toEqual(posed.run.bob.pos);
   });
 });
 
@@ -381,18 +407,30 @@ describe("the run in progress", () => {
     expect(debug.setSpeedIndex(ended, 2).run.speedIndex).toBe(2);
   });
 
-  it("refuses a run pose while no run is in progress", () => {
+  it("poses the run the snapshot reports, run or no run", () => {
+    // With no run in progress the snapshot reports the idle placeholder, and
+    // posing it is a defined state to reach (`specs/instrumentation.md`).
     const idle = enterSite(0);
     idle.screen = "run";
-    expect(debug.setAxis(idle, "hoist", 9)).toEqual(idle);
-    expect(debug.setBob(idle, 1, 1, 1)).toEqual(idle);
+    expect(debug.setAxis(idle, "hoist", 9).run.axes.hoist.value).toBe(9);
+    expect(debug.setBob(idle, 1, 1, 1).run.bob.pos).toEqual({
+      x: 1,
+      y: 1,
+      z: 1,
+    });
   });
 
-  it("refuses a site pose while a run is in progress", () => {
+  it("poses the site with a run in progress, leaving the run's own loads", () => {
+    // Whether a run is live is how a PLAYER is kept out of the yard and is not
+    // a condition on these. The run carries the loads it started with.
     const s = running();
     s.screen = "build";
-    expect(debug.clearLoads(s)).toEqual(s);
-    expect(debug.addObstacle(s, 0, 0, 0, 1, 1, 1)).toEqual(s);
+    const cleared = debug.clearLoads(s);
+    expect(cleared.site.loads).toEqual([]);
+    expect(cleared.run.loads).toHaveLength(s.run.loads.length);
+    expect(
+      debug.addObstacle(s, 0, 0, 0, 1, 1, 1).site.obstacles.length,
+    ).toBeGreaterThan(s.site.obstacles.length);
   });
 
   it("aborts a run in progress back to the build screen", () => {

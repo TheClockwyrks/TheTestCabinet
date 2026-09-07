@@ -87,8 +87,21 @@ describe("the preview", () => {
     arm(state, "bloom");
     movePreviewTo(state, tileCX(30), tileCY(20));
     expect(state.build).toMatchObject({ col: 29, row: 19 });
-    movePreview(state, 999, 999);
+    // The pointer's own path clamps: a pointer at the far corner still leaves
+    // the whole footprint on the grid (specs/building.md).
+    movePreviewTo(state, tileCX(COLS - 1), tileCY(ROWS - 1));
     expect(state.build).toMatchObject({ col: COLS - 3, row: ROWS - 3 });
+  });
+
+  it("moves the preview to the anchor named, on the grid or off it", () => {
+    const state = scene();
+    arm(state, "bloom");
+    // `movePreview` is the surface's own pose and clamps nothing: the anchor it
+    // is given is the anchor it sets, and `previewValid` is what answers for a
+    // footprint hanging off the far edge (specs/instrumentation.md).
+    movePreview(state, COLS - 1, ROWS - 1);
+    expect(state.build).toMatchObject({ col: COLS - 1, row: ROWS - 1 });
+    expect(previewValid(state, "bloom", COLS - 1, ROWS - 1)).toBe(false);
   });
 });
 

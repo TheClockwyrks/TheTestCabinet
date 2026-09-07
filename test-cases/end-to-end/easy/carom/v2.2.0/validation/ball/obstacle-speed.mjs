@@ -41,6 +41,7 @@ export default function item() {
         vy: 0,
         spin: 0,
       });
+      await api.call("reconcile");
     },
 
     // Run until the ball reflects off the obstacle (vx reverses), then read its speed.

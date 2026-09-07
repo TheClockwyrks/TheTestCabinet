@@ -314,6 +314,50 @@ describe("the surface", () => {
   });
 });
 
+// `reconcile` brings every reported reading into agreement with the field without
+// advancing anything. This build works its two derived readings — the ship's
+// `speed` and each rock's `radius` — out at the READ, so the call has nothing to
+// rewrite; what these two cases pin is that it still ANSWERS for a posed field and
+// that it costs no simulation time, which is the whole difference between it and
+// stepping a frame.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed velocity", async () => {
+    const h = await harness();
+    await playing(h);
+    h.pose((d, s) => d.setShipVelocity(s, 30, 40));
+    h.pose((d, s) => d.reconcile(s));
+    expect(h.snap().ship.speed).toBeCloseTo(50, 10);
+
+    h.pose((d, s) => d.addRock(s, "medium", 300, 300));
+    h.pose((d, s) => d.reconcile(s));
+    expect(h.snap().rocks[0]?.radius).toBe(ROCK_RADIUS.medium);
+  });
+
+  it("advances nothing, and twice matches once", async () => {
+    const h = await harness();
+    await playing(h);
+    h.pose((d, s) => d.setShipPosition(s, 400, 300));
+    h.pose((d, s) => d.setShipVelocity(s, 120, -90));
+    h.pose((d, s) => d.setShipInvuln(s, 2));
+    h.pose((d, s) => d.setFireCooldown(s, 7));
+    h.pose((d, s) => d.setWaveBanner(s, 1.5));
+    h.pose((d, s) => d.addRock(s, "large", 700, 200));
+    h.pose((d, s) => d.addBullet(s, 100, 100, 50, 0));
+    h.pose((d, s) => d.addSaucer(s, 200, 500));
+
+    const before = JSON.stringify(h.snap());
+    h.pose((d, s) => d.reconcile(s));
+    const once = JSON.stringify(h.snap());
+    h.pose((d, s) => d.reconcile(s));
+    const twice = JSON.stringify(h.snap());
+
+    // The clock, the positions, the velocities and every timer are untouched, so
+    // the whole snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
+  });
+});
+
 describe("the field and the well", () => {
   it("wraps every body and carries its velocity across", async () => {
     const h = await harness();

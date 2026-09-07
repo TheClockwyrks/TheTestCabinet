@@ -3,9 +3,14 @@
 // Every operation is a reading or a pose of `WickState`, written in the
 // shape of `update`: a pose takes the current state, clones it into a draft,
 // sets one thing, and returns the draft; a reading takes the state and
-// returns what it read. An argument outside its domain throws; a call on a
-// screen the operation does not apply to returns the state as it was; no
-// pose sounds a cue, and no pose decides an outcome.
+// returns what it read. An operation is UNCONDITIONAL: it applies its effect
+// every time it is called, on the state as it stands. Which screen is showing,
+// which overlay is open, and what a player would have had to do first are the
+// player's route to a thing and are not an operation's conditions, so no pose
+// here hands back the state it was given. An argument outside its domain
+// throws, and so does a call naming a subject the state does not hold; what
+// never happens is a quiet refusal. No pose sounds a cue, and no pose decides
+// an outcome.
 
 import type { DeepReadonly } from "ts-essentials";
 import {
@@ -24,8 +29,8 @@ import {
   type PickupKind,
   type WeaponId,
 } from "./constants";
-import { choose as chooseOffer } from "./flow";
-import type { Screen, WickDebugApi, WickSnapshot, WickState } from "./game";
+import { performChoose } from "./flow";
+import type { WickDebugApi, WickSnapshot, WickState } from "./game";
 import { menuRects, tabRects } from "./menus";
 import { nextRandom, seedState } from "./rng";
 import {
@@ -114,16 +119,17 @@ function oneOf<T extends string>(
   return value as T;
 }
 
-const RUN_SCREENS: readonly Screen[] = ["playing", "paused"];
-
-function onRunScreen(state: View): boolean {
-  return RUN_SCREENS.includes(state.screen);
-}
-
-/** The next state, from `state`, with `apply` run on a run screen alone. */
+/**
+ * The next state, from `state`, with `apply` run on the draft.
+ *
+ * There is no screen test here on purpose. The run is a field of the state on
+ * every screen, so every pose below has a defined state to reach whatever is
+ * showing, and a debug operation is the route a driver has instead of a player:
+ * it does not walk to `playing` first.
+ */
 function pose(state: View, apply: (draft: Draft) => void): WickState {
   const draft = cloneState(state);
-  if (onRunScreen(draft)) apply(draft);
+  apply(draft);
   return draft;
 }
 
@@ -311,14 +317,39 @@ export function createDebugApi(): WickDebugApi {
       return draft;
     },
     snapshot,
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Every derived reading this build reports — `time`, `xpToNext`, `maxHp`,
+     * `armor`, `moveSpeed`, `pickupRadius`, `spawnWindow`, `aliveCommons`, and
+     * `pool` — is worked out at the read, in `snapshot` above, from the run
+     * clock, the level, the passives held, the enemies on the field, and the
+     * slots as they stand. Nothing is held that a pose can leave behind, so
+     * there is nothing here to rewrite. The operation is required of every
+     * build, including one that keeps those readings as stored copies, and this
+     * is what it comes to in a build that does not: the state comes back as it
+     * was handed, cloned so the return type is honest without a cast.
+     */
+    reconcile: (state) => pose(state, () => {}),
+
     menuRects,
     tabRects,
 
     setScreen,
+    /**
+     * Accept the offer at `index`. `levelup` showing is how a PLAYER reaches
+     * the choice, so it is no condition on this call; an index naming no offer
+     * has nothing to accept, so it throws rather than passing quietly.
+     */
     choose(state, index) {
-      whole(index, "index");
+      const at = whole(index, "index", 0);
       const draft = cloneState(state);
-      chooseOffer(draft, index, new Set<CueName>());
+      const offers = draft.run.offers;
+      if (at >= offers.length) {
+        invalid(`index ${at} names no offer; offers holds ${offers.length}`);
+      }
+      performChoose(draft, at, new Set<CueName>());
       return draft;
     },
 
@@ -377,9 +408,6 @@ export function createDebugApi(): WickDebugApi {
     setHp(state, hp) {
       const value = real(hp, "hp");
       return pose(state, (draft) => {
-        if (value > maxHp(draft.run.passives)) {
-          invalid("hp must be at most maxHp");
-        }
         draft.run.player.hp = value;
       });
     },
@@ -420,9 +448,7 @@ export function createDebugApi(): WickDebugApi {
         list.push(id);
       }
       const draft = cloneState(state);
-      if (onRunScreen(draft) || draft.screen === "levelup") {
-        draft.run.nextOffers = list;
-      }
+      draft.run.nextOffers = list;
       return draft;
     },
 
@@ -529,12 +555,9 @@ export function createDebugApi(): WickDebugApi {
     },
     setEnemyHp(state, id, hp) {
       const value = real(hp, "hp");
+      if (value <= 0) invalid("hp must be above 0");
       return pose(state, (draft) => {
-        const enemy = enemyById(draft, id);
-        if (value <= 0 || value > enemy.maxHp) {
-          invalid("hp must be above 0 and at most the enemy's maxHp");
-        }
-        enemy.hp = value;
+        enemyById(draft, id).hp = value;
       });
     },
     setEnemyHeading(state, id, hx, hy) {

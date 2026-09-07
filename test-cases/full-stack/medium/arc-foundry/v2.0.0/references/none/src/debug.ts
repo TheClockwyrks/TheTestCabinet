@@ -11,9 +11,15 @@
 //
 // Two rules cover every operation. An argument outside the domain its operation states is
 // invalid and the call THROWS rather than guessing what was meant, and so is a call whose
-// subject is not in the condition the operation states. An operation that stands for a
-// control a player operates commits through that same control, so it is REFUSED wherever
-// the control is refused and does nothing when it is.
+// subject is not in the condition the operation states. And an operation is UNCONDITIONAL:
+// it carries out its effect every time it is called, from wherever the game stands. Which
+// screen is up, which phase is running, which panel is drawn, and where the pointer is are
+// the route a PLAYER takes to a control and are not an operation's conditions, so every
+// control operation here commits through its transaction — `perform…` on the game — rather
+// than through the `try…` a click runs. The transaction's OWN rules stay: an unaffordable
+// purchase still buys nothing, a track already at its top gains none, an illegal footprint
+// stands nothing up, and a spent allowance drops no rock. What never happens is a quiet
+// refusal that leaves the state as it was with nothing said.
 //
 // The surface is inert during normal play: nothing here runs until something calls it.
 
@@ -124,6 +130,9 @@ export interface FoundryDebugApi {
 
   // Readings.
   snapshot(): FoundrySnapshot;
+
+  /** Bring every reported reading into agreement with the yard as it stands. */
+  reconcile(): void;
   panelButtons(): PanelButton[];
   pressControls(): PanelButton[];
   menuButtons(): PanelButton[];
@@ -290,6 +299,15 @@ export function installDebugApi(ctx: DebugContext): void {
     return n;
   };
 
+  // A candidate id the yard currently carries, or a loud failure. `keep` and `downgrade`
+  // harvest a CANDIDATE, so a standing component, a combination tower and a blocker each
+  // name a subject the operation has nothing to do with.
+  const candidate = (op: string, id: unknown): number => {
+    const n = num(op, "id", id);
+    if (!game.candidateById(n)) invalid(op, "an id a candidate carries", id);
+    return n;
+  };
+
   // A live unit, or a loud failure.
   const unit = (op: string, id: unknown) => {
     const n = num(op, "id", id);
@@ -324,6 +342,17 @@ export function installDebugApi(ctx: DebugContext): void {
 
     snapshot() {
       return game.debugSnapshot();
+    },
+
+    /**
+     * Bring every reported reading into agreement with the yard as it stands, without
+     * advancing anything: the cached occupancy and the maze readout from the structures,
+     * each tower's aura bonus from the sources near it, and each unit's route and
+     * `progress` from where it is and the checkpoint it heads for. A build that works all
+     * of those out at the read has nothing to do here.
+     */
+    reconcile() {
+      game.reconcile();
     },
     panelButtons() {
       ctx.refreshControls();
@@ -462,7 +491,7 @@ export function installDebugApi(ctx: DebugContext): void {
     // press would be when the footprint is illegal or the allowance is spent.
     placeRock(col, row) {
       const a = anchor("placeRock", col, row);
-      game.placeStamp(a.col, a.row);
+      game.performPlaceStamp(a.col, a.row);
     },
     placeComponent(type, quality, col, row) {
       const t = oneOf(
@@ -500,16 +529,21 @@ export function installDebugApi(ctx: DebugContext): void {
       game.clearCombineSet();
     },
     keep(id) {
-      game.keep(structure("keep", id));
+      game.performKeep(candidate("keep", id));
     },
     downgrade(id) {
-      game.downgrade(structure("downgrade", id));
+      // There is no quality below Scrap, so a Scrap candidate names a state the
+      // specification does not define rather than a transaction that comes out negative.
+      const n = candidate("downgrade", id);
+      if ((game.candidateById(n)?.tier ?? 0) <= 1)
+        invalid("downgrade", "an id a candidate above Scrap carries", id);
+      game.performDowngrade(n);
     },
     combine(id) {
       game.debugCombine(structure("combine", id));
     },
     dismantle(id) {
-      game.removeStructure(structure("dismantle", id));
+      game.performRemoveStructure(structure("dismantle", id));
     },
     setTargeting(id, priority) {
       const n = num("setTargeting", "id", id);
@@ -535,13 +569,13 @@ export function installDebugApi(ctx: DebugContext): void {
       );
     },
     upgradeQuality() {
-      game.upgradeQuality();
+      game.performUpgradeQuality();
     },
     upgradeCombo(id) {
       const n = num("upgradeCombo", "id", id);
       if (!game.comboById(n))
         invalid("upgradeCombo", "an id a combination tower carries", id);
-      game.upgradeCombo(n);
+      game.performUpgradeCombo(n);
     },
 
     // ---- The Load --------------------------------------------------------------

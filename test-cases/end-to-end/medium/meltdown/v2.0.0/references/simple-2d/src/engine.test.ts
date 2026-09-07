@@ -19,6 +19,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BUILD_PHASE_TIME,
+  COLS,
   CUES,
   DIFFICULTY_ITEMS,
   ENDING_ITEMS,
@@ -26,6 +27,7 @@ import {
   LAYOUT,
   MODE_ITEMS,
   PAUSE_ITEMS,
+  ROWS,
   STAGE_H,
   STAGE_W,
   TILE,
@@ -325,6 +327,87 @@ describe("the debug surface", () => {
     h.pose((d, s) => d.removeTower(s, id));
     expect(h.snap().money).toBe(0);
     expect(h.snap().towers).toEqual([]);
+  });
+
+  it("fails loudly where the game has no defined state to reach", () => {
+    startRun();
+    const id = poseTower("arc", 10, 10);
+    const forge = poseTower("forge", 16, 16);
+    const before = h.snap();
+
+    // An id no tower or unit carries names nothing.
+    expect(() => h.pose((d, s) => d.setTowerHeat(s, 999, 50))).toThrow(
+      RangeError,
+    );
+    expect(() => h.pose((d, s) => d.removeTower(s, 999))).toThrow(RangeError);
+    expect(() => h.pose((d, s) => d.upgradeTower(s, 999))).toThrow(RangeError);
+    expect(() => h.pose((d, s) => d.sellTower(s, 999))).toThrow(RangeError);
+    expect(() => h.pose((d, s) => d.setUnitHp(s, 999, 1))).toThrow(RangeError);
+    // A mover carries no heat of its own, so there is none to reach.
+    expect(() => h.pose((d, s) => d.setTowerHeat(s, forge, 50))).toThrow(
+      RangeError,
+    );
+    // Ranges the specs fix as constants are domains, not rules.
+    expect(() => h.pose((d, s) => d.setTowerHeat(s, id, 500))).toThrow(
+      RangeError,
+    );
+    expect(() => h.pose((d, s) => d.setTowerLevel(s, id, 4))).toThrow(
+      RangeError,
+    );
+    // Nothing armed means there is no preview to move or commit.
+    h.pose((d, s) => d.setArmed(s, null));
+    expect(() => h.pose((d, s) => d.setPreview(s, 4, 4))).toThrow(RangeError);
+    expect(() => h.pose((d, s) => d.place(s))).toThrow(RangeError);
+
+    // Every one of those was loud rather than quiet: the floor never moved.
+    expect(h.snap()).toEqual(before);
+  });
+
+  it("moves the preview to the anchor named, and never nudges it", () => {
+    startRun();
+    h.pose((d, s) => d.setArmed(s, "lance"));
+    h.pose((d, s) => d.setPreview(s, 10, 12));
+    expect(h.snap().build).toMatchObject({ col: 10, row: 12 });
+    // A footprint hanging off the far edge lands where it was asked for and is
+    // reported invalid; it is not slid back onto the grid.
+    h.pose((d, s) => d.setPreview(s, COLS - 1, ROWS - 1));
+    expect(h.snap().build).toMatchObject({
+      col: COLS - 1,
+      row: ROWS - 1,
+      valid: false,
+    });
+  });
+
+  it("reconcile re-derives a reading from a posed position", () => {
+    startRun();
+    const id = poseTarget(30, 18);
+    h.pose((d, s) => d.setUnitPosition(s, id, tileCX(18), tileCY(9)));
+    h.pose((d, s) => d.reconcile(s));
+    const unit = h.snap().surge[0];
+    expect({ col: unit.col, row: unit.row }).toEqual({ col: 18, row: 9 });
+    expect(unit.remaining).toBeGreaterThan(0);
+  });
+
+  it("reconcile advances nothing, and twice is once", () => {
+    startRun();
+    const id = poseTower("arc", 10, 10);
+    h.pose((d, s) => d.setTowerHeat(s, id, 40));
+    h.pose((d, s) => d.setTowerTripTimer(s, id, 2));
+    const target = poseTarget(30, 18);
+    h.pose((d, s) => d.setUnitSlowTimer(s, target, 1.5));
+
+    const before = h.snap();
+    h.pose((d, s) => d.reconcile(s));
+    const once = h.snap();
+    h.pose((d, s) => d.reconcile(s));
+    const twice = h.snap();
+
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.buildTimer).toBe(before.buildTimer);
+    expect(once.towers[0].tripTimer).toBe(before.towers[0].tripTimer);
+    expect(once.surge[0].slowTimer).toBe(before.surge[0].slowTimer);
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 });
 

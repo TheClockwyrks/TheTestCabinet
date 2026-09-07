@@ -172,6 +172,15 @@ fails loudly rather than guessing what was meant. So is a call whose subject is 
 in the condition the operation states, such as a cell outside the grid or a live
 Core Sample where the operation requires none.
 
+No operation asks whether the game would have let a player do the same thing. A
+pose reaches the value it names whatever the game's own rules would have allowed,
+and a value the game has no defined state for makes the call fail loudly. A
+control carries out its own transaction from wherever the game stands; where the
+miner would have had to be standing, what panel would have had to be open, and
+what would have had to be drawn are how a player reaches an effect and are not
+the operation's conditions. What no operation does is pass quietly, leaving the
+game as it was and showing the note a player would have seen.
+
 ### Readings
 
 Every reading is pure and changes nothing.
@@ -289,6 +298,41 @@ held key is released.
 Because it restores exactly the fields above, any state of your own that a frame
 depends on is derivable from them.
 
+#### `reconcile()`
+
+Brings every value this surface reports into agreement with the game as it now
+stands, without advancing anything. The readings the snapshot section names as
+derived are the ones this answers for — the miner's `grounded`, its `col` and
+`row`, `depthMeters`, `maxFuel` and `maxHull`, `drilling.progress`, the cargo's
+`slotsUsed`, `loadKg` and `liftLimitKg`, `overloaded`, the scanner's lock and its
+bearing, and the rocket's `nextComponent` — and every one of them follows from
+the miner, the grid, the cargo, and the tiers, so after a pose they answer for
+the mine as it now is rather than as it was before.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `simTime` and `elapsedSeconds` are
+untouched, no gravity is applied, no collision is resolved, no cell loses health,
+no fuel and no life support is spent, no timer ticks, no held key is consumed, and
+the generator is not drawn from. It raises no hazard notice and dismisses none,
+plays no sound, changes no screen and no panel, banks nothing, and writes no save.
+It moves nothing to make a reading agree: a miner posed inside a solid cell stays
+lodged there and reads as it is, and a value posed past a maximum is not clamped.
+What an update owns stays the update's, so `deepestDepthMeters` is not raised by a
+deeper pose and a camera lead just posed is still the update's to move to. Calling
+it twice leaves the same state as calling it once.
+
+It is never an error and may be called on any screen, whether or not the clock is
+held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `DeepcoreState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
+
 #### `generateMine()`
 
 Generates a fresh mine at the current world size, drawing from the game's
@@ -343,8 +387,8 @@ posed gas pocket does not detonate and a posed ore vein banks nothing.
 | `setMinerPosition(x, y)` | The top-left corner of the miner's box, in world units. It moves the miner alone and changes no cell, so a miner placed inside a solid cell stays lodged there until the game's own collision resolves it. A scenario that needs open space opens the cells itself first. |
 | `setMinerVelocity(vx, vy)` | The miner's velocity, in world units per second, positive `vy` downward. |
 | `setFacing(facing)` | The miner's facing, `"east"` or `"west"`. It moves the miner nowhere. |
-| `setFuel(value)` | The fuel held, from `0` to the fuel tier's maximum. |
-| `setHull(value)` | The hull held, from `0` to the hull tier's maximum. A hull posed to `0` is not itself a death: the game's own continuous check is what ends the expedition, on the next update. |
+| `setFuel(value)` | The fuel held, applied as it is given. A value past the fuel tier's maximum is what the tank then holds, and what the game's own systems make of that is theirs. |
+| `setHull(value)` | The hull held, applied as it is given, so a value past the hull tier's maximum is what the miner then carries. A hull posed to `0` is not itself a death: the game's own continuous check is what ends the expedition, on the next update. |
 | `setMinerTravel(enabled)` | Whether the miner's body moves. |
 | `setMinerDrill(enabled)` | Whether the miner's drill cuts. |
 
@@ -420,10 +464,23 @@ band. Generation is what makes every cell's band the band its row falls in, so a
 ### The controls
 
 These are the named counterparts of the on-screen controls a player presses. Each
-runs the game's own rule for that control, on the game as it stands, so none of
-them poses an outcome. A control the game's own rules refuse changes nothing and
-shows the note it would show for a player, exactly as the control it stands for
-would.
+carries out that control's own transaction on the game as it stands, so none of
+them poses an outcome: the sale computes the price, the purchase spends the
+Credits, the save writes the payload the expedition has accumulated, and a
+transaction the game's own arithmetic comes out against buys nothing, exactly as
+the control it stands for would.
+
+A control here never asks whether a player could have pressed it. The screen, the
+open panel, where the miner stands, and whether the control is drawn are how a
+player reaches it and are not its conditions, so `save()` writes the save from
+wherever the miner stands and `sell()` sells from wherever the game is. What the
+transaction's own arithmetic decides is a different thing, and it still decides
+it: an unaffordable purchase buys nothing, a track already at its highest tier
+gains none, a supply the satchel holds none of is not used, and each shows the
+note it shows a player, because that outcome is the control's own rather than a
+gate on reaching it. A control that names nothing at all — an ore, a track, or a
+supply this game does not have — fails loudly. A caller reads what changed from
+`snapshot()`.
 
 | Operation | Does |
 | --- | --- |
@@ -544,13 +601,23 @@ no Sample is live, `panel` is `null` while no panel is open, `notice` is `null`
 while no card is armed or on screen, `elapsedSeconds` rests at `0` until an
 expedition begins, and `menuIndex` rests at `0` on `in-mine`.
 
-Several fields are derived rather than stored: `depthMeters` and
-`deepestDepthMeters` from the miner's position, `overloaded` from `loadKg` against
-`liftLimitKg`, and `drilling.progress`, which runs `0` to `1` as the target cell's
-health drains. `scanner.locked` is `false`, with the direction zero and the
-distance `null`, whenever nothing needed is in range, matching the indicator being
-hidden. `notice.shown` is `true` only while the card is drawn, so it is `false`
-over the `NOTICE_DELAY` between the hit and the card appearing.
+Several fields are derived rather than stored, and this list is the whole of
+them: `depthMeters` from the miner's position, the miner's `grounded` from the
+cells beneath its box, its `col` and `row` from its position and the grid,
+`maxFuel` and `maxHull` from the tank and hull tiers, `drilling.progress`, which
+runs `0` to `1` as the target cell's health drains, the cargo's `slotsUsed` and
+`loadKg` from what the bay holds, its `liftLimitKg` from the winch tier,
+`overloaded` from `loadKg` against `liftLimitKg`, the scanner's `locked` and its
+direction and distance from the miner's position against the mine, and the
+rocket's `nextComponent` from the components already installed. A build is free
+to work any of these out at the read or to keep it as a stored copy, and
+`reconcile()` is what brings a stored copy back into agreement after a pose. `deepestDepthMeters` is not one of them: it is the deepest `depthMeters`
+the expedition has reached rather than a reading of where the miner is now, so a
+deeper pose does not raise it and the update does. `scanner.locked` is `false`,
+with the direction zero and the distance `null`, whenever nothing needed is in
+range, matching the indicator being hidden. `notice.shown` is `true` only while
+the card is drawn, so it is `false` over the `NOTICE_DELAY` between the hit and
+the card appearing.
 
 `elapsedSeconds` is the expedition's own clock, described in
 `specs/expedition.md`, and the summary's `elapsedSeconds` is the value it holds

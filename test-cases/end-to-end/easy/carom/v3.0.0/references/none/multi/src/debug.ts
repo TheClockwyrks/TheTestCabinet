@@ -32,6 +32,7 @@
 import { CAROM_DEBUG_VERSION, HOLD_TIME } from "./constants";
 import { resetGame } from "./game";
 import type {
+  BallState,
   CaromState,
   Mode,
   ResumeScreen,
@@ -39,7 +40,14 @@ import type {
   Side,
   TrailSample,
 } from "./game";
-import { ballSpeed, findBall, spawnBall, spawnObstacle } from "./entities";
+import {
+  ballSpeed,
+  findBall,
+  isBallIndex,
+  isObstacleIndex,
+  spawnBall,
+  spawnObstacle,
+} from "./entities";
 import { menuItemRect, type MenuItemRect } from "./menu";
 import { seedRandom } from "./rng";
 
@@ -137,6 +145,8 @@ export interface CaromDebugApi {
   spawnBall(index: number): void;
   spawnObstacle(index: number): void;
   reset(): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   setSeed(seed: number): void;
 
   /* Screens and menus. */
@@ -195,14 +205,28 @@ export function createDebugApi(
   clock: DebugClock,
 ): CaromDebugApi {
   /**
-   * The present ball under `index`, or `null`.
+   * The ball present under `index`, or a thrown error naming the operation that
+   * wanted it.
    *
-   * An operation naming an absent ball has NO EFFECT
-   * (specs/instrumentation.md) — it is not an error, because a scenario that
-   * cleared the field and spawned one ball back is entitled to address the
-   * others without knowing they went.
+   * An index outside the balls this variant plays with names nothing, and an
+   * index whose ball has been taken off the field is nothing to pose. Either
+   * way there is no state for the call to reach, and an operation that quietly
+   * did nothing would leave a caller reading its own pose back off a field that
+   * never took it — so this fails where the caller can see it
+   * (specs/instrumentation.md). `spawnBall` is how a ball is put back.
    */
-  const ball = (index: number) => findBall(state.balls, index);
+  const requireBall = (op: string, index: number): BallState => {
+    if (!isBallIndex(index)) {
+      throw new RangeError(`Carom: ${op} — no ball ${index}`);
+    }
+    const found = findBall(state.balls, index);
+    if (found === null) {
+      throw new Error(
+        `Carom: ${op} — ball ${index} is not on the field; spawnBall places it`,
+      );
+    }
+    return found;
+  };
 
   return {
     version: CAROM_DEBUG_VERSION,
@@ -261,11 +285,21 @@ export function createDebugApi(
      * to exactly that arrangement.
      */
     spawnBall(index) {
+      if (!isBallIndex(index)) {
+        throw new RangeError(`Carom: no ball ${index}`);
+      }
       spawnBall(state.balls, index, HOLD_TIME);
     },
 
-    /** Place obstacle `index` at `OBSTACLE_CENTERS[index]`. */
+    /**
+     * Place obstacle `index` at `OBSTACLE_CENTERS[index]`. An index outside the
+     * two this field is built with names no obstacle, so the call fails where
+     * the caller can see it rather than passing quietly.
+     */
     spawnObstacle(index) {
+      if (!isObstacleIndex(index)) {
+        throw new RangeError(`Carom: no obstacle ${index}`);
+      }
       spawnObstacle(state.obstacles, index);
     },
 
@@ -282,6 +316,21 @@ export function createDebugApi(
     reset() {
       resetGame(state);
     },
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands,
+     * without advancing anything.
+     *
+     * Every derived reading this build reports is worked out at the read: a
+     * ball's `speed` is `ballSpeed(ball)` in the snapshot, and every other field
+     * is the state's own. Nothing is held that a pose can leave behind, so there
+     * is nothing here to rewrite. The operation is required of every build,
+     * including one that keeps those readings as stored copies, and an empty
+     * body is what it comes to in a build that keeps none — not an omission.
+     * Turning it into a frame would be wrong: a frame moves the very thing a
+     * pose has just placed.
+     */
+    reconcile() {},
 
     /**
      * Seed the game's random generator. `seed` becomes the value given and
@@ -362,31 +411,30 @@ export function createDebugApi(
     },
 
     // ---- Balls ----------------------------------------------------------
+    //
+    // Each sets its own field alone, and each reaches the value it is given
+    // whatever the game would make of it: the screen, the hold, and where the
+    // paddles are decide none of them. A ball that is not there is the one thing
+    // there is nothing to set, and that fails loudly through `requireBall`.
 
     setBallPosition(index, x, y) {
-      const target = ball(index);
-      if (target === null) return;
+      const target = requireBall("setBallPosition", index);
       target.x = x;
       target.y = y;
     },
 
     setBallVelocity(index, vx, vy) {
-      const target = ball(index);
-      if (target === null) return;
+      const target = requireBall("setBallVelocity", index);
       target.vx = vx;
       target.vy = vy;
     },
 
     setBallSpin(index, spin) {
-      const target = ball(index);
-      if (target === null) return;
-      target.spin = spin;
+      requireBall("setBallSpin", index).spin = spin;
     },
 
     setBallHeld(index, held) {
-      const target = ball(index);
-      if (target === null) return;
-      target.held = Boolean(held);
+      requireBall("setBallHeld", index).held = Boolean(held);
     },
 
     /**
@@ -395,9 +443,7 @@ export function createDebugApi(
      * own rule — the launch is the game's, not this call's.
      */
     setBallHoldTimer(index, seconds) {
-      const target = ball(index);
-      if (target === null) return;
-      target.holdTimer = seconds;
+      requireBall("setBallHoldTimer", index).holdTimer = seconds;
     },
 
     // ---- The AI opponent ------------------------------------------------

@@ -68,6 +68,15 @@
 // helpers that clear the world and place back only what a requirement is about,
 // together with the three per-faculty gates `specs/instrumentation.md` states.
 // {@link poseScene} is where they are all spoken in one breath.
+//
+// RECONCILING AFTER A POSE. `specs/instrumentation.md`'s `reconcile()` brings
+// every reading the surface reports into agreement with the game as it stands,
+// without advancing anything — so a build that keeps a reading as a stored copy
+// of something a pose can leave behind answers for the world the scene posed
+// rather than for the one before it. A helper here that poses anything a reading
+// derives from calls it before it returns, so a check that poses through the
+// helpers never calls it itself. A check that poses with `h.debug.set…` directly
+// and then reads calls it once, before its first read.
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1652,6 +1661,7 @@ export function poseScene(h: Harness, scene: Scene = {}): CoilSnapshot {
 
   h.debug.setScreen(scene.screen ?? "playing");
   if (scene.menuIndex !== undefined) h.debug.setMenuIndex(scene.menuIndex);
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1779,6 +1789,7 @@ export function arrangeApproach(
 /** Reset to a clean title, with nothing posed on the board. */
 export function openTitle(h: Harness): CoilSnapshot {
   h.debug.reset();
+  h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1975,5 +1986,6 @@ export function arrangeFullBoard(h: Harness): FullBoardScene {
   h.debug.clearTurns();
   h.debug.setPellet(pellet.col, pellet.row);
   h.debug.setScreen("playing");
+  h.debug.reconcile();
   return { snapshot: h.snapshot(), chain, pellet };
 }

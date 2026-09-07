@@ -58,6 +58,16 @@
 // carried the tolerance would hide what the check is really asserting. Look for
 // a threshold in this file and you will not find one.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work a derived reading out at
+// the read or keep it as a stored copy, and `reconcile()` is what brings a
+// stored copy back into agreement — so `startPlaying`, which poses the level the
+// step interval and the worm length follow, ends with the call. A check that
+// poses only through the helpers therefore never calls `reconcile` itself; a
+// check that poses with `h.debug.set…` directly calls it once before its first
+// read or sweep.
+//
 // THE CLOCK IS THE SURFACE'S. Nothing outside an engineless build owns its loop,
 // so `specs/instrumentation.md` puts the clock on the surface: `setAutoStep(false)`
 // takes the game off real time and `advance(seconds, frames)` runs whole frames
@@ -192,6 +202,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   // The screen and the run.
   "setScreen",
   "setPhase",
@@ -355,6 +366,7 @@ export interface WirewormDebugApi {
   advance(seconds: number, frames?: number): Promise<void>;
   reset(options?: { seed?: number }): Promise<void>;
   snapshot(): Promise<WirewormSnapshot>;
+  reconcile(): Promise<void>;
 
   setScreen(screen: Screen): Promise<void>;
   setPhase(phase: Phase): Promise<void>;
@@ -1309,6 +1321,9 @@ export async function startPlaying(
   await debug.setCursor(BAND_CX, BAND_CY);
   await debug.setCursorInvulnerable(0);
   await debug.setFireCooldown(0);
+  // The level is posed above and the step interval and the worm length follow
+  // it, so the readings are brought into agreement before the caller reads them.
+  await debug.reconcile();
 }
 
 /**

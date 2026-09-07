@@ -57,7 +57,7 @@ import {
   type Suit,
 } from "./game";
 import { wasteVisibleCount } from "./layout";
-import { pointerDown, pointerMove, pointerUp } from "./input";
+import { pointerDown, pointerMove, pointerUp, updateDropTarget } from "./input";
 import { applyMove, autoMoveFrom } from "./moves";
 import { dropWasteCard, findCard, newCard, pileArray } from "./piles";
 import { turnStock } from "./stock";
@@ -148,11 +148,30 @@ export interface CascadeSnapshot {
 
 // ---- The surface ---------------------------------------------------------
 
+/**
+ * A call whose subject the table does not hold names nothing the surface can
+ * act on, so it fails loudly rather than passing quietly with the state
+ * unchanged (specs/instrumentation.md, The operations).
+ */
+function refuse(where: string, why: string): never {
+  throw new RangeError(`Cascade: ${where}() ${why}`);
+}
+
+/** A whole, non-negative number, or a thrown complaint naming the operation. */
+function whole(where: string, name: string, value: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    refuse(where, `needs a whole, non-negative ${name}, got ${value}`);
+  }
+  return value;
+}
+
 export interface CascadeDebugApi {
   version: number;
 
   reset(options?: { seed?: number }): void;
   snapshot(): CascadeSnapshot;
+  /** Bring every reported reading into agreement with the table as it stands. */
+  reconcile(): void;
 
   /**
    * The hit region of item `index` on the menu the current screen shows.
@@ -247,8 +266,6 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     applyAudio(world().audio, state, cues);
   };
 
-  const whole = (value: number): number => Math.max(0, Math.round(value));
-
   return {
     version: CASCADE_DEBUG_VERSION,
 
@@ -327,6 +344,29 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
       };
     },
 
+    /**
+     * Bring every reported reading into agreement with the table as it stands,
+     * without advancing anything (specs/instrumentation.md, The core).
+     *
+     * Of this build's derived readings, `wasteVisibleCount` and a card's
+     * `color` are worked out inside `snapshot`, so there is nothing to rewrite
+     * for either. `dropTarget` is the one the game state keeps: the pointer
+     * path writes it as a gesture moves, so a pose that changes what the pile
+     * beneath a held run holds leaves it answering for the table as it was.
+     * `updateDropTarget` is the rule the pointer path itself calls, so this is
+     * the same answer that path would have written rather than a restatement of
+     * the drop rule.
+     *
+     * It runs no system and moves no clock. `simTime` and `launchClock` stand
+     * where they were, no flyer moves or paints, no card turns, no win is
+     * detected, no cue is played, and nothing is drawn from the generator. It
+     * corrects nothing either: a run held over a pile that no longer accepts it
+     * is left in hand and simply reports no drop target.
+     */
+    reconcile() {
+      updateDropTarget(read());
+    },
+
     menuItemRect(index) {
       return menuItemRect(read().screen, index);
     },
@@ -353,7 +393,9 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     addCard(pile, index, suit, rank, faceUp) {
       const state = read();
       const cards = pileArray(state, pile, index);
-      if (cards === null) return;
+      if (cards === null) {
+        refuse("addCard", `has no pile "${String(pile)}" at ${index}`);
+      }
       cards.push(newCard(state, suit, rank, faceUp));
     },
 
@@ -365,9 +407,9 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     removeCard(id) {
       const state = read();
       const site = findCard(state, id);
-      if (site === null) return;
+      if (site === null) refuse("removeCard", `has no card with id ${id}`);
       const cards = pileArray(state, site.pile, site.index);
-      if (cards === null) return;
+      if (cards === null) refuse("removeCard", `has no card with id ${id}`);
       cards.splice(site.row, 1);
       if (site.pile === "waste") dropWasteCard(state);
     },
@@ -375,16 +417,19 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     setCardFaceUp(id, faceUp) {
       const state = read();
       const site = findCard(state, id);
-      if (site === null) return;
+      if (site === null) refuse("setCardFaceUp", `has no card with id ${id}`);
       const cards = pileArray(state, site.pile, site.index);
-      if (cards !== null) cards[site.row].faceUp = faceUp;
+      if (cards === null) refuse("setCardFaceUp", `has no card with id ${id}`);
+      cards[site.row].faceUp = faceUp;
     },
 
     /** One pile emptied, the other twelve left standing. */
     clearPile(pile, index) {
       const state = read();
       const cards = pileArray(state, pile, index);
-      if (cards === null) return;
+      if (cards === null) {
+        refuse("clearPile", `has no pile "${String(pile)}" at ${index}`);
+      }
       cards.length = 0;
       if (pile === "waste") state.wasteSets.length = 0;
     },
@@ -405,7 +450,7 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
     },
 
     addWasteSet(count) {
-      read().wasteSets.push(whole(count));
+      read().wasteSets.push(whole("addWasteSet", "count", count));
     },
 
     clearWasteSets() {
@@ -494,20 +539,27 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
 
     setFlyerPosition(id, x, y) {
       const flyer = read().flyers.find((entry) => entry.id === id);
-      if (flyer === undefined) return;
+      if (flyer === undefined) {
+        refuse("setFlyerPosition", `has no flyer with id ${id}`);
+      }
       flyer.x = x;
       flyer.y = y;
     },
 
     setFlyerVelocity(id, vx, vy) {
       const flyer = read().flyers.find((entry) => entry.id === id);
-      if (flyer === undefined) return;
+      if (flyer === undefined) {
+        refuse("setFlyerVelocity", `has no flyer with id ${id}`);
+      }
       flyer.vx = vx;
       flyer.vy = vy;
     },
 
     removeFlyer(id) {
       const state = read();
+      if (!state.flyers.some((entry) => entry.id === id)) {
+        refuse("removeFlyer", `has no flyer with id ${id}`);
+      }
       state.flyers = state.flyers.filter((entry) => entry.id !== id);
     },
 

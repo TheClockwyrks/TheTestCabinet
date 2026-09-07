@@ -171,6 +171,12 @@ export interface FacetDebugApi {
 
   /** Restores every declared field to its title-screen value. */
   reset(options?: { seed?: number }): void;
+  /**
+   * Every reading the surface reports brought into agreement with the game as it
+   * stands, without advancing anything. A build that works its readings out at
+   * the read has nothing to do and this changes nothing.
+   */
+  reconcile(): void;
   /** A pure read of the state. */
   snapshot(): FacetSnapshot;
 
@@ -231,16 +237,18 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Twenty-four, not twenty-six: `setAutoStep` and `advance` exist under `none`
+ * Twenty-five, not twenty-seven: `setAutoStep` and `advance` exist under `none`
  * alone, because here the clock is the engine's.
  *
- * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE or reads it. Reaching a
+ * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE, reads it, or brings the
+ * readings into agreement with it. Reaching a
  * screen, opening a round, and quitting to the title are sequences of these, and
  * those sequences live in `harness.ts` where all three projects' suites share
  * them.
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setMenuIndex",

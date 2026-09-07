@@ -314,6 +314,11 @@ export interface MeltdownDebugApi {
 
   reset(seed?: number): void;
   snapshot(): MeltdownSnapshot;
+  /**
+   * Bring every value the snapshot reports into agreement with the floor as it
+   * now stands, without advancing anything.
+   */
+  reconcile(): void;
 
   setScreen(screen: Screen): void;
   setPhase(phase: Phase): void;
@@ -389,6 +394,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
 
   // The screen and the run.
   "setScreen",

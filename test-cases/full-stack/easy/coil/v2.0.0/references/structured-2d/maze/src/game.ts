@@ -137,6 +137,24 @@ export class CoilState extends GameState {
 }
 
 /**
+ * Bring the readings the state MIRRORS back into agreement with what they
+ * mirror, without advancing anything.
+ *
+ * `muted` is the game's readable copy of the engine's mute bit rather than a
+ * figure the game owns, so it is refreshed rather than computed. The mode's
+ * `tick` ends by calling this, and `specs/instrumentation.md`'s `reconcile()`
+ * reaches the same call from the debug surface — which is what lets a caller
+ * pose a world and then read a description of the world it posed rather than of
+ * the one before it.
+ *
+ * It advances nothing. No tick resolves, no accumulator moves, and the best
+ * score is left to the frame above, which is where `specs/scoring.md` puts it.
+ */
+export function reconcileState(state: CoilState, world: World): void {
+  state.muted = world.audio.muted();
+}
+
+/**
  * The open world's state, as the state it is: the mode names `CoilState` as its
  * `gameStateClass`, so this holds of every world this game opens, and the check
  * turns a wrong wiring into a named error instead of a silent cast.
@@ -258,7 +276,7 @@ class CoilMode extends GameMode {
     // back to it on the very next frame.
     state.best = Math.max(state.best, state.score);
     // The game's readable copy of the engine's mute bit, refreshed each frame.
-    state.muted = this.world.audio.muted();
+    reconcileState(state, this.world);
   }
 }
 

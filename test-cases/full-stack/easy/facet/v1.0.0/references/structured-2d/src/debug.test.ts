@@ -439,11 +439,16 @@ describe("the figure poses", () => {
     expect(shot.levelTarget).toBe(5 * LEVEL_TARGET_STEP);
   });
 
-  it("keeps the level a whole number of at least one", () => {
-    harness.debug.setLevel(0);
+  it("fails loudly on a level outside the domain rather than settling", () => {
+    // The bound is one the specification FIXES rather than a live figure of the
+    // running game, so it is a domain: a pose applies the value it is given and
+    // never settles for a nearer legal one, and a value outside the domain names
+    // no state the game has, so the call fails where the caller can see it.
+    expect(() => harness.debug.setLevel(0)).toThrow();
+    expect(() => harness.debug.setLevel(3.7)).toThrow();
     expect(harness.debug.snapshot().level).toBe(1);
-    harness.debug.setLevel(3.7);
-    expect(harness.debug.snapshot().level).toBe(3);
+    harness.debug.setLevel(4);
+    expect(harness.debug.snapshot().level).toBe(4);
   });
 
   it("sets the two figures the level is measured by, on their own", () => {
@@ -455,9 +460,9 @@ describe("the figure poses", () => {
     // `moveScore` is its own figure, and neither pose touches it.
     expect(shot.moveScore).toBe(0);
 
-    harness.debug.setBestChain(-3);
+    expect(() => harness.debug.setBestChain(-3)).toThrow();
     shot = harness.debug.snapshot();
-    expect(shot.bestChain).toBe(0);
+    expect(shot.bestChain).toBe(4);
   });
 
   it("carries a move's points into the level's best as the chain settles", async () => {
@@ -662,5 +667,47 @@ describe("the pointer poses", () => {
     expect(shot.armedTarget).toBeNull();
     expect(shot.screen).toBe("playing");
     expect(shot.legalSwap).toBe(true);
+  });
+});
+
+describe("reconcile", () => {
+  it("leaves every reading answering for the board that was posed", () => {
+    // Nothing this build holds is a copy of something a pose can leave behind —
+    // `legalSwap`, `lastFall`, `stepHold`, `multiplier`, `levelTarget`, a cell's
+    // center and the screen's targets are all worked out at the read — so the
+    // reading is the same either side of the call. That equality is what a build
+    // keeping any of them stored has to reach on demand.
+    poseBoard(ONE_RUN);
+    const before = harness.debug.snapshot();
+
+    harness.debug.reconcile();
+
+    expect(harness.debug.snapshot()).toEqual(before);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    poseBoard(quietRows());
+    harness.debug.setSelection(3, 3);
+    const before = harness.debug.snapshot();
+
+    harness.debug.reconcile();
+    const once = harness.debug.snapshot();
+
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.phase).toBe(before.phase);
+    expect(once.swapTimer).toBe(before.swapTimer);
+    expect(once.stepTimer).toBe(before.stepTimer);
+    expect(once.rngState).toBe(before.rngState);
+    expect(once.board).toEqual(before.board);
+    expect(once.selection).toEqual(before.selection);
+    expect(once).toEqual(before);
+
+    harness.debug.reconcile();
+    expect(harness.debug.snapshot()).toEqual(once);
+  });
+
+  it("is legal on the title screen, with no board in play", () => {
+    expect(() => harness.debug.reconcile()).not.toThrow();
+    expect(harness.debug.snapshot().screen).toBe("title");
   });
 });

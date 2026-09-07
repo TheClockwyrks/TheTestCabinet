@@ -13,6 +13,7 @@ import {
   SEEDED_CORES,
   SPACING,
 } from "./constants";
+import { levelSpec } from "./level";
 import {
   bare,
   harness,
@@ -86,13 +87,12 @@ describe("the level table", () => {
     }
   });
 
-  it("clamps a level outside the table into it", async () => {
-    const h = await harness();
-    h.api.startLevel(99);
-    expect(h.api.snapshot().level).toBe(LEVELS.length);
-    h.api.startLevel(-3);
-    expect(h.api.snapshot().level).toBe(1);
-    h.dispose();
+  it("clamps a level lookup outside the table into it", () => {
+    // The lookup is the game's own rule, so it holds whatever number reaches it.
+    // The debugging surface is a different question: `1` through `LEVEL_COUNT`
+    // is the argument's domain there, and `src/debug.test.ts` covers it failing.
+    expect(levelSpec(99)).toBe(LEVELS[LEVELS.length - 1]);
+    expect(levelSpec(-3)).toBe(LEVELS[0]);
   });
 });
 

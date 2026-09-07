@@ -1,26 +1,25 @@
 // instrumentation/set-speed-index-off-the-run-screen-does-nothing — the pose
-// changes nothing on the build and program screens.
+// reaches the watch speed from the build and program screens too.
 //
 // `specs/instrumentation.md` § The run in progress: "`setSpeedIndex` poses the
-// watch speed on the run screen, as the `speed` action does". The action it
-// stands for is bound to one screen — `speed`, `KeyS`, "cycle `RUN_SPEEDS` on
-// the run screen" (`specs/controls.md`) — and "Every action applies where the
-// table says and does nothing elsewhere". The surface carries the same rule for
-// every pose: "Each pose applies on the screens its section names and does
-// nothing on any other, exactly as the control it stands for does"
-// (§ The operations).
+// watch speed, as the `speed` action does, wherever the game stands and whether
+// or not a run that screen is showing has ended." The surface's general rule is
+// what puts it there: "No operation asks which screen is showing, whether a run
+// is in progress, or which tool is selected. Those are how a player reaches a
+// control and are not an operation's conditions" (§ The operations).
 //
 // THE HARDEST VERSION OF THE SCENARIO. A run is started and then the build and
-// the program screens are shown while it is still in progress, so what refuses
-// the pose has to be the SCREEN: a build that gated the pose on there being a
-// run rather than on the screen showing would take it here and fail. The two
-// screens are the two the surface's own site and structure poses live on, which
-// is where a scenario is standing when it poses a world, and the index posed is
-// one neither `RUN_SPEEDS` index the run holds — a run starts at index `0`
-// (`specs/state.md`).
+// the program screens are shown while it is still in progress, so a build that
+// gated the pose on the run SCREEN — as the `speed` ACTION is gated
+// (`specs/controls.md`), which is exactly the reach rule B removes — leaves the
+// speed where it was and fails here. The two screens are the two the surface's
+// own site and structure poses live on, which is where a scenario is standing
+// when it poses a world.
 //
-// This decides only that direction. That the pose DOES take on the run screen is
-// its own requirement next door, so a build that never took it fails there.
+// THE ACTION'S OWN SCREEN GATE IS UNTOUCHED, and is decided by
+// `controls/speed-does-nothing-off-the-run-screen` next door: a KEY press is the
+// player's route and is still bound to the run screen. What this decides is that
+// the debug operation is not a player.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -34,8 +33,8 @@ import {
   startRun,
   type Harness,
   type Screen,
-  type TapeStepSpec,
 } from "../harness";
+import type { TapeStepSpec } from "../harness";
 
 /** A tape that keeps a run in progress and asks nothing of the structure. */
 const HOLD_TAPE: readonly TapeStepSpec[] = [
@@ -61,29 +60,34 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("leaves the watch speed alone on the build and program screens", async () => {
+it("sets the watch speed from the build and program screens", async () => {
   await openSite(h, 0);
   await clearAll(h);
   await standMinimalCrane(h);
   await poseTape(h, HOLD_TAPE);
   const started = await startRun(h);
-  const speed = started.run.speedIndex;
-  assertEqual(speed, 0, "the watch speed a run starts at (specs/state.md)");
+  assertEqual(
+    started.run.speedIndex,
+    0,
+    "the watch speed a run starts at (specs/state.md)",
+  );
 
   try {
     for (const [screen, index] of CASES) {
       await h.debug.setScreen(screen);
       await h.debug.setSpeedIndex(index);
+      await h.debug.reconcile();
       assertEqual(
         (await h.snapshot()).run.speedIndex,
-        speed,
-        `run.speedIndex after setSpeedIndex(${index}) on the ${screen} screen, ` +
-          "where the speed action does nothing (specs/instrumentation.md)",
+        index,
+        `run.speedIndex after setSpeedIndex(${index}) on the ${screen} ` +
+          "screen: the screen is a player's route to the speed action and not " +
+          "the operation's condition (specs/instrumentation.md)",
       );
     }
   } finally {
     // In a `finally`, so a check that fails inside the sweep still leaves
     // the picture that shows why.
-    await h.capture("elsewhere", "The watch speed unmoved off the run screen");
+    await h.capture("elsewhere", "The watch speed posed off the run screen");
   }
 });

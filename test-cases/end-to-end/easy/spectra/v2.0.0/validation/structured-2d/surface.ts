@@ -240,6 +240,15 @@ export interface SpectraDebugApi {
   reset(options?: { seed?: number }): void;
   snapshot(): SpectraSnapshot;
   /**
+   * Brings every value the snapshot reports into agreement with the game as it
+   * stands, without advancing anything (`specs/instrumentation.md`).
+   *
+   * A build that works its derived readings out at the read has nothing to do
+   * here; a build that keeps one as a stored copy rewrites it from its source.
+   * It is what a driver calls after posing a game and before reading it back.
+   */
+  reconcile(): void;
+  /**
    * A pure read of the hit region of item `index` on the menu the current screen
    * shows, in logical units. It changes nothing.
    *
@@ -323,6 +332,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
 
   // The screen and the run.

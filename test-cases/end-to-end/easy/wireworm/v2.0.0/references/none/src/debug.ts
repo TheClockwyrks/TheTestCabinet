@@ -12,6 +12,15 @@
 // code behaves exactly like one played by hand, and every pose is verifiable by
 // setting a value and reading it back off `snapshot`.
 //
+// EVERY OPERATION ACTS, AND NONE OF THEM DECLINES QUIETLY. A pose reaches the
+// value it names whatever the game's own rules would have allowed a player to
+// reach, so nothing below clamps a posed value onto a legal neighbour or leaves
+// the state as it was and calls that an answer. Where the game has no defined
+// state to reach — a tile off the board, a charge outside the scale, a heading
+// that is neither direction, a name outside its set, an id no live entity
+// carries — the call THROWS, so the caller sees it rather than reading back a
+// board it never posed (specs/instrumentation.md).
+//
 // THE TWO CLOCK OPERATIONS REACH PAST THE STATE, into the runtime, because this
 // build stands on no engine and nothing outside it owns its clock. Without them
 // a scenario could only be driven by waiting, and a check that waits measures the
@@ -26,13 +35,17 @@
 
 import {
   CHARGE_MAX,
+  CURSOR_X_MAX,
+  CURSOR_X_MIN,
+  CURSOR_Y_MAX,
+  CURSOR_Y_MIN,
   DEFAULT_SEED,
   TOTAL_LEVELS,
   WIREWORM_DEBUG_VERSION,
+  inBounds,
   wormLength,
   wormStepInterval,
 } from "./constants";
-import { clampCursor } from "./cursor";
 import { clearNodes, listNodes, removeNode, setCharge } from "./field";
 import { makeFoe } from "./foes";
 import { resetState } from "./game";
@@ -137,6 +150,7 @@ export interface WirewormDebugApi {
   // The core.
   reset(options?: { seed?: number }): void;
   snapshot(): WirewormSnapshot;
+  reconcile(): void;
 
   // The screen and the run.
   setScreen(screen: Screen): void;
@@ -248,15 +262,100 @@ export function snapshotOf(state: WirewormState): WirewormSnapshot {
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/* The loud half of the contract                                              */
+/* -------------------------------------------------------------------------- */
+//
+// An operation never returns having changed nothing. Where there is a defined
+// state the call reaches, it reaches it; where there is not, it throws, and the
+// helpers below are how it throws. They are the only guards on this surface:
+// nothing here asks which screen is up, where the cursor is standing, or whether
+// the game is live before doing what it is named for.
+
+/** The screens `setScreen` names. */
+const SCREENS: readonly Screen[] = [
+  "title",
+  "howto",
+  "playing",
+  "paused",
+  "victory",
+  "gameover",
+];
+
+/** The sub-phases `setPhase` names. */
+const PHASES: readonly Phase[] = ["banner", "active", "respawn"];
+
+/** The foes `addFoe` names. */
+const FOE_KINDS: readonly FoeKind[] = ["glitch", "dropper", "corruptor"];
+
+/** The failure a call the game has no defined state for gets. */
+function reject(op: string, detail: string): never {
+  throw new RangeError(`${op}: ${detail}`);
+}
+
+/** A finite number, else a loud failure. */
+function requireNumber(op: string, name: string, value: number): number {
+  if (!Number.isFinite(value)) {
+    reject(op, `${name} must be a finite number, got ${String(value)}`);
+  }
+  return value;
+}
+
+/** A whole number inside a range the specs fix as a constant, else a failure. */
+function requireWhole(
+  op: string,
+  name: string,
+  value: number,
+  lo: number,
+  hi: number,
+): number {
+  if (!Number.isInteger(value) || value < lo || value > hi) {
+    reject(
+      op,
+      `${name} must be a whole number from ${lo} to ${hi}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** One of a fixed set of names, else a loud failure. */
+function requireOneOf<T extends string | number>(
+  op: string,
+  name: string,
+  value: T,
+  allowed: readonly T[],
+): T {
+  if (!allowed.includes(value)) {
+    reject(
+      op,
+      `${name} must be one of ${allowed.join(", ")}, got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/** A tile of the board, else a loud failure. */
+function requireTile(op: string, c: number, r: number): void {
+  if (!Number.isInteger(c) || !Number.isInteger(r) || !inBounds(c, r)) {
+    reject(op, `(${String(c)}, ${String(r)}) is not a tile of the board`);
+  }
+}
+
 /** Build the surface over one live state object and the runtime driving it. */
 export function createDebugApi(
   state: WirewormState,
   clock: DebugClock,
 ): WirewormDebugApi {
-  const worm = (id: number): Worm | undefined =>
-    state.worms.find((candidate) => candidate.id === id);
-  const foe = (id: number): Foe | undefined =>
-    state.foes.find((candidate) => candidate.id === id);
+  const worm = (op: string, id: number): Worm => {
+    const found = state.worms.find((candidate) => candidate.id === id);
+    if (found === undefined) reject(op, `no worm carries id ${String(id)}`);
+    return found;
+  };
+  const foe = (op: string, id: number): Foe => {
+    const found = state.foes.find((candidate) => candidate.id === id);
+    if (found === undefined) reject(op, `no foe carries id ${String(id)}`);
+    return found;
+  };
 
   return {
     version: WIREWORM_DEBUG_VERSION,
@@ -302,20 +401,36 @@ export function createDebugApi(
       return snapshotOf(state);
     },
 
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Every derived reading this build reports — `wormStepInterval` and
+     * `wormLength` from the level, `arcs` from the live discharge, a foe's `vx`
+     * and `vy` from its own motion — is worked out at the read in `snapshotOf`,
+     * so nothing is held that a pose can leave behind and there is nothing here
+     * to rewrite. The operation is required of every build, including one that
+     * keeps those readings as stored copies, and this is what it comes to in a
+     * build that does not.
+     *
+     * It advances nothing and fires nothing either way: no clock moves, no
+     * system runs, and a caller may make the call as often as it likes.
+     */
+    reconcile() {},
+
     setScreen(screen) {
-      state.screen = screen;
+      state.screen = requireOneOf("setScreen", "screen", screen, SCREENS);
     },
 
     setPhase(phase) {
-      state.phase = phase;
+      state.phase = requireOneOf("setPhase", "phase", phase, PHASES);
     },
 
     setPhaseTimer(seconds) {
-      state.phaseTimer = seconds;
+      state.phaseTimer = requireNumber("setPhaseTimer", "seconds", seconds);
     },
 
     setMenuIndex(index) {
-      state.menuIndex = index;
+      state.menuIndex = requireNumber("setMenuIndex", "index", index);
     },
 
     /**
@@ -327,11 +442,11 @@ export function createDebugApi(
      * lands at the next multiple.
      */
     setScore(score) {
-      poseScore(state, score);
+      poseScore(state, requireNumber("setScore", "score", score));
     },
 
     setLives(lives) {
-      state.lives = lives;
+      state.lives = requireNumber("setLives", "lives", lives);
     },
 
     /**
@@ -339,13 +454,17 @@ export function createDebugApi(
      *
      * It spawns nothing and clears nothing; the step interval and the worm
      * length the snapshot reports follow it, because both are derived.
+     *
+     * `1` through `TOTAL_LEVELS` is a range the specs fix as a constant, so it
+     * is a domain rather than a rule: a level outside it names no level of this
+     * game and the call fails loudly instead of landing on the nearest one.
      */
     setLevel(level) {
-      state.level = Math.max(1, Math.min(TOTAL_LEVELS, Math.round(level)));
+      state.level = requireWhole("setLevel", "level", level, 1, TOTAL_LEVELS);
     },
 
     setReachedLevel(level) {
-      state.reachedLevel = level;
+      state.reachedLevel = requireNumber("setReachedLevel", "level", level);
     },
 
     /**
@@ -373,19 +492,44 @@ export function createDebugApi(
       state.cursor.contact = Boolean(enabled);
     },
 
-    /** Place the cursor's center; the band's real clamp still applies. */
+    /**
+     * Place the cursor's center, exactly where the call names.
+     *
+     * The band is the cursor's own fixed bound rather than a live figure, so it
+     * is this operation's domain: a position outside it fails loudly. What it
+     * does NOT do is land the cursor on the nearest edge and let the caller read
+     * a position it never posed — the clamp belongs to `moveCursor`, which is
+     * what a held movement runs through.
+     */
     setCursor(x, y) {
+      requireNumber("setCursor", "x", x);
+      requireNumber("setCursor", "y", y);
+      if (x < CURSOR_X_MIN || x > CURSOR_X_MAX) {
+        reject(
+          "setCursor",
+          `x must be within the band, ${CURSOR_X_MIN} to ${CURSOR_X_MAX}, got ${String(x)}`,
+        );
+      }
+      if (y < CURSOR_Y_MIN || y > CURSOR_Y_MAX) {
+        reject(
+          "setCursor",
+          `y must be within the band, ${CURSOR_Y_MIN} to ${CURSOR_Y_MAX}, got ${String(y)}`,
+        );
+      }
       state.cursor.x = x;
       state.cursor.y = y;
-      clampCursor(state.cursor);
     },
 
     setCursorInvulnerable(seconds) {
-      state.cursor.invulnerable = Math.max(0, seconds);
+      state.cursor.invulnerable = requireNumber(
+        "setCursorInvulnerable",
+        "seconds",
+        seconds,
+      );
     },
 
     setFireCooldown(seconds) {
-      state.fireCooldown = Math.max(0, seconds);
+      state.fireCooldown = requireNumber("setFireCooldown", "seconds", seconds);
     },
 
     /**
@@ -394,25 +538,42 @@ export function createDebugApi(
      * It then climbs and resolves its hit through the game's own shot rules.
      */
     addBolt(x, y) {
+      requireNumber("addBolt", "x", x);
+      requireNumber("addBolt", "y", y);
       state.bolts.push({ id: state.nextId, x, y });
       state.nextId += 1;
     },
 
     removeBolt(id) {
       const at = state.bolts.findIndex((bolt) => bolt.id === id);
-      if (at >= 0) state.bolts.splice(at, 1);
+      if (at < 0) reject("removeBolt", `no bolt carries id ${String(id)}`);
+      state.bolts.splice(at, 1);
     },
 
     clearBolts() {
       state.bolts = [];
     },
 
-    /** Set the node on a tile, creating it where the tile was empty. */
+    /**
+     * Set the node on a tile, creating it where the tile was empty.
+     *
+     * The board's tiles and the charge scale are both fixed by the specs, so
+     * both are domains: a tile off the board and a charge outside `0` to
+     * `CHARGE_MAX` each fail loudly rather than being dropped or squeezed into
+     * range.
+     */
     setNode(c, r, charge) {
-      setCharge(state.field, c, r, Math.max(0, Math.min(CHARGE_MAX, charge)));
+      requireTile("setNode", c, r);
+      setCharge(
+        state.field,
+        c,
+        r,
+        requireWhole("setNode", "charge", charge, 0, CHARGE_MAX),
+      );
     },
 
     clearNode(c, r) {
+      requireTile("clearNode", c, r);
       removeNode(state.field, c, r);
     },
 
@@ -439,37 +600,43 @@ export function createDebugApi(
     },
 
     appendSegment(id, c, r) {
-      worm(id)?.segments.push({ c, r });
+      worm("appendSegment", id).segments.push({ c, r });
     },
 
     setWormHeading(id, dh) {
-      const target = worm(id);
-      if (target !== undefined) target.dh = dh < 0 ? -1 : 1;
+      worm("setWormHeading", id).dh = requireOneOf(
+        "setWormHeading",
+        "dh",
+        dh,
+        [1, -1],
+      );
     },
 
     setWormDescent(id, dv) {
-      const target = worm(id);
-      if (target !== undefined) target.dv = dv < 0 ? -1 : 1;
+      worm("setWormDescent", id).dv = requireOneOf(
+        "setWormDescent",
+        "dv",
+        dv,
+        [1, -1],
+      );
     },
 
     setWormDiving(id, diving) {
-      const target = worm(id);
-      if (target !== undefined) target.diving = Boolean(diving);
+      worm("setWormDiving", id).diving = Boolean(diving);
     },
 
     setWormStepping(id, enabled) {
-      const target = worm(id);
-      if (target !== undefined) target.stepping = Boolean(enabled);
+      worm("setWormStepping", id).stepping = Boolean(enabled);
     },
 
     setWormBody(id, enabled) {
-      const target = worm(id);
-      if (target !== undefined) target.body = Boolean(enabled);
+      worm("setWormBody", id).body = Boolean(enabled);
     },
 
     removeWorm(id) {
       const at = state.worms.findIndex((candidate) => candidate.id === id);
-      if (at >= 0) state.worms.splice(at, 1);
+      if (at < 0) reject("removeWorm", `no worm carries id ${String(id)}`);
+      state.worms.splice(at, 1);
     },
 
     clearWorms() {
@@ -481,14 +648,16 @@ export function createDebugApi(
      * velocity, with its hit flag down and both faculties on.
      */
     addFoe(kind, x, y) {
+      requireOneOf("addFoe", "kind", kind, FOE_KINDS);
+      requireNumber("addFoe", "x", x);
+      requireNumber("addFoe", "y", y);
       state.foes.push(makeFoe(state, kind, x, y));
     },
 
     setFoeVelocity(id, vx, vy) {
-      const target = foe(id);
-      if (target === undefined) return;
-      target.vx = vx;
-      target.vy = vy;
+      const target = foe("setFoeVelocity", id);
+      target.vx = requireNumber("setFoeVelocity", "vx", vx);
+      target.vy = requireNumber("setFoeVelocity", "vy", vy);
     },
 
     /**
@@ -498,23 +667,21 @@ export function createDebugApi(
      * velocity a scenario set beforehand is not quietly overwritten.
      */
     setFoeHit(id, hit) {
-      const target = foe(id);
-      if (target !== undefined) target.hit = Boolean(hit);
+      foe("setFoeHit", id).hit = Boolean(hit);
     },
 
     setFoeMind(id, enabled) {
-      const target = foe(id);
-      if (target !== undefined) target.mind = Boolean(enabled);
+      foe("setFoeMind", id).mind = Boolean(enabled);
     },
 
     setFoeTravel(id, enabled) {
-      const target = foe(id);
-      if (target !== undefined) target.travel = Boolean(enabled);
+      foe("setFoeTravel", id).travel = Boolean(enabled);
     },
 
     removeFoe(id) {
       const at = state.foes.findIndex((candidate) => candidate.id === id);
-      if (at >= 0) state.foes.splice(at, 1);
+      if (at < 0) reject("removeFoe", `no foe carries id ${String(id)}`);
+      state.foes.splice(at, 1);
     },
 
     clearFoes() {

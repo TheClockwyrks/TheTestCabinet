@@ -11,7 +11,6 @@ import {
   droneSpeedScale,
   fluxHold,
 } from "./constants";
-import { fluxWindowAt } from "./bands";
 import {
   createHarness,
   lastBulletId,
@@ -27,6 +26,60 @@ async function posed(): Promise<Harness> {
   startPosed(harness.debug);
   return harness;
 }
+
+// `reconcile` brings every reported reading into agreement with the game without
+// advancing anything. This build works every derived reading out at the READ, so
+// the call has nothing to rewrite; what these two cases pin is that it still
+// ANSWERS for a posed game and that it costs no simulation time, which is the
+// whole difference between it and stepping a frame.
+describe("reconcile", () => {
+  it("re-derives a reading from a posed source", async () => {
+    const h = await posed();
+    const d = h.debug;
+
+    d.setStage(5);
+    d.reconcile();
+    expect(d.snapshot().fluxHold).toBeCloseTo(fluxHold(5), 9);
+
+    d.setResonance(RESONANCE_MAX);
+    d.reconcile();
+    expect(d.snapshot().dischargeReady).toBe(true);
+
+    d.setInversion(2);
+    d.reconcile();
+    expect(d.snapshot().inversionActive).toBe(true);
+
+    d.setPhase("ready");
+    d.reconcile();
+    expect(d.snapshot().ship.alive).toBe(false);
+  });
+
+  it("advances nothing, and twice matches once", async () => {
+    const h = await posed();
+    const d = h.debug;
+    d.setStage(3);
+    d.setPhaseTimer(1.25);
+    d.setDiveClock(0.4);
+    d.setInversion(2.5);
+    d.setFireLockout(0.24);
+    d.setShipX(500);
+    d.addDrone("flux", 400, 200);
+    d.setDroneBandClock(lastDroneId(d), 0.5);
+    d.addDrone("prism", 600, 200);
+    d.addPlayerBullet(400, 500, "magenta");
+
+    const before = JSON.stringify(d.snapshot());
+    d.reconcile();
+    const once = JSON.stringify(d.snapshot());
+    d.reconcile();
+    const twice = JSON.stringify(d.snapshot());
+
+    // The clock, the positions and every timer are untouched, so the whole
+    // snapshot is byte-identical rather than merely close.
+    expect(once).toBe(before);
+    expect(twice).toBe(once);
+  });
+});
 
 describe("the surface", () => {
   it("is the object the instance returned, at the stated version", async () => {
@@ -106,8 +159,12 @@ describe("the surface", () => {
       d.setDroneBand(id, "magenta");
       d.setDronePhase(id, "diving");
       d.setDroneSlot(id, 500, 180);
-      d.setDroneBandClock(id, 0.5);
-      d.setDroneShell(id, false);
+      // A BAND WINDOW BELONGS TO A FLUX AND A SHELL TO A PRISM, so each of those
+      // two poses is made only on the kind that has the field: the surface fails
+      // LOUDLY on any other kind rather than passing quietly with nothing written
+      // (`specs/instrumentation.md`).
+      if (kind === "flux") d.setDroneBandClock(id, 0.5);
+      if (kind === "prism") d.setDroneShell(id, false);
       d.setDroneCharge(id, 2);
       d.setDroneTravel(id, false);
       d.setDroneOscillation(id, false);
@@ -121,8 +178,8 @@ describe("the surface", () => {
         phase: "diving",
         slotX: 500,
         slotY: 180,
-        // A Flux's clock and a Prism's shell; on the other kinds the surface
-        // reports the fixed figure (specs/instrumentation.md).
+        // A Flux's clock and a Prism's shell; on every other kind the surface
+        // reports the fixed figure, and the pose was never made.
         bandClock: kind === "flux" ? 0.5 : 0,
         shellAlive: kind !== "prism",
         charge: 2,
@@ -163,23 +220,46 @@ describe("the surface", () => {
     expect(d.snapshot().drones[0]?.id).toBe(id);
   });
 
-  it("clamps a pose to the domain its own row states", async () => {
+  // A POSE REACHES THE VALUE IT NAMES. Where a row fixes a domain — `1` and up
+  // for the stage, `0` to `RESONANCE_MAX`, the lane's own bounds, `0` to
+  // `OVERLOAD_AT` — both ends are reached exactly and a figure outside it FAILS
+  // LOUDLY rather than snapping to the nearer end, which would leave the state
+  // holding a value nobody asked for. `fluxWindow(stage)` is NOT such a domain:
+  // it is a live figure the stage moves, so a band clock posed past the end of
+  // the window is taken as given (`specs/instrumentation.md`).
+  it("reaches a posed value across its domain, and fails loudly outside it", async () => {
     const h = await posed();
     const d = h.debug;
-    d.setStage(-4);
+
+    d.setStage(1);
     expect(d.snapshot().stage).toBe(1);
-    d.setResonance(9999);
+    expect(() => d.setStage(-4)).toThrow(RangeError);
+
+    d.setResonance(RESONANCE_MAX);
     expect(d.snapshot().resonance).toBe(RESONANCE_MAX);
     expect(d.snapshot().dischargeReady).toBe(true);
-    d.setResonance(-5);
+    d.setResonance(0);
     expect(d.snapshot().resonance).toBe(0);
-    d.setShipX(99999);
+    expect(() => d.setResonance(9999)).toThrow(RangeError);
+    expect(() => d.setResonance(-5)).toThrow(RangeError);
+
+    d.setShipX(SHIP_X_MAX);
     expect(d.snapshot().ship.x).toBe(SHIP_X_MAX);
+    expect(() => d.setShipX(99999)).toThrow(RangeError);
+
     d.addDrone("flux", 400, 200);
     const id = lastDroneId(d);
     d.setDroneBandClock(id, 99);
-    expect(d.snapshot().drones[0]?.bandClock).toBeCloseTo(fluxWindowAt(1), 9);
-    d.setDroneCharge(id, 99);
+    expect(d.snapshot().drones[0]?.bandClock).toBe(99);
+
+    d.setDroneCharge(id, OVERLOAD_AT);
+    expect(d.snapshot().drones[0]?.charge).toBe(OVERLOAD_AT);
+    expect(() => d.setDroneCharge(id, 99)).toThrow(RangeError);
+
+    // Every refusal left the state exactly where the last accepted pose did.
+    expect(d.snapshot().stage).toBe(1);
+    expect(d.snapshot().resonance).toBe(0);
+    expect(d.snapshot().ship.x).toBe(SHIP_X_MAX);
     expect(d.snapshot().drones[0]?.charge).toBe(OVERLOAD_AT);
   });
 

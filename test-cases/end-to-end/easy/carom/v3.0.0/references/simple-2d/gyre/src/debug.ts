@@ -51,7 +51,7 @@ import type {
   TrailSample,
 } from "./game";
 import { menuItemRect as rectOf, type MenuRect } from "./menus";
-import { withObstacle } from "./obstacles";
+import { isObstacleIndex, reposeObstacles, withObstacle } from "./obstacles";
 import { resetToTitle, withObstacleClock } from "./screens";
 import type { DeepReadonly } from "ts-essentials";
 
@@ -152,6 +152,11 @@ export interface CaromDebugApi {
   spawnBall(state: State): CaromState;
   spawnObstacle(state: State, index: number): CaromState;
   reset(state: State): CaromState;
+  /**
+   * Brings every reading this surface reports into agreement with the world as
+   * it stands, advancing nothing.
+   */
+  reconcile(state: State): CaromState;
   setSeed(state: State, seed: number): CaromState;
 
   /* Screens and menus. */
@@ -229,9 +234,16 @@ export function spawnBall(state: State): CaromState {
 /**
  * Obstacle `index` placed in the pose specs/playfield.md's formulas give it at the
  * CURRENT obstacle clock, so it stands exactly where the obstacles already on the
- * field stand. An index naming no obstacle leaves the field as it is.
+ * field stand.
+ *
+ * An index outside the two this field is built with names no obstacle, so there
+ * is no state for the call to reach and it fails where the caller can see it
+ * rather than passing quietly (specs/instrumentation.md).
  */
 export function spawnObstacle(state: State, index: number): CaromState {
+  if (!isObstacleIndex(index)) {
+    throw new RangeError(`Carom: no obstacle ${index}`);
+  }
   return {
     ...state,
     obstacles: withObstacle(state.obstacles, index, state.obstacleClock),
@@ -249,6 +261,28 @@ export function spawnObstacle(state: State, index: number): CaromState {
  */
 export function reset(state: State): CaromState {
   return resetToTitle(state);
+}
+
+/**
+ * Every reading brought into agreement with the world as it stands, without
+ * advancing anything.
+ *
+ * One reading here is a stored copy of something else: an obstacle's `cx`, `cy`
+ * and `theta` are a function of the obstacle clock alone, kept on the field so
+ * the collision and the renderer read one pose rather than recomputing it.
+ * `reposeObstacles` is the same helper `withObstacleClock` and the update call,
+ * so this re-derives them exactly as a frame would — and, unlike a frame, moves
+ * the clock not at all.
+ *
+ * The ball's `speed` is worked out at the read, in `ballView`, so it already
+ * agrees and there is nothing here for it. What this never does is run the
+ * update: an update moves the very thing a pose has just placed.
+ */
+export function reconcile(state: State): CaromState {
+  return {
+    ...state,
+    obstacles: reposeObstacles(state.obstacles, state.obstacleClock),
+  };
 }
 
 /**
@@ -363,12 +397,18 @@ export function setPaddleDriven(
 // ---- The ball -----------------------------------------------------------
 
 /**
- * The ball with `patch` applied, or the state as it was while no ball is present:
- * every ball operation has no effect on an empty field
- * (specs/instrumentation.md).
+ * The ball with `patch` applied.
+ *
+ * An absent ball is no ball to pose. An operation that quietly handed the state
+ * back would leave a caller reading its own pose off a field that never took it,
+ * and every check driving that operation would grade a world it did not arrange
+ * — so this fails where the caller can see it (specs/instrumentation.md).
+ * `spawnBall` is how a field of one is posed.
  */
 function withBall(state: State, patch: Partial<BallState>): CaromState {
-  if (!state.ball) return state;
+  if (!state.ball) {
+    throw new Error("Carom: no ball is on the field; spawnBall places one");
+  }
   return { ...state, ball: { ...state.ball, ...patch } };
 }
 
@@ -538,6 +578,7 @@ export function createDebugApi(): CaromDebugApi {
     spawnBall,
     spawnObstacle,
     reset,
+    reconcile,
     setSeed,
     setScreen,
     setMode,

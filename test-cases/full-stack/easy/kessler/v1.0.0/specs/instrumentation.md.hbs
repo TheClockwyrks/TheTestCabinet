@@ -143,6 +143,16 @@ wants them. No pose decides an outcome: every bounce, hit, destruction, catch,
 burn-up, life loss, and clearing comes from the ticks run after the pose, so a
 scenario reads what happened from the snapshot.
 
+No operation declines. Each reaches the state it names from wherever the game
+stands, because the screen showing, the entry highlighted, and where the
+deflector and the balls sit are how a player would have reached the thing and
+are not the operation's conditions: `launchBall` serves under whatever screen is
+up, and `spawnTarget` fills a slot on `title` exactly as it fills one in play. A
+call the field has no state for — a launch with nothing parked, a second parked
+ball, a seventh ball where six is the field's whole capacity, a menu entry on a
+screen carrying no menu — fails loudly rather than passing quietly, so a caller
+never reads a call that did nothing as a call that did.
+
 `paddle` names the deflector throughout the operations and the snapshot below.
 {{#if (eq engine.slug "simple-2d")}}
 
@@ -154,7 +164,7 @@ read. The headings below name the parameters that follow the state.
 
 An argument outside the domain its operation states is invalid, and the call
 fails loudly rather than guessing what was meant, except where an operation
-states that it normalizes or ignores the call.
+states that it normalizes the call.
 
 {{#if (eq engine.slug "none")}}
 ### `setAutoStep(auto)`
@@ -205,6 +215,40 @@ wall clock and the scenario stays reproducible.
 A reset leaves the game indistinguishable from a freshly started session, so
 anything else the build keeps across frames is derived from what a reset
 restores.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `reconcile(state)`
+{{else}}
+### `reconcile()`
+{{/if}}
+
+Brings every value this surface reports into agreement with the field as it now
+stands, without advancing anything. The deflector's `spanDeg`, each ball's
+`piercing`, each pod's `(x, y)`, and each ring's list of live targets all follow
+from the effect timers, the pods' polar positions, and the ring slots, so after a
+pose they answer for the field as it is rather than as it was before the call.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no tick: `ticks` and the interstitial timer are
+untouched, no ball moves, no ring turns, no pod falls, no contact resolves, no
+effect timer counts down, and the pod generator is not drawn from. It scores
+nothing, costs no life, sounds no cue, fires no particle, and changes neither the
+screen nor the menu highlight. It moves nothing to make a reading agree: a ball
+posed inside a ring's target arc stays where it was posed and reads as it is, and
+a posed ring speed is left as posed rather than returned to its wave formula.
+Calling it twice leaves the same state as calling it once.
+
+It is never an error and may be called on any screen, whether or not the
+simulation is held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `KesslerState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `snapshot(state)`
@@ -266,8 +310,8 @@ score, and a life loss at posed lives `1` ends the game.
 
 Sets the highlighted menu entry to `n`, a whole number from `0` to the entry
 count of the current screen's menu minus `1`. The highlight moves exactly as
-`up` and `down` move it, and no cue sounds. On a screen with no menu the call
-changes nothing.
+`up` and `down` move it, and no cue sounds. A screen carrying no menu has no
+entry to highlight, so the call fails loudly there rather than passing quietly.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `setInterstitialTicks(state, ticks)`
@@ -312,8 +356,9 @@ parked ball follows it to the new angle, and the span is untouched.
 {{/if}}
 
 Acts exactly as `Space` does on a parked ball: the parked ball launches
-radially outward at the current wave's ball speed. With no parked ball the call
-changes nothing.
+radially outward at the current wave's ball speed, under whatever screen is up.
+With no ball parked there is nothing to serve, so the call fails loudly rather
+than passing quietly.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `clearBalls(state)`
@@ -334,8 +379,9 @@ stands without a ball until one is spawned or parked.
 Adds one unparked ball at `(x, y)` with velocity `(vx, vy)`, appended in spawn
 order. The ball is piercing exactly when `pierceTicks` is above `0` at the
 call, and it keeps its posed speed until a rule of
-`specs/deflector-and-ball.md` changes it. At the 6-ball cap the call changes
-nothing.
+`specs/deflector-and-ball.md` changes it. Six balls is the whole capacity of the
+field `specs/deflector-and-ball.md` fixes, so a spawn against a full field is a
+seventh the field has no room for and fails loudly.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `parkBall(state)`
@@ -344,8 +390,10 @@ nothing.
 {{/if}}
 
 Parks one ball on the deflector, at the serve position
-`specs/deflector-and-ball.md` fixes, following the deflector until launched.
-While a parked ball exists, or at the 6-ball cap, the call changes nothing.
+`specs/deflector-and-ball.md` fixes, following the deflector until launched. The
+field carries one parked ball at most and six balls in all, so a call made while
+a ball is already parked, or against a full field, names a field that cannot
+exist and fails loudly.
 
 {{#if (eq engine.slug "simple-2d")}}
 ### `clearTargets(state)`
@@ -503,8 +551,14 @@ clock, which is how a build starts and how it is played, and `false` while
 `setAutoStep(false)` holds the simulation off it.
 {{/if}}
 
-Every field is read straight off the game's state, so what the snapshot reports
-is what the game holds.
+Several of the fields are derived rather than stored: `paddle.spanDeg` follows
+from the baseline span under whichever of `widenTicks` and `narrowTicks` is in
+force, every ball's `piercing` follows from `pierceTicks`, each pod's `(x, y)` is
+its polar position walked onto the stage, and each ring's `targets` lists the
+slots of that ring that still hold one. A build is free to work any of these out
+at the read or to keep it as a stored copy, and `reconcile` is what brings a
+stored copy back into agreement after a pose. Every other field is read straight
+off the game's state, so what the snapshot reports is what the game holds.
 
 ## Diagnostics
 

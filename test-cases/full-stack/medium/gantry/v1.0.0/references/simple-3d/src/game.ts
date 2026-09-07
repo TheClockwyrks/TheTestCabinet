@@ -498,6 +498,8 @@ export interface GantryDebugApi {
   // ---- The run and the screens -------------------------------------------
 
   reset(state: ReadonlyGantryState): GantryState;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(state: ReadonlyGantryState): GantryState;
   setScreen(state: ReadonlyGantryState, screen: string): GantryState;
   setMenuIndex(state: ReadonlyGantryState, index: number): GantryState;
   openSite(state: ReadonlyGantryState, index: number): GantryState;

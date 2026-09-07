@@ -483,3 +483,44 @@ describe("the pointer poses", () => {
     expect(missed.pointer.down).toBe(true);
   });
 });
+
+describe("reconcile", () => {
+  it("leaves every reading answering for the board that was posed", () => {
+    // Nothing this build holds is a copy of something a pose can leave behind —
+    // `legalSwap`, `lastFall`, `stepHold`, `multiplier`, `levelTarget`, a cell's
+    // center and the screen's targets are all worked out at the read — so the
+    // reading is the same either side of the call. That equality is what a build
+    // keeping any of them stored has to reach on demand.
+    const state = posed();
+
+    const reconciled = debug.reconcile(state);
+
+    expect(debug.snapshot(reconciled)).toEqual(debug.snapshot(state));
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const state = debug.setSelection(posed(), 3, 3);
+    const before = debug.snapshot(state);
+
+    const once = debug.reconcile(state);
+    const after = debug.snapshot(once);
+
+    expect(after.simTime).toBe(before.simTime);
+    expect(after.phase).toBe(before.phase);
+    expect(after.swapTimer).toBe(before.swapTimer);
+    expect(after.stepTimer).toBe(before.stepTimer);
+    expect(after.rngState).toBe(before.rngState);
+    expect(after.board).toEqual(before.board);
+    expect(after.selection).toEqual(before.selection);
+    expect(after).toEqual(before);
+
+    expect(debug.snapshot(debug.reconcile(once))).toEqual(after);
+  });
+
+  it("is legal on the title screen, with no board in play", () => {
+    expect(() => debug.reconcile(opening())).not.toThrow();
+    expect(debug.snapshot(debug.reconcile(opening()))).toEqual(
+      debug.snapshot(opening()),
+    );
+  });
+});

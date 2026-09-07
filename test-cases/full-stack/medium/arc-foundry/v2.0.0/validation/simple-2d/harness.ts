@@ -19,6 +19,18 @@
 // sentence a missing surface is failed against, the readings it takes off a drawn
 // frame, and every compound sequence that poses this game.
 //
+// RECONCILING AFTER A POSE. `specs/instrumentation.md` says what a build REPORTS,
+// not how it holds it, so a derived reading — `qualityOdds`, `mazeLength`, a
+// structure's `range`, `damage`, `fireRate` and `auraBonus`, a unit's `speed` and
+// `progress`, `held.legal` — may be worked out at the read in one build and kept
+// as a stored copy in another. Both are conformant, and they part company the
+// moment a pose writes what such a reading is derived from. `reconcile` closes
+// that gap: it brings every reported reading into agreement with the yard as it
+// stands without advancing anything. A helper here that poses something a reading
+// derives from calls it before it returns, so a check that poses through the
+// helpers never calls `reconcile` itself; a check that poses with `h.debug.set…`
+// directly calls it once before its first read or sweep.
+//
 // WHAT A CHECK READS. The game's own state (through the debug surface's
 // `snapshot`), the six layout readings, the engine's frame counter, the cues
 // the engine announced, the assets the build asked for and whether each arrived,
@@ -966,6 +978,7 @@ export function openRun(h: Harness, options: YardOptions = {}): void {
   if (options.difficulty !== undefined)
     h.debug.setDifficulty(options.difficulty);
   h.debug.startRun();
+  h.debug.reconcile();
 }
 
 /**
@@ -980,6 +993,7 @@ export function emptyYard(h: Harness): void {
   h.debug.clearStructures();
   h.debug.clearUnits();
   h.debug.clearProjectiles();
+  h.debug.reconcile();
 }
 
 /**
@@ -1002,6 +1016,7 @@ export function openYard(h: Harness, options: YardOptions = {}): void {
   }
   if (options.stamps !== undefined) h.debug.setStamps(options.stamps);
   if (options.speed !== undefined) h.debug.setSpeed(options.speed);
+  h.debug.reconcile();
 }
 
 /**
@@ -1021,6 +1036,7 @@ export function openYard(h: Harness, options: YardOptions = {}): void {
  */
 export function clearHand(h: Harness): void {
   h.debug.clearHeld();
+  h.debug.reconcile();
 }
 
 /**
@@ -1074,6 +1090,7 @@ export function standComponent(
 ): number {
   const before = h.snapshot().structures.length;
   h.debug.placeComponent(type, quality, col, row);
+  h.debug.reconcile();
   return placed(
     h.snapshot(),
     before,
@@ -1091,12 +1108,16 @@ export function standCombo(
 ): number {
   const before = h.snapshot().structures.length;
   h.debug.placeCombo(combo, col, row);
+  h.debug.reconcile();
   const id = placed(
     h.snapshot(),
     before,
     `placeCombo(${combo}, ${col}, ${row})`,
   );
-  if (level !== 0) h.debug.setComboLevel(id, level);
+  if (level !== 0) {
+    h.debug.setComboLevel(id, level);
+    h.debug.reconcile();
+  }
   return id;
 }
 
@@ -1104,6 +1125,7 @@ export function standCombo(
 export function standBlocker(h: Harness, col: number, row: number): number {
   const before = h.snapshot().structures.length;
   h.debug.placeBlocker(col, row);
+  h.debug.reconcile();
   return placed(h.snapshot(), before, `placeBlocker(${col}, ${row})`);
 }
 
@@ -1140,6 +1162,7 @@ export function standCandidate(
   h.debug.placeRock(col, row);
   h.debug.clearNextRoll();
   h.debug.clearHeld();
+  h.debug.reconcile();
   return placed(
     h.snapshot(),
     before,
@@ -1225,6 +1248,7 @@ export function releaseUnit(
     h.debug.setUnitBurn(id, pose.burn.dps, pose.burn.seconds);
   }
   if (pose.frozen !== undefined) h.debug.setUnitFrozen(id, pose.frozen);
+  h.debug.reconcile();
   return id;
 }
 
@@ -1285,6 +1309,7 @@ export function enterBuild(h: Harness): void {
  */
 export function holdWave(h: Harness): void {
   h.debug.setWaveHold(true);
+  h.debug.reconcile();
 }
 
 /** Release the wave-clear hold, so the wave resolves the ordinary way again. */
@@ -1326,6 +1351,7 @@ export function startWave(
 ): number {
   const candidate = standCandidate(h, type, quality, col, row);
   h.debug.keep(candidate);
+  h.debug.reconcile();
   return candidate;
 }
 

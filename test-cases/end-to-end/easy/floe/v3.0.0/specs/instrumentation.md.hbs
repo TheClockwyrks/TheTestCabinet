@@ -110,6 +110,21 @@ the operations below. Values are plain numbers, strings, and booleans. `x` and
 `y` are in stage units, and `col` and `row` are tiles as `specs/strait.md`
 defines them.
 
+Every operation applies its effect every time it is called. Which screen is up,
+where the critter or a bear stands, and what a player would have had to do first
+are not an operation's conditions: a pose reaches the value it names whatever
+the game's own rules would have allowed a player to reach, and it is never
+clamped, never snapped to a nearer legal value, and never quietly dropped. Where
+an operation carries out one of the game's own moves rather than setting a field
+— `setBearStep` commits the step the hunt's own routing commits — that move's
+own rule is the effect rather than a gate on it, and it runs unchanged; the
+caller reads what it left from `snapshot`.
+
+A call the game has nothing to act on fails loudly rather than passing quietly:
+an id no live bear, vehicle, or floe carries, a strait row that carries no lane,
+a bay the far shore does not have, or a level a run does not run. The one thing
+no operation does is refuse in silence.
+
 {{#if (eq engine.slug "none")}}
 Each operation is written below exactly as it is called.
 {{else if (eq engine.slug "simple-2d")}}
@@ -140,7 +155,38 @@ game at that moment. A pose returns nothing; a reading returns what it read.
 | --- | --- |
 | `reset(options)` | Restores every field of the state to its title-screen value: `screen` `title`, `menuIndex` `0`, `phase` `crossing`, `phaseTimer` `0`, `score` `0`, `lives` `START_LIVES` (`3`), `level` `1`, `reachedLevel` `1`, `timer` at `crossingTimer(1)`, the sixteen lanes laid out as level `1` lays them out, no critter, no bears, five open bays, no bonus catch, `simTime` `0`, and the four world gates back on. `options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's randomness. `muted` is left as it stands, because muting is a player preference the runtime owns. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the snapshot reports into agreement with the strait as it now stands, without advancing anything. It is the call a caller makes after posing a scenario and before reading it, and it is described in full below. |
 | `menuItemRect(index)` | A pure read of the hit region of item `index` on the menu the current screen shows, as `{ x, y, w, h }`. It changes nothing. |
+
+`reconcile()` brings every value this surface reports into agreement with the
+strait as it now stands, without advancing anything. `timerMax` follows the
+level, the critter's `col` and `row` follow its center, its `footing` follows its
+row and the floes on it, and a bear's `swimming` follows the tile it is
+travelling into, so after a pose all four answer for the strait as it is now
+rather than as it was before it.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `simTime`, `timer`, `phaseTimer`, and the
+hop cooldown are untouched, no lane carries its items along, no bear travels or
+routes or senses, no hop is taken, no catch is tested, no bear emerges, no bonus
+catch arrives or moves on, no life is lost, and nothing is drawn from the seeded
+generator. It plays no sound, changes no screen and no phase, scores nothing,
+and clears no level. It moves nothing to make a reading agree: a critter posed
+over open water reads as standing on water, and a bear posed onto a tile a
+vehicle covers stays exactly where it was put and reads as it is. Calling it
+twice leaves the same state as calling it once.
+
+It is never an error and may be called on any screen, whether or not the game is
+stepping itself.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `FloeState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those
+readings out at the call returns a state equal to the one it was given.
+{{/if}}
 
 `menuItemRect` returns `{ x, y, w, h }` in logical units, with `x` and `y` the
 region's top-left corner and `w` and `h` its size: the region a pointer or a
@@ -327,6 +373,10 @@ initialized. Four facts among them are derived rather than stored:
 | The critter's `col`, `row` | Its center, through `colAt` and `rowAt`. |
 | `critter.footing` | Its row and the floes on it, as `specs/strait.md` fixes. |
 | A bear's `swimming` | The tile it is travelling into: a water-band tile no floe covers. |
+
+A build is free to work any of these out at the read or to keep it as a stored
+copy, and `reconcile()` is what brings a stored copy back into agreement after a
+pose.
 
 While the critter is out of play, `present` is `false` and its tile, center, and
 facing report the last values it held. Where it has held none, as on a fresh

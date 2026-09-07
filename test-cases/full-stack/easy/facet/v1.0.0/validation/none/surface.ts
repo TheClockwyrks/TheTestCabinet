@@ -162,6 +162,12 @@ export interface FacetWindowApi {
 
   /** Restores every declared field to its title-screen value. */
   reset(options?: { seed?: number }): void;
+  /**
+   * Every reading the surface reports brought into agreement with the game as it
+   * stands, without advancing anything. A build that works its readings out at
+   * the read has nothing to do and this changes nothing.
+   */
+  reconcile(): void;
   /** A pure read of the state. */
   snapshot(): FacetSnapshot;
 
@@ -214,12 +220,13 @@ export interface FacetWindowApi {
  * Every operation `specs/instrumentation.md` requires on the surface under this
  * engine.
  *
- * Twenty-six names, in the order the specification introduces them: the
- * twenty-four every engine's surface carries, plus the two clock operations that
+ * Twenty-seven names, in the order the specification introduces them: the
+ * twenty-five every engine's surface carries, plus the two clock operations that
  * exist only here because nothing outside an engineless build owns its loop.
  *
- * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE, reads it, or moves the
- * clock. Reaching a screen, opening a round, and quitting to the title are
+ * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE, reads it, brings the
+ * readings into agreement with it, or moves the clock. Reaching a screen,
+ * opening a round, and quitting to the title are
  * sequences of these, and those sequences live in `harness.ts` where all three
  * projects' suites share them.
  */
@@ -227,6 +234,7 @@ export const REQUIRED_OPS = [
   "setAutoStep",
   "advance",
   "reset",
+  "reconcile",
   "snapshot",
   "setScreen",
   "setMenuIndex",

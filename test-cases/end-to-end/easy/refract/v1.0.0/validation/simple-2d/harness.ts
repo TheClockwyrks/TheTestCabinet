@@ -25,6 +25,16 @@
 // ARRANGE the world through the debug surface, and the real rules the build
 // wrote are what decide every move from there.
 //
+// RECONCILING AFTER A POSE. A helper below that poses anything a reading derives
+// from — a node's `x`/`y`, a crystal's `spent`, a beam's `complete`, `solved`,
+// `targets` — reconciles before it returns, and before the frame that draws the
+// pose, so a check posed through the helpers never calls `reconcile` itself. A
+// check that poses with `h.debug.setScreen`/`loadBoard` directly calls it once
+// before its first read. THE POINTER HELPERS DELIBERATELY DO NOT: a pointer
+// operation is the player's own route, and a build that leaves a reading stale
+// after one has left it stale for a player too, which is the defect rather than
+// something the harness should hide.
+//
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build: `loadBoard`
 // poses a board and moves to `playing`, the pointer operations feed the same
@@ -422,6 +432,7 @@ export const captureStill = kit.captureStill;
  */
 export async function resetTo(h: Harness, seed?: number): Promise<void> {
   h.debug.reset(seed === undefined ? undefined : { seed });
+  h.debug.reconcile();
   await h.advance(1);
 }
 
@@ -441,6 +452,9 @@ export async function loadBoard(h: Harness, notation: string): Promise<Board> {
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   h.debug.loadBoard(rows);
+  // The board, the beams and the screen are what a reading derives from, so
+  // the readings are brought into agreement before the frame that draws them.
+  h.debug.reconcile();
   await h.advance(1);
   return parseBoard(rows.join("\n"));
 }
@@ -518,6 +532,8 @@ export async function tapAction(h: Harness, action: ActionName): Promise<void> {
 export async function startCampaign(h: Harness): Promise<RefractSnapshot> {
   h.debug.setMode("campaign");
   h.debug.setScreen("select");
+  // `targets` derives from the screen.
+  h.debug.reconcile();
   await h.advance(1);
   const snapshot = h.snapshot();
   assertEqual(
@@ -565,6 +581,8 @@ export async function startCascade(h: Harness): Promise<RefractSnapshot> {
  */
 export async function enterCascade(h: Harness): Promise<RefractSnapshot> {
   h.debug.setScreen("title");
+  // `targets` derives from the screen, and the title's target is read below.
+  h.debug.reconcile();
   await h.advance(1);
   return startCascade(h);
 }

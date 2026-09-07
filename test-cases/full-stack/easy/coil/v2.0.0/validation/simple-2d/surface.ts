@@ -68,6 +68,7 @@ export type Mode = "classic" | "maze";
  */
 export const REQUIRED_OPS = [
   "reset",
+  "reconcile",
   "snapshot",
   "menuItemRect",
   "setScreen",
@@ -185,6 +186,12 @@ export interface CoilDebugApi<S = unknown> {
   version: number;
 
   reset(state: DeepReadonly<S>, options?: ResetOptions): S;
+  /**
+   * Every reading the surface reports brought into agreement with the game as
+   * it stands, without advancing anything. A build that works its readings
+   * out at the read returns a state equal to the one it was handed.
+   */
+  reconcile(state: DeepReadonly<S>): S;
   snapshot(state: DeepReadonly<S>): CoilSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows, or

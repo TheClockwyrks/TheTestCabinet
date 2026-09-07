@@ -62,6 +62,7 @@ export function fastHitsFor(band: Band): number {
 export async function armHull(h: Harness, tier: number): Promise<number> {
   await h.debug.setTier("hull", tier);
   await h.debug.setHull(HULL_MAX[tier - 1]);
+  await h.debug.reconcile();
   return HULL_MAX[tier - 1];
 }
 
@@ -131,9 +132,14 @@ export async function cutUnderfoot(
  * `specs/instrumentation.md` says moves it nowhere including by collision
  * displacement.
  */
-export function soakIn(h: Harness, col: number, row: number): Promise<void> {
+export async function soakIn(
+  h: Harness,
+  col: number,
+  row: number,
+): Promise<void> {
   const inset = (TILE - MINER_H) / 2;
-  return h.debug.setMinerPosition(minerXOn(col), row * TILE + inset);
+  await h.debug.setMinerPosition(minerXOn(col), row * TILE + inset);
+  await h.debug.reconcile();
 }
 
 /** What a driven landing did. */
@@ -176,6 +182,7 @@ export async function driveLanding(
   }
   await h.debug.setMinerPosition(minerXOn(col), minerYOn(floorRow) - height);
   await h.debug.setMinerVelocity(0, vy);
+  await h.debug.reconcile();
   const before = (await h.snapshot()).miner.hull;
   let fastest = 0;
   const swept = await h.until(

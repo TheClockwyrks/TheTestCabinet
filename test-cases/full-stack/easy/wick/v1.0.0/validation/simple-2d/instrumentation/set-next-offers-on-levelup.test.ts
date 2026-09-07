@@ -3,8 +3,8 @@
 // that `choose` opens.
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, `setNextOffers`:
-// "Applies on a run screen and on `levelup`, where the next overlay is the
-// queued one".
+// "Called on `levelup`, the overlay the list is checked against is the queued
+// one".
 //
 // THE POSE. An isolated run, a first list so the first overlay's offers are
 // known, two level-ups queued. On the open overlay a second list of ids the

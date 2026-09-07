@@ -220,6 +220,15 @@ export interface CascadeDebugApi<S = unknown> {
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): CascadeSnapshot;
   /**
+   * Brings every value the surface reports into agreement with the table as it
+   * stands, advancing nothing (specs/instrumentation.md, The core).
+   *
+   * `wasteVisibleCount`, a card's `color` and `dropTarget` are derived rather
+   * than stored, and a build is free to keep any of them as a copy — this is
+   * what rewrites such a copy from what it is a copy of after a pose.
+   */
+  reconcile(state: DeepReadonly<S>): S;
+  /**
    * The hit region of item `index` on the menu the current screen shows, or
    * `null` on `won` and for an index naming no item of that menu.
    *
@@ -355,6 +364,7 @@ export const VERDICTS = ["move", "autoMove"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
 
   "setScreen",

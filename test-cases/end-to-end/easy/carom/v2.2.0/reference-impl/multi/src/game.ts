@@ -501,16 +501,19 @@ export class Game {
     this.startMatch(mode);
   }
 
-  // Launch the balls now, ending the pre-serve countdown immediately. During the
-  // match-start countdown this launches all three together; during live play it
-  // launches any ball currently waiting at its home (a ball already in flight is
-  // left as it is). Routes through the real launch path.
+  // Launch the balls now, ending the pre-serve countdown immediately. Routes
+  // through the real launch path.
+  //
+  // The game's own serve rule differs by phase, and that difference is the
+  // EFFECT rather than a gate on it: during live play a ball already in flight
+  // is left as it is and only the ones waiting at their homes relaunch, while
+  // everywhere else the match-start serve sends all three off together. What no
+  // screen decides is WHETHER this acts — a debug operation that quietly did
+  // nothing on the title would leave every check that drives it grading a game
+  // it never started (specs/instrumentation.md).
   debugServe(): void {
     this.enterDriven();
-    if (this.state === "countdown") {
-      this.holdTimer = 0;
-      this.launchAll();
-    } else if (this.state === "playing") {
+    if (this.state === "playing") {
       for (let i = 0; i < this.balls.length; i++) {
         const b = this.balls[i];
         if (b.held) {
@@ -518,7 +521,10 @@ export class Game {
           this.trails[i].reset();
         }
       }
+      return;
     }
+    this.holdTimer = 0;
+    this.launchAll();
   }
 
   debugSetScore(p1: number, p2: number): void {
@@ -548,7 +554,14 @@ export class Game {
     state: { x?: number; y?: number; vx?: number; vy?: number; spin?: number },
   ): void {
     this.enterDriven();
-    if (index < 0 || index >= this.balls.length) return;
+    // An index outside the balls this build plays with names no ball, so there
+    // is nothing for the call to act on and it fails loudly rather than passing
+    // quietly (specs/instrumentation.md).
+    if (!Number.isInteger(index) || index < 0 || index >= this.balls.length) {
+      throw new Error(
+        `__carom.setBall(index, state): no ball ${String(index)} — this build plays with ${String(this.balls.length)}, indexed from 0`,
+      );
+    }
     const b = this.balls[index];
     if (state.x !== undefined) b.x = state.x;
     if (state.y !== undefined) b.y = state.y;
@@ -558,6 +571,24 @@ export class Game {
     b.held = false;
     b.holdTimer = 0;
     b.syncView();
+  }
+
+  // Bring every value debugSnapshot() reports into agreement with the game as it
+  // now stands, WITHOUT advancing it by any amount.
+  //
+  // Every derived reading this build reports is worked out at the read: `speed`
+  // is a getter over each ball's velocity, and every other field is the state's
+  // own. So nothing the snapshot reports is a stored copy a pose can leave
+  // behind, and there is nothing here to rewrite. The operation is required all
+  // the same, because a build is free to KEEP a derived reading rather than
+  // compute it, and this is what it comes to in one that does not.
+  //
+  // The one stored copy a pose can leave stale is the renderer's interpolation
+  // window — the previous positions the frame draws from — so this collapses it,
+  // exactly as the poses themselves do. That moves no clock, runs no system,
+  // spends nothing, fires nothing, and is idempotent.
+  debugReconcile(): void {
+    this.syncView();
   }
 
   // A read of the full observable state, shared by the debug API's snapshot() and

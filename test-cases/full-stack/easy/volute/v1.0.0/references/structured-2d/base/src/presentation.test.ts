@@ -365,7 +365,9 @@ function texts(recording: Recording): string[] {
  */
 function imageIndex(recording: Recording, image: ImageBitmap): number {
   return recording.images.findIndex((entry) => {
-    if (entry.kind !== "bitmap") return false;
+    // A bitmap the recorder held by reference carries a `store` key rather than
+    // the encoded `src` this compares against, so it can never be the match.
+    if (entry.kind !== "bitmap" || !("src" in entry)) return false;
     const canvas = createCanvas(entry.width, entry.height);
     const ctx = canvas.getContext("2d");
     ctx.drawImage(image as never, 0, 0, entry.width, entry.height);

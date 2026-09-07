@@ -35,6 +35,16 @@
 // lifts them out of `debug` and onto itself — `h.advance`, `h.project`,
 // `h.keyDown`… — and a validator never learns that they were engine-only here.
 //
+// AND A POSED WORLD IS RECONCILED BEFORE IT IS READ. A build is free to work a
+// derived reading out at the read or to keep it as a stored copy, and a stored
+// copy answers for the world as it was until `reconcile` rewrites it. So a
+// helper below that poses anything a reading derives from — the structure, the
+// tape, the yard, the run — ends with `reconcile`, and a check that reaches its
+// scenario through the helpers never calls it itself. A check that poses with
+// `h.debug.*` directly calls it once before its first read. Where a helper
+// batches its calls into one crossing, `reconcile` is the batch's last entry, so
+// the crossing count does not grow.
+//
 // AND THIS FILE OWNS EVERY COMPOUND SEQUENCE. The surface is atomic by design:
 // one operation sets one field, and `specs/instrumentation.md` says so in as many
 // words ("a caller that wants several things arranged makes several calls"). So
@@ -101,6 +111,7 @@ export const REQUIRED_OPS = [
   "menuItemRect",
   "project",
   "reset",
+  "reconcile",
   "setScreen",
   "setMenuIndex",
   "openSite",
@@ -916,6 +927,7 @@ export async function offEveryMenuItem(
 export async function openSite(h: Harness, index: number): Promise<void> {
   await h.debug.openSite(index);
   await h.debug.setScreen("build");
+  await h.debug.reconcile();
 }
 
 /**
@@ -933,7 +945,11 @@ export async function openSite(h: Harness, index: number): Promise<void> {
 export async function emptyYard(h: Harness): Promise<void> {
   await poseAll(
     h,
-    await onEditScreenCalls(h, [["clearLoads"], ["clearObstacles"]]),
+    await onEditScreenCalls(h, [
+      ["clearLoads"],
+      ["clearObstacles"],
+      ["reconcile"],
+    ]),
   );
 }
 
@@ -953,7 +969,7 @@ export async function clearAll(h: Harness): Promise<void> {
   if (was !== "build" && was !== "program") calls.push(["setScreen", "build"]);
   calls.push(["clearLoads"], ["clearObstacles"], ["clearStructure"]);
   calls.push(["setScreen", "program"], ["clearProgram"]);
-  calls.push(["setScreen", was]);
+  calls.push(["setScreen", was], ["reconcile"]);
   await poseAll(h, calls);
 }
 
@@ -1054,6 +1070,7 @@ export async function poseCrane(
     calls.push(["addCounterweight", node[0], node[1], node[2]]);
   }
   if (was !== "build") calls.push(["setScreen", was]);
+  calls.push(["reconcile"]);
   await poseAll(h, calls);
 
   const { structure } = await h.snapshot();
@@ -1142,6 +1159,7 @@ export async function poseTape(
       }
     }
   });
+  await h.debug.reconcile();
 
   const program = (await h.snapshot()).program;
   if (program.length !== before + steps.length) {
@@ -1260,6 +1278,7 @@ export async function addOneLoad(
       ["clearLoads"],
       ["addLoad", cls, mass, from.x, from.y, from.z, from.yaw],
       ["setLoadTarget", 0, to.x, to.y, to.z, to.yaw],
+      ["reconcile"],
     ]),
   );
 }
@@ -1275,6 +1294,7 @@ export async function addOneObstacle(
     await onEditScreenCalls(h, [
       ["clearObstacles"],
       ["addObstacle", min.x, min.y, min.z, size.x, size.y, size.z],
+      ["reconcile"],
     ]),
   );
 }

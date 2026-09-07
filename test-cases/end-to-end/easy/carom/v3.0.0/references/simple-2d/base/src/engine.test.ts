@@ -1326,8 +1326,11 @@ describe("the debug surface", () => {
     // adding a second.
     harness.pose((s) => harness.debug.spawnObstacle(s, 0));
     expect(harness.snapshot().obstacles).toHaveLength(2);
-    // An index the field has no obstacle for changes nothing.
-    harness.pose((s) => harness.debug.spawnObstacle(s, 5));
+    // An index the field has no obstacle for names nothing, so it fails where
+    // the caller can see it rather than passing quietly.
+    expect(() =>
+      harness.debug.spawnObstacle(harness.engine.state, 5),
+    ).toThrow();
     expect(harness.snapshot().obstacles).toHaveLength(2);
 
     harness.pose((s) => harness.debug.spawnBall(s));
@@ -1336,14 +1339,43 @@ describe("the debug surface", () => {
     expect(ball(harness).trail).toEqual([]);
   });
 
-  it("leaves every ball operation inert while no ball is present", () => {
+  // An absent ball is no ball to pose. A surface that quietly handed the state
+  // back would let a caller read its own pose off a field that never took it, so
+  // every ball operation fails where the caller can see it instead.
+  it("fails loudly on every ball operation while no ball is present", () => {
     harness.pose((s) => harness.debug.clearWorld(s));
-    harness.pose((s) => harness.debug.setBallPosition(s, 10, 20));
-    harness.pose((s) => harness.debug.setBallVelocity(s, 1, 2));
-    harness.pose((s) => harness.debug.setBallSpin(s, 5));
-    harness.pose((s) => harness.debug.setBallHeld(s, false));
-    harness.pose((s) => harness.debug.setBallHoldTimer(s, 0));
+    const s0 = harness.engine.state;
+    expect(() => harness.debug.setBallPosition(s0, 10, 20)).toThrow();
+    expect(() => harness.debug.setBallVelocity(s0, 1, 2)).toThrow();
+    expect(() => harness.debug.setBallSpin(s0, 5)).toThrow();
+    expect(() => harness.debug.setBallHeld(s0, false)).toThrow();
+    expect(() => harness.debug.setBallHoldTimer(s0, 0)).toThrow();
     expect(harness.snapshot().ball).toBeNull();
+  });
+
+  // `reconcile` is required of every build. This one works every derived reading
+  // out at the read, so the call has nothing to rewrite — which is exactly what
+  // these two assert: the readings agree with the pose, and nothing moved.
+  it("re-derives a reading from a posed velocity", () => {
+    harness.pose((s) => harness.debug.spawnBall(s));
+    harness.pose((s) => harness.debug.setBallVelocity(s, 30, 40));
+    harness.pose((s) => harness.debug.reconcile(s));
+    expect(harness.snapshot().ball?.speed).toBeCloseTo(50, 10);
+  });
+
+  it("advances nothing", async () => {
+    await rally(harness, "versus", { x: 400, y: 300, vx: 250, vy: -120 });
+    harness.pose((s) => harness.debug.setPaddleCy(s, "left", 240));
+    harness.pose((s) => harness.debug.setBallHoldTimer(s, 0.4));
+
+    const before = harness.snapshot();
+    harness.pose((s) => harness.debug.reconcile(s));
+    const once = harness.snapshot();
+    harness.pose((s) => harness.debug.reconcile(s));
+    const twice = harness.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 
   it("reports every field it sets, one operation at a time", () => {

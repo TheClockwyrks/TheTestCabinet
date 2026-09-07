@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CARD_W,
   CASCADE_DEBUG_VERSION,
+  COLUMN_X,
   DEAL_MODE,
   DEAL_MODE_LABEL,
+  TABLEAU_Y,
   TURN_COUNT,
 } from "./constants";
 import {
@@ -17,6 +20,7 @@ import {
 const OPERATIONS = [
   "reset",
   "snapshot",
+  "reconcile",
   "setScreen",
   "addCard",
   "removeCard",
@@ -294,15 +298,20 @@ describe("the poses", () => {
     expect(h.debug.snapshot().flyers).toHaveLength(0);
   });
 
-  it("ignores a pile, a card or a flyer that is not there", () => {
+  it("fails loudly on a pile, a card or a flyer that is not there", () => {
+    // A call whose subject the table does not hold names nothing to act on, so
+    // it throws rather than passing quietly with the table unchanged
+    // (specs/instrumentation.md, The operations).
     const before = JSON.stringify(h.debug.snapshot());
-    h.debug.addCard("foundation", 9, "spades", 1, true);
-    h.debug.clearPile("tableau", 12);
-    h.debug.removeCard(9999);
-    h.debug.setCardFaceUp(9999, true);
-    h.debug.setFlyerPosition(9999, 1, 1);
-    h.debug.setFlyerVelocity(9999, 1, 1);
-    h.debug.removeFlyer(9999);
+    expect(() => h.debug.addCard("foundation", 9, "spades", 1, true)).toThrow(
+      RangeError,
+    );
+    expect(() => h.debug.clearPile("tableau", 12)).toThrow(RangeError);
+    expect(() => h.debug.removeCard(9999)).toThrow(RangeError);
+    expect(() => h.debug.setCardFaceUp(9999, true)).toThrow(RangeError);
+    expect(() => h.debug.setFlyerPosition(9999, 1, 1)).toThrow(RangeError);
+    expect(() => h.debug.setFlyerVelocity(9999, 1, 1)).toThrow(RangeError);
+    expect(() => h.debug.removeFlyer(9999)).toThrow(RangeError);
     expect(JSON.stringify(h.debug.snapshot())).toBe(before);
   });
 });
@@ -361,5 +370,82 @@ describe("reset", () => {
     expect(h.debug.snapshot().trailStamps).toBeGreaterThan(0);
     h.debug.reset();
     expect(h.debug.snapshot().trailStamps).toBe(0);
+  });
+});
+
+describe("reconcile", () => {
+  /** How far inside the card's top-left the grab below presses. */
+  const GRAB_DY = 8;
+
+  /**
+   * A black Queen taken into hand off column 0 and carried over column 1.
+   *
+   * The gesture is the real one: the press grabs through the pointer path and
+   * the move carries the run, so `dropTarget` is whatever that path decided for
+   * the table as it stood at the move.
+   */
+  function heldOverColumn(): void {
+    openTable(h);
+    poseColumn(h, 0, [{ suit: "spades", rank: 12 }]);
+    h.debug.pointerDown(COLUMN_X[0] + CARD_W / 2, TABLEAU_Y + GRAB_DY);
+    h.debug.pointerMove(COLUMN_X[1] + CARD_W / 2, TABLEAU_Y + GRAB_DY);
+  }
+
+  it("re-derives a stored reading from a posed table", () => {
+    heldOverColumn();
+    // An empty column takes a King alone, so the held black Queen has no target
+    // yet.
+    expect(h.debug.snapshot().dropTarget).toBeNull();
+
+    // Posing a red King under it makes the column take the run. The pose writes
+    // the column, not the drop target, so until the readings are brought into
+    // agreement `dropTarget` is still answering for the table as it was.
+    poseColumn(h, 1, [{ suit: "hearts", rank: 13 }]);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().dropTarget).toEqual({
+      pile: "tableau",
+      index: 1,
+    });
+
+    // And back the other way: a black King under a black Queen is refused.
+    h.debug.clearPile("tableau", 1);
+    poseColumn(h, 1, [{ suit: "clubs", rank: 13 }]);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().dropTarget).toBeNull();
+
+    // The run is still in hand: nothing was moved to make the reading agree.
+    expect(h.debug.snapshot().drag?.cards[0].rank).toBe(12);
+    expect(h.debug.snapshot().tableau[0]).toEqual([]);
+  });
+
+  it("advances nothing", () => {
+    openTable(h);
+    poseColumn(h, 0, [{ suit: "spades", rank: 5 }]);
+    h.debug.addFlyer("hearts", 7, 100, 200, 40, -60);
+    h.debug.setLaunchClock(0.25);
+    h.debug.pointerDown(10, 10);
+
+    const before = h.debug.snapshot();
+    h.debug.reconcile();
+    const once = h.debug.snapshot();
+    h.debug.reconcile();
+    const twice = h.debug.snapshot();
+
+    // The clock, the flight and every gate stand exactly where they were, and a
+    // second call is worth no more than the first.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.launchClock).toBe(0.25);
+    expect(once.flyers).toEqual(before.flyers);
+    expect(once.trailStamps).toBe(before.trailStamps);
+  });
+
+  it("is legal on every screen", () => {
+    for (const screen of ["title", "howto", "playing", "won"] as const) {
+      h.debug.setScreen(screen);
+      h.debug.reconcile();
+      expect(h.debug.snapshot().screen).toBe(screen);
+    }
   });
 });

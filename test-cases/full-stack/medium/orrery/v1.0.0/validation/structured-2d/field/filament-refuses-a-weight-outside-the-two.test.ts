@@ -7,10 +7,10 @@
 // "`weight` is `1` or `3`". The surface states the same domain,
 // "`linkMotes(a, b, weight)` — joins motes `a` and `b` with one filament of
 // `weight` `1` or `3`", under the rule the whole surface is written against: "an
-// argument outside the domain its operation states is invalid, and the call fails
-// loudly rather than guessing what was meant, except where an operation states
-// that it normalizes or ignores the call" (`specs/instrumentation.md`).
-// `linkMotes` states no normalizing and no ignoring.
+// argument outside the domain its operation states is invalid … each one fails
+// loudly and changes nothing, rather than passing with the state exactly as it
+// was" (`specs/instrumentation.md`). `linkMotes` states no licence to pass
+// quietly.
 //
 // WHY IT MATTERS THAT IT THROWS RATHER THAN SHRUGS. A weight is not a decoration:
 // a set accepts a constellation carrying "one filament of THE PATTERN'S WEIGHT

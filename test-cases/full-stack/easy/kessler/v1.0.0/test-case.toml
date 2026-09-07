@@ -544,8 +544,8 @@ validation = { script = "instrumentation/set-menu-index.test.ts", outputs = [ { 
 
 [[review.categories.items]]
 id = "set-menu-index-off-menu"
-title = "setMenuIndex does nothing off a menu"
-description = "setMenuIndex(n) on a screen carrying no menu changes nothing, and menu.index still rests at 0."
+title = "setMenuIndex fails loudly off a menu"
+description = "setMenuIndex(n) on a screen carrying no menu has no entry to highlight, so the call fails loudly rather than passing quietly, and the state is left as it stood with menu.index still at 0."
 domains = ["gameplay"]
 failure_cap = "great"
 validation = { script = "instrumentation/set-menu-index-off-menu.test.ts", outputs = [ { id = "unchanged", name = "A screen with no menu, unchanged by the call", kind = "image" } ] }
@@ -616,8 +616,8 @@ validation = { script = "instrumentation/spawn-ball.test.ts", outputs = [ { id =
 
 [[review.categories.items]]
 id = "spawn-ball-at-cap"
-title = "spawnBall at the 6-ball cap changes nothing"
-description = "With 6 balls in play, spawnBall changes nothing: balls still holds 6 entries and every one of them is unchanged."
+title = "spawnBall at the 6-ball cap fails loudly"
+description = "With 6 balls in play, a seventh spawnBall names a field with no room for it, so the call fails loudly rather than passing quietly: balls still holds 6 entries and every one of them is unchanged."
 domains = ["gameplay"]
 failure_cap = "passable"
 validation = { script = "instrumentation/spawn-ball-at-cap.test.ts", outputs = [ { id = "capped", name = "The Six Balls At The Cap", kind = "image" } ] }
@@ -1028,26 +1028,26 @@ validation = { script = "serve/wave-speed-cap.test.ts", outputs = [ { id = "capp
 [[review.categories.items]]
 id = "one-parked-at-a-time"
 title = "At most one ball is parked at a time"
-description = "While a parked ball exists, parkBall() changes nothing: balls still holds exactly one entry with parked true."
+description = "While a parked ball exists, a second parkBall() names a field that cannot exist, so the call fails loudly rather than passing quietly: balls still holds exactly one entry with parked true, untouched."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "serve/one-parked-at-a-time.test.ts", outputs = [ { id = "one-parked", name = "A second parkBall changing nothing", kind = "image" } ] }
+validation = { script = "serve/one-parked-at-a-time.test.ts", outputs = [ { id = "one-parked", name = "A second parkBall, refused loudly", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "parked-counts-toward-cap"
 title = "A parked ball counts toward the 6-ball cap"
-description = "With five balls in flight and one parked, the field is at the 6-ball cap, so a call that would add a seventh ball changes nothing, because a parked ball is live and counts toward the cap."
+description = "With five balls in flight and one parked, the field is at the 6-ball cap, so a call that would add a seventh ball fails loudly and adds nothing, because a parked ball is live and counts toward the cap."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "serve/parked-counts-toward-cap.test.ts", outputs = [ { id = "at-cap", name = "Six balls with one parked refusing a seventh", kind = "image" } ] }
+validation = { script = "serve/parked-counts-toward-cap.test.ts", outputs = [ { id = "at-cap", name = "Six balls with one parked, refusing a seventh loudly", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "launch-no-parked-noop"
-title = "A launch with no parked ball changes nothing"
-description = "launchBall() with no parked ball changes nothing: no ball appears and every ball in flight keeps its velocity."
+title = "A launch with no parked ball fails loudly"
+description = "launchBall() with no parked ball has nothing to serve, so the call fails loudly rather than passing quietly: no ball appears and every ball in flight keeps its velocity."
 domains = ["gameplay"]
 failure_cap = "passable"
-validation = { script = "serve/launch-no-parked-noop.test.ts", outputs = [ { id = "no-parked", name = "A launch with no parked ball changing nothing", kind = "image" } ] }
+validation = { script = "serve/launch-no-parked-noop.test.ts", outputs = [ { id = "no-parked", name = "A launch with no parked ball, refused loudly", kind = "image" } ] }
 
 # --- Bounce -------------------------------------------------------------------
 # The four steps of the deflector bounce, each read alone: the specular

@@ -81,7 +81,10 @@ export default function item() {
       const flyFor = async (ticks) => {
         for (let t = 0; t < ticks; t += RECENTER_CHUNK) {
           await api.advance(Math.min(RECENTER_CHUNK, ticks - t));
-          await api.call("setBall", 0, { x: 640, y: 360 }); // recenter; keep vx/vy/spin
+          // Recenter; keep vx/vy/spin. The velocity is what `speed` is derived
+          // from, so the readings are reconciled before the next measurement.
+          await api.call("setBall", 0, { x: 640, y: 360 });
+          await api.call("reconcile");
         }
       };
 
@@ -98,6 +101,7 @@ export default function item() {
           vx: speed,
           vy: 0,
         }); // keep spin
+        await api.call("reconcile");
         return actCurveOffset(api, MEASURE_TICKS);
       };
 

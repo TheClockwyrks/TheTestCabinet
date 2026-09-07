@@ -45,6 +45,7 @@ import {
   pointerDown,
   pointerMove,
   pointerUp,
+  reconcile,
   reset,
   setBestChain,
   setBestMove,
@@ -75,6 +76,11 @@ export const FACET_HANDLE = "__facet";
 export interface FacetDebugApi {
   version: number;
   reset(state: FacetState, options?: { seed?: number }): FacetState;
+  /**
+   * Every reading this surface reports brought into agreement with the game as
+   * it stands, advancing nothing.
+   */
+  reconcile(state: FacetState): FacetState;
   snapshot(state: FacetState): FacetSnapshot;
   setScreen(state: FacetState, screen: Screen): FacetState;
   setMenuIndex(state: FacetState, index: number): FacetState;
@@ -133,6 +139,7 @@ export function createDebugApi(): FacetDebugApi {
   return {
     version: FACET_DEBUG_VERSION,
     reset,
+    reconcile,
     snapshot,
     setScreen,
     setMenuIndex,
@@ -183,6 +190,11 @@ export interface FacetWindowApi {
   setAutoStep(enabled: boolean): void;
   advance(seconds: number, frames?: number): void;
   reset(options?: { seed?: number }): void;
+  /**
+   * Every reading this surface reports brought into agreement with the game as
+   * it stands, advancing nothing.
+   */
+  reconcile(): void;
   snapshot(): FacetSnapshot;
   setScreen(screen: Screen): void;
   setMenuIndex(index: number): void;
@@ -243,6 +255,24 @@ export function createWindowApi(
 
     reset(options) {
       host.apply((state) => api.reset(state, options));
+    },
+
+    /**
+     * Every reading this surface reports brought into agreement with the game
+     * as it stands, without advancing anything.
+     *
+     * This build works every derived reading out at the read — `src/core/`'s
+     * `snapshot` computes a cell's center, the level's target, the multiplier,
+     * the longest fall, the step's hold, whether a legal swap exists, and the
+     * screen's targets from the state each follows from — so there is nothing
+     * held here that a pose can leave behind, and this applies a pose that
+     * changes nothing. It is still applied through `host.apply`, so a build that
+     * later kept one of those as a stored copy would rewrite it in exactly this
+     * place. No frame runs, no timer moves, and nothing is drawn from the
+     * generator.
+     */
+    reconcile() {
+      host.apply((state) => api.reconcile(state));
     },
 
     snapshot() {

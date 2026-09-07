@@ -50,6 +50,17 @@
 // checks that reach the game through it and never the `beforeEach` that built
 // the harness.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `wasteVisibleCount`, a card's `color` and `dropTarget` are derived
+// rather than stored (specs/instrumentation.md, Snapshot shape), and a build is
+// free to keep any of them as a stored copy — so a pose that writes the piles or
+// the set memory can leave one of them answering for the table as it was.
+// `reconcile()` is what brings them back into agreement, and it costs no
+// simulation time, so every pose helper below ends with it and a check posed
+// through the helpers never calls it itself. A check that poses with
+// `h.debug.addCard` and friends directly calls it once before its first read.
+//
 // HOW THE SURFACE IS DRIVEN — the IDENTITY strategy, which is what a structured
 // engine's state model allows. A pose acts on the live game at the moment of the
 // call and a reading is built at the call (specs/instrumentation.md), so the
@@ -798,6 +809,7 @@ export function openTable(h: Harness, seed?: number): void {
   resetTo(h, seed);
   h.debug.setScreen("playing");
   h.debug.clearTable();
+  h.debug.reconcile();
 }
 
 /**
@@ -824,6 +836,7 @@ export function openTitle(h: Harness): void {
   resetTo(h);
   h.debug.setScreen("title");
   h.debug.clearTable();
+  h.debug.reconcile();
 }
 
 /** The how-to screen, over an empty table. */
@@ -831,6 +844,7 @@ export function openHowto(h: Harness): void {
   resetTo(h);
   h.debug.setScreen("howto");
   h.debug.clearTable();
+  h.debug.reconcile();
 }
 
 /** The `won` screen, over an empty table, with nothing in flight. */
@@ -838,6 +852,7 @@ export function openWon(h: Harness): void {
   resetTo(h);
   h.debug.setScreen("won");
   h.debug.clearTable();
+  h.debug.reconcile();
 }
 
 /**
@@ -852,6 +867,7 @@ export function dealInPlay(h: Harness, seed?: number): void {
   resetTo(h, seed);
   h.debug.setScreen("playing");
   h.debug.deal();
+  h.debug.reconcile();
 }
 
 /**
@@ -868,6 +884,7 @@ export function poseCard(
   spec: CardSpec,
 ): number {
   h.debug.addCard(pile, index, spec.suit, spec.rank, spec.faceUp ?? true);
+  h.debug.reconcile();
   const cards = pileOf(h.snapshot(), pile, index);
   if (cards.length === 0) {
     fail(
@@ -942,6 +959,9 @@ export function poseWaste(
   }
   const ids = cards.map((spec) => poseCard(h, "waste", 0, spec));
   for (const count of sets) h.debug.addWasteSet(count);
+  // `wasteVisibleCount` follows the newest set, so the sets are posed before the
+  // readings are brought into agreement.
+  h.debug.reconcile();
   return ids;
 }
 

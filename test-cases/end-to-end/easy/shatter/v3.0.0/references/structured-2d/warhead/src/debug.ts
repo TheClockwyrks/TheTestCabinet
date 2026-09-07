@@ -142,6 +142,8 @@ export interface ShatterDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): ShatterSnapshot;
+  /** Bring every reported reading into agreement with the field as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): Rect | null;
 
   setScreen(screen: Screen): void;
@@ -238,11 +240,73 @@ function readTorpedo(torpedo: TorpedoState): SnapshotTorpedo {
 export function createDebugApi(world: () => World): ShatterDebugApi {
   const read = (): ShatterState => shatterState(world());
 
-  const rockOf = (id: number): RockState | undefined =>
-    read().rocks.find((rock) => rock.id === id);
+  /**
+   * One entity of a roster by id, or a caller error naming the id.
+   *
+   * AN OPERATION IS UNCONDITIONAL, so an id no live entity carries names no
+   * state to reach and throws where the caller sees it, rather than leaving the
+   * pose to return with the roster exactly as it was. A surface that swallowed
+   * it would grade a check that never addressed the entity it meant to as one
+   * that did.
+   */
+  const byId = <T extends { id: number }>(
+    op: string,
+    roster: readonly T[],
+    id: number,
+  ): T => {
+    const found = roster.find((entry) => entry.id === id);
+    if (found === undefined) {
+      throw new RangeError(`Shatter: ${op} names no live entity with id ${id}`);
+    }
+    return found;
+  };
 
-  const torpedoOf = (id: number): TorpedoState | undefined =>
-    read().torpedoes.find((torpedo) => torpedo.id === id);
+  const rockOf = (op: string, id: number): RockState =>
+    byId(op, read().rocks, id);
+
+  const torpedoOf = (op: string, id: number): TorpedoState =>
+    byId(op, read().torpedoes, id);
+
+  /** The saucer on the field, or a caller error. */
+  const theSaucer = (op: string): NonNullable<ShatterState["saucer"]> => {
+    const saucer = read().saucer;
+    if (saucer === null) {
+      throw new RangeError(`Shatter: ${op} needs a saucer on the field`);
+    }
+    return saucer;
+  };
+
+  /**
+   * The finite number the caller passed, at or above `floor`.
+   *
+   * The floor is a bound `specs/instrumentation.md` fixes as a constant, so it
+   * is the argument's DOMAIN rather than an edge to snap to: a call outside it
+   * fails loudly rather than being clamped into range, which would leave the
+   * state holding a value nobody asked for.
+   */
+  const atLeast = (op: string, value: number, floor: number): number => {
+    if (!Number.isFinite(value) || value < floor) {
+      throw new RangeError(
+        `Shatter: ${op} needs a finite number at or above ${floor}, got ${String(value)}`,
+      );
+    }
+    return value;
+  };
+
+  /** The finite number the caller passed, inside the closed range the specs fix. */
+  const inRange = (
+    op: string,
+    value: number,
+    lo: number,
+    hi: number,
+  ): number => {
+    if (!Number.isFinite(value) || value < lo || value > hi) {
+      throw new RangeError(
+        `Shatter: ${op} needs a finite number in [${lo}, ${hi}], got ${String(value)}`,
+      );
+    }
+    return value;
+  };
 
   return {
     version: SHATTER_DEBUG_VERSION,
@@ -250,6 +314,22 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     reset(options) {
       resetState(read(), options?.seed ?? DEFAULT_SEED);
     },
+
+    /**
+     * Bring every reported reading into agreement with the field as it stands.
+     *
+     * Every derived reading this build reports — the ship's `speed`, each rock's
+     * `radius`, and `torpedoReady` — is worked out at the READ, in `snapshot`
+     * below, from the velocity, the size and the charge beside it. Nothing is
+     * held that a pose can leave behind, so there is nothing here to rewrite and
+     * this body is the answer rather than an omission.
+     *
+     * The operation is required of EVERY build, including one that keeps those
+     * readings as stored copies and must rewrite them from their sources here.
+     * This is what it comes to in a build that does not. It advances no clock,
+     * runs no system, fires nothing, and corrects nothing.
+     */
+    reconcile() {},
 
     // Where the build laid the entry out, which `specs/ui.md` leaves to the
     // build and a pointer check has to be told (`specs/instrumentation.md`).
@@ -317,7 +397,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setMenuIndex(index) {
-      read().menuIndex = index;
+      read().menuIndex = atLeast("setMenuIndex(index)", index, 0);
     },
 
     /**
@@ -339,7 +419,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setWaveBanner(seconds) {
-      read().waveBanner = Math.max(0, seconds);
+      read().waveBanner = atLeast("setWaveBanner(seconds)", seconds, 0);
     },
 
     setWaveSpawning(enabled) {
@@ -372,11 +452,13 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
      * is decided by the game's own collision rules.
      */
     setShipInvuln(seconds) {
-      read().ship.invuln = Math.max(0, seconds);
+      read().ship.invuln = atLeast("setShipInvuln(seconds)", seconds, 0);
     },
 
     setFireCooldown(ticks) {
-      read().ship.fireCooldown = Math.max(0, Math.round(ticks));
+      read().ship.fireCooldown = Math.round(
+        atLeast("setFireCooldown(ticks)", ticks, 0),
+      );
     },
 
     /**
@@ -394,6 +476,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
 
     removeBullet(id) {
       const state = read();
+      byId("removeBullet", state.bullets, id);
       state.bullets = state.bullets.filter((bullet) => bullet.id !== id);
     },
 
@@ -407,6 +490,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
 
     removeEnemyBullet(id) {
       const state = read();
+      byId("removeEnemyBullet", state.enemyBullets, id);
       state.enemyBullets = state.enemyBullets.filter(
         (bullet) => bullet.id !== id,
       );
@@ -422,24 +506,22 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setRockVelocity(id, vx, vy) {
-      const rock = rockOf(id);
-      if (rock === undefined) return;
+      const rock = rockOf("setRockVelocity", id);
       rock.vx = vx;
       rock.vy = vy;
     },
 
     /** The hits it has left: a whole number from `1` to its size's full health. */
     setRockHealth(id, hp) {
-      const rock = rockOf(id);
-      if (rock === undefined) return;
-      rock.health = Math.min(
-        ROCK_HEALTH[rock.size],
-        Math.max(1, Math.round(hp)),
+      const rock = rockOf("setRockHealth", id);
+      rock.health = Math.round(
+        inRange("setRockHealth(hp)", hp, 1, ROCK_HEALTH[rock.size]),
       );
     },
 
     removeRock(id) {
       const state = read();
+      byId("removeRock", state.rocks, id);
       state.rocks = state.rocks.filter((rock) => rock.id !== id);
     },
 
@@ -457,8 +539,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
     },
 
     setSaucerVelocity(vx, vy) {
-      const saucer = read().saucer;
-      if (saucer === null) return;
+      const saucer = theSaucer("setSaucerVelocity");
       saucer.vx = vx;
       saucer.vy = vy;
     },
@@ -469,24 +550,26 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
 
     /** Its steering decisions alone: the weave, and keeping clear of the core. */
     setSaucerMind(enabled) {
-      const saucer = read().saucer;
-      if (saucer !== null) saucer.mind = enabled;
+      theSaucer("setSaucerMind").mind = enabled;
     },
 
     /** Its firing alone. */
     setSaucerGun(enabled) {
-      const saucer = read().saucer;
-      if (saucer !== null) saucer.gun = enabled;
+      theSaucer("setSaucerGun").gun = enabled;
     },
 
     /** Its locomotion alone: its mind and its gun run on. */
     setSaucerTravel(enabled) {
-      const saucer = read().saucer;
-      if (saucer !== null) saucer.travel = enabled;
+      theSaucer("setSaucerTravel").travel = enabled;
     },
 
     setTorpedoCharge(fraction) {
-      read().torpedoCharge = Math.min(1, Math.max(0, fraction));
+      read().torpedoCharge = inRange(
+        "setTorpedoCharge(fraction)",
+        fraction,
+        0,
+        1,
+      );
     },
 
     addTorpedo(x, y, heading) {
@@ -495,8 +578,7 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
 
     /** The heading alone. Its speed is unchanged, so its velocity turns with it. */
     setTorpedoHeading(id, radians) {
-      const torpedo = torpedoOf(id);
-      if (torpedo === undefined) return;
+      const torpedo = torpedoOf("setTorpedoHeading", id);
       const speed = Math.hypot(torpedo.vx, torpedo.vy) || TORPEDO_SPEED;
       torpedo.heading = radians;
       torpedo.vx = Math.cos(radians) * speed;
@@ -505,12 +587,12 @@ export function createDebugApi(world: () => World): ShatterDebugApi {
 
     /** Its guidance alone: its travel, its lifetime and its impacts run on. */
     setTorpedoHoming(id, enabled) {
-      const torpedo = torpedoOf(id);
-      if (torpedo !== undefined) torpedo.homing = enabled;
+      torpedoOf("setTorpedoHoming", id).homing = enabled;
     },
 
     removeTorpedo(id) {
       const state = read();
+      byId("removeTorpedo", state.torpedoes, id);
       state.torpedoes = state.torpedoes.filter((torpedo) => torpedo.id !== id);
     },
 

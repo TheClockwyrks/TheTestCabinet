@@ -5,8 +5,8 @@
 // during normal play: nothing below runs until something calls it.
 //
 // EVERY OPERATION IS ATOMIC. Each one sets a single field or one fixed pair,
-// places or removes one entity, reads the state, or moves the clock; `reset` is
-// the sole exception, and it is a lifecycle verb rather than a pose. There is no
+// places or removes one entity, reads the state, or moves the clock. `reset` and
+// `reconcile` are the exceptions, and both are lifecycle verbs rather than poses. There is no
 // operation that starts a match, serves a ball, or hands a paddle to the AI —
 // each of those is a SEQUENCE of the operations below, and a sequence belongs to
 // whoever is driving the game rather than to the surface.
@@ -33,8 +33,10 @@ import { menuItemRect, type MenuRect } from "./menus";
 import {
   clearWorld,
   createBall,
+  isObstacleIndex,
   resetState,
   spawnObstacle,
+  type BallState,
   type CaromState,
   type Mode,
   type ResumeScreen,
@@ -135,6 +137,8 @@ export interface CaromDebugApi {
   spawnBall(): void;
   spawnObstacle(index: number): void;
   reset(): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   setSeed(seed: number): void;
 
   /* Screens and menus. */
@@ -207,6 +211,24 @@ export function createDebugApi(
   state: CaromState,
   clock: DebugClock,
 ): CaromDebugApi {
+  /**
+   * The ball on the field, or a thrown error naming the operation that wanted it.
+   *
+   * An absent ball is no ball to pose. An operation that quietly did nothing
+   * would leave a caller reading its own pose back off a field that never took
+   * it, and every check driving that operation would grade a world it did not
+   * arrange, so this fails where the caller can see it instead
+   * (specs/instrumentation.md). `spawnBall` is how a field of one is posed.
+   */
+  const requireBall = (op: string): BallState => {
+    if (state.ball === null) {
+      throw new Error(
+        `Carom: ${op} — no ball is on the field; spawnBall places one`,
+      );
+    }
+    return state.ball;
+  };
+
   return {
     version: CAROM_DEBUG_VERSION,
 
@@ -258,8 +280,17 @@ export function createDebugApi(
       state.ball = createBall();
     },
 
-    /** Place obstacle `index` at its fixed center. */
+    /**
+     * Place obstacle `index` at its fixed center.
+     *
+     * An index outside the two this field is built with names no obstacle, so
+     * there is no state for the call to reach and it fails where the caller can
+     * see it rather than passing quietly (specs/instrumentation.md).
+     */
     spawnObstacle(index) {
+      if (!isObstacleIndex(index)) {
+        throw new RangeError(`Carom: no obstacle ${index}`);
+      }
       spawnObstacle(state, index);
     },
 
@@ -276,6 +307,21 @@ export function createDebugApi(
     reset() {
       resetState(state);
     },
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands,
+     * without advancing anything.
+     *
+     * Every derived reading this build reports is worked out at the read: a
+     * ball's `speed` is `ballSpeed(ball)` in `ballView`, and every other field
+     * of the snapshot is the state's own. Nothing is held that a pose can leave
+     * behind, so there is nothing here to rewrite. The operation is required of
+     * every build, including one that keeps those readings as stored copies, and
+     * an empty body is what it comes to in a build that keeps none — not an
+     * omission. Turning it into a step would be wrong: a step moves the very
+     * thing a pose has just placed.
+     */
+    reconcile() {},
 
     /** Seed the game's random generator: the seed, and the state it starts in. */
     setSeed(seed) {
@@ -364,30 +410,30 @@ export function createDebugApi(
 
     // ---- The ball -------------------------------------------------------
     //
-    // Each sets its own field alone, and each has no effect while the ball is
-    // absent: an absent ball takes no part in a frame, and posing a field of one
-    // is what `spawnBall` is for.
+    // Each sets its own field alone, and each reaches the value it is given
+    // whatever the game would make of it: the screen, the hold, and where the
+    // paddles are decide none of them. An absent ball is the one thing there is
+    // nothing to set, and that fails loudly through `requireBall` rather than
+    // passing quietly; posing a field of one is what `spawnBall` is for.
 
     setBallPosition(x, y) {
-      if (state.ball === null) return;
-      state.ball.x = x;
-      state.ball.y = y;
+      const ball = requireBall("setBallPosition");
+      ball.x = x;
+      ball.y = y;
     },
 
     setBallVelocity(vx, vy) {
-      if (state.ball === null) return;
-      state.ball.vx = vx;
-      state.ball.vy = vy;
+      const ball = requireBall("setBallVelocity");
+      ball.vx = vx;
+      ball.vy = vy;
     },
 
     setBallSpin(spin) {
-      if (state.ball === null) return;
-      state.ball.spin = spin;
+      requireBall("setBallSpin").spin = spin;
     },
 
     setBallHeld(held) {
-      if (state.ball === null) return;
-      state.ball.held = Boolean(held);
+      requireBall("setBallHeld").held = Boolean(held);
     },
 
     /**
@@ -395,8 +441,7 @@ export function createDebugApi(
      * ball is served on the next advanced frame through the game's own rule.
      */
     setBallHoldTimer(seconds) {
-      if (state.ball === null) return;
-      state.ball.holdTimer = seconds;
+      requireBall("setBallHoldTimer").holdTimer = seconds;
     },
 
     // ---- The AI opponent ------------------------------------------------

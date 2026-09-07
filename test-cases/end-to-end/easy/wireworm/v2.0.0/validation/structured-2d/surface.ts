@@ -194,6 +194,11 @@ export interface WirewormDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): WirewormSnapshot;
+  /**
+   * Bring every value the snapshot reports into agreement with the game as it
+   * now stands, without advancing anything.
+   */
+  reconcile(): void;
 
   setScreen(screen: Screen): void;
   setPhase(phase: Phase): void;
@@ -262,6 +267,7 @@ export const READINGS = ["snapshot", "menuItemRect"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
 
   "setScreen",
   "setPhase",

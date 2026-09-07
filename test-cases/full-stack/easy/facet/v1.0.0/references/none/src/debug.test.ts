@@ -312,3 +312,52 @@ describe("installDebugApi", () => {
     ).toBeDefined();
   });
 });
+
+describe("reconcile", () => {
+  it("leaves every reading answering for the board that was posed", () => {
+    // Nothing this build holds is a copy of something a pose can leave behind —
+    // `legalSwap`, `lastFall`, `stepHold`, `multiplier`, `levelTarget`, a cell's
+    // center and the screen's targets are all worked out at the read — so the
+    // reading is the same either side of the call. That equality is what a build
+    // keeping any of them stored has to reach on demand.
+    const { api } = surface();
+    api.loadBoard(quietRowsWith({ "3,3": "R0", "4,4": "R0" }));
+    api.setScreen("playing");
+    const before = api.snapshot();
+
+    api.reconcile();
+
+    expect(api.snapshot()).toEqual(before);
+  });
+
+  it("advances nothing, and twice matches once", () => {
+    const { api, bench } = surface();
+    api.loadBoard(quietRows());
+    api.setScreen("playing");
+    api.setSelection(3, 3);
+    const before = api.snapshot();
+
+    api.reconcile();
+    const once = api.snapshot();
+
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.phase).toBe(before.phase);
+    expect(once.swapTimer).toBe(before.swapTimer);
+    expect(once.stepTimer).toBe(before.stepTimer);
+    expect(once.rngState).toBe(before.rngState);
+    expect(once.board).toEqual(before.board);
+    expect(once).toEqual(before);
+    // No frame was asked for and the clock was never touched.
+    expect(bench.advanced).toEqual([]);
+    expect(bench.stepping).toEqual([]);
+
+    api.reconcile();
+    expect(api.snapshot()).toEqual(once);
+  });
+
+  it("is legal on the title screen, with no board in play", () => {
+    const { api } = surface();
+    expect(() => api.reconcile()).not.toThrow();
+    expect(api.snapshot().screen).toBe("title");
+  });
+});

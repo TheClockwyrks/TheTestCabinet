@@ -49,6 +49,7 @@ export const REQUIRED_OPS = [
   "setAutoStep",
   "step",
   "reset",
+  "reconcile",
   "snapshot",
   "menuItemRect",
   "setScreen",
@@ -170,8 +171,15 @@ export interface KesslerSnapshot {
  * calls, which is why every compound sequence in this project lives in
  * `harness.ts` rather than here. An argument outside the domain its operation
  * states fails loudly rather than guessing, except where an operation states
- * that it normalizes (`setPaddleAngle`, `setRingAngle`) or ignores the call
- * (`launchBall` with no parked ball, `spawnBall`/`parkBall` at the cap).
+ * that it normalizes the call (`setPaddleAngle`, `setRingAngle`).
+ *
+ * No operation declines. The screen showing, the entry
+ * highlighted, and where the deflector and the balls sit are how a PLAYER
+ * reaches a thing and are not an operation's conditions, so an operation acts
+ * from wherever the game stands; a call the field has no state for — a launch
+ * with nothing parked, a second parked ball, a seventh ball where six is the
+ * whole capacity, a menu entry on a screen carrying no menu — fails loudly
+ * rather than passing quietly.
  */
 export interface KesslerDebugApi {
   /** Take the game off real time (`false`), or give it back (`true`). */
@@ -181,6 +189,13 @@ export interface KesslerDebugApi {
 
   /** Restore the boot state; `seed` seeds the pod generator. */
   reset(seed?: number): void;
+  /**
+   * Bring every value the surface reports into agreement with the field as it
+   * stands, without advancing anything. A build that works its derived
+   * readings out at the read has nothing to do; one that keeps any of them as
+   * a stored copy rewrites that copy from its source.
+   */
+  reconcile(): void;
   /** A pure read of the state. It changes nothing. */
   snapshot(): KesslerSnapshot;
   /**
@@ -195,7 +210,7 @@ export interface KesslerDebugApi {
 
   setScore(n: number): void;
   setLives(n: number): void;
-  /** Set the highlighted menu entry; off a menu, changes nothing. */
+  /** Set the highlighted menu entry; off a menu, the call fails loudly. */
   setMenuIndex(n: number): void;
   /** Set the interstitial timer, in whole ticks. */
   setInterstitialTicks(ticks: number): void;
@@ -205,7 +220,7 @@ export interface KesslerDebugApi {
   /** Set the deflector's center angle, normalized into `[0, 360)`. */
   setPaddleAngle(deg: number): void;
 
-  /** Exactly as `Space` on a parked ball; with none, changes nothing. */
+  /** Exactly as `Space` on a parked ball; with none, the call fails loudly. */
   launchBall(): void;
   /** Remove every ball, parked included. Nothing burns up, no life is lost. */
   clearBalls(): void;

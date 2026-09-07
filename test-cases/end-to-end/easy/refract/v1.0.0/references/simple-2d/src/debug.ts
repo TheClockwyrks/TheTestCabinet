@@ -22,7 +22,7 @@ import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
 import { createInitialState } from "./flow";
 import { beamComplete, boardSolved, spentAt } from "./rules";
 import { pointerDown, pointerMove, pointerUp } from "./pointer";
-import { clearBeams } from "./tracing";
+import { performClearBeams } from "./tracing";
 import { targetsFor } from "./layout";
 import type {
   Channel,
@@ -113,6 +113,8 @@ export interface RefractDebugApi {
     options?: { seed?: number },
   ): RefractState;
   snapshot(state: DeepReadonly<RefractState>): RefractSnapshot;
+  /** Bring every reported reading into agreement with the board as it stands. */
+  reconcile(state: DeepReadonly<RefractState>): RefractState;
   setMode(state: DeepReadonly<RefractState>, mode: Mode): RefractState;
   setScreen(state: DeepReadonly<RefractState>, screen: Screen): RefractState;
   setMenuIndex(state: DeepReadonly<RefractState>, index: number): RefractState;
@@ -228,6 +230,26 @@ export function createDebugApi(): RefractDebugApi {
       };
     },
 
+    /**
+     * Bring every reported reading into agreement with the board as it stands.
+     *
+     * Every derived reading this build reports — a node's `x` and `y`, a
+     * crystal's `spent`, a beam's `complete`, `solved`, and `targets` — is
+     * worked out at the read, in `snapshot` above, from the board's dimensions,
+     * the drawn beams and the current screen. Nothing is held that a pose can
+     * leave behind, so there is nothing here to rewrite. The operation is
+     * required of every build, including one that keeps those readings as stored
+     * copies, and this is what it comes to in a build that does not.
+     *
+     * It advances nothing and it corrects nothing either way: the clock stays
+     * where it is, nothing is drawn from the generator, no cue plays, and a beam
+     * drawn past a crystal's charges reads as it was drawn rather than being
+     * trimmed back to a legal route.
+     */
+    reconcile(state) {
+      return { ...state };
+    },
+
     /** The mode field alone. No screen moves, and no board is generated. */
     setMode(state, mode) {
       return { ...state, mode };
@@ -282,9 +304,18 @@ export function createDebugApi(): RefractDebugApi {
       return pointerUp(state, device).state;
     },
 
-    /** The `clear` action: every beam emptied, on the playing screen alone. */
+    /**
+     * The `clear` action's own transaction: every beam on the board emptied and
+     * any live trace ended, from wherever the game stands.
+     *
+     * It does NOT ask which screen is up. That is the player's route to the
+     * action — `specs/controls.md` reads the key on `playing` alone, and
+     * `tryClearBeams` is where that lives — and an operation never asks whether
+     * a player could have pressed it (specs/instrumentation.md, "The
+     * operations"). A check about the action being unreachable presses the key.
+     */
     clear(state) {
-      return clearBeams(state).state;
+      return performClearBeams(state).state;
     },
   };
 }

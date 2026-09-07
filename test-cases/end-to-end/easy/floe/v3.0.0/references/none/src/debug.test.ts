@@ -37,6 +37,7 @@ const OPERATIONS: readonly (keyof FloeDebugApi)[] = [
   "advance",
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   "setScreen",
   "setPhase",
@@ -437,6 +438,89 @@ describe("the core", () => {
     expect(() => h.api.setBay(-1, true)).toThrow(RangeError);
     expect(() => h.api.setBay(BAY_COUNT, true)).toThrow(RangeError);
     expect(() => h.api.setFishBay(BAY_COUNT)).toThrow(RangeError);
+  });
+
+  it("re-derives a stored reading from a posed position", () => {
+    const h = harness();
+    startCrossing(h);
+    // A water row with no floe under the critter: its footing, its tile and a
+    // bear's swimming flag are all functions of where the bodies are, and this
+    // pose moves what all three read from.
+    h.api.clearFloes();
+    h.api.setCritterTile(START_COL, WATER_TOP);
+    h.api.addBear(START_COL + 2, WATER_TOP);
+    h.api.reconcile();
+    const s = h.api.snapshot();
+    expect(s.critter.footing).toBe("water");
+    expect(s.critter.col).toBe(START_COL);
+    expect(s.critter.row).toBe(WATER_TOP);
+    expect(s.bears[0].swimming).toBe(true);
+    // And on the ice, where nothing swims and nothing drowns.
+    h.api.setCritterTile(START_COL, ICE_TOP);
+    h.api.setBearTile(s.bears[0].id, START_COL + 2, ICE_TOP);
+    h.api.reconcile();
+    const onIce = h.api.snapshot();
+    expect(onIce.critter.footing).toBe("solid");
+    expect(onIce.critter.row).toBe(ICE_TOP);
+    expect(onIce.bears[0].swimming).toBe(false);
+  });
+
+  it("advances nothing, and reconciling twice matches reconciling once", () => {
+    const h = harness();
+    startCrossing(h);
+    h.api.setLevel(3);
+    h.api.addBear(START_COL + 4, ROW_MEDIAN);
+    h.api.setHopCooldown(0.07);
+    h.api.setPhaseTimer(0.4);
+    h.api.setTimer(9);
+    h.api.setFishBay(2);
+    const before = h.api.snapshot();
+    h.api.reconcile();
+    const once = h.api.snapshot();
+    expect(once).toEqual(before);
+    h.api.reconcile();
+    expect(h.api.snapshot()).toEqual(once);
+    // Named explicitly, because "equal snapshots" is only as strong as the
+    // clock, the bodies and the timers being in it.
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.timer).toBe(before.timer);
+    expect(once.phaseTimer).toBe(before.phaseTimer);
+    expect(once.critter.hopCooldown).toBe(before.critter.hopCooldown);
+    expect(once.critter.x).toBe(before.critter.x);
+    expect(once.critter.y).toBe(before.critter.y);
+    expect(once.bears[0].x).toBe(before.bears[0].x);
+    expect(once.bears[0].y).toBe(before.bears[0].y);
+    expect(once.vehicles).toEqual(before.vehicles);
+    expect(once.floes).toEqual(before.floes);
+    expect(once.fishBay).toBe(before.fishBay);
+    expect(h.bus.cues).toEqual([]);
+  });
+
+  it("fails loudly on an id, a row and a lane value the strait has no state for", () => {
+    const h = harness();
+    startCrossing(h);
+    const absent = 9999;
+    expect(() => h.api.setBearTile(absent, 3, 3)).toThrow(RangeError);
+    expect(() => h.api.setBearPosition(absent, 0, 0)).toThrow(RangeError);
+    expect(() => h.api.setBearStep(absent, "up")).toThrow(RangeError);
+    expect(() => h.api.setBearTarget(absent, 3, 3)).toThrow(RangeError);
+    expect(() => h.api.setBearSense(absent, false)).toThrow(RangeError);
+    expect(() => h.api.setBearRouting(absent, false)).toThrow(RangeError);
+    expect(() => h.api.setBearTravel(absent, false)).toThrow(RangeError);
+    expect(() => h.api.removeBear(absent)).toThrow(RangeError);
+    expect(() => h.api.setVehicleX(absent, 0)).toThrow(RangeError);
+    expect(() => h.api.removeVehicle(absent)).toThrow(RangeError);
+    expect(() => h.api.setFloeX(absent, 0)).toThrow(RangeError);
+    expect(() => h.api.removeFloe(absent)).toThrow(RangeError);
+    // The shores and the median carry no lane at all.
+    expect(() => h.api.setLaneSpeed(ROW_MEDIAN, 1)).toThrow(RangeError);
+    expect(() => h.api.setLaneDirection(ROW_MEDIAN, 1)).toThrow(RangeError);
+    // The two domains the specification fixes: a speed at or above 0, and a
+    // direction that is exactly 1 or -1. Neither is clamped or snapped.
+    expect(() => h.api.setLaneSpeed(ICE_TOP, -1)).toThrow(RangeError);
+    expect(() => h.api.setLaneDirection(ICE_TOP, 0 as 1 | -1)).toThrow(
+      RangeError,
+    );
   });
 
   it("grants no bonus life for a posed score", () => {

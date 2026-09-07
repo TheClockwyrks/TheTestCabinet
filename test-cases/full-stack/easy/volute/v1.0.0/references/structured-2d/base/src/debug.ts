@@ -9,9 +9,21 @@
 // EVERY OPERATION IS A READ OR A POSE. A pose ARRANGES THE HALL and never
 // fabricates an outcome: it puts the live world into a situation through the
 // same systems play uses, and the game's own frames — the real advance, the real
-// strike, the real extraction — are what run from there. NO POSE DECLINES: each
-// applies at the call whatever the screen, and an argument outside its range is
-// clamped to the nearest legal value or normalized.
+// strike, the real extraction — are what run from there.
+//
+// NO OPERATION DECLINES. Each applies at the call whatever the screen: the
+// screen showing, the interlude running and where the train stands are how a
+// PLAYER reaches a thing and are not an operation's conditions. A numeric
+// argument outside a range the specification FIXES AS A CONSTANT names no state
+// the hall has, so the call THROWS rather than snapping to the nearest legal
+// value; an angle names a heading whatever its value, so it is normalized rather
+// than refused. A bound that reads a LIVE figure of the run — the level's quota —
+// is a rule of the run rather than a domain, so the value given is applied
+// whatever the run stands at. A call
+// naming nothing the game holds a state for — an argument that is not a number,
+// or a screen, charge, mark or machinery kind outside the set that names them —
+// THROWS, so a caller never reads a call that did nothing as a call that did.
+// Nothing here refuses quietly by writing back the value it already held.
 //
 // ONE WRINKLE IS CROSSING A LEVEL TRANSITION. `reset`, `start` and `startLevel`
 // may have to open a different level, which the engine performs at the end of
@@ -47,7 +59,7 @@ import {
   TIMED_MACHINERY_KINDS,
   type TimedMachineryKind,
 } from "./hall-mode";
-import { clamp, normalizeAngle } from "./math";
+import { normalizeAngle } from "./math";
 import { clearChannel, clearProjectiles, levelSpec } from "./level";
 import { resegment, spaced } from "./train";
 
@@ -121,6 +133,8 @@ export interface VoluteSnapshot {
 export interface VoluteDebug {
   version: number;
   reset(options?: { seed?: number }): void;
+  /** Bring every reported reading into agreement with the hall as it stands. */
+  reconcile(): void;
   snapshot(): VoluteSnapshot;
   setScreen(name: string): void;
   setLevel(level: number): void;
@@ -143,37 +157,110 @@ export interface VoluteDebug {
   resume(): void;
 }
 
-/** A charge id, or the first of the five when the argument names none. */
-function asCharge(value: unknown): ChargeId {
-  return CHARGE_IDS.includes(value as ChargeId)
-    ? (value as ChargeId)
-    : CHARGE_IDS[0];
+/** A charge id. A value naming none of the five fails loudly. */
+function mustCharge(where: string, value: unknown): ChargeId {
+  if (!CHARGE_IDS.includes(value as ChargeId)) {
+    throw new Error(
+      `${where}: charge must be one of ${CHARGE_IDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as ChargeId;
 }
 
-/** A machinery kind, or `null` when the argument names none. */
-function asMark(value: unknown): MachineryKind | null {
-  return MACHINERY_KINDS.includes(value as MachineryKind)
-    ? (value as MachineryKind)
-    : null;
+/**
+ * A core's mark: one of the four machinery kinds, or `null` for an unmarked
+ * core. Anything else names no mark and fails loudly.
+ */
+function mustMark(where: string, value: unknown): MachineryKind | null {
+  if (value === null || value === undefined) return null;
+  if (!MACHINERY_KINDS.includes(value as MachineryKind)) {
+    throw new Error(
+      `${where}: mark must be null or one of ${MACHINERY_KINDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as MachineryKind;
 }
 
-/** A screen name, or `title` when the argument names none of the seven. */
-function asScreen(value: unknown): ScreenName {
-  return SCREENS.includes(value as ScreenName)
-    ? (value as ScreenName)
-    : SCREENS[0];
+/** A screen name. A name outside the seven names no screen and fails loudly. */
+function mustScreen(value: unknown): ScreenName {
+  if (!SCREENS.includes(value as ScreenName)) {
+    throw new Error(
+      `setScreen: name must be one of ${SCREENS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as ScreenName;
 }
 
-/** One of the three timed kinds, or `choke` when the argument names none. */
-function asTimedKind(value: unknown): TimedMachineryKind {
-  return TIMED_MACHINERY_KINDS.includes(value as TimedMachineryKind)
-    ? (value as TimedMachineryKind)
-    : TIMED_MACHINERY_KINDS[0];
+/** One of the three timed kinds. A name outside them fails loudly. */
+function mustTimedKind(value: unknown): TimedMachineryKind {
+  if (!TIMED_MACHINERY_KINDS.includes(value as TimedMachineryKind)) {
+    throw new Error(
+      `grantMachinery: kind must be one of ${TIMED_MACHINERY_KINDS.join(", ")}; got ${String(value)}`,
+    );
+  }
+  return value as TimedMachineryKind;
 }
 
-/** A finite number, or a stated fallback. */
-function asNumber(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+/**
+ * A finite number. Anything else is not a figure the game has a state for, so
+ * the call fails loudly rather than quietly leaving the value it already held.
+ */
+function mustNumber(where: string, name: string, value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(
+      `${where}: ${name} must be a finite number; got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/**
+ * A finite number inside a range the specification FIXES AS A CONSTANT. That
+ * range is the argument's domain rather than a rule of the run, so a value
+ * outside it names no state the hall has and the call fails loudly rather than
+ * snapping to the nearest legal value.
+ */
+function mustRange(
+  where: string,
+  name: string,
+  value: unknown,
+  lo: number,
+  hi: number,
+): number {
+  const n = mustNumber(where, name, value);
+  if (n < lo || n > hi) {
+    throw new Error(`${where}: ${name} must be ${lo} through ${hi}; got ${n}`);
+  }
+  return n;
+}
+
+/**
+ * A finite number no greater than a maximum the specification FIXES AS A
+ * CONSTANT. The maximum is the argument's domain rather than a rule of the run,
+ * so a value past it names no state the hall has and the call fails loudly
+ * rather than snapping back to it.
+ */
+function mustAtMost(
+  where: string,
+  name: string,
+  value: unknown,
+  hi: number,
+): number {
+  const n = mustNumber(where, name, value);
+  if (n > hi) {
+    throw new Error(`${where}: ${name} must be at most ${hi}; got ${n}`);
+  }
+  return n;
+}
+
+/** A finite number, or `fallback` when the argument was left out entirely. */
+function mustNumberOr(
+  where: string,
+  name: string,
+  value: unknown,
+  fallback: number,
+): number {
+  return value === undefined ? fallback : mustNumber(where, name, value);
 }
 
 /** Build the surface over the game instance. It holds no state of its own. */
@@ -189,7 +276,28 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      * runtime owns, and a reset is not a reason to start making noise again.
      */
     reset(options) {
-      game.reset(asNumber(options?.seed, DEFAULT_SEED));
+      game.reset(
+        mustNumberOr("reset", "options.seed", options?.seed, DEFAULT_SEED),
+      );
+    },
+
+    /**
+     * Bring every reported reading into agreement with the hall as it stands,
+     * without advancing anything.
+     *
+     * Most of what this surface reports is worked out at the read — `emitted`,
+     * `feedSpeed`, `danger`, each core's point on the channel and its segment
+     * index — so a pose leaves nothing of those behind. The SEGMENTS are the
+     * exception: the hall's state carries them, and a write to the cores can
+     * leave them describing a channel that no longer stands. `resegment` is the
+     * same rule the frame builds them by, reading the spacing between
+     * consecutive cores and nothing else, so no core moves, no time is spent,
+     * nothing sounds, and running it twice leaves what running it once left.
+     */
+    reconcile() {
+      game.pose((mode) => {
+        resegment(mode.state);
+      });
     },
 
     /** A pure read of the running game. It changes nothing. */
@@ -206,7 +314,7 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      */
     setScreen(name) {
       game.pose((mode) => {
-        mode.state.screen = asScreen(name);
+        mode.state.screen = mustScreen(name);
       });
     },
 
@@ -219,10 +327,8 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      */
     setLevel(level) {
       game.pose((mode) => {
-        mode.state.level = clamp(
-          Math.round(asNumber(level, 1)),
-          1,
-          LEVEL_COUNT,
+        mode.state.level = Math.round(
+          mustRange("setLevel", "level", level, 1, LEVEL_COUNT),
         );
       });
     },
@@ -230,7 +336,9 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
     /** Set the run's score. It ends nothing and opens nothing. */
     setScore(n) {
       game.pose((mode) => {
-        mode.state.score = Math.max(0, Math.round(asNumber(n, 0)));
+        mode.state.score = Math.round(
+          mustRange("setScore", "n", n, 0, Number.MAX_SAFE_INTEGER),
+        );
       });
     },
 
@@ -242,7 +350,7 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      */
     setCells(n) {
       game.pose((mode) => {
-        mode.state.cells = clamp(Math.round(asNumber(n, CELLS)), 0, CELLS);
+        mode.state.cells = Math.round(mustRange("setCells", "n", n, 0, CELLS));
       });
     },
 
@@ -252,14 +360,18 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      */
     setChainStep(k) {
       game.pose((mode) => {
-        mode.state.chainStep = Math.max(1, Math.round(asNumber(k, 1)));
+        mode.state.chainStep = Math.round(
+          mustRange("setChainStep", "k", k, 1, Number.MAX_SAFE_INTEGER),
+        );
         mode.state.chainTimer = CHAIN_RESET;
       });
     },
 
     /** Open `level`, exactly as the interlude before it opens it. */
     startLevel(level) {
-      game.startLevel(clamp(Math.round(asNumber(level, 1)), 1, LEVEL_COUNT));
+      game.startLevel(
+        Math.round(mustRange("startLevel", "level", level, 1, LEVEL_COUNT)),
+      );
     },
 
     /**
@@ -271,10 +383,10 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      * so a posed train advances on the tick after the call.
      */
     poseTrain(cores) {
-      const posed = [...(cores ?? [])].map((core) => ({
-        charge: asCharge(core?.[1]),
-        s: Math.min(PATH_LENGTH, asNumber(core?.[0], 0)),
-        mark: asMark(core?.[2]),
+      const posed = [...(cores ?? [])].map((core, index) => ({
+        charge: mustCharge(`poseTrain: core ${index}`, core?.[1]),
+        s: mustAtMost("poseTrain", `core ${index}'s s`, core?.[0], PATH_LENGTH),
+        mark: mustMark(`poseTrain: core ${index}`, core?.[2]),
       }));
       // Stable, so two cores at one arc position keep the list's order.
       posed.sort((a, b) => b.s - a.s);
@@ -304,13 +416,15 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
 
     /** Set the charge the injector holds loaded. The generator is untouched. */
     setLoaded(charge) {
-      game.pose((mode) => mode.injector().setLoaded(asCharge(charge)));
+      game.pose((mode) =>
+        mode.injector().setLoaded(mustCharge("setLoaded", charge)),
+      );
     },
 
     /** Set the charge the injector holds queued. The generator is untouched. */
     setQueued(charge) {
       game.pose((mode) => {
-        mode.injector().queued = asCharge(charge);
+        mode.injector().queued = mustCharge("setQueued", charge);
       });
     },
 
@@ -319,9 +433,11 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      * released, the cooldown is untouched, and the two held charges stay.
      */
     setAim(angleDegrees) {
+      const aim = normalizeAngle(
+        mustNumber("setAim", "angleDegrees", angleDegrees),
+      );
       game.pose((mode) => {
-        const injector = mode.injector();
-        mode.aimAt(normalizeAngle(asNumber(angleDegrees, injector.aim)));
+        mode.aimAt(aim);
       });
     },
 
@@ -341,11 +457,13 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
       });
     },
 
-    /** Set the pressure, clamped to its range. */
+    /** Set the pressure, whose range the specification fixes as a constant. */
     setPressure(value) {
       game.pose((mode) => {
-        mode.state.pressure = clamp(
-          asNumber(value, mode.state.pressure),
+        mode.state.pressure = mustRange(
+          "setPressure",
+          "value",
+          value,
           PRESSURE_MIN,
           PRESSURE_MAX,
         );
@@ -358,14 +476,17 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      * The count of cores emitted this level is the level's quota less what
      * remains, so which of the following emissions carry a mark, and which kind
      * each mark is, follow the new value.
+     *
+     * The level's quota does NOT bound the argument. It is a live figure of the
+     * run rather than a domain the specification fixes, so the count given is
+     * the count the inlet is left with and the hall runs from there.
      */
     setQuotaRemaining(n) {
+      const posed = Math.round(
+        mustRange("setQuotaRemaining", "n", n, 0, Number.MAX_SAFE_INTEGER),
+      );
       game.pose((mode) => {
-        mode.state.quotaRemaining = clamp(
-          Math.round(asNumber(n, 0)),
-          0,
-          levelSpec(mode.state.level).quota,
-        );
+        mode.state.quotaRemaining = posed;
       });
     },
 
@@ -395,7 +516,7 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
      * resolves, and no pose decides an outcome.
      */
     grantMachinery(kind) {
-      const named = asTimedKind(kind);
+      const named = mustTimedKind(kind);
       game.pose((mode) => mode.grantTimedMachinery(named));
     },
 

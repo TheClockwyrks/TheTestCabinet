@@ -40,6 +40,18 @@
 // below only ARRANGE the floor through the surface, and the real update the build
 // wrote is what runs from there.
 //
+//
+// A HELPER THAT POSES ANYTHING A READING DERIVES FROM RECONCILES BEFORE IT
+// RETURNS. `specs/instrumentation.md` lets a build work a derived reading out at
+// the read or keep it as a stored copy, and `reconcile()` is what brings a
+// stored copy back into agreement — so `startRun`, `poseTower` and its three
+// variants, `poseTarget` and `poseWalker` each end with the call, because a
+// unit's `col`, `row` and `remaining`, a tower's `heatMult`, `damage` and
+// `slowFactor`, the mode's figures, both route lengths and `build.valid` all
+// follow from what those helpers write. A check that poses only through the
+// helpers therefore never calls `reconcile` itself; a check that poses with
+// `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // THE HARNESS OWNS EVERY COMPOUND SEQUENCE. The debug surface is atomic by
 // design — each operation sets one field, reads the state, or moves the clock
 // (`guides/authoring/writing-debug-apis-and-validators.md`) — so "open a run with
@@ -192,6 +204,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   // The screen and the run.
   "setScreen",
   "setPhase",
@@ -447,6 +460,11 @@ export interface MeltdownDebugApi {
   // The core.
   reset(seed?: number): Promise<void>;
   snapshot(): Promise<MeltdownSnapshot>;
+  /**
+   * Bring every value the snapshot reports into agreement with the floor as it
+   * now stands, without advancing anything.
+   */
+  reconcile(): Promise<void>;
 
   // The screen and the run.
   setScreen(screen: Screen): Promise<void>;
@@ -1575,6 +1593,10 @@ export async function startRun(
   await debug.setHoverShop(null);
   await debug.setArmed(null);
   await debug.setSpeed(1);
+  // The mode, the difficulty, the wave and the empty floor are what the mode's
+  // figures, `nextWave`, `waveRemaining` and both route lengths follow from, so
+  // the readings are brought into agreement before the caller reads them.
+  await debug.reconcile();
 }
 
 /**
@@ -1604,7 +1626,22 @@ export async function poseTower(
       "the tower roster was still empty after addTower",
     );
   }
+  // A tower blocks its footprint, so both route lengths, every unit's
+  // `remaining`, and `build.valid` all follow from it.
+  await h.debug.reconcile();
   return added.id;
+}
+
+/**
+ * Whether `type` is an emitter, which is the only kind that carries a heat of
+ * its own.
+ *
+ * `setTowerHeat` reaches an emitter's heat; a Forge and a Sink have none for it
+ * to reach, so the call fails loudly on one (specs/instrumentation.md). The
+ * scenario atoms below therefore pose a heat only where there is a heat.
+ */
+function carriesHeat(type: TowerType): boolean {
+  return TOWER_DEFS[type].kind === "emitter";
 }
 
 /**
@@ -1628,7 +1665,9 @@ export async function poseIdleTower(
 ): Promise<number> {
   const id = await poseTower(h, type, col, row, options.rotation ?? 0);
   await h.debug.setTowerFiring(id, false);
-  await h.debug.setTowerHeat(id, options.heat ?? 0);
+  if (carriesHeat(type)) await h.debug.setTowerHeat(id, options.heat ?? 0);
+  // `heatMult`, `damage` and a Rime's `slowFactor` all follow from the heat.
+  await h.debug.reconcile();
   return id;
 }
 
@@ -1654,7 +1693,9 @@ export async function posePinnedTower(
 ): Promise<number> {
   const id = await poseTower(h, type, col, row, rotation);
   await h.debug.setTowerThermal(id, false);
-  await h.debug.setTowerHeat(id, heat);
+  if (carriesHeat(type)) await h.debug.setTowerHeat(id, heat);
+  // `heatMult`, `damage` and a Rime's `slowFactor` all follow from the heat.
+  await h.debug.reconcile();
   return id;
 }
 
@@ -1684,7 +1725,9 @@ export async function poseTrippedTower(
   const id = await poseTower(h, type, col, row, options.rotation ?? 0);
   await h.debug.setTowerTripped(id, true);
   await h.debug.setTowerTripTimer(id, options.timer ?? TRIP_TIME);
-  await h.debug.setTowerHeat(id, options.heat ?? 100);
+  if (carriesHeat(type)) await h.debug.setTowerHeat(id, options.heat ?? 100);
+  // `heatMult` and `damage` follow from the heat, and `firing` from the trip.
+  await h.debug.reconcile();
   return id;
 }
 
@@ -1723,6 +1766,10 @@ export async function poseTarget(
   await h.debug.setUnitMotion(id, false);
   await h.debug.setUnitMaxHp(id, hp);
   await h.debug.setUnitHp(id, hp);
+  // The unit's `col`, `row` and `remaining` all follow from where it now is, so
+  // a build that keeps any of them as a stored copy rewrites it here rather than
+  // answering for the tile the unit entered at.
+  await h.debug.reconcile();
   return id;
 }
 
@@ -1747,6 +1794,8 @@ export async function poseWalker(
       "the surge roster was still empty after addUnit",
     );
   }
+  // The unit's `col`, `row` and `remaining` follow from where it entered.
+  await h.debug.reconcile();
   return added.id;
 }
 

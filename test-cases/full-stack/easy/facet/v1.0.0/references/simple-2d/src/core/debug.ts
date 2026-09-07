@@ -191,6 +191,25 @@ export function snapshot(state: FacetState): FacetSnapshot {
 }
 
 /**
+ * A whole number of at least `min`, or a thrown error the caller sees.
+ *
+ * The bounds these poses carry are ones the SPECIFICATION FIXES — an index
+ * counted from `0`, a level counted from `1` — rather than ones that read a
+ * live figure of the running game, so each is a domain rather than a rule. A
+ * pose applies the value it is given and never settles for a nearer legal one
+ * (specs/instrumentation.md), so a value outside the domain names no state the
+ * game has and the only honest answer is to fail where the caller can see it.
+ */
+function requireWhole(name: string, value: number, min: number): number {
+  if (!Number.isInteger(value) || value < min) {
+    throw new Error(
+      `Facet: ${name} takes a whole number of at least ${min}; got ${String(value)}`,
+    );
+  }
+  return value;
+}
+
+/**
  * Every declared field back at its title-screen value, with `rngState` seeded
  * from `options.seed` or `DEFAULT_SEED`. `muted` is deliberately carried over:
  * the runtime owns muting, and a reset is not a reason to start making noise
@@ -206,14 +225,48 @@ export function reset(
   };
 }
 
+/**
+ * Every reading this surface reports brought into agreement with the game as it
+ * stands, without advancing anything (specs/instrumentation.md).
+ *
+ * THERE IS NOTHING TO REWRITE HERE, AND THAT IS THE ANSWER RATHER THAN AN
+ * OMISSION. Every reading that FOLLOWS from something else is worked out at the
+ * read, in `snapshot` above, from the state it follows from: a cell's `x` and
+ * `y` from the cell center formulas, `levelTarget` from `level`, `multiplier`
+ * from `chainStep`, `lastFall` from the board, `stepHold` from `lastWaves` and
+ * `lastFall`, `legalSwap` from the board under R1 and R3, and `targets` from the
+ * screen. None of them is held as a copy of something a pose can leave behind,
+ * so a board written by `loadBoard` already reads with the legal swap and the
+ * longest fall of the board that was written.
+ *
+ * The operation is required of every build, INCLUDING one that keeps any of
+ * those as a stored copy — that build rewrites its copies from their sources
+ * here — and this is what it comes to in a build that keeps none. It advances no
+ * timer, runs no rule, draws from no generator, moves nothing to make a reading
+ * agree, and raises no event. Calling it twice leaves what calling it once
+ * leaves.
+ */
+export function reconcile(state: FacetState): FacetState {
+  return { ...state };
+}
+
 /** The screen shown. Nothing else changes. */
 export function setScreen(state: FacetState, screen: Screen): FacetState {
   return { ...state, screen };
 }
 
-/** The highlighted menu item on whichever menu the screen shows, from `0`. */
+/**
+ * The highlighted menu item on whichever menu the screen shows, from `0`.
+ *
+ * The index is applied as given. Which screen is up is not a condition on this
+ * pose, and an index the current menu has no item at is still written — what a
+ * menu with no such item DRAWS is the renderer's answer, not this call's.
+ */
 export function setMenuIndex(state: FacetState, index: number): FacetState {
-  return { ...state, menuIndex: Math.max(0, Math.floor(index)) };
+  return {
+    ...state,
+    menuIndex: requireWhole("setMenuIndex(index)", index, 0),
+  };
 }
 
 /**
@@ -298,7 +351,7 @@ export function setScore(state: FacetState, points: number): FacetState {
  * it; the board and `levelScore` stand where they were.
  */
 export function setLevel(state: FacetState, level: number): FacetState {
-  return { ...state, level: Math.max(1, Math.floor(level)) };
+  return { ...state, level: requireWhole("setLevel(level)", level, 1) };
 }
 
 /**
@@ -312,7 +365,10 @@ export function setLevelScore(state: FacetState, points: number): FacetState {
 
 /** `bestChain` set, a whole number of at least `0`. Nothing else changes. */
 export function setBestChain(state: FacetState, chainStep: number): FacetState {
-  return { ...state, bestChain: Math.max(0, Math.floor(chainStep)) };
+  return {
+    ...state,
+    bestChain: requireWhole("setBestChain(chainStep)", chainStep, 0),
+  };
 }
 
 /** `bestMove` set. Nothing else changes, and `moveScore` is its own figure. */

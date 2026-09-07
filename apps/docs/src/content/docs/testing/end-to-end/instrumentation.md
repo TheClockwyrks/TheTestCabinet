@@ -99,7 +99,7 @@ anyway.
 
 ### Core operations
 
-Every case's debug API exposes the same three core operations, so a driver's
+Every case's debug API exposes the same four core operations, so a driver's
 lifecycle is uniform across the catalog.
 
 - `reset(options?)` returns the build to a known initial state. When the game
@@ -117,6 +117,14 @@ lifecycle is uniform across the catalog.
   per-entity state of every live object, and whatever else a check asserts on.
   It is the same ground truth the [debug overlay](#the-debug-overlay) shows a
   human, and it is a pure read.
+- `reconcile()` brings every value the surface reports into agreement with the
+  state it is derived from, without advancing the simulation by any amount. A
+  reading the build computes at the read already agrees and is left as it is; a
+  reading it keeps as a stored copy of something else is rewritten from its
+  source, so a flag saying an actor is standing on ground answers for the
+  position the actor is at now. It is the call a driver makes after posing a
+  world and before reading it. See
+  [Reconciling derived state](#reconciling-derived-state).
 
 A case whose review items declare validation scripts exposes one more, because the
 runtime driving those scripts holds the clock to decide a verdict and hands it back
@@ -126,6 +134,40 @@ to record the media at the speed the game runs.
   holds the simulation still, so `step()` is the only thing that advances it, and
   `setAutoStep(true)` returns the game to its own frame loop. It changes no game
   state.
+
+### Reconciling derived state
+
+A specification says what a build reports, not how it holds it, so a value a
+case describes as derived may be computed at the read in one build and kept as a
+stored flag in another. Both are conformant, and they part company the moment a
+control operation writes what the derived value depends on: the computing build
+answers for the world as posed, and the storing build answers for the world
+before the pose. A driver that poses a scenario and reads it back is reading the
+wrong world, and the check it backs decides nothing.
+
+`reconcile()` closes that gap. It re-derives every reading the surface reports
+from the state that reading is a function of, and it does so without moving the
+clock, so a driver poses a world, reconciles it, and reads a description of the
+world it posed. A build that computes everything at the read has nothing to do
+and is fully conformant with an implementation that does nothing.
+
+What it does not do is as fixed as what it does. It advances nothing: no timer
+ticks, no gravity is applied, no collision is resolved, no input is consumed,
+and the simulation clock is where it was. It fires nothing: no event, no sound,
+no screen or panel change, and no draw from the seeded generator. It corrects
+nothing: a reading derived from an actor's position is recomputed from where the
+actor is, and the actor is not moved to make that reading agreeable. A value the
+specification says a system updates on the next update stays that system's, and
+an accumulated figure such as a running maximum is the update's too. Calling it
+twice leaves the same state as calling it once.
+
+`step()` is not a substitute. A step advances the clock and runs every system,
+which moves the very thing a pose has just placed, so a scenario measured from a
+posed rest state, such as a fall's height, the seconds left on a timer, or the
+frame a behavior begins on, comes out wrong by the step that was meant to
+refresh the reading. A step also consumes held input, spends resources, and can
+fire the event the check is waiting for. `reconcile()` costs no simulation time,
+so the measurement starts where it was posed.
 
 ### Control operations
 
@@ -140,8 +182,8 @@ shapes:
   `setMode("versus")`.
 - Set a precondition value, such as putting the score at `10–10`, giving the
   player a resource level, or placing an entity at a coordinate.
-- Trigger a real event such as a serve, a shot, or a turn advancing, routed
-  through the same code path normal play uses.
+- Trigger a real event such as a serve, a shot, or a turn advancing, running
+  the same code normal play runs and running it wherever the game stands.
 
 A control operation is a setup verb. It arranges one thing in the world;
 `step()` runs the real systems; `snapshot()` or a screenshot reads the result.
@@ -158,6 +200,10 @@ forward exercises the genuine code path. What a driver observes must come from
 the real simulation, read back through a channel independent of the one that set
 it up.
 
+Routing through the real systems is about which state an operation writes and
+which code owns it, never about whether the world was ready for it. See
+[An operation is unconditional](#an-operation-is-unconditional).
+
 To check that reaching the score cap with a two-point lead ends the match, a
 driver may set the score to `10–8` as a precondition, drive a real point across
 the goal through the real scoring path, and read back that the match ended with
@@ -166,6 +212,66 @@ screen would prove only that the debug API can draw a screen. When designing a
 case's control operations, keep each one on the precondition side of this line:
 an operation that would directly assert the thing a review item checks is the
 wrong operation.
+
+### An operation is unconditional
+
+A debug API operation applies its effect every time it is called. It is the
+route a driver has instead of a player, so the conditions a player would have
+had to satisfy to reach that effect are not its conditions. A condition belongs
+to that route when a player would have had to change the world to satisfy it
+before the control could be pressed: which screen is up, which panel is open,
+which tool is selected, where an actor is standing, whether a control is drawn
+or enabled, whether the game is in live play. An operation checks none of them
+and acts anyway. A save operation writes the save from wherever the actor
+stands, and a sale sells from wherever the game is.
+
+Nor may an operation's effect depend on state that only that route establishes.
+A build that fills a market's demand table when the market panel opens, and
+sells only the ores that table lists, has asked no question about the panel and
+still sells nothing to a driver that never opened one. Where a control needs
+such state, the operation establishes it itself, so that the effect is the same
+whichever way the control was reached.
+
+A pose applies the value it is given. It does not clamp to a live maximum, snap
+to a nearer legal value, or decline. `setFuel(200)` against a maximum of `100`
+leaves the tank holding `200`, and what the game's own systems then make of that
+is the game's own systems' answer. A bound that reads a live game value is a
+rule rather than a domain: a tier's maximum, a balance, and a remaining capacity
+all move as the game runs, so a specification states them to say what ordinary
+play produces. A bound the specification fixes as a constant, an enumerated set,
+or the shape of a structure is a domain, and a call outside it fails.
+
+A control carries out the transaction its name states, and that transaction's
+own rules are the effect rather than a gate on it. A condition is the
+transaction's own when satisfying it is the press's own arithmetic rather than
+something the player had to arrange beforehand: the price, the balance it is
+weighed against, the cap on a track. A purchase computes the price, an
+unaffordable purchase buys nothing, and a track already at its highest tier
+gains none, because those are what the control does and what a review item
+asserts about it. What the control does not do is ask how the caller got there.
+
+An operation fails loudly on a call that names nothing, and the test is the
+argument. A value that is not a number, a name outside an enumerated set, an
+index outside a fixed structural range, or a subject that is not there names no
+state for the operation to reach, so the call throws and the caller sees the
+error. A call whose arguments all name something real is not that, however the
+transaction then comes out: `buyUpgrade("cargo")` on a track already at its
+highest tier names a real track, so it carries out its transaction, and the
+transaction buys nothing. An unknown track name throws; a maxed track does not.
+
+What an operation never does is decline on the strength of the route: return
+with the state unchanged, or show the note a player would have been shown for
+standing in the wrong place, for having the wrong screen up, or for having no
+panel open. A build whose operations do that hides its own systems from every
+check that drives them, and the checks it hides fail. A transaction's own
+refusal is a different thing. It is the effect, and it keeps whatever note the
+game shows for it.
+
+This and the guardrail above govern different things and neither weakens the
+other. The guardrail decides which operations a case may declare, so an
+operation that announces the outcome a review item checks is the wrong
+operation. This decides when a declared operation fires, and the answer is
+always.
 
 ### The debug API is load-bearing
 
@@ -282,8 +388,9 @@ versioned, and loaded through the same path a player's save uses.
 
 For the objective, mechanically verifiable portion of a review, The Test Cabinet
 drives the build itself: `reset(seed)` to a known start, the case's control
-operations to establish a review item's precondition, `step()` to run the real
-systems forward, and `snapshot()` and the rendered canvas to read the result.
+operations to establish a review item's precondition, `reconcile()` to bring the
+readings into agreement with it, `step()` to run the real systems forward, and
+`snapshot()` and the rendered canvas to read the result.
 From that it both synthesizes the item's proof media and, where the outcome is
 an unambiguous fact, sets the item's verdict.
 
@@ -332,13 +439,18 @@ When adding instrumentation to a case's specification:
   Test Cabinet itself out of the seeded text (see
   [Self-contained specifications](/testing/end-to-end/overview/#self-contained-specifications)).
 - Pin the handle and the core operations exactly. Name the case-specific global
-  and specify `reset`, `step`, and `snapshot`, including the exact shape of the
-  `snapshot()` object and the unit `step` takes, so the contract is unambiguous.
+  and specify `reset`, `step`, `snapshot`, and `reconcile`, including the exact
+  shape of the `snapshot()` object, the unit `step` takes, and which of the
+  snapshot's readings are derived, so the contract is unambiguous.
 - Enumerate the control operations the case needs, each by name, signature, and
   effect, and keep every one on the precondition side of the
   [guardrail](#the-precondition-guardrail). A well-designed operation sets one
-  value rather than announcing an outcome; see
+  value rather than announcing an outcome, and states that effect as what the
+  operation does rather than as what a player would have to do first; see
   [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
+- Describe an operation's effect without deferring to the game's own permission
+  to perform it. A specification that grants that deference licenses a build to
+  hide the system the operation exists to reach.
 - Require the deterministic core the API rests on, fixed-timestep, render-free,
   and seedable, in the same spec that covers the simulation.
 - Require the read-only overlay, naming its toggle key and the state it must

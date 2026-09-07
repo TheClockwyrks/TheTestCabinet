@@ -10,7 +10,8 @@
 //
 // THE POSE. An isolated `playing` run whose slots are saturated, so the pool is
 // empty and the single offer is lamp oil. `hp` is posed to `50` before the
-// overlay opens, since `setHp` applies on a run screen. The six passives held
+// overlay opens, which `setHp` does from wherever the game stands. The six
+// passives held
 // leave Tallow out, so `maxHp` stands at `BASE_MAX_HP` (`100`,
 // `specs/world.md`) and `50 + 30` is well under the cap: what is read is the
 // heal itself and not the cap. Nothing else can move `hp`, since every driver

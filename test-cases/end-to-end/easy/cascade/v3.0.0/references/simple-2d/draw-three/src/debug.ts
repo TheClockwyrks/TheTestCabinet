@@ -131,6 +131,8 @@ export interface CascadeDebugApi {
     options?: { seed?: number },
   ): CascadeState;
   snapshot(state: DeepReadonly<CascadeState>): CascadeSnapshot;
+  /** Bring every reported reading into agreement with the table as it stands. */
+  reconcile(state: DeepReadonly<CascadeState>): CascadeState;
 
   /**
    * The hit region of item `index` on the menu the current screen shows.
@@ -259,15 +261,43 @@ function pose(
   return sim;
 }
 
-/** Apply `change` to the flyer with that id, and leave the state alone otherwise. */
+/**
+ * A call whose subject the table does not hold names nothing the surface can
+ * act on, so it fails loudly rather than passing quietly with the state
+ * unchanged (specs/instrumentation.md, The operations).
+ */
+function refuse(where: string, why: string): never {
+  throw new RangeError(`Cascade: ${where}() ${why}`);
+}
+
+/** A whole number inside a range the specification fixes, or a complaint. */
+function requireWhole(
+  where: string,
+  name: string,
+  value: number,
+  least: number,
+  most: number,
+): number {
+  if (!Number.isInteger(value) || value < least || value > most) {
+    refuse(
+      where,
+      `needs a whole ${name} from ${least} to ${most}, got ${value}`,
+    );
+  }
+  return value;
+}
+
+/** Apply `change` to the flyer with that id, or fail loudly naming the id. */
 function poseFlyer(
   state: DeepReadonly<CascadeState>,
+  where: string,
   id: number,
   change: (flyer: MutFlyer) => void,
 ): CascadeState {
   return pose(state, (sim) => {
     const flyer = sim.flyers.find((candidate) => candidate.id === id);
-    if (flyer !== undefined) change(flyer);
+    if (flyer === undefined) refuse(where, `has no flyer with id ${id}`);
+    change(flyer);
   });
 }
 
@@ -366,6 +396,30 @@ export function createDebugApi(): CascadeDebugApi {
       simTime: state.simTime,
     }),
 
+    /**
+     * Bring every reported reading into agreement with the table as it stands,
+     * without advancing anything (specs/instrumentation.md, The core).
+     *
+     * Of this build's derived readings, `wasteVisibleCount` and a card's
+     * `color` are worked out inside `snapshot`, so there is nothing to rewrite
+     * for either. `dropTarget` is the one the state keeps: the pointer path
+     * writes it as a gesture moves, so a pose that changes what the pile
+     * beneath a held run holds leaves it answering for the table as it was.
+     * `refreshDropTarget` is the rule the pointer path itself calls, so this is
+     * the same answer that path would have written rather than a restatement of
+     * the drop rule.
+     *
+     * It runs no system and moves no clock. `simTime` and `launchClock` stand
+     * where they were, no flyer moves or paints, no card turns, no win is
+     * detected, no cue is raised, and nothing is drawn from the generator. It
+     * corrects nothing either: a run held over a pile that no longer accepts it
+     * is left in hand and simply reports no drop target.
+     */
+    reconcile: (state) =>
+      pose(state, (sim) => {
+        refreshDropTarget(sim);
+      }),
+
     // ---- The screen -------------------------------------------------------
 
     menuItemRect: (state, index) => menuItemRect(state.screen, index),
@@ -390,11 +444,13 @@ export function createDebugApi(): CascadeDebugApi {
     addCard: (state, pile, index, suit, rank, faceUp) =>
       pose(state, (sim) => {
         const cards = pileOf(sim, pile, index);
-        if (cards === null) return;
+        if (cards === null) {
+          refuse("addCard", `has no pile "${String(pile)}" at ${index}`);
+        }
         cards.push({
           id: takeId(sim),
           suit,
-          rank: Math.max(RANK_MIN, Math.min(RANK_MAX, Math.round(rank))),
+          rank: requireWhole("addCard", "rank", rank, RANK_MIN, RANK_MAX),
           faceUp,
         });
       }),
@@ -402,9 +458,9 @@ export function createDebugApi(): CascadeDebugApi {
     removeCard: (state, id) =>
       pose(state, (sim) => {
         const found = findCard(sim, id);
-        if (found === null) return;
+        if (found === null) refuse("removeCard", `has no card with id ${id}`);
         const cards = pileOf(sim, found.pile, found.index);
-        if (cards === null) return;
+        if (cards === null) refuse("removeCard", `has no card with id ${id}`);
         cards.splice(found.row, 1);
         // The waste's set memory follows the card off the pile, exactly as it
         // does when play takes the card (specs/stock.md).
@@ -414,13 +470,17 @@ export function createDebugApi(): CascadeDebugApi {
     setCardFaceUp: (state, id, faceUp) =>
       pose(state, (sim) => {
         const found = findCard(sim, id);
-        if (found !== null) found.card.faceUp = faceUp;
+        if (found === null)
+          refuse("setCardFaceUp", `has no card with id ${id}`);
+        found.card.faceUp = faceUp;
       }),
 
     clearPile: (state, pile, index) =>
       pose(state, (sim) => {
         const cards = pileOf(sim, pile, index);
-        if (cards === null) return;
+        if (cards === null) {
+          refuse("clearPile", `has no pile "${String(pile)}" at ${index}`);
+        }
         cards.length = 0;
         if (pile === "waste") sim.wasteSets = [];
       }),
@@ -439,7 +499,13 @@ export function createDebugApi(): CascadeDebugApi {
 
     addWasteSet: (state, count) =>
       pose(state, (sim) => {
-        sim.wasteSets.push(Math.max(0, Math.round(count)));
+        if (!Number.isInteger(count) || count < 0) {
+          refuse(
+            "addWasteSet",
+            `needs a whole, non-negative count, got ${count}`,
+          );
+        }
+        sim.wasteSets.push(count);
       }),
 
     clearWasteSets: (state) =>
@@ -521,7 +587,7 @@ export function createDebugApi(): CascadeDebugApi {
         sim.flyers.push({
           id: takeId(sim),
           suit,
-          rank: Math.max(RANK_MIN, Math.min(RANK_MAX, Math.round(rank))),
+          rank: requireWhole("addFlyer", "rank", rank, RANK_MIN, RANK_MAX),
           x,
           y,
           vx,
@@ -530,19 +596,22 @@ export function createDebugApi(): CascadeDebugApi {
       }),
 
     setFlyerPosition: (state, id, x, y) =>
-      poseFlyer(state, id, (flyer) => {
+      poseFlyer(state, "setFlyerPosition", id, (flyer) => {
         flyer.x = x;
         flyer.y = y;
       }),
 
     setFlyerVelocity: (state, id, vx, vy) =>
-      poseFlyer(state, id, (flyer) => {
+      poseFlyer(state, "setFlyerVelocity", id, (flyer) => {
         flyer.vx = vx;
         flyer.vy = vy;
       }),
 
     removeFlyer: (state, id) =>
       pose(state, (sim) => {
+        if (!sim.flyers.some((flyer) => flyer.id === id)) {
+          refuse("removeFlyer", `has no flyer with id ${id}`);
+        }
         sim.flyers = sim.flyers.filter((flyer) => flyer.id !== id);
       }),
 

@@ -1,7 +1,8 @@
 // The debug surface of specs/instrumentation.md, driven exactly as a caller
 // drives it: through `engine.debug` on a real engine, with `engine.advance`
-// running the ticks between poses. Each pose is posed and read back, the
-// domains fail loudly, and the no-op cases the spec fixes change nothing.
+// running the ticks between poses. Each pose is posed and read back, and the
+// calls that fail loudly do — the domains an argument falls outside, and the
+// fields the game has no state for. No operation declines quietly.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PAUSE_ITEMS, RINGS, SCREENS, STAGE_W, TITLE_ITEMS } from "./constants";
@@ -99,11 +100,11 @@ describe("the menu highlight and the interstitial timer", () => {
     expect(() => h.debug.setMenuIndex(TITLE_ITEMS.length)).toThrow();
   });
 
-  it("setMenuIndex changes nothing on a screen with no menu", () => {
+  it("setMenuIndex fails loudly on a screen with no menu", () => {
     for (const screen of MENU_FREE) {
       h.debug.setScreen(screen);
       const before = h.debug.snapshot();
-      h.debug.setMenuIndex(1);
+      expect(() => h.debug.setMenuIndex(1)).toThrow();
       expect(h.debug.snapshot()).toEqual(before);
     }
   });
@@ -212,13 +213,21 @@ describe("the deflector and balls", () => {
     expect(snap.balls[0].y).toBeCloseTo(at.y, 9);
   });
 
-  it("launchBall acts as Space and is a no-op without a parked ball", () => {
+  it("launchBall acts as Space, and fails loudly with nothing parked", () => {
     h.debug.setScreen("playing");
     h.debug.parkBall();
     h.debug.launchBall();
     expect(h.debug.snapshot().balls[0].parked).toBe(false);
-    h.debug.launchBall();
+    expect(() => h.debug.launchBall()).toThrow();
     expect(h.debug.snapshot().balls).toHaveLength(1);
+  });
+
+  it("launchBall serves from whatever screen is up", () => {
+    h.debug.setScreen("title");
+    h.debug.parkBall();
+    h.debug.launchBall();
+    expect(h.debug.snapshot().screen).toBe("title");
+    expect(h.debug.snapshot().balls[0].parked).toBe(false);
   });
 
   it("clearBalls empties the field without a life loss", async () => {
@@ -231,14 +240,16 @@ describe("the deflector and balls", () => {
     expect(h.debug.snapshot().screen).toBe("playing");
   });
 
-  it("spawnBall appends in spawn order and stops at the cap", () => {
+  it("spawnBall appends in spawn order and fails loudly at the cap", () => {
     h.debug.setScreen("playing");
     h.debug.parkBall();
-    for (let i = 0; i < 7; i += 1) h.debug.spawnBall(600, 500, 10 * i, 0);
+    for (let i = 0; i < 5; i += 1) h.debug.spawnBall(600, 500, 10 * i, 0);
     const balls = h.debug.snapshot().balls;
     expect(balls).toHaveLength(6);
     expect(balls[1].vx).toBe(0);
     expect(balls[5].vx).toBe(40);
+    expect(() => h.debug.spawnBall(600, 500, 0, 0)).toThrow();
+    expect(h.debug.snapshot().balls).toHaveLength(6);
   });
 
   it("spawnBall marks the ball piercing exactly when pierce is in force", () => {
@@ -254,11 +265,11 @@ describe("the deflector and balls", () => {
     ]);
   });
 
-  it("parkBall parks one ball, and only one", () => {
+  it("parkBall parks one ball, and a second fails loudly", () => {
     h.debug.setScreen("playing");
     h.debug.clearBalls();
     h.debug.parkBall();
-    h.debug.parkBall();
+    expect(() => h.debug.parkBall()).toThrow();
     const balls = h.debug.snapshot().balls;
     expect(balls).toHaveLength(1);
     expect(balls[0].parked).toBe(true);
@@ -378,5 +389,48 @@ describe("pods, effects, and switches", () => {
     h.debug.setWaveAdvance(true);
     expect(h.debug.snapshot().waveAdvance).toBe(true);
     expect(() => h.debug.setPodSpawn("yes" as never)).toThrow();
+  });
+});
+
+describe("reconcile", () => {
+  it("re-derives a stored reading from a posed field", () => {
+    h.debug.setScreen("playing");
+    h.debug.clearBalls();
+    h.debug.setEffectTicks("pierce", 10);
+    h.debug.spawnBall(600, 500, 0, 0);
+    h.debug.reconcile();
+    expect(h.debug.snapshot().balls[0].piercing).toBe(true);
+  });
+
+  it("advances nothing", async () => {
+    h.debug.setScreen("playing");
+    h.debug.clearBalls();
+    h.debug.spawnBall(600, 500, 120, -40);
+    h.debug.setEffectTicks("widen", 30);
+    h.debug.setInterstitialTicks(12);
+    await h.step(1);
+
+    const before = h.debug.snapshot();
+    h.debug.reconcile();
+    const once = h.debug.snapshot();
+    h.debug.reconcile();
+    const twice = h.debug.snapshot();
+
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.ticks).toBe(before.ticks);
+    expect(once.balls).toEqual(before.balls);
+    expect(once.rings).toEqual(before.rings);
+    expect(once.effects).toEqual(before.effects);
+    expect(once.interstitialTicks).toBe(before.interstitialTicks);
+  });
+
+  it("is legal on every screen, and sounds nothing", () => {
+    const from = h.cues.length;
+    for (const screen of SCREENS) {
+      h.debug.setScreen(screen);
+      expect(() => h.debug.reconcile()).not.toThrow();
+    }
+    expect(h.cues.slice(from)).toEqual([]);
   });
 });

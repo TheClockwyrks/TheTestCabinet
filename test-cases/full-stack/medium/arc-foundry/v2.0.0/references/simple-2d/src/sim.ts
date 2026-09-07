@@ -1356,13 +1356,14 @@ export function canPlaceAt(w: FoundryView, col: number, row: number): boolean {
  * Dropping onto a blocker rerolls that blocker in place. Another rock is armed
  * immediately afterward if the allowance still permits.
  */
-export function placeStamp(
+export function performPlaceStamp(
   w: FoundryWorld,
   col: number,
   row: number,
 ): Candidate | null {
-  if (w.screen !== "playing" || w.phase !== "build") return null;
-  if (!w.holding && !canStamp(w)) return null;
+  // THE TRANSACTION. The allowance and the footprint are the drop's OWN rules — "refused
+  // exactly as a pointer press would be when the footprint is illegal or the allowance is
+  // spent" (specs/instrumentation.md) — so both stay; the screen and the phase do not.
   if (stampsLeft(w) <= 0) return null;
   const onBlocker = blockerAtAnchor(w, col, row);
   if (!onBlocker && !board(w).canPlace(col, row, w.structures, w.units)) {
@@ -1397,6 +1398,20 @@ export function placeStamp(
 }
 
 /** Put a held rock away. Nothing was rolled and nothing was spent. */
+/**
+ * The PLAYER's route to a drop: from the build phase, with a rock on the cursor or one the
+ * allowance still permits arming.
+ */
+export function tryPlaceStamp(
+  w: FoundryWorld,
+  col: number,
+  row: number,
+): Candidate | null {
+  if (w.screen !== "playing" || w.phase !== "build") return null;
+  if (!w.holding && !canStamp(w)) return null;
+  return performPlaceStamp(w, col, row);
+}
+
 export function cancelHeld(w: FoundryWorld): void {
   w.holding = false;
 }
@@ -1415,8 +1430,7 @@ export function canRemove(w: FoundryView, id: number): boolean {
  * roll, dismantle it, and roll again without limit. A dismantle only ever opens routes,
  * so it can never seal the yard.
  */
-export function removeStructure(w: FoundryWorld, id: number): boolean {
-  if (w.screen !== "playing" || w.phase !== "build") return false;
+export function performRemoveStructure(w: FoundryWorld, id: number): boolean {
   const i = w.structures.findIndex((s) => s.id === id);
   if (i < 0) return false;
   if (w.harvest.mode === "keep" && w.harvest.id === id)
@@ -1429,8 +1443,14 @@ export function removeStructure(w: FoundryWorld, id: number): boolean {
   return true;
 }
 
+/** The PLAYER's route: DISMANTLE is a build-phase correction drawn on the yard. */
+export function tryRemoveStructure(w: FoundryWorld, id: number): boolean {
+  if (w.screen !== "playing" || w.phase !== "build") return false;
+  return performRemoveStructure(w, id);
+}
+
 export function removeSelected(w: FoundryWorld): void {
-  if (w.selectedId !== null) removeStructure(w, w.selectedId);
+  if (w.selectedId !== null) tryRemoveStructure(w, w.selectedId);
 }
 
 // ---- Harvest and combining -----------------------------------------------
@@ -1467,21 +1487,29 @@ export function baseStructureById(
  * A harvest is the wave trigger, so there is no separate send: place and compare every
  * rock first, then commit the one to keep.
  */
-export function keep(w: FoundryWorld, id: number): boolean {
-  // A control the player operates is refused wherever that control is refused, and the
-  // pause menu takes the input: on `paused` every control on the yard is inert
-  // (specs/controls.md).
+export function performKeep(w: FoundryWorld, id: number): void {
+  // THE TRANSACTION. Mark the candidate kept and launch the wave. It asks nothing about
+  // how the caller got here (specs/instrumentation.md — "An operation is unconditional").
+  w.harvest = { mode: "keep", id };
+  beginWave(w);
+}
+
+/**
+ * The PLAYER's route. The screen showing and the phase running decide whether a player
+ * could press HARVEST at all: the pause menu takes the input, and the panel draws the
+ * control in the build phase alone (specs/controls.md, specs/hud.md).
+ */
+export function tryKeep(w: FoundryWorld, id: number): boolean {
   if (w.screen !== "playing") return false;
   if (w.phase !== "build") return false;
   if (!candidateById(w, id)) return false;
-  w.harvest = { mode: "keep", id };
-  beginWave(w);
+  performKeep(w, id);
   return true;
 }
 
 export function keepSelected(w: FoundryWorld): void {
   const s = selected(w);
-  if (s && s.kind === "candidate") keep(w, s.id);
+  if (s && s.kind === "candidate") tryKeep(w, s.id);
 }
 
 /** Whether a candidate may be harvested one rung lower. */
@@ -1498,8 +1526,12 @@ export function canDowngrade(w: FoundryView, id: number): boolean {
  * ingredient a recipe still needs. This is a keep at one rung lower, so like a keep it
  * is the level's harvest and it launches the wave.
  */
-export function downgrade(w: FoundryWorld, id: number): boolean {
-  if (!canDowngrade(w, id)) return false;
+export function performDowngrade(w: FoundryWorld, id: number): boolean {
+  // THE TRANSACTION. A candidate above Scrap drops a rung and is harvested at it. The
+  // quality floor is the operation's own rule — there is no rung below Scrap — and the
+  // screen and the phase are not.
+  const found = candidateById(w, id);
+  if (!found || found.quality <= 1) return false;
   const cand = ownCandidate(w, id)!;
   cand.quality -= 1;
   const at = footprintCenter(cand.col, cand.row);
@@ -1509,8 +1541,14 @@ export function downgrade(w: FoundryWorld, id: number): boolean {
   return true;
 }
 
+/** The PLAYER's route: DOWNGRADE is the build phase's second harvest control. */
+export function tryDowngrade(w: FoundryWorld, id: number): boolean {
+  if (!canDowngrade(w, id)) return false;
+  return performDowngrade(w, id);
+}
+
 export function downgradeSelected(w: FoundryWorld): void {
-  if (w.selectedId !== null) downgrade(w, w.selectedId);
+  if (w.selectedId !== null) tryDowngrade(w, w.selectedId);
 }
 
 /** Whether a same-type, same-quality partner exists, so a quality fold is offered. */
@@ -1567,7 +1605,6 @@ function combineQualityNow(
   anchorId: number,
   partnerId: number,
 ): boolean {
-  if (w.screen !== "playing") return false;
   const anchor = baseStructureById(w, anchorId);
   const partner = baseStructureById(w, partnerId);
   if (!anchor || !partner || anchor.id === partner.id) return false;
@@ -1625,7 +1662,6 @@ function combineRecipeNow(
   combo: ComboId,
   ingredientIds: readonly number[],
 ): boolean {
-  if (w.screen !== "playing") return false;
   const anchor = baseStructureById(w, anchorId);
   if (!anchor || !ingredientIds.includes(anchorId)) return false;
   if (!recipeSatisfied(w, combo, ingredientIds)) return false;
@@ -1856,11 +1892,36 @@ export function combineRecipeSelected(
   return w.selectedId !== null ? combineRecipe(w, w.selectedId, combo) : false;
 }
 
-export function combineSelected(w: FoundryWorld): boolean {
+/** The PLAYER's route: COMBINE is a control on the yard, which the pause menu takes over. */
+export function tryCombine(w: FoundryWorld): boolean {
+  if (w.screen !== "playing") return false;
   return combineSelection(w);
 }
 
 /** Commit a combine from an initiator, as the surface's `combine` does. */
+/**
+ * Bring every reported reading into agreement with the yard as it now stands, WITHOUT
+ * advancing anything (specs/instrumentation.md — `reconcile`).
+ *
+ * This build KEEPS several derived readings rather than working them out at the read, so
+ * this is where they are rewritten from what they are copies of: the cached occupancy and
+ * the maze readout from the structures, each firing tower's aura bonus from the sources
+ * standing near it, and each unit's route and `progress` from where it is and the
+ * checkpoint it is heading for.
+ *
+ * It moves NOTHING to make a reading agree. Every unit is re-routed FROM WHERE IT IS, so a
+ * unit posed inside a wall reads as standing there. No clock moves, no rate is integrated,
+ * no shot is fired, no bounty is paid, no cue is raised, and nothing is drawn from the
+ * seeded generator. Calling it twice leaves the same state as calling it once.
+ */
+export function reconcile(w: FoundryWorld): void {
+  rePath(w);
+  for (const u of w.units) {
+    if (u.dead) continue;
+    u.progress = remainingTiles(u);
+  }
+}
+
 export function combineFrom(w: FoundryWorld, id: number): boolean {
   const set = combineSet(w);
   if (set.length >= 2 && set[0] === id) return combineSelection(w);
@@ -1883,12 +1944,23 @@ export function canUpgradeQuality(w: FoundryView): boolean {
   return w.screen === "playing" && cost !== null && w.charge >= cost;
 }
 
-export function upgradeQuality(w: FoundryWorld): boolean {
+/**
+ * THE TRANSACTION. The price and the top of the track are the purchase's OWN rules, so a
+ * track already at `REFINEMENT_MAX` and a bank short of the cost each buy nothing; where
+ * the caller was standing is not one of those rules.
+ */
+export function performUpgradeQuality(w: FoundryWorld): boolean {
   const cost = refineCost(w);
-  if (!canUpgradeQuality(w) || cost === null) return false;
+  if (cost === null || w.charge < cost) return false;
   w.charge -= cost;
   w.refinement = Math.min(REFINEMENT_MAX, w.refinement + 1);
   return true;
+}
+
+/** The PLAYER's route: the refinement control is drawn on the build panel, on the yard. */
+export function tryUpgradeQuality(w: FoundryWorld): boolean {
+  if (w.screen !== "playing") return false;
+  return performUpgradeQuality(w);
 }
 
 // ---- Combination-tower upgrades ------------------------------------------
@@ -1905,8 +1977,15 @@ export function canUpgradeCombo(w: FoundryView, id: number): boolean {
   return cost !== null && w.charge >= cost;
 }
 
-export function upgradeCombo(w: FoundryWorld, id: number): boolean {
-  if (!canUpgradeCombo(w, id)) return false;
+/**
+ * THE TRANSACTION. The price and the top of the ladder are the purchase's OWN rules; the
+ * screen the panel was drawn on is not.
+ */
+export function performUpgradeCombo(w: FoundryWorld, id: number): boolean {
+  const found = w.structures.find((x) => x.id === id);
+  if (!found || found.kind !== "component" || !found.combo) return false;
+  if (comboUpgradeCost(found.combo, found.comboLevel) === null) return false;
+  if (w.charge < comboUpgradeCost(found.combo, found.comboLevel)!) return false;
   const s = ownComponent(w, id)!;
   const cost = comboUpgradeCost(s.combo!, s.comboLevel)!;
   w.charge -= cost;
@@ -1924,8 +2003,14 @@ export function upgradeCombo(w: FoundryWorld, id: number): boolean {
   return true;
 }
 
+/** The PLAYER's route: the upgrade control is drawn on the build panel, on the yard. */
+export function tryUpgradeCombo(w: FoundryWorld, id: number): boolean {
+  if (w.screen !== "playing") return false;
+  return performUpgradeCombo(w, id);
+}
+
 export function upgradeComboSelected(w: FoundryWorld): void {
-  if (w.selectedId !== null) upgradeCombo(w, w.selectedId);
+  if (w.selectedId !== null) tryUpgradeCombo(w, w.selectedId);
 }
 
 // ---- Targeting -----------------------------------------------------------
@@ -1951,7 +2036,6 @@ export function setTargetingById(
   id: number,
   priority: TargetingPriority,
 ): void {
-  if (w.screen !== "playing") return;
   const c = ownComponent(w, id);
   if (c) setTargeting(c, priority);
 }
@@ -2358,7 +2442,6 @@ export function spawnUnit(
   w: FoundryWorld,
   type: LoadType | "overload",
 ): Unit | null {
-  if (w.screen !== "playing") return null;
   if (w.phase === "build") {
     w.phase = "wave";
     w.harvest = { mode: "none" };

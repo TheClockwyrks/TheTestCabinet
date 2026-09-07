@@ -35,7 +35,7 @@ import {
   placeBlocker,
   placeCombo,
   placeComponent,
-  placeStamp,
+  tryPlaceStamp,
   pullPress,
   resetWorld,
   select,
@@ -137,7 +137,7 @@ describe("the inspector draws every kind of selection", () => {
     const w = opened();
     armNextRoll(w, "coil", 2);
     pullPress(w);
-    placeStamp(w, 6, 6);
+    tryPlaceStamp(w, 6, 6);
     // Placing re-arms the press while the allowance lasts, and the panel then reads the
     // rock on the cursor rather than the inspector, so the hand is put away first.
     cancelHeld(w);

@@ -105,6 +105,8 @@ const FOCUSES: readonly Focus[] = ["field", "tape"];
 export interface OrreryStateOps {
   reset(): void;
   snapshot(): Record<string, unknown>;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   setCompletion(enabled: boolean): void;
 
   setScreen(name: Screen): void;
@@ -241,6 +243,24 @@ export function createStateOps(session: Session): OrreryStateOps {
     snapshot() {
       return snapshotOf(state());
     },
+
+    /**
+     * Bring every reported reading into agreement with the world as it stands.
+     *
+     * Every derived reading this build reports — the machine's `cost` and
+     * `period`, a mote's drawn `x` and `y`, the banked `area`, each mode's
+     * challenge `count`, and each mode's `stashed` list — is worked out in
+     * `snapshotOf` at the read, from the parts, the tapes, the field and the
+     * courses, so nothing is held that a pose can leave behind and there is
+     * nothing here to rewrite. The operation is required of every build,
+     * including one that keeps those readings as stored copies, and this is
+     * what it comes to in a build that does not.
+     *
+     * It advances nothing and it corrects nothing: no clock moves, no cycle
+     * runs, and a part posed where the game's own rules would not have let a
+     * player leave it stays exactly where it was posed.
+     */
+    reconcile() {},
 
     setCompletion(enabled) {
       state().completion = requireBoolean("setCompletion", "enabled", enabled);
@@ -871,6 +891,10 @@ export function createDebugApi(): OrreryDebugApi {
     // Session
     reset: transition((ops) => ops.reset),
     snapshot: (state) => snapshotOf(state),
+    // A pose in the value-passing shape, not a reading: it takes the current
+    // state and returns the next one. This build works every derived reading
+    // out at the read, so the state it returns equals the one it was handed.
+    reconcile: transition((ops) => ops.reconcile),
     setCompletion: transition((ops) => ops.setCompletion),
 
     // Navigation and progress

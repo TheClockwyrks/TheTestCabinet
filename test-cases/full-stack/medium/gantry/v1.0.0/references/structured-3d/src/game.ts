@@ -549,6 +549,8 @@ export interface GantryDebugApi {
 
   // The run and the screens
   reset(): void;
+  /** Bring every reported reading into agreement with the world as it stands. */
+  reconcile(): void;
   setScreen(screen: string): void;
   setMenuIndex(index: number): void;
   openSite(index: number): void;

@@ -358,6 +358,22 @@ export interface DeepcoreDebugApi<S = unknown> {
    * generator. The save slot is untouched, and so is the engine's mute bit.
    */
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  /**
+   * Bring every reading this surface reports into agreement with the world as it
+   * stands, without advancing anything.
+   *
+   * A build is free to work a derived reading out at the read or to keep it as a
+   * stored copy, and this is what brings a stored copy back into agreement after
+   * a pose: the miner's `grounded`, its `col` and `row`, `depthMeters`,
+   * `overloaded`, the cargo's `slotsUsed`, and the scanner's lock all follow from
+   * the miner, the grid, the cargo and the tiers. It moves no clock, runs no
+   * system, fires nothing, and moves nothing to make a reading agree. Calling it
+   * twice leaves the same state as calling it once.
+   *
+   * A build that works every one of those readings out at the call returns a
+   * state equal to the one it was handed.
+   */
+  reconcile(state: DeepReadonly<S>): S;
   /** Regenerate the grid at the current world size, leaving everything else. */
   generateMine(state: DeepReadonly<S>): S;
   /** Open every playable cell below `row 0` and above the Core chamber. */
@@ -503,6 +519,7 @@ export const REQUIRED_OPS = [
   "controlRect",
   // Restoring the world
   "reset",
+  "reconcile",
   "generateMine",
   "clearMine",
   "clearCargo",

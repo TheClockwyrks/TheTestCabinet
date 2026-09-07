@@ -25,6 +25,16 @@
 // importing `createHarness`, `captureReplay` and `watchCues` from `../harness`
 // exactly as they did, and none of them can tell the difference.
 //
+// RECONCILING AFTER A POSE. A helper below that poses anything a reading derives
+// from — a node's `x`/`y`, a crystal's `spent`, a beam's `complete`, `solved`,
+// `targets` — calls `await h.debug.reconcile()` before it returns, and before the frame that draws the
+// pose, so a check posed through the helpers never calls `reconcile` itself. A
+// check that poses with `h.debug.setScreen`/`loadBoard` directly calls it once
+// before its first read. THE POINTER HELPERS DELIBERATELY DO NOT: a pointer
+// operation is the player's own route, and a build that leaves a reading stale
+// after one has left it stale for a player too, which is the defect rather than
+// something the harness should hide.
+//
 // WHAT A CHECK READS. The game's own state (through `window.__refract`'s
 // `snapshot`), the frames the harness itself drove, the operations the build
 // issued against its 2D context, the pixels those operations left on the canvas,
@@ -104,6 +114,7 @@ export const REQUIRED_OPS = [
   "advance",
   "reset",
   "snapshot",
+  "reconcile",
   "setMode",
   "setScreen",
   "setMenuIndex",
@@ -202,6 +213,14 @@ export interface RefractDebugApi {
   advance(seconds: number, frames?: number): Promise<void>;
   reset(options?: { seed?: number }): Promise<void>;
   snapshot(): Promise<RefractSnapshot>;
+  /**
+   * Bring every value the snapshot reports into agreement with the board as it
+   * stands, without advancing anything. A node's `x`/`y`, a crystal's `spent`, a
+   * beam's `complete`, `solved` and `targets` are all derived, and a build that
+   * keeps any of them as a stored copy rewrites that copy here. It moves no
+   * clock, runs no system, plays no cue, and corrects nothing.
+   */
+  reconcile(): Promise<void>;
   setMode(mode: Mode): Promise<void>;
   setScreen(screen: Screen): Promise<void>;
   setMenuIndex(index: number): Promise<void>;
@@ -515,6 +534,8 @@ export async function toggleOverlay(h: Harness): Promise<void> {
 export async function startCampaign(h: Harness): Promise<void> {
   await h.debug.setMode("campaign");
   await h.debug.setScreen("select");
+  // `targets` derives from the screen.
+  await h.debug.reconcile();
   await h.advance(1);
 }
 
@@ -533,6 +554,8 @@ export async function startCampaign(h: Harness): Promise<void> {
  */
 export async function startCascade(h: Harness): Promise<void> {
   await h.debug.setScreen("title");
+  // `targets` derives from the screen, and the title's target is read below.
+  await h.debug.reconcile();
   await h.advance(1);
   const cascade = targetCenter(targetById(await h.snapshot(), "menu-1"));
   await pressRelease(h, cascade);
@@ -549,6 +572,9 @@ export async function startCascade(h: Harness): Promise<void> {
 export async function loadBoard(h: Harness, notation: string): Promise<Board> {
   const board = parseBoard(notation);
   await h.debug.loadBoard(boardToNotation(board).split("\n"));
+  // The board, the beams and the screen are what a reading derives from, so
+  // the readings are brought into agreement before the frame that draws them.
+  await h.debug.reconcile();
   await h.advance(1);
   return board;
 }
@@ -901,6 +927,8 @@ export async function solveGenerated(
   onBoard?: (snapshot: RefractSnapshot, index: number) => void | Promise<void>,
 ): Promise<CascadeSweep> {
   await h.debug.reset({ seed });
+  // `reset` rewrites the whole world, and every derived reading with it.
+  await h.debug.reconcile();
   await h.advance(1);
   await startCascade(h);
 

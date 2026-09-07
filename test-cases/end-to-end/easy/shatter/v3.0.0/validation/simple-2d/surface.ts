@@ -220,6 +220,16 @@ export interface ShatterDebugApi<S = unknown> {
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): ShatterSnapshot;
+  /**
+   * Brings every value the snapshot reports into agreement with the field as it
+   * stands, without advancing anything (`specs/instrumentation.md`).
+   *
+   * A build that works its derived readings out at the read returns a state
+   * equal to the one it was handed; a build that keeps one as a stored copy
+   * rewrites it from its source. It is what a driver calls after posing a field
+   * and before reading it back.
+   */
+  reconcile(state: DeepReadonly<S>): S;
 
   /* ---- The screen and the run -------------------------------------------- */
 
@@ -354,6 +364,7 @@ export const READINGS = ["snapshot", "menuItemRect"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   "setScreen",
   "setMenuIndex",

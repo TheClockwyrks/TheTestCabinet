@@ -63,6 +63,20 @@ export function plantPlankton(maze: MazeState): {
 }
 
 /**
+ * How many plankton a layer carries (`specs/state.md`).
+ *
+ * `planktonRemaining` is that count and nothing else, so this is where it comes
+ * from: {@link plantPlankton} counts as it plants, and the surface's
+ * `reconcile` brings a `planktonRemaining` that has drifted from the layer back
+ * into agreement through this.
+ */
+export function countPlankton(plankton: readonly boolean[]): number {
+  let remaining = 0;
+  for (const held of plankton) if (held) remaining++;
+  return remaining;
+}
+
+/**
  * The den tiles the roster is housed on, one per predator, cycling the chamber's
  * own tiles. A layout with no chamber houses them on the start tile, where the
  * den mode holds them out of play (`specs/instrumentation.md`).

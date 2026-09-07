@@ -25,6 +25,12 @@
 // ARRANGE the strait through the debug surface, and the real `update` the build
 // wrote is what runs from there.
 //
+// RECONCILING AFTER A POSE. A helper below that poses anything a reading derives
+// from — `timerMax`, the critter's `col`, `row` and `footing`, a bear's
+// `swimming` — calls `h.debug.reconcile()` before it returns, so a check posed
+// through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly calls it once before its first read or sweep.
+//
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md fixes
 // its operations, so they mean the same thing in every build: `addBear` appends a
 // settled bear with its three faculties on, `setLevel` lays the sixteen lanes out
@@ -1130,6 +1136,9 @@ export function startCrossing(h: Harness, level = 1): void {
   h.debug.setTimer(crossingTimer(level));
 
   h.debug.addCritter(START_COL, ROW_NEAR);
+  // The level, the rosters and the critter are all things a reading derives
+  // from, so the readings are brought into agreement before this returns.
+  h.debug.reconcile();
 }
 
 /** The three kinds the ice band carries (specs/ice.md). */
@@ -1188,6 +1197,9 @@ export function poseLane(
       ids.push(lastFloe(h.snapshot()).id);
     }
   }
+  // The critter's footing and a bear's swimming flag both derive from the
+  // floes, so the lane is reconciled before anything reads it.
+  h.debug.reconcile();
   return ids;
 }
 
@@ -1227,6 +1239,8 @@ export function poseBear(
   if (faculties.sense === false) h.debug.setBearSense(id, false);
   if (faculties.routing === false) h.debug.setBearRouting(id, false);
   if (faculties.travel === false) h.debug.setBearTravel(id, false);
+  // A bear's `swimming` derives from the tile it is travelling into.
+  h.debug.reconcile();
   return id;
 }
 

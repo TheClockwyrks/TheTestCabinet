@@ -35,6 +35,13 @@
 // importing `createHarness`, `captureReplay`, `startCrossing` and the tick
 // arithmetic from `../harness` exactly as they did.
 //
+// RECONCILING AFTER A POSE. A helper below that poses anything a reading derives
+// from — `timerMax`, the critter's `col`, `row` and `footing`, a bear's
+// `swimming` — reconciles before it returns, as the last entry of the same
+// crossing its poses go over in, so a check posed through the helpers never
+// calls `reconcile` itself. A check that poses with `h.debug.set…` directly
+// calls `await h.debug.reconcile()` once before its first read or sweep.
+//
 // WHAT A CHECK READS. The game's own state (through `window.__floe`'s
 // `snapshot`), the ticks the harness itself drove, the operations the build
 // issued against its 2D context, the bitmaps it handed those operations, the
@@ -156,6 +163,7 @@ export const REQUIRED_OPS = [
   // The core.
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
   // The screen and the run.
   "setScreen",
@@ -324,6 +332,14 @@ export interface FloeDebugApi {
   // The core.
   reset(options?: { seed?: number }): Promise<void>;
   snapshot(): Promise<FloeSnapshot>;
+  /**
+   * Bring every value the snapshot reports into agreement with the strait as it
+   * stands, without advancing anything. `timerMax`, the critter's `col`, `row`
+   * and `footing`, and a bear's `swimming` are all derived, and a build that
+   * keeps any of them as a stored copy rewrites that copy here. It moves no
+   * clock, runs no system, fires no cue, and corrects nothing.
+   */
+  reconcile(): Promise<void>;
   menuItemRect(index: number): Promise<MenuRect | null>;
 
   // The screen and the run.
@@ -1649,6 +1665,10 @@ export async function startCrossing(h: Harness, level = 1): Promise<void> {
     { op: "setScore", args: [0] },
     { op: "setTimer", args: [crossingTimer(level)] },
     { op: "addCritter", args: [START_COL, ROW_NEAR] },
+    // The level, the rosters and the critter are all things a reading derives
+    // from, so the readings are brought into agreement before this returns —
+    // as the last entry of the same crossing, so the count does not grow.
+    { op: "reconcile", args: [] },
   ]);
 }
 
@@ -1667,6 +1687,8 @@ export async function startRunFromTitle(
   options: { seed?: number } = {},
 ): Promise<void> {
   await h.debug.reset(options.seed === undefined ? undefined : options);
+  // `reset` rewrites the whole strait, and every derived reading with it.
+  await h.debug.reconcile();
   await h.debug.setMenuIndex(0);
   await h.tap(BINDINGS.confirm[0]);
   await h.advance(1);
@@ -1722,6 +1744,9 @@ export async function poseLane(
         ? { op: "addVehicle", args: [row, kind as VehicleKind, tileLeft(col)] }
         : { op: "addFloe", args: [row, kind as FloeKind, tileLeft(col)] },
     ),
+    // The critter's footing and a bear's swimming flag both derive from the
+    // floes, so the lane is reconciled before anything reads it.
+    { op: "reconcile", args: [] },
   ]);
 
   const laid = await h.snapshot();
@@ -1796,6 +1821,9 @@ export async function poseBear(
     ...(pose.travel === undefined
       ? []
       : [{ op: "setBearTravel", args: [id, pose.travel] }]),
+    // A bear's `swimming` derives from the tile it is travelling into, so the
+    // pose is reconciled before the caller reads it.
+    { op: "reconcile", args: [] },
   ]);
   return id;
 }

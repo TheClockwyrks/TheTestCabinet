@@ -205,6 +205,15 @@ export interface CascadeDebugApi {
   reset(options?: { seed?: number }): void;
   snapshot(): CascadeSnapshot;
   /**
+   * Brings every value the surface reports into agreement with the table as it
+   * stands, advancing nothing (specs/instrumentation.md, The core).
+   *
+   * `wasteVisibleCount`, a card's `color` and `dropTarget` are derived rather
+   * than stored, and a build is free to keep any of them as a copy — this is
+   * what rewrites such a copy from what it is a copy of after a pose.
+   */
+  reconcile(): void;
+  /**
    * The hit region of item `index` on the menu the current screen shows, or
    * `null` on `won` and for an index naming no item of that menu.
    *
@@ -300,6 +309,7 @@ export const VERDICT_OPS = ["move", "autoMove"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
+  "reconcile",
   "menuItemRect",
 
   "setScreen",

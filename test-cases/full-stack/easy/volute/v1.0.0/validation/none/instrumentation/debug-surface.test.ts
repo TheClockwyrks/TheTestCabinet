@@ -18,7 +18,7 @@
 //   "the build installs the finished surface on `window.__volute` as soon as the
 //    game has initialized"                                    — the global
 //   "The surface carries `version` (`VOLUTE_DEBUG_VERSION`, `1`)"
-//   the sixteen operation headings under "The operations"     — REQUIRED_OPS
+//   every operation heading under "The operations"            — REQUIRED_OPS
 //   "`setAutoStep(false)` stops the frame loop feeding the wall clock's delta
 //    time into the tick accumulator, so the hall advances only when `step` says
 //    so"                                                      — the clock
@@ -289,7 +289,7 @@ it("sets each single field it is given, and opens a level with startLevel", asyn
   assertEqual(started.cells, CELLS, "the cells a started run leaves");
   assertEqual(started.level, 1, "the level a started run leaves");
 
-  // "Opens `level`, a whole number clamped to `1` through `LEVEL_COUNT` (`5`)".
+  // "Opens `level`, a whole number `1` through `LEVEL_COUNT` (`5`)".
   // Level 3 rather than 1, so a build that ignores the argument fails.
   await h.debug.startLevel(3);
   const opened = await h.snapshot();
@@ -396,7 +396,7 @@ it("holds the charges it is given and releases the loaded one on fire", async ()
 it("sets the pressure and the quota it is given", async () => {
   await h.debug.startLevel(1);
 
-  // "Sets the pressure to `value`, clamped to `0` through `100`." The clamp is
+  // "Sets the pressure to `value`, `0` through `100`." The game's own clamp is
   // `pressure/clamped-high` and `pressure/clamped-low`; this is the plain read
   // back, at the case's standing pressure tolerance.
   await h.debug.setPressure(40);

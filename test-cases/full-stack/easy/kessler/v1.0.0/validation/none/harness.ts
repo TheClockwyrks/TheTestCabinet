@@ -50,6 +50,15 @@
 // ONCE, in the scenario section at the foot of this file, and every suite that
 // needs part of one calls the operations it needs instead of restating the
 // whole.
+//
+// RECONCILING AFTER A POSE. `reconcile()` brings every reading the surface
+// reports into agreement with the field a pose has just arranged, without
+// advancing anything, so a build that keeps a derived reading as a stored copy
+// answers for the field as posed rather than as it was. A helper below that
+// poses anything a reading derives from — a ball, a pod, a target, an effect
+// timer — reconciles before it returns, so a check posing through the helpers
+// never calls it itself. A check that poses with `h.debug.set…` directly calls
+// it once before its first read or sweep.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -816,6 +825,7 @@ export async function isolate(
   await h.debug.clearPods();
   await h.debug.setWaveAdvance(false);
   await h.debug.setPodSpawn(false);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -885,6 +895,7 @@ export async function spawnBallPolar(
   const at = pointAt(r, thetaDeg);
   const v = outwardVelocity(speed, thetaDeg, offDeg);
   await h.debug.spawnBall(at.x, at.y, v.vx, v.vy);
+  await h.debug.reconcile();
 }
 
 /**
@@ -900,6 +911,7 @@ export async function spawnPodPolar(
 ): Promise<void> {
   const at = pointAt(r, thetaDeg);
   await h.debug.spawnPod(kind, at.x, at.y);
+  await h.debug.reconcile();
 }
 
 /**
@@ -921,6 +933,7 @@ export async function startFreshSession(
   await (seed === undefined ? h.debug.reset() : h.debug.reset(seed));
   await h.debug.setScreen("playing");
   await h.debug.parkBall();
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -946,6 +959,7 @@ export async function poseInterstitial(
   await h.debug.setShield(false);
   await h.debug.setInterstitialTicks(ticks);
   await h.debug.setScreen("waveclear");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 

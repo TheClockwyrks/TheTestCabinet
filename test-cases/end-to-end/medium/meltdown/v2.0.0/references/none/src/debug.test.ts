@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BOTTLENECK_ZONE,
+  COLS,
   DIFFICULTY_ITEMS,
   DIFFICULTY_TABLE,
   ENDING_ITEMS,
@@ -18,6 +19,7 @@ import {
   MELTDOWN_DEBUG_VERSION,
   MODE_ITEMS,
   PAUSE_ITEMS,
+  ROWS,
   START_LIVES,
   TILE,
   TITLE_ITEMS,
@@ -112,6 +114,43 @@ describe("the surface itself", () => {
     ).toBe("title");
     remove();
     expect(target[MELTDOWN_HANDLE]).toBeUndefined();
+  });
+
+  it("reconcile re-derives a reading from a posed position", () => {
+    const { api } = playing();
+    const id = api.addUnit("mote", "left");
+    api.setUnitPosition(id, tileCX(18), tileCY(9));
+    api.reconcile();
+    const unit = api.snapshot().surge[0];
+    // `col`, `row` and `remaining` all follow from where the unit now is.
+    expect({ col: unit.col, row: unit.row }).toEqual({ col: 18, row: 9 });
+    expect(unit.remaining).toBeGreaterThan(0);
+  });
+
+  it("reconcile advances nothing, and twice is once", () => {
+    const { api } = playing();
+    const tower = api.addTower("arc", 20, 20);
+    api.setTowerHeat(tower, 40);
+    api.setTowerTripTimer(tower, 2);
+    const unit = api.addUnit("mote", "left");
+    api.setUnitPosition(unit, tileCX(18), tileCY(9));
+    api.setUnitSlowTimer(unit, 1.5);
+    api.setBuildTimer(7);
+
+    const before = api.snapshot();
+    api.reconcile();
+    const once = api.snapshot();
+    api.reconcile();
+    const twice = api.snapshot();
+
+    // No clock moved and no timer ticked.
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.buildTimer).toBe(before.buildTimer);
+    expect(once.towers[0].tripTimer).toBe(before.towers[0].tripTimer);
+    expect(once.surge[0].slowTimer).toBe(before.surge[0].slowTimer);
+    // Nothing moved, nothing was spent, nothing was corrected.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
   });
 });
 
@@ -397,15 +436,20 @@ describe("the towers", () => {
     expect(tower.heatMult).toBeCloseTo(heatMultiplier(100, 80), 12);
   });
 
-  it("clamps a posed heat to the scale, and leaves a mover cold forever", () => {
+  it("fails loudly off the heat scale, and on a mover that carries none", () => {
     const { api } = playing();
     const arc = api.addTower("arc", 20, 20);
-    api.setTowerHeat(arc, 500);
+    api.setTowerHeat(arc, 100);
     expect(api.snapshot().towers[0].heat).toBe(100);
-    api.setTowerHeat(arc, -20);
-    expect(api.snapshot().towers[0].heat).toBe(0);
+    // The scale is a constant the specs fix, so a heat off it names nothing.
+    expect(() => api.setTowerHeat(arc, 500)).toThrow(RangeError);
+    expect(() => api.setTowerHeat(arc, -20)).toThrow(RangeError);
+    expect(api.snapshot().towers[0].heat).toBe(100);
+
+    // A Forge carries no heat of its own, so there is no state on one for this
+    // operation to reach and the call fails rather than passing quietly.
     const forge = api.addTower("forge", 24, 24);
-    api.setTowerHeat(forge, 80);
+    expect(() => api.setTowerHeat(forge, 80)).toThrow(RangeError);
     const posed = api.snapshot().towers[1];
     expect(posed.heat).toBe(0);
     expect(posed.heatMult).toBe(0);
@@ -474,21 +518,30 @@ describe("the towers", () => {
     expect(tower.thermalEnabled).toBe(true);
   });
 
-  it("ignores an id nothing answers to", () => {
+  it("fails loudly on an id nothing answers to", () => {
     const { api } = playing();
     api.addTower("arc", 20, 20);
     const before = api.snapshot();
-    api.setTowerHeat(999, 50);
-    api.setTowerLevel(999, 3);
-    api.setTowerTripped(999, true);
-    api.setTowerTripTimer(999, 3);
-    api.setTowerFresh(999, false);
-    api.setTowerFiring(999, false);
-    api.setTowerThermal(999, false);
-    api.removeTower(999);
-    api.upgradeTower(999);
-    api.sellTower(999);
+    expect(() => api.setTowerHeat(999, 50)).toThrow(RangeError);
+    expect(() => api.setTowerLevel(999, 3)).toThrow(RangeError);
+    expect(() => api.setTowerTripped(999, true)).toThrow(RangeError);
+    expect(() => api.setTowerTripTimer(999, 3)).toThrow(RangeError);
+    expect(() => api.setTowerFresh(999, false)).toThrow(RangeError);
+    expect(() => api.setTowerFiring(999, false)).toThrow(RangeError);
+    expect(() => api.setTowerThermal(999, false)).toThrow(RangeError);
+    expect(() => api.removeTower(999)).toThrow(RangeError);
+    expect(() => api.upgradeTower(999)).toThrow(RangeError);
+    expect(() => api.sellTower(999)).toThrow(RangeError);
+    // The refusal is loud rather than quiet: nothing on the floor moved.
     expect(api.snapshot()).toEqual(before);
+  });
+
+  it("fails loudly on a level outside the range the specs fix", () => {
+    const { api } = playing();
+    const id = api.addTower("arc", 20, 20);
+    expect(() => api.setTowerLevel(id, 0 as never)).toThrow(RangeError);
+    expect(() => api.setTowerLevel(id, 4 as never)).toThrow(RangeError);
+    expect(api.snapshot().towers[0].level).toBe(1);
   });
 
   it("reports every world radiator face after the placement rotation", () => {
@@ -516,15 +569,29 @@ describe("building", () => {
     expect(shot.controls.cancel).toBeNull();
   });
 
-  it("moves the preview, clamped so the footprint stays on the grid", () => {
+  it("moves the preview to the anchor named, and never nudges it", () => {
     const { api } = playing();
     api.setArmed("lance");
     api.setPreview(10, 12);
     expect(api.snapshot().build).toMatchObject({ col: 10, row: 12 });
-    api.setPreview(999, 999);
-    expect(api.snapshot().build).toMatchObject({ col: 46, row: 32 });
-    api.setPreview(-5, -5);
-    expect(api.snapshot().build).toMatchObject({ col: 0, row: 0 });
+    // A footprint hanging off the far edge lands where it was asked for and is
+    // reported invalid; it is not slid back onto the grid.
+    api.setPreview(COLS - 1, ROWS - 1);
+    expect(api.snapshot().build).toMatchObject({
+      col: COLS - 1,
+      row: ROWS - 1,
+      valid: false,
+    });
+  });
+
+  it("fails loudly on a preview operation with nothing armed", () => {
+    const { api } = playing();
+    api.setArmed(null);
+    expect(() => api.setPreview(10, 12)).toThrow(RangeError);
+    expect(() => api.setPreviewRotation(1)).toThrow(RangeError);
+    expect(() => api.place()).toThrow(RangeError);
+    expect(api.snapshot().build).toBe(null);
+    expect(api.snapshot().towers).toHaveLength(0);
   });
 
   it("follows the real placement check in build.valid", () => {
@@ -733,17 +800,17 @@ describe("the surge", () => {
     expect(remainingOf(state.surge[0], state.floor)).toBeGreaterThan(before);
   });
 
-  it("ignores an id nothing answers to", () => {
+  it("fails loudly on an id nothing answers to", () => {
     const { api } = playing();
     api.addUnit("mote", "left");
     const before = api.snapshot();
-    api.setUnitPosition(999, 1, 1);
-    api.setUnitHp(999, 1);
-    api.setUnitMaxHp(999, 1);
-    api.setUnitSlow(999, 1);
-    api.setUnitSlowTimer(999, 1);
-    api.setUnitMotion(999, false);
-    api.removeUnit(999);
+    expect(() => api.setUnitPosition(999, 1, 1)).toThrow(RangeError);
+    expect(() => api.setUnitHp(999, 1)).toThrow(RangeError);
+    expect(() => api.setUnitMaxHp(999, 1)).toThrow(RangeError);
+    expect(() => api.setUnitSlow(999, 1)).toThrow(RangeError);
+    expect(() => api.setUnitSlowTimer(999, 1)).toThrow(RangeError);
+    expect(() => api.setUnitMotion(999, false)).toThrow(RangeError);
+    expect(() => api.removeUnit(999)).toThrow(RangeError);
     expect(api.snapshot()).toEqual(before);
   });
 });

@@ -243,7 +243,15 @@ export function armType(state: MeltdownState, type: TowerType | null): void {
   state.build = { type, col: at.col, row: at.row, rotation: 0 };
 }
 
-/** Move the held preview, clamped so the footprint stays on the grid. */
+/**
+ * Move the held preview to the anchor named, there and nowhere else.
+ *
+ * NO CLAMP HERE, deliberately. The pointer's own path reaches this through
+ * `previewTileFor`, which clamps because specs/building.md says the FOLLOWING
+ * footprint stays on the grid; the surface's `setPreview` reaches it directly,
+ * and specs/instrumentation.md says a pose reaches the tile it names. A
+ * footprint hanging off the grid is one `previewValid` answers `false` for.
+ */
 export function movePreview(
   state: MeltdownState,
   col: number,
@@ -251,9 +259,8 @@ export function movePreview(
 ): void {
   const build = state.build;
   if (build === null) return;
-  const size = sizeOf(build.type);
-  build.col = clamp(Math.trunc(col), 0, COLS - size);
-  build.row = clamp(Math.trunc(row), 0, ROWS - size);
+  build.col = Math.trunc(col);
+  build.row = Math.trunc(row);
 }
 
 /** Turn the held preview one 90-degree step. Nothing held, nothing happens. */

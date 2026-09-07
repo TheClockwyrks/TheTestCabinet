@@ -35,7 +35,7 @@ import {
   type Screen,
 } from "./constants";
 import { resetSession } from "./flow";
-import { coilState, type CoilState } from "./game";
+import { coilState, reconcileState, type CoilState } from "./game";
 import { menuItemRect, menuItems, type MenuRect } from "./menus";
 import { HAS_OBSTACLES } from "./mode";
 import type { World } from "@clockwyrks/structured-2d";
@@ -71,6 +71,8 @@ export interface CoilSnapshot {
 export interface CoilDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
+  /** Bring every reported reading into agreement with the game as it stands. */
+  reconcile(): void;
   snapshot(): CoilSnapshot;
   menuItemRect(index: number): MenuRect | null;
   setScreen(screen: Screen): void;
@@ -164,6 +166,25 @@ export function createDebugApi(world: () => World): CoilDebugApi {
       const seed = options?.seed ?? DEFAULT_SEED;
       requireInteger("reset(seed)", seed);
       resetSession(state(), seed);
+    },
+
+    /**
+     * Bring every reported reading into agreement with the game as it stands,
+     * advancing nothing.
+     *
+     * Coil reports its board, its switches and its figures straight off the
+     * state, so the only reading here that follows from something else is
+     * `muted` — the game's copy of the engine's mute bit — and the hit regions
+     * `menuItemRect` answers, which are worked out from the current screen at
+     * the read and so have nothing to bring into agreement.
+     *
+     * `reconcileState` is the same call the mode's `tick` ends with, so the copy
+     * is rewritten by exactly the code that owns it rather than by a restatement
+     * of the rule. Nothing else moves: no frame runs, no tick resolves, no cue
+     * plays, and the generator is not drawn from.
+     */
+    reconcile() {
+      reconcileState(state(), world());
     },
 
     /** A pure read of the state. It changes nothing. */

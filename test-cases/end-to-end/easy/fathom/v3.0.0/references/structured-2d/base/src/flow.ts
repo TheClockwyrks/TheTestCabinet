@@ -65,15 +65,27 @@ export function applyReleaseSchedule(state: FathomState): void {
 /** A plankton on every corridor tile, which is the den and its gate excluded. */
 export function seedPlankton(state: FathomState): void {
   state.plankton = new Array<boolean>(GRID_COLS * GRID_ROWS).fill(false);
-  let remaining = 0;
   for (let ty = 0; ty < GRID_ROWS; ty++) {
     for (let tx = 0; tx < GRID_COLS; tx++) {
       if (!state.maze.isCorridor(tx, ty)) continue;
       state.plankton[cellIndex(tx, ty)] = true;
-      remaining += 1;
     }
   }
-  state.planktonRemaining = remaining;
+  state.planktonRemaining = countPlankton(state);
+}
+
+/**
+ * How many plankton the layer carries (`specs/state.md`).
+ *
+ * `planktonRemaining` is that count and nothing else, so this is where it comes
+ * from: both the seeding above and the layout below finish with it, and the
+ * surface's `reconcile` brings a `planktonRemaining` that has drifted from the
+ * layer back into agreement through the same call.
+ */
+export function countPlankton(state: FathomState): number {
+  let remaining = 0;
+  for (const held of state.plankton) if (held) remaining += 1;
+  return remaining;
 }
 
 /**
@@ -126,16 +138,14 @@ export function layoutTrench(state: FathomState): void {
  */
 export function loadLayout(state: FathomState, rows: readonly string[]): void {
   state.maze.load(rows);
-  let remaining = 0;
   for (let ty = 0; ty < GRID_ROWS; ty++) {
     for (let tx = 0; tx < GRID_COLS; tx++) {
       const key = cellIndex(tx, ty);
       if (!state.plankton[key]) continue;
-      if (state.maze.isCorridor(tx, ty)) remaining += 1;
-      else state.plankton[key] = false;
+      if (!state.maze.isCorridor(tx, ty)) state.plankton[key] = false;
     }
   }
-  state.planktonRemaining = remaining;
+  state.planktonRemaining = countPlankton(state);
 }
 
 /** The dive countdown, held over the maze before control resumes. */

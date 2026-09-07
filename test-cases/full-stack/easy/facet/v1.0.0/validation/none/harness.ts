@@ -1685,6 +1685,17 @@ export function framesPast(seconds: number): number {
 // working the menu the way a player does and reading what the build did. Every
 // other check reaches its scenario through here instead, so a build with a
 // broken title menu fails those items rather than every item in the project.
+//
+// RECONCILING AFTER A POSE. specs/instrumentation.md's `reconcile()` brings
+// every reading the surface reports into agreement with the game as it stands,
+// without advancing anything — so a build that keeps one of the seven derived
+// fields as a stored copy (`legalSwap` above all, which follows from the whole
+// board) answers for the board and the screen the helper just posed rather than
+// for the ones before it. A helper here that writes a board, takes one out of
+// play, shows a screen, or plays a swap calls it before it returns, so a check
+// that poses through the helpers never calls it itself. A check that poses with
+// `h.debug.set…` directly and then reads calls it once, before its first read.
+//
 
 /**
  * Write a board onto the game and change NOTHING else.
@@ -1709,6 +1720,7 @@ export async function writeBoard(
 ): Promise<FacetSnapshot> {
   parseRows(rows);
   await h.debug.loadBoard(rows);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1739,6 +1751,7 @@ export async function loadBoard(
   await h.debug.loadBoard(rows);
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1768,6 +1781,7 @@ export async function startRound(h: Harness): Promise<FacetSnapshot> {
   await h.debug.dealBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1795,6 +1809,7 @@ export async function openNextLevel(h: Harness): Promise<FacetSnapshot> {
   await h.debug.dealBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1816,6 +1831,7 @@ export async function quitToTitle(h: Harness): Promise<FacetSnapshot> {
   await h.debug.clearBoard();
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("title");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1828,6 +1844,7 @@ export async function quitToTitle(h: Harness): Promise<FacetSnapshot> {
 export async function openHowTo(h: Harness): Promise<FacetSnapshot> {
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("howto");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1840,6 +1857,7 @@ export async function openHowTo(h: Harness): Promise<FacetSnapshot> {
 export async function pauseGame(h: Harness): Promise<FacetSnapshot> {
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("paused");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1852,6 +1870,7 @@ export async function pauseGame(h: Harness): Promise<FacetSnapshot> {
 export async function resumeGame(h: Harness): Promise<FacetSnapshot> {
   await h.debug.setMenuIndex(0);
   await h.debug.setScreen("playing");
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -1882,6 +1901,7 @@ export async function reachScreen(
     await h.debug.setMenuIndex(0);
     await h.debug.setScreen(screen);
   }
+  await h.debug.reconcile();
   const reading = await h.snapshot();
   if (reading.screen !== screen) {
     fail(`the ${screen} screen these poses ask for`, reading.screen);
@@ -1983,6 +2003,7 @@ export async function requestSwap(
   b: CellRef,
 ): Promise<FacetSnapshot> {
   await h.debug.requestSwap(a.col, a.row, b.col, b.row);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 
@@ -2166,6 +2187,7 @@ export async function releasePointer(
 ): Promise<FacetSnapshot> {
   if (device === undefined) await h.debug.pointerUp();
   else await h.debug.pointerUp(device);
+  await h.debug.reconcile();
   return h.snapshot();
 }
 

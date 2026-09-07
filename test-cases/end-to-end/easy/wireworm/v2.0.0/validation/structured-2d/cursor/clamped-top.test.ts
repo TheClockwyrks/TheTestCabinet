@@ -6,9 +6,10 @@
 //
 // WHY THIS PAIR POSES AT THE OPPOSITE BOUND RATHER THAN 120 UNITS INSIDE. The
 // band is 32 units tall — `y` in [672, 704] (specs/board.md) — so it cannot hold
-// the 120-unit inset the horizontal pair uses: `setCursor` applies the real
-// clamp, and a pose 120 units inside a vertical bound would land silently on the
-// other bound. The cursor is therefore posed at `CURSOR_Y_MAX`, the far side of
+// the 120-unit inset the horizontal pair uses: `setCursor` takes a position
+// inside the band and fails loudly outside it, so a pose 120 units inside a
+// vertical bound could not be made at all. The cursor is posed at
+// `CURSOR_Y_MAX` instead, the far side of
 // the band, which is the widest vertical run the band has.
 //
 // The window is a whole second, thirteen times the 0.074 s a cursor at

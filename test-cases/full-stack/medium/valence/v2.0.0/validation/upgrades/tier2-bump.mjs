@@ -45,8 +45,13 @@ export default function item() {
       await api.settle(150);
       await api.advance(LEAD_TICKS);
 
-      // The behavior under test.
+      // The behavior under test. The three numbers this item reads back — range, damage
+      // and fire rate — are DERIVED from the tower's tier (specs/instrumentation.md), and
+      // this poses with the raw op rather than through a helper, so the readings are
+      // brought into agreement before they are read. No tick is run: stepping here would
+      // let the reload and the board move under a measurement that is about neither.
       await api.call("upgradeTower", t.id);
+      await api.call("reconcile");
       t2 = towerById(await api.snapshot(), t.id);
 
       // Held on the upgraded panel, so the new numbers can be read off the recording

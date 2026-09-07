@@ -18,6 +18,15 @@
 // gravity, collision, scoring and wave rules run from there exactly as they do in
 // play, so a scenario driven from code behaves exactly like one played by hand.
 //
+// AN OPERATION IS UNCONDITIONAL. Every call below applies its effect, reaching the
+// value it was given rather than one the game's own rules would have preferred: a
+// pose is never clamped into range and never declined. Where the specification
+// fixes a domain — a floor of zero on a timer, one of the three rock sizes, an id
+// a live entity carries — that domain is checked and a call outside it THROWS,
+// where the caller sees it. What nothing below does is refuse quietly: no
+// operation returns having left the state as it was, because a surface that does
+// that hides the very systems a check drove it to reach.
+//
 // THE TWO EXCEPTIONS ARE THE CLOCK. `setAutoStep` and `advance` reach past the
 // state into the runtime, because this build stands on no engine and nothing
 // outside it owns its clock. Everything else about driving a browser game stays
@@ -37,7 +46,7 @@ import {
 import { makeBullet, makeEnemyBullet, makeRock, makeSaucer } from "./entities";
 import { menuItemRect, type Rect } from "./menus";
 import { seed } from "./rng";
-import type { ShatterState } from "./types";
+import type { Saucer, ShatterState } from "./types";
 import { toTitle } from "./world";
 
 /** The `window` property the surface is installed on. */
@@ -145,6 +154,8 @@ export interface ShatterDebugApi {
 
   reset(options?: { seed?: number }): void;
   snapshot(): ShatterSnapshot;
+  /** Bring every reported reading into agreement with the field as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): Rect | null;
 
   setAutoStep(enabled: boolean): void;
@@ -187,9 +198,36 @@ export interface ShatterDebugApi {
   setSaucerTravel(enabled: boolean): void;
 }
 
-/** A finite number, or `fallback` where the caller passed something else. */
-function finite(value: number, fallback: number): number {
-  return Number.isFinite(value) ? value : fallback;
+/**
+ * The finite number the caller passed, or a caller error naming it.
+ *
+ * A debug operation applies the value it is GIVEN rather than substituting one
+ * of its own, so an argument that is not a finite number names no state to reach
+ * and fails loudly here instead of passing quietly with a value the caller never
+ * asked for.
+ */
+function finite(value: number): number {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`Shatter: ${String(value)} is not a finite number`);
+  }
+  return value;
+}
+
+/**
+ * The finite number the caller passed, at or above `floor`.
+ *
+ * The floor is a bound `specs/instrumentation.md` fixes as a constant, so it is
+ * the argument's DOMAIN rather than an edge to snap to: a call outside it fails
+ * loudly rather than being clamped into range, which would leave the state
+ * holding a value nobody asked for.
+ */
+function atLeast(op: string, value: number, floor: number): number {
+  if (!Number.isFinite(value) || value < floor) {
+    throw new RangeError(
+      `Shatter: ${op} needs a finite number at or above ${floor}, got ${String(value)}`,
+    );
+  }
+  return value;
 }
 
 /** Build the surface over one live state object and the runtime driving it. */
@@ -197,11 +235,32 @@ export function createDebugApi(
   state: ShatterState,
   clock: DebugClock,
 ): ShatterDebugApi {
-  /** One entity of a roster by id, or `undefined`. An unknown id is a no-op. */
+  /**
+   * One entity of a roster by id, or a caller error naming the id.
+   *
+   * An id no live entity carries names no state to reach, so it throws where the
+   * caller sees it rather than leaving the operation to return with the state
+   * exactly as it was.
+   */
   const byId = <T extends { id: number }>(
+    op: string,
     roster: T[],
     id: number,
-  ): T | undefined => roster.find((entry) => entry.id === id);
+  ): T => {
+    const found = roster.find((entry) => entry.id === id);
+    if (found === undefined) {
+      throw new RangeError(`Shatter: ${op} names no live entity with id ${id}`);
+    }
+    return found;
+  };
+
+  /** The saucer on the field, or a caller error. */
+  const saucer = (op: string): Saucer => {
+    if (state.saucer === null) {
+      throw new RangeError(`Shatter: ${op} needs a saucer on the field`);
+    }
+    return state.saucer;
+  };
 
   return {
     version: SHATTER_DEBUG_VERSION,
@@ -218,7 +277,7 @@ export function createDebugApi(
      */
     reset(options) {
       toTitle(state);
-      seed(state, finite(options?.seed ?? DEFAULT_SEED, DEFAULT_SEED));
+      seed(state, finite(options?.seed ?? DEFAULT_SEED));
     },
 
     /** A pure read. It changes nothing. */
@@ -307,6 +366,22 @@ export function createDebugApi(
      * Drawing is unaffected either way: the loop keeps rendering, so the canvas
      * shows the state the most recent tick left. It changes no game state.
      */
+    /**
+     * Bring every reported reading into agreement with the field as it stands.
+     *
+     * Every derived reading this build reports — the ship's `speed` and each
+     * rock's `radius` — is worked out at the READ, in `snapshot` above, from the
+     * velocity and the size beside it. Nothing is held that a pose can leave
+     * behind, so there is nothing here to rewrite and this body is the answer
+     * rather than an omission.
+     *
+     * The operation is required of EVERY build, including one that keeps those
+     * readings as stored copies and must rewrite them from their sources here.
+     * This is what it comes to in a build that does not. It advances no clock,
+     * runs no system, fires nothing, and corrects nothing.
+     */
+    reconcile() {},
+
     setAutoStep(enabled) {
       clock.setAutoStep(Boolean(enabled));
     },
@@ -327,7 +402,7 @@ export function createDebugApi(
     },
 
     setMenuIndex(n) {
-      state.menuIndex = Math.round(finite(n, 0));
+      state.menuIndex = Math.round(atLeast("setMenuIndex(n)", n, 0));
     },
 
     /**
@@ -338,16 +413,16 @@ export function createDebugApi(
      * multiples a PAYMENT crossed.
      */
     setScore(n) {
-      state.score = finite(n, state.score);
+      state.score = finite(n);
     },
 
     setLives(n) {
-      state.lives = Math.round(finite(n, state.lives));
+      state.lives = Math.round(finite(n));
     },
 
     /** Set the wave number. It spawns no rocks and clears none. */
     setWave(n) {
-      state.wave = Math.round(finite(n, state.wave));
+      state.wave = Math.round(finite(n));
     },
 
     /**
@@ -360,7 +435,7 @@ export function createDebugApi(
      * `specs/instrumentation.md` states of the operation.
      */
     setWaveBanner(seconds) {
-      state.waveBanner = Math.max(0, finite(seconds, 0));
+      state.waveBanner = atLeast("setWaveBanner(seconds)", seconds, 0);
     },
 
     setWaveSpawning(enabled) {
@@ -372,18 +447,18 @@ export function createDebugApi(
     },
 
     setShipPosition(x, y) {
-      state.ship.x = finite(x, state.ship.x);
-      state.ship.y = finite(y, state.ship.y);
+      state.ship.x = finite(x);
+      state.ship.y = finite(y);
     },
 
     setShipVelocity(vx, vy) {
-      state.ship.vx = finite(vx, state.ship.vx);
-      state.ship.vy = finite(vy, state.ship.vy);
+      state.ship.vx = finite(vx);
+      state.ship.vy = finite(vy);
     },
 
     /** Set the facing. It changes no velocity. */
     setShipAngle(radians) {
-      state.ship.angle = finite(radians, state.ship.angle);
+      state.ship.angle = finite(radians);
     },
 
     /**
@@ -392,11 +467,13 @@ export function createDebugApi(
      * destroys the ship is decided by the game's own collision rules.
      */
     setShipInvuln(seconds) {
-      state.ship.invuln = Math.max(0, finite(seconds, 0));
+      state.ship.invuln = atLeast("setShipInvuln(seconds)", seconds, 0);
     },
 
     setFireCooldown(ticks) {
-      state.ship.fireCooldown = Math.max(0, Math.round(finite(ticks, 0)));
+      state.ship.fireCooldown = Math.round(
+        atLeast("setFireCooldown(ticks)", ticks, 0),
+      );
     },
 
     /**
@@ -409,17 +486,12 @@ export function createDebugApi(
 
     addBullet(x, y, vx, vy) {
       state.bullets.push(
-        makeBullet(
-          state,
-          finite(x, 0),
-          finite(y, 0),
-          finite(vx, 0),
-          finite(vy, 0),
-        ),
+        makeBullet(state, finite(x), finite(y), finite(vx), finite(vy)),
       );
     },
 
     removeBullet(id) {
+      byId("removeBullet", state.bullets, id);
       state.bullets = state.bullets.filter((bullet) => bullet.id !== id);
     },
 
@@ -429,17 +501,12 @@ export function createDebugApi(
 
     addEnemyBullet(x, y, vx, vy) {
       state.enemyBullets.push(
-        makeEnemyBullet(
-          state,
-          finite(x, 0),
-          finite(y, 0),
-          finite(vx, 0),
-          finite(vy, 0),
-        ),
+        makeEnemyBullet(state, finite(x), finite(y), finite(vx), finite(vy)),
       );
     },
 
     removeEnemyBullet(id) {
+      byId("removeEnemyBullet", state.enemyBullets, id);
       state.enemyBullets = state.enemyBullets.filter(
         (bullet) => bullet.id !== id,
       );
@@ -457,17 +524,17 @@ export function createDebugApi(
      * rock at rest is a legal state the well immediately begins to act on.
      */
     addRock(size, x, y) {
-      state.rocks.push(makeRock(state, size, finite(x, 0), finite(y, 0), 0, 0));
+      state.rocks.push(makeRock(state, size, finite(x), finite(y), 0, 0));
     },
 
     setRockVelocity(id, vx, vy) {
-      const rock = byId(state.rocks, id);
-      if (rock === undefined) return;
-      rock.vx = finite(vx, rock.vx);
-      rock.vy = finite(vy, rock.vy);
+      const rock = byId("setRockVelocity", state.rocks, id);
+      rock.vx = finite(vx);
+      rock.vy = finite(vy);
     },
 
     removeRock(id) {
+      byId("removeRock", state.rocks, id);
       state.rocks = state.rocks.filter((rock) => rock.id !== id);
     },
 
@@ -487,18 +554,13 @@ export function createDebugApi(
      * replaces any saucer already up.
      */
     addSaucer(x, y) {
-      state.saucer = makeSaucer(
-        state,
-        finite(x, 0),
-        finite(y, 0),
-        SAUCER_SPEED,
-      );
+      state.saucer = makeSaucer(state, finite(x), finite(y), SAUCER_SPEED);
     },
 
     setSaucerVelocity(vx, vy) {
-      if (state.saucer === null) return;
-      state.saucer.vx = finite(vx, state.saucer.vx);
-      state.saucer.vy = finite(vy, state.saucer.vy);
+      const target = saucer("setSaucerVelocity");
+      target.vx = finite(vx);
+      target.vy = finite(vy);
     },
 
     removeSaucer() {
@@ -506,18 +568,15 @@ export function createDebugApi(
     },
 
     setSaucerMind(enabled) {
-      if (state.saucer === null) return;
-      state.saucer.mind = Boolean(enabled);
+      saucer("setSaucerMind").mind = Boolean(enabled);
     },
 
     setSaucerGun(enabled) {
-      if (state.saucer === null) return;
-      state.saucer.gun = Boolean(enabled);
+      saucer("setSaucerGun").gun = Boolean(enabled);
     },
 
     setSaucerTravel(enabled) {
-      if (state.saucer === null) return;
-      state.saucer.travel = Boolean(enabled);
+      saucer("setSaucerTravel").travel = Boolean(enabled);
     },
   };
 }

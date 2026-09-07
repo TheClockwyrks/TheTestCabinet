@@ -79,6 +79,8 @@ export interface FloeDebugApi {
   // The core.
   reset(options?: { seed?: number }): void;
   snapshot(): FloeSnapshotShape;
+  /** Bring every reported reading into agreement with the strait as it stands. */
+  reconcile(): void;
   menuItemRect(index: number): MenuRect | null;
 
   // The screen and the run.
@@ -148,6 +150,26 @@ function requireBay(index: number): number {
   return index;
 }
 
+/** A lane speed the specification allows: a number at or above `0`. */
+function requireSpeed(speed: number): number {
+  if (!Number.isFinite(speed) || speed < 0) {
+    throw new RangeError(
+      `Floe: setLaneSpeed speed ${speed} — a lane's speed is a number at or above 0`,
+    );
+  }
+  return speed;
+}
+
+/** A lane direction the specification allows: `1` rightward, `-1` leftward. */
+function requireDir(dir: number): LaneDir {
+  if (dir !== 1 && dir !== -1) {
+    throw new RangeError(
+      `Floe: setLaneDirection dir ${dir} — a lane runs 1 rightward or -1 leftward`,
+    );
+  }
+  return dir;
+}
+
 /** A level the run actually has. */
 function requireLevel(level: number): number {
   if (!Number.isInteger(level) || level < 1 || level > TOTAL_LEVELS) {
@@ -183,12 +205,60 @@ export function createDebugApi(
   state: FloeState,
   clock: DebugClock,
 ): FloeDebugApi {
+  // AN OPERATION NEVER REFUSES IN SILENCE (specs/instrumentation.md, "The
+  // operations"). A call naming a subject the strait does not hold has no state
+  // to reach, so it throws where it stands rather than returning with the game
+  // unchanged and leaving the caller to guess.
+
+  /** The bear that id names, or a loud failure. */
+  const requireBear = (
+    op: string,
+    id: number,
+  ): NonNullable<ReturnType<typeof bearById>> => {
+    const bear = bearById(state, id);
+    if (bear === null) {
+      throw new RangeError(
+        `Floe: ${op} id ${id} — no bear on the strait carries that id`,
+      );
+    }
+    return bear;
+  };
+
   const withBear = (
+    op: string,
     id: number,
     act: (bear: NonNullable<ReturnType<typeof bearById>>) => void,
   ): void => {
-    const bear = bearById(state, id);
-    if (bear !== null) act(bear);
+    act(requireBear(op, id));
+  };
+
+  /** The lane item that id names on its roster, or a loud failure. */
+  const requireItem = <T extends { id: number }>(
+    op: string,
+    roster: readonly T[],
+    what: string,
+    id: number,
+  ): T => {
+    const item = roster.find((entry) => entry.id === id);
+    if (item === undefined) {
+      throw new RangeError(
+        `Floe: ${op} id ${id} — no ${what} on the strait carries that id`,
+      );
+    }
+    return item;
+  };
+
+  /** The lane on strait `row`, or a loud failure: the shores and the median carry none. */
+  const requireLane = (op: string, row: number) => {
+    const lane =
+      state.iceLanes.find((entry) => entry.row === row) ??
+      state.waterLanes.find((entry) => entry.row === row);
+    if (lane === undefined) {
+      throw new RangeError(
+        `Floe: ${op} row ${row} — that strait row carries no lane`,
+      );
+    }
+    return lane;
   };
 
   return {
@@ -213,6 +283,24 @@ export function createDebugApi(
     snapshot() {
       return snapshot(state);
     },
+
+    /**
+     * Bring every reported reading into agreement with the strait as it stands.
+     *
+     * Every derived reading this build reports — `timerMax`, the critter's `col`,
+     * `row` and `footing`, and a bear's `swimming` — is worked out at the read in
+     * `src/snapshot.ts`, from the level, the critter's centre, the floes and the
+     * tile each bear is travelling into. Nothing is held that a pose can leave
+     * behind, so there is nothing here to rewrite. The operation is required of
+     * every build, including one that keeps those readings as stored copies, and
+     * an empty body is what it comes to in a build that does not.
+     *
+     * It advances nothing and it corrects nothing either way: no clock moves, no
+     * lane carries its items, no bear travels, and a critter posed over open
+     * water reads as standing on water rather than being moved somewhere it
+     * would not drown.
+     */
+    reconcile() {},
 
     /**
      * The region item `index` is picked from on the menu the current screen
@@ -338,7 +426,7 @@ export function createDebugApi(
     },
 
     removeBear(id) {
-      dropBear(state, id);
+      dropBear(state, requireBear("removeBear", id).id);
     },
 
     clearBears() {
@@ -346,12 +434,12 @@ export function createDebugApi(
     },
 
     setBearTile(id, col, row) {
-      withBear(id, (bear) => settleBear(bear, col, row));
+      withBear("setBearTile", id, (bear) => settleBear(bear, col, row));
     },
 
     /** The mid-glide pose: the two tiles it occupies are left exactly as they stand. */
     setBearPosition(id, x, y) {
-      withBear(id, (bear) => placeCenter(bear, x, y));
+      withBear("setBearPosition", id, (bear) => placeCenter(bear, x, y));
     },
 
     /**
@@ -360,31 +448,31 @@ export function createDebugApi(
      * rules, exactly as a routed step is.
      */
     setBearStep(id, direction) {
-      withBear(id, (bear) => {
+      withBear("setBearStep", id, (bear) => {
         commitStep(state, bear, direction);
       });
     },
 
     setBearTarget(id, col, row) {
-      withBear(id, (bear) => {
+      withBear("setBearTarget", id, (bear) => {
         bear.target = { col, row };
       });
     },
 
     setBearSense(id, enabled) {
-      withBear(id, (bear) => {
+      withBear("setBearSense", id, (bear) => {
         bear.sense = Boolean(enabled);
       });
     },
 
     setBearRouting(id, enabled) {
-      withBear(id, (bear) => {
+      withBear("setBearRouting", id, (bear) => {
         bear.routing = Boolean(enabled);
       });
     },
 
     setBearTravel(id, enabled) {
-      withBear(id, (bear) => {
+      withBear("setBearTravel", id, (bear) => {
         bear.travel = Boolean(enabled);
       });
     },
@@ -396,6 +484,7 @@ export function createDebugApi(
     },
 
     removeVehicle(id) {
+      requireItem("removeVehicle", state.vehicles, "vehicle", id);
       state.vehicles = state.vehicles.filter((item) => item.id !== id);
     },
 
@@ -404,8 +493,7 @@ export function createDebugApi(
     },
 
     setVehicleX(id, x) {
-      const item = state.vehicles.find((vehicle) => vehicle.id === id);
-      if (item === undefined) return;
+      const item = requireItem("setVehicleX", state.vehicles, "vehicle", id);
       item.x = x;
       item.prevX = x;
     },
@@ -415,6 +503,7 @@ export function createDebugApi(
     },
 
     removeFloe(id) {
+      requireItem("removeFloe", state.floes, "floe", id);
       state.floes = state.floes.filter((item) => item.id !== id);
     },
 
@@ -423,27 +512,24 @@ export function createDebugApi(
     },
 
     setFloeX(id, x) {
-      const item = state.floes.find((floe) => floe.id === id);
-      if (item === undefined) return;
+      const item = requireItem("setFloeX", state.floes, "floe", id);
       item.x = x;
       item.prevX = x;
     },
 
-    /** A speed of `0` holds the lane where it stands; every item keeps its position. */
+    /**
+     * A speed of `0` holds the lane where it stands; every item keeps its
+     * position. The speed is taken as given rather than clamped: the
+     * specification fixes the domain at a number at or above `0`, so a call
+     * outside it is a caller's mistake and says so.
+     */
     setLaneSpeed(row, speed) {
-      const lane =
-        state.iceLanes.find((entry) => entry.row === row) ??
-        state.waterLanes.find((entry) => entry.row === row);
-      if (lane === undefined) return;
-      lane.speed = Math.max(0, speed);
+      requireLane("setLaneSpeed", row).speed = requireSpeed(speed);
     },
 
+    /** `1` rightward, `-1` leftward — an enumerated domain, so anything else throws. */
     setLaneDirection(row, dir) {
-      const lane =
-        state.iceLanes.find((entry) => entry.row === row) ??
-        state.waterLanes.find((entry) => entry.row === row);
-      if (lane === undefined) return;
-      lane.dir = dir < 0 ? -1 : 1;
+      requireLane("setLaneDirection", row).dir = requireDir(dir);
     },
 
     // ---- The bays and the bonus catch ----

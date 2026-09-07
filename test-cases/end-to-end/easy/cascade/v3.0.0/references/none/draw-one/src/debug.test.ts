@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { dealCards, turnStock } from "./board";
 import { updateCascade } from "./cascade";
 import {
+  CARD_H,
+  CARD_W,
   CASCADE_DEBUG_VERSION,
+  COLUMN_X,
   DEAL_MODE,
   DEAL_MODE_LABEL,
   FOUNDATION_X,
@@ -13,6 +16,7 @@ import {
 import { createDebugApi, type CascadeDebugApi, type DebugClock } from "./debug";
 import { RecordingAudio, put, testState } from "./harness.test-support";
 import type { CascadeState } from "./state";
+import { columnCardYs, columnDropRect } from "./table";
 
 /** A clock that records what it was asked to do; the runtime owns the real one. */
 class TestClock implements DebugClock {
@@ -57,6 +61,7 @@ describe("the surface", () => {
     for (const name of [
       "reset",
       "snapshot",
+      "reconcile",
       "setAutoStep",
       "advance",
       "setScreen",
@@ -212,8 +217,9 @@ describe("the surface", () => {
     api.removeCard(middle);
     expect(api.snapshot().waste.map((c) => c.rank)).toEqual([3]);
     expect(api.snapshot().wasteSets).toEqual([1]);
-    // Removing a card no pile holds is simply nothing.
-    api.removeCard(9999);
+    // An id no card on the table carries names nothing to act on, so the call
+    // fails loudly rather than passing quietly (`specs/instrumentation.md`).
+    expect(() => api.removeCard(9999)).toThrow(RangeError);
     expect(api.snapshot().waste).toHaveLength(1);
   });
 
@@ -381,5 +387,95 @@ describe("the surface", () => {
       y: TOP_ROW_Y,
     });
     expect(api.snapshot().launched).toBe(1);
+  });
+});
+
+describe("reconcile", () => {
+  /** How far inside a card's top-left the grabs below press, as a player does. */
+  const GRAB_DX = CARD_W / 2;
+  const GRAB_DY = 8;
+
+  /**
+   * A red Queen held over a column, and the column beneath it.
+   *
+   * The gesture is the real one: the press grabs the Queen through the pointer
+   * path and the move carries it, so `dropTarget` is whatever that path decided
+   * for the table as it stood at the move.
+   */
+  function heldOverColumn(): {
+    api: CascadeDebugApi;
+    state: CascadeState;
+  } {
+    const { api, state } = surface();
+    api.setScreen("playing");
+    put(state, "tableau", 0, "spades", 12);
+    const under = columnDropRect(1, state.tableau[1]);
+    api.pointerDown(
+      COLUMN_X[0] + GRAB_DX,
+      columnCardYs(state.tableau[0])[0] + GRAB_DY,
+    );
+    api.pointerMove(
+      under.x + under.w / 2 - CARD_W / 2 + GRAB_DX,
+      under.y + under.h / 2 - CARD_H / 2 + GRAB_DY,
+    );
+    return { api, state };
+  }
+
+  it("re-derives a stored reading from a posed table", () => {
+    const { api, state } = heldOverColumn();
+    // An empty column takes a King alone, so the held black Queen has no target
+    // yet.
+    expect(api.snapshot().dropTarget).toBeNull();
+
+    // Posing a red King under it makes the column take the run. The pose writes
+    // the column, not the drop target, so until the readings are brought into
+    // agreement `dropTarget` is still answering for the table as it was.
+    api.addCard("tableau", 1, "hearts", 13, true);
+    api.reconcile();
+    expect(api.snapshot().dropTarget).toEqual({ pile: "tableau", index: 1 });
+
+    // And back the other way: a black King under a black Queen is refused.
+    api.clearPile("tableau", 1);
+    api.addCard("tableau", 1, "clubs", 13, true);
+    api.reconcile();
+    expect(api.snapshot().dropTarget).toBeNull();
+
+    // The run is still in hand: nothing was moved to make the reading agree.
+    expect(api.snapshot().drag?.cards[0].rank).toBe(12);
+    expect(state.tableau[0]).toHaveLength(0);
+  });
+
+  it("advances nothing", () => {
+    const { api } = surface();
+    api.setScreen("playing");
+    api.addCard("tableau", 0, "spades", 5, true);
+    api.addFlyer("hearts", 7, 100, 200, 40, -60);
+    api.setLaunchClock(0.25);
+    api.pointerDown(10, 10);
+
+    const before = api.snapshot();
+    api.reconcile();
+    const once = api.snapshot();
+    api.reconcile();
+    const twice = api.snapshot();
+
+    // The clock, the flight and every gate stand exactly where they were, and
+    // a second call is worth no more than the first.
+    expect(once).toEqual(before);
+    expect(twice).toEqual(once);
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.launchClock).toBe(0.25);
+    expect(once.flyers).toEqual(before.flyers);
+    expect(once.trailStamps).toBe(before.trailStamps);
+  });
+
+  it("is legal on every screen, and raises no cue", () => {
+    const { api, audio } = surface();
+    for (const screen of ["title", "howto", "playing", "won"] as const) {
+      api.setScreen(screen);
+      api.reconcile();
+      expect(api.snapshot().screen).toBe(screen);
+    }
+    expect(audio.played).toEqual([]);
   });
 });

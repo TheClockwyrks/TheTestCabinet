@@ -253,12 +253,25 @@ export class Game {
     return true;
   }
 
-  /** On `levelup`, accept the offer at `index`. */
-  choose(index: number): boolean {
+  /**
+   * Accept the offer at `index`: the transaction the choice names, run on the
+   * game as it stands. The item is applied, the queue falls by one, and either
+   * the next overlay opens or the run resumes.
+   */
+  performChoose(index: number): void {
+    acceptOffer(this.context(), index);
+  }
+
+  /**
+   * The PLAYER's route to a choice: only the level-up overlay shows one, and
+   * only its own offers can be highlighted. The debug surface calls
+   * `performChoose` instead, because a driver is not walking this route.
+   */
+  tryChoose(index: number): boolean {
     if (this.state.screen !== "levelup") return false;
     if (!Number.isInteger(index)) return false;
     if (index < 0 || index >= this.state.run.offers.length) return false;
-    acceptOffer(this.context(), index);
+    this.performChoose(index);
     return true;
   }
 
@@ -359,7 +372,7 @@ export class Game {
       case "levelup":
         if (action === "up") this.moveHighlight(-1);
         else if (action === "down") this.moveHighlight(1);
-        else if (action === "confirm") this.choose(state.menuIndex);
+        else if (action === "confirm") this.tryChoose(state.menuIndex);
         break;
       case "chest":
         if (action === "confirm") this.closeChest();

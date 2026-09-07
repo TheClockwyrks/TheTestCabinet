@@ -77,7 +77,7 @@ describe("the scrap-press", () => {
     const game = openRun();
     game.armNextRoll("coil", 4);
     game.pullPress();
-    game.placeStamp(10, 10);
+    game.tryPlaceStamp(10, 10);
     const s = game.debugSnapshot();
     const last = s.structures[s.structures.length - 1]!;
     expect(last.kind).toBe("candidate");
@@ -92,7 +92,7 @@ describe("the scrap-press", () => {
     const game = openRun();
     const wp = game.board.map.waypoints[0]!;
     game.pullPress();
-    game.placeStamp(wp.col, wp.row);
+    game.tryPlaceStamp(wp.col, wp.row);
     const s = game.debugSnapshot();
     expect(s.structures).toHaveLength(0);
     expect(s.stampsLeft).toBe(5);
@@ -102,7 +102,7 @@ describe("the scrap-press", () => {
     const game = openRun();
     const blocker = game.placeBlocker(10, 10)!;
     game.armNextRoll("emitter", 2);
-    game.placeStamp(10, 10);
+    game.tryPlaceStamp(10, 10);
     const s = game.debugSnapshot();
     expect(s.structures).toHaveLength(1);
     expect(s.structures[0]!.kind).toBe("candidate");
@@ -114,7 +114,7 @@ describe("the scrap-press", () => {
   it("biases the roll with refinement and nothing else", () => {
     const game = openRun(99);
     // At R0 the press rolls Scrap alone, whatever the seed.
-    for (let i = 0; i < 5; i++) game.placeStamp(4 + i * 3, 10);
+    for (let i = 0; i < 5; i++) game.tryPlaceStamp(4 + i * 3, 10);
     for (const s of game.debugSnapshot().structures) expect(s.quality).toBe(1);
     game.setRefinement(8);
     const odds = game.debugSnapshot().qualityOdds;
@@ -127,11 +127,11 @@ describe("the harvest", () => {
   it("hardens every other candidate into a blocker and starts the wave", () => {
     const game = openRun();
     game.armNextRoll("capacitor", 1);
-    game.placeStamp(4, 4);
+    game.tryPlaceStamp(4, 4);
     game.armNextRoll("capacitor", 1);
-    game.placeStamp(8, 4);
+    game.tryPlaceStamp(8, 4);
     const kept = game.debugSnapshot().structures[0]!.id;
-    game.keep(kept);
+    game.tryKeep(kept);
     const s = game.debugSnapshot();
     expect(s.phase).toBe("wave");
     expect(s.wave).toBe(1);
@@ -145,9 +145,9 @@ describe("the harvest", () => {
   it("drops a downgraded candidate one tier and starts the wave", () => {
     const game = openRun();
     game.armNextRoll("capacitor", 4);
-    game.placeStamp(4, 4);
+    game.tryPlaceStamp(4, 4);
     const id = game.debugSnapshot().structures[0]!.id;
-    game.downgrade(id);
+    game.tryDowngrade(id);
     const s = game.debugSnapshot();
     expect(s.structures[0]!.kind).toBe("component");
     expect(s.structures[0]!.quality).toBe(3);
@@ -157,9 +157,9 @@ describe("the harvest", () => {
   it("refuses to downgrade a Scrap candidate", () => {
     const game = openRun();
     game.armNextRoll("capacitor", 1);
-    game.placeStamp(4, 4);
+    game.tryPlaceStamp(4, 4);
     const id = game.debugSnapshot().structures[0]!.id;
-    game.downgrade(id);
+    game.tryDowngrade(id);
     const s = game.debugSnapshot();
     expect(s.structures[0]!.kind).toBe("candidate");
     expect(s.phase).toBe("build");
@@ -451,8 +451,8 @@ describe("the clock", () => {
     a.setRefinement(5);
     b.setRefinement(5);
     for (let i = 0; i < 5; i++) {
-      a.placeStamp(4 + i * 3, 10);
-      b.placeStamp(4 + i * 3, 10);
+      a.tryPlaceStamp(4 + i * 3, 10);
+      b.tryPlaceStamp(4 + i * 3, 10);
     }
     expect(
       a.debugSnapshot().structures.map((s) => [s.type, s.quality]),
@@ -547,7 +547,7 @@ describe("the maze", () => {
     const game = openRun();
     const before = game.debugSnapshot().mazeLength;
     const b = game.placeBlocker(6, 8)!;
-    game.removeStructure(b.id);
+    game.tryRemoveStructure(b.id);
     expect(game.debugSnapshot().mazeLength).toBeCloseTo(before, 9);
     expect(game.debugSnapshot().structures).toHaveLength(0);
   });

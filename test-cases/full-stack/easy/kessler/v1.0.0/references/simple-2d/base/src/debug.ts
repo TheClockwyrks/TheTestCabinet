@@ -15,7 +15,15 @@
 // motion, ring orbits, reflections, pod draws, and scoring run from there
 // exactly as they do in play. An argument outside the domain its operation
 // states fails loudly, except where the specification says the operation
-// normalizes or ignores the call.
+// normalizes the call.
+//
+// NO OPERATION DECLINES. The screen showing, the entry highlighted, and where
+// the deflector and the balls sit are how a PLAYER reaches a thing; they are
+// not an operation's conditions, and nothing here inspects them before acting.
+// A call the field has no state for — a launch with nothing parked, a second
+// parked ball, a seventh ball where six is the whole capacity, a menu entry on
+// a screen carrying no menu — throws, so a caller never reads a call that did
+// nothing as a call that did. The one thing never done is refusing quietly.
 //
 // There is no clock operation and no key operation, because the engine owns
 // both: a caller steps the game with `engine.advance` under a clock of its
@@ -86,6 +94,8 @@ export interface KesslerSnapshot {
 /** The reads and poses of the debug surface. */
 export interface KesslerDebugApi {
   reset(state: View, seed?: number): KesslerState;
+  /** Bring every reported reading into agreement with the field as it stands. */
+  reconcile(state: View): KesslerState;
   snapshot(state: View): KesslerSnapshot;
   menuItemRect(state: View, index: number): MenuItemRect | null;
   setScreen(state: View, name: ScreenName): KesslerState;
@@ -176,6 +186,22 @@ export function createDebugApi(): KesslerDebugApi {
       );
     },
 
+    /**
+     * Bring every reported reading into agreement with the field as it stands.
+     *
+     * Every derived reading this build reports — the deflector's `spanDeg`,
+     * each ball's `piercing`, each pod's `(x, y)`, and each ring's list of live
+     * targets — is worked out at the read, in `snapshot` below, from the effect
+     * timers, the pods' polar positions and the ring slots, so nothing is held
+     * that a pose can leave behind and there is nothing here to rewrite. The
+     * state that comes back equals the one that was handed in. The operation is
+     * required of every build, including one that keeps those readings as
+     * stored copies, and this is what it comes to in a build that does not.
+     */
+    reconcile(state) {
+      return cloneState(state);
+    },
+
     /** A pure read of the state. It poses nothing, so it returns no state. */
     snapshot(state) {
       const session = state.session;
@@ -258,7 +284,11 @@ export function createDebugApi(): KesslerDebugApi {
      */
     setMenuIndex(state, n) {
       const entries = menuEntries(state.screen);
-      if (entries === null) return cloneState(state);
+      if (entries === null) {
+        throw new Error(
+          `setMenuIndex: ${state.screen} carries no menu, so it has no entry to highlight`,
+        );
+      }
       const value = mustWhole("setMenuIndex n", n, 0);
       if (value >= entries.length) {
         throw new Error(
@@ -310,6 +340,11 @@ export function createDebugApi(): KesslerDebugApi {
 
     /** Acts exactly as `Space` does; with no parked ball, changes nothing. */
     launchBall(state) {
+      if (!state.session.balls.some((ball) => ball.parked)) {
+        throw new Error(
+          "launchBall: no ball is parked, so there is none to serve",
+        );
+      }
       const draft = cloneState(state);
       launchParkedBall(draft.session);
       return draft;
@@ -321,14 +356,18 @@ export function createDebugApi(): KesslerDebugApi {
       return draft;
     },
 
-    /** Appends one unparked ball in spawn order; at the cap, changes nothing. */
+    /** Appends one unparked ball in spawn order; at the cap, fails loudly. */
     spawnBall(state, x, y, vx, vy) {
       mustFinite("x", x);
       mustFinite("y", y);
       mustFinite("vx", vx);
       mustFinite("vy", vy);
+      if (state.session.balls.length >= BALL_CAP) {
+        throw new Error(
+          `spawnBall: the field holds ${BALL_CAP} balls at most and holds that many now`,
+        );
+      }
       const draft = cloneState(state);
-      if (draft.session.balls.length >= BALL_CAP) return draft;
       draft.session.balls.push({
         x,
         y,
@@ -340,12 +379,20 @@ export function createDebugApi(): KesslerDebugApi {
       return draft;
     },
 
-    /** Parks one ball; while one is parked, or at the cap, changes nothing. */
+    /** Parks one ball; while one is parked, or at the cap, fails loudly. */
     parkBall(state) {
+      if (state.session.balls.some((ball) => ball.parked)) {
+        throw new Error(
+          "parkBall: a ball is already parked, and only one may be",
+        );
+      }
+      if (state.session.balls.length >= BALL_CAP) {
+        throw new Error(
+          `parkBall: the field holds ${BALL_CAP} balls at most and holds that many now`,
+        );
+      }
       const draft = cloneState(state);
       const session = draft.session;
-      if (session.balls.some((ball) => ball.parked)) return draft;
-      if (session.balls.length >= BALL_CAP) return draft;
       const at = pointAt(PADDLE_CONTACT_RADIUS, session.paddleAngleDeg);
       session.balls.push({
         x: at.x,

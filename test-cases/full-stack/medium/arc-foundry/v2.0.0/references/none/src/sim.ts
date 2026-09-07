@@ -1107,7 +1107,6 @@ export class Game {
   // hole). Runs the instant it is committed — build phase OR live wave — and re-paths. Returns
   // true if it resolved.
   private combineQualityNow(anchorId: number, partnerId: number): boolean {
-    if (this.state !== "playing") return false;
     const anchor = this.baseStructById(anchorId);
     const partner = this.baseStructById(partnerId);
     if (!anchor || !partner || anchor.id === partner.id) return false;
@@ -1177,7 +1176,6 @@ export class Game {
     combo: ComboType,
     ingredientIds: number[],
   ): boolean {
-    if (this.state !== "playing") return false;
     const anchor = this.baseStructById(anchorId);
     if (!anchor || !ingredientIds.includes(anchorId)) return false;
     if (!this.recipeSatisfied(combo, ingredientIds)) return false;
@@ -1328,10 +1326,11 @@ export class Game {
   // FREE — no Charge. Dropping onto a blocker rerolls it in place. Returns the placed candidate,
   // or null if refused. Re-arms another rock afterward if the allowance still permits (continuous
   // placement). If no rock is held (the headless one-shot path), it arms one implicitly.
-  placeStamp(col: number, row: number): Candidate | null {
-    if (this.state !== "playing" || this.phase !== "build") return null;
-    if (!this.holding && !this.canStamp()) return null;
-    // No allowance left and not currently holding: refuse.
+  // THE TRANSACTION. The allowance and the footprint are the drop's OWN rules — "placeRock
+  // is refused exactly as a pointer press would be when the footprint is illegal or the
+  // allowance is spent" (specs/instrumentation.md) — so both stay here, and neither the
+  // screen nor the phase does.
+  performPlaceStamp(col: number, row: number): Candidate | null {
     if (this.stampsLeft() <= 0) return null;
     const onBlocker = this.blockerAtAnchor(col, row);
     if (
@@ -1372,6 +1371,14 @@ export class Game {
     return cand;
   }
 
+  // THE PLAYER'S ROUTE. A rock is dropped from the build phase, with one on the cursor or
+  // one the allowance still permits arming.
+  tryPlaceStamp(col: number, row: number): Candidate | null {
+    if (this.state !== "playing" || this.phase !== "build") return null;
+    if (!this.holding && !this.canStamp()) return null;
+    return this.performPlaceStamp(col, row);
+  }
+
   cancelHeld(): void {
     this.holding = false; // nothing was rolled or spent — cancelling a held rock is free
   }
@@ -1385,8 +1392,9 @@ export class Game {
     if (this.state !== "playing" || this.phase !== "build") return false;
     return this.structures.some((s) => s.id === id);
   }
-  removeStructure(id: number): boolean {
-    if (this.state !== "playing" || this.phase !== "build") return false;
+  // THE TRANSACTION. Clear the footprint and re-path. No reach checks: the debug surface's
+  // `dismantle` calls this from wherever the game stands.
+  performRemoveStructure(id: number): boolean {
     const i = this.structures.findIndex((s) => s.id === id);
     if (i < 0) return false;
     // No stamp refund — the roll is spent for good. Drop the level's KEEP if this was the
@@ -1400,8 +1408,13 @@ export class Game {
     this.rePath();
     return true;
   }
+  // THE PLAYER'S ROUTE. DISMANTLE is a build-phase correction the panel draws on the yard.
+  tryRemoveStructure(id: number): boolean {
+    if (this.state !== "playing" || this.phase !== "build") return false;
+    return this.performRemoveStructure(id);
+  }
   removeSelected(): void {
-    if (this.selectedId != null) this.removeStructure(this.selectedId);
+    if (this.selectedId != null) this.tryRemoveStructure(this.selectedId);
   }
 
   // ---- Keep (the one harvest) + IMMEDIATE combining (specs/scrap-press.md) ---
@@ -1427,19 +1440,26 @@ export class Game {
   // the wave**: the candidate becomes a permanent firing component and every other candidate
   // hardens into a blocker. There is no reversible/deferred keep — place and compare all rocks
   // first, then commit the one you want. Every level must harvest to advance (specs/scrap-press.md).
-  keep(id: number): void {
-    // A control the player operates is refused wherever that control is refused, and the
-    // pause menu takes the input: on `paused` every control on the yard is inert
-    // (specs/controls.md).
-    if (this.state !== "playing") return;
-    if (this.phase !== "build") return;
-    if (!this.candidateById(id)) return;
+  // THE TRANSACTION. The harvest itself: mark the candidate kept and launch the wave. It
+  // asks nothing about how the caller got here, so the debug surface calls it directly
+  // (specs/instrumentation.md — "An operation is unconditional").
+  performKeep(id: number): void {
     this.harvest = { mode: "keep", id };
     this.beginWave();
   }
+  // THE PLAYER'S ROUTE. The screen showing and the phase running are what decide whether a
+  // player could press HARVEST at all — the pause menu takes the input, and the panel draws
+  // the control in the build phase alone (specs/controls.md, specs/hud.md).
+  tryKeep(id: number): boolean {
+    if (this.state !== "playing") return false;
+    if (this.phase !== "build") return false;
+    if (!this.candidateById(id)) return false;
+    this.performKeep(id);
+    return true;
+  }
   keepSelected(): void {
     const s = this.selected();
-    if (s && s.kind === "candidate") this.keep(s.id);
+    if (s && s.kind === "candidate") this.tryKeep(s.id);
   }
 
   // Does a same-type + same-quality match exist for this base structure (another candidate or an
@@ -1486,7 +1506,9 @@ export class Game {
   // PRIMARY. With only one selected, AUTO-RESOLVE: quality-combine the primary with the game's
   // choice of partner, else assemble its single reachable recipe. Immediate; returns true if it
   // combined.
-  combineSelection(): boolean {
+  // THE TRANSACTION. Which ingredients are there and what they fold into are the combine's
+  // own rules, so they stay; the screen it is committed from is not one of them.
+  performCombine(): boolean {
     const set = this.combineSet();
     // An emptied set is no explicit set, so the ingredients are the game's to resolve
     // from whatever is selected (specs/scrap-press.md).
@@ -1526,8 +1548,13 @@ export class Game {
     if (!partner) return false;
     return this.combineQualityNow(id, partner.id);
   }
+  // THE PLAYER'S ROUTE. COMBINE is a control on the yard, which the pause menu takes over.
+  tryCombine(): boolean {
+    if (this.state !== "playing") return false;
+    return this.performCombine();
+  }
   combineSelected(): boolean {
-    return this.combineSelection();
+    return this.tryCombine();
   }
 
   // The exact combo an explicit ingredient set assembles, or null: the set's (type,tier)
@@ -1670,12 +1697,20 @@ export class Game {
     const cost = this.refineCost();
     return this.state === "playing" && cost !== null && this.charge >= cost;
   }
-  upgradeQuality(): boolean {
+  // THE TRANSACTION. The price and the top of the track are the purchase's own rules, so a
+  // track already at `REFINEMENT_MAX` and a bank short of the cost each buy nothing; where
+  // the caller was standing is not one of those rules.
+  performUpgradeQuality(): boolean {
     const cost = this.refineCost();
-    if (!this.canUpgradeQuality() || cost === null) return false;
+    if (cost === null || this.charge < cost) return false;
     this.charge -= cost;
     this.refinement = (this.refinement + 1) as Refinement;
     return true;
+  }
+  // THE PLAYER'S ROUTE. The refinement control is drawn on the build panel, on the yard.
+  tryUpgradeQuality(): boolean {
+    if (this.state !== "playing") return false;
+    return this.performUpgradeQuality();
   }
 
   // ---- DOWNGRADE a candidate — KEEP it one tier lower (specs/scrap-press.md) ----
@@ -1692,9 +1727,12 @@ export class Game {
     const cand = this.candidateById(id);
     return !!cand && cand.tier > 1;
   }
-  downgrade(id: number): boolean {
-    if (!this.canDowngrade(id)) return false;
-    const cand = this.candidateById(id)!;
+  // THE TRANSACTION. A candidate above Scrap drops a tier and is harvested at it. The
+  // quality floor is the operation's own rule — there is no tier below Scrap — and the
+  // screen and the phase are not.
+  performDowngrade(id: number): boolean {
+    const cand = this.candidateById(id);
+    if (!cand || cand.tier <= 1) return false;
     cand.tier = (cand.tier - 1) as Tier;
     const ctr = footprintCenter(cand.col, cand.row);
     this.fxQueue.push({ kind: "build", x: ctr.x, y: ctr.y, tier: cand.tier });
@@ -1703,8 +1741,13 @@ export class Game {
     this.beginWave();
     return true;
   }
+  // THE PLAYER'S ROUTE. DOWNGRADE is the build phase's second harvest control.
+  tryDowngrade(id: number): boolean {
+    if (!this.canDowngrade(id)) return false;
+    return this.performDowngrade(id);
+  }
   downgradeSelected(): void {
-    if (this.selectedId != null) this.downgrade(this.selectedId);
+    if (this.selectedId != null) this.tryDowngrade(this.selectedId);
   }
 
   // ---- UPGRADE a combination tower (specs/combinations.md) ---------------------
@@ -1722,10 +1765,13 @@ export class Game {
     const cost = comboUpgradeCost(s.combo, s.comboLevel);
     return cost !== null && this.charge >= cost;
   }
-  upgradeCombo(id: number): boolean {
-    if (!this.canUpgradeCombo(id)) return false;
-    const s = this.structures.find((x) => x.id === id) as Component;
-    const cost = comboUpgradeCost(s.combo!, s.comboLevel)!;
+  // THE TRANSACTION. The price and the top of the ladder are the purchase's own rules; the
+  // screen the panel was drawn on is not.
+  performUpgradeCombo(id: number): boolean {
+    const s = this.structures.find((x) => x.id === id);
+    if (!s || s.kind !== "component" || !s.combo) return false;
+    const cost = comboUpgradeCost(s.combo, s.comboLevel);
+    if (cost === null || this.charge < cost) return false;
     this.charge -= cost;
     s.comboLevel = Math.min(MAX_COMBO_LEVEL, s.comboLevel + 1);
     if (comboStats(s.combo!, s.comboLevel).auraRadius > 0)
@@ -1741,8 +1787,13 @@ export class Game {
     });
     return true;
   }
+  // THE PLAYER'S ROUTE. The upgrade control is drawn on the build panel, on the yard.
+  tryUpgradeCombo(id: number): boolean {
+    if (this.state !== "playing") return false;
+    return this.performUpgradeCombo(id);
+  }
   upgradeComboSelected(): void {
-    if (this.selectedId != null) this.upgradeCombo(this.selectedId);
+    if (this.selectedId != null) this.tryUpgradeCombo(this.selectedId);
   }
 
   // ---- Targeting (specs/components.md, specs/controls.md) ---------------------
@@ -2145,6 +2196,30 @@ export class Game {
 
   // ---- Structures ---------------------------------------------------------------
 
+  // ---- Reconcile (specs/instrumentation.md) ------------------------------------
+  // Bring every reported reading into agreement with the yard as it now stands, WITHOUT
+  // advancing anything.
+  //
+  // THIS BUILD KEEPS SEVERAL DERIVED READINGS RATHER THAN WORKING THEM OUT AT THE READ, so
+  // this is where they are rewritten from what they are copies of: the cached occupancy and
+  // the maze readout follow from the structures, each firing tower's `auraBonus` follows
+  // from the aura sources standing near it, and a unit's route and `progress` follow from
+  // where it stands and the checkpoint it is heading for. A pose that stands a Regulator up
+  // or moves a unit leaves all of those describing the yard as it was; this call answers for
+  // the yard as posed.
+  //
+  // It moves NOTHING to make a reading agree. Every unit is re-routed FROM WHERE IT IS, so a
+  // unit posed inside a wall reads as standing there. No clock moves, no rate is integrated,
+  // no shot is fired, no bounty is paid, no cue is raised, and nothing is drawn from the
+  // seeded generator. Calling it twice leaves the same state as calling it once.
+  reconcile(): void {
+    this.rePath();
+    for (const u of this.units) {
+      if (u.dead) continue;
+      u.progress = this.remainingTiles(u);
+    }
+  }
+
   // Remove every candidate, component, combination tower, and blocker, reopen their tiles,
   // clear the selection and the combine set, and recompute the route.
   clearStructures(): void {
@@ -2265,7 +2340,6 @@ export class Game {
 
   // A firing structure's targeting priority.
   debugSetTargeting(id: number, mode: TargetingMode): void {
-    if (this.state !== "playing") return;
     const c = this.componentById(id);
     if (c) this.setTargeting(c, mode);
   }
@@ -2275,9 +2349,9 @@ export class Game {
   // itself, preferring a candidate over a standing structure.
   debugCombine(id: number): boolean {
     const set = this.combineSet();
-    if (set.length >= 2 && set[0] === id) return this.combineSelection();
+    if (set.length >= 2 && set[0] === id) return this.performCombine();
     this.select(id);
-    return this.combineSelection();
+    return this.performCombine();
   }
 
   // ---- The Load -----------------------------------------------------------------
@@ -2298,7 +2372,6 @@ export class Game {
   // enters a live wave whose spawn schedule is empty, so the units on the yard are exactly
   // the ones released here. That wave clears the ordinary way.
   debugSpawn(type: LoadType | "overload"): Unit | null {
-    if (this.state !== "playing") return null;
     if (this.phase === "build") {
       this.phase = "wave";
       this.harvest = { mode: "none" };

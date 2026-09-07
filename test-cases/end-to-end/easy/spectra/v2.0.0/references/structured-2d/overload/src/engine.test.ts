@@ -332,10 +332,13 @@ describe("a whole stage", () => {
     const left = h.debug.snapshot().drones;
     for (const drone of left.slice(1)) h.debug.removeDrone(drone.id);
     const last = h.debug.snapshot().drones[0];
-    h.debug.setDroneShell(last.id, false);
+    // A SHELL BELONGS TO A PRISM AND A BAND WINDOW TO A FLUX, so each pose is made
+    // only on the kind that has the field: the surface fails LOUDLY on any other
+    // kind rather than passing quietly (`specs/instrumentation.md`).
+    if (last.kind === "prism") h.debug.setDroneShell(last.id, false);
     h.debug.setDroneBand(last.id, last.kind === "prism" ? "magenta" : "cyan");
     h.debug.setDroneOscillation(last.id, false);
-    h.debug.setDroneBandClock(last.id, 0);
+    if (last.kind === "flux") h.debug.setDroneBandClock(last.id, 0);
     h.debug.addPlayerBullet(last.x, last.y, "cyan");
     await h.advance(2);
     expect(h.debug.snapshot().drones).toHaveLength(0);

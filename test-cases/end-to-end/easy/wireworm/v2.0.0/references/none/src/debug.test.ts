@@ -58,6 +58,7 @@ describe("the surface", () => {
       "advance",
       "reset",
       "snapshot",
+      "reconcile",
       "setScreen",
       "setPhase",
       "setPhaseTimer",
@@ -98,6 +99,45 @@ describe("the surface", () => {
     for (const operation of operations) {
       expect(typeof rig.debug[operation]).toBe("function");
     }
+    rig.dispose();
+  });
+
+  test("reconcile re-derives a reading from a posed level", () => {
+    const rig = posed();
+    rig.debug.setLevel(7);
+    rig.debug.reconcile();
+    const shot = rig.debug.snapshot();
+    expect(shot.wormStepInterval).toBeCloseTo(wormStepInterval(7), 10);
+    expect(shot.wormLength).toBe(wormLength(7));
+    rig.dispose();
+  });
+
+  test("reconcile advances nothing, and twice is once", () => {
+    const rig = posed();
+    rig.debug.setLevel(3);
+    rig.debug.setPhaseTimer(0.5);
+    rig.debug.setCursorInvulnerable(1.25);
+    rig.debug.setFireCooldown(0.09);
+    rig.debug.addWorm(5, 5);
+    rig.debug.addFoe("glitch", tileCX(9), tileCY(4));
+    rig.debug.addBolt(300, 500);
+    rig.debug.setNode(9, 9, 2);
+
+    const before = rig.debug.snapshot();
+    rig.debug.reconcile();
+    const once = rig.debug.snapshot();
+    rig.debug.reconcile();
+    const twice = rig.debug.snapshot();
+
+    // The clock and every timer are exactly where they were.
+    expect(once.simTime).toBe(before.simTime);
+    expect(once.phaseTimer).toBe(before.phaseTimer);
+    expect(once.cursor.invulnerable).toBe(before.cursor.invulnerable);
+    expect(once.fireCooldown).toBe(before.fireCooldown);
+    // So are the positions, the velocities and the board.
+    expect(once).toEqual(before);
+    // And reconciling twice leaves the same state as reconciling once.
+    expect(twice).toEqual(once);
     rig.dispose();
   });
 
@@ -154,11 +194,13 @@ describe("every pose reads back", () => {
     rig.dispose();
   });
 
-  test("the level is held inside the run's own range", () => {
+  test("a level outside the run's own range fails loudly", () => {
     const rig = posed();
-    rig.debug.setLevel(0);
-    expect(rig.debug.snapshot().level).toBe(1);
-    rig.debug.setLevel(99);
+    rig.debug.setLevel(TOTAL_LEVELS);
+    expect(() => rig.debug.setLevel(0)).toThrow(RangeError);
+    expect(() => rig.debug.setLevel(99)).toThrow(RangeError);
+    expect(() => rig.debug.setLevel(2.5)).toThrow(RangeError);
+    // And the refusal is loud rather than quiet: nothing moved.
     expect(rig.debug.snapshot().level).toBe(TOTAL_LEVELS);
     rig.dispose();
   });
@@ -195,9 +237,13 @@ describe("every pose reads back", () => {
     expect(shot.cursor.y).toBe(672);
     expect(shot.cursor.invulnerable).toBeCloseTo(1.25, 10);
     expect(shot.fireCooldown).toBeCloseTo(0.09, 10);
-    // The band's real clamp applies to a pose as it does to a played move.
-    rig.debug.setCursor(-500, 0);
-    expect(rig.debug.snapshot().cursor).toMatchObject({ x: 16, y: 672 });
+    // The band is the operation's domain, so a position outside it fails
+    // loudly rather than landing the cursor on the nearest bound.
+    expect(() => rig.debug.setCursor(-500, 0)).toThrow(RangeError);
+    expect(rig.debug.snapshot().cursor).toMatchObject({
+      x: tileCX(30),
+      y: 672,
+    });
     rig.dispose();
   });
 
@@ -270,25 +316,54 @@ describe("every pose reads back", () => {
     rig.dispose();
   });
 
-  test("a pose of an entity that is not there changes nothing", () => {
+  test("a pose of an entity that is not there fails loudly", () => {
     const rig = posed();
-    rig.debug.appendSegment(999, 1, 1);
-    rig.debug.setWormHeading(999, -1);
-    rig.debug.setWormDescent(999, -1);
-    rig.debug.setWormDiving(999, true);
-    rig.debug.setWormStepping(999, false);
-    rig.debug.setWormBody(999, false);
-    rig.debug.removeWorm(999);
-    rig.debug.setFoeVelocity(999, 1, 1);
-    rig.debug.setFoeHit(999, true);
-    rig.debug.setFoeMind(999, false);
-    rig.debug.setFoeTravel(999, false);
-    rig.debug.removeFoe(999);
-    rig.debug.removeBolt(999);
+    expect(() => rig.debug.appendSegment(999, 1, 1)).toThrow(RangeError);
+    expect(() => rig.debug.setWormHeading(999, -1)).toThrow(RangeError);
+    expect(() => rig.debug.setWormDescent(999, -1)).toThrow(RangeError);
+    expect(() => rig.debug.setWormDiving(999, true)).toThrow(RangeError);
+    expect(() => rig.debug.setWormStepping(999, false)).toThrow(RangeError);
+    expect(() => rig.debug.setWormBody(999, false)).toThrow(RangeError);
+    expect(() => rig.debug.removeWorm(999)).toThrow(RangeError);
+    expect(() => rig.debug.setFoeVelocity(999, 1, 1)).toThrow(RangeError);
+    expect(() => rig.debug.setFoeHit(999, true)).toThrow(RangeError);
+    expect(() => rig.debug.setFoeMind(999, false)).toThrow(RangeError);
+    expect(() => rig.debug.setFoeTravel(999, false)).toThrow(RangeError);
+    expect(() => rig.debug.removeFoe(999)).toThrow(RangeError);
+    expect(() => rig.debug.removeBolt(999)).toThrow(RangeError);
     const shot = rig.debug.snapshot();
     expect(shot.worms).toEqual([]);
     expect(shot.foes).toEqual([]);
     expect(shot.bolts).toEqual([]);
+    rig.dispose();
+  });
+
+  test("a tile off the board, and a charge off the scale, fail loudly", () => {
+    const rig = posed();
+    expect(() => rig.debug.setNode(-1, 4, 2)).toThrow(RangeError);
+    expect(() => rig.debug.setNode(4, 999, 2)).toThrow(RangeError);
+    expect(() => rig.debug.clearNode(-1, 4)).toThrow(RangeError);
+    expect(() => rig.debug.setNode(4, 4, CHARGE_MAX + 1)).toThrow(RangeError);
+    expect(() => rig.debug.setNode(4, 4, -1)).toThrow(RangeError);
+    expect(rig.debug.snapshot().nodes).toEqual([]);
+    rig.dispose();
+  });
+
+  test("a name outside its own set fails loudly", () => {
+    const rig = posed();
+    expect(() =>
+      (rig.debug as { setScreen(s: string): void }).setScreen("nowhere"),
+    ).toThrow(RangeError);
+    expect(() =>
+      (rig.debug as { setPhase(s: string): void }).setPhase("nowhen"),
+    ).toThrow(RangeError);
+    expect(() =>
+      (rig.debug as { addFoe(k: string, x: number, y: number): void }).addFoe(
+        "wyrm",
+        100,
+        100,
+      ),
+    ).toThrow(RangeError);
     rig.dispose();
   });
 });

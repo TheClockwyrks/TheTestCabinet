@@ -135,6 +135,24 @@ and `row` are tile coordinates as `specs/floor.md` defines them, and every `x`
 and `y` the surface takes or reports is an entity's centre in the stage's logical
 units, so a caller aiming at a tile passes that tile's centre,
 `(18 + 19c + 9.5, 18 + 19r + 9.5)`.
+
+Every operation acts. A pose reaches the value it names whatever the game's own
+rules would have allowed a player to reach, so nothing here clamps a posed value
+onto a legal neighbour, quietly declines, or leaves the state as it was and calls
+that an answer. A control carries out its own transaction from wherever the game
+stands: which screen is up, which panel is open, where the pointer is, and
+whether the control is drawn are how a PLAYER reaches it and are not its
+conditions, so `sellTower` sells from the title screen and `place` commits with
+no panel open. What a control does keep is its own arithmetic — the price, the
+purse, the cap on a level, the placement check `build.valid` reports — because
+that is the transaction rather than a gate on reaching it.
+
+A call the game has no defined state for fails loudly instead, and the caller
+sees the failure: an id no live tower or unit carries, a name outside the set its
+row lists, a level outside `1` to `MAX_LEVEL`, a rotation outside `0` to `3`, a
+speed that is neither `1` nor `2`, a heat outside `0` to `100`, an emitter
+operation aimed at a mover that carries no heat, or a preview operation with
+nothing armed to preview.
 {{#if (eq engine.slug "simple-2d")}}
 
 Each operation takes the current state, `DeepReadonly<MeltdownState>`, as its
@@ -156,6 +174,45 @@ read and changes nothing.
 | --- | --- |
 | `reset(seed)` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
+| `reconcile()` | Brings every value the snapshot reports into agreement with the game as it now stands, without advancing anything. |
+
+`reconcile()` brings every value this surface reports into agreement with the
+game as it now stands, without advancing anything. A unit's `col` and `row`, its
+`remaining`, its `speed` and its `slowed` flag all follow from where it is, the
+floor beneath it and the slow on it; a tower's `size`, `redline`, `heatMult`,
+`damage`, `slowFactor`, `output`, `refund` and `upgradeCost` follow from its type,
+its level and its heat; `waveCount`, `startMoney`, `startLives`, `interest` and
+`buildZone` follow from the mode and the difficulty; `waveRemaining` and
+`nextWave` follow from the wave and the phase; the two `paths` lengths follow
+from the floor; and `build.valid` follows from the held preview against the real
+placement check. After a pose they answer for the floor as it is now rather than
+as it was before it.
+
+A build that works those out at the read has nothing to do here and this call
+changes nothing. A build that keeps any of them as a stored copy rewrites that
+copy from what it is a copy of.
+
+It moves no clock and runs no system: `simTime` and `buildTimer` are untouched,
+no unit walks, no emitter acquires or fires, no shot resolves, no heat is
+conducted or shed, no trip cooldown ticks, no wave is released, no money or life
+is spent, and the generator is not drawn from. It plays no cue, changes no screen
+or phase, opens and closes no panel, and pays no interest or bonus. It moves
+nothing to make a reading agree: a unit posed onto a blocked tile stays there and
+reads as it is, and a heat posed past the redline is not brought back. `firing`
+and `targeting` are what the last frame resolved and stay the frame's, and
+`pointer` and `muted` are the runtime's and stay the runtime's. `score`, `kills`,
+`damageDealt` and `spent` are tallies of what has happened rather than readings
+of the floor, and none of them moves. Calling it twice leaves the same state as
+calling it once.
+
+It is never an error and may be called on any screen, whether or not the clock is
+held.
+{{#if (eq engine.slug "simple-2d")}}
+
+`reconcile(state)` returns the next `MeltdownState`, built from the one it was
+handed, which it leaves as it was. A build that works every one of those readings
+out at the call returns a state equal to the one it was given.
+{{/if}}
 
 `reset` restores `screen` to `"title"`, `phase` to `"opening"`, `menuIndex` to
 `0`, `mode` to `"containment"`, `difficulty` to `"medium"`, `money` to the
@@ -241,7 +298,7 @@ clears nothing; the coming wave's type and count and the hp scaling follow it.
 | `addTower(type, col, row, rotation)` | Adds one tower of `type` with its footprint's top-left at tile `(col, row)` and its placement `rotation` (`0` to `3`). It costs nothing, spends nothing, and runs no placement check. The footprint's tiles become blocked and the routes are recomputed exactly as a placed tower's are. The tower starts at heat `0`, level `1`, not tripped, with `spent` equal to its build cost, `fresh` true, and both faculties on. It is appended to `towers`. |
 | `removeTower(id)` | Removes that tower. Its footprint reopens and the routes are recomputed. It pays no refund and changes neither money nor score, and it clears the selection if the removed tower was selected. |
 | `clearTowers()` | Removes every tower, reopening every footprint and recomputing the routes. It pays no refund and changes neither money nor score, it clears the selection, and it leaves the surge standing. |
-| `setTowerHeat(id, heat)` | Sets the emitter's heat, a number in `[0, 100]`. It does not trip the tower: the trip belongs to the heat model, and this is a precondition. On a Forge or a Sink it does nothing, because a mover carries no heat of its own (`specs/heat.md`). |
+| `setTowerHeat(id, heat)` | Sets the emitter's heat, a number in `[0, 100]`. It does not trip the tower: the trip belongs to the heat model, and this is a precondition. A Forge or a Sink carries no heat of its own (`specs/heat.md`), so there is no state on one for this to reach and the call fails loudly. |
 | `setTowerTripped(id, tripped)` | Sets whether the tower is offline on a trip. It sets that flag alone, touching neither the heat nor `tripTimer` and raising no cue. |
 | `setTowerTripTimer(id, seconds)` | Sets the seconds left on the trip cooldown. It sets that field alone and does not trip or un-trip the tower. |
 | `setTowerLevel(id, level)` | Sets the tower's level, `1`, `2`, or `3`. It spends nothing, and every stat `specs/towers.md` derives from the level follows. |
@@ -272,13 +329,13 @@ through the game's own code, so each has every consequence
 | Operation | Effect |
 | --- | --- |
 | `setArmed(type)` | Arms placement for a tower `type`, exactly as choosing its shop entry does. `null` disarms. |
-| `setPreview(col, row)` | Moves the held preview so its footprint's top-left sits at tile `(col, row)`, clamped so the footprint stays fully on the grid. `build.valid` follows through the real placement check. |
-| `setPreviewRotation(rotation)` | Sets the held rotation, `0` to `3`. |
-| `place()` | Commits the held preview at its current footprint if `build.valid` is true, exactly as a press on the floor does. On an invalid footprint it builds nothing and spends nothing. |
+| `setPreview(col, row)` | Moves the held preview so its footprint's top-left sits at tile `(col, row)`, exactly where the call names it. A footprint hanging off the grid is one the placement check answers `false` for, so `build.valid` follows through that check rather than the preview being nudged back on. With nothing armed there is no preview to move and the call fails loudly. |
+| `setPreviewRotation(rotation)` | Sets the held rotation, `0` to `3`. With nothing armed the call fails loudly. |
+| `place()` | Commits the held preview at its current footprint if `build.valid` is true, exactly as a press on the floor does. It asks nothing about the screen, the panel or the pointer: the placement check is the whole of it, and on an invalid footprint it builds nothing and spends nothing, which is the check's own answer rather than a refusal to act. With nothing armed there is no preview to commit and the call fails loudly. |
 | `setSelected(id)` | Selects the placed tower with that id, opening its inspector. `null` deselects. |
 | `setHoverShop(type)` | Sets the shop entry currently hovered, so the panel shows that type's info. `null` clears the hover. |
-| `upgradeTower(id)` | Upgrades that tower one level through the real upgrade code, deducting its `upgradeCost` when it is affordable and the tower is below level `3`, and changing nothing otherwise. |
-| `sellTower(id)` | Sells that tower through the real sell code: it pays its `refund` into money, removes it, reopens its footprint, recomputes the routes, and clears the selection if it was selected. |
+| `upgradeTower(id)` | Upgrades that tower one level through the real upgrade code, deducting its `upgradeCost` when it is affordable and the tower is below level `3`, and changing nothing otherwise. The purse and the cap are the transaction's own arithmetic; neither the panel nor the selection is asked about. |
+| `sellTower(id)` | Sells that tower through the real sell code, from wherever the game stands: it pays its `refund` into money, removes it, reopens its footprint, recomputes the routes, and clears the selection if it was selected. |
 
 No operation on this surface plays a cue, and none can. A cue is raised by the
 frame that resolves the event it answers and is played from the frame loop, and
@@ -447,6 +504,14 @@ present, so every operation is verifiable by setting a value and reading it back
 Notes on the shape:
 
 - Every `(x, y)` this surface reports or accepts is the entity's centre.
+- A great many of these fields are DERIVED: they are functions of the floor as it
+  now stands rather than values of their own. A unit's `col`, `row`, `remaining`,
+  `speed` and `slowed`; a tower's `size`, `redline`, `heatMult`, `damage`,
+  `slowFactor`, `output`, `refund` and `upgradeCost`; `waveCount`, `startMoney`,
+  `startLives`, `interest`, `buildZone`, `waveRemaining`, `nextWave`, `paths`,
+  `menu`, `controls`, and `build.valid` are all of them. A build is free to work
+  any of these out at the read or to keep it as a stored copy, and `reconcile()`
+  is what brings a stored copy back into agreement after a pose.
 - `waveCount`, `startMoney`, `startLives`, `interest`, and `buildZone` are
   derived from `mode` and `difficulty` by the table in `specs/modes.md`.
 - `waveRemaining` is `wavePending` plus the number of live units while the phase
