@@ -44,6 +44,17 @@ const FRAMES = 30;
 /** How far from the cell's centre a draw counts as being at the pickup. */
 const RADIUS = TILE * 1.5;
 
+/**
+ * Longer than the project's default, because this point drives TWO whole cuts and
+ * polls the cell after every frame of both — each poll a round trip to the page —
+ * before it reads a single frame of the glint. Alone that is a few seconds; on a
+ * loaded host every round trip stretches, and a point that ran out of time is
+ * reported as one the build FAILED, which would be the check's defect rather than
+ * the build's. The bound still catches a hung build; it just does not catch a
+ * busy host.
+ */
+const TIMEOUT_MS = 240_000;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -54,41 +65,45 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws more at the cell when the cut banks an ore", async () => {
-  /** Cut the same cell through, with or without an ore in it, and read after. */
-  const cut = async (
-    ore: boolean,
-  ): Promise<{ broke: boolean; banked: number; series: number[] }> => {
-    await openScene(h);
-    await layFloor(h, ROW);
-    if (ore) await layOre(h, COL, ROW, ORE);
-    await standOn(h, COL, ROW);
-    await pinMiner(h);
-    const driven = await driveCut(h, "down", { col: COL, row: ROW });
-    const snapshot = await h.snapshot();
-    const centre = cellCenter(COL, ROW);
-    const at = worldToStage(snapshot, centre.x, centre.y);
-    return {
-      broke: driven.broke,
-      banked: snapshot.cargo.slotsUsed,
-      series: await seriesNear(h, FRAMES, RADIUS, at),
+it(
+  "draws more at the cell when the cut banks an ore",
+  { timeout: TIMEOUT_MS },
+  async () => {
+    /** Cut the same cell through, with or without an ore in it, and read after. */
+    const cut = async (
+      ore: boolean,
+    ): Promise<{ broke: boolean; banked: number; series: number[] }> => {
+      await openScene(h);
+      await layFloor(h, ROW);
+      if (ore) await layOre(h, COL, ROW, ORE);
+      await standOn(h, COL, ROW);
+      await pinMiner(h);
+      const driven = await driveCut(h, "down", { col: COL, row: ROW });
+      const snapshot = await h.snapshot();
+      const centre = cellCenter(COL, ROW);
+      const at = worldToStage(snapshot, centre.x, centre.y);
+      return {
+        broke: driven.broke,
+        banked: snapshot.cargo.slotsUsed,
+        series: await seriesNear(h, FRAMES, RADIUS, at),
+      };
     };
-  };
 
-  const plain = await cut(false);
-  const banked = await captureReplay(h, "sparkle", () => cut(true));
+    const plain = await cut(false);
+    const banked = await captureReplay(h, "sparkle", () => cut(true));
 
-  const short = banked.series.filter(
-    (count, at) => count < plain.series[at],
-  ).length;
-  const extra = banked.series.filter(
-    (count, at) => count > plain.series[at],
-  ).length;
+    const short = banked.series.filter(
+      (count, at) => count < plain.series[at],
+    ).length;
+    const extra = banked.series.filter(
+      (count, at) => count > plain.series[at],
+    ).length;
 
-  assertEqual(plain.broke, true, "specs/mining.md");
-  assertEqual(banked.broke, true, "specs/mining.md");
-  assertEqual(plain.banked, 0, "specs/mining.md");
-  assertEqual(banked.banked, 1, "specs/mining.md");
-  assertEqual(short, 0, "specs/assets.md");
-  assertGreaterThan(extra, 0, "specs/assets.md");
-});
+    assertEqual(plain.broke, true, "specs/mining.md");
+    assertEqual(banked.broke, true, "specs/mining.md");
+    assertEqual(plain.banked, 0, "specs/mining.md");
+    assertEqual(banked.banked, 1, "specs/mining.md");
+    assertEqual(short, 0, "specs/assets.md");
+    assertGreaterThan(extra, 0, "specs/assets.md");
+  },
+);
