@@ -140,7 +140,7 @@ export async function pinObstaclesUpright(api) {
  * arrange-callable.
  */
 export async function poseBall(api, index, state) {
-  await poseBall(api, index, state);
+  await api.call("setBall", index, state);
   await api.call("reconcile");
 }
 
