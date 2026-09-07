@@ -11,9 +11,9 @@ smoke puff that drifts and dissipates. You are authoring the _effect_ as a
 
 - A **48×48×48** volume, transparent background. `x` is across, `y` is **up**, `z`
   is depth; forward is `+z`. The burst is centered in the volume so it reads from
-  any orbit angle — the review UI and the game render it from an **orbiting 3D
-  camera**, so it must read as a flak burst from every side, not just from one
-  face.
+  any orbit angle — the game, and any viewer that plays it, renders it from an
+  **orbiting 3D camera**, so it must read as a flak burst from every side, not
+  just from one face.
 - The effect runs for **~1500 ms** at **60 fps** and does **not loop**: it is a
   one-shot detonation that fires at the start and **decays cleanly to empty** by
   the end. There is no steady state to settle into.
@@ -119,10 +119,11 @@ A natural read: the **core** runs `#fff4d6` → `#ff8a2a`; the **sparks** run
 
 The `particle-3d` binary on your `PATH` is the only way to shape the effect, and
 you **author a system**, not individual particles — emitters, forces, and
-per-particle size/opacity/color curves that the review UI and the game
-**simulate live**. Build it up in sensible layers: add the core, spark, and smoke
-emitters; set the forces (gravity, drag, radial push, and the smoke's buoyancy);
-then set each emitter's color gradient, opacity curve, and size curve.
+per-particle size/opacity/color curves that the game, or any viewer that plays
+it, **simulates live**. Build it up in sensible layers: add the core, spark, and
+smoke emitters; set the forces (gravity, drag, radial push, and the smoke's
+buoyancy); then set each emitter's color gradient, opacity curve, and size
+curve.
 
 Rendering is **on request**: run `particle-3d render` to simulate the whole system
 over its duration, write the preview `effect.gif`, and **emit the `system.json`
