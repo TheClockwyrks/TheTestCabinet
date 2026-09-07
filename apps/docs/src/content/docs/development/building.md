@@ -182,9 +182,9 @@ scripts/ci/specs-lint.sh      # markdownlint + cspell over the authored prose
 
 `scripts/setup-hooks.sh` installs the pre-commit hooks, which run the formatting,
 clippy, and doc gates, the front-end test suite, the
-[frozen-version](/development/frozen-versions/) check, and the audio-pack lint on
-each commit. The front-end suite is a commit gate because it completes in
-seconds; the Rust test suite runs in CI.
+[frozen-version](/development/frozen-versions/) check, the audio-pack lint, and the
+seeded-spec vocabulary check on each commit. The front-end suite is a commit gate
+because it completes in seconds; the Rust test suite runs in CI.
 
 ```sh
 node scripts/ci/audio-packs-check.mjs
@@ -196,6 +196,18 @@ full-stack and game-jam version that is not frozen, resolves every declared ref
 against `containers/sample-packs/` for name, version, kind, and published clips,
 and prints the defaults each version's pack order resolves to. It reads the
 committed manifests only, so it needs no credentials.
+
+```sh
+scripts/ci/spec-vocabulary-check.sh
+```
+
+The seeded-spec vocabulary gate also runs on both the commit hook and CI. It reads
+every non-frozen version's `prompt.hbs` and `specs/**`, plus the shared prompt
+preambles in `crates/core/src/prompt.rs`, and fails on any word that would tell a
+model it is being evaluated or that this project exists; the list is in
+[Keeping evaluation out of the seeded set](/guides/authoring/writing-case-specifications/#keeping-evaluation-out-of-the-seeded-set).
+Hits in frozen versions are reported, not failed. It is dependency-free and
+finishes in under a second.
 
 ### `gg` and its eleven toolchains
 

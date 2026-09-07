@@ -197,6 +197,20 @@ repos:
         files: '^(test-cases|game-jams)/.*/(test-case|game-jam)\.toml$|^containers/sample-packs/'
         pass_filenames: false
 
+      - id: spec-vocabulary
+        name: seeded spec vocabulary
+        description: Reject evaluation vocabulary — this project's name, `tcab`, "benchmark", "test case", a review surface — in a spec or prompt that is seeded into a model's workspace.
+        entry: scripts/ci/spec-vocabulary-check.sh
+        language: script
+        # The spec counterpart of seeded-contract above. Unlike that one it is
+        # scoped: `files` fires it when a commit touches the seeded set — a
+        # version's prompt.hbs or anything under its specs/, or the shared prompt
+        # preambles in prompt.rs — and it then reads EVERY non-frozen version
+        # rather than the staged paths, so it takes no file arguments. The
+        # checker is dependency-free node and finishes in a fraction of a second.
+        files: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/(prompt\.hbs$|specs/)|^crates/core/src/prompt\.rs$'
+        pass_filenames: false
+
       - id: rust-fmt
         name: cargo fmt (--check)
         description: Enforce rustfmt formatting across the workspace.
