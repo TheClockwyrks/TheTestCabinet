@@ -5037,14 +5037,14 @@ validation = { script = "assets/particle-on-death.test.ts", outputs = [
   { id = "burst", name = "The burst at a death", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "gas-seep-round-robin"
-title = "Every visible gas pocket wisps in turn"
-description = "The gas-seep system is emitted over the gas pockets currently on screen in round-robin turn, so every visible pocket wisps within GAS_SEEP_PERIOD (2) seconds and a player watching a suspect cell sees it breathe."
+id = "gas-seep-covers-every-pocket"
+title = "Every visible gas pocket wisps within the seep period"
+description = "The gas-seep system is emitted over the gas pockets currently on screen so that every visible pocket wisps within GAS_SEEP_PERIOD (2) seconds and a player watching a suspect cell sees it breathe. How the seeps are shared among the visible pockets is the build's own business."
 domains = ["presentation"]
 failure_cap = "great"
 # Automated validation: pose several gas pockets in view, advance
 # GAS_SEEP_PERIOD and hold at least one seep emitted over each of them.
-validation = { script = "assets/gas-seep-round-robin.test.ts", outputs = [
+validation = { script = "assets/gas-seep-covers-every-pocket.test.ts", outputs = [
   { id = "seep", name = "Gas wisping from the pockets in view", kind = "replay" },
 ] }
 [[review.categories.items]]

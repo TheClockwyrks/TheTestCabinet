@@ -1,13 +1,17 @@
-// assets/gas-seep-round-robin — every visible pocket breathes in its turn.
+// assets/gas-seep-covers-every-pocket — every visible pocket breathes.
 //
 // `specs/hazards.md`: "Seeps are emitted over the gas pockets currently on screen
-// in round-robin turn, so every visible pocket wisps within `GAS_SEEP_PERIOD`
-// (`2`) seconds and a player watching a suspect cell sees it breathe."
-// `specs/assets.md` gives the seep its produced system and describes it as "A faint
-// wisp of pale gas rising from the cell".
+// so that every visible pocket wisps within `GAS_SEEP_PERIOD` (`2`) seconds: a
+// player watching a suspect cell sees it breathe, and a player hurrying past does
+// not. How the seeps are shared among the visible pockets is the build's own
+// business." `specs/assets.md` gives the seep its produced system and describes it
+// as "A faint wisp of pale gas rising from the cell".
 //
-// EVERY pocket is what makes this a round robin rather than one emitter. So three
-// pockets are posed across the view and all three are watched over ONE
+// EVERY pocket is what this reads, and the sharing is deliberately not read. The
+// specification fixes the guarantee — nothing goes unwisped for longer than a
+// period — and leaves a build free to reach it however it likes, so a check that
+// insisted on turn-taking would grade an implementation rather than the behaviour.
+// Three pockets are posed across the view and all three are watched over ONE
 // `GAS_SEEP_PERIOD`, in a single pass rather than one at a time, because the
 // requirement is about what happens to all of them over the same stretch of time.
 // Each cell has to draw more than it draws with no seep over it, and that baseline
@@ -15,7 +19,7 @@
 // `specs/overview.md` says a gas pocket is drawn, so the difference is the wisp and
 // not the tile.
 //
-// THE WINDOW IS THE SECOND ONE, not the first. Whatever a build's turn-taking is
+// THE WINDOW IS THE SECOND ONE, not the first. Whatever a build's sharing is
 // timed off, it was not counting the pockets before they existed, so the period
 // straight after they are posed is one the requirement says nothing about. A whole
 // `GAS_SEEP_PERIOD` is let run first and the pockets are watched over the one

@@ -64,9 +64,9 @@ export async function seriesNear(
  * Drive `frames` frames and report, for each of several fixed points, the most
  * drawing any one frame put within `radius` of it.
  *
- * One pass for every point, because a round robin is about what happens over the
- * SAME stretch of time at several places at once: reading them one at a time would
- * be reading a different stretch for each.
+ * One pass for every point, because the seep guarantee is about what happens over
+ * the SAME stretch of time at several places at once: reading them one at a time
+ * would be reading a different stretch for each.
  */
 export async function peaksNear(
   h: Harness,
