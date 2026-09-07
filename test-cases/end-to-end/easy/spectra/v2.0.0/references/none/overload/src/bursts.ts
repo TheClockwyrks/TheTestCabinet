@@ -11,10 +11,9 @@
 // it is the route that is fast, because the build draws the particles itself in one
 // pass rather than issuing a radial gradient per particle per frame.
 //
-// EACH BURST IS SEEDED FROM THE GAME'S OWN GENERATOR, which is what makes two
-// things true at once: successive pops in one run scatter differently, and a replay
-// from the same seed reproduces the same sequence exactly
-// (specs/instrumentation.md).
+// EACH BURST SCATTERS AT RANDOM, so successive pops in one run scatter differently
+// while the flash, the ring and the two-band sparks read the same
+// (specs/assets.md).
 
 import {
   ParticleSimulator,
@@ -22,7 +21,7 @@ import {
   type RenderParticle,
 } from "@clockwyrks/particle-runtime";
 import { BURST_DURATION, BURST_FIELD, MAX_BURSTS } from "./constants";
-import { nextSeed } from "./rng";
+import { nextWord } from "./random";
 import type { SpectraState } from "./types";
 
 /** One drone-burst playing on the field. */
@@ -71,14 +70,16 @@ export function startBurst(
   y: number,
   footprint: number,
 ): Burst {
-  const seed = nextSeed(state);
   const burst: Burst = {
     id,
     x,
     y,
     size: footprint,
     elapsed: 0,
-    sim: system === null ? null : new ParticleSimulator(system, { seed }),
+    sim:
+      system === null
+        ? null
+        : new ParticleSimulator(system, { seed: nextWord() }),
   };
   // `reset` fires the system's zero-time bursts, so the effect already carries its
   // flash on the frame it starts rather than one frame later.

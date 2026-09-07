@@ -1492,6 +1492,3 @@ export const LOOP_SEAM_TOLERANCE = 0.01;
 
 /** The version the debug surface reports as `version`. */
 export const WICK_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;

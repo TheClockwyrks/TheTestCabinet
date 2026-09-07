@@ -31,10 +31,10 @@
 // are the figures measured across the tree on a host running nine of these
 // projects at once, and both are strictly more generous than what stood here. An
 // allowance a correct build can cross is a defect in the check rather than in
-// the build — a scenario that runs a night to its last window, or four thousand
-// seeded kills for the drop roll, is thousands of ticks of the real simulation,
-// and on a busy host that is exactly the shape of check that loses a point to
-// the clock — so the ceilings are the harness's and this file names none.
+// the build — a scenario that runs a night to its last window is thousands of
+// ticks of the real simulation, and on a busy host that is exactly the shape of
+// check that loses a point to the clock — so the ceilings are the harness's and
+// this file names none.
 //
 // The factory is imported by its own specifier rather than through the package's
 // barrel, because it is loaded by vite's own config path before the test runtime

@@ -20,57 +20,67 @@
 // spawners are open at once: a build that gated one of the three and not the
 // others is caught by the same sweep.
 //
-// THE LEVEL IS OPENED THE WAY A LEVEL OPENS. specs/foes.md times each spawner
-// "from the moment the level's play becomes active", so the board is posed on the
-// `banner` phase and the banner is allowed to run out, and the sweep starts from
-// the transition the specification names rather than from a phase posed straight
-// into `active`. Worm entry stays off, so the level's own worm does not join a
-// scenario that is about foes, and the cursor's contact test stays off, so nothing
-// that does arrive can cost a life and empty the roster the sweep is reading.
+// THE MOMENT EACH SPAWNER WOULD ACT IS POSED, NOT WAITED FOR. specs/foes.md has
+// each kind's entry or check happen when its clock reaches `0`, and
+// `setSpawnTimer` poses the seconds left on each clock, so all three are posed
+// to run out inside the next update. With the gate off, a clock "holds its
+// value whenever it is not counting down ... while foe spawning is off"
+// (specs/foes.md), so a second of play leaves the roster empty; with it on, the
+// same posed clocks run out and the level's foes arrive on the next update.
+// Nothing waits on the interval a clock is drawn to, so the check costs a second
+// of updates whatever a build's pacing. Worm entry stays off, so the level's own
+// worm does not join a scenario that is about foes, and the cursor's contact
+// test stays off, so nothing that does arrive can cost a life and empty the
+// roster the sweep is reading.
 //
 // The two directions are two checks, so a build that gates nothing and a build
 // that gates everything grade differently: the first fails the sweep with the
 // gate off and the second fails the sweep with it on.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { BANNER_TIME } from "../constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
   startPlaying,
+  TICK_HZ,
   ticksFor,
+  type FoeKind,
   type Harness,
 } from "../harness";
 
 /** The level at which all three of specs/foes.md's spawners are open. */
 const LEVEL = 5;
 
-/** The minute of play the item names, and how far the sweep may run. */
-const MINUTE_TICKS = ticksFor(60);
+/** The three kinds, each with a clock of its own (specs/foes.md). */
+const KINDS: readonly FoeKind[] = ["glitch", "dropper", "corruptor"];
 
 /**
- * How long the gate-on sweep may run before a foe is expected.
- *
- * specs/foes.md checks the sparse field every `DROPPER_CHECK_INTERVAL` (`2.5` s)
- * and the board is empty, and the slowest of the three spawners is the corruptor
- * at `CORRUPTOR_MAX_INTERVAL` (`22` s). Thirty seconds is past every one of them.
+ * The seconds each clock is posed at: half of one update's delta, so a clock
+ * that is counting down reaches `0` inside the very next update.
  */
-const ARRIVAL_TICKS = ticksFor(30);
+const DUE_SECONDS = 0.5 / TICK_HZ;
 
-/** Frames covering the banner, plus one so the transition has run. */
-const BANNER_TICKS = ticksFor(BANNER_TIME) + 1;
+/** The second of play the gated board is left for, in frames. */
+const GATED_TICKS = ticksFor(1);
 
-/** How often the sweeps sample the roster: often enough to see a foe cross. */
-const POLL = 12;
+/**
+ * How long the ungated board is given before a foe is expected, in frames: a
+ * tenth of a second, room for a build that acts on the update after its clock
+ * crosses `0` rather than inside the one it crosses in.
+ */
+const ARRIVAL_TICKS = ticksFor(0.1);
 
-/** Pose a quiet level-5 board on its banner, with foe spawning as given. */
+/** Pose a quiet level-5 board in live play, with foe spawning as given. */
 function openLevel(h: Harness, spawning: boolean): void {
   startPlaying(h);
   h.debug.setLevel(LEVEL);
   h.debug.setFoeSpawning(spawning);
-  h.debug.setPhase("banner");
-  h.debug.setPhaseTimer(BANNER_TIME);
+}
+
+/** Pose every kind's clock to run out inside the next update. */
+function poseClocksDue(h: Harness): void {
+  for (const kind of KINDS) h.debug.setSpawnTimer(kind, DUE_SECONDS);
 }
 
 let h: Harness;
@@ -83,19 +93,13 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("lets no foe join the roster over a minute with spawning off", async () => {
+it("lets no foe join the roster over a second with spawning off", async () => {
   openLevel(h, false);
-
-  await h.advance(BANNER_TICKS);
-  assertEqual(
-    h.snapshot().phase,
-    "active",
-    "the banner gives way to active play (specs/progression.md)",
-  );
+  poseClocksDue(h);
 
   const swept = await h.until((s) => s.foes.length > 0, {
-    maxFrames: MINUTE_TICKS,
-    poll: POLL,
+    maxFrames: GATED_TICKS,
+    poll: 1,
   });
   // The level-5 board no foe joined.
   captureStill(h, "gated");
@@ -103,8 +107,9 @@ it("lets no foe join the roster over a minute with spawning off", async () => {
   assertEqual(
     swept.hit,
     false,
-    "with setFoeSpawning(false) no foe joins the roster over a minute of " +
-      "level-5 play (specs/instrumentation.md)",
+    "with setFoeSpawning(false) and every spawner clock posed to run out, no " +
+      "foe joins the roster over a second of level-5 play " +
+      "(specs/instrumentation.md)",
   );
   assertEqual(
     h.snapshot().foeSpawning,
@@ -115,13 +120,7 @@ it("lets no foe join the roster over a minute with spawning off", async () => {
 
 it("lets the level's foes arrive with spawning on", async () => {
   openLevel(h, true);
-
-  await h.advance(BANNER_TICKS);
-  assertEqual(
-    h.snapshot().phase,
-    "active",
-    "the banner gives way to active play (specs/progression.md)",
-  );
+  poseClocksDue(h);
 
   const swept = await h.until((s) => s.foes.length > 0, {
     maxFrames: ARRIVAL_TICKS,
@@ -131,8 +130,8 @@ it("lets the level's foes arrive with spawning on", async () => {
   assertEqual(
     swept.hit,
     true,
-    "with setFoeSpawning(true) the level's own spawners draw a foe in " +
-      "(specs/foes.md)",
+    "with setFoeSpawning(true) and every spawner clock posed to run out, the " +
+      "level's own spawners draw a foe in on the next update (specs/foes.md)",
   );
   assertGreaterThan(
     swept.snapshot.foes.length,

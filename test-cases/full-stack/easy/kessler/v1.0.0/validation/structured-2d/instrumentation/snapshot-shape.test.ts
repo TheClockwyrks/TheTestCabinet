@@ -49,6 +49,7 @@ it("reports every documented field, with the posed values", async () => {
   h.debug.spawnPod("widen", POD_AT.x, POD_AT.y);
   h.debug.setEffectTicks("pierce", 240);
   h.debug.setShield(true);
+  h.debug.setNextPod("narrow");
 
   const s = h.snapshot();
   await h.tick(1);
@@ -68,9 +69,9 @@ it("reports every documented field, with the posed values", async () => {
   assertEqual(typeof s.paddle.spanDeg, "number", "paddle.spanDeg");
   assertEqual(typeof s.menu.index, "number", "menu.index");
 
-  // The two fields a pose sets and the snapshot reads back, so `reset(seed)`
+  // The two fields a pose sets and the snapshot reads back, so `setNextPod`
   // and `setInterstitialTicks` can each be verified by setting and reading.
-  assertEqual(typeof s.seed, "number", "seed");
+  assertEqual(s.nextPod, "narrow", "nextPod, as posed");
   assertEqual(typeof s.interstitialTicks, "number", "interstitialTicks");
 
   // The balls, in spawn order, every documented field carrying its pose.

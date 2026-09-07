@@ -64,7 +64,7 @@ describe("the surface", () => {
   });
 
   it("reports the version the specification fixes", () => {
-    expect(api.version).toBe(4);
+    expect(api.version).toBe(5);
   });
 
   it("fails loudly on an argument outside its stated domain", () => {

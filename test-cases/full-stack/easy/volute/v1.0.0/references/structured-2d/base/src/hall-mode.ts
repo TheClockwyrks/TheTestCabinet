@@ -8,9 +8,10 @@
 // across actors ticking in spawn order.
 //
 // The mode reaches the rest of the game through {@link HallPorts}, which it
-// implements itself: spawning and destroying the bodies, drawing from the game's
-// one seeded generator (which lives on the instance, since it must survive a
-// level transition), raising a cue, and playing an effect.
+// implements itself: spawning and destroying the bodies, drawing a charge at
+// random or taking the one the debug surface posed (which lives on the
+// instance, since it must survive a level transition), raising a cue, and
+// playing an effect.
 
 import { GameMode } from "@clockwyrks/structured-2d";
 import {
@@ -103,8 +104,8 @@ export class HallMode extends GameMode implements HallPorts {
 
   /**
    * The game instance, bound by `VoluteGame.worldOpened` before the world's
-   * first frame. It carries the seeded generator, which must survive a level
-   * transition (specs/state.md).
+   * first frame. It carries the gates and the posed emission charge, which
+   * must survive a level transition (specs/state.md).
    */
   private boundGame: VoluteGame | null = null;
 
@@ -171,6 +172,10 @@ export class HallMode extends GameMode implements HallPorts {
 
   drawCharge(from: readonly ChargeId[]): ChargeId {
     return this.game.drawCharge(from);
+  }
+
+  takeNextEmitted(): ChargeId | null {
+    return this.game.takeNextEmitted();
   }
 
   clearEffects(): void {

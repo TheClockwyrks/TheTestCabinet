@@ -10,8 +10,9 @@
 // (`specs/simulation.md`, Completion and metrics).
 //
 // HOW A RUN IS MADE THE TIGHTER ONE. The same machine banks the same hexes every
-// time — "The simulation is a function of the machine and the elapsed simulated
-// time" (`specs/simulation.md`, Determinism) — so the RECORD is raised instead,
+// time — "A cycle's outcome, collisions included, is computed from the machine's
+// parts, their tapes, and the sample fractions" (`specs/simulation.md`, Cycles and
+// the clock) — so the RECORD is raised instead,
 // one above what the run reaches, through "`setRecord(mode, index, metric,
 // value)` Sets one record of one challenge" (`specs/instrumentation.md`).
 //
@@ -79,15 +80,18 @@ const INDEX = 0;
  * The fastest speed step. A run's outcome does not turn on it — "`advance(1, 1)`
  * and `advance(1, 60)` cover the same cycles and reach the same outcome"
  * (`specs/instrumentation.md`) — so the fastest step is chosen for one reason
- * only: it is how few frames the reference's cycle budget costs.
+ * only: a cycle is `1 / SPEEDS[speed]` seconds, so it is the shortest span of
+ * game time the budget's cycles can be driven as.
  */
 const FAST_SPEED = SPEEDS.length - 1;
 
 /**
- * How many cycles one call to the clock covers. The budget is walked in steps
- * rather than in one span so a run that finishes early costs the frames it needed;
- * "the span is the same however it is divided" (`specs/instrumentation.md`), so
- * nothing the run decides turns on this figure.
+ * How many cycles one call to the clock covers, in ONE frame: "a frame may
+ * complete several cycles; each runs in full, in order" (`specs/simulation.md`),
+ * and "the span is the same however it is divided" (`specs/instrumentation.md`),
+ * so nothing the run decides turns on the division. The budget is walked in steps
+ * rather than in one span so a run that finishes early costs only the steps it
+ * needed.
  */
 const CYCLES_PER_STEP = 25;
 
@@ -117,7 +121,7 @@ async function settle(): Promise<OrrerySnapshot> {
     covered < CAMPAIGN_REFERENCE_CYCLES && snapshot.sim?.status === "running";
     covered += CYCLES_PER_STEP
   ) {
-    await advanceCycles(h, CYCLES_PER_STEP, CYCLES_PER_STEP);
+    await advanceCycles(h, CYCLES_PER_STEP, 1);
     snapshot = await h.snapshot();
   }
   return snapshot;

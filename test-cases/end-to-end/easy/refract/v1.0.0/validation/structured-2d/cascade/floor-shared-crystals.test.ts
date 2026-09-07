@@ -8,10 +8,10 @@
 // beams of two or more channels within a single solution", at least the
 // figure the tier's row states.
 //
-// The same twenty-five-board sweep the sibling suites drive is measured here:
-// board k arrives after exactly k solves, so its rung is the formula's tier at
-// k, and the measures are recomputed from scratch over the oracle's own parse
-// of the arrived board (metrics.ts, derived from the specs alone).
+// The generator is asked for five boards at every tier through `generateBoard`
+// (specs/instrumentation.md), and the measures are recomputed from scratch over
+// the oracle's own parse of each arrived board (metrics.ts, derived from the
+// specs alone), held to the row of the tier it was asked for at.
 //
 // A BOARD THE ORACLE CANNOT MEASURE IS NOT JUDGED. The enumeration carries an
 // expansion budget (DIFFICULTY_MAX_EXPANSIONS, a generous runaway stop) so a
@@ -22,23 +22,17 @@
 // sweep must still measure at least twenty of its twenty-five boards.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThanOrEqual,
-  assertLessThan,
-} from "../assert";
+import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  solveGenerated,
-  tapAction,
+  generateAtTiers,
   type Harness,
 } from "../harness";
 import { measuresUpToTier } from "../metrics";
-import { TIERS, tierForSolvedCount } from "../notation";
+import { MAX_TIER, TIERS } from "../notation";
 
-const SEED = 1;
-const BOARDS = 25;
+const PER_TIER = 5;
 
 let h: Harness;
 
@@ -51,13 +45,14 @@ afterEach(() => {
 });
 
 it("emits only boards meeting their tier's shared-crystal floor", async () => {
-  const solved = await solveGenerated(h, BOARDS, SEED);
+  const generated = await generateAtTiers(h, PER_TIER, ({ tier, round }) => {
+    if (tier === MAX_TIER && round === PER_TIER) captureStill(h, "board");
+  });
   let unmeasured = 0;
-  for (let k = 0; k < solved.length; k += 1) {
-    const tier = tierForSolvedCount(k);
+  for (const { tier, round, board } of generated) {
     const row = TIERS[tier - 1];
-    const context = `board ${k + 1}, tier ${tier}`;
-    const { measured } = measuresUpToTier(solved[k].board, tier);
+    const context = `tier ${tier}, board ${round}`;
+    const { measured } = measuresUpToTier(board, tier);
     if (measured === null || measured.budget) {
       unmeasured += 1;
       continue;
@@ -74,12 +69,7 @@ it("emits only boards meeting their tier's shared-crystal floor", async () => {
   assertLessThan(
     unmeasured,
     6,
-    "at least twenty of the sweep's twenty-five boards measured inside the " +
+    "at least twenty of the twenty-five generated boards measured inside the " +
       "oracle's expansion budget",
   );
-
-  // One more board past the sweep, rendered on playing: the picture.
-  await tapAction(h, "confirm");
-  assertEqual(h.snapshot().screen, "playing", "NEXT BOARD lands on playing");
-  captureStill(h, "board");
 });

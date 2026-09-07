@@ -21,7 +21,9 @@
 // inside a Medium's about a third of the time. Each pass is a real trip through the core
 // — the rock is aimed back at the star at 400 units per second and followed in
 // again — so the draws are the ones the build would make in play, and every one of
-// them is asserted, as the review item states.
+// them is asserted, as the review item states. Nothing is posed for the speed:
+// `setNextRockSpeed` is how a check that wants a particular one gets it, and this
+// check wants the build's own draws.
 //
 // THE ROCK IS SLUNG IN FASTER THAN THE RANGE, at 400 units per second, and
 // `specs/gravity.md`'s well only adds to that on the way in. So a build that
@@ -44,7 +46,6 @@ import { speedOf } from "../geometry";
 import {
   captureStill,
   createHarness,
-  resetTo,
   startPlaying,
   ticksFor,
   type Harness,
@@ -60,9 +61,6 @@ import {
 
 /** How many entries are read, so a range is graded rather than a single draw. */
 const PASSES = 6;
-
-/** The seed the run is put on, so the speeds the star draws are reproducible. */
-const SEED = 1;
 
 /**
  * How far outside the stated range an entry speed may fall: two percent, as the
@@ -90,7 +88,6 @@ afterEach(() => {
 });
 
 it("gives every re-entering Medium a speed inside ROCK_SPEED_MIN.medium to ROCK_SPEED_MAX.medium", async () => {
-  resetTo(h, SEED);
   startPlaying(h);
   dropOntoTheStar(h, "medium");
 

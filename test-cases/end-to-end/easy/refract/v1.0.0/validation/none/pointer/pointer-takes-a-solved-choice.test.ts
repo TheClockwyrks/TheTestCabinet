@@ -32,7 +32,7 @@ afterEach(async () => {
 });
 
 it("takes the first choice from a press and release on its target", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
   const board = await loadBoard(h, MINIMAL_2X1);
 

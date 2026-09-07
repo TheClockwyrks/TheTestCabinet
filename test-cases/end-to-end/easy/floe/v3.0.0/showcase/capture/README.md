@@ -53,36 +53,36 @@ then delete the staged `validation/` copy. The validators' own cap is left at
 
 | Variable                                                  | Effect                                                                                                                                                          |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TCAB_VALIDATION_MEDIA_DIR`                               | Where the outputs are written. Unset, the whole capture is a no-op, which is what makes auditioning free.                                                       |
+| `TCAB_VALIDATION_MEDIA_DIR`                               | Where the outputs are written. Unset, nothing is written and the audition only logs its scores.                                                                 |
 | `TCAB_SHOWCASE_MAX_REPLAY_FRAMES`                         | The staged harness's replay cap. `1650` holds a 27-second clip at 60 fps after thinning (a take is `120` frames a second, and the cap thins by a whole stride). |
 | `TCAB_SHOWCASE_MIN_SECONDS` / `TCAB_SHOWCASE_MAX_SECONDS` | The clip's bounds, `22` and `30` by default. The take ends on the first bay filled past the minimum.                                                            |
 | `TCAB_SHOWCASE_SETTLE_SECONDS`                            | How long the clip keeps rolling after that bay, `0.9` by default — the hold, and the fresh critter back on the near shore.                                      |
-| `TCAB_SHOWCASE_SEEDS`                                     | The seeds auditioned, `1,2,3,4,5` by default. Each is auditioned against five player styles.                                                                    |
-| `TCAB_SHOWCASE_TAKE`                                      | `<seed>:<patience>:<lean>` — skip the audition and record exactly that take. This is how a committed clip is reproduced.                                        |
+| `TCAB_SHOWCASE_TAKES`                                     | How many takes each of the five player styles is auditioned over, `5` by default.                                                                               |
 | `TCAB_SHOWCASE_QA_STILLS`                                 | `1` writes a still every two seconds, for eyeballing a take.                                                                                                    |
 | `TCAB_SHOWCASE_TRACE`                                     | `1` logs the critter's tile and footing twice a second, for tuning the player.                                                                                  |
 
 ## Auditioning
 
-The capture is deterministic: the same seed and style replay the identical run,
-which is what lets a take be judged with the recorder off and then re-run under
-it exactly. Every candidate is played out and scored on what makes a watchable
-Floe clip — bays filled, rows climbed, time spent out on the water, frames with a
-bear within five tiles, the best mid-crossing still it offered, and against that
-its deaths, its longest stretch without progress, and whether it stopped on the
-hold after a bay rather than running out of clock.
+The strait a run opens on is the game's own draw, so no take can be played twice:
+every candidate is recorded as it plays, as `take-<n>.json.gz` with its best
+still as `take-<n>-mid-crossing.png`, and scored on what makes a watchable Floe
+clip — bays filled, rows climbed, time spent out on the water, frames with a bear
+within five tiles, the best mid-crossing still it offered, and against that its
+deaths, its longest stretch without progress, and whether it stopped on the hold
+after a bay rather than running out of clock. The winner's two files are renamed
+to `crossing.json.gz` and `mid-crossing.png` and the other takes' files are
+removed.
 
 ## What was committed
 
-| File                             | How                                                                                                                                                                                                                                                                    |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `showcase/base/crossing.json.gz` | `TCAB_SHOWCASE_TAKE=2:0.34:1`, cap `1650`. Seed `2`, patience `0.34`, lean `+1`: 25.6 s, four bays filled, no lives lost, 451 frames with a bear inside five tiles, ended on the hold after the fourth bay. 1,537 frames after thinning — exactly 60 fps — and 1.4 MB. |
-| `showcase/base/mid-crossing.png` | The best frame of that same take by the driver's own still score: the critter on the top water row on a floe, three bays filled, and a bear swimming a hundred units behind it.                                                                                        |
-| `showcase/base/title.png`        | The title screen, drawn by the same reference at the same seed: the driver resets the game and runs one frame once the take is recorded.                                                                                                                               |
+| File                             | How                                                                                                                                                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `showcase/base/crossing.json.gz` | Cap `1650`, patience `0.34`, lean `+1`: 25.6 s, four bays filled, no lives lost, 451 frames with a bear inside five tiles, ended on the hold after the fourth bay. 1,537 frames after thinning — exactly 60 fps — and 1.4 MB. |
+| `showcase/base/mid-crossing.png` | The best frame of that same take by the driver's own still score: the critter on the top water row on a floe, three bays filled, and a bear swimming a hundred units behind it.                                               |
+| `showcase/base/title.png`        | The title screen, drawn by the same reference: the driver resets the game and runs one frame once the audition is over.                                                                                                       |
 
-That take was chosen by auditioning `TCAB_SHOWCASE_SEEDS=1,2,3,4,5,6,7,8` against
-all five styles — forty takes, all with the recorder off — and recording the
-winner.
+That take was chosen by auditioning eight takes of each of the five styles,
+forty in all, and keeping the winner.
 
 ## One thing the driver does that a validator does not
 
@@ -94,7 +94,7 @@ a bitmap, and it recognizes one by testing it against the host's `ImageBitmap`.
 Node defines no such global, so without this line every sprite records as an
 opaque marker and the clip plays with the strait drawn and nothing on it. The
 build is untouched — it asks the engine's loader for the same paths and draws the
-same frames — and the committed clip renders with 0 unreproducible operations.
+same frames — and the committed clip renders with every operation resolved.
 Fathom v3.0.0's capture drivers do the same thing for the same reason.
 
 Note that the case's committed `validation-baseline/` replays are captured

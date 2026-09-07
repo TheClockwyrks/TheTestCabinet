@@ -44,8 +44,10 @@
 // takes the game off real time and `step(ticks)` runs whole simulation ticks.
 // Every harness opens by taking the game off the clock, so a check asks for a
 // number of ticks and gets exactly that number — no polling, no waiting, and no
-// measurement of the machine it ran on. The one check that is ABOUT the loop
-// running itself (`channel/self-advancing`) hands it back with {@link Harness.runFor}.
+// measurement of the machine it ran on. Nothing in this project hands the loop
+// back: whether the build runs itself on real time is decided by real time
+// passing, which no check here reads, so the frames a check drives are the
+// whole of what it measures.
 //
 // A TICK IS THE UNIT. `specs/instrumentation.md` fixes the simulation at 60 ticks
 // a second, each worth exactly 1/60 s, so a count of stepped ticks converts to
@@ -72,7 +74,6 @@ import {
   CELLS,
   CHANNEL,
   CHANNEL_ARC,
-  DEFAULT_SEED,
   FIELD_H,
   FIELD_W,
   HANDLE,
@@ -180,7 +181,8 @@ export interface VoluteSnapshot {
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
-  rngState: number;
+  /** The charge posed for the next emission, `null` while none stands. */
+  nextEmitted: ChargeId | null;
 }
 
 /**
@@ -207,8 +209,8 @@ export interface VoluteDebugApi {
    * the audio probe. This is here for the check that reflects the surface.
    */
   step(ticks?: number): Promise<void>;
-  /** Restore every declared field to its title value and reseed the generator. */
-  reset(options?: { seed?: number }): Promise<void>;
+  /** Restore every declared field to its title value. */
+  reset(): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<VoluteSnapshot>;
   /** Set the screen, and change nothing else. */
@@ -227,10 +229,12 @@ export interface VoluteDebugApi {
   poseTrain(cores: readonly PosedCore[]): Promise<void>;
   /** Remove every core from the channel and every projectile. */
   clearTrain(): Promise<void>;
-  /** Set the charge the injector holds loaded. The generator is untouched. */
+  /** Set the charge the injector holds loaded, and nothing else. */
   setLoaded(charge: ChargeId): Promise<void>;
-  /** Set the charge the injector holds queued. The generator is untouched. */
+  /** Set the charge the injector holds queued, and nothing else. */
   setQueued(charge: ChargeId): Promise<void>;
+  /** Pose the charge of the next core the inlet emits, or clear it with `null`. */
+  setNextEmitted(charge: ChargeId | null): Promise<void>;
   /** Set the aim, normalized into [0, 360). Releases nothing. */
   setAim(angleDegrees: number): Promise<void>;
   /** Release the loaded core along the current aim. Always launches. */
@@ -293,12 +297,6 @@ const kit = createCaseHarness<VoluteSnapshot, VoluteDebugApi>({
   // it a touch gesture is refused outright rather than quietly arriving as a
   // mouse.
   hasTouch: true,
-  // The seed the opening `reset` fixes, so a scenario driven from a fresh
-  // harness is reproducible from that line on. `specs/instrumentation.md`
-  // defaults `options.seed` to `DEFAULT_SEED` itself, and the harness passes it
-  // explicitly so the call the build sees is the same one whether or not a check
-  // named a seed of its own.
-  defaultSeed: DEFAULT_SEED,
   // Read the screen the build stood the game up on, BEFORE the opening reset.
   // `specs/ui.md` says of the title screen "The game opens here", which is a fact
   // about what a fresh game OPENS on and not about what a `reset` puts it back
@@ -771,10 +769,10 @@ export interface PoseOptions {
  * The charges the injector holds when a check names none.
  *
  * Posed rather than left to the draw, because `specs/channel.md` draws a charge
- * "uniformly over the set of distinct charges on the channel" — so what a level
- * opening leaves loaded depends on the seeded twelve, which `poseHall` then
- * clears. A check that fires reads the charge it fired, and a check that does not
- * is unaffected either way.
+ * at random "uniformly over the set of distinct charges on the channel" — so
+ * what a level opening leaves loaded is whatever the build drew, over a channel
+ * `poseHall` then clears. A check that fires reads the charge it fired, and a
+ * check that does not is unaffected either way.
  */
 export const DEFAULT_LOADED: ChargeId = "olivine";
 export const DEFAULT_QUEUED: ChargeId = "garnet";

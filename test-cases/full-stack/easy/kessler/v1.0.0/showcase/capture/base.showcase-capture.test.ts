@@ -33,15 +33,14 @@
 //      after a break, a catch, or a cleared wave — never mid-flight.
 //
 // EVERY OUTCOME ON SCREEN IS THE GAME'S. Two debug operations are called and
-// no others: `reset(seed)`, BEFORE the take begins, which lays the pod
-// generator with the seed that makes a take auditionable at all, and
-// `snapshot()`, a reading that changes nothing. No ball is placed, no target
-// removed, no pod dropped, no screen set, no score written. The deflector
-// turns because `ArrowLeft` or `ArrowRight` is held down, the ball leaves
-// because `Space` was struck, every bounce is the specified four-step
-// pipeline resolving on the game's own state, every derelict that breaks was
-// hit, and every pod is one the seeded draw shed. Arranging the input is
-// authoring; posing the outcome would be fabrication.
+// no others: `reset()`, BEFORE the take begins, which stands the game on its
+// boot state, and `snapshot()`, a reading that changes nothing. No ball is
+// placed, no target removed, no pod dropped, no screen set, no score written.
+// The deflector turns because `ArrowLeft` or `ArrowRight` is held down, the
+// ball leaves because `Space` was struck, every bounce is the specified
+// four-step pipeline resolving on the game's own state, every derelict that
+// breaks was hit, and every pod is one the game's own draw shed. Arranging
+// the input is authoring; posing the outcome would be fabrication.
 //
 // PLANNING THROUGH THE GAME'S OWN RULES. The driver never relaxes the game to
 // play it well. Its planner imports the build's exported motion and reflection
@@ -53,12 +52,11 @@
 // the deflector moves at the rate the specification gives it and arrives, or
 // does not, on the game's terms.
 //
-// AUDITIONING. A seed fixes the whole run, so a take could be played silently,
-// judged, and replayed identically under the recorder. Every take is recorded
-// as it is played anyway: the take that was judged is then provably the take
-// that was committed, and replaying the winner is the expensive half of doing
-// it the other way. Each take also gets a fresh engine, so nothing of the last
-// one's frame counter, armed key edges, or canvas carries into it. The judge
+// AUDITIONING. The pod draw is the game's own and no take can be played
+// twice, so every take is recorded as it is played and the best recording is
+// the one kept: the take that was judged is then provably the take that was
+// committed. Each take also gets a fresh engine, so nothing of the last one's
+// frame counter, armed key edges, or canvas carries into it. The judge
 // scores what makes a watchable clip of THIS game — derelicts broken, pods
 // shed and caught, the variety of effects seen, balls in the sky at once,
 // score, waves cleared — against what makes a dull or ugly one: lives thrown
@@ -581,7 +579,7 @@ function planBounce(
 
 /** What a take left behind, and what the judge reads it by. */
 interface Take {
-  seed: number;
+  take: number;
   frames: number;
   served: number;
   bounces: number;
@@ -717,10 +715,10 @@ class Session {
   }
 
   /** Play the run out, and report what it produced. */
-  async play(seed: number): Promise<Take> {
-    // Choosing the seed is choosing the run; nothing else here touches the
-    // surface but `snapshot()`.
-    this.h.reset(seed);
+  async play(take: number): Promise<Take> {
+    // The reset stands the game on its boot state; nothing else here touches
+    // the surface but `snapshot()`.
+    this.h.reset();
     await this.run(TITLE_HOLD);
     await this.press(CONFIRM_KEY);
 
@@ -789,7 +787,7 @@ class Session {
     }
 
     this.steer(this.h.snapshot(), null);
-    return this.report(seed, cueAt);
+    return this.report(take, cueAt);
   }
 
   /**
@@ -872,7 +870,7 @@ class Session {
   }
 
   /** Everything the judge and the log read, taken off the cues and the state. */
-  private report(seed: number, cueAt: number): Take {
+  private report(take: number, cueAt: number): Take {
     const cues = this.h.cues.slice(cueAt);
     const count = (name: string): number =>
       cues.filter((cue) => cue.name === name).length;
@@ -894,7 +892,7 @@ class Session {
     const caught = count("pod-catch") + count("pod-catch-narrow");
     const burned = count("pod-burn");
     return {
-      seed,
+      take,
       frames: this.spent,
       served: this.served,
       bounces: count("paddle-bounce"),
@@ -957,14 +955,14 @@ it("records a run for the showcase", async () => {
   // counter, the key edges the last take left armed, and whatever the last
   // render left on the canvas.
   const takes = Number(process.env.TCAB_SHOWCASE_TAKES ?? "8");
-  const firstSeed = Number(process.env.TCAB_SHOWCASE_FIRST_SEED ?? "1");
+  const firstTake = Number(process.env.TCAB_SHOWCASE_FIRST_TAKE ?? "1");
 
-  const runTake = async (label: string, seed: number): Promise<Take> => {
+  const runTake = async (label: string, take: number): Promise<Take> => {
     const h = await openHarness();
     try {
       await h.advance(1);
       const session = new Session(h, label);
-      return await captureReplay(h, label, () => session.play(seed));
+      return await captureReplay(h, label, () => session.play(take));
     } finally {
       h.dispose();
     }
@@ -972,12 +970,12 @@ it("records a run for the showcase", async () => {
 
   let best: { label: string; score: number } | null = null;
   for (let at = 0; at < takes; at += 1) {
-    const seed = firstSeed + at;
-    const label = `take-${String(seed).padStart(2, "0")}`;
-    const played = await runTake(label, seed);
+    const take = firstTake + at;
+    const label = `take-${String(take).padStart(2, "0")}`;
+    const played = await runTake(label, take);
     const score = judge(played);
     console.log(
-      `${label}: seed ${played.seed}, ${(played.frames / TICK_HZ).toFixed(1)}s, ` +
+      `${label}: ${(played.frames / TICK_HZ).toFixed(1)}s, ` +
         `${played.served} served / ${played.ballsLost} lost, ` +
         `${played.bounces} bounces, ${played.destroyed} broken (${played.hits} hits), ` +
         `${played.podsShed} pods shed / ${played.podsCaught} caught / ` +

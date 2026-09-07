@@ -27,6 +27,7 @@ import {
 } from "./constants";
 import { drawBelow } from "./rng";
 import type { CoilState } from "./game";
+import type { DeepReadonly } from "ts-essentials";
 
 /** How a round ended, or `null` while it is still running. */
 export type EndReason = "dead" | "cleared";
@@ -136,25 +137,45 @@ export function fatal(
   return false;
 }
 
+/** One cell drawn uniformly from `free`, or `null` when there is none to draw. */
+function drawFrom(free: readonly Cell[]): Cell | null {
+  if (free.length === 0) return null;
+  const cell = free[drawBelow(free.length)]!;
+  return { col: cell.col, row: cell.row };
+}
+
 /**
- * Place the next pellet on a cell drawn uniformly from the valid set.
+ * The pellet draw alone: a cell drawn uniformly from the valid set as the board
+ * stands, or `null` when that set is empty. It is what a spawn draws when no
+ * valid pose stands, performed on its own for the surface's `drawPelletCell`, so
+ * it reads the state and returns none: a posed next cell is left standing.
+ */
+export function drawPelletCell(state: DeepReadonly<CoilState>): Cell | null {
+  return drawFrom(validPelletCells(state.snake, state.pellet, state.obstacles));
+}
+
+/**
+ * Place the next pellet on the posed cell if one stands and is valid, and
+ * otherwise on a cell drawn uniformly from the valid set.
  *
- * `placed` is `false` when the valid set is empty, which is the board-cleared win;
- * the board is left without a pellet in that case. The generator state advances by
- * exactly one draw whenever a cell was there to draw.
+ * The spawn consumes the pose either way, so a posed cell the board no longer
+ * allows is discarded rather than kept for a later spawn, and so is a pose
+ * standing when the valid set is empty. `placed` is `false` in that case, which
+ * is the board-cleared win; the board is left without a pellet.
  */
 export function spawnPellet(state: CoilState): {
   readonly state: CoilState;
   readonly placed: boolean;
 } {
   const free = validPelletCells(state.snake, state.pellet, state.obstacles);
-  if (free.length === 0) {
-    return { state: { ...state, pellet: null }, placed: false };
-  }
-  const draw = drawBelow(state.rngState, free.length);
+  const posed = state.nextPellet;
+  const pellet =
+    posed !== null && cellsHold(free, posed.col, posed.row)
+      ? { col: posed.col, row: posed.row }
+      : drawFrom(free);
   return {
-    state: { ...state, pellet: free[draw.index]!, rngState: draw.state },
-    placed: true,
+    state: { ...state, pellet, nextPellet: null },
+    placed: pellet !== null,
   };
 }
 

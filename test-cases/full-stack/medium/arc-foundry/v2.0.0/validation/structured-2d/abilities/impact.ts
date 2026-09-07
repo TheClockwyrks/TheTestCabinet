@@ -15,12 +15,7 @@
 // happened, whatever schedule the build reached it on.
 
 import { assertEqual } from "../assert";
-import {
-  ticks,
-  unitById,
-  type FoundrySnapshot,
-  type Harness,
-} from "../harness";
+import { unitById, type FoundrySnapshot, type Harness } from "../harness";
 
 /** How long a shot is waited for, in seconds, unless a suite says otherwise. */
 export const PATIENCE = 6;
@@ -39,7 +34,7 @@ export async function awaitImpact(
 ): Promise<FoundrySnapshot> {
   const before = unitById(h.snapshot(), watched).hp;
   const landed = await h.until((s) => unitById(s, watched).hp < before, {
-    maxFrames: ticks(patience),
+    maxFrames: h.ticks(patience),
     poll: 1,
   });
   assertEqual(
@@ -64,7 +59,7 @@ export async function awaitEffect(
   patience = PATIENCE,
 ): Promise<FoundrySnapshot> {
   const landed = await h.until((s) => carries(unitById(s, watched)), {
-    maxFrames: ticks(patience),
+    maxFrames: h.ticks(patience),
     poll: 1,
   });
   assertEqual(

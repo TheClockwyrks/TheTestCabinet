@@ -1,65 +1,66 @@
-// Shatter — the sixteen arrivals the two entry-row checks read. CASE-PROVIDED.
+// Shatter — the handful of arrivals the two entry-row checks read. CASE-PROVIDED.
 //
 // `specs/saucer.md` has a saucer enter "at a `y` drawn uniformly from `SAUCER_R` to
 // `FIELD_H - SAUCER_R`", and that one sentence carries two separable properties: a
-// row lies INSIDE the range, and rows drawn over and over SPREAD across it. Each is
+// row lies INSIDE the range, and rows drawn over and over VARY across it. Each is
 // an item of its own, because a build that always enters dead centre and a build
 // that enters half a craft off the top are different faults and must grade
-// differently. What both share is the GATHER — four games opened at four seeds,
-// four consecutive arrivals watched out of each — so it is run once, here, and each
-// check reads its own thing off it.
+// differently. What both share is the GATHER — two games opened, three consecutive
+// arrivals brought on in each — so it is run once, here, and each check reads its
+// own thing off it.
+//
+// THE ROW IS THE GAME'S OWN DRAW. Nothing here poses a row: `setNextSaucerRow` is
+// how a check that wants a particular row gets one, and these two checks want the
+// build's draw. What IS posed is the cadence's due, through `setSaucerDue`, so an
+// arrival follows the one before it within a quarter of a second rather than
+// after a visit of twelve seconds and a gap of twenty-five to thirty-five; the
+// draw of the row is the same draw either way. Each visit is taken off through
+// `removeSaucer` once its row is read, and `specs/instrumentation.md` has the
+// cadence run from there exactly as it does after a visit that ran out.
 //
 // IT LIVES IN THE GROUP because nothing outside `saucer` reads an entry row, and it
 // sits beside `visits.ts` rather than inside it because `visits.ts` is the marching
 // route every `saucer` check shares and this is one scenario two of them share.
 //
-// NOT ONE FIGURE BELOW IS A BOUND. The seeds, the sample size and the watch length
-// are the scenario and its cost; every tolerance stays in the check that asserts
-// it, derived there from the figure `specs/saucer.md` fixes for it.
+// A HANDFUL, NOT A SAMPLE. Six arrivals are enough for each check to read what it
+// reads — every row inside the stated range, and more than one row among them —
+// and neither check reads a statistic off them. A draw's spread and shape are the
+// reviewer's to judge from the picture, not a figure a sample decides.
+//
+// NOT ONE FIGURE BELOW IS A BOUND. The game count and the arrival count are the
+// scenario and its cost; every tolerance stays in the check that asserts it,
+// derived there from the figure `specs/saucer.md` fixes for it.
 
 import { captureStill, type Harness } from "../harness";
-import {
-  createMarchHarness,
-  marchFrames,
-  openQuietGame,
-  watchVisits,
-} from "./visits";
+import { closeUpArrival, createMarchHarness, openQuietGame } from "./visits";
 
-/** The four games the arrivals are read from. */
-export const SEEDS = [1, 2, 3, 4] as const;
+/** How many games the arrivals are read from. */
+export const GAMES = 2;
 
-/** How many arrivals each seed contributes. */
-export const ARRIVALS_PER_SEED = 4;
+/** How many consecutive arrivals each game contributes. */
+export const ARRIVALS_PER_GAME = 3;
 
-/** The sixteen arrivals both points are decided on. */
-export const ARRIVALS = SEEDS.length * ARRIVALS_PER_SEED;
-
-/**
- * How long each seed's game is watched, in seconds of game time.
- *
- * Four arrivals at their slowest legal cadence is `18 + 3 x (12 + 35)` = `159` s;
- * `170` leaves margin, so a build that never produces four is reported as that
- * rather than as a bad row.
- */
-export const WATCH_SECONDS = 170;
+/** The six arrivals both points are decided on. */
+export const ARRIVALS = GAMES * ARRIVALS_PER_GAME;
 
 /** One arrival's entry row, with the game and the visit it was read from. */
 export interface EntryRow {
-  seed: number;
+  game: number;
   id: number;
   y: number;
 }
 
 /**
- * Open four games and watch four consecutive arrivals out of each, sixteen in all.
+ * Open two games and bring three consecutive arrivals on in each, six in all.
  *
- * FOUR SEEDS AND FOUR VISITS APIECE, so the reading covers LATER arrivals as well
- * as first ones rather than four copies of one game's opening draw. The draw is the
- * game's own, so each game is really opened and left to run: `openQuietGame` resets
- * at the seed, empties the field and leaves the arrival gate running, and nothing
- * else can put a saucer up.
+ * TWO GAMES AND THREE VISITS APIECE, so the reading covers LATER arrivals as well
+ * as first ones rather than copies of one game's opening draw. The draw is the
+ * game's own, so each game is really opened and left to run: `openQuietGame`
+ * resets, empties the field and leaves the arrival gate running, and nothing
+ * else can put a saucer up. Each visit is taken off the field once its row is
+ * read, and the next is brought on with a posed due.
  *
- * Each seed wants its own engine, so every harness this makes is pushed onto
+ * Each game wants its own engine, so every harness this makes is pushed onto
  * `harnesses` for the caller's `afterEach` to dispose. The first arrival is drawn
  * once into `still`, for the picture each item carries.
  */
@@ -68,26 +69,24 @@ export async function readEntryRows(
   still: string,
 ): Promise<EntryRow[]> {
   const rows: EntryRow[] = [];
-  let filmed = false;
 
-  for (const seed of SEEDS) {
+  for (let game = 1; game <= GAMES; game += 1) {
     const h = await createMarchHarness();
     harnesses.push(h);
-    const opened = await openQuietGame(h, seed);
+    await openQuietGame(h);
 
-    const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
-      done: (visits) => visits.length >= ARRIVALS_PER_SEED,
-      onArrival: async () => {
-        if (filmed) return;
-        filmed = true;
-        // One of the sixteen arrivals the rows were read from. The watch runs
+    let previous: number | null = null;
+    for (let visit = 0; visit < ARRIVALS_PER_GAME; visit += 1) {
+      if (previous !== null) h.debug.removeSaucer();
+      const arrival = await closeUpArrival(h);
+      if (rows.length === 0) {
+        // One of the six arrivals the rows were read from. The watch runs
         // undrawn, so one frame is drawn for this picture.
         await h.paint();
         captureStill(h, still);
-      },
-    });
-    for (const visit of watch.visits) {
-      rows.push({ seed, id: visit.id, y: visit.y });
+      }
+      rows.push({ game, id: arrival.id, y: arrival.y });
+      previous = arrival.id;
     }
   }
 

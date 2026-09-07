@@ -2,10 +2,9 @@
 //
 // One value holds everything the specification is written against: the
 // screen with its menu highlight and the almanac's two indices, the run, the
-// seven driver switches, the tick accumulator, the simulation time, the mute
-// mirror, and the seeded generator's state. The idle run is what `title`,
-// `howto`, and `almanac` hold; a fresh run is the idle run with Taper in the
-// first weapon slot.
+// nine driver switches, the tick accumulator, the simulation time, and the
+// mute mirror. The idle run is what `title`, `howto`, and `almanac` hold; a
+// fresh run is the idle run with Taper in the first weapon slot.
 
 import {
   BASE_MAX_HP,
@@ -19,6 +18,11 @@ import {
   type WeaponId,
   type ZoneKind,
 } from "./constants";
+
+/** What `setNextDrop` poses for the next common kill's roll. */
+export type NextDrop = "bread" | "draft" | "none";
+
+export const NEXT_DROPS: readonly NextDrop[] = ["bread", "draft", "none"];
 
 export interface HeldWeapon {
   id: WeaponId;
@@ -151,6 +155,14 @@ export interface RunState {
   /** Run-clock seconds of the scripted events that have fired, ascending. */
   firedEvents: number[];
   nextId: number;
+  /** The posed outcomes of specs/instrumentation.md, `null` while none is posed. */
+  nextSpawnAngle: number | null;
+  nextSwarmAngle: number | null;
+  nextSpawnType: EnemyId | null;
+  nextPuddleOffset: { x: number; y: number } | null;
+  nextStrikeTarget: number | null;
+  nextChestItem: WeaponId | PassiveId | null;
+  nextDrop: NextDrop | null;
   /** Ticks on which the lamplighter moved, for the walk cycle. */
   movedTicks: number;
   /** Whether the lamplighter moved on the last tick. */
@@ -199,7 +211,6 @@ export interface WickState {
   /** Seconds of delta time every frame has added, whatever the screen. */
   simTime: number;
   muted: boolean;
-  rngState: number;
 }
 
 /** The idle run `title`, `howto`, and `almanac` hold. */
@@ -225,6 +236,13 @@ export function idleRun(): RunState {
     spawnTimer: 0,
     firedEvents: [],
     nextId: 0,
+    nextSpawnAngle: null,
+    nextSwarmAngle: null,
+    nextSpawnType: null,
+    nextPuddleOffset: null,
+    nextStrikeTarget: null,
+    nextChestItem: null,
+    nextDrop: null,
     movedTicks: 0,
     moving: false,
     puffs: [],
@@ -253,8 +271,8 @@ export function allSwitchesOn(): Switches {
   };
 }
 
-/** The title-screen state a reset restores, over `rngState`. */
-export function initialState(rngState: number): WickState {
+/** The title-screen state a reset restores. */
+export function initialState(): WickState {
   return {
     screen: "title",
     menuIndex: 0,
@@ -265,6 +283,5 @@ export function initialState(rngState: number): WickState {
     accumulator: 0,
     simTime: 0,
     muted: false,
-    rngState,
   };
 }

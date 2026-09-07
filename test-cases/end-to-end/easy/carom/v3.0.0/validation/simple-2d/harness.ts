@@ -31,7 +31,7 @@
 // puts the game on a screen and touches nothing else, `setPaddleDriven` takes ONE
 // paddle from the player, a posed `drivenVy` persists across frames, `clearWorld`
 // empties the field, and `reset` gives everything back. Posing through it is how a
-// scenario is reproducible, and it is the seam the case's specification documents.
+// scenario is posed, and it is the seam the case's specification documents.
 // `surface.ts` is that specification as types, and it is the only description of
 // the surface this harness reads: the build's own module for it is never imported.
 //

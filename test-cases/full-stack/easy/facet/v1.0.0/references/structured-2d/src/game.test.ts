@@ -6,7 +6,6 @@ import type { World } from "@clockwyrks/structured-2d";
 import { BACKGROUND, FacetState, facetState, game } from "./game";
 import { Bench } from "./bench";
 import { FacetController } from "./controller";
-import { DEFAULT_SEED } from "./constants";
 import { COLOR } from "./theme";
 import { createHarness } from "./harness";
 
@@ -58,7 +57,7 @@ describe("FacetState", () => {
     });
     expect(state.simTime).toBe(0);
     expect(state.muted).toBe(false);
-    expect(state.rngState).toBe(DEFAULT_SEED);
+    expect(state.refillKinds).toEqual(["", "", "", "", "", "", "", ""]);
     expect(state.chainSwap).toBeNull();
   });
 

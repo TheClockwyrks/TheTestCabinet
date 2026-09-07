@@ -17,11 +17,12 @@ import {
   advanceLanes,
   coversPoint,
   coversTile,
+  layoutLane,
   layoutLevel,
   tileSweptWithin,
   vehicleOnTile,
 } from "./lanes";
-import type { FloeState, LaneItem } from "./types";
+import type { LaneItem } from "./types";
 
 /** The gaps, in tiles, between consecutive items of one row, left to right. */
 function gapsOn(items: readonly LaneItem[], row: number): number[] {
@@ -133,8 +134,8 @@ describe("laying a level out", () => {
   });
 
   it("never lays a wall: no column is covered in every row of a band", () => {
-    for (let seed = 1; seed <= 60; seed += 1) {
-      const state = createState(seed);
+    for (let draw = 1; draw <= 60; draw += 1) {
+      const state = createState();
       for (const band of [
         { rows: ICE_LANES, items: state.vehicles },
         { rows: WATER_LANES, items: state.floes },
@@ -151,14 +152,27 @@ describe("laying a level out", () => {
     }
   });
 
-  it("lays the same phases out for the same seed and different ones otherwise", () => {
-    const a = createState(7);
-    const b = createState(7);
-    const c = createState(8);
-    const xs = (state: FloeState): number[] =>
-      state.vehicles.map((item) => item.x);
-    expect(xs(a)).toEqual(xs(b));
-    expect(xs(a)).not.toEqual(xs(c));
+  it("relays one lane at a posed phase, at the level's spacing, with fresh ids", () => {
+    const state = createState();
+    state.level = 4;
+    layoutLevel(state, 4);
+    const before = state.floes.filter((item) => item.row !== 5);
+    const ids = new Set(state.floes.map((item) => item.id));
+    layoutLane(state, 5, 1000);
+    expect(state.floes.filter((item) => item.row !== 5)).toEqual(before);
+    const lane = state.floes
+      .filter((item) => item.row === 5)
+      .sort((a, b) => a.x - b.x);
+    expect(lane.every((item) => item.kind === "pan")).toBe(true);
+    expect(lane.every((item) => !ids.has(item.id))).toBe(true);
+    expect(lane.some((item) => Math.abs(item.x - 1000) < 1e-9)).toBe(true);
+    for (const gap of gapsOn(state.floes, 5)) {
+      expect(gap).toBeCloseTo(laneGap(5, 4), 9);
+    }
+    expect(lane[0].x).toBeLessThanOrEqual(laneGap(5, 4) * TILE);
+    expect(lane[lane.length - 1].x + TILE).toBeGreaterThanOrEqual(
+      STRAIT_W - laneGap(5, 4) * TILE,
+    );
   });
 });
 

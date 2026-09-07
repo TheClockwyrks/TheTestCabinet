@@ -4,20 +4,19 @@
 // WHERE THE THRESHOLD COMES FROM. `specs/evolutions.md` ("Opening a chest"),
 // rule 2: "One held item below its max level, a base weapon below
 // `MAX_WEAPON_LEVEL` or a passive below its own max, is chosen uniformly at
-// random from the game's seeded generator and rises by `1`, exactly as accepting
-// a `+1 level` offer does. The result is `{ kind: "level", item, level }`, with
-// `level` the level it became." With Taper at level `3` and Brass at level `1`,
-// nothing is eligible to evolve — Taper is below `MAX_WEAPON_LEVEL` (`8`) — and
-// both items are below their max, Brass topping out at `3`
-// (`specs/passives.md`). So the chest raises exactly one of the two by one, the
-// other stands where it was, and the result names the item raised and the level
-// it became.
+// random and rises by `1`, exactly as accepting a `+1 level` offer does. The
+// result is `{ kind: "level", item, level }`, with `level` the level it
+// became." With Taper at level `3` and Brass at level `1`, nothing is eligible
+// to evolve — Taper is below `MAX_WEAPON_LEVEL` (`8`) — and both items are
+// below their max, Brass topping out at `3` (`specs/passives.md`). So the chest
+// raises exactly one of the two by one, the other stands where it was, and the
+// result names the item raised and the level it became.
 //
-// WHICH OF THE TWO IS NOT PINNED. The draw is "uniformly at random from the
-// game's seeded generator", so the specification fixes that one of the two
-// rises rather than which. That the choice varies with the seed is
-// `chest-level-choice-varies`; that it skips a maxed item is
-// `chest-level-skips-maxed`.
+// WHICH OF THE TWO IS NOT PINNED. The draw is "uniformly at random", so the
+// specification fixes that one of the two rises rather than which. That the
+// choice varies at all is `chest-level-choice-varies`; that it skips a maxed
+// item is `chest-level-skips-maxed`; which item a posed chest levels is
+// `instrumentation/set-next-chest-item`.
 //
 // THE POSE. An isolated night with Taper at level 3 and Brass at level 1, and
 // the chest reached the real way through the harness's `openChest`.

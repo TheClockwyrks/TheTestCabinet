@@ -1,36 +1,32 @@
-// pickups/elites-make-no-draw — an elite kill draws for nothing: it leaves its
-// chest and touches the generator not at all.
+// pickups/elites-make-no-draw — an elite kill makes no drop roll: it leaves
+// its chest and a posed drop standing.
 //
-// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"): "Each
-// common enemy killed by a weapon draws from the game's seeded random
-// generator on the tick it dies ... Elites and the Dark make no draw; an elite
-// drops its chest, and the Dark drops nothing." specs/enemies.md ("Drops")
-// gives an elite "One chest" and no gem, and specs/state.md says of `rngState`
-// that it is "the state of the game's one seeded random generator ... every
-// random draw advances it: a spawn's angle and type, an offer draw, a puddle's
-// landing point, a strike's target, a chest's fallback item, a swarm's
-// direction, and the bread and draft draws". So the tick an elite dies on
-// leaves `rngState` exactly as it found it, and leaves one chest and no gem.
+// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"): "each
+// common enemy killed by a weapon rolls for a pickup on the tick it dies ...
+// Elites and the Dark make no roll; an elite drops its chest, and the Dark
+// drops nothing." specs/enemies.md ("Drops") gives an elite "One chest" and
+// no gem, and specs/instrumentation.md ("Drawn outcomes"), `setNextDrop`:
+// "an elite's death, and the Dark's death leave it standing". So the tick an
+// elite dies on leaves the posed `nextDrop` exactly as it found it, and leaves
+// one chest and no gem; a build that runs the common roll for every kill
+// consumes the pose on the first elite and, with `bread` posed, leaves a
+// bread beside its chest.
 //
-// THE WORLD. One isolated `playing` run, seeded once, in which `KILLS` (20)
-// mothwings are killed in turn by posed Ember bolts, each `FIRST` (3000) units
-// or more from the lamplighter and `SPACING` (200) units from its neighbours,
-// so no chest is ever collected, nothing is ever attracted, and each kill's
-// chest can be told from the ones before it. Every driver switch is off, so
-// spawning and the scripted events cannot draw for a spawn's angle or type,
-// and no weapon is held, so nothing that lands at random can fire; the
-// generator's state is therefore untouched by anything but the kill under the
-// reading. Twenty kills rather than one, because a build that draws and
-// discards, or draws only sometimes, is caught by the run of readings rather
-// than by a single one.
+// THE WORLD. One isolated `playing` run with `drops` alone turned back on, in
+// which `KILLS` (20) mothwings are killed in turn by posed Ember bolts, each
+// `FIRST` (3000) units or more from the lamplighter and `SPACING` (200) units
+// from its neighbours, so no chest is ever collected, nothing is ever
+// attracted, and each kill's chest can be told from the ones before it. No
+// weapon is held and every other switch is off, so nothing else can leave a
+// pickup. Twenty kills rather than one, because a build that rolls only
+// sometimes is caught by the run of readings rather than by a single one.
 //
-// WHAT IS READ. Around each of the twenty killing ticks: `rngState` after the
-// tick against `rngState` before it, the pickups risen by exactly one chest at
-// that mothwing's center, and no gem anywhere on the field.
+// WHAT IS READ. Around each of the twenty killing ticks: `nextDrop` still
+// `bread`, the pickups risen by exactly one chest at that mothwing's center,
+// and no gem anywhere on the field.
 //
 // TOLERANCE. `FIGURE_TOLERANCE` (1e-9) on the chest's position, the enemy's
-// posed center copied over; none on `rngState`, a generator state that either
-// advanced or did not, and none on the counts.
+// posed center copied over; none on the pose or the counts.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertWithin } from "../assert";
@@ -56,6 +52,9 @@ const FIRST = 3000;
 /** Units between one kill's point and the next. */
 const SPACING = 200;
 
+/** The drop posed for the next common kill, which no elite may consume. */
+const POSED = "bread";
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -66,21 +65,21 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("leaves each mothwing's chest alone and rngState untouched across 20 kills", async () => {
+it("leaves each mothwing's chest alone and the posed drop standing across 20 kills", async () => {
   isolate(h);
   // The drop the elite leaves is the requirement; every other faculty stays held.
   enable(h, "drops");
+  h.debug.setNextDrop(POSED);
 
   for (let killed = 0; killed < KILLS; killed += 1) {
     const at = armKill(h, TYPE, FIRST + killed * SPACING, 0);
-    const before = h.snapshot();
 
     const after = await h.tick(1);
 
     assertEqual(
-      after.rngState,
-      before.rngState,
-      `rngState across the tick that killed ${TYPE} ${killed + 1} of ${KILLS}`,
+      after.run.nextDrop,
+      POSED,
+      `nextDrop across the tick that killed ${TYPE} ${killed + 1} of ${KILLS}`,
     );
     assertLength(after.run.enemies, 0, `enemies after kill ${killed + 1}`);
     assertLength(after.run.gems, 0, `gems after kill ${killed + 1}`);

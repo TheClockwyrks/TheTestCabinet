@@ -1,11 +1,11 @@
 # Orrery — the validator projects
 
 Three vitest projects, one per engine, holding the checks that decide Orrery's
-1065 review items. `test-case.toml` points every validated item at a script path
+1053 review items. `test-case.toml` points every validated item at a script path
 like `sigils/bind-joins-two-motes.test.ts`, and the runner resolves that path
 inside **every** engine's project — so one review item is **three files at the
 same relative path**, and the case does not resolve until all three exist. The
-seven items that narrow their `validation` with `engines = ["none"]` are the
+twelve items that narrow their `validation` with `engines = ["none"]` are the
 exception: a scoped item's suite ships in `none/` alone, and the case does not
 resolve while a copy of it is left in a project the item does not cover.
 
@@ -81,8 +81,10 @@ Everything below is one call, under the same name, on all three engines.
 `h.advanceSeconds(seconds, frames)` runs a span of game time divided into whole
 frames, which is the primitive the two cycle helpers are built on;
 `advanceCycles(h, n)` and `advanceFraction(h, f)` name cycles and fractions of one
-at whatever speed the run is set to; `h.runFor(ms)` hands the game to its own
-loop; `h.until(pred, opts)` and `h.stepWatching(n, watch)` sweep.
+at whatever speed the run is set to; `h.until(pred, opts)` and
+`h.stepWatching(n, watch)` sweep. Every one of them is frames a check asked for,
+so no check waits on the wall clock and a span costs the frames it is divided
+into rather than the seconds it names.
 
 **Reading** — `h.snapshot()`, plus the readings in `snapshot.ts`
 (`partById`, `moteAt`, `poseOf`, `gripsOf`, `heldBy`, `constellationOf`,

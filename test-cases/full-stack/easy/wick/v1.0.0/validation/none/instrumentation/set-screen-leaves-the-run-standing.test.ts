@@ -3,7 +3,7 @@
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `setScreen(name)`):
 // "Nothing else changes: the run, the loadout, `offers`, `nextOffers`,
-// `chestResult`, `pendingLevelUps`, `rngState`, `simTime`, and the driver
+// `chestResult`, `pendingLevelUps`, every posed outcome, `simTime`, and the driver
 // switches all stand exactly as they were", and "The pose sets the screen and
 // nothing else, so a run is never begun, discarded, ended, or grown by it."
 // The comparison is exact equality of the documented run across each call.

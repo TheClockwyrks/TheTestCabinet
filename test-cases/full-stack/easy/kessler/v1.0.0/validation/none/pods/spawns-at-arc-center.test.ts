@@ -12,24 +12,15 @@
 // contact boundary, so the tolerance is a twentieth of a unit and of a degree.
 //
 // THE WORLD IS ONE TARGET AND ONE BALL PER DRAW, staged by the shared draw
-// helper on a frozen ring with the deflector parked away; the seed (9) sheds
-// on both of its first two draws.
+// helper on a frozen ring with the deflector parked away. Each destruction's
+// draw is posed to shed through `setNextPod`, so the pod's spawn point is
+// what the check reads rather than whether a draw shed at all.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertLength, assertTrue } from "../assert";
-import {
-  POD_DROP_CHANCE,
-  RINGS,
-  angularOffset,
-  mulberry32,
-  polarOf,
-  slotArcCenterDeg,
-} from "../constants";
+import { assertCloseTo, assertLength } from "../assert";
+import { RINGS, angularOffset, polarOf, slotArcCenterDeg } from "../constants";
 import { captureReplay, isolate, openHarness, type Harness } from "../harness";
 import { AWAY_ANGLE, destroyPosedTarget } from "./draw";
-
-/** mulberry32(9) sheds on each of its first two draws (0.1987, then 0.0937). */
-const SEED = 9;
 
 let h: Harness;
 
@@ -42,20 +33,16 @@ afterEach(async () => {
 });
 
 it("spawns the shed pod at the mid radius and posed arc center", async () => {
-  const next = mulberry32(SEED);
-  assertTrue(next() < POD_DROP_CHANCE, "the first draw sheds");
-  next();
-  assertTrue(next() < POD_DROP_CHANCE, "the second draw sheds");
-
-  await isolate(h, SEED);
+  await isolate(h);
   await h.debug.setPodSpawn(true);
   await h.debug.setPaddleAngle(AWAY_ANGLE);
 
   // Ring 1, slot 3, posed to ring angle 40: arc center 145, mid radius 302.
+  await h.debug.setNextPod("widen");
   const ring1 = await captureReplay(h, "spawn-ring1", () =>
     destroyPosedTarget(h, 1, 3, 40),
   );
-  assertLength(ring1.pods, 1, "the ring-1 destruction sheds");
+  assertLength(ring1.pods, 1, "the ring-1 destruction sheds the posed pod");
   const p1 = polarOf(ring1.pods[0].x, ring1.pods[0].y);
   assertCloseTo(p1.r, RINGS[0].podSpawnRadius, 1, "the ring-1 mid radius");
   assertCloseTo(
@@ -67,10 +54,11 @@ it("spawns the shed pod at the mid radius and posed arc center", async () => {
   await h.debug.clearPods();
 
   // Ring 3, slot 0, posed to ring angle 200: arc center 209, mid radius 442.
+  await h.debug.setNextPod("shield");
   const ring3 = await captureReplay(h, "spawn-ring3", () =>
     destroyPosedTarget(h, 3, 0, 200),
   );
-  assertLength(ring3.pods, 1, "the ring-3 destruction sheds");
+  assertLength(ring3.pods, 1, "the ring-3 destruction sheds the posed pod");
   const p3 = polarOf(ring3.pods[0].x, ring3.pods[0].y);
   assertCloseTo(p3.r, RINGS[2].podSpawnRadius, 1, "the ring-3 mid radius");
   assertCloseTo(

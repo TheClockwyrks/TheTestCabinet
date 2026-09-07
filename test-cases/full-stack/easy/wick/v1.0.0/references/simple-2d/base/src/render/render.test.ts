@@ -32,7 +32,7 @@ function pixel(ctx: Context, x: number, y: number): number[] {
 }
 
 function playingState(): Draft {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   return state;
@@ -137,7 +137,7 @@ describe("rendering", () => {
   });
 
   it("draws every tab of the almanac and every entry of one", () => {
-    const state = initialState(1);
+    const state = initialState();
     state.screen = "almanac";
     for (let tab = 0; tab < ALMANAC_TABS.length; tab += 1) {
       state.almanacTab = tab;
@@ -179,7 +179,7 @@ describe("rendering", () => {
   });
 
   it("draws the almanac's tab bar over the rectangles it reports", () => {
-    const state = initialState(1);
+    const state = initialState();
     state.screen = "almanac";
     const rects = tabRects(state);
     rects.forEach((_, index) => {
@@ -217,7 +217,7 @@ describe("rendering", () => {
   });
 
   it("holds the almanac's picture still until simTime moves on", () => {
-    const state = initialState(1);
+    const state = initialState();
     state.screen = "almanac";
     state.almanacTab = 2;
     const box = [512, 260, 672, 180] as const;

@@ -8,44 +8,50 @@
 // build whose type roll drifts toward a favourite makes half the recipe book
 // unreachable while the recipe overlay goes on offering it.
 //
-// A LONG RUN, ON ONE FOOTPRINT. Each rock is dropped, read and dismantled, so the
-// run is as long as the count below rather than as long as the yard has room for
-// — dismantling returns nothing and reopens the tiles, which is exactly what a
-// repeated draw needs. The bounds are the item's: every type appears, and no type
-// takes more than a quarter of the draws. At this many rolls a uniform press
-// clears both by a distance no plausible run of luck closes.
+// A BOUNDED SAMPLE OF THE ONE DRAW. `specs/instrumentation.md` carries
+// `rollPress`, which performs one press roll exactly as a dropped rock rolls and
+// lands nothing, so the sample is the draw alone rather than four hundred trips
+// through the placement path. The rate is the spec's, `0.125` a type, and the
+// band each type's count is held to is derived from that figure alone: its
+// expected count over the sample, six standard deviations either side. A press
+// rolling at the stated rate never falls outside a band that wide by chance.
+//
+// WHAT A BAND THAT WIDE SEPARATES, AND WHAT IT DOES NOT. Four hundred draws put a
+// type's expected count at fifty and its standard deviation under seven, so a type
+// never rolled and a type rolled at twice its share both land outside the band and
+// fail. A type rolled at HALF its share lands at twenty-five, which is inside it:
+// telling that lean from the stated figure at six standard deviations takes over a
+// thousand draws, which is past what a bounded sample is. So a lean that small is
+// left to the reviewer, off the yard of rolled types this point writes, rather
+// than being chased with a sample sized to catch it.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   COMPONENT_TYPES,
   REFINEMENT_MAX,
-  STAMPS_PER_LEVEL,
+  SAMPLE_BAND_SIGMAS,
   TYPE_ROLL_ODDS,
 } from "../constants";
+import { assertBetween, assertContains } from "../assert";
 import {
   captureStill,
   createHarness,
-  lastStructure,
   openYard,
-  refillStamps,
   type Harness,
 } from "../harness";
 
-/** How many rocks are rolled. */
+/** How many rolls are drawn. */
 const ROLLS = 400;
 
-/**
- * The share of the draws no single type may take: twice its own uniform share.
- *
- * `specs/scrap-press.md` fixes the roll as uniform over the eight base types, so a
- * type taking more than double its share over four hundred rolls is a bias rather
- * than the sampling noise a fair roll leaves.
- */
-const CEILING = TYPE_ROLL_ODDS * 2;
+/** The count a type's share of the sample comes to: `50` of `400`. */
+const EXPECTED = ROLLS * TYPE_ROLL_ODDS;
 
-/** The footprint every rock is dropped on. */
-const AT = { col: 20, row: 8 };
+/** The standard deviation of that count over a binomial sample: `6.6`. */
+const SIGMA = Math.sqrt(ROLLS * TYPE_ROLL_ODDS * (1 - TYPE_ROLL_ODDS));
+
+/** The band a type's count is held to, six standard deviations either side. */
+const FLOOR = Math.ceil(EXPECTED - SAMPLE_BAND_SIGMAS * SIGMA);
+const CEILING = Math.floor(EXPECTED + SAMPLE_BAND_SIGMAS * SIGMA);
 
 let h: Harness;
 
@@ -57,40 +63,30 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("draws every base type, and none of them more than a quarter of the time", async () => {
+it("draws each base type at its uniform share, inside a six-sigma band", async () => {
   // At the top of the refinement track, so a build that leaked the quality bias
   // into the type roll has every chance to show it.
   await openYard(h, { refinement: REFINEMENT_MAX });
 
   const drawn = new Map<string, number>();
   for (let roll = 0; roll < ROLLS; roll += 1) {
-    if (roll % STAMPS_PER_LEVEL === 0) await refillStamps(h);
-    await h.debug.placeRock(AT.col, AT.row);
-    const candidate = lastStructure(await h.snapshot());
-    const type = String(candidate.type);
+    const { type } = await h.debug.rollPress();
+    assertContains(COMPONENT_TYPES, type, `the type roll ${roll + 1} drew`);
     drawn.set(type, (drawn.get(type) ?? 0) + 1);
-    // Dismantling returns nothing and reopens the tiles, so the next rock lands
-    // on the same footprint and the run is as long as it needs to be.
-    await h.debug.dismantle(candidate.id);
   }
 
-  await h.debug.placeRock(AT.col, AT.row);
   await h.advance(1);
   await captureStill(h, "spread");
 
-  const ceiling = Math.floor(ROLLS * CEILING);
   for (const type of COMPONENT_TYPES) {
-    const count = drawn.get(type) ?? 0;
-    assertGreaterThan(
-      count,
-      0,
+    assertBetween(
+      drawn.get(type) ?? 0,
+      FLOOR,
+      CEILING,
       `draws of \`${type}\` in ${ROLLS} rolls, over a type axis uniform at ` +
-        `0.125 for each of the ${COMPONENT_TYPES.length} base types`,
-    );
-    assertLessThanOrEqual(
-      count,
-      ceiling,
-      `draws of \`${type}\` in ${ROLLS} rolls, against a quarter of them`,
+        `${TYPE_ROLL_ODDS} for each of the ${COMPONENT_TYPES.length} base types ` +
+        `(specs/scrap-press.md), inside ${SAMPLE_BAND_SIGMAS} standard ` +
+        `deviations of ${EXPECTED}`,
     );
   }
 });

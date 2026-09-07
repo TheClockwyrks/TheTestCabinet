@@ -50,6 +50,18 @@ export interface RecorderOptions {
   measureText?: boolean;
   /** Replace a bitmap argument in the record with an {@link ImageRef} naming it. */
   internImages?: boolean;
+  /**
+   * Whether the recorder is installed at all. Defaults to `true`.
+   *
+   * A check that reads what the build DREW needs the call log, and a check that
+   * reads what the build DID does not. Recording is not free: every method the
+   * pipeline calls and every property it sets passes through a proxy that
+   * allocates a record of it, which on a busy frame is a sizeable share of the
+   * frame's cost. Over the thousands of frames a long drive spends, that is a
+   * share of the drive paid for a log the check never opens, so a drive turns it
+   * off and {@link RecordingCanvas.calls} stays empty.
+   */
+  record?: boolean;
 }
 
 /** Which images a frame drew, by the id the record names them under. */
@@ -61,7 +73,12 @@ export interface RecordingCanvas {
   readonly canvas: Canvas;
   /** The real context, for `getImageData`. Draw calls also reach it. */
   readonly ctx: SKRSContext2D;
-  /** Every call and property set the render made, oldest first. */
+  /**
+   * Every call and property set the render made, oldest first.
+   *
+   * Empty on a canvas built with `record: false`, which is what a check that
+   * drives thousands of frames and reads none of them asks for.
+   */
   readonly calls: DrawCall[];
   /** The element the engine is handed, whose `getContext` is the proxy. */
   readonly element: HTMLCanvasElement;
@@ -203,7 +220,10 @@ export function createRecordingCanvas(
   const ctx = canvas.getContext("2d");
   const calls: DrawCall[] = [];
   const images = new Map<number, object>();
-  const recorded = recordingContext(ctx, calls, options, images);
+  const recorded =
+    (options.record ?? true)
+      ? recordingContext(ctx, calls, options, images)
+      : ctx;
   const element = Object.assign(canvas, {
     style: {} as CSSStyleDeclaration,
     getContext: (): SKRSContext2D => recorded,

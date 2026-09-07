@@ -13,7 +13,6 @@
 // press came from a key, a touch pad, or a test.
 
 import {
-  DEFAULT_SEED,
   OBSTACLE_CELLS,
   type ActionName,
   type Direction,
@@ -22,7 +21,6 @@ import {
 import type { CoilState } from "./game";
 import type { PointerSample } from "@clockwyrks/structured-2d";
 import { menuItemAt, menuItems } from "./menus";
-import { seedState } from "./rng";
 import { layChain, requestTurn, spawnPellet } from "./sim";
 
 /**
@@ -58,7 +56,7 @@ const STEER: Partial<Record<ActionName, Direction>> = {
 /**
  * Every field the snapshot reports back to its opening value: the title screen,
  * a fresh round laid out but not started, the mode's obstacle course, all three
- * driver switches on, and the generator reseeded.
+ * driver switches on, and no posed pellet cell.
  *
  * `muted` is untouched, because muting is a player preference the engine owns
  * rather than a value a round opens with, and `sprites` is untouched because the
@@ -66,7 +64,7 @@ const STEER: Partial<Record<ActionName, Direction>> = {
  * field initializers produce, restated as a transition so a `reset` and a fresh
  * session leave the game in the same place.
  */
-export function resetSession(state: CoilState, seed = DEFAULT_SEED): void {
+export function resetSession(state: CoilState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.titleIndex = 0;
@@ -82,9 +80,9 @@ export function resetSession(state: CoilState, seed = DEFAULT_SEED): void {
   state.steering = true;
   state.travel = true;
   state.pelletRespawn = true;
+  state.nextPellet = null;
   state.accumulator = 0;
   state.biteRemaining = 0;
-  state.rngState = seedState(seed);
   // The chain, the heading, the buffer, the score and the combo, laid the way a
   // round opens them.
   layChain(state);

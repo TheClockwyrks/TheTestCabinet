@@ -46,6 +46,7 @@ import {
   SAFE_X,
   SAFE_Y,
   SAUCER_LIFETIME,
+  SAUCER_FIRE_INTERVAL,
   SAUCER_R,
   SAUCER_SPEED,
   SAUCER_WEAVE_SPEED,
@@ -524,23 +525,21 @@ describe("the debug surface", () => {
     expect(inMany.rocks[0]?.y).toBeCloseTo(inOne.rocks[0]?.y ?? -1, 9);
   });
 
-  it("seeds the game's randomness", async () => {
-    const layout = async (seed: number): Promise<string> => {
-      h.pose((s, d) => d.reset(s, { seed }));
-      h.pose((s, d) => d.setMenuIndex(s, 0));
-      h.tap("Enter");
-      await h.ticks(1);
-      return h
-        .snapshot()
-        .rocks.map((r) => `${r.x.toFixed(3)},${r.y.toFixed(3)}`)
-        .join("|");
-    };
-
-    const seven = await layout(7);
-    const sevenAgain = await layout(7);
-    const eight = await layout(8);
-    expect(sevenAgain).toBe(seven);
-    expect(eight).not.toBe(seven);
+  it("clears every posed draw on reset", async () => {
+    h.pose((s, d) => d.setNextSaucerEdge(s, "right"));
+    h.pose((s, d) => d.setNextSaucerRow(s, 300));
+    h.pose((s, d) => d.setNextSaucerAim(s, 0.1));
+    h.pose((s, d) => d.setNextRockSpeed(s, 90));
+    h.pose((s, d) => d.setNextRecycleEdge(s, "top"));
+    expect(h.snapshot().nextSaucerEdge).toBe("right");
+    expect(h.snapshot().nextRecycleEdge).toBe("top");
+    h.pose((s, d) => d.reset(s));
+    const snap = h.snapshot();
+    expect(snap.nextSaucerEdge).toBeNull();
+    expect(snap.nextSaucerRow).toBeNull();
+    expect(snap.nextSaucerAim).toBeNull();
+    expect(snap.nextRockSpeed).toBeNull();
+    expect(snap.nextRecycleEdge).toBeNull();
   });
 });
 
@@ -880,7 +879,7 @@ describe("waves", () => {
   });
 
   it("spawns clear of the ship and of the star, and faster each wave", async () => {
-    h.pose((s, d) => d.reset(s, { seed: 3 }));
+    h.pose((s, d) => d.reset(s));
     h.tap("Enter");
     await h.ticks(1);
     let snap = h.snapshot();
@@ -1510,5 +1509,86 @@ describe("audio and the drawing", () => {
       const middle = h.pixel(FIELD_W / 2, 200);
       expect(middle[3]).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("the posed draws", () => {
+  it("brings the next arrival in at the posed edge and row", async () => {
+    startPlaying();
+    h.pose((s, d) => d.setSaucerSpawning(s, true));
+    h.pose((s, d) => d.setNextSaucerEdge(s, "right"));
+    h.pose((s, d) => d.setNextSaucerRow(s, 333));
+    h.pose((s, d) => d.setSaucerDue(s, 0.5));
+    expect(h.snapshot().nextSaucerEdge).toBe("right");
+    expect(h.snapshot().nextSaucerRow).toBe(333);
+    await h.ticks(Math.round(0.5 * TICK_HZ) + 1);
+    const saucer = h.snapshot().saucer;
+    expect(saucer).not.toBeNull();
+    expect(saucer?.x).toBeCloseTo(FIELD_W - SAUCER_R, -1);
+    expect(saucer?.y).toBe(333);
+    expect(saucer?.vx).toBe(-SAUCER_SPEED);
+    expect(h.snapshot().nextSaucerEdge).toBeNull();
+    expect(h.snapshot().nextSaucerRow).toBeNull();
+  });
+
+  it("fires the next shot with the posed aim error", async () => {
+    startPlaying();
+    h.pose((s, d) => d.setShipPosition(s, 200, 360));
+    h.pose((s, d) => d.addSaucer(s, 600, 360));
+    h.pose((s, d) => d.setSaucerTravel(s, false));
+    h.pose((s, d) => d.setSaucerMind(s, false));
+    h.pose((s, d) => d.setNextSaucerAim(s, 0));
+    await h.ticks(Math.round(SAUCER_FIRE_INTERVAL * TICK_HZ) + 1);
+    const rounds = h.snapshot().enemyBullets;
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0].vy).toBeCloseTo(0, 6);
+    expect(rounds[0].vx).toBeLessThan(0);
+    expect(h.snapshot().nextSaucerAim).toBeNull();
+  });
+
+  it("gives every rock of the next wave the posed base speed", async () => {
+    startPlaying();
+    h.pose((s, d) => d.setWaveSpawning(s, true));
+    h.pose((s, d) => d.setWave(s, 6));
+    h.pose((s, d) => d.setNextRockSpeed(s, 100));
+    h.pose((s, d) => d.setWaveBanner(s, 0.1));
+    // Read on the tick the wave arrives, so at most one tick of the well is in
+    // the reading: under a unit per second at the closest a wave may spawn.
+    for (let tick = 0; tick <= Math.round(0.1 * TICK_HZ) + 1; tick += 1) {
+      if (h.snapshot().rocks.length > 0) break;
+      await h.ticks(1);
+    }
+    const rocks = h.snapshot().rocks;
+    expect(rocks.length).toBeGreaterThan(0);
+    for (const rock of rocks) {
+      expect(Math.abs(Math.hypot(rock.vx, rock.vy) - 120)).toBeLessThanOrEqual(
+        2,
+      );
+    }
+    expect(h.snapshot().nextRockSpeed).toBeNull();
+  });
+
+  it("recycles the next rock the star takes at the posed edge and speed", async () => {
+    startPlaying();
+    h.pose((s, d) => d.addRock(s, "large", STAR_X, STAR_Y));
+    h.pose((s, d) => d.setNextRecycleEdge(s, "bottom"));
+    h.pose((s, d) => d.setNextRockSpeed(s, 80));
+    await h.ticks(1);
+    const rock = h.snapshot().rocks[0];
+    expect(rock.y).toBeGreaterThan(FIELD_H - 20);
+    expect(rock.vy).toBeLessThan(0);
+    expect(Math.abs(Math.hypot(rock.vx, rock.vy) - 80)).toBeLessThan(1.5);
+    expect(h.snapshot().nextRecycleEdge).toBeNull();
+    expect(h.snapshot().nextRockSpeed).toBeNull();
+  });
+
+  it("poses the saucer's weave direction", () => {
+    startPlaying();
+    h.pose((s, d) => d.addSaucer(s, 300, 300));
+    expect(h.snapshot().saucer?.weave).toBe(1);
+    h.pose((s, d) => d.setSaucerWeave(s, -1));
+    expect(h.snapshot().saucer?.weave).toBe(-1);
+    h.pose((s, d) => d.setSaucerDue(s, 27.5));
+    expect(h.snapshot().saucerDue).toBe(27.5);
   });
 });

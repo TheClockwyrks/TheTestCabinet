@@ -36,8 +36,8 @@ export function createApi(
   return {
     ...state,
 
-    reset(seed) {
-      state.reset(seed);
+    reset() {
+      state.reset();
       onReset();
     },
 

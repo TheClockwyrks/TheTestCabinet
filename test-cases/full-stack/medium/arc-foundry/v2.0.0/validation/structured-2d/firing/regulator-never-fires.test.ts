@@ -9,13 +9,12 @@
 //
 // The scenario is the hardest case there is for a build that fires by accident: a
 // unit standing directly on top of the Regulator, so no radius however small can
-// exclude it, held there for ten seconds. Nothing else is on the yard, so any
+// exclude it, held there for `WATCHED` seconds. Nothing else is on the yard, so any
 // projectile that appears is the Regulator's. The `range` reading admits either
 // spelling of "no range", `0` or `null`, because specs/instrumentation.md types
 // the field as a number and gives `0` as the resting value a structure that does
 // not use it reports.
 
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
@@ -49,17 +48,17 @@ const ANCHOR = { col: 10, row: 10 };
  * guarantee, so the watch takes half the project's own frame, which clears the
  * floor with room to spare.
  *
- * The ten seconds the item is stated over are unchanged, and so is how often the
- * yard is read: {@link SAMPLE_SECONDS} is a span of simulation time, not a frame
- * count, so the same number of readings falls across the same interval.
+ * How often the yard is read is stated in simulation time rather than in frames:
+ * {@link SAMPLE_SECONDS} is a span, so the same number of readings falls across
+ * the same interval whatever the rate.
  */
 const WATCH_HZ = Math.max(
   TICK_HZ / 2,
   Math.ceil(PROJECTILE_SPEED / (2 * PROJECTILE_HIT_R)),
 );
 
-/** How long the Regulator is watched, in seconds. */
-const WATCHED = 10;
+/** How long the Regulator is watched, in seconds: past three of any cadence. */
+const WATCHED = 3;
 
 /** How far apart two readings of the yard fall, in seconds of simulation. */
 const SAMPLE_SECONDS = 1 / 30;
@@ -70,14 +69,14 @@ const SAMPLE_FRAMES = Math.max(1, Math.round(SAMPLE_SECONDS * WATCH_HZ));
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(1000 / WATCH_HZ) });
+  h = await createHarness({ hz: WATCH_HZ });
 });
 
 afterEach(() => {
   h.dispose();
 });
 
-it("launches nothing over ten seconds with a unit standing on it", async () => {
+it("launches nothing over the watch with a unit standing on it", async () => {
   openYard(h, { wave: 1 });
   const id = standComponent(h, "regulator", 3, ANCHOR.col, ANCHOR.row);
   const structure = structureById(h.snapshot(), id);
@@ -116,7 +115,7 @@ it("launches nothing over ten seconds with a unit standing on it", async () => {
   assertEqual(
     after.damageDealt,
     0,
-    "the Regulator's damage tally after ten seconds under a unit",
+    `the Regulator's damage tally after ${WATCHED}s under a unit`,
   );
   const unit = unitById(watched.snapshot, target);
   assertEqual(unit.hp, unit.maxHp, "the health of the unit standing on it");

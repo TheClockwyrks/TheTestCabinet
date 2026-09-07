@@ -18,7 +18,7 @@
 //   specs/instrumentation.md ("`advance(seconds)`"): "Runs one frame of the
 //   build's loop worth `seconds` of delta time ... the keys are read ... and on
 //   `playing` the delta joins the accumulator and every whole `TICK_DT` in it
-//   is consumed as a tick"; and under "A deterministic core", "A tick is
+//   is consumed as a tick"; and under "A render-free core", "A tick is
 //   consumed while the accumulator is at least `TICK_DT − TICK_EPSILON`", so
 //   `0.05` s is exactly three ticks.
 //

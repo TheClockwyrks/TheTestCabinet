@@ -134,7 +134,8 @@ value in, next value out, built with spreads and `map` — whether it is the who
 state (`serve`, `startMatch`, `toTitle`, `resolvePointer`) or a slice of it
 (`step(ball, left, right, obstacles, dt)` returns `{ ball, events }`;
 `integratePaddle` and `updateAi` return the next paddle; `recordTrail` returns the
-next ball; `nextSign(rngState)` returns `[sign, nextRngState]`). The diagnostic sources the
+next ball; `drawServeSign()` the sign a parked ball's serve will take). The
+diagnostic sources the
 overlay shows are registered as `(state) => value` and read whatever state the
 engine hands them
 at the moment of the read, so the overlay can never report a frame the game has
@@ -176,7 +177,7 @@ else happens. `reset` is the one exception, and it is a lifecycle verb rather
 than a pose: it restores every declared field at once.
 
 - **The world** — `clearWorld(state)`, `spawnBall(state)`,
-  `spawnObstacle(state, index)`, `reset(state)`, `setSeed(state, seed)`.
+  `spawnObstacle(state, index)`, `reset(state)`.
 - **Screens and menus** — `setScreen`, `setMode`, `setMenuIndex`,
   `setTitleIndex`, `setResumeScreen`.
 - **The match** — `setScore(state, p1, p2)`, `setWinner`, `setReceiver`.
@@ -185,7 +186,8 @@ than a pose: it restores every declared field at once.
   and `setPaddleDriven(state, side, driven)`, which takes **one** side and leaves
   the other under its player or the AI.
 - **The ball** — `setBallPosition`, `setBallVelocity`, `setBallSpin`,
-  `setBallHeld`, `setBallHoldTimer`. Gyre plays with one ball, so none of them
+  `setBallHeld`, `setBallHoldTimer`, `setBallServeSign`, `drawBallServeSign`.
+  Gyre plays with one ball, so none of them
   takes an index.
 - **The AI** — `setAiTracking` and `setAiMovement`, one per faculty: sensing the
   ball and travelling toward the target are gated separately.
@@ -294,7 +296,7 @@ src/
                       and the region a pointer selects it from
   pointer.ts          The mouse and touch rule over that table, pure over one
                       frame's pointer samples
-  rng.ts              The seeded generator: a draw returns [value, nextState]
+  random.ts           The serve sign draw a parked ball takes
   entities.ts         Paddle and ball arithmetic and geometry
   trail.ts            The ball's motion trail, a fixed slice of time
   obstacles.ts        The obstacle poses, pure functions of the obstacle clock

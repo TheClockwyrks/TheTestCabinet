@@ -286,10 +286,10 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 # the three harnesses export one async API, so a point is graded identically
 # whichever runtime the run selected. Six points carry `engines = ["none"]`
 # and live under `validation/none/` alone: the debug overlay's visibility, its
-# toggle key and its reading the game without changing it, the clock going off
-# real time, and the stage's fit to the window are the engine's own work under
-# the two 3D runtimes, so a check on them there would grade the engine rather
-# than the build.
+# toggle key and its reading the game without changing it, the frame loop going
+# off real time, and the stage's fit to the window are the engine's own work
+# under the two 3D runtimes, so a check on them there would grade the engine
+# rather than the build.
 #
 # 820 points across 14 categories. Each asserts ONE observable behavior,
 # because a build that gets half of a compound point right must score
@@ -1330,26 +1330,12 @@ validation = { script = "instrumentation/start-run-pivot-and-bob-at-the-run-star
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 
-# Pose an identical crane, tape and yard twice, advance 200 ticks each time,
-# and compare the snapshots tick by tick. — Every compared field matches
-# exactly at every sampled tick.
-# From specs/instrumentation.md § A deterministic core.
-[[review.categories.items]]
-id = "deterministic-run-repeats"
-title = "The same structure and tape produce the same run tick for tick"
-description = "Gantry uses no randomness and a run advances only on its fixed tick, so the same posed structure and tape produce the same axes, the same bob position and the same forces at the same tick number, twice over."
-domains = ["simulation", "choreography"]
-failure_cap = "scuffed"
-validation = { script = "instrumentation/deterministic-run-repeats.test.ts", outputs = [
-  { id = "state", name = "The driven state this point decides", kind = "image" },
-] }
-
 # On a cleared structure call setCamera(0, 10, 10) and place a strut, undo
 # it, call setCamera(200, 80, 80) so the nodes fall outside the stage, and
 # place the same strut again; then attempt the same refused edit under both
 # camera poses. — Both placements land identically, member for member, and
 # the refused edit is refused under both poses.
-# From specs/instrumentation.md § A deterministic core.
+# From specs/instrumentation.md § A render-free core.
 [[review.categories.items]]
 id = "edit-acceptance-independent-of-the-renderer"
 title = "Whether an edit is accepted is decided from the structure and the site alone"
@@ -1363,7 +1349,7 @@ validation = { script = "instrumentation/edit-acceptance-independent-of-the-rend
 # On a cleared structure, call addMember for a member longer than its
 # material's maximum and read snapshot().structure. — members is unchanged,
 # cost is unchanged, historyDepth is unchanged, and the call raised nothing.
-# From specs/instrumentation.md § A deterministic core.
+# From specs/instrumentation.md § A render-free core.
 [[review.categories.items]]
 id = "pose-refusal-is-silent"
 title = "A pose the game's rules refuse changes nothing and reports nothing"
@@ -1672,18 +1658,18 @@ validation = { script = "instrumentation/run-pose-reaches-no-verdict.test.ts", o
   { id = "state", name = "the run at the call, with every load placed", kind = "image" },
 ] }
 
-# On the build screen with an idle run call each of the six poses in turn,
+# On the build screen with an idle run call each of the seven poses in turn,
 # reading snapshot().run after each. — run is still the idle placeholder
 # after every call.
 # From specs/instrumentation.md § The run in progress.
 [[review.categories.items]]
 id = "run-poses-do-nothing-with-no-run"
 title = "A run pose with no run in progress does nothing"
-description = "setAxis, setAxisRate, setBob, setBobVelocity, setLoadPose and setLoadPhase pose a run in progress, so they change nothing against an idle run."
+description = "setAxis, setAxisRate, setBob, setBobVelocity, setLoadPose, setLoadPhase and setRunTick pose a run in progress, so they change nothing against an idle run."
 domains = ["choreography"]
 failure_cap = "passable"
 validation = { script = "instrumentation/run-poses-do-nothing-with-no-run.test.ts", outputs = [
-  { id = "state", name = "the idle run six run poses could not touch", kind = "image" },
+  { id = "state", name = "the idle run seven run poses could not touch", kind = "image" },
 ] }
 
 # Start a run whose first step commands the hoist, advance until it is
@@ -1882,6 +1868,36 @@ validation = { script = "instrumentation/set-load-pose-puts-the-load.test.ts", o
   { id = "pose", name = "The load at the pose it was handed", kind = "image" },
 ] }
 
+# openSite(0), empty the yard, stand the minimal crane, pose a tape of three
+# steps that move nothing, startRun, then setRunTick(1200) and read run.tick
+# and run.time with nothing advanced, drawing the still on a frame that covers
+# no time so it shows the posed clock itself. — run.tick reads 1200 and
+# run.time reads 1200 / TICK_HZ.
+# From specs/instrumentation.md § The run in progress.
+[[review.categories.items]]
+id = "set-run-tick-sets-the-tick-count"
+title = "setRunTick sets the number of ticks the run has taken"
+description = "setRunTick(tick) sets how many ticks the run has taken, which the snapshot reports under run.tick, and the run clock beside it is that count over TICK_HZ."
+domains = ["choreography"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-run-tick-sets-the-tick-count.test.ts", outputs = [
+  { id = "clock", name = "The run screen at the run clock posed", kind = "image" },
+] }
+
+# The same run, posed to 1200 and then advanced one tick. — run.tick reads
+# 1201 with the run still running, so the run counts on from the number posed
+# rather than from a count of its own.
+# From specs/instrumentation.md § The run in progress.
+[[review.categories.items]]
+id = "set-run-tick-carries-the-run-on"
+title = "The run counts on from the tick count setRunTick posed"
+description = "setRunTick poses how long the run has been going and nothing else, so the run's next tick is numbered one above the count posed and the run is still running."
+domains = ["choreography"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-run-tick-carries-the-run-on.test.ts", outputs = [
+  { id = "carried", name = "The run one tick past the count posed", kind = "image" },
+] }
+
 # Drive a run to a failure, then call setSpeedIndex(2) and read
 # run.speedIndex. — speedIndex reads 2 with the run still reporting its
 # failed phase and cause.
@@ -1951,18 +1967,21 @@ validation = { script = "instrumentation/advance-scales-with-the-watch-speed.tes
   { id = "scaled", name = "The run at the tick three speeds counted to", kind = "image" },
 ] }
 
-# Start a run, call setAutoStep(false), read run.tick and run.axes, let a
-# second of wall-clock time pass with no advance call, and read them again. —
-# run.tick and every axis value are unchanged.
+# Start a run and drive it ten ticks so an axis is mid-command, then, with the
+# game taken off real time by setAutoStep(false), run thirty of the frames the
+# build's own loop asked the page for — each handed the timestamp a real loop
+# would have handed it, half a second of a loop's clock — with no advance call,
+# and read run.tick and run.axes again. — run.tick and every axis value are
+# unchanged.
 # From specs/instrumentation.md § The clock.
 [[review.categories.items]]
-id = "auto-step-off-stops-the-wall-clock"
+id = "auto-step-off-stops-the-frame-loop"
 title = "Taken off real time, the game changes only when it is advanced"
-description = "setAutoStep(false) stops the frame loop advancing the game from the wall clock, so a run stands still while wall-clock time passes and changes only when advance says so."
+description = "setAutoStep(false) stops the frame loop advancing the game from the wall clock, so a run stands still across the frames the build's own loop runs and changes only when advance says so."
 domains = ["simulation"]
 failure_cap = "scuffed"
-validation = { script = "instrumentation/auto-step-off-stops-the-wall-clock.test.ts", engines = ["none"], outputs = [
-  { id = "still", name = "The run after half a second of wall clock", kind = "image" },
+validation = { script = "instrumentation/auto-step-off-stops-the-frame-loop.test.ts", engines = ["none"], outputs = [
+  { id = "still", name = "The run after thirty frames of the build's own loop", kind = "image" },
 ] }
 
 # Show the overlay with Backquote on the build screen of an emptied site and
@@ -5065,7 +5084,7 @@ validation = { script = "simulation/break-does-not-touch-the-structure.test.ts",
 ] }
 
 # ----------------------------------------------------------------------------
-# The hoist, the swing, and the hook — 49 points
+# The hoist, the swing, and the hook — 48 points
 # ----------------------------------------------------------------------------
 [[review.categories]]
 id = "rigging"
@@ -5420,8 +5439,8 @@ validation = { script = "rigging/cable-tension-formula.test.ts", outputs = [
 # hoist still, and run the same posed crane twice — once with a grip move
 # driving to 180 at GRIP_ACCEL and once with the grip idle — sampling
 # run.forces and run.bob every tick. — Every member force and utilization,
-# and the bob's position and velocity, are identical tick for tick in both
-# runs.
+# and the bob's position and velocity, read the same at every tick with the
+# grip turning as with it idle.
 # From specs/rigging.md § The grip.
 [[review.categories.items]]
 id = "grip-applies-no-force"
@@ -5468,8 +5487,9 @@ validation = { script = "rigging/attach-adds-the-mass-this-tick.test.ts", output
 # Clear the loads and the obstacles, add one waiting load in reach, pose the
 # bob swinging, and run the same posed crane and tape twice — once with the
 # attach step and once with it removed — sampling run.bob every tick. —
-# run.bob.pos and run.bob.vel are identical tick for tick in both runs: the
-# pendulum steps read no mass, so the attach itself moves the bob not at all.
+# run.bob.pos and run.bob.vel agree at every tick between the two runs, within
+# 1e-9: the pendulum steps read no mass, so the attach itself moves the bob
+# not at all.
 # From specs/rigging.md § Attaching.
 [[review.categories.items]]
 id = "attach-carries-the-bob-on"
@@ -5615,11 +5635,12 @@ validation = { script = "rigging/placed-load-stays-put.test.ts", outputs = [
   { id = "placed", name = "the crane driven through the placed load", kind = "image" },
 ] }
 
-# Clear the loads and the obstacles and run the same posed crane and tape
-# twice — once with the release step and once with it removed — sampling
-# run.bob every tick. — run.bob.pos and run.bob.vel are identical tick for
-# tick in both runs: the pendulum steps read no mass, so a release moves the
-# bob not at all.
+# Clear the loads and the obstacles, hang one load on the hook, pose the bob
+# swinging, and run the same posed crane and tape twice — once with the
+# release step and once with it removed — sampling run.bob at checkpoints
+# through the swing. — run.bob.pos and run.bob.vel agree at every checkpoint
+# between the two runs, within 1e-9: the pendulum steps read no mass, so a
+# release moves the bob not at all.
 # From specs/rigging.md § Releasing.
 [[review.categories.items]]
 id = "release-carries-the-bob-on"
@@ -5827,25 +5848,6 @@ validation = { script = "rigging/release-yaw-tolerance.test.ts", outputs = [
   { id = "yaw-tolerance", name = "The release at exactly PLACE_YAW_TOL", kind = "image" },
 ] }
 
-# Pose two cranes on site index 0 (First Lift) that are built differently — a
-# different tower bracing and an extra counterweight on a tower node — but
-# whose ring, track and trolley put the pivot on the same path, clear the
-# loads and obstacles on both, run the same tape over each, and sample
-# run.bob and run.axes at every tick. — run.bob.pos, run.bob.vel and run.axes
-# match exactly, tick for tick, between the two runs: the swing followed the
-# pivot's path and the hoist length and read nothing else about the
-# structure.
-# From specs/rigging.md § Determinism.
-[[review.categories.items]]
-id = "rigging-reads-only-the-pivot-and-the-length"
-title = "The rigging reads nothing but the pivot, the hoist length and its own state"
-description = "The rigging reads nothing but the pivot, the hoist length and its own state, so two runs whose pivots follow the same path produce the same swing and the same tensions tick for tick however differently the structure carrying that pivot is built."
-domains = ["simulation", "choreography"]
-failure_cap = "scuffed"
-validation = { script = "rigging/rigging-reads-only-the-pivot-and-the-length.test.ts", outputs = [
-  { id = "swing", name = "The bare hook swung out on the minimal crane", kind = "image" },
-] }
-
 # ----------------------------------------------------------------------------
 # The tape, the axes, and the run — 76 points
 # ----------------------------------------------------------------------------
@@ -5867,11 +5869,10 @@ validation = { script = "tape/nothing-ticks-outside-a-run.test.ts", outputs = [
   { id = "state", name = "The driven state this point decides", kind = "image" },
 ] }
 
-# With auto-stepping on, let the build screen run until simTime has risen by
-# an interval that is not a whole multiple of 1 / TICK_HZ, then take the game
-# off real time, pose a ready crane and tape, start the run, and advance
-# exactly one tick. — run.tick reads 0 immediately after the start and
-# exactly 1 after the single advance, however much simTime had accumulated
+# Advance sixty frames on the build screen, reading simTime before and after,
+# then pose a ready crane and tape, start the run, and advance exactly one
+# tick. — run.tick reads 0 immediately after the start and exactly 1 after the
+# single advance, however much simTime the editor's frames had accumulated
 # before it.
 # From specs/overview.md § Units, ticks, and the stage.
 [[review.categories.items]]
@@ -6637,15 +6638,16 @@ validation = { script = "tape/start-refused-with-an-empty-tape.test.ts", outputs
 
 # Clear the loads and the obstacles, pose a ready crane and a multi-step
 # tape. Run once at speed index 0, advancing 8 frames; reset and run again at
-# speed index 2, advancing 2 frames. — Both runs read run.tick 8, and
-# run.axes, run.pivot, run.bob, run.loads, run.forces, run.broken,
-# run.stepIndex and run.stepLive are equal between them.
+# speed index 2, advancing 2 frames. — Both runs read run.tick 8, the tape
+# position, the phase, the attached load and the broken list are equal between
+# them, and the axes, the pivot, the bob, the loads and the solved forces agree
+# within 1e-9.
 # From specs/program.md § Starting and ending a run — "speed changes how many
 # ticks a second of watching covers and nothing else".
 [[review.categories.items]]
 id = "watch-speed-scales-nothing-but-ticks"
 title = "The watch speed changes how many ticks a frame covers and nothing else"
-description = "A frame at speed index i covers RUN_SPEEDS[i] ticks, and the run it produces is otherwise identical: the same structure and tape watched at 1x and at 4x reach the same state at the same tick."
+description = "A frame at speed index i covers RUN_SPEEDS[i] ticks and changes nothing else about the run: the same structure and tape watched at 1x and at 4x read the same axes, bob, loads and forces at the same tick."
 domains = ["choreography"]
 failure_cap = "scuffed"
 validation = { script = "tape/watch-speed-scales-nothing-but-ticks.test.ts", outputs = [
@@ -11789,12 +11791,12 @@ validation = { script = "sites/site-names-in-order.test.ts", outputs = [
 ] }
 
 # openSite(0) (par cost 2400, time 18, budget 3000), clearObstacles, pose a
-# ready crane whose cost lands between 2400 and 3000, and add a tape whose
-# one move step drives an axis at a low enough rate that the run lasts longer
-# than 18 seconds. startRun, setLoadPhase(0, "placed"), then advance until
-# run.phase leaves "running". — run.phase reads "cleared" with run.time above
-# 18 and the crane's cost above 2400, and cleared[0] reads true: neither par
-# figure refuses the clear.
+# ready crane whose cost lands between 2400 and 3000, and add a tape of one
+# move step that moves nothing. startRun, setRunTick to nineteen seconds of
+# run clock, setLoadPhase(0, "placed"), then advance until run.phase leaves
+# "running". — run.phase reads "cleared" with run.time above 18 and the
+# crane's cost above 2400, and cleared[0] reads true: neither par figure
+# refuses the clear.
 # From specs/sites.md, the preamble on par figures.
 [[review.categories.items]]
 id = "par-gates-nothing"
@@ -12373,10 +12375,12 @@ validation = { script = "assets/assets-load-clean.test.ts", outputs = [
   { id = "run", name = "The play-through with every asset loaded", kind = "image" },
 ] }
 
-# Run npm ci and npm run build in the build workspace with PATH stripped of
-# the directories carrying voxel, sfx-synth, sfx-sample and music, and with a
-# shim on PATH that exits non-zero under each of those four names. — Both
-# commands exit zero, no shim was invoked, and dist/index.html and every
+# Read the install lifecycle scripts package.json declares, following each one
+# through the scripts it hands off to with npm run, then run npm run build in a
+# copy of the build workspace with PATH stripped of the directories carrying
+# voxel, sfx-synth, sfx-sample and music, and with a shim on PATH that exits
+# non-zero under each of those four names. — No install script reaches a tool,
+# the build exits zero, no shim was invoked, and dist/index.html and every
 # produced file the site loads are present.
 # From specs/assets.md intro — '`npm ci` and `npm run build` invoke no tool';
 # specs/overview.md § The build interface — 'neither `npm ci` nor `npm run
@@ -12384,7 +12388,7 @@ validation = { script = "assets/assets-load-clean.test.ts", outputs = [
 [[review.categories.items]]
 id = "build-invokes-no-asset-tool"
 title = "npm ci and npm run build invoke no asset tool"
-description = "The install and the build complete with voxel, sfx-synth, sfx-sample and music absent from PATH, and produce the same dist: the committed files are the assets and the build only bundles them."
+description = "No install lifecycle script, nor a script one hands off to, names voxel, sfx-synth, sfx-sample or music, and the build completes with all four absent from PATH and produces the same dist: the committed files are the assets and the build only bundles them."
 domains = ["presentation"]
 failure_cap = "broken"
 validation = { script = "assets/build-invokes-no-asset-tool.test.ts", outputs = [

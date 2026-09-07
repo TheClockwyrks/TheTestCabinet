@@ -8,10 +8,9 @@
 // `reachedLevel` to `1`; it empties the node field and the worm, foe, bolt, and
 // arc rosters; it places the cursor at the band's centre, `(640, 688)`, with `0`
 // seconds of invulnerability and its contact test on; it sets `fireCooldown` to
-// `0`, turns the world gates `foeSpawning` and `wormEntry` back on, clears the
-// level's spawner clocks, and sets `simTime` to `0`. Every one of those is read
-// below, in that order, except the spawner clocks, which no field of the
-// snapshot reports.
+// `0`, turns the world gates `foeSpawning` and `wormEntry` back on, sets the
+// level's three spawner clocks to `0`, clears every posed draw, and sets
+// `simTime` to `0`. Every one of those is read below, in that order.
 //
 // EVERY FIELD IS POSED AWAY FROM ITS TITLE VALUE FIRST. A reset that restored
 // nothing would pass on a game still sitting at the title, so the run this
@@ -20,7 +19,8 @@
 // a run, one life, a menu row that is not the first, a screen and a phase that
 // are neither, a cursor away from the band's centre with invulnerability
 // running, a fire cooldown, all four rosters carrying entries, a live discharge
-// arcing, both world gates held off, and accumulated simulation time.
+// arcing, both world gates held off, every spawner clock running, a draw posed
+// for each kind, and accumulated simulation time.
 //
 // `muted` IS THE ONE FIELD THAT MUST SURVIVE. "`muted` is left exactly as it
 // stands, because muting is a player preference the runtime owns"
@@ -48,6 +48,7 @@ import {
   BAND_CY,
   BINDINGS,
   CHARGE_MAX,
+  COLS,
   CURSOR_Y_MIN,
   START_LIVES,
 } from "../constants";
@@ -93,6 +94,7 @@ const CURSOR_X = 1200;
 const CURSOR_Y = CURSOR_Y_MIN;
 const INVULNERABLE = 1.75;
 const FIRE_COOLDOWN = 0.12;
+const SPAWN_TIMER = 3.3;
 
 /** The tiles the posed nodes stand on, and the charge each holds. */
 const NODE_ROW = 5;
@@ -191,6 +193,11 @@ it("restores every declared field to its title value and leaves muted alone", as
   await h.debug.setFireCooldown(FIRE_COOLDOWN);
   await h.debug.setFoeSpawning(false);
   await h.debug.setWormEntry(false);
+  for (const kind of KINDS) await h.debug.setSpawnTimer(kind, SPAWN_TIMER);
+  await h.debug.setNextFoeEntry("glitch", 0, 9);
+  await h.debug.setNextFoeEntry("dropper", 5, 0);
+  await h.debug.setNextFoeEntry("corruptor", COLS - 1, 2);
+  await h.debug.setNextWormEntry("right");
   await h.debug.setScreen(SCREEN);
   await h.debug.setPhase(PHASE);
 
@@ -272,6 +279,34 @@ it("restores every declared field to its title value and leaves muted alone", as
     title.wormEntry,
     true,
     "snapshot().wormEntry after reset(), which restores the gate to on",
+  );
+  for (const kind of KINDS) {
+    assertEqual(
+      title[`${kind}Timer`],
+      0,
+      `snapshot().${kind}Timer after reset(), which sets every spawner clock ` +
+        `to 0`,
+    );
+  }
+  assertEqual(
+    title.nextWormEntry,
+    null,
+    "snapshot().nextWormEntry after reset(), which clears every posed draw",
+  );
+  assertEqual(
+    title.nextGlitchEntry,
+    null,
+    "snapshot().nextGlitchEntry after reset(), which clears every posed draw",
+  );
+  assertEqual(
+    title.nextDropperEntry,
+    null,
+    "snapshot().nextDropperEntry after reset(), which clears every posed draw",
+  );
+  assertEqual(
+    title.nextCorruptorEntry,
+    null,
+    "snapshot().nextCorruptorEntry after reset(), which clears every posed draw",
   );
   assertEqual(title.simTime, 0, "snapshot().simTime after reset()");
 

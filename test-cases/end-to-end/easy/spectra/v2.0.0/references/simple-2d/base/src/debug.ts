@@ -28,7 +28,6 @@
 // binding sets it and the snapshot reports it).
 
 import {
-  DEFAULT_SEED,
   ENEMY_BULLET_SPEED,
   PLAYER_BULLET_SPEED,
   RESONANCE_MAX,
@@ -145,10 +144,7 @@ type Pose = (state: DeepReadonly<SpectraState>) => SpectraState;
 export interface SpectraDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<SpectraState>,
-    options?: { seed?: number },
-  ): SpectraState;
+  reset(state: DeepReadonly<SpectraState>): SpectraState;
   snapshot(state: DeepReadonly<SpectraState>): SpectraSnapshot;
   menuItemRect(
     state: DeepReadonly<SpectraState>,
@@ -328,9 +324,9 @@ export function createDebugApi(): SpectraDebugApi {
   return {
     version: SPECTRA_DEBUG_VERSION,
 
-    reset: (state, options) =>
+    reset: (state) =>
       pose((sim) => {
-        resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
+        resetToTitle(sim);
       })(state),
 
     snapshot: (state) => {

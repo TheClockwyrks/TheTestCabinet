@@ -119,7 +119,7 @@ function besideCleared(cell: CellRef): boolean {
  * that column's run stand one row lower afterward, and the gems below it stand
  * where they stood. A column that did not shift is a column whose run was left
  * standing. The one cell of each column holding no survivor afterward is row
- * `0`, which R9 refilled off the game's own generator, and no check may assert
+ * `0`, which R9 refilled by its draw, and no check may assert
  * what landed there.
  */
 const SETTLED: { from: CellRef; at: CellRef }[] = [];

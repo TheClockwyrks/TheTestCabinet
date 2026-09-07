@@ -28,8 +28,19 @@ import {
 /** How far short of the anchor each unit is posed, in tiles. */
 const APPROACH_TILES = 2;
 
-/** How long one approach is given, in frames of the suite's 120 Hz clock. */
-const APPROACH_FRAMES = 400;
+/** How long one approach is given, in seconds of simulation. */
+const APPROACH_SECONDS = 4;
+
+/**
+ * The rate the six approaches are covered at.
+ *
+ * Each is a SPAN — two tiles of walking — rather than a reading, and
+ * specs/instrumentation.md guarantees that "an interval of simulation time
+ * reaches the same state however it was divided into frames and whatever frame
+ * rate produced it". A Mote steps `2` units a frame at this rate, a fifth of the
+ * half tile the arrival is read within, and nothing here is a projectile.
+ */
+const APPROACH_HZ = 30;
 
 /** The tolerance the item states: half a tile. */
 const TOLERANCE = TILE / 2;
@@ -37,7 +48,7 @@ const TOLERANCE = TILE / 2;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: APPROACH_HZ });
 });
 
 afterEach(() => {
@@ -62,11 +73,8 @@ it("arrives within half a tile of each platform's anchor centre", async () => {
       });
 
       let arrived: Point | null = null;
-      for (
-        let frame = 0;
-        frame < APPROACH_FRAMES && arrived === null;
-        frame += 1
-      ) {
+      const approach = h.ticks(APPROACH_SECONDS);
+      for (let frame = 0; frame < approach && arrived === null; frame += 1) {
         await h.advance(1);
         const unit = h.snapshot().units.find((live) => live.id === id);
         if (unit === undefined) break;
@@ -84,7 +92,7 @@ it("arrives within half a tile of each platform's anchor centre", async () => {
     assertTrue(
       arrival.at !== null,
       `the unit heading for WP${arrival.waypoint} to reach it within ` +
-        `${APPROACH_FRAMES} frames of walking ${APPROACH_TILES} tiles`,
+        `${APPROACH_SECONDS}s of walking ${APPROACH_TILES} tiles`,
     );
     assertLessThanOrEqual(
       distance(arrival.at!, centre),

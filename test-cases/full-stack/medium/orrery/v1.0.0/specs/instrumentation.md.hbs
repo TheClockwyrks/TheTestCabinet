@@ -72,29 +72,27 @@ The surface is inert during normal play, doing nothing until something calls
 it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic: the run advances by
-simulated cycles integrated against the delta time the game is given, so an
-interval of game time reaches the same state however it was divided into
-frames. Everything that interval decides comes out identical whatever the
-division: the cycle count, every live pose and grip, the hex every mote
-rests on, the filaments, the tallies, the area bank, the fault, and whether
-the run completed. The three figures carried as running sums of the frames'
-own delta times — `simTime`, `sim.fraction`, and the drawn positions derived
-from `sim.fraction` — agree to within the rounding of that sum rather than
-bit for bit, and no decision the simulation makes is read off them at that
-precision. Two more properties make it driveable from code:
+The surface rests on a fixed-timestep core that advances apart from its
+drawing: the run advances by simulated cycles integrated against the delta
+time the game is given, so an interval of game time reaches the same state
+however it was divided into frames. Everything that interval decides comes
+out the same whatever the division: the cycle count, every live pose and
+grip, the hex every mote rests on, the filaments, the tallies, the area bank,
+the fault, and whether the run completed. The three figures carried as
+running sums of the frames' own delta times, `simTime`, `sim.fraction`, and
+the drawn positions derived from `sim.fraction`, agree to within the
+rounding of that sum rather than bit for bit, and no decision the simulation
+makes is read off them at that precision.
 
-- Render-free core. Game state advances from the elapsed time the game is
-  handed, independent of a canvas, of the frame loop that measured it, and
-  of wall-clock time. The dependency runs one way: the simulation reads
-  nothing from the renderer. Collision is decided at the sample fractions
-  `specs/simulation.md` fixes, never at rendered frames.
-- No randomness. The same machine on the same challenge produces the same
-  run, cycle for cycle, at any frame rate. The produced effects
-  `specs/assets.md` fixes vary from one play to the next, and that variation
-  reaches nothing this surface reads.
+Game state advances from the elapsed time the game is handed, independent of
+a canvas, of the frame loop that measured it, and of wall-clock time. The
+dependency runs one way: the simulation reads nothing from the renderer.
+Collision is decided at the sample fractions `specs/simulation.md` fixes,
+never at rendered frames. The produced effects `specs/assets.md` fixes are
+drawn over the frame, and nothing they do reaches the simulation or this
+surface.
 
 Audio belongs to the frames. A pose changes the state alone and sounds
 nothing, the pointer operations included; the cues a scenario hears come
@@ -221,7 +219,7 @@ while the simulation is held. The snapshot reports the switch as `autoStep`.
 
 A run advances by `SPEEDS[sim.speed]` cycles per second of game time, so
 `advance(1, 1)` and `advance(1, 60)` cover the same cycles and reach the
-same outcome, to the precision the deterministic core above fixes; every
+same outcome, to the precision the render-free core above fixes; every
 cycle runs in full whatever the frame that crossed it. Advancing while the
 game is still stepping automatically adds to what the wall clock is already
 doing.
@@ -274,7 +272,7 @@ as `specs/editor.md` states, and the challenge is closed, so `challenge` and
 | `select` | Shows the current mode's select screen, `selectIndex` at that mode's `last`. |
 | `editor` | Shows the editor over the open challenge, leaving the machine, both histories, and any live run as they stand. With no challenge open it throws. |
 
-No cue sounds at the call, as the deterministic core above states.
+No cue sounds at the call, as the render-free core above states.
 
 ### The menu layout
 

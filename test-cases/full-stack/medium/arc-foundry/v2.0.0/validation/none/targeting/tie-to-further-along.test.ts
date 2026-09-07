@@ -1,8 +1,7 @@
 // targeting/tie-to-further-along — a tie goes to the unit further along the chain.
 //
-// specs/components.md fixes the rule that makes every priority deterministic:
-// "Ties resolve toward the unit further along the chain, so the choice is
-// deterministic." It is its own point because it is what a build gets wrong by
+// specs/components.md fixes the rule every priority falls back on: "Ties resolve
+// toward the unit further along the chain." It is its own point because it is what a build gets wrong by
 // leaving the choice to whatever order its own list happened to be in — which
 // looks fine until two units line up exactly.
 //

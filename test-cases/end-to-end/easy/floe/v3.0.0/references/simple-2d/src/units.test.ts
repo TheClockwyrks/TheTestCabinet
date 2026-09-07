@@ -1,6 +1,6 @@
 // Floe — the pure pieces, called directly.
 //
-// Everything here is a function of its arguments: the seeded generator, the strait's
+// Everything here is a function of its arguments: the random source, the strait's
 // geometry and covering rule, the lane arithmetic, the critter's own rules, the bear's
 // routing, the bonus catch's cadence, the score, and the two things that talk to the
 // runtime rather than to the game — the actions the build registers and the values it
@@ -19,7 +19,6 @@ import {
   BONUS_LIFE_EVERY,
   CLEAR_PAUSE,
   DEATH_PAUSE,
-  DEFAULT_SEED,
   FISH_INTERVAL,
   FISH_LINGER,
   HOP_COOLDOWN,
@@ -112,34 +111,24 @@ function emptied(): Sim {
 
 // ---- The generator ------------------------------------------------------
 
-describe("the seeded generator", () => {
-  it("draws the same sequence from the same seed, and a different one otherwise", () => {
-    const run = (seed: number): number[] => {
-      let state = seed;
-      const draws: number[] = [];
-      for (let index = 0; index < 8; index += 1) {
-        const [value, next] = nextRandom(state);
-        draws.push(value);
-        state = next;
-      }
-      return draws;
-    };
-    expect(run(DEFAULT_SEED)).toEqual(run(DEFAULT_SEED));
-    expect(run(2)).not.toEqual(run(DEFAULT_SEED));
-    for (const value of run(9)) {
+describe("the random source", () => {
+  it("draws inside [0, 1)", () => {
+    for (let index = 0; index < 500; index += 1) {
+      const value = nextRandom();
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThan(1);
     }
   });
 
-  it("holds an index draw inside its count", () => {
-    let state = 5;
-    for (let index = 0; index < 200; index += 1) {
-      const [pick, afterIndex] = nextIndex(state, 4);
+  it("holds an index draw inside its count, and reaches every index", () => {
+    const seen = new Set<number>();
+    for (let index = 0; index < 400; index += 1) {
+      const pick = nextIndex(4);
       expect(pick).toBeGreaterThanOrEqual(0);
       expect(pick).toBeLessThan(4);
-      state = afterIndex;
+      seen.add(pick);
     }
+    expect(seen.size).toBe(4);
   });
 });
 
@@ -650,23 +639,17 @@ describe("the run", () => {
     expect(sim.critter.bestRow).toBe(ROW_NEAR);
   });
 
-  it("restores the title state on reset, and reseeds the generator", () => {
+  it("restores the title state on reset, with level 1 laid out afresh", () => {
     const sim = emptied();
     sim.score = 4000;
     sim.simTime = 12;
-    resetToTitle(sim, 42);
+    resetToTitle(sim);
     expect(sim.screen).toBe("title");
     expect(sim.score).toBe(0);
     expect(sim.simTime).toBe(0);
     expect(sim.critter.present).toBe(false);
     expect(sim.slots).toHaveLength(2);
     expect(sim.vehicles.length).toBeGreaterThan(0);
-
-    const other = emptied();
-    resetToTitle(other, 42);
-    expect(other.vehicles.map((item) => item.x)).toEqual(
-      sim.vehicles.map((item) => item.x),
-    );
   });
 });
 

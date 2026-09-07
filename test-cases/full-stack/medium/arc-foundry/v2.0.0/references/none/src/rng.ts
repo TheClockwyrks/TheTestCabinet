@@ -1,7 +1,7 @@
-// A tiny deterministic PRNG (mulberry32). The scrap-press roll and each wave's
-// composition are seeded so a given pull sequence / wave plays the same each time it is
-// reached — reproducible for verification and for the headless balance harness — while
-// still varying pull to pull and wave to wave (specs/instrumentation.md — a deterministic core).
+// A small 32-bit generator held as one number of state. The wave composer (waves.ts)
+// builds each wave off one keyed by the wave's number, so a wave plays the same each time
+// it is reached while still varying wave to wave. The press's rolls and the crit roll draw
+// at random on their own (sim.ts).
 export class Rng {
   private state: number;
   constructor(seed: number) {

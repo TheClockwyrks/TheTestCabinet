@@ -91,21 +91,26 @@ function blast(d: DeepcoreState, radius: number): boolean {
 
 /**
  * Place the miner above the camp at a random height and downward speed, and let
- * the ordinary physics carry it down. These two draws are a live player action,
- * so they are taken off the page's own randomness rather than the seeded
- * generator (specs/instrumentation.md).
+ * the ordinary physics carry it down. Each draw is uniform over its stated
+ * bounds, and a value the debug surface posed for it stands in for the draw and
+ * is consumed by it (specs/instrumentation.md).
  */
 function quantumWarp(d: DeepcoreState): boolean {
   const m = d.miner;
   const tiles =
+    d.nextTeleportHeight ??
     TELEPORT_HEIGHT_TILES_MIN +
-    Math.random() * (TELEPORT_HEIGHT_TILES_MAX - TELEPORT_HEIGHT_TILES_MIN);
+      Math.random() * (TELEPORT_HEIGHT_TILES_MAX - TELEPORT_HEIGHT_TILES_MIN);
+  const speed =
+    d.nextTeleportSpeed ??
+    TELEPORT_SPEED_MIN +
+      Math.random() * (TELEPORT_SPEED_MAX - TELEPORT_SPEED_MIN);
+  d.nextTeleportHeight = null;
+  d.nextTeleportSpeed = null;
   m.x = colCenterX(SPAWN_COL, MINER_W);
   m.y = SURFACE_Y - MINER_H - tiles * TILE;
   m.vx = 0;
-  m.vy =
-    TELEPORT_SPEED_MIN +
-    Math.random() * (TELEPORT_SPEED_MAX - TELEPORT_SPEED_MIN);
+  m.vy = speed;
   m.facing = "east";
   m.state = "fall";
   m.drilling = null;

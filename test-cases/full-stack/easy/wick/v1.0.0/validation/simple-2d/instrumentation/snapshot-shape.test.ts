@@ -102,7 +102,7 @@ it("reports the whole documented shape off a posed run", async () => {
   ] as const) {
     assertEqual(typeof s[field], "boolean", `snapshot().${field}`);
   }
-  for (const field of ["accumulator", "simTime", "rngState"] as const) {
+  for (const field of ["accumulator", "simTime"] as const) {
     assertEqual(typeof s[field], "number", `snapshot().${field}`);
   }
 
@@ -158,6 +158,28 @@ it("reports the whole documented shape off a posed run", async () => {
     null,
     "snapshot().run.chestResult off the overlay",
   );
+  for (const field of [
+    "nextSpawnAngle",
+    "nextSwarmAngle",
+    "nextSpawnType",
+    "nextPuddleOffset",
+    "nextStrikeTarget",
+    "nextChestItem",
+    "nextDrop",
+  ] as const) {
+    assertEqual(run[field], null, `snapshot().run.${field} with nothing posed`);
+  }
+  for (const field of [
+    "nextSpawnAngle",
+    "nextSwarmAngle",
+    "nextSpawnType",
+    "nextPuddleOffset",
+    "nextStrikeTarget",
+    "nextChestItem",
+    "nextDrop",
+  ] as const) {
+    assertEqual(run[field], null, `snapshot().run.${field} with nothing posed`);
+  }
 
   // The lamplighter, as posed.
   for (const field of PLAYER_FIELDS) {

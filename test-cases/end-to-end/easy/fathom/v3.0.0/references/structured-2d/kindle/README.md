@@ -155,7 +155,7 @@ await engine.advance(240);
 const { predators, windowRadius } = engine.debug.snapshot();
 ```
 
-The operations are `reset` (seedable), `snapshot`, `setScreen`, `setScore`,
+The operations are `reset`, `snapshot`, `setScreen`, `setScore`,
 `setLives`, `setDepth`, `setMaze`, `setPlankton`, `clearPlankton`, `clearFog`,
 `setForagerTile`, `setForagerDir`, `setBrightness`, `setBrightHold`,
 `clearPredators`, `addPredator`, `setPredatorTile`, `setPredatorDir`,

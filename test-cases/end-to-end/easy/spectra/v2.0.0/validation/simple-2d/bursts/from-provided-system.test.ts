@@ -17,12 +17,12 @@
 // enormous either way, because the seeded system's four emitters burst
 // `5 + 120 + 55 + 55` particles at time zero.
 //
-// WHY A TENTH OF A SECOND, AND WHY THE SEED DOES NOT MATTER THERE. Every emitter
-// of the seeded system fires its whole burst at `atMs` `0`, so a tenth of a
-// second in the whole population has been emitted whatever seed the game drew
-// for this burst out of its own generator (`specs/assets.md`) — the seed decides
-// where the particles went, not how many there are. The check does not know that
-// seed and does not need it. It asserts BOTH of those properties of the file
+// WHY A TENTH OF A SECOND, AND WHY THE SCATTER DOES NOT MATTER THERE. Every
+// emitter of the seeded system fires its whole burst at `atMs` `0`, so a tenth
+// of a second in the whole population has been emitted however the build's burst
+// scattered (`specs/assets.md`) — the scatter decides where the particles went,
+// not how many there are. The check does not know the scatter and does not need
+// it. It asserts BOTH of those properties of the file
 // before it uses them, so a re-authored `drone-burst.json` makes this check
 // complain rather than quietly measure the wrong thing.
 //

@@ -52,7 +52,6 @@ import { highlightedItem, itemAt, menuOf, type Menu } from "./menus";
 import { step } from "./physics";
 import type { PointerPoint } from "./pointer";
 import { renderGame } from "./render";
-import { nextSign } from "./rng";
 import {
   createInitialState,
   parkBall,
@@ -72,16 +71,17 @@ import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
  * Launch the ball toward the receiver at SERVE_SPEED (specs/balls.md).
  *
  * The vertical component is small and fixed in magnitude — SERVE_ANGLE — so the
- * volley is never perfectly flat, and its SIGN is the one draw this game makes
- * from its seeded generator. The ball is not advanced on the frame it is served:
- * this sets the velocity, and the next frame flies it.
+ * volley is never perfectly flat, and its SIGN is the ball's own `serveSign`,
+ * drawn when the ball was parked and left as it is by the serve. The ball is not
+ * advanced on the frame it is served: this sets the velocity, and the next frame
+ * flies it.
  */
 function serve(state: CaromState, ball: BallState): void {
   const dir = state.receiver === "left" ? -1 : 1;
   ball.holdTimer = 0;
   ball.held = false;
   ball.vx = dir * SERVE_SPEED * Math.cos(SERVE_ANGLE);
-  ball.vy = nextSign(state) * SERVE_SPEED * Math.sin(SERVE_ANGLE);
+  ball.vy = ball.serveSign * SERVE_SPEED * Math.sin(SERVE_ANGLE);
   ball.trail.length = 0;
   state.screen = "playing";
 }

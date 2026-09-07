@@ -17,7 +17,6 @@ import type {
 
 import type { Band, CueName } from "./constants";
 import type { Path } from "./paths";
-import type { RngState } from "./rng";
 
 /** The seven screens the game moves between (specs/ui.md). */
 export type Screen =
@@ -228,8 +227,6 @@ export interface SpectraState {
   simTime: number;
   /** The game's copy of the runtime's mute bit, refreshed in every update. */
   muted: boolean;
-  /** The whole state of the one seeded generator every random choice runs off. */
-  rngState: RngState;
   /** The id the next drone, bullet or burst takes. */
   nextId: number;
 }

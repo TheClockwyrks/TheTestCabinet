@@ -29,7 +29,6 @@
 // the three waves are driven at a coarse step. The same three waves are composed,
 // launched, emptied and cleared; only the number of frames that takes goes.
 
-import { ConstantClock } from "@clockwyrks/simple-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
@@ -43,13 +42,13 @@ import { clearWave, harvestWave } from "./runs";
 /** How many levels are walked. */
 const LEVELS = 3;
 
-/** 10 Hz: coarse, and the simulation is defined to be indifferent to it. */
-const CLOCK_MS = 100;
+/** 5 Hz: coarse, and the simulation is defined to be indifferent to it. */
+const HZ = 5;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(CLOCK_MS) });
+  h = await createHarness({ hz: HZ });
 });
 
 afterEach(() => {

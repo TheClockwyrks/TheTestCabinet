@@ -15,18 +15,23 @@
 //
 // EVERY TICK, BECAUSE THE GAP IS WHAT IS BEING LOOKED FOR. A stride that stepped
 // over the empty ticks between two visits would read a conformant build as
-// replacing a live saucer, so the sampling has to be exhaustive. Two minutes of
-// game time holds three arrivals at the cadence `specs/saucer.md` fixes — the
-// first at `18` s, then a `12`-second visit and a `25`-to-`35`-second gap for
-// each after it — which is why the span is two minutes and why fewer than two
-// visits is a scenario this check never reached rather than a verdict it can
-// give.
+// replacing a live saucer, so the sampling has to be exhaustive.
+//
+// THE FIRST DUE IS POSED SHORT, AND THE REST IS THE GAME'S OWN. `setSaucerDue`
+// sets the figure the gap draw decides (`specs/instrumentation.md`), so the first
+// visit is brought on a quarter of a second in rather than at `18` s; what the
+// item reads is what happens ONCE a visit is up, and the cadence after that
+// visit — its `12`-second stay and the `25`-to-`35`-second gap the game draws
+// when it leaves — is untouched. Fifty seconds of game time therefore holds two
+// arrivals on any conformant build, which is why the span is fifty seconds and
+// why fewer than two visits is a scenario this check never reached rather than a
+// verdict it can give.
 //
 // THE SWEEP IS ITS OWN LOOP RATHER THAN `harness.until`, because what it is
 // after is not the first sample a predicate holds on: it is every moment across
-// fourteen thousand ticks at which the reported id changed. The loop calls the
-// same `advance(1)` and the same `snapshot()` the harness's own sweep calls, in
-// the same order, and keeps only those moments.
+// six thousand ticks at which the reported id changed. The loop calls the same
+// `advance(1)` and the same `snapshot()` the harness's own sweep calls, in the
+// same order, and keeps only those moments.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual, fail } from "../assert";
@@ -36,19 +41,19 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { openSaucerGame } from "./cadence";
+import { SHORT_DUE, openSaucerGame } from "./cadence";
 
-/** The two minutes of game time the sequence is read over. */
-const SPAN_TICKS = ticksFor(120);
+/** The fifty seconds of game time the sequence is read over. */
+const SPAN_TICKS = ticksFor(50);
 
 /**
  * How many visits the span must hold for the reading to have been taken at all.
  *
- * Derived from the cadence, not from a run: the first arrival is due at `18` s
- * and the second no later than `18 + 12 + 35` = `65` s, so a conformant build
- * shows at least two inside two minutes. A build that shows fewer has failed
- * `first-arrives-at-18s` or `subsequent-gap`; here it means the sequence this
- * item reads was never produced.
+ * Derived from the cadence, not from a run: the first arrival is due at the
+ * posed `SHORT_DUE` and the second no later than `0.25 + 12 + 35` = `47.25` s,
+ * so a conformant build shows at least two inside fifty seconds. A build that
+ * shows fewer has failed `subsequent-gap` or ignored the posed due; here it
+ * means the sequence this item reads was never produced.
  */
 const VISITS_NEEDED = 2;
 
@@ -68,8 +73,8 @@ async function traceVisits(h: Harness, ticks: number): Promise<Change[]> {
   let held = read();
   changes.push({ tick: 0, id: held });
   // The sweep is undrawn: what it reads is one id per tick, and drawing the
-  // fourteen thousand pictures it would otherwise leave behind is most of what
-  // the check would cost. The ticks and the samples are unchanged.
+  // six thousand pictures it would otherwise leave behind is most of what the
+  // check would cost. The ticks and the samples are unchanged.
   await h.quiet(async () => {
     for (let tick = 1; tick <= ticks; tick += 1) {
       await h.advance(1);
@@ -95,6 +100,7 @@ afterEach(() => {
 
 it("never turns one live saucer straight into another", async () => {
   openSaucerGame(h);
+  h.debug.setSaucerDue(SHORT_DUE);
 
   const changes = await traceVisits(h, SPAN_TICKS);
   // One drawn tick after the sweep, so the still is the field the trace ended on
@@ -107,8 +113,8 @@ it("never turns one live saucer straight into another", async () => {
   assertGreaterThanOrEqual(
     visits.length,
     VISITS_NEEDED,
-    "the arrivals two minutes of game time holds at the cadence " +
-      "specs/saucer.md fixes",
+    "the arrivals fifty seconds of game time holds at the cadence " +
+      "specs/saucer.md fixes, the first due posed short",
   );
 
   for (let at = 1; at < changes.length; at += 1) {

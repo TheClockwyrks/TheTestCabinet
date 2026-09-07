@@ -15,12 +15,22 @@
 // A build whose spawner starts one while the previous is still up shows exactly
 // that, whichever of the two its single slot ends up holding.
 //
-// EVERY TICK, AND TWO MINUTES OF THEM. The changeover this hunts is one tick wide,
-// so this is the one point in this directory that does NOT march: its harness runs
-// at the default clock and every tick is a sample. Two minutes of game time is
-// long enough to hold three arrivals under the `18` s first delay and the
-// `25`–`35` s gaps after it, so the requirement is exercised across visits rather
-// than asserted over one.
+// A MARCHED FRAME IS SAMPLE ENOUGH. The watch reads the slot once a frame, and
+// its harness hands the game `MARCH_TICKS` (`8`) whole ticks a frame, a fifteenth
+// of a second of game time. That stride cannot hide what it hunts: a second visit
+// begun over a live one shows as one live id followed straight by another
+// however far apart the samples are, and a conformant build's clear stretch
+// between visits lasts `SAUCER_GAP_MIN` (`25` s) and more, which no stride of a
+// fifteenth of a second steps over.
+//
+// THE FIRST DUE IS POSED SHORT, AND THE REST IS THE GAME'S OWN. `setSaucerDue`
+// sets the figure the gap draw decides (`specs/instrumentation.md`), so the first
+// visit is brought on a quarter of a second in rather than at `18` s; what the
+// item reads is what happens ONCE a visit is up, and the cadence after that
+// visit — its `12`-second stay and the `25`–`35` s gap the game draws when it
+// leaves — is untouched. Fifty seconds of game time is therefore long enough to
+// hold two arrivals on any conformant build, so the requirement is exercised
+// across visits rather than asserted over one.
 //
 // AT LEAST TWO VISITS ARE REQUIRED. A run that produced one saucer, or none, could
 // not have shown an overlap and must not be reported as having ruled one out — so
@@ -28,7 +38,7 @@
 //
 // NOTHING ELSE IS LEFT RUNNING. The game is really opened, the wave loop is shut
 // and the opening wave taken off, and the ship's lethal contact test is shut, so
-// two minutes pass without a wave, a death or a game over interrupting the
+// fifty seconds pass without a wave, a death or a game over interrupting the
 // cadence. `saucerSpawning` is left on: the arrivals have to be the game's own.
 //
 // WHAT THIS DOES NOT DECIDE. When the arrivals come — `saucer/first-arrives-at-18s`
@@ -36,19 +46,23 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
+import { captureStill, type Harness } from "../harness";
 import {
-  captureStill,
-  createHarness,
-  ticksFor,
-  type Harness,
-} from "../harness";
-import { openQuietGame, watchVisits } from "./visits";
+  createMarchHarness,
+  marchFrames,
+  openQuietGame,
+  SHORT_DUE,
+  watchVisits,
+} from "./visits";
 
-/** The seed the game is opened on, so the same visits are watched every run. */
-const SEED = 1;
-
-/** How much game time the slot is watched for, in seconds. */
-const WATCH_SECONDS = 120;
+/**
+ * How much game time the slot is watched for, in seconds.
+ *
+ * The first arrival is due at the posed `SHORT_DUE` and the second no later than
+ * `0.25 + 12 + 35` = `47.25` s, so fifty holds two visits on any conformant
+ * build.
+ */
+const WATCH_SECONDS = 50;
 
 /**
  * The fewest visits the watch has to have seen for its verdict to mean anything.
@@ -62,24 +76,24 @@ const MIN_VISITS = 2;
 let h: Harness;
 
 beforeEach(async () => {
-  // The default clock: one simulation tick a frame, so every tick is a sample.
-  h = await createHarness();
+  h = await createMarchHarness();
 });
 
 afterEach(() => {
   h?.dispose();
 });
 
-it("never reports one live saucer id giving way to another without a clear tick between", async () => {
-  const opened = await openQuietGame(h, SEED);
+it("never reports one live saucer id giving way to another without a clear sample between", async () => {
+  const opened = await openQuietGame(h);
+  h.debug.setSaucerDue(SHORT_DUE);
 
   let filmed = false;
-  const watch = await watchVisits(h, ticksFor(WATCH_SECONDS) - opened, {
+  const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
     onArrival: async () => {
       if (filmed) return;
       filmed = true;
       // One visit on the field at a time: the first arrival. The watch runs
-      // undrawn, so one frame is drawn for this picture — the tick after the
+      // undrawn, so one frame is drawn for this picture — the frame after the
       // arrival the watch read.
       await h.paint();
       captureStill(h, "visit");
@@ -90,14 +104,14 @@ it("never reports one live saucer id giving way to another without a clear tick 
     watch.visits.length,
     MIN_VISITS,
     `saucer visits over ${WATCH_SECONDS} s of game time with the game's own ` +
-      "arrival running — fewer than two is a run with no changeover to check " +
-      "(specs/saucer.md, The cadence)",
+      "arrival running and the first due posed short — fewer than two is a run " +
+      "with no changeover to check (specs/saucer.md, The cadence)",
   );
   assertEqual(
     watch.overlaps.length,
     0,
-    "ticks on which a live saucer id gave way to another live one with no " +
-      "tick between reporting the slot clear — a saucer already on the field " +
+    "samples on which a live saucer id gave way to another live one with no " +
+      "sample between reporting the slot clear — a saucer already on the field " +
       `is never joined by a second (specs/saucer.md): ${watch.overlaps.join("; ")}`,
   );
 });

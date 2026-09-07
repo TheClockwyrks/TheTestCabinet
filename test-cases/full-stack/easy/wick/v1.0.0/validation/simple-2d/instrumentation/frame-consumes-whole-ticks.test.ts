@@ -1,7 +1,7 @@
 // instrumentation/frame-consumes-whole-ticks — on playing, one frame worth
 // 0.04 s consumes exactly 2 ticks.
 //
-// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "A deterministic
+// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "A render-free
 // core": "each frame's delta time joins the accumulator, every whole `TICK_DT`
 // in it is consumed as a tick, and the remainder waits for the next frame",
 // and "a clock of any other length poses a partial frame". 0.04 holds two

@@ -6,24 +6,23 @@
 // That the sequence is really ENDED by it — a fresh one starting from tier 1
 // afterwards — is cascade/cascade-restarts-fresh's point.
 //
-// The run being abandoned is a real one: five boards are genuinely solved first
-// (solvedCount 5, tier 2), so the board left behind is a board of a run in
-// progress. The solve is done by the case's own spec-derived solver through
-// `solveGenerated`; the boards being solvable at all is `boards-are-solvable`'s
-// point, so a sweep that did not solve fails here as an unmet precondition,
-// named as such.
+// The run being abandoned is one in progress: it is posed at five solves
+// through `setSolvedCount` and `setTier` (specs/instrumentation.md), so the
+// board left behind is a board of a run that has climbed. The board itself is
+// posed through `loadBoard`, a board like any other.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { GEO_3X3 } from "../fixtures";
+import { TIER_ADVANCE } from "../notation";
 import {
   captureStill,
   createHarness,
   fireAction,
-  solveGenerated,
+  loadBoard,
+  poseCascadeRun,
   type Harness,
 } from "../harness";
-
-const SEED = 2;
 
 let h: Harness;
 
@@ -36,20 +35,15 @@ afterEach(async () => {
 });
 
 it("back during playing returns to title with CASCADE highlighted", async () => {
-  const sweep = await solveGenerated(h, 5, SEED);
-  for (const [index, after] of sweep.afterSolve.entries()) {
-    assertEqual(
-      after.solved,
-      true,
-      `precondition: board ${index + 1} of the arranging sweep solved (see boards-are-solvable)`,
-    );
-  }
-
-  // Off the fifth solved screen onto a board of the run in progress.
-  await fireAction(h, "confirm");
+  await poseCascadeRun(h, TIER_ADVANCE);
+  await loadBoard(h, GEO_3X3);
   const playing = await h.snapshot();
   assertEqual(playing.screen, "playing", "precondition: a run in progress");
-  assertEqual(playing.solvedCount, 5, "precondition: five boards solved");
+  assertEqual(
+    playing.solvedCount,
+    TIER_ADVANCE,
+    "precondition: five boards solved",
+  );
 
   // back abandons the board.
   await fireAction(h, "back");

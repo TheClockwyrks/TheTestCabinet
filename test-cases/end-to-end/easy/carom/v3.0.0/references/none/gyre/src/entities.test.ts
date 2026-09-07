@@ -110,6 +110,7 @@ describe("the ball", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
   });
@@ -128,7 +129,7 @@ describe("the ball", () => {
 
     restBall(ball);
 
-    expect(ball).toEqual(createBall());
+    expect(ball).toEqual({ ...createBall(), serveSign: expect.any(Number) });
     // The array itself is kept: the renderer and the surface hold it for a frame.
     expect(ball.trail).toBe(trail);
   });

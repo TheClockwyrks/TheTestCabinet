@@ -43,12 +43,10 @@ files is committed as:
 
 ## Why every take is recorded
 
-Confirming a difficulty is what starts a run, and the game reseeds its press
-there on purpose, so that two runs started from the menu never draw the same
-rolls.
-A take driven the way a player drives one therefore cannot be played silently,
-judged, and then replayed identically under the recorder — the second playing is
-a different session. So the driver records every take as it plays it and judges
+The press rolls at random on every drop, so two runs started from the menu never
+draw the same rolls. A take driven the way a player drives one therefore cannot
+be played silently, judged, and then played again under the recorder — the second
+playing is a different session. So the driver records every take as it plays it and judges
 what it actually produced: waves cleared, recipe folds committed, plain folds,
 kills landed, structures standing, refinement reached, Grid Integrity held, and
 whether it ended on the settled beat a wave clear gives. The take that was judged

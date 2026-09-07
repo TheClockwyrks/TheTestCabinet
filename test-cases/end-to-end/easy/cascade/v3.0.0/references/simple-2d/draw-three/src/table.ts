@@ -74,7 +74,7 @@ export function clearTable(sim: Sim): void {
 }
 
 /**
- * Deal a fresh game from the seeded generator (`specs/deal.md`).
+ * Deal a fresh game from a deck shuffled uniformly at random (`specs/deal.md`).
  *
  * Twenty-eight cards go to the seven columns, one to the first and seven to the
  * last, each column's last-dealt card face-up; the remaining twenty-four form the
@@ -83,7 +83,7 @@ export function clearTable(sim: Sim): void {
  */
 export function dealFresh(sim: Sim): void {
   const deck = buildDeck();
-  sim.rngState = shuffleInPlace(deck, sim.rngState);
+  shuffleInPlace(deck);
 
   clearTable(sim);
 

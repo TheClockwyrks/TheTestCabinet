@@ -25,7 +25,7 @@ import { launchParkedBall } from "./sim";
 
 /** The reads and poses of the debug surface, minus the runtime's clock pair. */
 export interface KesslerStateOps {
-  reset(seed?: number): void;
+  reset(): void;
   snapshot(): Snapshot;
   menuItemRect(index: number): MenuItemRect | null;
   setScreen(name: ScreenName): void;
@@ -45,6 +45,8 @@ export interface KesslerStateOps {
   setRingSpeed(ring: number, degPerSec: number): void;
   clearPods(): void;
   spawnPod(kind: PodKind, x: number, y: number): void;
+  setNextPod(kind: PodKind | "none"): void;
+  drawPod(): PodKind | null;
   setEffectTicks(kind: "widen" | "narrow" | "pierce", ticks: number): void;
   setShield(active: boolean): void;
   setWaveAdvance(on: boolean): void;
@@ -85,8 +87,8 @@ function mustRingIndex(ring: unknown): number {
 /** Builds the state operations over `game`. */
 export function createStateOps(game: Game): KesslerStateOps {
   return {
-    reset(seed) {
-      game.reset(seed === undefined ? undefined : mustWhole("seed", seed, 0));
+    reset() {
+      game.reset();
     },
 
     snapshot() {
@@ -226,6 +228,17 @@ export function createStateOps(game: Game): KesslerStateOps {
         angleDeg: at.angleDeg,
         spawnTick: game.simTicks,
       });
+    },
+
+    setNextPod(kind) {
+      if (kind !== "none" && !POD_KINDS.includes(kind)) {
+        throw new Error(`setNextPod: unknown kind ${String(kind)}`);
+      }
+      game.nextPod = kind;
+    },
+
+    drawPod() {
+      return game.drawPod();
     },
 
     setEffectTicks(kind, ticks) {

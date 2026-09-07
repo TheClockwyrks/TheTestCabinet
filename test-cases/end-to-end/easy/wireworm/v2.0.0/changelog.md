@@ -59,7 +59,7 @@ build knows what it is held to.
 
 ## Every review point is decided by a validator
 
-The checklist grew from `77` points to `227` items, and every one of them names a
+The checklist grew from `77` points to `225` items, and every one of them names a
 Vitest suite under `validation/<engine>/`, the domains its failure lowers, and
 how far it lowers them. The `74` standalone browser scripts of `v1.0.0` are gone.
 Under `none` a suite drives the built site in headless Chromium through
@@ -244,7 +244,7 @@ asserts the rule `specs/foes.md` now states outright — at each
 by counting nine sign reversals of the reported `vx` over three seconds and
 reporting the distance swept each way, so a failure names a number. Stating the
 rule rather than leaving the re-pick to chance is the point: a check that assumed
-a random re-pick would fail a spec-honoring build on an unlucky seed, which is
+a random re-pick would fail a spec-honoring build on an unlucky draw, which is
 the flake this fix exists to remove rather than to move. **`instrumentation.entity-ids`**
 carries the other half of it: a foe is read by its `id` and its `kind`, never by
 its position in the roster.

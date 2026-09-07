@@ -1,8 +1,10 @@
 // rocks/recycle-re-enters-from-off-screen — the star puts the rock back at an edge.
 //
-// `specs/rocks.md`, Star recycling: a rock the star swallows "re-enters at a random
-// point on one of the four edges of the field, heading inward into the field, at a
-// fresh base drift speed". This item decides WHERE it comes back and nothing else:
+// `specs/rocks.md`, Star recycling: a rock the star swallows "re-enters at a point
+// on one of the four edges of the field, the edge drawn with probability `1/4` each
+// and the point drawn uniformly along the whole length of that edge, heading inward
+// into the field, at a fresh base drift speed". This item decides WHERE it comes
+// back and nothing else:
 // which way it is then pointed is `recycle-enters-moving-inward`'s item, how fast
 // it is going is `recycle-resets-speed`'s, that the field still holds it is
 // `recycle-keeps-the-count`'s, and what size it is is `recycle-keeps-the-size`'s.

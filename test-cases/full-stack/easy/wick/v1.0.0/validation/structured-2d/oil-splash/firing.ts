@@ -73,9 +73,8 @@ export function puddlesCreated(
 }
 
 /**
- * Pose an isolated run seeded with `seed` (the harness default when omitted),
- * hold Oil Splash at `level` armed to fire on the next tick, run that one
- * tick, and read what it left.
+ * Pose an isolated run, hold Oil Splash at `level` armed to fire on the next
+ * tick, run that one tick, and read what it left.
  *
  * `isolate` first, so the run holds nothing but Oil Splash: no enemy, no
  * other weapon (Taper removed), no passive, every driver switch off but the
@@ -86,10 +85,9 @@ export function puddlesCreated(
 export async function fireOilSplash(
   h: Harness,
   level: number,
-  seed?: number,
   center?: { x: number; y: number },
 ): Promise<Firing> {
-  isolate(h, seed === undefined ? {} : { seed });
+  isolate(h);
   if (center !== undefined) h.debug.setPlayerPosition(center.x, center.y);
   return fireFromPosed(h, level);
 }
@@ -115,8 +113,8 @@ export async function fireFromPosed(
  * Fire Oil Splash once more from the run `fireOilSplash` posed: its timer
  * posed back to `0` so the next tick is a firing, that one tick run, and the
  * puddles it created read back. `weaponFire` is still on from `armWeapon`,
- * and nothing else in the world is touched, so the run's generator carries on
- * from wherever the last firing left it.
+ * and nothing else in the world is touched, so its landing points are a fresh
+ * draw of the build's own.
  */
 export async function fireAgain(h: Harness, slot: number): Promise<Firing> {
   h.debug.setWeaponCooldown(slot, 0);

@@ -1,7 +1,7 @@
 // Wick — instrumentation/reset-stops-loops: with `music` and `hum` both
 // looping, `reset()` followed by one frame leaves neither cue looping.
 //
-// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `reset(options)`):
+// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `reset()`):
 // "Any looping cue stops on the next frame, which `step(1)` runs one of."
 // specs/ui.md — "The loops": "`music` is looping on every frame exactly when
 // `screen` is `playing`, `levelup`, `chest`, or `paused`" and "`hum` is looping

@@ -24,13 +24,17 @@
 // point runs out of patience, and even then it fails on the units it managed to
 // release rather than on the clock.
 //
-// THE CLOCK IS THIS CHECK'S OWN, at `30` Hz rather than the suite's `120`. The
-// drive covers minutes of game time, and `specs/waves.md` fixes that "an interval
-// of game time reaches the same state however it was divided into frames", so a
-// coarser division reaches the same release at a quarter of the frames. The step
-// is `1/30` of a second, eighteen frames inside one `WAVE_SPAWN_INTERVAL`, so the
-// cadence is still resolved many times over and no release can be lost between
-// two frames.
+// THE CLOCK IS THIS CHECK'S OWN, and coarser than the suite's `120` Hz. The drive
+// covers a minute and a quarter of game time on a floor filling to a hundred
+// units, and `specs/waves.md` fixes that "an interval of game time reaches the
+// same state however it was divided into frames", so a coarser division reaches
+// the same release for a fraction of the frames. A frame of a fifteenth of a
+// second is nine inside one `WAVE_SPAWN_INTERVAL`, so the cadence is resolved
+// nine times over and no release can be lost between two frames — and nothing
+// this point reads has a finer resolution than a frame, a unit being counted from
+// the roster it appears in rather than from the frame it appeared on. Nothing
+// here reads what was DRAWN either, so the drive keeps no log of the drawing
+// operations its frames make.
 //
 // EVERY RELEASED UNIT IS FROZEN WHERE IT ARRIVES. `setUnitMotion(id, false)` holds
 // a unit's locomotion "and nothing else" (`specs/instrumentation.md`), so the
@@ -56,13 +60,13 @@
 // and carries no tolerance.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { assertEqual, assertTrue } from "../assert";
 import {
   BUILD_PHASE_TIME,
   HUNDRED_UNITS,
   WAVE_SPAWN_INTERVAL,
 } from "../constants";
+import { ConstantClock } from "@clockwyrks/structured-2d";
 import {
   captureStill,
   createHarness,
@@ -74,18 +78,12 @@ import {
 /** The mode this point reads. */
 const MODE = "hundred";
 
-/**
- * This check's own clock, in frames per second.
- *
- * Coarser than the suite's `120` because the drive covers minutes of game time.
- * `1/30` of a second is eighteen frames inside one `WAVE_SPAWN_INTERVAL`, so the
- * release cadence is resolved many times over.
- */
-const CLOCK_HZ = 30;
+/** This check's own clock, in frames a second. */
+const RELEASE_HZ = 15;
 
 /** Whole frames of this check's clock covering `duration` seconds of game time. */
 function frames(duration: number): number {
-  return Math.round(duration * CLOCK_HZ);
+  return Math.ceil(duration * RELEASE_HZ);
 }
 
 /** The game time a release at the specified cadence takes, in seconds. */
@@ -118,7 +116,12 @@ const POLL = frames(0.25);
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(1000 / CLOCK_HZ) });
+  // Nothing here reads the drawing operations a frame made, so they are not
+  // recorded over the thousand-odd frames the release takes.
+  h = await createHarness({
+    clock: new ConstantClock(1000 / RELEASE_HZ),
+    recordDrawCalls: false,
+  });
 });
 
 afterEach(() => {

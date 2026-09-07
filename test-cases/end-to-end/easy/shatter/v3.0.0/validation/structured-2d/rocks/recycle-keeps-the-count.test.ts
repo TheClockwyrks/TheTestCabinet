@@ -35,7 +35,6 @@ import { assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
-  resetTo,
   startPlaying,
   ticksFor,
   type Harness,
@@ -44,9 +43,6 @@ import { dropOntoTheStar, slingIntoTheStar } from "./scenario";
 
 /** The rocks on the field: the one this check poses, before and after. */
 const ROCKS = 1;
-
-/** The seed the run is put on, so the star's draws are reproducible. */
-const SEED = 1;
 
 /** Ticks of the recycled rock coming in, run after the readings are taken. */
 const AFTERMATH_TICKS = ticksFor(0.5);
@@ -62,7 +58,6 @@ afterEach(() => {
 });
 
 it("holds the rock count across the tick the star takes a rock on", async () => {
-  resetTo(h, SEED);
   startPlaying(h);
   dropOntoTheStar(h, "medium");
 

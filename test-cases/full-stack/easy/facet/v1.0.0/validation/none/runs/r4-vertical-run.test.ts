@@ -100,7 +100,7 @@ function besideRun(cell: CellRef): boolean {
  * survivor falls to the lowest empty cell below it, keeping the column's order:
  * the gems above the run stand `MATCH_MIN` rows lower afterward, and the gems
  * below it stand where they stood. The cells holding no survivor afterward are
- * the top `MATCH_MIN` rows, which R9 refilled off the game's own generator, and
+ * the top `MATCH_MIN` rows, which R9 refilled by its draw, and
  * no check may assert what landed there.
  */
 const SETTLED: { from: CellRef; at: CellRef }[] = [];

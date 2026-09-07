@@ -1,35 +1,28 @@
-// pickups/drafts-drop — drafts drops over a seeded sweep of common kills.
+// pickups/drafts-drop — a common kill whose roll drops a draft leaves one draft
+// at its center, beside its gem, and nothing else.
 //
-// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll") gives both
-// kinds a non-zero probability: "Probability a common kill drops bread |
-// `BREAD_CHANCE` | `0.02`" and "Probability a common kill drops a draft |
-// `DRAFT_CHANCE` | `0.005`", drawn as "A first draw ... drops bread when it is
-// below `BREAD_CHANCE`. Only when it did not, a second draw drops a draft when
-// it is below `DRAFT_CHANCE`." Over `DROP_ROLL_KILLS` (`4000`) kills the
-// expected counts are `80` breads and `4000 × 0.98 × 0.005 = 19.6` drafts, so a
-// conformant build dropping none of either kind is beyond any tail worth
-// naming: the reading here is the weakest one the rule supports, that each kind
-// occurs at all, and it is the one a build that implemented only one of the two
-// kinds fails. The counted rates are `pickups/bread-rate` and
-// `pickups/draft-rate`.
+// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"): "only when
+// it dropped no bread it drops a draft with probability `DRAFT_CHANCE`, so a
+// kill drops one pickup or none. The pickup lands at the enemy's position
+// beside its gem." Which way the roll falls is posed:
+// specs/instrumentation.md ("Drawn outcomes"), `setNextDrop(kind)`: "The next
+// common enemy killed by a weapon while `drops` is on drops that pickup beside
+// its gem ... in place of its roll". So a moth killed under a posed `draft`
+// leaves exactly one gem and exactly one pickup, the pickup is a draft, and
+// both stand at the moth's center.
 //
-// WHY THE WORLD IS POSED AS IT IS. `sweepCommonKills` in `./stage` poses the
-// sample: an isolated night, every driver switch off and no slot held, so the
-// only draws the ticks make are the kills' own; `DROP_ROLL_KILLS` real kills of
-// a moth by a level-1 Ember bolt, each at its own point, every one far outside
-// the radii that attract or collect, so nothing a kill drops is taken off the
-// field before it is counted. The seed is `DEFAULT_SEED` (`1`), so the sample is
-// the same one every time this runs.
+// WHY THE WORLD IS POSED AS IT IS. As `pickups/bread-drops`: an isolated night
+// with `drops` alone, the moth `500` units out, and a real kill by a level-1
+// Ember bolt.
 //
-// THE TOLERANCE. None: a kind occurred in the sample or it did not.
-//
-// The other kind is `pickups/bread-drops`'s.
+// THE TOLERANCE. None on the counts and the kind; `POSITION_TOL` on the
+// centers, copies of the posed point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThanOrEqual } from "../assert";
-import { DROP_ROLL_KILLS } from "../constants";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { sweepCommonKills } from "./stage";
+import { assertEqual, assertLength, assertNear } from "../assert";
+import { POSITION_TOL } from "../constants";
+import { captureStill, createHarness, isolate, type Harness } from "../harness";
+import { killCommon, killPoint } from "./stage";
 
 let h: Harness;
 
@@ -41,14 +34,28 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("drops at least one draft over 4000 seeded common kills", async () => {
-  const sweep = await sweepCommonKills(h);
+it("leaves one draft beside the gem of a kill posed to drop a draft", async () => {
+  await isolate(h, { on: ["drops"] });
+  await h.debug.setNextDrop("draft");
+  const kill = await killCommon(h, "moth", killPoint(0));
   await captureStill(h, "drafts");
 
-  assertEqual(sweep.kills, DROP_ROLL_KILLS, "the kills the sample made");
-  assertGreaterThanOrEqual(
-    sweep.counts.draft,
-    1,
-    "the drafts dropped over the sample",
+  assertLength(kill.gems, 1, "the gems the kill dropped");
+  assertLength(kill.pickups, 1, "the pickups the kill dropped");
+  const [draft] = kill.pickups;
+  assertEqual(draft!.kind, "draft", "the kind of the pickup the kill dropped");
+  assertNear(
+    draft!.x,
+    kill.at.x,
+    POSITION_TOL,
+    "the draft's x, the moth's own",
   );
+  assertNear(
+    draft!.y,
+    kill.at.y,
+    POSITION_TOL,
+    "the draft's y, the moth's own",
+  );
+  assertNear(kill.gems[0]!.x, kill.at.x, POSITION_TOL, "the gem's x beside it");
+  assertNear(kill.gems[0]!.y, kill.at.y, POSITION_TOL, "the gem's y beside it");
 });

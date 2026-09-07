@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 it("the route short one lens reports complete false", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, TWO_ROUTES);
 
   traceCells(

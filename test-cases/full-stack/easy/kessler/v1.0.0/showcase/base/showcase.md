@@ -34,8 +34,7 @@ the five pod sprites and the ball's six-frame spin sheet are drawn by the build
 itself during the run, the destruction burst, the impact spark and the burn-up
 are particle systems it makes and plays, and its thirteen sound cues and two
 looping music beds are produced the same way — then wired into a game that still
-has to get its polar geometry, its bounce and its seeded pod stream exactly
-right.
+has to get its polar geometry, its bounce and its pod draw exactly right.
 
 The media here is one real run on the reference implementation: twenty-four
 seconds of the first wave, played from the title screen on the keyboard, with a

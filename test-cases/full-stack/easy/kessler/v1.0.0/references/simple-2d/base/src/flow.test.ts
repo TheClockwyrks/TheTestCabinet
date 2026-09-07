@@ -18,7 +18,8 @@ import {
   type KesslerState,
   type View,
 } from "./flow";
-import { pointAt } from "./polar";
+import { pointAt, radialAt } from "./polar";
+import { arcCenterDeg } from "./rings";
 
 const debug = createDebugApi();
 
@@ -321,7 +322,7 @@ describe("the accumulator", () => {
   });
 });
 
-describe("reset and determinism", () => {
+describe("reset", () => {
   it("restores the boot state and zero ticks", () => {
     const game = makeGame();
     game.act("confirm");
@@ -342,17 +343,33 @@ describe("reset and determinism", () => {
     expect(snap.paddle.angleDeg).toBe(90);
   });
 
-  it("reproduces identical snapshots from the same seed and drive", () => {
-    const run = () => {
-      const game = makeGame();
-      game.pose((s) => debug.reset(s, 123));
-      game.act("confirm");
-      game.act("launch");
-      game.held.right = true;
-      game.tick(600);
-      return game.snapshot();
-    };
-    expect(run()).toEqual(run());
+  it("clears a posed pod outcome", () => {
+    const game = makeGame();
+    game.pose((s) => debug.setNextPod(s, "shield"));
+    expect(game.snapshot().nextPod).toBe("shield");
+    game.pose((s) => debug.reset(s));
+    expect(game.snapshot().nextPod).toBeNull();
+  });
+
+  it("sheds a posed kind from the next destruction and clears the pose", () => {
+    const game = makeGame();
+    game.pose((s) => debug.setScreen(s, "playing"));
+    game.pose((s) => debug.setWaveAdvance(s, false));
+    game.pose((s) => debug.setNextPod(s, "pierce"));
+    game.pose((s) => debug.setEffectTicks(s, "pierce", 100));
+    game.pose((s) => debug.setRingAngle(s, 1, 0));
+    // A piercing ball fired inward at ring 1's slot 0 destroys it.
+    const theta = arcCenterDeg(RINGS[0], 0, 0);
+    const at = pointAt(332, theta);
+    const inward = radialAt(theta);
+    game.pose((s) =>
+      debug.spawnBall(s, at.x, at.y, -240 * inward.x, -240 * inward.y),
+    );
+    game.tick(6);
+    const snap = game.snapshot();
+    expect(snap.rings[0].targets.some((t) => t.slot === 0)).toBe(false);
+    expect(snap.pods.map((pod) => pod.kind)).toEqual(["pierce"]);
+    expect(snap.nextPod).toBeNull();
   });
 
   it("never writes into the state a transition was handed", () => {

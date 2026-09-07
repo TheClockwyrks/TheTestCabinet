@@ -13,13 +13,11 @@
 
 import { CueQueue } from "./cues";
 import {
-  DEFAULT_SEED,
   FOUNDATION_COUNT,
   STAGE_H,
   STAGE_W,
   TABLEAU_COLUMNS,
 } from "./constants";
-import { toSeed } from "./rng";
 import {
   clearTrailSurface,
   platformTrail,
@@ -83,8 +81,6 @@ export interface CascadeState {
   simTime: number;
   /** The game's copy of the runtime's mute bit, refreshed in every update. */
   muted: boolean;
-  /** The whole state of the generator the deal and the launches draw from. */
-  rngState: number;
   /** The id the next card or flyer this game creates will take. */
   nextId: number;
 
@@ -96,8 +92,6 @@ export interface CascadeState {
 
 /** How a fresh state is built. */
 export interface StateOptions {
-  /** The seed all of the game's randomness starts from. */
-  seed?: number;
   /** Where the painted layer comes from; defaults to the platform's. */
   trail?: TrailFactory;
 }
@@ -136,7 +130,6 @@ export function createState(options: StateOptions = {}): CascadeState {
     trailStamps: 0,
     simTime: 0,
     muted: false,
-    rngState: toSeed(options.seed ?? DEFAULT_SEED),
     nextId: 0,
     cues: new CueQueue(),
     trail: factory(STAGE_W, STAGE_H),
@@ -159,13 +152,13 @@ export function clearTrail(state: CascadeState): void {
 }
 
 /**
- * Restore every declared field to its title-screen value, and reseed.
+ * Restore every declared field to its title-screen value.
  *
  * `muted` is deliberately left exactly as it stands: muting is a player
  * preference the runtime owns, and a reset is not a reason to start making
  * noise again (`specs/instrumentation.md`).
  */
-export function resetState(state: CascadeState, seed: number): void {
+export function resetState(state: CascadeState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.titleIndex = 0;
@@ -186,5 +179,4 @@ export function resetState(state: CascadeState, seed: number): void {
   state.nextFoundation = 0;
   clearTrail(state);
   state.simTime = 0;
-  state.rngState = toSeed(seed);
 }

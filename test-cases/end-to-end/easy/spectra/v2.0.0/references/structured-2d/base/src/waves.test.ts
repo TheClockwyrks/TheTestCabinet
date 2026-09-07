@@ -16,7 +16,6 @@ import {
   slotY,
 } from "./constants";
 import { droneBand } from "./bands";
-import { seedState } from "./rng";
 import { newFrameEvents } from "./events";
 import { stepSwarm } from "./swarm";
 import { buildWave, waveCols, waveFluxes, wavePrisms, waveRows } from "./waves";
@@ -130,7 +129,7 @@ describe("a standard wave", () => {
     }
   });
 
-  it("draws each Flux's starting phase from the game's own generator", () => {
+  it("draws each Flux's starting clock inside its band window", () => {
     const state = liveWave();
     buildWave(state);
     const clocks = state.drones
@@ -158,31 +157,17 @@ describe("a standard wave", () => {
     expect(state.challengeHits).toBe(0);
   });
 
-  it("lays out which slot holds which kind from the game's own generator", () => {
-    const layout = (seed: number): string => {
+  it("fills the same block for a stage however the draw falls", () => {
+    const filled = (): string => {
       const state = liveWave();
-      state.rngState = seedState(seed);
+      state.stage = 4;
       buildWave(state);
       return JSON.stringify(
-        state.drones.map((drone) => [
-          drone.kind,
-          drone.slotX,
-          drone.slotY,
-          drone.band,
-        ]),
+        state.drones.map((drone) => [drone.slotX, drone.slotY]).sort(),
       );
     };
-    // The same seed lays out the same wave; two seeds lay out two different ones.
-    expect(layout(7)).toBe(layout(7));
-    expect(layout(8)).not.toBe(layout(7));
-  });
-
-  it("builds the same wave from the same seed", () => {
-    const a = liveWave();
-    const b = liveWave();
-    buildWave(a);
-    buildWave(b);
-    expect(a.drones).toEqual(b.drones);
+    // Which slot holds which kind is drawn; the rectangle they fill is not.
+    expect(filled()).toBe(filled());
   });
 });
 

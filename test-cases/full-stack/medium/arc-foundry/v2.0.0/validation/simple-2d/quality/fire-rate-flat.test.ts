@@ -13,10 +13,15 @@
 // structure changes between the two drives.
 //
 // Shots are counted as distinct projectile identities rather than as impacts,
-// because the requirement is about how often a structure FIRES. The samples are
-// taken every few frames, which is often enough that no projectile can appear and
-// be gone between two of them: a shot at this range is in flight for about
-// eighteen frames of the clock this suite drives.
+// because the requirement is about how often a structure FIRES. A sample is taken
+// on every frame of the rate below, which is under a quarter of a shot's flight
+// over this range, so no projectile can appear and be gone between two of them.
+//
+// THE CLOCK IS THE CHECK'S. What these frames are spent on is a SPAN — two
+// counted intervals — rather than a reading, and specs/instrumentation.md
+// guarantees that "an interval of simulation time reaches the same state however
+// it was divided into frames and whatever frame rate produced it", so the span is
+// covered at {@link COUNT_HZ} rather than at the project's default rate.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, assertLessThanOrEqual } from "../assert";
@@ -28,7 +33,6 @@ import {
   parkUnit,
   standComponent,
   structureById,
-  ticks,
 } from "../harness";
 import { componentFireRate } from "../constants";
 
@@ -41,8 +45,11 @@ const TARGET_RANGE = 80;
 /** The counted interval, in seconds of simulation time. */
 const SECONDS = 5;
 
-/** Frames between samples: well inside one shot's flight at this range. */
-const SAMPLE_FRAMES = 4;
+/** The rate the counted intervals are covered at. */
+const COUNT_HZ = 30;
+
+/** Frames between samples: every one, well inside a shot's flight at this range. */
+const SAMPLE_FRAMES = 1;
 
 /** The Emitter's cadence, flat across the ladder. */
 const FIRE_RATE = componentFireRate("emitter");
@@ -50,7 +57,7 @@ const FIRE_RATE = componentFireRate("emitter");
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: COUNT_HZ });
 });
 
 afterEach(() => {
@@ -71,7 +78,7 @@ async function countShots(harness: Harness, seconds: number): Promise<number> {
       for (const projectile of s.projectiles) seen.add(projectile.id);
       return false;
     },
-    { maxFrames: ticks(seconds), poll: SAMPLE_FRAMES },
+    { maxFrames: harness.ticks(seconds), poll: SAMPLE_FRAMES },
   );
   return seen.size;
 }

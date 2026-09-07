@@ -24,9 +24,9 @@ import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
-  DEFAULT_SEED,
   TURN_COUNT,
 } from "./constants";
+import { drawLaunchVx } from "./cascade";
 import { colorOf, type CardColor } from "./deck";
 import { openingState } from "./flow";
 import {
@@ -131,10 +131,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<CascadeState>,
-    options?: { seed?: number },
-  ): CascadeState;
+  reset(state: DeepReadonly<CascadeState>): CascadeState;
   snapshot(state: DeepReadonly<CascadeState>): CascadeSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows.
@@ -251,6 +248,8 @@ export interface CascadeDebugApi {
     seconds: number,
   ): CascadeState;
   clearTrail(state: DeepReadonly<CascadeState>): CascadeState;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(state: DeepReadonly<CascadeState>): number;
 }
 
 // ---- Reading the state ---------------------------------------------------
@@ -306,12 +305,8 @@ export function createDebugApi(): CascadeDebugApi {
   return {
     version: CASCADE_DEBUG_VERSION,
 
-    reset(state, options) {
-      return openingState(
-        options?.seed ?? DEFAULT_SEED,
-        state.muted,
-        state.trail,
-      );
+    reset(state) {
+      return openingState(state.muted, state.trail);
     },
 
     snapshot(state): CascadeSnapshot {
@@ -534,6 +529,11 @@ export function createDebugApi(): CascadeDebugApi {
     clearTrail(state) {
       state.trail?.clear();
       return { ...state, trailStamps: 0 };
+    },
+
+    /** The launch's own draw, taken without a launch. It reads no field. */
+    drawLaunchVx() {
+      return drawLaunchVx();
     },
   };
 }

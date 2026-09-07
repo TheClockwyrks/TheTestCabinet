@@ -48,9 +48,6 @@
 
 import type { DeepReadonly } from "ts-essentials";
 
-/** The seed `reset()` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
-
 /** The seven screens the game moves between. */
 export type Screen =
   | "title"
@@ -253,7 +250,7 @@ export interface SpectraDebugApi<S = unknown> {
   // ---- The core ----------------------------------------------------------
 
   /** Restore every declared field to its title-screen value. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): SpectraSnapshot;
   /**

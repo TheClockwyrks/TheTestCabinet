@@ -27,9 +27,6 @@
 
 import type { DeepReadonly } from "ts-essentials";
 
-/** The seed `reset` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
-
 /** The six screens, as specs/screens.md names them. The game opens on `title`. */
 export type Screen =
   | "title"
@@ -41,6 +38,9 @@ export type Screen =
 
 /** The five salvage pod kinds, as specs/pods.md names them. */
 export type PodKind = "widen" | "multiball" | "shield" | "pierce" | "narrow";
+
+/** What `setNextPod` poses for the next draw: a kind, `none`, or nothing. */
+export type PodPose = PodKind | "none" | null;
 
 /** The three timed effects `setEffectTicks` poses. */
 export type EffectKind = "widen" | "narrow" | "pierce";
@@ -71,6 +71,8 @@ export const REQUIRED_OPS = [
   "setRingSpeed",
   "clearPods",
   "spawnPod",
+  "setNextPod",
+  "drawPod",
   "setEffectTicks",
   "setShield",
   "setWaveAdvance",
@@ -87,7 +89,7 @@ export type OperationName = (typeof REQUIRED_OPS)[number];
  * current state and hand back, and which to run through `engine.apply`; the
  * surface's shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot", "menuItemRect"] as const;
+export const READINGS = ["snapshot", "menuItemRect", "drawPod"] as const;
 
 /**
  * The hit region `menuItemRect` reports, in the stage's logical units, with
@@ -146,13 +148,13 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
-  /** The seed the last `reset` laid the pod generator with. */
-  seed: number;
   /** Ticks left of the interstitial; counts down on `waveclear` alone. */
   interstitialTicks: number;
   /** The two driver switches. */
   waveAdvance: boolean;
   podSpawn: boolean;
+  /** The outcome `setNextPod` posed for the next draw; `null` once consumed. */
+  nextPod: PodPose;
   paddle: { angleDeg: number; spanDeg: number };
   balls: BallSnapshot[];
   rings: RingSnapshot[];
@@ -186,8 +188,8 @@ export interface KesslerSnapshot {
  * `spawnBall` at the cap, `parkBall` beside a parked ball).
  */
 export interface KesslerDebugApi<S = unknown> {
-  /** Restores the boot state; `seed` seeds the pod generator. */
-  reset(state: DeepReadonly<S>, seed?: number): S;
+  /** Restores the boot state, with no posed pod outcome. */
+  reset(state: DeepReadonly<S>): S;
   /** A pure reading of `state`. Poses nothing. */
   snapshot(state: DeepReadonly<S>): KesslerSnapshot;
   /**
@@ -246,8 +248,12 @@ export interface KesslerDebugApi<S = unknown> {
 
   /** Removes every falling pod. Nothing caught, nothing burned. */
   clearPods(state: DeepReadonly<S>): S;
-  /** Adds one pod of `kind` at `(x, y)`; the generator is not consumed. */
+  /** Adds one pod of `kind` at `(x, y)`; no draw is made. */
   spawnPod(state: DeepReadonly<S>, kind: PodKind, x: number, y: number): S;
+  /** Poses the next draw's outcome: a kind, or `none`; consumed by that draw. */
+  setNextPod(state: DeepReadonly<S>, kind: PodKind | "none"): S;
+  /** A reading that performs one pod draw alone and returns its outcome. */
+  drawPod(state: DeepReadonly<S>): PodKind | null;
 
   /** Sets a timed effect's timer; > 0 puts it in force, 0 ends it. */
   setEffectTicks(state: DeepReadonly<S>, kind: EffectKind, ticks: number): S;

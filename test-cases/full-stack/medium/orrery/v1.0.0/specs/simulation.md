@@ -23,7 +23,8 @@ Starting a run:
 
 Stopping a run, from the `back` action in any sim status, discards the motes
 and every runtime pose and returns to editing with the machine exactly as it
-was placed.
+was placed. The operations that drive a run from code are in
+`specs/instrumentation.md`.
 
 ## Cycles and the clock
 
@@ -37,7 +38,9 @@ from `0` to `1`. While the sim is running, an update advances the fraction by
 seconds and `SPEEDS` is `[1, 3, 10, 30]` cycles per second, indexed by the
 speed setting `0` to `3`; `DEFAULT_SPEED_INDEX` is `1`. The speed actions of
 `specs/controls.md` move the setting one step and stop at `0` and at `3`. A
-frame may complete several cycles; each runs in full, in order.
+frame may complete several cycles; each runs in full, in order. A cycle's
+outcome, collisions included, is computed from the machine's parts, their
+tapes, and the sample fractions.
 
 `sim.status` is one of `running`, `paused`, `faulted`, and `complete`. The
 fraction advances only while the status is `running`, so pausing holds it
@@ -211,13 +214,3 @@ when the run completes.
 Completing a challenge marks it solved, unlocks what its mode unlocks, and
 updates the challenge's records, as `specs/modes/campaign.md` and
 `specs/modes/extras.md` describe.
-
-## Determinism
-
-The simulation is a function of the machine and the elapsed simulated time.
-Cycle outcomes, collisions included, are computed from the machine's parts,
-tapes, and the sample fractions, and no rule of the simulation draws on
-randomness. The effects `specs/assets.md` fixes vary from one play to the
-next, and that variation reaches nothing the simulation or the debug surface
-reads. The full contract, and the operations that drive a run from code, are
-in `specs/instrumentation.md`.

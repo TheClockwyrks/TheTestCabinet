@@ -10,9 +10,13 @@
 // body on every roster — and then the whole list is read back. A build that resets
 // four of the fields and forgets the fifth fails on the fifth.
 //
-// AND WHY MUTE AND THE CLOCK ARE THE EXCEPTIONS. `specs/instrumentation.md` says `options.seed`
-// seeds the randomness and that "`muted` is left exactly as it stands; muting is
-// the runtime's". So the sound is turned off through the key `specs/controls.md`
+// THE POSED DRAWS ARE DECLARED FIELDS TOO. `specs/instrumentation.md` has `reset`
+// return every one of them to `null`, so each is posed before the reset and read
+// back empty after it, beside the rest of the declared state.
+//
+// AND WHY MUTE AND THE CLOCK ARE THE EXCEPTIONS. `specs/instrumentation.md` says
+// that "`muted` is left exactly as it stands; muting is the runtime's". So the
+// sound is turned off through the key `specs/controls.md`
 // binds — the way a player turns it off — before the reset, and it is still off
 // after it. The reading is taken a tick later as well as at once, because the
 // snapshot's `muted` is the game's copy of the RUNTIME's bit, refreshed in every
@@ -34,8 +38,10 @@
 // the clock held". Every check in this project opens with the clock held and resets
 // mid-scenario, so a build that re-armed the frame loop on `reset` would leave the
 // rest of the project drifting on the wall clock at whatever rate the machine
-// happened to render. The leg holds the clock, resets, and then reads the setting
-// back and gives the page a second of real time to prove nothing ran.
+// happened to render. The leg holds the clock, resets, and reads the setting back,
+// and then reads the field again to see that the reset itself ran nothing: the
+// declared state is the whole state, so the setting the snapshot reports is the
+// clock, and nothing here waits on real time to second-guess it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -73,8 +79,8 @@ const POSED_WAVE = 9;
 const POSED_BANNER = 1.2;
 /** The menu entry the run is dressed in. */
 const POSED_MENU_INDEX = 2;
-/** The real milliseconds the game is left alone after the reset, clock held. */
-const RESET_WALL_MS = 1000;
+/** How many times the reset field is reread to see that nothing moves it. */
+const REREADS = 5;
 /** Where the moving rock the clock leg poses is put. */
 const ROCK = { x: 260, y: 620, vx: 120, vy: -80 } as const;
 /** Where the ship is put, well away from the safe point the title returns it to. */
@@ -96,6 +102,11 @@ const POSED_COOLDOWN = 17;
  * conforming build's reading from the figure the document names.
  */
 const TITLE_DIGITS = 6;
+
+/** The posed draws the run is dressed in: none of them a value a fresh run holds. */
+const POSED_ROW = 333;
+const POSED_AIM = 0.05;
+const POSED_ROCK_SPEED = 95;
 
 let h: Harness;
 
@@ -133,11 +144,22 @@ it("puts every declared field back to its title value", async () => {
     gun: false,
     travel: false,
   });
+  await h.debug.setNextSaucerEdge("right");
+  await h.debug.setNextSaucerRow(POSED_ROW);
+  await h.debug.setNextSaucerAim(POSED_AIM);
+  await h.debug.setNextRockSpeed(POSED_ROCK_SPEED);
+  await h.debug.setNextRecycleEdge("top");
   await h.advance(1);
 
   await h.debug.reset();
   await captureStill(h, "reset");
   const s = await h.snapshot();
+
+  assertEqual(s.nextSaucerEdge, null, "reset clears the posed entry edge");
+  assertEqual(s.nextSaucerRow, null, "reset clears the posed entry row");
+  assertEqual(s.nextSaucerAim, null, "reset clears the posed aim error");
+  assertEqual(s.nextRockSpeed, null, "reset clears the posed rock speed");
+  assertEqual(s.nextRecycleEdge, null, "reset clears the posed re-entry edge");
 
   assertEqual(s.screen, "title", "reset restores the screen");
   assertEqual(
@@ -208,21 +230,18 @@ it("leaves the clock held exactly as it stands", async () => {
 
   await h.debug.reset();
 
-  assertEqual(
-    (await h.snapshot()).autoStep,
-    false,
-    "reset left the clock held",
-  );
-
-  // And the setting is not the whole claim: a build could report the setting back
-  // and still have re-armed its own loop. A second of real time with the page in
-  // front is what settles it, since nothing may advance while the clock is held.
   const held = await h.snapshot();
-  await h.page.bringToFront().catch(() => undefined);
-  await h.page.waitForTimeout(RESET_WALL_MS);
+  assertEqual(held.autoStep, false, "reset left the clock held");
+
+  // And the reset ran nothing of its own: the clock it returned to zero stays at
+  // zero across as many readings as anything cares to take, because a held clock
+  // moves only when `advance` says so.
+  for (let read = 0; read < REREADS; read += 1) {
+    await h.snapshot();
+  }
   assertEqual(
     (await h.snapshot()).simTime,
     held.simTime,
-    `nothing ran in ${RESET_WALL_MS}ms of wall time after the reset`,
+    `simTime after ${REREADS} further readings of the reset field, clock held`,
   );
 });

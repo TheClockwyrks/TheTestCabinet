@@ -45,8 +45,6 @@ export interface EvolvedPose {
 }
 
 export interface PoseOptions {
-  /** The seed `reset` lays the generator with. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /** The side the lamplighter faces. Defaults to the fresh run's `"right"`. */
   facing?: Facing;
 }
@@ -69,7 +67,7 @@ export function poseEvolved(
   id: EvolutionId,
   options: PoseOptions = {},
 ): EvolvedPose {
-  isolate(h, options.seed === undefined ? {} : { seed: options.seed });
+  isolate(h);
   if (options.facing !== undefined) h.debug.setFacing(options.facing);
   const slot = holdWeapon(h, id, 1);
   const posed = h.snapshot();

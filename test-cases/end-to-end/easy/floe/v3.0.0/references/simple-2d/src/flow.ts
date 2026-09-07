@@ -22,7 +22,6 @@ import {
   CLEAR_PAUSE,
   CUES,
   DEATH_PAUSE,
-  DEFAULT_SEED,
   ENDING_ITEMS,
   PAUSE_ITEMS,
   SCORE_BAY,
@@ -89,7 +88,6 @@ export function openingState(sprites: Sprites): FloeState {
 
     simTime: 0,
     muted: false,
-    rngState: DEFAULT_SEED,
 
     frameCarry: 0,
     animTime: 0,
@@ -105,7 +103,7 @@ export function openingState(sprites: Sprites): FloeState {
     sprites,
   };
   const sim = toSim(blank);
-  resetToTitle(sim, DEFAULT_SEED);
+  resetToTitle(sim);
   return sim;
 }
 
@@ -119,10 +117,10 @@ export function blankState(): FloeState {
  * (`specs/instrumentation.md`'s `reset`).
  *
  * `muted` is a player preference the runtime owns and is left exactly as it stands,
- * and the loaded art is left with it. Everything else, the generator included, is
- * put back, so a reset leaves the game indistinguishable from one freshly started.
+ * and the loaded art is left with it. Everything else is put back, so a reset
+ * leaves the game indistinguishable from one freshly started.
  */
-export function resetToTitle(sim: Sim, seed: number = DEFAULT_SEED): void {
+export function resetToTitle(sim: Sim): void {
   sim.screen = "title";
   sim.phase = "crossing";
   sim.phaseTimer = 0;
@@ -145,7 +143,6 @@ export function resetToTitle(sim: Sim, seed: number = DEFAULT_SEED): void {
   sim.frameCarry = 0;
   sim.animTime = 0;
   sim.nextId = 1;
-  sim.rngState = seed;
   sim.request = null;
   sim.pendingTap = null;
   sim.pointerDown = null;

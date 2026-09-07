@@ -7,8 +7,7 @@
 //   specs/ui.md (`chest`, the result table): "`level` | The item's icon and
 //   name, and `LEVEL_LABEL` with the level it became."
 //   specs/evolutions.md ("Opening a chest"): "2. Level. One held item below its
-//   max level ... is chosen uniformly at random from the game's seeded
-//   generator and rises by `1` ... The result is `{ kind: "level", item, level
+//   max level ... is chosen uniformly at random and rises by `1` ... The result is `{ kind: "level", item, level
 //   }`, with `level` the level it became", reached only when no held weapon is
 //   eligible to evolve.
 //   specs/progression.md ("Slots"): "A base weapon levels up to

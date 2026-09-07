@@ -27,11 +27,12 @@
 // wants a round posed writes the fields a round starts with, one operation at a
 // time.
 
-import { DEFAULT_SEED, FACET_DEBUG_VERSION } from "../constants";
+import { FACET_DEBUG_VERSION, GRID_COLS } from "../constants";
 import {
   cellX,
   cellY,
   inBounds,
+  kindForLetter,
   parseBoard,
   parseToken,
   withGem,
@@ -42,6 +43,7 @@ import { targetsFor } from "./targets";
 import {
   createInitialState,
   EMPTY_BOARD,
+  NO_REFILL,
   type Cell,
   type Cut,
   type FacetState,
@@ -104,7 +106,8 @@ export interface FacetSnapshot {
   bestMove: number;
   bestChain: number;
   legalSwap: boolean;
-  rngState: number;
+  /** The kinds posed for each column's refill, `GRID_COLS` entries. */
+  refillKinds: string[];
   pointer: { x: number; y: number; down: boolean; device: PointerDevice };
   armedTarget: string | null;
   targets: SnapshotTarget[];
@@ -170,7 +173,7 @@ export function snapshot(state: FacetState): FacetSnapshot {
     bestMove: state.bestMove,
     bestChain: state.bestChain,
     legalSwap: legalSwapExists(state.board),
-    rngState: state.rngState,
+    refillKinds: [...state.refillKinds],
     pointer: {
       x: state.pointer.x,
       y: state.pointer.y,
@@ -191,19 +194,12 @@ export function snapshot(state: FacetState): FacetSnapshot {
 }
 
 /**
- * Every declared field back at its title-screen value, with `rngState` seeded
- * from `options.seed` or `DEFAULT_SEED`. `muted` is deliberately carried over:
- * the runtime owns muting, and a reset is not a reason to start making noise
- * again.
+ * Every declared field back at its title-screen value. `muted` is deliberately
+ * carried over: the runtime owns muting, and a reset is not a reason to start
+ * making noise again.
  */
-export function reset(
-  state: FacetState,
-  options?: { seed?: number },
-): FacetState {
-  return {
-    ...createInitialState(options?.seed ?? DEFAULT_SEED),
-    muted: state.muted,
-  };
+export function reset(state: FacetState): FacetState {
+  return { ...createInitialState(), muted: state.muted };
 }
 
 /** The screen shown. Nothing else changes. */
@@ -237,11 +233,10 @@ export function loadBoard(
 /**
  * A fresh opening board dealt through the game's own code, so it holds no run
  * under R4, carries at least one legal swap, and comes in from above. Only the
- * board and the generator state it drew from change.
+ * board changes.
  */
 export function dealBoard(state: FacetState): FacetState {
-  const deal = dealOpeningBoard(state.rngState);
-  return { ...state, board: deal.board, rngState: deal.rngState };
+  return { ...state, board: dealOpeningBoard() };
 }
 
 /** No board in play. Nothing else changes. */
@@ -286,6 +281,36 @@ export function setGem(
     throw new Error(`Facet: (${col}, ${row}) is not a cell of the board`);
   }
   return { ...state, board: withGem(state.board, cell, parseToken(token)) };
+}
+
+/**
+ * What R9's refill deals into column `col` posed: the gem dealt into row `r`
+ * takes the kind `kinds[r]` names, and a row past the end of `kinds` draws.
+ * `kinds` is validated here, letter by letter, so a bad pose fails loudly
+ * rather than dealing a gem the rules cannot make sense of. The board and
+ * every other column's pose stand where they were.
+ */
+export function setRefillKinds(
+  state: FacetState,
+  col: number,
+  kinds: string,
+): FacetState {
+  if (!Number.isInteger(col) || col < 0 || col >= GRID_COLS) {
+    throw new Error(`Facet: ${col} is not a column of the board`);
+  }
+  for (const letter of kinds) {
+    if (kindForLetter(letter) === null) {
+      throw new Error(`Facet: "${letter}" in "${kinds}" names no kind`);
+    }
+  }
+  const refillKinds = [...state.refillKinds];
+  refillKinds[col] = kinds;
+  return { ...state, refillKinds };
+}
+
+/** No refill posed on any column, so every refill draws as R9 states. */
+export function clearRefillKinds(state: FacetState): FacetState {
+  return { ...state, refillKinds: NO_REFILL };
 }
 
 /** `score` set. Nothing else changes, and `levelScore` is its own figure. */

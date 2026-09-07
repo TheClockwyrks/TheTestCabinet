@@ -99,6 +99,8 @@ export interface Component extends StructureBase {
   damageDealt: number;
   /** The summed external aura on it, recomputed whenever the yard changes. */
   auraBonus: number;
+  /** The crit outcome `setNextCrit` armed for the next shot; `null` rolls the chance. */
+  armedCrit: boolean | null;
 }
 
 /** A rock placed this build phase, which has rolled a type and a quality. */
@@ -346,12 +348,6 @@ export interface FoundryWorld {
 
   // ---- Identity ----
   nextId: number;
-  /** The scrap-press generator's state: the type and quality rolls. */
-  pressRng: number;
-  /** The seed `reset` set, which `startRun` restores the press to. */
-  pressSeed: number;
-  /** The combat generator's state: the crit rolls. */
-  combatRng: number;
 
   // ---- The ground route, recomputed whenever the walls move ----
   mazePath: readonly Pt[];

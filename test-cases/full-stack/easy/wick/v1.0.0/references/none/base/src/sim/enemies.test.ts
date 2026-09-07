@@ -18,7 +18,7 @@ import { tick } from "./tick";
 
 /** A run with the director, the weapons, and the contact held still. */
 function playing(): { state: WickState; rng: Rng; cues: Set<Cue> } {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   state.switches.spawning = false;
@@ -26,7 +26,7 @@ function playing(): { state: WickState; rng: Rng; cues: Set<Cue> } {
   state.switches.despawning = false;
   state.switches.weaponFire = false;
   state.switches.enemyContact = false;
-  return { state, rng: new Rng(() => state), cues: new Set() };
+  return { state, rng: new Rng(), cues: new Set() };
 }
 
 function run(

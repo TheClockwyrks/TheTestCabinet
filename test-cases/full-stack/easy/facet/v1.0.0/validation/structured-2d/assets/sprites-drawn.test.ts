@@ -31,12 +31,12 @@
 // build asks for arrives is `assets/assets-load-page-relative`'s. Nothing here
 // reads a source, a size, a destination, or a color.
 //
-// WHY THE FRAME IS WAITED FOR RATHER THAN TAKEN AT ONCE. specs/assets.md has
-// every produced file loaded at run time, and nothing in the specification says a
-// build must hold its first frame until they arrive — a build that draws a
-// placeholder while its sprites decode is conformant. So the check drives frames
-// over a bounded stretch of real time and asks whether a frame of the playing
-// screen ever draws from an image, and it is the never that fails.
+// WHY ONE FRAME DECIDES IT. specs/assets.md makes the load part of
+// initialization: "the game has not initialized until every load it starts has
+// settled", and the debug surface every check drives through is reachable once
+// the game has initialized. So by the time a board can be posed at all the
+// sprites are in, and the frame that draws the posed board is the frame this
+// reads.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
@@ -53,10 +53,6 @@ import {
 
 /** The least a frame drawn from produced art can spend: one image draw. */
 const REQUIRED_IMAGE_DRAWS = 1;
-
-/** How long the produced sprites are given to arrive, and how often a frame asks. */
-const LOAD_BUDGET_MS = 5_000;
-const POLL_MS = 100;
 
 let h: Harness;
 
@@ -84,16 +80,8 @@ it("draws the board from images rather than from shapes alone", async () => {
   const posed = loadBoard(h, quietBoard());
   assertEqual(posed.screen, "playing", "the screen a posed board stands on");
 
-  // One frame at a time, until the produced files have had their chance.
-  let calls: DrawCall[] = await h.frameCalls();
-  for (
-    let waited = 0;
-    imageDraws(calls) < REQUIRED_IMAGE_DRAWS && waited < LOAD_BUDGET_MS;
-    waited += POLL_MS
-  ) {
-    await h.settle(POLL_MS);
-    calls = await h.frameCalls();
-  }
+  // The frame that draws the posed board, and the operations it issued.
+  const calls: DrawCall[] = await h.frameCalls();
   captureStill(h, "frame");
 
   assertGreaterThanOrEqual(

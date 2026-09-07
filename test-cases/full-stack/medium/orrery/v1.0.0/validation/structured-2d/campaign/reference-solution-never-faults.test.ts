@@ -59,8 +59,26 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** How many cycles of the budget one drive spends before the run is read. */
+/**
+ * How many cycles of the budget one drive spends before the run is read, and it
+ * spends them in ONE frame: "a frame may complete several cycles; each runs in
+ * full, in order" (`specs/simulation.md`), and "an interval of game time reaches
+ * the same state however it was divided into frames"
+ * (`specs/instrumentation.md`).
+ */
 const CHUNK = 20;
+
+/**
+ * How many cycles at the head of a recorded run take the watchable division.
+ *
+ * The recording opens on the machine moving rather than on a stop-motion of it,
+ * and the budget after them runs a whole chunk to the frame: "a frame may
+ * complete several cycles; each runs in full, in order" (`specs/simulation.md`),
+ * and "an interval of game time reaches the same state however it was divided
+ * into frames" (`specs/instrumentation.md`). A run no recording is taken of is
+ * driven a chunk to the frame throughout.
+ */
+const WATCHED_CYCLES = 2;
 
 /**
  * Drive the live run until it stops being `running`, or until the reference's
@@ -68,19 +86,25 @@ const CHUNK = 20;
  */
 async function faultsWithinTheBudget(
   h: Harness,
-  framesPerCycle: number,
+  watched: number,
 ): Promise<string[]> {
   const seen: string[] = [];
-  for (let spent = 0; spent <= CAMPAIGN_REFERENCE_CYCLES; spent += CHUNK) {
+  let spent = 0;
+  if (watched > 0) {
+    await advanceCycles(h, watched, watched * FRAMES_PER_CYCLE);
+    spent = watched;
+  }
+  for (;;) {
     const sim = (await h.snapshot()).sim;
     if (sim === null) return seen;
     if (sim.fault !== null) seen.push(sim.fault.kind);
     else if (sim.status === "faulted") seen.push("faulted");
     if (sim.status !== "running") return seen;
-    if (spent === CAMPAIGN_REFERENCE_CYCLES) return seen;
-    await advanceCycles(h, CHUNK, CHUNK * framesPerCycle);
+    if (spent >= CAMPAIGN_REFERENCE_CYCLES) return seen;
+    const run = Math.min(CHUNK, CAMPAIGN_REFERENCE_CYCLES - spent);
+    await advanceCycles(h, run, 1);
+    spent += run;
   }
-  return seen;
 }
 
 it("reaches completion without a fault on every challenge of the course", async () => {
@@ -106,9 +130,9 @@ it("reaches completion without a fault on every challenge of the course", async 
     const faults =
       index === 0
         ? await captureReplay(h, "clean-run", () =>
-            faultsWithinTheBudget(h, FRAMES_PER_CYCLE),
+            faultsWithinTheBudget(h, WATCHED_CYCLES),
           )
-        : await faultsWithinTheBudget(h, 1);
+        : await faultsWithinTheBudget(h, 0);
 
     const at = `campaign challenge ${index + 1}`;
     assertDeepEqual(

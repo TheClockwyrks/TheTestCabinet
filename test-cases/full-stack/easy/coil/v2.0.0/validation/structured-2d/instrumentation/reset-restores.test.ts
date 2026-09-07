@@ -11,8 +11,9 @@
 // WHAT THE OPENING STATE IS. specs/instrumentation.md lists it: the title screen
 // with `menuIndex` and `titleIndex` at 0, the score and the best score at 0, the multiplier at 1
 // with its window closed, `ticks` and `simTime` at 0, the starting chain of
-// specs/board.md facing right, an empty turn buffer, no live pellet, the mode's
-// own obstacle course back on the board, and all three driver switches on.
+// specs/board.md facing right, an empty turn buffer, no live pellet, no posed
+// pellet cell, the mode's own obstacle course back on the board, and all three
+// driver switches on.
 //
 // `muted` is deliberately NOT asserted: the same file holds it untouched by a
 // reset, because muting is a player preference rather than a value a round opens
@@ -77,12 +78,13 @@ it("restores every field the snapshot reports to its opening value", async () =>
   );
 
   // A thoroughly disturbed game: the chain moved and turned, a score and a best,
-  // a live combo at a raised multiplier, a pellet somewhere it was put, every
-  // switch off, and a screen that is not the title.
+  // a live combo at a raised multiplier, a pellet somewhere it was put, a spawn
+  // posed, every switch off, and a screen that is not the title.
   const disturbed = poseScene(h, {
     snake: chainFrom({ col: 20, row: 10 }, "up", 6),
     dir: "up",
     pellet: { col: 4, row: 3 },
+    nextPellet: { col: 24, row: 13 },
     score: 480,
     best: 1230,
     combo: 4,
@@ -120,6 +122,7 @@ it("restores every field the snapshot reports to its opening value", async () =>
   assertEqual(after.dir, START_DIR, "dir");
   assertDeepEqual(after.turns, [], "turns");
   assertNull(after.pellet, "pellet");
+  assertNull(after.nextPellet, "nextPellet");
   assertEqual(after.steering, true, "steering");
   assertEqual(after.travel, true, "travel");
   assertEqual(after.pelletRespawn, true, "pelletRespawn");

@@ -10,26 +10,22 @@
 // more.
 //
 // BOTH THE ODDS AND THE ROLLS. The panel's figure and the press's behaviour have
-// to agree, so the reported distribution is read AND a long run of rocks is
-// rolled, each dismantled so the next lands on the same footprint.
+// to agree, so the reported distribution is read AND a bounded sample of rolls is
+// drawn through `rollPress`, the operation `specs/instrumentation.md` carries for
+// performing the one draw alone.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual } from "../assert";
-import { REFINEMENT_ODDS, STAMPS_PER_LEVEL, TIERS } from "../constants";
+import { REFINEMENT_ODDS, TIERS } from "../constants";
 import {
   captureStill,
   createHarness,
-  lastStructure,
   openYard,
-  refillStamps,
   type Harness,
 } from "../harness";
 
-/** How many rocks are rolled. */
+/** How many rolls are drawn. */
 const ROLLS = 120;
-
-/** The footprint every rock is dropped on. */
-const AT = { col: 20, row: 8 };
 
 /** The scrap tier: the first rung of the quality ladder. */
 const SCRAP = TIERS[0];
@@ -56,19 +52,15 @@ it("reports the R0 odds and rolls Scrap every time", async () => {
   );
 
   for (let roll = 0; roll < ROLLS; roll += 1) {
-    if (roll % STAMPS_PER_LEVEL === 0) await refillStamps(h);
-    await h.debug.placeRock(AT.col, AT.row);
-    const candidate = lastStructure(await h.snapshot());
+    const { quality } = await h.debug.rollPress();
     assertEqual(
-      candidate.quality,
+      quality,
       SCRAP,
       `the quality of roll ${roll + 1} of ${ROLLS} at refinement 0, where the ` +
         `press rolls Scrap alone`,
     );
-    await h.debug.dismantle(candidate.id);
   }
 
-  await h.debug.placeRock(AT.col, AT.row);
   await h.advance(1);
   await captureStill(h, "scrap");
 });

@@ -18,10 +18,10 @@
 // in reach of both for the whole reading and nothing else on the yard can add a
 // point to either total.
 //
-// THE TEN SECONDS ARE THE SAMPLE; THE FRAMES THEY ARE CUT INTO ARE NOT. The
+// THE WINDOW IS THE SAMPLE; THE FRAMES IT IS CUT INTO ARE NOT. The
 // simulation is frame-division independent (`specs/controls.md`: "an interval of
 // simulation time reaches the same state however it was divided into frames"), so
-// the same ten seconds are driven at the COARSEST step this check may use. That
+// the same window is driven at the COARSEST step this check may use. That
 // step is bounded, and the bound is computed rather than guessed: a Capacitor's
 // shot is a projectile, and a projectile that stepped more than `2 *
 // PROJECTILE_HIT_R` between two frames could pass its target without ever coming
@@ -29,7 +29,6 @@
 // project's own transcription of `specs/components.md`, and the clock is the
 // coarsest whole step inside it.
 
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import { PROJECTILE_HIT_R, PROJECTILE_SPEED } from "../constants";
@@ -57,19 +56,19 @@ const TARGET = { x: 280, y: 300 };
  */
 const MAX_STEP_MS = (2 * PROJECTILE_HIT_R * 1000) / PROJECTILE_SPEED;
 
-/** The frame this check runs at: the coarsest whole `5` ms inside that bound. */
-const CLOCK_MS = Math.floor(MAX_STEP_MS / 5) * 5;
+/** The rate this check runs at: the coarsest whole `5` ms step inside that bound. */
+const WINDOW_HZ = 1000 / (Math.floor(MAX_STEP_MS / 5) * 5);
 
-/** Ten seconds: many cadences of both, and several burn durations. */
-const WINDOW_SECONDS = 10;
+/** Five seconds: many cadences of both, and two full burn durations. */
+const WINDOW_SECONDS = 5;
 
-/** Those ten seconds, in frames of this check's own clock. */
-const WINDOW = (WINDOW_SECONDS * 1000) / CLOCK_MS;
+/** That window, in frames of this check's own clock. */
+const WINDOW = WINDOW_SECONDS * WINDOW_HZ;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(CLOCK_MS) });
+  h = await createHarness({ hz: WINDOW_HZ });
 });
 
 afterEach(() => {

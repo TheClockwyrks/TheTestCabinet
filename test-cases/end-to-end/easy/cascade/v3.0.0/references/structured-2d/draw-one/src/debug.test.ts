@@ -8,6 +8,8 @@ import {
   DEAL_MODE,
   DEAL_MODE_LABEL,
   LAUNCH_INTERVAL,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   TURN_COUNT,
 } from "./constants";
 import {
@@ -59,6 +61,7 @@ const OPERATIONS = [
   "clearFlyers",
   "setLaunchClock",
   "clearTrail",
+  "drawLaunchVx",
 ] as const;
 
 describe("the surface", () => {
@@ -141,6 +144,20 @@ describe("poses read back", () => {
 
     debug.setLaunchClock(0.05);
     expect(debug.snapshot().launchClock).toBeCloseTo(0.05, 10);
+  });
+
+  it("draws a launch vx in range and changes nothing", () => {
+    const { debug } = h;
+    openTable(debug);
+    debug.setScreen("won");
+    debug.addCard("foundation", 0, "spades", 13, true);
+    const before = debug.snapshot();
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = debug.drawLaunchVx();
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
+    expect(debug.snapshot()).toEqual(before);
   });
 
   it("reports the pointer and the last press", () => {
@@ -292,10 +309,10 @@ describe("reset", () => {
     expect(shot.simTime).toBe(0);
   });
 
-  it("deals the same board from the same seed, and a different one from another", () => {
+  it("deals a full board afresh on every deal", () => {
     const { debug } = h;
-    const dealt = (seed: number): string => {
-      debug.reset({ seed });
+    const dealt = (): string => {
+      debug.reset();
       debug.deal();
       const shot = debug.snapshot();
       return JSON.stringify(
@@ -306,8 +323,8 @@ describe("reset", () => {
         ),
       );
     };
-    expect(dealt(7)).toBe(dealt(7));
-    expect(dealt(7)).not.toBe(dealt(8));
+    expect(JSON.parse(dealt()).flat()).toHaveLength(52);
+    expect(dealt()).not.toBe(dealt());
   });
 });
 
@@ -432,20 +449,18 @@ describe("the clock", () => {
     expect(coarse[1]).toBeCloseTo(fine[1], 6);
   });
 
-  it("replays the same cascade from the same seed", async () => {
+  it("draws each cascade's launch velocities afresh", async () => {
     const { debug } = h;
     const run = async (): Promise<string> => {
-      debug.reset({ seed: 5 });
+      debug.reset();
       debug.setScreen("playing");
       debug.setTrailPainting(false);
       poseNearlyWon(debug);
       debug.move("tableau", 0, 0, "foundation", 3);
       expect(debug.snapshot().launchClock).toBeCloseTo(LAUNCH_INTERVAL, 10);
       await h.seconds(1.5, 1 / 240);
-      return JSON.stringify(
-        debug.snapshot().flyers.map((f) => [f.x.toFixed(4), f.y.toFixed(4)]),
-      );
+      return JSON.stringify(debug.snapshot().flyers.map((f) => f.vx));
     };
-    expect(await run()).toBe(await run());
+    expect(await run()).not.toBe(await run());
   });
 });

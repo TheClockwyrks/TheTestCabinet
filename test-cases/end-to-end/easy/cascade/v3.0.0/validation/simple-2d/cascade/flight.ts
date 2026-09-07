@@ -23,7 +23,14 @@
 
 import { fail } from "../assert";
 import {
+  FOUNDATION_COUNT,
+  FOUNDATION_X,
+  LAUNCH_VY,
+  TOP_ROW_Y,
+} from "../constants";
+import {
   flyerOf,
+  framesFor,
   lastFlyer,
   openTable,
   parseCard,
@@ -80,6 +87,61 @@ export function poseFlyer(h: Harness, pose: FlyerPose): number {
   const card = parseCard(pose.card ?? "KS");
   h.debug.addFlyer(card.suit, card.rank, pose.x, pose.y, pose.vx, pose.vy);
   return lastFlyer(h.snapshot()).id;
+}
+
+/**
+ * Perform `count` launch draws through `drawLaunchVx` and hand back what each
+ * returned, in order.
+ *
+ * specs/instrumentation.md has `drawLaunchVx` perform exactly the draw a launch
+ * performs and nothing else, so this is the launch's `vx` read without the
+ * launch: no cascade is run, no card is launched, and nothing is in flight. A
+ * value that is not a finite number is failed here, because a check comparing
+ * it against a range would otherwise report the range.
+ */
+export function drawLaunches(h: Harness, count: number): number[] {
+  return Array.from({ length: count }, (_, index) => {
+    const value: unknown = h.debug.drawLaunchVx();
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      fail(
+        "drawLaunchVx() to return a finite number, the signed vx it drew " +
+          "(specs/instrumentation.md)",
+        `draw ${index + 1} returned ${JSON.stringify(value)}`,
+      );
+    }
+    return value;
+  });
+}
+
+/**
+ * How long the drawn speeds are flown for before the still is taken, in
+ * seconds. A picture's duration and nothing a check asserts: long enough for the
+ * fan of cards to show which way each drawn speed carries its card.
+ */
+const DRAWN_FLIGHT_SECONDS = 0.6;
+
+/**
+ * Put the drawn speeds on the table for the still: one card in flight per value,
+ * launched from the foundation anchors in turn at `LAUNCH_VY`, and flown for
+ * {@link DRAWN_FLIGHT_SECONDS} so the fan is visible.
+ *
+ * Arrangement for the picture alone. Nothing a `launch-vx` check asserts is read
+ * from the flyers this poses; the draws were read before it ran.
+ */
+export async function poseDrawnFlight(
+  h: Harness,
+  speeds: readonly number[],
+): Promise<void> {
+  openFlight(h);
+  for (const [index, vx] of speeds.entries()) {
+    poseFlyer(h, {
+      x: FOUNDATION_X[index % FOUNDATION_COUNT],
+      y: TOP_ROW_Y,
+      vx,
+      vy: LAUNCH_VY,
+    });
+  }
+  await h.advance(framesFor(DRAWN_FLIGHT_SECONDS));
 }
 
 /** A flyer either side of the frame a floor bounce happened on. */
@@ -186,9 +248,13 @@ function shrankFoundation(before: number[], after: number[]): number {
  * Step `frames` frames one at a time, reporting every card that entered the flight.
  *
  * One frame at a time because a launch's velocity is what the launch gave it: read a
- * few frames later, `vy` has been through gravity. The frames are the suite's own
- * (1/240 s), which is far finer than the launch interval specs/victory.md fixes, so
- * a frame carries at most one launch and each is reported on its own.
+ * few frames later, `vy` has been through gravity. Which clock those frames come off
+ * is the caller's: the checks that read a launch VELOCITY step the suite's own
+ * (1/240 s), `launch-cadence` steps the cadence clock (1/40 s), and
+ * `launch-takes-top-card`, which reads only which card left which foundation, steps
+ * the run-out clock. All three are finer than the launch interval specs/victory.md
+ * fixes, so a frame carries at most one launch whichever it is and each is reported
+ * on its own.
  *
  * `stop` ends the sweep early when it has seen everything the check asked for.
  */

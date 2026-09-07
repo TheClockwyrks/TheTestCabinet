@@ -1,13 +1,12 @@
 // The debug and automation surface (specs/instrumentation.md): that every
 // operation is there, that a pose arranges the hall without deciding an outcome,
-// that an argument outside its range is clamped rather than refused, and that the
-// same seed with the same calls reaches the same state every time.
+// that an argument outside its range is clamped rather than refused, and that a
+// posed emission charge is what the inlet emits next.
 
 import { describe, expect, it } from "vitest";
 import {
   CELLS,
   CHARGE_IDS,
-  DEFAULT_SEED,
   LEVELS,
   LEVEL_COUNT,
   MACHINERY_DURATIONS,
@@ -19,12 +18,12 @@ import {
 } from "./constants";
 import type { VoluteDebug, VoluteSnapshot } from "./debug";
 import {
-  createHarness,
   current,
   isolate,
   openLevel,
   poseTrain,
   useHarness,
+  type Harness,
 } from "./harness";
 
 useHarness();
@@ -43,6 +42,7 @@ const OPERATIONS: readonly (keyof VoluteDebug)[] = [
   "clearTrain",
   "setLoaded",
   "setQueued",
+  "setNextEmitted",
   "setAim",
   "fire",
   "setPressure",
@@ -86,7 +86,7 @@ describe("the surface", () => {
       "machinery",
       "muted",
       "simTime",
-      "rngState",
+      "nextEmitted",
     ];
     for (const shot of [h.snapshot()]) {
       for (const field of fields) expect(shot).toHaveProperty(field);
@@ -276,7 +276,7 @@ describe("reset", () => {
     expect(shot.interlude).toBe(0);
     expect(shot.injector.aim).toBe(270);
     expect(shot.simTime).toBeCloseTo(1 / 60, 6);
-    expect(shot.rngState).toBe(DEFAULT_SEED);
+    expect(shot.nextEmitted).toBeNull();
   });
 
   it("leaves the mute bit alone, since the runtime owns it", async () => {
@@ -291,49 +291,99 @@ describe("reset", () => {
     expect(h.snapshot().muted).toBe(true);
   });
 
-  it("seeds the generator from the seed it is given", async () => {
+  it("clears a posed emission charge", async () => {
     const h = current();
-    h.debug.reset({ seed: 7 });
+    h.debug.setNextEmitted("garnet");
+    h.debug.reset();
     await h.engine.advance(1);
-    expect(h.snapshot().rngState).toBe(7);
+    expect(h.snapshot().nextEmitted).toBeNull();
   });
 });
 
-describe("determinism", () => {
-  /** The train and the injector a seeded run reaches after a fixed drive. */
-  async function drive(seed: number): Promise<VoluteSnapshot> {
-    const h = await createHarness();
-    try {
-      h.debug.reset({ seed });
-      await h.engine.advance(1);
-      h.debug.setScore(0);
-      h.debug.setCells(CELLS);
-      h.debug.startLevel(1);
-      await h.engine.advance(1);
-      h.debug.setAim(300);
-      h.debug.fire();
-      await h.engine.advance(240);
-      return h.snapshot();
-    } finally {
-      h.dispose();
-    }
+describe("setNextEmitted", () => {
+  /** A level-5 hall carrying halide alone, with the inlet open and cores to emit. */
+  async function halideHall(): Promise<Harness> {
+    const h = current();
+    await isolate(h, 5);
+    h.debug.setQuotaRemaining(5);
+    h.debug.setEmission(true);
+    poseTrain(h, [
+      [356, "halide", null],
+      [328, "halide", null],
+      [300, "halide", null],
+    ]);
+    return h;
   }
 
-  it("reaches the same state from the same seed and the same calls", async () => {
-    const first = await drive(11);
-    const second = await drive(11);
-    expect(second.train).toEqual(first.train);
-    expect(second.injector).toEqual(first.injector);
-    expect(second.score).toBe(first.score);
-    expect(second.rngState).toBe(first.rngState);
+  /** The core standing at the inlet: the tail, since the train is head first. */
+  function tail(shot: VoluteSnapshot): VoluteSnapshot["train"][number] {
+    return shot.train[shot.train.length - 1];
+  }
+
+  it("poses the charge the inlet emits next, and the emission consumes it", async () => {
+    const h = await halideHall();
+    h.debug.setNextEmitted("garnet");
+    expect(h.snapshot().nextEmitted).toBe("garnet");
+    await h.engine.advance(1);
+    const shot = h.snapshot();
+    expect(tail(shot).charge).toBe("garnet");
+    expect(shot.nextEmitted).toBeNull();
   });
 
-  it("reaches a different opening train from a different seed", async () => {
-    const first = await drive(11);
-    const other = await drive(12);
-    expect(other.train.map((core) => core.charge)).not.toEqual(
-      first.train.map((core) => core.charge),
-    );
+  it("clears the pose on null, so the inlet draws from the channel again", async () => {
+    const h = await halideHall();
+    h.debug.setNextEmitted("garnet");
+    h.debug.setNextEmitted(null);
+    expect(h.snapshot().nextEmitted).toBeNull();
+    await h.engine.advance(1);
+    expect(tail(h.snapshot()).charge).toBe("halide");
+  });
+
+  it("takes a charge outside the five as no pose", async () => {
+    const h = await halideHall();
+    h.debug.setNextEmitted("garnet");
+    h.debug.setNextEmitted("quartz");
+    expect(h.snapshot().nextEmitted).toBeNull();
+  });
+
+  it("replaces a standing pose with the later call", async () => {
+    const h = await halideHall();
+    h.debug.setNextEmitted("garnet");
+    h.debug.setNextEmitted("cobalt");
+    await h.engine.advance(1);
+    expect(tail(h.snapshot()).charge).toBe("cobalt");
+  });
+
+  it("waits behind a held inlet", async () => {
+    const h = await halideHall();
+    h.debug.setEmission(false);
+    h.debug.setNextEmitted("garnet");
+    await h.engine.advance(5);
+    expect(h.snapshot().train).toHaveLength(3);
+    expect(h.snapshot().nextEmitted).toBe("garnet");
+    h.debug.setEmission(true);
+    await h.engine.advance(1);
+    expect(tail(h.snapshot()).charge).toBe("garnet");
+  });
+
+  it("stands across a level opening", async () => {
+    const h = await halideHall();
+    h.debug.setEmission(false);
+    h.debug.setNextEmitted("garnet");
+    await openLevel(h, 2);
+    expect(h.snapshot().nextEmitted).toBe("garnet");
+  });
+
+  it("leaves the mark cadence where the quota puts it", async () => {
+    const h = current();
+    await isolate(h, 1);
+    h.debug.setQuotaRemaining(LEVELS[0].quota - 11);
+    h.debug.setEmission(true);
+    h.debug.setNextEmitted("sulfur");
+    await h.engine.advance(1);
+    const placed = tail(h.snapshot());
+    expect(placed.charge).toBe("sulfur");
+    expect(placed.mark).toBe("choke");
   });
 });
 

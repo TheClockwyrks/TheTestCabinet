@@ -13,21 +13,21 @@
 // reference the driver is staged into.
 //
 // EVERY OUTCOME ON SCREEN IS THE GAME'S. Two debug operations are called and no
-// others: `reset({ seed })`, which chooses the seed the pellet generator is
-// laid with and is how a take is auditioned at all, and `snapshot()`, a
-// reading that changes nothing. Nothing is placed, scored, grown, or steered
-// through the surface — the snake turns because an arrow key was struck, every
-// pellet is where the round's own generator put it, every point is the eat's,
-// and the multiplier is whatever the window the game ran left standing.
-// Arranging the input is authoring; posing the outcome would be fabrication.
+// others: `reset()`, which opens a fresh session for each take, and
+// `snapshot()`, a reading that changes nothing. Nothing is placed, scored,
+// grown, or steered through the surface — the snake turns because an arrow key
+// was struck, every pellet is where the round's own draw put it, every point is
+// the eat's, and the multiplier is whatever the window the game ran left
+// standing. Arranging the input is authoring; posing the outcome would be
+// fabrication.
 //
-// AUDITIONING. A seed fixes the whole round, so a take could in principle be
-// played silently and replayed identically under the recorder. It is recorded
-// as it is played anyway: the take that was judged is then provably the take
-// that was committed, and re-playing a take is the expensive half. The judge
-// scores what makes a watchable clip of THIS game — pellets eaten, the
-// multiplier's peak, how many eats landed with it at that peak, whether it was
-// ever lost and rebuilt, and a clean ending on the settled beat an eat gives.
+// AUDITIONING. Every take is a round the game draws for itself, so no take can
+// be played again: each is recorded as it is played, judged from what it
+// produced, and the best recording is the one kept. The take that was judged is
+// then provably the take that was committed. The judge scores what makes a
+// watchable clip of THIS game — pellets eaten, the multiplier's peak, how many
+// eats landed with it at that peak, whether it was ever lost and rebuilt, and a
+// clean ending on the settled beat an eat gives.
 //
 // Run from the staged reference workspace root:
 //   TCAB_VALIDATION_MEDIA_DIR=<out> TCAB_SHOWCASE_MAX_REPLAY_FRAMES=1900 \
@@ -235,7 +235,6 @@ function steer(snapshot: CoilSnapshot): Dir | null {
 /** What a take left behind, and what the judge reads it by. */
 interface Take {
   frames: number;
-  seed: number;
   eats: number;
   score: number;
   length: number;
@@ -313,10 +312,10 @@ class Session {
   }
 
   /** Play the round out, and report what it produced. */
-  async play(seed: number): Promise<Take> {
-    // Choosing the seed is choosing the session; nothing else here touches the
-    // surface but `snapshot()`.
-    this.h.debug.reset({ seed });
+  async play(): Promise<Take> {
+    // A fresh session for the take; nothing else here touches the surface but
+    // `snapshot()`.
+    this.h.debug.reset();
     await this.run(TITLE_HOLD);
     await this.press(CONFIRM_KEY);
 
@@ -365,7 +364,6 @@ class Session {
     const ended = this.h.snapshot();
     return {
       frames: this.spent,
-      seed,
       eats: this.eats,
       score: ended.score,
       length: ended.snake.length,
@@ -409,27 +407,25 @@ it("records round clips", async () => {
   // the input edges the last take left armed, and whatever the last render left
   // on the canvas.
   const takes = Number(process.env.TCAB_SHOWCASE_TAKES ?? "8");
-  const firstSeed = Number(process.env.TCAB_SHOWCASE_FIRST_SEED ?? "1");
 
-  const runTake = async (label: string, seed: number): Promise<Take> => {
+  const runTake = async (label: string): Promise<Take> => {
     const h = await createHarness();
     try {
       await h.advance(1);
       const session = new Session(h, label);
-      return await captureReplay(h, label, () => session.play(seed));
+      return await captureReplay(h, label, () => session.play());
     } finally {
       h.dispose();
     }
   };
 
   let best: { label: string; score: number } | null = null;
-  for (let take = 0; take < takes; take += 1) {
-    const seed = firstSeed + take;
-    const label = `take-${String(seed).padStart(2, "0")}`;
-    const played = await runTake(label, seed);
+  for (let take = 1; take <= takes; take += 1) {
+    const label = `take-${String(take).padStart(2, "0")}`;
+    const played = await runTake(label);
     const score = judge(played);
     console.log(
-      `${label}: seed ${played.seed}, ${played.eats} eaten, ` +
+      `${label}: ${played.eats} eaten, ` +
         `${played.score} points, length ${played.length}, ` +
         `peak x${played.peakCombo} over ${played.eatsAtPeak} eats, ` +
         `${played.lapses} lapses, ${(played.frames / FRAME_HZ).toFixed(1)}s, ` +

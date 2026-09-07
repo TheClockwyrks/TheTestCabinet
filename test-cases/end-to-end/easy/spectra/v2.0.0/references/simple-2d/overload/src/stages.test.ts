@@ -35,7 +35,7 @@ let h: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
-  h.pose((s, d) => d.reset(s, { seed: 4 }));
+  h.pose((s, d) => d.reset(s));
 });
 
 afterEach(() => {

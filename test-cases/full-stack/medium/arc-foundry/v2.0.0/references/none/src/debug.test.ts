@@ -69,9 +69,9 @@ describe("the surface", () => {
     api.reset();
   });
 
-  it("is installed under the case's own global, at version 4", () => {
+  it("is installed under the case's own global, at version 5", () => {
     expect(api).toBeDefined();
-    expect(api.version).toBe(4);
+    expect(api.version).toBe(5);
   });
 
   it("runs the frames advance asks for, each worth its share of the span", () => {

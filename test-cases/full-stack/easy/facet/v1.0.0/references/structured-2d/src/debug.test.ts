@@ -7,7 +7,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHarness, type Harness } from "./harness";
 import {
-  DEFAULT_SEED,
   GRID_COLS,
   GRID_ROWS,
   LEVEL_TARGET_STEP,
@@ -127,7 +126,7 @@ describe("version and snapshot", () => {
       bestMove: 0,
       bestChain: 0,
       legalSwap: false,
-      rngState: DEFAULT_SEED,
+      refillKinds: ["", "", "", "", "", "", "", ""],
       pointer: { x: 0, y: 0, down: false, device: "mouse" },
       armedTarget: null,
       muted: false,
@@ -224,26 +223,42 @@ describe("reset", () => {
     expect(shot.swapTimer).toBe(0);
     expect(shot.stepTimer).toBe(0);
     expect(shot.simTime).toBe(0);
-    expect(shot.rngState).toBe(DEFAULT_SEED);
+    expect(shot.refillKinds).toEqual(["", "", "", "", "", "", "", ""]);
   });
 
-  it("seeds the generator, and leaves the mute bit alone", () => {
+  it("leaves the mute bit alone", () => {
     harness.engine.world.audio.setMuted(true);
-    harness.debug.reset({ seed: 42 });
-    expect(harness.debug.snapshot().rngState).toBe(42);
+    harness.debug.reset();
     expect(harness.engine.world.audio.muted()).toBe(true);
   });
 
-  it("makes a round from a known deal reproducible", () => {
-    harness.debug.reset({ seed: 9 });
-    startRound();
-    const first = harness.debug.snapshot().board.cells.map((c) => c.kind);
-
-    harness.debug.reset({ seed: 9 });
-    startRound();
-    expect(harness.debug.snapshot().board.cells.map((c) => c.kind)).toEqual(
-      first,
-    );
+  it("poses one column's refill, reports it, and clears every pose", () => {
+    harness.debug.setRefillKinds(1, "RA");
+    harness.debug.setRefillKinds(6, "J");
+    expect(harness.debug.snapshot().refillKinds).toEqual([
+      "",
+      "RA",
+      "",
+      "",
+      "",
+      "",
+      "J",
+      "",
+    ]);
+    harness.debug.clearRefillKinds();
+    expect(harness.debug.snapshot().refillKinds).toEqual([
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+    harness.debug.setRefillKinds(2, "S");
+    harness.debug.reset();
+    expect(harness.debug.snapshot().refillKinds[2]).toBe("");
   });
 });
 

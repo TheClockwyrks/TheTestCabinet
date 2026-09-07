@@ -47,15 +47,16 @@ Whatever its shape, the state carries the following.
   respawn's worm entry is running. Both are on when a run begins.
 - The clocks the level's own spawners keep: the glitch's arrival interval, the
   corruptor's arrival interval, and the dropper's sparse-field check.
+- The outcomes the debug surface has posed for the level's draws: the edge the
+  next worm enters at, and the tile the next glitch, the next dropper, and the
+  next corruptor enter on, each empty until posed and empty again once the entry
+  it decided has consumed it.
 
 ## The rest
 
 - The simulation time, in seconds, which every update adds its delta to whatever
   the screen.
 - Whether sound is muted, refreshed from the runtime's mute bit in every update.
-- The state of the seeded random generator, which the starting scatter, the
-  foes' arrival intervals and entry positions, the edge a worm enters at, and the
-  arcs' drawn shapes are all drawn from.
 - Whatever the game needs to hand a fresh id to the next worm, foe, or bolt it
   creates, so no two entities live at one moment share an id.
 
@@ -76,6 +77,8 @@ export type Screen =
 export type Phase = "banner" | "active" | "respawn";
 
 export type FoeKind = "glitch" | "dropper" | "corruptor";
+
+export type Edge = "left" | "right";
 
 export interface Tile {
   readonly c: number;
@@ -156,11 +159,14 @@ export interface WirewormState {
   readonly glitchTimer: number;
   readonly corruptorTimer: number;
   readonly dropperTimer: number;
+  readonly nextWormEntry: Edge | null;
+  readonly nextGlitchEntry: Tile | null;
+  readonly nextDropperEntry: Tile | null;
+  readonly nextCorruptorEntry: Tile | null;
 
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 }
 ```
 {{else}}
@@ -178,7 +184,7 @@ single level, the game never opens another, and every screen is a value of
 framework's states are live objects: a tick writes the fields it advances in
 place, and each field initializer below is that field's title-screen value, the
 same value the debug surface's `reset` restores. `GameState` comes from the
-engine's package, and `START_LIVES` and `DEFAULT_SEED` from `src/constants.ts`.
+engine's package, and `START_LIVES` from `src/constants.ts`.
 
 ```ts
 export type Screen =
@@ -187,6 +193,8 @@ export type Screen =
 export type Phase = "banner" | "active" | "respawn";
 
 export type FoeKind = "glitch" | "dropper" | "corruptor";
+
+export type Edge = "left" | "right";
 
 export interface Tile {
   c: number;
@@ -267,11 +275,14 @@ export class WirewormState extends GameState {
   glitchTimer = 0;
   corruptorTimer = 0;
   dropperTimer = 0;
+  nextWormEntry: Edge | null = null;
+  nextGlitchEntry: Tile | null = null;
+  nextDropperEntry: Tile | null = null;
+  nextCorruptorEntry: Tile | null = null;
 
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 }
 ```
 {{/if}}
@@ -359,6 +370,12 @@ One foe on the board.
   the debug surface poses.
 - `glitchTimer`, `corruptorTimer`, `dropperTimer` — the clocks those spawners
   keep, as `specs/foes.md` describes them.
+- `nextWormEntry` — the edge the debug surface posed for the next worm the level
+  or the respawn brings in, and `null` while none is posed.
+- `nextGlitchEntry`, `nextDropperEntry`, `nextCorruptorEntry` — the tile the
+  debug surface posed for the next foe of that kind the level brings in, and
+  `null` while none is posed. The entry that uses a posed value sets it back to
+  `null`.
 
 ## The rest
 
@@ -369,9 +386,6 @@ One foe on the board.
 - `muted` — the game's readable copy of the runtime's mute bit, refreshed in
   every update. The runtime owns muting, and this field is what the debug surface
   reports.
-- `rngState` — the state of the game's seeded random generator. The starting
-  scatter, the foes' arrival intervals and entry positions, the edge a worm enters
-  at, and the drawn shape of an arc are all drawn from it.
 
 The level's step interval and the level's worm length are derived from `level` by
 the formulas in `specs/worm.md` rather than stored.

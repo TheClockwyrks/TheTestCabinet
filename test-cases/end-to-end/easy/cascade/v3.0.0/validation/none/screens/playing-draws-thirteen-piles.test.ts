@@ -26,8 +26,8 @@
 // an anchor is not by itself evidence the CARD was drawn, since the empty-slot
 // mark is card-sized too, so the frame with a card on every pile is compared
 // against the frame of the same table empty and the pixels at each anchor have to
-// have changed. Rendering is deterministic here — the same operations produce the
-// same buffer — so "changed" is any difference at all, and no threshold is needed
+// have changed. The same operations produce the
+// same buffer here, so "changed" is any difference at all, and no threshold is needed
 // or stated. How the card is drawn over the slot is the reviewer's. The
 // `simple-2d` and `structured-2d` suites read this point the same way.
 //

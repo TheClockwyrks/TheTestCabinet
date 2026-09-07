@@ -18,7 +18,8 @@ import {
   type TickHooks,
 } from "./flow";
 import { KesslerState } from "./game";
-import { pointAt } from "./polar";
+import { pointAt, radialAt } from "./polar";
+import { arcCenterDeg } from "./rings";
 import type { ParticleSystemName } from "./sim";
 
 function makeGame() {
@@ -333,7 +334,7 @@ describe("the accumulator", () => {
   });
 });
 
-describe("reset and determinism", () => {
+describe("reset", () => {
   it("restores the boot state and zero ticks", () => {
     const { act, state, tick, snapshot } = makeGame();
     act("confirm");
@@ -354,16 +355,30 @@ describe("reset and determinism", () => {
     expect(snap.paddle.angleDeg).toBe(90);
   });
 
-  it("reproduces identical snapshots from the same seed and drive", () => {
-    const run = () => {
-      const { act, state, tick, snapshot } = makeGame();
-      resetState(state, 123);
-      act("confirm");
-      act("launch");
-      state.held.right = true;
-      for (let i = 0; i < 600; i += 1) tick();
-      return snapshot();
-    };
-    expect(run()).toEqual(run());
+  it("clears a posed pod outcome", () => {
+    const { state, snapshot } = makeGame();
+    state.nextPod = "shield";
+    resetState(state);
+    expect(snapshot().nextPod).toBeNull();
+  });
+});
+
+describe("the posed pod draw", () => {
+  it("sheds the posed kind from the next destruction and clears the pose", () => {
+    const { state, tick, snapshot } = makeGame();
+    poseScreen(state, "playing");
+    state.waveAdvance = false;
+    state.nextPod = "pierce";
+    state.effects.pierceTicks = 100;
+    // A piercing ball fired inward at ring 1's slot 0 destroys it.
+    const theta = arcCenterDeg(RINGS[0], 0, 0);
+    const at = pointAt(332, theta);
+    const inward = radialAt(theta);
+    addBall(state, at.x, at.y, -240 * inward.x, -240 * inward.y);
+    for (let i = 0; i < 6; i += 1) tick();
+    const snap = snapshot();
+    expect(snap.rings[0].targets.some((t) => t.slot === 0)).toBe(false);
+    expect(snap.pods.map((pod) => pod.kind)).toEqual(["pierce"]);
+    expect(snap.nextPod).toBeNull();
   });
 });

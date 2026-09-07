@@ -39,24 +39,22 @@
 //     validation/harness.ts
 //   TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
 //     TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2100 \
-//     TCAB_SHOWCASE_TAKE=4:2 \
 //     NODE_OPTIONS=--max-old-space-size=8192 \
 //     npx vitest run --config validation/vitest.config.ts \
 //       validation/showcase-capture.test.ts
 //
-// The committed clip is that take: seed 4, style 2, at the default bounds and a
-// 2100-frame cap — 34.1 s thinned to 2045 frames, which is 60 fps. Dropping
-// `TCAB_SHOWCASE_TAKE` auditions eighteen takes (six seeds x three styles) with
-// the recorder off, judges them, and records the winner, which is how that take
-// was chosen. Capture is deterministic — `reset` reseeds the generator and lays
-// the trench out afresh, so a seed and a style replay the identical dive — which
-// is what lets a take be auditioned recorder-off and then re-run under it
-// exactly.
+// The committed clip is a style-2 take at the default bounds and a 2100-frame
+// cap — 34.1 s thinned to 2045 frames, which is 60 fps. Each take opens on
+// whatever trench the game lays out, so a take cannot be run twice: every take
+// is recorded as it runs under outputs named for the take, the takes are judged
+// afterward, and the winner's recording and stills are kept under the
+// showcase's own names while the rest are deleted. `TCAB_SHOWCASE_TAKE=<style>`
+// records one take of that style and auditions nothing.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { Image, loadImage } from "@napi-rs/canvas";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GRID_COLS, GRID_ROWS, TILE } from "../src/constants";
 import { cellIndex, opposite, type Cell, type Dir } from "../src/grid";
@@ -231,7 +229,7 @@ function started(
 const SONAR_KEY = "Space";
 const INK_KEY = "ShiftLeft";
 
-/** How a take is played beyond what the seed decides. */
+/** How a take is played beyond what the trench decides. */
 interface Style {
   /** Seconds between one sonar pulse and the next, with nothing pressing. */
   readonly sonarCadence: number;
@@ -417,6 +415,49 @@ class Diver {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Keeping the winning take                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** Every file under `dir`, recursively. */
+function walk(dir: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...walk(path));
+    else found.push(path);
+  }
+  return found;
+}
+
+/**
+ * Keep the media of take `winner` under the showcase's own output names and
+ * delete every other take's.
+ *
+ * Each take is recorded as it runs, under outputs prefixed `take-<n>-`, because
+ * a take opens on whatever trench the game laid out and cannot be run again.
+ * Once the takes are judged, the winner's files lose the prefix and the rest
+ * go. A no-op when nothing is collecting media.
+ */
+function keepTake(winner: number): void {
+  const mediaDir = process.env.TCAB_VALIDATION_MEDIA_DIR;
+  if (mediaDir === undefined || mediaDir === "") return;
+  for (const file of walk(mediaDir)) {
+    const match = /^take-(\d+)-(.+)$/.exec(basename(file));
+    if (match === null) continue;
+    if (Number(match[1]) === winner) {
+      renameSync(file, join(dirname(file), match[2]));
+    } else {
+      rmSync(file);
+    }
+  }
+}
+
+/** The output id of take `n`'s `output`. */
+function takeOutput(n: number, output: string): string {
+  return `take-${n}-${output}`;
+}
+
+/* -------------------------------------------------------------------------- */
 /* The stills                                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -431,7 +472,10 @@ class Diver {
  * corridors rather than collapsed on the forager, and the window still wants the
  * widest circle the forager's brightness opened, with a hunter drawn inside it.
  */
-function stillPicker(h: Harness): {
+function stillPicker(
+  h: Harness,
+  take: number,
+): {
   sonar(snapshot: FathomSnapshot): void;
   window(snapshot: FathomSnapshot): void;
 } {
@@ -439,7 +483,7 @@ function stillPicker(h: Harness): {
   const offer = (id: string, score: number): void => {
     if (score <= (best.get(id) ?? 0)) return;
     best.set(id, score);
-    captureStill(h, id);
+    captureStill(h, takeOutput(take, id));
   };
   return {
     sonar(snapshot) {
@@ -563,18 +607,14 @@ it("records a dive clip", async () => {
   const settleFrames = Math.round(1.6 * TICK_HZ);
 
   /**
-   * One take: back to the title on `seed`, DIVE confirmed with a real key, the
-   * game's own countdown, and then the dive played out. The same seed and style
-   * replay the identical dive, so a take can be auditioned with the recorder off
-   * and re-run under it exactly.
+   * One take: back to the title on a fresh trench, DIVE confirmed with a real
+   * key, the game's own countdown, and then the dive played out. Its stills are
+   * written under the take's own prefix, so a later take does not write over
+   * them.
    */
-  const runTake = async (
-    seed: number,
-    phase: number,
-    record: boolean,
-  ): Promise<Take> => {
+  const runTake = async (take: number, phase: number): Promise<Take> => {
     // A previous take can end mid-press. Clear the real keyboard so nothing
-    // leaks across a take, which would break same-seed reproducibility.
+    // leaks into the next take.
     for (const key of [
       ...Object.values(DIR_KEY),
       SONAR_KEY,
@@ -583,10 +623,10 @@ it("records a dive clip", async () => {
     ]) {
       h.release(key);
     }
-    h.debug.reset({ seed });
+    h.debug.reset();
     await h.advance(1);
 
-    const take: Take = {
+    const stats: Take = {
       frames: 1,
       plankton: 0,
       drifters: 0,
@@ -607,32 +647,32 @@ it("records a dive clip", async () => {
     // The title card, read for half a second before DIVE is confirmed.
     const titleFrames = Math.round(0.5 * TICK_HZ);
     await h.advance(titleFrames);
-    take.frames += titleFrames;
+    stats.frames += titleFrames;
     h.hold("Enter");
     h.release("Enter");
     await h.advance(1);
-    take.frames += 1;
+    stats.frames += 1;
 
     const opening = h.snapshot();
     const diver = new Diver(h, opening.tiles, STYLES[phase % STYLES.length]);
 
     let previous = opening;
-    let lastEatFrame = take.frames;
+    let lastEatFrame = stats.frames;
     let endAt = Infinity;
-    const stills = stillPicker(h);
+    const stills = stillPicker(h, take);
     const seen = new Set<number>();
     const chasing = new Set<number>();
     const blooming = new Set<number>();
     const charging = new Set<number>();
 
-    while (take.frames < maxFrames && take.frames < endAt) {
+    while (stats.frames < maxFrames && stats.frames < endAt) {
       const snapshot = h.snapshot();
       if (endAt === Infinity) diver.step(snapshot);
       else diver.rest();
       await h.advance(1);
-      take.frames += 1;
+      stats.frames += 1;
       const now = h.snapshot();
-      take.art += callsTo(h.calls, "drawImage").length;
+      stats.art += callsTo(h.calls, "drawImage").length;
       // The harness keeps every draw call and every cue the run made, which is
       // the right thing for a check that inspects a few hundred frames and the
       // wrong thing for a driver that runs tens of thousands: dropped here, the
@@ -642,41 +682,41 @@ it("records a dive clip", async () => {
 
       // What happened between the two reads.
       if (now.planktonRemaining < previous.planktonRemaining) {
-        take.plankton += previous.planktonRemaining - now.planktonRemaining;
-        lastEatFrame = take.frames;
+        stats.plankton += previous.planktonRemaining - now.planktonRemaining;
+        lastEatFrame = stats.frames;
       }
       if (now.drifters.length < previous.drifters.length) {
-        take.drifters += previous.drifters.length - now.drifters.length;
-        lastEatFrame = take.frames;
+        stats.drifters += previous.drifters.length - now.drifters.length;
+        lastEatFrame = stats.frames;
       }
-      if (now.lives < previous.lives) take.deaths += 1;
-      take.pulses += started(previous, now, "forager");
-      take.pings += started(previous, now, "gloamfin");
-      if (now.inkClouds.length > previous.inkClouds.length) take.clouds += 1;
+      if (now.lives < previous.lives) stats.deaths += 1;
+      stats.pulses += started(previous, now, "forager");
+      stats.pings += started(previous, now, "gloamfin");
+      if (now.inkClouds.length > previous.inkClouds.length) stats.clouds += 1;
       for (const [index, one] of now.predators.entries()) {
         // A sighting is a body coming into view, counted once until it goes
         // back out of it, so a hunter swimming through the light is one moment.
-        if (one.lit && !seen.has(index)) take.sightings += 1;
+        if (one.lit && !seen.has(index)) stats.sightings += 1;
         if (one.lit) seen.add(index);
         else seen.delete(index);
-        if (one.state === "chase" && !chasing.has(index)) take.chases += 1;
+        if (one.state === "chase" && !chasing.has(index)) stats.chases += 1;
         if (one.state === "chase") chasing.add(index);
         else chasing.delete(index);
-        if (one.flaring === true && !blooming.has(index)) take.blooms += 1;
+        if (one.flaring === true && !blooming.has(index)) stats.blooms += 1;
         if (one.flaring === true) blooming.add(index);
         else blooming.delete(index);
         if (one.flareCharging === true && !charging.has(index)) {
-          take.charges += 1;
+          stats.charges += 1;
         }
         if (one.flareCharging === true) charging.add(index);
         else charging.delete(index);
       }
-      take.maxLull = Math.max(
-        take.maxLull,
-        (take.frames - lastEatFrame) / TICK_HZ,
+      stats.maxLull = Math.max(
+        stats.maxLull,
+        (stats.frames - lastEatFrame) / TICK_HZ,
       );
 
-      if (record) {
+      {
         // The two stills, taken from this very take and kept as the best frame
         // the take offered rather than the first one that qualified: a still is
         // rewritten whenever a better candidate comes along, so what survives is
@@ -684,19 +724,22 @@ it("records a dive clip", async () => {
         // was drawn inside.
         //
         // Only the back two thirds of the take are offered. The opening of a
-        // dive is the same corridor whatever the seed — nothing is out of the
+        // dive is the same corridor whatever the trench — nothing is out of the
         // den yet and the trench is barely mapped — and a still of it says less
         // about the game than the same shot taken once the map has opened up.
-        if (take.frames > maxFrames * 0.35) {
+        if (stats.frames > maxFrames * 0.35) {
           stills.sonar(now);
           stills.window(now);
         }
         if (
           process.env.TCAB_SHOWCASE_QA_STILLS === "1" &&
-          take.frames % Math.round(TICK_HZ * 2) === 0
+          stats.frames % Math.round(TICK_HZ * 2) === 0
         ) {
-          const at = Math.round(take.frames / (TICK_HZ * 2));
-          captureStill(h, `qa-${String(at).padStart(2, "0")}`);
+          const at = Math.round(stats.frames / (TICK_HZ * 2));
+          captureStill(
+            h,
+            takeOutput(take, `qa-${String(at).padStart(2, "0")}`),
+          );
         }
       }
 
@@ -705,9 +748,9 @@ it("records a dive clip", async () => {
       // the wavefront runs out through the corridors.
       if (
         endAt === Infinity &&
-        take.frames >= minFrames &&
-        (take.drifters > 0 || take.frames >= quietFrames) &&
-        take.frames + settleFrames <= maxFrames &&
+        stats.frames >= minFrames &&
+        (stats.drifters > 0 || stats.frames >= quietFrames) &&
+        stats.frames + settleFrames <= maxFrames &&
         now.screen === "playing" &&
         now.sonar.ready &&
         loose(now).every(
@@ -716,69 +759,70 @@ it("records a dive clip", async () => {
       ) {
         h.hold(SONAR_KEY);
         h.release(SONAR_KEY);
-        endAt = take.frames + settleFrames;
-        take.endedOnBeat = true;
+        endAt = stats.frames + settleFrames;
+        stats.endedOnBeat = true;
       }
       previous = now;
     }
 
     diver.rest();
-    take.score = judge(take);
-    return take;
+    stats.score = judge(stats);
+    return stats;
   };
 
-  // `TCAB_SHOWCASE_TAKE=<seed>:<phase>` records one take and auditions nothing.
-  // A take is reproducible from its seed and style alone — `reset` reseeds the
-  // generator and lays the trench out afresh — so naming the take that already
-  // won re-records exactly the committed clip without paying for the audition.
+  /** Record one take whole, as the recording the showcase keeps if it wins. */
+  const recordTake = (take: number, phase: number): Promise<Take> =>
+    captureReplay(h, takeOutput(take, "dive"), () => runTake(take, phase));
+
+  // `TCAB_SHOWCASE_TAKE=<phase>` records one take of that style and auditions
+  // nothing; otherwise `TCAB_SHOWCASE_TAKES` takes of every style are recorded
+  // and judged, and the winner is the one kept.
   const named = process.env.TCAB_SHOWCASE_TAKE;
-  const candidates: Array<{ seed: number; phase: number }> = [];
+  const candidates: number[] = [];
   if (named !== undefined && named !== "") {
-    const [seed, phase] = named.split(":").map(Number);
-    candidates.push({ seed, phase });
+    candidates.push(Number(named));
   } else {
-    const seeds = (process.env.TCAB_SHOWCASE_SEEDS ?? "1,2,3,4,5,6")
-      .split(",")
-      .map(Number);
-    for (const seed of seeds) {
-      for (const phase of [0, 1, 2]) candidates.push({ seed, phase });
+    const perStyle = Number(process.env.TCAB_SHOWCASE_TAKES ?? "4");
+    for (let n = 0; n < perStyle; n += 1) {
+      for (const phase of [0, 1, 2]) candidates.push(phase);
     }
   }
 
-  let best: { seed: number; phase: number; score: number } | null = null;
-  for (const { seed, phase } of candidates) {
-    if (candidates.length === 1) {
-      best = { seed, phase, score: 0 };
-      break;
-    }
-    const take = await runTake(seed, phase, false);
+  let best: { take: number; phase: number; score: number; stats: Take } | null =
+    null;
+  for (const [index, phase] of candidates.entries()) {
+    const take = index + 1;
+    const stats = await recordTake(take, phase);
     console.log(
-      `take seed=${seed} phase=${phase}: ${(take.frames / TICK_HZ).toFixed(1)}s, ` +
-        `${take.plankton} plankton, ${take.drifters} drifters, ` +
-        `${take.pulses} pulses, ${take.pings} pings, ${take.clouds} clouds, ` +
-        `${take.sightings} sightings, ${take.chases} chases, ` +
-        `${take.blooms} blooms (${take.charges} charges), ` +
-        `${take.deaths} deaths, ${take.art} art draws, ` +
-        `lull ${take.maxLull.toFixed(1)}s, ` +
-        `${take.endedOnBeat ? "settled" : "ran out"} -> ${take.score.toFixed(0)}`,
+      `take ${take} phase=${phase}: ${(stats.frames / TICK_HZ).toFixed(1)}s, ` +
+        `${stats.plankton} plankton, ${stats.drifters} drifters, ` +
+        `${stats.pulses} pulses, ${stats.pings} pings, ${stats.clouds} clouds, ` +
+        `${stats.sightings} sightings, ${stats.chases} chases, ` +
+        `${stats.blooms} blooms (${stats.charges} charges), ` +
+        `${stats.deaths} deaths, ${stats.art} art draws, ` +
+        `lull ${stats.maxLull.toFixed(1)}s, ` +
+        `${stats.endedOnBeat ? "settled" : "ran out"} -> ${stats.score.toFixed(0)}`,
     );
-    if (best === null || take.score > best.score) {
-      best = { seed, phase, score: take.score };
+    if (best === null || stats.score > best.score) {
+      best = { take, phase, score: stats.score, stats };
     }
   }
 
-  const winner = best as { seed: number; phase: number; score: number };
-  console.log(`recording take seed=${winner.seed} phase=${winner.phase}`);
-  const final = await captureReplay(h, "dive", () =>
-    runTake(winner.seed, winner.phase, true),
-  );
+  const winner = best as {
+    take: number;
+    phase: number;
+    score: number;
+    stats: Take;
+  };
+  console.log(`keeping take ${winner.take} phase=${winner.phase}`);
+  keepTake(winner.take);
   console.log(
     JSON.stringify(
       {
-        seed: winner.seed,
+        take: winner.take,
         phase: winner.phase,
-        seconds: final.frames / TICK_HZ,
-        ...final,
+        seconds: winner.stats.frames / TICK_HZ,
+        ...winner.stats,
       },
       null,
       2,

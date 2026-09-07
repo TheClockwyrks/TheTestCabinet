@@ -52,7 +52,7 @@ import type {
 } from "./game";
 import { itemRect, menuFor, type MenuRect } from "./menus";
 import { createInitialState } from "./match";
-import { seedState } from "./rng";
+import { drawServeSign } from "./random";
 import type { DeepReadonly } from "ts-essentials";
 
 export type { MenuRect };
@@ -78,6 +78,8 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** The vertical sign the serve takes. */
+  serveSign: 1 | -1;
   /** The ball's trail samples, oldest first. */
   trail: TrailSampleSnapshot[];
 }
@@ -124,10 +126,6 @@ export interface CaromSnapshot {
   winner: Side | null;
   /** Whether the mute toggle is currently on. */
   muted: boolean;
-  /** The seed the generator was last seeded from. */
-  seed: number;
-  /** That generator's current state, as a single number. */
-  rngState: number;
   paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
   /** The AI's two faculties, each gated on its own. */
   ai: { tracking: boolean; movement: boolean };
@@ -152,14 +150,12 @@ export interface CaromDebugApi {
 
   /** Removes every ball and every obstacle. The paddles stay. */
   clearWorld(state: DeepReadonly<CaromState>): CaromState;
-  /** Places the ball at its home point, held, with an empty trail. */
+  /** Places the ball at its home point, held, with an empty trail and a fresh serve sign. */
   spawnBall(state: DeepReadonly<CaromState>): CaromState;
   /** Places obstacle `index` at `OBSTACLE_CENTERS[index]`. */
   spawnObstacle(state: DeepReadonly<CaromState>, index: number): CaromState;
   /** Returns the game to its title-screen state. Leaves `muted` alone. */
   reset(state: DeepReadonly<CaromState>): CaromState;
-  /** Seeds the game's random generator, setting `seed` and `rngState`. */
-  setSeed(state: DeepReadonly<CaromState>, seed: number): CaromState;
 
   /* Screens and menus. */
 
@@ -228,6 +224,10 @@ export interface CaromDebugApi {
     state: DeepReadonly<CaromState>,
     seconds: number,
   ): CaromState;
+  /** Sets the vertical sign the ball's serve takes, `1` or `-1`. */
+  setBallServeSign(state: DeepReadonly<CaromState>, sign: 1 | -1): CaromState;
+  /** Draws the ball's serve sign afresh, as parking the ball does. */
+  drawBallServeSign(state: DeepReadonly<CaromState>): CaromState;
 
   /* The AI opponent: one operation per faculty. */
 
@@ -326,6 +326,7 @@ function ballSnapshot(
     spin: ball.spin,
     held: ball.held,
     holdTimer: ball.holdTimer,
+    serveSign: ball.serveSign,
     trail: ball.trail.map((sample) => ({
       x: sample.x,
       y: sample.y,
@@ -382,8 +383,7 @@ export function createDebugApi(): CaromDebugApi {
      * The title screen, whole: every declared field back to the value
      * specs/state.md gives it, with the world placed exactly as `spawnBall` and
      * `spawnObstacle` place it, the paddles handed back, both of the AI's
-     * faculties on, the clock at zero, and the generator reseeded from
-     * DEFAULT_SEED.
+     * faculties on, and the clock at zero.
      *
      * `muted` is deliberately untouched: muting is a player preference the
      * runtime owns, and a reset is not a reason to start making noise again.
@@ -394,11 +394,6 @@ export function createDebugApi(): CaromDebugApi {
      */
     reset(state) {
       return { ...createInitialState(), muted: state.muted };
-    },
-
-    /** The generator seeded afresh: `seed` as given, `rngState` at its start. */
-    setSeed(state, seed) {
-      return { ...state, seed, rngState: seedState(seed) };
     },
 
     // ---- Screens and menus ---------------------------------------------
@@ -497,6 +492,15 @@ export function createDebugApi(): CaromDebugApi {
       return poseBall(state, { holdTimer: seconds });
     },
 
+    setBallServeSign(state, sign) {
+      return poseBall(state, { serveSign: sign < 0 ? -1 : 1 });
+    },
+
+    /** The one draw parking makes, made again on its own (specs/balls.md). */
+    drawBallServeSign(state) {
+      return poseBall(state, { serveSign: drawServeSign() });
+    },
+
     // ---- The AI opponent -----------------------------------------------
 
     setAiTracking(state, enabled) {
@@ -531,8 +535,6 @@ export function createDebugApi(): CaromDebugApi {
         score: { p1: state.score.p1, p2: state.score.p2 },
         winner: state.winner,
         muted: state.muted,
-        seed: state.seed,
-        rngState: state.rngState,
         paddles: {
           left: paddleSnapshot(state.paddles.left),
           right: paddleSnapshot(state.paddles.right),

@@ -52,7 +52,7 @@ function onStage(rects: readonly Rect[]): boolean {
 }
 
 function almanac(): WickState {
-  const state = initialState(1);
+  const state = initialState();
   state.screen = "almanac";
   return state;
 }
@@ -104,7 +104,7 @@ describe("the menu boxes", () => {
 
 describe("what the pointer answers", () => {
   it("reports the menu of every screen that shows one, and none otherwise", () => {
-    const state = initialState(1);
+    const state = initialState();
     expect(menuRects(state)).toHaveLength(TITLE_ITEMS.length);
     state.screen = "paused";
     expect(menuRects(state)).toHaveLength(PAUSE_ITEMS.length);
@@ -133,7 +133,7 @@ describe("what the pointer answers", () => {
   });
 
   it("finds the item a point lands in, and none outside every box", () => {
-    const state = initialState(1);
+    const state = initialState();
     const rects = titleRects();
     expect(itemAt(state, rects[1].x + 2, rects[1].y + 2)).toBe(1);
     expect(itemAt(state, rects[1].x - 2, rects[1].y + 2)).toBeNull();

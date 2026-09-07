@@ -20,7 +20,7 @@
 // it. It is not the wall around the chamber: `maze/den-enclosed`. And it is not
 // whether the chamber leads anywhere: `maze/den-reachable`.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -97,8 +97,8 @@ it("makes the den chamber the four-by-three block at columns 16 to 19, rows 7 to
       0,
       `den-interior tiles outside columns ${String(DEN_COL_MIN)} to ` +
         `${String(DEN_COL_MAX)} and rows ${String(DEN_ROW_MIN)} to ` +
-        `${String(DEN_ROW_MAX)} in the maze laid out from seed ` +
-        `${one.board.seed}` +
+        `${String(DEN_ROW_MAX)} in the maze laid out as board ` +
+        `${one.board.ordinal}` +
         (strays === "" ? "" : `, at ${strays}`) +
         " (specs/maze.md)",
     );
@@ -106,7 +106,7 @@ it("makes the den chamber the four-by-three block at columns 16 to 19, rows 7 to
       one.missing.length,
       0,
       `tiles of the ${String(CHAMBER_TILES)}-tile chamber the specification ` +
-        `names that the maze laid out from seed ${one.board.seed} does not ` +
+        `names that maze ${one.board.ordinal} the game laid out does not ` +
         "mark as den interior" +
         (one.missing.length === 0
           ? ""

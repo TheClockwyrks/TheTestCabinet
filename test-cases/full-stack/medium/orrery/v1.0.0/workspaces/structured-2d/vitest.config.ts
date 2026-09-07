@@ -25,8 +25,8 @@
 // v8 provider derives its branches from V8's block counters remapped through
 // source maps; those numbers do not correspond to logical branches in
 // TypeScript, and they can shift with a V8 or vitest upgrade through the remap
-// alone, with no change to this code. Istanbul's instrumentation is
-// deterministic given the source and the plugin version, and it emits its JSON
+// alone, with no change to this code. Istanbul's instrumentation is a function
+// of the source and the plugin version alone, and it emits its JSON
 // summary natively rather than through a remap. Its one cost is that
 // instrumented code runs slower, which a suite of this size can afford.
 //

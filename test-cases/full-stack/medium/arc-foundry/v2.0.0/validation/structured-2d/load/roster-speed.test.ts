@@ -23,7 +23,7 @@ import {
   openYard,
   type Harness,
 } from "../harness";
-import { travelling } from "./vitals";
+import { VITALS_HZ, travelling } from "./vitals";
 
 /** A thousandth of a unit: floating point, not a rule about the game. */
 const DIGITS = 6;
@@ -31,7 +31,7 @@ const DIGITS = 6;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: VITALS_HZ });
 });
 
 afterEach(() => {

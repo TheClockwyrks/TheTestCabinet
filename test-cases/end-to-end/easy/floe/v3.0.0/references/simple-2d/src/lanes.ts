@@ -18,9 +18,10 @@
 // its id (`specs/instrumentation.md`).
 //
 // THE PHASES ARE DRAWN, AND THE DRAW IS CHECKED. Where a lane's pattern sits along
-// its row is drawn from the seeded generator, and the band must come out staggered:
-// no column of the strait may be covered in all eight rows at once. A draw that
-// walls the band off is redrawn rather than nudged, so the phases stay draws.
+// its row is drawn uniformly over one period of its spacing, and the band must
+// come out staggered: no column of the strait may be covered in all eight rows at
+// once. A draw that walls the band off is redrawn rather than nudged, so the
+// phases stay draws.
 
 import {
   COLS,
@@ -145,13 +146,9 @@ function bandSpans(
   });
 }
 
-/** One phase per lane, drawn from the generator, advancing it as it goes. */
+/** One phase per lane, drawn uniformly over the lane's period. */
 function drawPhases(sim: Sim, lanes: readonly LaneSpec[]): number[] {
-  return lanes.map((lane) => {
-    const [value, next] = nextRandom(sim.rngState);
-    sim.rngState = next;
-    return value * lanePeriod(lane.row, sim.level);
-  });
+  return lanes.map((lane) => nextRandom() * lanePeriod(lane.row, sim.level));
 }
 
 /**
@@ -225,6 +222,44 @@ export function layOutStrait(sim: Sim): void {
 
   sim.vehicles = vehicles;
   sim.floes = floes;
+}
+
+/**
+ * Lay one lane out afresh at a posed phase (`specs/instrumentation.md`'s
+ * `setLanePhase`): the row's items are replaced by the lane's own kind at the
+ * level's spacing, one left edge at `x`, each with a fresh id. The lane's motion
+ * and every other lane are left exactly as they stand.
+ */
+export function layOutLane(sim: Sim, row: number, x: number): void {
+  const spec = laneSpecAt(row);
+  if (spec === null) return;
+  const len = ITEM_LEN[spec.kind];
+  const positions = lanePositions(row, sim.level, x, len);
+  if (ICE_LANES.some((lane) => lane.row === row)) {
+    const kept = sim.vehicles.filter((item) => item.row !== row);
+    for (const left of positions) {
+      kept.push({
+        id: takeId(sim),
+        row,
+        kind: spec.kind as VehicleKind,
+        x: left,
+        len,
+      });
+    }
+    sim.vehicles = kept;
+  } else {
+    const kept = sim.floes.filter((item) => item.row !== row);
+    for (const left of positions) {
+      kept.push({
+        id: takeId(sim),
+        row,
+        kind: spec.kind as FloeKind,
+        x: left,
+        len,
+      });
+    }
+    sim.floes = kept;
+  }
 }
 
 /** Advance one roster by one tick of its lanes' motion. */

@@ -23,7 +23,7 @@ const SUITS: Suit[] = ["spades", "hearts", "diamonds", "clubs"];
 
 /** A won board with all fifty-two cards on the foundations, ready to launch. */
 function wonBoard(): CascadeState {
-  const state = testState(5);
+  const state = testState();
   state.screen = "won";
   state.launchClock = LAUNCH_INTERVAL;
   for (let f = 0; f < 4; f += 1) {
@@ -249,15 +249,15 @@ describe("the end of the cascade", () => {
     expect(state.cascadeDone).toBe(false);
   });
 
-  it("replays identically from one seed", () => {
+  it("draws each cascade's launch velocities afresh", () => {
     const one = wonBoard();
     const two = wonBoard();
     one.trailPainting = false;
     two.trailPainting = false;
     run(one, 4, 960);
     run(two, 4, 960);
-    expect(one.flyers.map((f) => [f.x, f.y, f.vx, f.vy])).toEqual(
-      two.flyers.map((f) => [f.x, f.y, f.vx, f.vy]),
+    expect(one.flyers.map((f) => f.vx)).not.toEqual(
+      two.flyers.map((f) => f.vx),
     );
   });
 });

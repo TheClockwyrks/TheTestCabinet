@@ -27,7 +27,7 @@ A rock drifts under momentum, is curved continuously by the well
 (`specs/gravity.md`), and wraps at the field's edges carrying its velocity across.
 Rocks pass through one another freely.
 
-Each rock also carries a slow drawn rotation for visual life. That spin is
+Each rock also spins slowly as it is drawn, for visual life. That spin is
 cosmetic: it changes neither the rock's velocity nor its collision, so a rock
 under no force other than the well moves exactly along the path the well and its
 own momentum give it.
@@ -88,8 +88,14 @@ A rock the star swallows is the same rock relocated, not a fresh one.
 
 When a rock's circle reaches the star's core (`specs/collision.md`), the rock is
 taken from the core and immediately re-placed at the same size. It re-enters at a
-random point on one of the four edges of the field, heading inward into the field,
-at a fresh base drift speed drawn from its size's range.
+point on one of the four edges of the field, the edge drawn with probability `1/4`
+each and the point drawn uniformly along the whole length of that edge, heading
+inward into the field, at a fresh base drift speed drawn uniformly from its
+size's range.
+
+The debug surface `specs/instrumentation.md` specifies poses the edge the next
+recycled rock re-enters at, and the base drift speed the rocks of the next
+placement take.
 
 Recycling scores nothing and leaves the field's rock count unchanged.
 {{#if (eq variant.slug "warhead")}}

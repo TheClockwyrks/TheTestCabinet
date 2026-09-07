@@ -11,7 +11,6 @@
 // holds.
 
 import {
-  DEFAULT_SEED,
   FOUNDATION_COUNT,
   STAGE_H,
   STAGE_W,
@@ -20,11 +19,6 @@ import {
 import { createTrailLayer } from "./trail";
 import type { CascadeState } from "./game";
 import type { Sim } from "./sim";
-
-/** The generator state a seed starts the game from. */
-export function seedState(seed: number): number {
-  return Math.trunc(seed) | 0;
-}
 
 /** Empty piles: the stock, the waste, four foundations and seven columns. */
 function emptyPiles(): Pick<
@@ -67,7 +61,6 @@ export function openingState(): CascadeState {
     nextId: 1,
     simTime: 0,
     muted: false,
-    rngState: seedState(DEFAULT_SEED),
 
     trail: createTrailLayer(STAGE_W, STAGE_H),
     pendingCues: [],
@@ -75,7 +68,7 @@ export function openingState(): CascadeState {
 }
 
 /** Restore every declared field to its title-screen value. */
-export function resetToTitle(sim: Sim, seed: number): void {
+export function resetToTitle(sim: Sim): void {
   sim.screen = "title";
 
   sim.stock = [];
@@ -104,6 +97,5 @@ export function resetToTitle(sim: Sim, seed: number): void {
 
   sim.nextId = 1;
   sim.simTime = 0;
-  sim.rngState = seedState(seed);
   sim.pendingCues = [];
 }

@@ -49,18 +49,30 @@ const ANCHOR = { col: 10, row: 10 };
 /** How many points are read around a circle. */
 const AROUND = 64;
 /**
+ * The rate this check is driven at.
+ *
+ * EVERY FRAME A PIXEL READING IS TAKEN OVER IS A FRAME THE HOST HAS TO RASTERIZE,
+ * so the frames a span is cut into are what such a check costs. The specification
+ * fixes no frame size and guarantees that "an interval of simulation time reaches
+ * the same state however it was divided into frames and whatever frame rate
+ * produced it" (specs/instrumentation.md), so each span below is the span it
+ * always was and only the number of frames it is divided into is this check's.
+ */
+const RING_HZ = 20;
+
+/**
  * How many frames the far circle is watched over before anything is selected.
  *
  * Two seconds of them, which outlasts a full turn of any plausible idle pulse. A
  * shorter watch would report a circle caught mid-breath as steadier than it is,
  * and the reading it is the control for is the one that expects nothing.
  */
-const IDLE_MOMENTS = 120;
+const IDLE_MOMENTS = 2 * RING_HZ;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: RING_HZ });
 });
 
 afterEach(() => {

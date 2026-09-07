@@ -2,7 +2,7 @@
 // `reset()` returns the game to `title` with `menuIndex` `0`, `almanacTab` `0`,
 // `almanacScroll` `0` and the idle run, with `accumulator` and `simTime` at `0`.
 //
-// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `reset(options)`):
+// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `reset()`):
 // "Restores every declared field of the game's state to its title-screen value:
 // the `title` screen with `menuIndex`, `almanacTab`, and `almanacScroll` all
 // `0`, the idle run of `specs/state.md`, the accumulator and `simTime` at `0`".

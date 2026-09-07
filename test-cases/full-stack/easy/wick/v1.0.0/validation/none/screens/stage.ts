@@ -107,7 +107,7 @@ import {
 /**
  * A frame's delta time short enough that no whole tick is consumed by it.
  *
- * `specs/instrumentation.md` ("A deterministic core"): "A tick is consumed
+ * `specs/instrumentation.md` ("A render-free core"): "A tick is consumed
  * while the accumulator is at least `TICK_DT − TICK_EPSILON`", and `advance`
  * "Runs one frame of the build's loop worth `seconds` of delta time ... exactly
  * as a wall-clock frame of that length". A thousandth of a second is far below

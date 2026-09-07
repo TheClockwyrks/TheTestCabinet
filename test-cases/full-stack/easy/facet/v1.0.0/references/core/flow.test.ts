@@ -29,10 +29,10 @@ import {
 } from "./flow";
 import { createInitialState, EMPTY_BOARD, type FacetState } from "./state";
 
-const title = () => createInitialState(1);
+const title = () => createInitialState();
 
 const playing = (edits: Readonly<Record<string, string>> = {}): FacetState =>
-  setScreen(loadBoard(createInitialState(1), quietRowsWith(edits)), "playing");
+  setScreen(loadBoard(createInitialState(), quietRowsWith(edits)), "playing");
 
 describe("the menus", () => {
   it("names the menu each screen carries", () => {
@@ -97,11 +97,14 @@ describe("starting a round", () => {
     expect(isOpeningBoard(started.board)).toBe(true);
   });
 
-  it("advances the generator by the deal rather than reseeding it", () => {
-    const started = startRound(title());
-    expect(started.rngState).not.toBe(title().rngState);
+  it("leaves simTime, the mute bit, and any posed refill alone", () => {
+    const started = startRound({
+      ...title(),
+      refillKinds: ["R", "", "", "", "", "", "", ""],
+    });
     expect(started.simTime).toBe(title().simTime);
     expect(started.muted).toBe(title().muted);
+    expect(started.refillKinds[0]).toBe("R");
   });
 
   it("is what both PLAY and PLAY AGAIN choose", () => {

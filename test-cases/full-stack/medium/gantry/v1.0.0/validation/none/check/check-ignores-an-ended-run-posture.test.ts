@@ -39,9 +39,8 @@
 // verdict about, and the run ends when the tape does.
 //
 // The two readings are compared member for member by id. Both are the same
-// computation over the same structure at the same posture, and specs/state.md
-// makes the simulation deterministic, so the tolerance is only what a float
-// round trip through the page can cost.
+// computation over the same structure at the same posture, so the tolerance is
+// only what a float round trip through the page can cost.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertClose, assertEqual, assertGreaterThan } from "../assert";

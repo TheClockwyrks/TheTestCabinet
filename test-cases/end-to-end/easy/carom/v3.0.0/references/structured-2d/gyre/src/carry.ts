@@ -35,6 +35,7 @@ import {
   placeBall,
   placeObstacle,
 } from "./field";
+import { drawServeSign } from "./random";
 import type { Side } from "./sim";
 import type { CaromState, ResumeScreen, Screen } from "./state";
 import type { TrailSample } from "./trail";
@@ -56,6 +57,7 @@ export interface BallData {
   spin: number;
   held: boolean;
   holdTimer: number;
+  serveSign: 1 | -1;
   trail: readonly TrailSample[];
 }
 
@@ -91,6 +93,7 @@ export function parkedBallData(): BallData {
     spin: 0,
     held: true,
     holdTimer: HOLD_TIME,
+    serveSign: drawServeSign(),
     trail: [],
   };
 }
@@ -155,6 +158,7 @@ export function captureCarry(world: World, screen: Screen): CaromCarry {
             spin: ball.spin,
             held: ball.held,
             holdTimer: ball.holdTimer,
+            serveSign: ball.serveSign,
             trail: ball.trail.slice(),
           },
     obstacles: obstaclesOf(world).map((obstacle) => obstacle.index),
@@ -243,5 +247,6 @@ export function applyCarry(world: World, carry: CaromCarry): void {
   ball.spin = data.spin;
   ball.held = data.held;
   ball.holdTimer = data.holdTimer;
+  ball.serveSign = data.serveSign;
   ball.trail = data.trail.slice();
 }

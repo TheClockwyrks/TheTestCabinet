@@ -40,7 +40,6 @@ import {
 import { defineCues, playCues } from "./audio";
 import { MeltdownController } from "./controller";
 import {
-  DEFAULT_SEED,
   DIFFICULTY_TABLE,
   LEVELS,
   START_LIVES,
@@ -172,12 +171,12 @@ export class MeltdownState extends StateBase {
   build: BuildState | null = null;
 
   waveSpawning = true;
+  spawnVent: VentName | null = null;
   pointer: PointerState = { x: 0, y: 0, down: false };
   muted = false;
 
   nextId = 1;
   simTime = 0;
-  rngState = DEFAULT_SEED;
 
   /**
    * Derived, not declared: the two distance fields and the blocked set they

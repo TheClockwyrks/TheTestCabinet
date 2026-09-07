@@ -16,7 +16,6 @@
 import {
   CHALLENGE_TOTAL,
   CUES,
-  DEFAULT_SEED,
   DIVE_FIRST_DELAY,
   GAME_OVER_ITEMS,
   PAUSE_ITEMS,
@@ -80,7 +79,6 @@ export function openingState(art: Art): SpectraState {
     nextId: 1,
     simTime: 0,
     muted: false,
-    rngState: DEFAULT_SEED,
 
     art,
   };
@@ -93,7 +91,7 @@ export function openingState(art: Art): SpectraState {
  * `muted` is a player preference the runtime owns and is left exactly as it
  * stands, and the loaded art is left with it.
  */
-export function resetToTitle(sim: Sim, seed = DEFAULT_SEED): void {
+export function resetToTitle(sim: Sim): void {
   const fresh = openingState(sim.art);
   sim.screen = fresh.screen;
   sim.phase = fresh.phase;
@@ -120,7 +118,6 @@ export function resetToTitle(sim: Sim, seed = DEFAULT_SEED): void {
   sim.diveTarget = fresh.diveTarget;
   sim.nextId = fresh.nextId;
   sim.simTime = 0;
-  sim.rngState = seed;
 }
 
 /** Move to `screen`, with its menu's highlight back at the first item. */

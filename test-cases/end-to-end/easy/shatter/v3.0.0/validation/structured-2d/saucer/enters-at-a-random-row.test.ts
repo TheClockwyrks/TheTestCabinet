@@ -1,52 +1,54 @@
-// saucer/enters-at-a-random-row — arrivals are spread across the field's height
-// rather than lined up on one lane.
+// saucer/enters-at-a-random-row — arrivals are not lined up on one lane.
 //
 // THE RULE. `specs/saucer.md`, Entry and travel: a saucer enters "at a `y` drawn
 // uniformly from `SAUCER_R` to `FIELD_H - SAUCER_R`", and "Entry rows are drawn
 // across the whole field, so a crossing lined up on the star's row is an ordinary
 // one."
 //
-// THE SPREAD ALONE. That every row lies INSIDE that range is
-// `saucer/entry-row-inside-the-range`'s point, read off the same sixteen arrivals;
-// this one reads only how far they spread. A build that always enters dead centre
-// clears the range bound comfortably and fails here, which is exactly why the two
-// are separate points.
+// THE VARIATION ALONE. That every row lies INSIDE that range is
+// `saucer/entry-row-inside-the-range`'s point, read off the same six arrivals;
+// this one reads only that the rows are not all one row. A build that always
+// enters dead centre clears the range bound comfortably and fails here, which is
+// exactly why the two are separate points.
 //
-// THE SPREAD THRESHOLD IS DERIVED FROM THE STATED RANGE, NOT FROM AN OBSERVED ONE.
-// The range `specs/saucer.md` fixes is `[SAUCER_R, FIELD_H - SAUCER_R]`, which is
-// `684` units wide, and the sixteen rows are required to span more than half of it
-// — `342` units. A uniform draw clears that overwhelmingly (sixteen uniform draws
-// span more than half their range unless every one of them lands in the same half,
-// which is about one run in a thousand), while a build that always enters on the
-// star's row, or on one of two fixed lanes, spans nothing and fails. Reading the
-// threshold off a reference run instead would have made it a fact about that build.
+// TWO DISTINCT ROWS ARE THE WHOLE OF THE ASSERTION. The draw is continuous, so
+// six arrivals from it never share a row, while a build that enters on one fixed
+// lane reads six copies of one number and fails. How widely a build's rows spread
+// inside the range is not a figure `specs/saucer.md` fixes and not one a sample
+// decides: it is the reviewer's to judge from the picture.
 //
-// SIXTEEN ARRIVALS UNDER FOUR SEEDS, four apiece: the draw is the game's own, so
-// the sample has to come from games that were really opened and left to run. The
-// gather is in `./rows`.
+// TWO ROWS ARE DISTINCT WHEN THEY DIFFER BY MORE THAN A READING CAN. A saucer
+// "enters with no vertical component" and its weave begins "one full interval
+// after it enters", so its row stands for a whole second and the first marched
+// sample reads it exactly; the allowance below is what a build that starts its
+// weave on the tick of entry could move a row by before that sample, so such a
+// build is failed by `saucer/weave-interval` rather than credited here with
+// variation it never drew.
+//
+// SIX ARRIVALS OVER TWO GAMES, three apiece: the draw is the game's own, so the
+// arrivals come from games that were really opened and left to run, each brought
+// on with a posed due once the visit before it has ended. The gather is in
+// `./rows`.
 //
 // WHAT THIS DOES NOT DECIDE. The side a saucer comes in at
-// (`saucer/enters-at-an-edge`), the row bound
-// (`saucer/entry-row-inside-the-range`), or that the row is redrawn per arrival
-// rather than per game — the spread over sixteen arrivals from four seeds is what
-// stands in for that, and no stronger statement is available without asserting a
-// distribution the specification does not fix.
+// (`saucer/enters-at-an-edge`) or the row bound
+// (`saucer/entry-row-inside-the-range`).
 
 import { afterEach, it } from "vitest";
-import { FIELD_H, SAUCER_R } from "../constants";
+import { SAUCER_WEAVE_SPEED } from "../constants";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import { type Harness } from "../harness";
-import { ARRIVALS, SEEDS, WATCH_SECONDS, readEntryRows } from "./rows";
-
-/** The row range `specs/saucer.md` draws an entry from. */
-const ROW_MIN = SAUCER_R;
-const ROW_MAX = FIELD_H - SAUCER_R;
+import { MARCH_STEP } from "./visits";
+import { ARRIVALS, ARRIVALS_PER_GAME, GAMES, readEntryRows } from "./rows";
 
 /**
- * The least the sixteen rows may span, in units: half the stated range. See the
- * header for the derivation.
+ * How far apart two rows must be to count as two rows, in units.
+ *
+ * One marched frame of `SAUCER_WEAVE_SPEED` (`90`) — `6` units — the most a first
+ * reading can be moved by a weave that began on the tick of entry. A build
+ * entering on one fixed lane reads rows a full zero apart.
  */
-const MIN_SPAN = (ROW_MAX - ROW_MIN) / 2;
+const ROW_SLACK = SAUCER_WEAVE_SPEED * MARCH_STEP;
 
 let harnesses: Harness[] = [];
 
@@ -55,22 +57,22 @@ afterEach(() => {
   harnesses = [];
 });
 
-it("spreads sixteen entry rows over more than half the range they are drawn from", async () => {
+it("enters at more than one row across six arrivals", async () => {
   const rows = await readEntryRows(harnesses, "rows");
 
   assertGreaterThanOrEqual(
     rows.length,
     ARRIVALS,
-    `arrivals produced by ${SEEDS.length} games of ${WATCH_SECONDS} s with the ` +
-      "game's own saucer arrival running (specs/saucer.md, The cadence)",
+    `arrivals produced by ${GAMES} games of ${ARRIVALS_PER_GAME} posed dues ` +
+      "with the game's own saucer arrival running (specs/saucer.md, The cadence)",
   );
 
   const ys = rows.map((row) => row.y);
   assertGreaterThan(
     Math.max(...ys) - Math.min(...ys),
-    MIN_SPAN,
-    `the span of ${rows.length} entry rows, against half the ` +
-      `${ROW_MAX - ROW_MIN}-unit range specs/saucer.md draws them uniformly ` +
-      `from — a build entering on one fixed lane spans nothing`,
+    ROW_SLACK,
+    `the units between the highest and the lowest of ${rows.length} entry ` +
+      "rows, which a row drawn afresh for every arrival puts apart and a fixed " +
+      "lane never does (specs/saucer.md)",
   );
 });

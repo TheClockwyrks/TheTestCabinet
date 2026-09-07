@@ -95,7 +95,7 @@ function distanceToSegment(
 
 describe("a new game", () => {
   it("opens at the title over an empty field", () => {
-    const state = createState(1);
+    const state = createState();
     expect(state.screen).toBe("title");
     expect(state.lives).toBe(START_LIVES);
     expect(state.wave).toBe(0);
@@ -107,7 +107,7 @@ describe("a new game", () => {
   });
 
   it("puts wave 1 up, clear of the ship and clear of the star", () => {
-    const state = createState(1);
+    const state = createState();
     startNewGame(state);
     expect(state.screen).toBe("playing");
     expect(state.wave).toBe(1);
@@ -141,7 +141,7 @@ describe("a new game", () => {
   });
 
   it("puts one more rock up on each later wave, drifting faster", () => {
-    const state = createState(2);
+    const state = createState();
     spawnWave(state, 1);
     expect(state.rocks).toHaveLength(WAVE_BASE_ROCKS + 1);
     state.rocks = [];
@@ -675,10 +675,10 @@ describe("the saucer", () => {
 
   it("steers clear of the core across every crossing the game can produce", () => {
     let worst = Infinity;
-    for (const seedValue of [1, 2, 3]) {
+    for (const weave of [1, -1] as const) {
       for (let row = STAR_Y - 80; row <= STAR_Y + 80; row += 20) {
         for (const direction of [1, -1]) {
-          const { state, advance } = posed(seedValue);
+          const { state, advance } = posed();
           state.ship.collision = false;
           // Far from the crossing, so nothing else takes part in it.
           state.ship.x = 40;
@@ -690,8 +690,11 @@ describe("the saucer", () => {
             direction * SAUCER_SPEED,
           );
           // The steering is the requirement; with the gun off the crossing
-          // produces no saucer bullets at all.
+          // produces no saucer bullets at all. Both weave directions, because a
+          // saucer weaving into the star is a different crossing from one
+          // weaving away.
           state.saucer.gun = false;
+          state.saucer.weave = weave;
           let previous = { x: state.saucer.x, y: state.saucer.y };
           for (let step = 0; step < 200; step += 1) {
             advance(8);

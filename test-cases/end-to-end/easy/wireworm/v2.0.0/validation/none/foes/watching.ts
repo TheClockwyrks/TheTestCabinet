@@ -8,14 +8,16 @@
 //
 // Both live here rather than in the shared harness next door because only this
 // group takes them, and, like everything there, both fix ARRANGEMENT alone:
-// which tile is watched, how long the watch runs, how often it samples. Not one
-// span, poll or count below is decided in this file — every one of them is the
-// caller's, stated in the check beside the figure `specs/foes.md` fixes it from.
+// which tile is watched, when a spawner's clock runs out, how often a sweep
+// samples. Not one span, poll or count below is decided in this file — every
+// one of them is the caller's, stated in the check beside the figure
+// `specs/foes.md` fixes it from.
 
 import {
   chargeAt,
   foesOfKind,
   framesFor,
+  TICK_HZ,
   type FoeKind,
   type Harness,
   type UntilResult,
@@ -75,55 +77,48 @@ export async function untilTileChanges(
   };
 }
 
-/** What watching one kind's roster over a stretch of play found. */
-export interface RosterWatch {
-  /** The most foes of that kind the roster held at any one sample. */
-  peak: number;
-  /** The seconds of the watch the first one was seen at, or `null` for none. */
-  firstAt: number | null;
-  /** The board as it stood at the last sample. */
-  snapshot: WirewormSnapshot;
-}
+/**
+ * The seconds a spawner clock is posed at so that it runs out inside the next
+ * update: half of one update's delta.
+ *
+ * `specs/foes.md` brings a foe in, or runs the dropper's sparse-field check,
+ * when its kind's clock reaches `0` — "When a clock reaches `0` its kind's
+ * entry or check happens and the clock is drawn again" — and `setSpawnTimer`
+ * poses the seconds left on that clock (`specs/instrumentation.md`). A clock
+ * posed at half a delta reaches `0` inside the very next update, so the entry
+ * it decides is the next thing that happens, and nothing waits on the interval
+ * the clock is then redrawn to.
+ */
+export const DUE_SECONDS = 0.5 / TICK_HZ;
 
 /**
- * Run `seconds` of play, sampling the roster for foes of `kind` every
- * `pollSeconds`, and report the most it ever held at once and when the first
- * appeared.
- *
- * The stretch is run through {@link Harness.skip} rather than frame by frame,
- * because what these points wait on is a SPAWNER'S PACING — seven to twelve
- * seconds of it, or a minute — and a skip runs the same real update off camera.
- * The roster is read once before the first frame too, so a foe the arrangement
- * posed counts toward the peak. `each` runs after every sample's play, for a
- * check that has to hold something true for the whole stretch.
+ * The updates run once a clock is posed due: the one it runs out in, and one
+ * more for a build that acts on the update after its clock crosses `0` rather
+ * than inside the one it crosses in.
  */
-export async function watchRoster(
-  h: Harness,
-  kind: FoeKind,
-  seconds: number,
-  pollSeconds: number,
-  each?: () => Promise<void>,
-): Promise<RosterWatch> {
-  let peak = 0;
-  let firstAt: number | null = null;
-  let snapshot = await h.snapshot();
+export const EXPIRY_FRAMES = 2;
 
-  const sample = (at: number): void => {
-    const held = foesOfKind(snapshot, kind).length;
-    if (held > peak) peak = held;
-    if (held > 0 && firstAt === null) firstAt = at;
-  };
-
-  sample(0);
-  for (let elapsed = 0; elapsed < seconds; ) {
-    const step = Math.min(pollSeconds, seconds - elapsed);
-    await h.skip(framesFor(step));
-    elapsed += step;
-    if (each !== undefined) await each();
-    snapshot = await h.snapshot();
-    sample(elapsed);
+/**
+ * Pose the level's clock for `kind` to run out inside the next update, run the
+ * updates that expiry lands in, and report the most foes of `kind` the roster
+ * held over them.
+ *
+ * THIS IS THE READING EVERY POINT ABOUT A SPAWNER'S LEVEL GATE OR ITS CAP
+ * TAKES. The moment the spawner would bring a foe in is POSED rather than
+ * waited for, so a point costs two updates instead of the interval the clock is
+ * drawn to, and its cost does not follow the build's pacing. The roster is read
+ * after each update, so a foe that entered and was removed inside the stretch
+ * still counts toward the peak, and the foes standing before the first update
+ * count too, so a cap that is already binding is read at the cap.
+ */
+export async function expireClock(h: Harness, kind: FoeKind): Promise<number> {
+  await h.debug.setSpawnTimer(kind, DUE_SECONDS);
+  let peak = foesOfKind(await h.snapshot(), kind).length;
+  for (let frame = 0; frame < EXPIRY_FRAMES; frame += 1) {
+    await h.advance(1);
+    peak = Math.max(peak, foesOfKind(await h.snapshot(), kind).length);
   }
-  return { peak, firstAt, snapshot };
+  return peak;
 }
 
 /**

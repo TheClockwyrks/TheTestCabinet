@@ -84,15 +84,16 @@ export class Rally extends Actor {
    *
    * On the first frame the timer, after subtracting the frame's time, is at or
    * below zero the ball launches: the timer is spent, the trail cleared, the
-   * spin zeroed, and it leaves at SERVE_SPEED along an angle drawn uniformly
-   * over the full circle from the game's seeded generator (specs/balls.md).
+   * spin zeroed, and it leaves at SERVE_SPEED along its own `launchAngle`,
+   * drawn when it was parked or posed since and left as it is by the launch
+   * (specs/balls.md).
    */
   private countHold(ball: Ball, dt: number): void {
     if (!ball.held) return;
     ball.holdTimer -= dt;
     if (ball.holdTimer > 0) return;
 
-    const angle = gameOf(this.world).drawLaunchAngle();
+    const angle = ball.launchAngle;
     ball.holdTimer = 0;
     ball.held = false;
     ball.trail = [];

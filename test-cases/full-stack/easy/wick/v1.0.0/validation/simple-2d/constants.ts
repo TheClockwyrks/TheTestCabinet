@@ -1230,6 +1230,13 @@ export const IDLE_RUN = {
   spawnTimer: 0,
   firedEvents: [],
   nextId: 0,
+  nextSpawnAngle: null,
+  nextSwarmAngle: null,
+  nextSpawnType: null,
+  nextPuddleOffset: null,
+  nextStrikeTarget: null,
+  nextChestItem: null,
+  nextDrop: null,
 } as const;
 
 /** The stored fields of a fresh run: the idle run, plus Taper (specs/ui.md). */
@@ -1462,9 +1469,18 @@ export const ICON_SIZE = 24;
 // specs/instrumentation.md.
 
 export const WICK_DEBUG_VERSION = 1;
-export const DEFAULT_SEED = 1;
-/** "options.seed ... a whole number from 0 to 2^32 − 1". */
-export const MAX_SEED = 2 ** 32 - 1;
+
+/**
+ * A posed angle, `setNextSpawnAngle` and `setNextSwarmAngle`, is "a real number
+ * of at least `0` and below `360`, measured from `+x` toward `+y`"
+ * (specs/instrumentation.md, Drawn outcomes).
+ */
+export const POSED_ANGLE_MIN = 0;
+export const POSED_ANGLE_LIMIT = 360;
+
+/** What `setNextDrop(kind)` takes: "one of `bread`, `draft`, and `none`". */
+export const NEXT_DROPS = ["bread", "draft", "none"] as const;
+export type NextDrop = (typeof NEXT_DROPS)[number];
 
 /* ------------------------------ Tolerances -------------------------------- */
 // The one set of figures here the specs do not state. Each is a limit on the
@@ -1496,18 +1512,13 @@ export const MOTION_TOLERANCE = 1e-6;
 export const DIRECTION_TOLERANCE = 1e-9;
 
 /**
- * The drop roll's sample and bounds, from specs/world.md's BREAD_CHANCE (0.02)
- * and DRAFT_CHANCE (0.005) over DROP_SAMPLE seeded common kills. The bread
- * count is Binomial(4000, 0.02), mean 80 and deviation 8.85; a draft draw is
- * made only after a failed bread draw, so the draft count is
- * Binomial(4000, 0.98 × 0.005), mean 19.6 and deviation 4.42. Each bound sits
- * where the tail past it is below one in a hundred thousand, so a conformant
- * generator fails these at most once in a hundred thousand runs while a build
- * that never drops, or drops on every kill, fails them every time.
+ * A position the simulation integrates over a span of ticks, read against the
+ * figure the rules give it: thirty steps of `speed × TICK_DT` summed in floats
+ * stray by far less than a tenth of a unit, and a build that integrated with
+ * the frame's delta rather than the tick's strays by whole steps. A tenth of a
+ * unit is below every figure the specification states in units.
  */
-export const DROP_SAMPLE = 4000;
-export const BREAD_COUNT_RANGE: readonly [number, number] = [40, 125];
-export const DRAFT_COUNT_RANGE: readonly [number, number] = [3, 45];
+export const INTEGRATION_TOLERANCE = 0.1;
 
 /**
  * How far into a bar's fill a "scales with" reading is trusted: a bar whose

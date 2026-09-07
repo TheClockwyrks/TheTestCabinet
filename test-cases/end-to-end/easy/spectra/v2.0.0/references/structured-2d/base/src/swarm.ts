@@ -445,11 +445,10 @@ export function stepDiveLaunching(state: SpectraState, h: number): void {
   if (state.diveClock < state.diveTarget) return;
   const resting = state.drones.filter((drone) => drone.phase === "formation");
   if (resting.length === 0) return;
-  const chosen = resting[randomIndex(state, resting.length)];
+  const chosen = resting[randomIndex(resting.length)];
   if (chosen === undefined) return;
   enterPhase(chosen, "diving");
   state.diveClock = 0;
   state.diveTarget =
-    randomBetween(state, DIVE_GAP_MIN, DIVE_GAP_MAX) *
-    diveGapScale(state.stage);
+    randomBetween(DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(state.stage);
 }

@@ -361,9 +361,9 @@ export interface Harness {
    *
    * The route for a check that samples the state on EVERY tick — the aim
    * group's shot-by-shot sweep, `saucer/at-most-one-at-a-time`'s trace of the
-   * reported ids across two minutes. Those loops call `advance(1)` a tick at a
+   * reported ids across fifty seconds. Those loops call `advance(1)` a tick at a
    * time on purpose, so that no tick is ever stepped over, and each of those
-   * calls would otherwise draw its one frame: fourteen thousand pictures to
+   * calls would otherwise draw its one frame: six thousand pictures to
    * read one number off each. Inside a quiet scope the same ticks run, the
    * same snapshots are read, and one frame is drawn rather than all of them.
    *
@@ -386,9 +386,6 @@ export interface Harness {
     predicate: (snapshot: ShatterSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
-
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): void;
   /** Release a key held by `hold`. */
@@ -920,7 +917,7 @@ export async function createHarness(
    * A scope outranks the flag: inside one, even the frame {@link Harness.advance}
    * would have drawn is skipped, which is what lets a check keep its own
    * tick-at-a-time loop — the shape the sweep's own comment describes — and still
-   * pay for one picture rather than fourteen thousand.
+   * pay for one picture rather than six thousand.
    */
   let quietDepth = 0;
   /** Whether the canvas holds the picture of the tick the game is on. */
@@ -1216,14 +1213,6 @@ export async function createHarness(
       return { hit: false, frames, ticks: frames, snapshot };
     },
 
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
-    },
-
     hold: (code) => dispatch("keydown", code),
     release: (code) => dispatch("keyup", code),
     async tap(code) {
@@ -1423,9 +1412,8 @@ const SIZE_ORDER: readonly RockSize[] = ["small", "medium", "large"];
 /**
  * The smallest rock on the field, ties broken by the lowest id.
  *
- * Deterministic on purpose: a scenario that shoots the field down has to make
- * the same choices twice for a seeded replay to reproduce, and "smallest" alone
- * does not order two Smalls.
+ * The tie-break is part of the rule: "smallest" alone does not order two Smalls,
+ * and a scenario that shoots the field down names one target per round.
  */
 export function smallestRock(snapshot: ShatterSnapshot): RockSnapshot {
   let best: RockSnapshot | undefined;
@@ -1625,8 +1613,8 @@ export function clearWorld(h: Harness): void {
  * that follows owns the clock from tick zero and `simTime` is untouched. A check
  * that wants the game to have drawn — a pixel read, a still — advances first.
  *
- * It does not call `reset` either. A check that needs a seeded, title-screen
- * ground calls `h.debug.reset({ seed })` itself, and a check that reaches its
+ * It does not call `reset` either. A check that needs a title-screen ground
+ * calls `h.debug.reset()` itself, and a check that reaches its
  * scenario through a real title-to-`PLAY` start does not call this at all: after
  * a `reset` both world gates are ON, which is how `waves/wave-one-spawns-four`
  * and `screens/play-starts-a-game` reach a real opening wave.

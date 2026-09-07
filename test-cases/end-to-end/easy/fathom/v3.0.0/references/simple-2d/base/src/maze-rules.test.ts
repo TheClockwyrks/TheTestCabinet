@@ -58,7 +58,7 @@ describe("the proportions specs/maze.md fixes", () => {
 
 describe("the faults a layout can carry", () => {
   it("finds none in a maze the generator laid out", () => {
-    expect(mazeFaults(generateMaze(createDraws(1)))).toEqual([]);
+    expect(mazeFaults(generateMaze(createDraws()))).toEqual([]);
   });
 
   it("names a dead end, a broken border and a missing den", () => {

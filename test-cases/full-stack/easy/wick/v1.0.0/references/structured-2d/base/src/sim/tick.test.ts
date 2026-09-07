@@ -14,7 +14,7 @@ import { tick } from "./tick";
 
 describe("a long night", () => {
   it("runs a full loadout over a crowd without a figure going astray", () => {
-    const state: WickState = initialState(7);
+    const state: WickState = initialState();
     state.run = freshRun();
     state.screen = "playing";
     // The crowd closes in and the director adds to it; what the night tests
@@ -27,7 +27,7 @@ describe("a long night", () => {
       id,
       level: PASSIVES[id].maxLevel,
     }));
-    const rng = new Rng(() => state);
+    const rng = new Rng();
     const cues = new Set<CueName>();
     for (let i = 0; i < 120; i += 1) {
       const type = ENEMY_IDS[i % ENEMY_IDS.length];

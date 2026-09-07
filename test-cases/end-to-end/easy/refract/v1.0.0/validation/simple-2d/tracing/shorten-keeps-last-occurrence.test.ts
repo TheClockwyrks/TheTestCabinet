@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 it("drops the cells after the pressed node's LAST occurrence in the drawn order", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, CRYSTAL_TWICE);
 
   // Both crossings of the crystal, stopping short of the solving segment.

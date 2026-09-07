@@ -26,7 +26,6 @@
 
 import type { World } from "@clockwyrks/structured-2d";
 import {
-  DEFAULT_SEED,
   RESONANCE_MAX,
   SPECTRA_DEBUG_VERSION,
   bulletSpeedScale,
@@ -167,7 +166,7 @@ export interface SpectraSnapshot {
 export interface SpectraDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): SpectraSnapshot;
   menuItemRect(index: number): MenuRect | null;
 
@@ -256,8 +255,8 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
   return {
     version: SPECTRA_DEBUG_VERSION,
 
-    reset(options) {
-      resetState(read(), options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(read());
     },
 
     snapshot() {

@@ -13,23 +13,23 @@
 // `{ kind: "level", item: "brass", level: 2 }` and every maxed weapon still
 // reads `8`.
 //
-// WHY THREE MAXED WEAPONS AND TWENTY SEEDS. The rule this point names is the
+// WHY THREE MAXED WEAPONS AND TWENTY CHESTS. The rule this point names is the
 // one that keeps a maxed item OUT of the draw, and a build whose pool wrongly
 // admits maxed items is only caught on a draw that actually names one. Beside a
-// single maxed weapon such a build names Brass half the time, so one chest on
-// one seed is a coin flip; beside three it names Brass a quarter of the time,
-// and the same assertions are made on each of twenty seeds `reset` lays ("a
-// whole number from `0` to `2^32 − 1`", `specs/instrumentation.md`), so it
-// escapes with probability `4^−20`. The check stays deterministic rather than
-// becoming a reading of a distribution: the specification leaves a conformant
-// build ONE candidate, so the SAME result is asserted on every seed.
+// single maxed weapon such a build names Brass half the time, so one chest is a
+// coin flip; beside three it names Brass a quarter of the time, and the same
+// assertions are made on each of twenty chests, so it escapes with probability
+// `4^−20`. The specification leaves a conformant build ONE candidate, so the
+// SAME result is asserted on every chest.
 //
-// THE POSE. Twenty isolated nights, each seeded of its own, each with Taper,
-// Ember, and Pin at level 8 and Brass at level 1, none of Wick, Oil, or Mirror
-// held, and the chest reached the real way through the harness's `openChest`.
+// THE POSE. Twenty chests on one isolated night, each with Taper, Ember, and
+// Pin at level 8 and Brass posed back to level 1, none of Wick, Oil, or Mirror
+// held, each chest reached the real way through the harness's `openChest` and
+// its overlay left through `setScreen("playing")`. Nothing is posed for the
+// draw itself.
 //
 // TOLERANCE. None: the result's three fields and the four levels are exact, on
-// every seed.
+// every chest.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -45,7 +45,7 @@ import {
   weaponIn,
   type Harness,
 } from "../harness";
-import { chestOutcome } from "./stage";
+import { chestOutcome, closeChest } from "./stage";
 
 /** Brass's posed level: below its max of `3`, and the only candidate. */
 const BRASS_LEVEL = 1;
@@ -53,8 +53,8 @@ const BRASS_LEVEL = 1;
 /** The base weapons posed at `MAX_WEAPON_LEVEL`, none beside its recipe passive. */
 const MAXED = ["taper", "ember", "pin"] as const;
 
-/** How many seeded nights open a chest. */
-const SEEDS = 20;
+/** How many chests are opened. */
+const CHESTS = 20;
 
 let h: Harness;
 
@@ -66,18 +66,18 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("levels Brass to 2 and leaves the maxed weapons at 8 on every seed", async () => {
-  for (let seed = 1; seed <= SEEDS; seed += 1) {
-    await isolate(h, { seed });
-    for (let i = 0; i < MAXED.length; i += 1) {
-      await holdWeapon(h, MAXED[i], MAX_WEAPON_LEVEL, i);
-    }
+it("levels Brass to 2 and leaves the maxed weapons at 8 on every chest", async () => {
+  await isolate(h);
+  for (let i = 0; i < MAXED.length; i += 1) {
+    await holdWeapon(h, MAXED[i], MAX_WEAPON_LEVEL, i);
+  }
+  for (let chest = 1; chest <= CHESTS; chest += 1) {
     await holdPassive(h, "brass", BRASS_LEVEL, 0);
 
     const opened = await openChest(h);
-    if (seed === SEEDS) await captureStill(h, "skipped");
+    if (chest === CHESTS) await captureStill(h, "skipped");
 
-    const where = `seed ${seed}: the chest with three maxed weapons and Brass 1`;
+    const where = `chest ${chest}: the chest with three maxed weapons and Brass 1`;
     const result = chestOutcome(opened, where);
     assertEqual(result.kind, "level", `${where}: the chest result's kind`);
     if (result.kind === "level") {
@@ -100,5 +100,6 @@ it("levels Brass to 2 and leaves the maxed weapons at 8 on every seed", async ()
         `${where}: ${id}'s level after the chest`,
       );
     }
+    await closeChest(h, opened);
   }
 });

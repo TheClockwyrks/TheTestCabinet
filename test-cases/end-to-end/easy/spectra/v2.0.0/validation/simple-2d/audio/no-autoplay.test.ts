@@ -49,10 +49,8 @@
 // game to the engine's own frame loop would reach no code these frames do not: the
 // loop is a wall clock over the same tick `advance` runs, and a cue reaches the
 // bus from the game's own call inside that tick. And what this point requires is
-// silence before a key, not that the game advances on its own; the one point in
-// this project whose requirement IS unstepped advance is
-// `instrumentation/advances-in-real-time`, and even that one ends its wait on the
-// build's own clock passing a floor rather than on a fixed span of the wall clock.
+// silence before a key, not that the game advances on its own, which under an
+// engine is the engine's loop rather than the build's work and no point reads.
 // A fixed span here would have decided nothing except how many frames of its own a
 // busy host let the engine run, and how many of the build's timers a busy host let
 // through — reach that rises and falls with the machine rather than with the

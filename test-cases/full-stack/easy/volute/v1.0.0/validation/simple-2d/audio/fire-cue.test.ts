@@ -9,7 +9,7 @@
 //     and `Space` is a key bound to it, and the engine arms an edge at the event
 //     and discards it after the frame that could have consumed it, so the tick
 //     the key goes down is the tick the injector fires.
-//   - `specs/instrumentation.md` ("A deterministic core"): "Audio belongs to the
+//   - `specs/instrumentation.md` ("A render-free core"): "Audio belongs to the
 //     ticks. A pose changes the state alone and sounds nothing; the cues a
 //     scenario hears come from the ticks run after it." So the hall is arranged
 //     by poses, which sound nothing, and every cue read below comes from a

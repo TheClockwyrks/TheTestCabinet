@@ -103,7 +103,7 @@ function run(
   predator: PredatorState,
   w: PredatorWorld,
   ticks: number,
-  draws: Draws = createDraws(1),
+  draws: Draws = createDraws(),
   index = 0,
 ): Run {
   let current = predator;
@@ -349,7 +349,7 @@ describe("the Gloamfin", () => {
     const w = world(maze, 8, 5, 0);
     let current = chasing;
     let floor = GLOAMFIN_CHASE_SPEED;
-    const draws = createDraws(1);
+    const draws = createDraws();
     for (let i = 0; i < 200; i++) {
       current = stepPredator(current, 0, TICK_DT, w, draws).predator;
       floor = Math.min(floor, current.chaseSpeed);
@@ -376,7 +376,7 @@ describe("the Flarefish", () => {
     const maze = ring();
     const w = world(maze, 25, 2);
     let current = loose("flarefish", 4, 9);
-    const draws = createDraws(1);
+    const draws = createDraws();
     const cues: CueName[] = [];
     const chargeStarts: number[] = [];
     let wasCharging = false;
@@ -414,7 +414,7 @@ describe("the Flarefish", () => {
     // which ignores rock entirely.
     const w = world(maze, 10, 9, 0);
     let current = loose("flarefish", 4, 9);
-    const draws = createDraws(1);
+    const draws = createDraws();
     let locked: PredatorState | null = null;
     for (let i = 0; i < 120 * 10 && locked === null; i++) {
       current = stepPredator(current, 0, TICK_DT, w, draws).predator;

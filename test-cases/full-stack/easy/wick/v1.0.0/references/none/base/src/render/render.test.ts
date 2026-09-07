@@ -53,13 +53,13 @@ function rowBox(rect: {
 }
 
 function almanacState(): WickState {
-  const state = initialState(1);
+  const state = initialState();
   state.screen = "almanac";
   return state;
 }
 
 function playingState(): WickState {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   return state;

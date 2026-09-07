@@ -67,7 +67,7 @@ const HOLD_FRAMES = flightFrames(1.5);
  * Nothing is measured beyond that. The case fixes no palette — specs/overview.md
  * leaves every colour to the build — so how far a stamp reads from the felt is
  * the reviewer's. The point is read twice, once before anything painted and once
- * after the card has flown on; rendering is deterministic, the world holds this
+ * after the card has flown on; the world holds this
  * one card and nothing else, and the card is no longer over the point, so any
  * difference at all is the stamp the painted layer kept.
  */

@@ -30,7 +30,6 @@ import {
   CELLS,
   CHAIN_RESET,
   CHARGE_IDS,
-  DEFAULT_SEED,
   LEVEL_COUNT,
   MACHINERY_KINDS,
   PATH_LENGTH,
@@ -114,13 +113,14 @@ export interface VoluteSnapshot {
   feed: boolean;
   muted: boolean;
   simTime: number;
-  rngState: number;
+  /** The charge posed for the next emission, and `null` while none stands. */
+  nextEmitted: ChargeId | null;
 }
 
 /** The surface `engine.debug` hands back. */
 export interface VoluteDebug {
   version: number;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): VoluteSnapshot;
   setScreen(name: string): void;
   setLevel(level: number): void;
@@ -132,6 +132,7 @@ export interface VoluteDebug {
   clearTrain(): void;
   setLoaded(charge: string): void;
   setQueued(charge: string): void;
+  setNextEmitted(charge: string | null): void;
   setAim(angleDegrees: number): void;
   fire(): void;
   setPressure(value: number): void;
@@ -141,6 +142,11 @@ export interface VoluteDebug {
   grantMachinery(kind: string): void;
   pause(): void;
   resume(): void;
+}
+
+/** A charge id, or `null` when the argument names none. */
+function asChargeOrNull(value: unknown): ChargeId | null {
+  return CHARGE_IDS.includes(value as ChargeId) ? (value as ChargeId) : null;
 }
 
 /** A charge id, or the first of the five when the argument names none. */
@@ -182,14 +188,13 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
     version: VOLUTE_DEBUG_VERSION,
 
     /**
-     * Restore every declared field to its title-screen value and reseed the
-     * generator.
+     * Restore every declared field to its title-screen value.
      *
      * `muted` is deliberately untouched: muting is a player preference the
      * runtime owns, and a reset is not a reason to start making noise again.
      */
-    reset(options) {
-      game.reset(asNumber(options?.seed, DEFAULT_SEED));
+    reset() {
+      game.reset();
     },
 
     /** A pure read of the running game. It changes nothing. */
@@ -302,16 +307,30 @@ export function createDebugSurface(game: VoluteGame): VoluteDebug {
       });
     },
 
-    /** Set the charge the injector holds loaded. The generator is untouched. */
+    /** Set the charge the injector holds loaded, and nothing else. */
     setLoaded(charge) {
       game.pose((mode) => mode.injector().setLoaded(asCharge(charge)));
     },
 
-    /** Set the charge the injector holds queued. The generator is untouched. */
+    /** Set the charge the injector holds queued, and nothing else. */
     setQueued(charge) {
       game.pose((mode) => {
         mode.injector().queued = asCharge(charge);
       });
+    },
+
+    /**
+     * Pose the charge of the next core the inlet emits, or clear the pose with
+     * `null`.
+     *
+     * The next emission carries it in place of the draw, whatever the channel
+     * holds, and consumes it; the inlet's gate, the quota and the mark cadence
+     * are untouched, so a posed charge waits behind a held inlet. It lives on
+     * the instance, so a `startLevel` leaves it standing and a `reset` clears
+     * it.
+     */
+    setNextEmitted(charge) {
+      game.nextEmitted = asChargeOrNull(charge);
     },
 
     /**
@@ -476,6 +495,6 @@ export function snapshot(game: VoluteGame): VoluteSnapshot {
     feed: game.feed,
     muted: game.muted(),
     simTime: game.simTime(),
-    rngState: game.rngState >>> 0,
+    nextEmitted: game.nextEmitted,
   };
 }

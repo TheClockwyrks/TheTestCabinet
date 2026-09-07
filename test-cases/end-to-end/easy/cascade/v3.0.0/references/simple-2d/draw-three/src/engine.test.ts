@@ -38,6 +38,8 @@ import {
   DECK_SIZE,
   FOUNDATION_X,
   HUD_ITEMS,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   STAGE_H,
   STAGE_W,
   STOCK_X,
@@ -47,8 +49,8 @@ import {
   TITLE_TEXT,
   TOP_ROW_Y,
   TURN_COUNT,
-  WASTE_X,
   WASTE_FAN,
+  WASTE_X,
   WIN_TEXT,
 } from "./constants";
 import {
@@ -357,6 +359,7 @@ describe("the debug surface", () => {
       "clearFlyers",
       "setLaunchClock",
       "clearTrail",
+      "drawLaunchVx",
     ];
     for (const name of names) {
       expect(typeof (h.debug as unknown as Record<string, unknown>)[name]).toBe(
@@ -391,6 +394,11 @@ describe("the debug surface", () => {
     h.pose((s, d) => d.setFlyerPosition(s, flyerId, 400, 500));
     h.pose((s, d) => d.setFlyerVelocity(s, flyerId, 11, 12));
     h.pose((s, d) => d.setLaunchClock(s, 0.09));
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = h.debug.drawLaunchVx(h.state);
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
 
     const snap = h.snapshot();
     expect(snap.screen).toBe("playing");
@@ -581,14 +589,13 @@ describe("the debug surface", () => {
     expect(h.decide((s, d) => d.autoMove(s, "waste", 0))).toBe(false);
   });
 
-  it("deals the same board from one seed and different boards from two", () => {
-    const deal = (seed: number): string => {
-      h.pose((s, d) => d.reset(s, { seed }));
+  it("deals different boards on two deals in a row", () => {
+    const deal = (): string => {
+      h.pose((s, d) => d.reset(s));
       h.pose((s, d) => d.deal(s));
       return JSON.stringify(h.snapshot().tableau);
     };
-    expect(deal(7)).toBe(deal(7));
-    expect(deal(7)).not.toBe(deal(8));
+    expect(deal()).not.toBe(deal());
   });
 });
 

@@ -7,7 +7,7 @@
 // accumulate-and-carry rule the worm's step clock uses." The rule is STATED
 // rather than left to a random re-pick precisely so this point can assert it: a
 // check that assumed randomness would fail a spec-honouring build on an unlucky
-// seed.
+// draw.
 //
 // WHAT IS READ. `specs/instrumentation.md` makes a foe's reported `vx` "what its
 // position is changing by right now, including any dart", so a reversal is a

@@ -3,7 +3,7 @@
 // specs/expedition.md lists "the generated mine and its world size" first among
 // what a save holds, so continuing returns to the shafts already cut rather than
 // to a freshly generated mine. specs/world.md adds that "the mine is generated
-// fresh for each expedition from the current seed" and that a cell's kind is
+// fresh for each expedition" and that a cell's kind is
 // fixed at generation "except that a minable cell becomes an empty tunnel once it
 // is drilled out" — so the grid IS the state a save has to carry.
 //
@@ -14,7 +14,7 @@
 //     restoring lands on a different scatter.
 //   - A POSED SHAFT that generation never produces: a one-tile bore straight down
 //     a column with a boulder capping it. A build that regenerated FROM THE SAME
-//     SEED could still match the fingerprint; it cannot match this, because these
+//     MINE could still match the fingerprint; it cannot match this, because these
 //     cells were carved after generation ran.
 //
 // `coreRow` is read back too, since the size travels with the mine.

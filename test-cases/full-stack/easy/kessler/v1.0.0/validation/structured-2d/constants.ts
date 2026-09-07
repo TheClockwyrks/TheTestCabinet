@@ -214,20 +214,17 @@ export const POD_KINDS: readonly PodKind[] = [
   "pierce",
 ];
 
-/** `u1 < 0.25` sheds a pod; `u1 >= 0.25` sheds nothing. */
+/** A destruction sheds a pod with probability 0.25. */
 export const POD_DROP_CHANCE = 0.25;
 
-/**
- * The kind table over `u2`, cumulative in the order `specs/pods.md` lists it:
- * the first row whose `upTo` exceeds `u2` wins.
- */
-export const POD_KIND_TABLE: readonly { kind: PodKind; upTo: number }[] = [
-  { kind: "widen", upTo: 0.25 },
-  { kind: "multiball", upTo: 0.45 },
-  { kind: "shield", upTo: 0.65 },
-  { kind: "pierce", upTo: 0.8 },
-  { kind: "narrow", upTo: 1 },
-];
+/** The probability a shed pod is each kind, per the table `specs/pods.md` states. */
+export const POD_KIND_CHANCES: Readonly<Record<PodKind, number>> = {
+  widen: 0.25,
+  multiball: 0.2,
+  shield: 0.2,
+  pierce: 0.15,
+  narrow: 0.2,
+};
 
 /** How fast a pod falls radially inward, in units/second. */
 export const POD_FALL_SPEED = 120;

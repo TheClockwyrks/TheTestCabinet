@@ -1,16 +1,16 @@
 // Refract — instrumentation/reset: `reset` returns every declared field to its
-// title-screen value, seeds `rngState` from `options.seed`, and leaves `muted`
-// alone.
+// title-screen value and leaves `muted` alone.
 //
 // A RESET THAT ONLY LOOKS CLEAN IS THE FAILURE MODE. Read on a fresh page,
 // every field is at its title value whether or not `reset` did anything — so
-// the state is dirtied FIRST, in both modes, through real play: campaign board
-// 1 is solved (solvedBoards and unlockedCount move), a cascade board is solved
-// (solvedCount moves), and the mute toggle is pressed. Only then does
-// `reset({ seed: 7 })` run, and the snapshot is held against the full
-// title-state list in specs/instrumentation.md — with `muted`, which the
-// runtime owns and reset must not touch, required to keep whatever value the
-// press left it.
+// the state is dirtied FIRST, in both modes: campaign board 1 is solved through
+// real play (solvedBoards and unlockedCount move, and campaign progress has no
+// pose), a cascade run in progress is posed through `setMode`,
+// `setSolvedCount` and `setTier` (specs/instrumentation.md) with a board in
+// play and a trace live on it, and the mute toggle is pressed. Only then does
+// `reset()` run, and the snapshot is held against the full title-state list in
+// specs/instrumentation.md — with `muted`, which the runtime owns and reset
+// must not touch, required to keep whatever value the press left it.
 //
 // The campaign precondition is read BEFORE the mode switch. Whether campaign
 // progress survives entering another mode is
@@ -20,38 +20,29 @@
 // left rather than against `true`, because the binding that turns muting on is
 // `screens/mute`'s requirement; what reset owes is that it leaves the bit
 // alone.
-//
-// THE SEED IS READ BACK, AND THEN REPLAYED. specs/instrumentation.md fixes what
-// `reset` does to the generator exactly — "`rngState` becomes `options.seed`, or
-// `DEFAULT_SEED` (`1`) when no seed is given" — and reports `rngState` on the
-// snapshot, so the pose is verified by setting a value and reading it back. That
-// alone is what a build ignoring `options.seed` fails. The determinism reading
-// stays beside it because it covers what the read-back does not: that the same
-// seed and the same calls reproduce the same result exactly. (A build that uses
-// no randomness generates the same board every time and passes the second half,
-// exactly as the spec allows; it cannot pass the first without honouring the
-// seed.)
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertDeepEqual,
   assertEqual,
   assertGreaterThanOrEqual,
+  assertNotNull,
   assertNull,
 } from "../assert";
-import { DEFAULT_SEED } from "../constants";
-import { boardToNotation } from "../notation";
-import { solve } from "../solver";
+import { GEO_3X3 } from "../fixtures";
 import {
-  boardFromSnapshot,
   captureStill,
+  center,
   createHarness,
-  drawBeams,
   driveCourse,
   fireAction,
-  startCascade,
+  loadBoard,
+  poseCascadeRun,
   type Harness,
 } from "../harness";
+
+/** A run in progress: past the first climb, so tier 2 stands to be cleared. */
+const RUN_COUNT = 6;
 
 let h: Harness;
 
@@ -77,28 +68,24 @@ it("restores every declared field to its title-screen value, muted untouched", a
     "solving board 1 unlocks past the opening board",
   );
 
-  // Dirty the cascade: enter it and solve one generated board with the case's
-  // own spec-derived solver.
-  await startCascade(h);
-  let snapshot = await h.snapshot();
-  assertEqual(snapshot.screen, "playing", "cascade puts a board in play");
-  const verdict = solve(boardFromSnapshot(snapshot));
-  assertEqual(
-    verdict.status,
-    "solved",
-    "the case's solver cracks the first cascade board",
-  );
-  if (verdict.status !== "solved") return;
-  await drawBeams(h, verdict.beams);
-  snapshot = await h.snapshot();
-  assertEqual(snapshot.solvedCount, 1, "solving the board counts it");
+  // Dirty the cascade: pose a run in progress, a board in play, and a trace
+  // live on it.
+  await poseCascadeRun(h, RUN_COUNT);
+  const board = await loadBoard(h, GEO_3X3);
+  const emitter = center(board, { col: 0, row: 0 });
+  await h.debug.pointerDown(emitter.x, emitter.y);
+  const dirty = await h.snapshot();
+  assertEqual(dirty.mode, "cascade", "the cascade run is posed");
+  assertEqual(dirty.solvedCount, RUN_COUNT, "the run holds solves to clear");
+  assertEqual(dirty.tier, 2, "the run holds a climbed tier to clear");
+  assertNotNull(dirty.tracing, "a trace is live before the reset");
 
   // Dirty the mute bit if the build binds the habitual key; whatever the press
   // left is what reset must leave.
   await fireAction(h, "mute");
   const mutedBefore = (await h.snapshot()).muted;
 
-  await h.debug.reset({ seed: 7 });
+  await h.debug.reset();
 
   // The full title-state list, read before any frame runs (simTime is 0 at
   // the reset itself). The frame after the read is what puts the title on the
@@ -125,46 +112,4 @@ it("restores every declared field to its title-screen value, muted untouched", a
     assertDeepEqual(beam.cells, [], `every beam empty (${channel})`);
   }
   assertEqual(reset.muted, mutedBefore, "muted is untouched by reset");
-});
-
-it("seeds rngState from options.seed, defaulting to DEFAULT_SEED", async () => {
-  // The seed itself, read straight back off the snapshot.
-  await h.debug.reset({ seed: 7 });
-  assertEqual(
-    (await h.snapshot()).rngState,
-    7,
-    "reset({ seed: 7 }) leaves rngState at 7",
-  );
-  await h.debug.reset();
-  assertEqual(
-    (await h.snapshot()).rngState,
-    DEFAULT_SEED,
-    `an omitted seed leaves rngState at DEFAULT_SEED (${DEFAULT_SEED})`,
-  );
-
-  // The same seed and the same calls reproduce the same result exactly, so two
-  // runs from reset({ seed: 7 }) open the cascade on the same board.
-  const opening = async (): Promise<string> => {
-    await startCascade(h);
-    const snapshot = await h.snapshot();
-    assertEqual(snapshot.screen, "playing", "cascade puts a board in play");
-    return boardToNotation(boardFromSnapshot(snapshot));
-  };
-
-  await h.debug.reset({ seed: 7 });
-  const first = await opening();
-  await h.debug.reset({ seed: 7 });
-  const second = await opening();
-  assertEqual(second, first, "the same seed opens on the same board");
-
-  // An omitted seed means DEFAULT_SEED (1).
-  await h.debug.reset();
-  const unseeded = await opening();
-  await h.debug.reset({ seed: DEFAULT_SEED });
-  const seeded = await opening();
-  assertEqual(
-    unseeded,
-    seeded,
-    `an omitted seed defaults to DEFAULT_SEED (${DEFAULT_SEED})`,
-  );
 });

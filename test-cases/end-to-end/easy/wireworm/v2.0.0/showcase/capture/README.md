@@ -58,7 +58,7 @@ PY
 TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
   TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2400 \
   TCAB_SHOWCASE_MIN_SECONDS=26 TCAB_SHOWCASE_MAX_SECONDS=36 \
-  TCAB_SHOWCASE_SEEDS=1,2,3,4,5,6,7,8,9,11,13,17 \
+  TCAB_SHOWCASE_TAKES=4 \
   npx vitest run --config validation/vitest.config.ts \
   validation/showcase-capture.test.ts
 ```
@@ -79,15 +79,17 @@ remove the staged `validation/` directory from the reference workspace.
 | `TCAB_VALIDATION_MEDIA_DIR`                               | Where the outputs are written. Unset, the driver plays and reports but writes nothing, which is how an audition is run.             |
 | `TCAB_SHOWCASE_MAX_REPLAY_FRAMES`                         | The staged shared harness's replay cap. 2400 holds forty seconds at 60 Hz without thinning.                                         |
 | `TCAB_SHOWCASE_MIN_SECONDS` / `TCAB_SHOWCASE_MAX_SECONDS` | The bounds a take is played between. It ends on the first settled beat past the minimum, and is cut at the maximum if none arrives. |
-| `TCAB_SHOWCASE_SEEDS`                                     | The seeds auditioned, comma-separated. Each is played at all three aim phases.                                                      |
-| `TCAB_SHOWCASE_SEED` / `TCAB_SHOWCASE_PHASE`              | Skip the audition and record exactly this take. How the committed clip is reproduced.                                               |
-| `TCAB_SHOWCASE_QA_STILLS`                                 | `1` writes a still every three seconds of the recorded take, for eyeballing it.                                                     |
+| `TCAB_SHOWCASE_TAKES`                                     | How many takes are played at each aim phase, `4` by default. Every take is recorded.                                                |
+| `TCAB_SHOWCASE_PHASE`                                     | Audition one aim phase alone rather than all three.                                                                                 |
+| `TCAB_SHOWCASE_QA_STILLS`                                 | `1` writes a still every three seconds of every take, for eyeballing them.                                                          |
 
 ## How a take is judged
 
-The capture is deterministic: the same seed and phase replay the identical run,
-which is what lets a take be auditioned with the recorder off and then re-run
-under it exactly. A take is rated on what makes a watchable clip rather than on
+Every take is a fresh run: the starting scatter, the worm's entry edge, and the
+foes' arrivals are the game's own draws, so no take can be played twice. Each
+take is therefore recorded as it is played, under its own output id, and judged
+afterwards; the winner's files are then renamed to the committed names and the
+rest removed. A take is rated on what makes a watchable clip rather than on
 anything the validators care about. Chain-arc discharges set off and how wide
 they ran, segments fried and segments cut, levels cleared, lives kept, the
 longest stretch in which nothing on the board changed, and whether it reached a
@@ -95,10 +97,10 @@ settled beat to end on rather than running out of time.
 
 ## What is committed
 
-Thirty-six takes were auditioned, twelve seeds at three aim phases each, with
-`TCAB_SHOWCASE_MIN_SECONDS=26` and `TCAB_SHOWCASE_MAX_SECONDS=36`. The winner
-was **seed 13, aim phase 1**, recorded with `TCAB_SHOWCASE_MAX_REPLAY_FRAMES`
-at `2400` and the in-page `KEEP_MAX` at `3000`:
+The committed take was the best of thirty-six auditioned at three aim phases
+with `TCAB_SHOWCASE_MIN_SECONDS=26` and `TCAB_SHOWCASE_MAX_SECONDS=36`,
+recorded with `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` at `2400` and the in-page
+`KEEP_MAX` at `3000`:
 
 - `gameplay.json.gz` — 1904 frames of a 60 Hz clock, 31.7 s, written whole at
   60 fps. Level 1 taken to a clear and level 2 played on into an eleven-node
@@ -107,16 +109,16 @@ at `2400` and the in-page `KEEP_MAX` at `3000`:
   spent its arcs, on the board that was left.
 - `mid-level.png` — the first live frame of level 2: its worm entering along
   row 0 over the field level 1 left behind.
-- `title.png` — the title screen the take opened on, taken after the recorder
-  closed by resetting to the same seed.
+- `title.png` — the title screen, taken after every recorder had closed by
+  resetting to the title and drawing one frame.
 
-Reproduce all three with:
+Record a fresh set of three with:
 
 ```sh
 TCAB_VALIDATION_MEDIA_DIR=/tmp/showcase-out \
   TCAB_SHOWCASE_MAX_REPLAY_FRAMES=2400 \
   TCAB_SHOWCASE_MIN_SECONDS=26 TCAB_SHOWCASE_MAX_SECONDS=36 \
-  TCAB_SHOWCASE_SEED=13 TCAB_SHOWCASE_PHASE=1 \
+  TCAB_SHOWCASE_TAKES=4 \
   npx vitest run --config validation/vitest.config.ts \
   validation/showcase-capture.test.ts
 ```

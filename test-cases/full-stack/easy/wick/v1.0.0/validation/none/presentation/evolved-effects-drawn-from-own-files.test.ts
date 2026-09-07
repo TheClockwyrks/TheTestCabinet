@@ -19,7 +19,7 @@
 // HOW EACH SHAPE IS REACHED. Each through the route its own section of
 // `specs/evolutions.md` gives it: Pyre's slashes and Hail's darts fire without a
 // target, Beacon "needs at least one enemy to fire" so a hound stands `300` units
-// out, Blaze's puddles land on the scatter disk wherever the seeded generator puts
+// out, Blaze's puddles land on the scatter disk wherever the build's draw puts
 // them, and Chandelier's lanterns and Corona's aura are created "on the first
 // `playing` tick" their weapon is held, by the placement phase of
 // `specs/world.md`, which `specs/instrumentation.md` puts outside the driver

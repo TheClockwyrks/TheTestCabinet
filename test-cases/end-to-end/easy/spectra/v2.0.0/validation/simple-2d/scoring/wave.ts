@@ -56,8 +56,14 @@ export const KILL_AT = { x: 900, y: 500 } as const;
  * — `PRISM_HALF` (`28`) plus the bullet's `PLAYER_BULLET_HALF` (`6`) is `34` — so
  * the bullet is in flight rather than already in contact whatever kind it is
  * aimed at, and short enough to climb into a drone that is holding still.
+ *
+ * KEPT AS SHORT AS THAT CLEARANCE ALLOWS, because these four checks empty a whole
+ * flyover one drone at a time and every unit of climb is frames of a forty-drone
+ * field. The flight a shot needs is most of what these checks cost, and none of
+ * it decides anything: where the bullet started is not what any of the four
+ * reads.
  */
-const SHOT_GAP = 90;
+const SHOT_GAP = 45;
 
 /**
  * Where {@link destroyDrone} stands a Flux's band clock before it shoots it.
@@ -154,6 +160,13 @@ export async function destroyDrone(
   for (let shot = 0; shot < 2; shot += 1) {
     if (findDrone(h.snapshot(), id) === null) break;
     const standing = droneOf(h.snapshot(), id);
+    // The bursts earlier kills left are cleared first. A destroyed drone pops a
+    // burst that plays for `BURST_DURATION`, and these four checks empty a whole
+    // wave far faster than that, so without this every later shot is flown over
+    // `MAX_BURSTS` live particle systems that are simulated and drawn on every
+    // frame of it. None of the four reads a burst — `bursts/` is where that is
+    // graded — so what the pile-up decides is how long the check takes.
+    h.debug.clearBursts();
     await fireAt(h, KILL_AT.x, KILL_AT.y, standing.effectiveBand, SHOT_GAP);
   }
 

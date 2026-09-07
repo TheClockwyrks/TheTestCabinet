@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 it("the lens-short route is drawn whole, its closing move included", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, TWO_ROUTES);
 
   const short: ReadonlyArray<readonly [number, number]> = [

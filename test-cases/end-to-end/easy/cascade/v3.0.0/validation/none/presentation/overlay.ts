@@ -36,11 +36,11 @@
 //
 // WHAT THIS READING CANNOT DO, AND WHY THE POINTS ARE POSED THE WAY THEY ARE. A
 // build is free to draw lines of its own beside the ones the specification asks
-// for — a frame counter, a delta, a seed — and a stray figure among them could
-// stand in for a source that was never registered. Nothing can tell one from the
-// other from outside, so each point instead poses a board on which the figures
-// it asserts are as distinctive as the game allows, and asserts a figure as many
-// times as the board owes it.
+// for — a frame counter, a delta, a tick count — and a stray figure among them
+// could stand in for a source that was never registered. Nothing can tell one
+// from the other from outside, so each point instead poses a board on which the
+// figures it asserts are as distinctive as the game allows, and asserts a figure
+// as many times as the board owes it.
 
 import { fail } from "../assert";
 import { drawnText, type DrawCall } from "../harness";

@@ -12,7 +12,7 @@ the world size. Choosing a size begins the expedition at once.
 The miner starts standing on the camp ground at `SPAWN_COL` (`4`), at tier `1` on
 every upgrade track, with a full fuel tank and a full hull, `0` Credits, an empty
 cargo bay, an empty satchel, no field supplies, and no rocket component installed.
-The mine is generated fresh from the current seed at the chosen size.
+The mine is generated fresh at the chosen size.
 
 The expedition is the same in both modes and at every size. The mode governs only
 what a death costs; the size governs only how deep the mine goes.

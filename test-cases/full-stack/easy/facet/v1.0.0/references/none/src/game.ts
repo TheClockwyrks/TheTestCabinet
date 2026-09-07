@@ -15,7 +15,7 @@
 // particle bursts need to know WHICH cells, and putting that in the state would
 // make a decorative detail part of the contract `specs/instrumentation.md`
 // rests on. So `reportFor` re-derives it from the core's own rule functions,
-// over the board the step actually read — the same seed, the same R6 closure,
+// over the board the step actually read — the same R5 seed, the same R6 closure,
 // the same R8 creations — and `advanceTime` slices the frame's delta so that no
 // slice can cross more than one chain step, which is what lets every step of a
 // chain be reported even from a single long frame such as `advance(1, 1)`.

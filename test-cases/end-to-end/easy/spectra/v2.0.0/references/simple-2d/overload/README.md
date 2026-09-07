@@ -240,7 +240,7 @@ src/
                       functions the engine drives
   sim.ts              The mutable mirror a frame is built in, and FrameEvents
   bands.ts            Effective band, the shimmer, and every derived figure
-  rng.ts              The seeded generator, whose whole state is one field
+  random.ts           The game's random draws, off the host's own generator
   wave.ts             What a wave is made of, and where each drone starts
   drones.ts           The four phases, the paths, and the shots a dive carries
   bullets.ts          Both bullet kinds, their flight and their bounds

@@ -142,7 +142,7 @@ describe("travelling the maze", () => {
 describe("the wander a drifter and a wandering Lanternjaw share", () => {
   it("prefers a direction other than an immediate reverse", () => {
     const maze = board(["..."], 4, 9);
-    const draws = createDraws(1);
+    const draws = createDraws();
     for (let i = 0; i < 50; i++) {
       expect(
         wanderDirection(
@@ -157,7 +157,7 @@ describe("the wander a drifter and a wandering Lanternjaw share", () => {
 
   it("turns back the way it came where the tile offers nothing else", () => {
     const maze = board([".."], 4, 9);
-    const draws = createDraws(1);
+    const draws = createDraws();
     expect(
       wanderDirection(
         at(5, 9, "right"),
@@ -170,7 +170,7 @@ describe("the wander a drifter and a wandering Lanternjaw share", () => {
 
   it("drifts at its own pace and stays on the corridors", () => {
     const maze = board(["....", ".##.", ".##.", "...."], 4, 8);
-    const draws = createDraws(3);
+    const draws = createDraws();
     let body = at(4, 8, "right");
     for (let i = 0; i < 600; i++) {
       body = driftBody(body, maze, DRIFTER_SPEED, TICK_DT, draws);

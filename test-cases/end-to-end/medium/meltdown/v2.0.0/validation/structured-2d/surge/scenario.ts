@@ -406,6 +406,14 @@ export interface WatchOptions {
    * lets every unit walk.
    */
   onRelease?: (release: Release) => void;
+  /**
+   * Stop once this many units have been seen, rather than watching the whole
+   * span out.
+   *
+   * For a point that reads the FRONT of a release and has no business waiting
+   * for units it is not going to read.
+   */
+  stopAfter?: number;
 }
 
 /**
@@ -432,7 +440,12 @@ export async function watchReleases(
   let waveBegan: number | null = null;
 
   const step = Math.max(1, options.poll ?? 1);
-  for (let done = 0; done < frames; done += step) {
+  const stopAfter = options.stopAfter ?? Infinity;
+  for (
+    let done = 0;
+    done < frames && releases.length < stopAfter;
+    done += step
+  ) {
     await h.advance(Math.min(step, frames - done));
     const snapshot = h.snapshot();
     if (waveBegan === null && snapshot.phase === "wave") {

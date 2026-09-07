@@ -103,6 +103,29 @@ applies to each one. Setting the score to `10–8` is a precondition; an
 operation that ends the match is an outcome, and the outcome is what the
 validator observes after the real systems run.
 
+### Random draws are posed as outcomes
+
+Where the specs state a draw as a distribution, the debug API carries an
+operation that sets the outcome the draw decides. A spec saying an enemy type is
+drawn uniformly over the roster at each spawn gives the API `spawnEnemy(type, x,
+y)`; a spec saying a hit crits with probability 0.1 gives it
+`setNextHitCrit(crit)`; a spec dealing a shuffled board gives it an operation
+that deals an exact one. The operation decides what the draw would have
+decided, and the systems that follow from it run for real.
+
+Where the game keeps drawing on its own, the API carries a gate that stops the
+automatic draw while a scenario is posed, such as `setSpawning(enabled)`, which
+a validator switches off before it spawns by hand. The gate is a field of the
+declared state like any other, reported by `snapshot()` and reset with the
+rest.
+
+The API exposes the game's random behavior through nothing else. It carries no
+seed on `reset`, no operation that seeds or skips draws, and no generator state
+in the declared state, because each of those makes how a build draws a
+requirement, where the specs state only what it draws. A posed outcome is a
+precondition, and an operation posing one is graded under the case's
+instrumentation items like every other control operation.
+
 ## Validators
 
 ### Validators assert the specification, not the reference
@@ -112,7 +135,10 @@ specs, exactly or through an honest tolerance. The reference implementation is
 one conformant build and **never** the source of an assertion. Behavior the
 reference exhibits but the specs leave unstated is a design choice, and a
 validator that asserts it fails other builds that satisfy every stated
-requirement.
+requirement. The same holds for everything a validator relies on short of an
+assertion: a pool size, a hash pattern, a draw order, or a generator structure
+the specs leave unstated is one build's design, and a sample sized to the
+reference's speed is tuned to one build.
 
 A spec can leave a choice to the build: how state maps onto an engine's
 constructs, when within a frame an effect becomes visible, whether a value is
@@ -365,6 +391,72 @@ than past it. What it varies instead is the host: the frame lengths a real
 machine delivers are the case's to state and the validator's to drive, because
 the frame is the world's, not the ball's.
 
+### Validators drive simulated time
+
+A validator, and the case harness it is written over, drives time through the
+debug API alone: `step`, `advance`, `setAutoStep`, or the engine's scripted
+clock. A requirement is stated in simulated time, and driving it directly lands
+the same frames on any host. Neither the validator nor the harness reads the
+wall clock through `Date.now`, `performance.now`, `new Date`, or
+`process.hrtime`, and neither pauses for a real duration through
+`setTimeout(ms)`, `page.waitForTimeout(ms)`, `sleep(ms)`, or `settle(ms)`,
+whether to let simulated time pass or to assert that it did not.
+
+Two waits remain. A check that reads pixels first awaits the browser's next
+paint, through `requestAnimationFrame` or the engine's frame, because the
+backing store holds nothing before it. A check that needs the build to reach a
+stated condition waits on a state predicate, such as `page.waitForFunction`,
+under a bounded timeout that serves only as a failure cap. The wait decides
+that the condition arrived, measures nothing, and is never a pause before a
+read. A cooperative yield inside a long loop is keyed on an iteration count
+rather than on elapsed time.
+
+An item that only real time can decide, such as the clock being held off real
+time or the game advancing in real time under `none`, is rewritten to scripted
+frames under the engines. Where no scripted form exists, the item is deleted.
+
+### Validators pose what the game would draw
+
+A validator whose requirement touches a random draw poses the outcome through
+the [operation the API carries for it](#random-draws-are-posed-as-outcomes),
+closes the gate on any automatic draw that would run over it, runs the real
+systems, and reads the result. It seeds nothing, reads no generator state,
+counts no draws, never compares two runs for sameness, and never searches for
+the input that produces an outcome. Each of those grades how a build draws,
+which the specs leave to the build.
+
+A figure the simulation integrates is compared within the tolerance the spec's
+precision allows, such as within `0.1` of the expected value or a named
+tolerance in the project's `constants.ts`, wherever floating point could put two
+correct builds a rounding apart. Exact equality is for figures the specs state
+exactly: a count, a phase, a dealt card. A validator finishes in seconds, so
+drift over a longer run is never what it measures.
+
+A requirement that is itself a probability, such as a destroyed derelict
+shedding a pod with probability `0.25`, may be decided by a bounded sample. The
+debug API carries an operation that performs that one draw alone and nothing
+else, the validator calls it at most a few hundred times, and the acceptance
+band is derived from the spec's figure at six standard deviations, so a build
+honoring the stated probability never fails on chance. A few hundred draws have
+to separate the stated figure from the alternatives the spec makes meaningful,
+such as a table's neighboring rows, a zero, or a half; where they cannot, the
+item is deleted and the figure is the reviewer's to judge. Wherever the
+probability is not what the item grades, the item is restated as a posed
+outcome instead, and the sample stays unused.
+
+A draw is sampled through the lone-draw operation and nothing larger. A
+validator never makes thousands of draws, kills, spawns, or rolls, and it
+generates a world at most once, so a density or share read off generated
+worlds is deleted rather than sampled.
+
+A draw over a set is decided by what a single draw shows. A posed outcome is
+asserted to be honored, and a handful of unposed draws are asserted to lie
+inside the set the spec names. Where the spec says the draw varies, and the
+draw is continuous or uniform over equally likely outcomes, a small sample is
+asserted to hold at least two distinct values. A sample is never asked to show
+every member of the set, because how many draws that takes is a property of the
+build's generator rather than of the spec.
+
 ### Every produced file loads
 
 The produced files are a requirement of the build rather than a condition a
@@ -411,7 +503,7 @@ the specs state.
 
 Which of the two a figure is follows from the direction it is compared in. A
 figure a reading must EXCEED is a floor, and raising it makes the check stricter,
-so a build that drew what the spec asks for in a colour near its ground fails. A
+so a build that drew what the spec asks for in a color near its ground fails. A
 floor therefore sits at the level below which a sampling cannot tell a drawing from
 the rounding of eight-bit channels and the host's antialiasing, which is around
 eight of the four hundred and forty-one the RGB cube spans. A figure a reading must
@@ -502,9 +594,11 @@ build.
 
 ### Each validator finishes in seconds
 
-Most validators run in one to three seconds, and a validator stays under five.
-Ten seconds is the hard cap for every validator other than an integration
-validator, and a validator that reaches the cap is redesigned to a cheaper shape.
+Under the engine projects every validator finishes in under three seconds. An
+engineless project, whose build owns its own frame loop, may run slower, and a
+validator there stays under five. Ten seconds is the hard cap for every
+validator other than an integration validator, and a validator that reaches the
+cap is redesigned to a cheaper shape.
 
 The budget follows from where validators run. Production grades every run with
 them, a case ships hundreds, and each one is paid again on every run of every
@@ -512,10 +606,12 @@ case, so a validator that takes minutes is a defect in the check whatever verdic
 it reaches.
 
 Frames are what a validator spends, so it poses the state its requirement needs
-and reads the result. A scenario that sits minutes of play away is posed through
+and reads the result. Its cost is independent of the build's generator and of
+any long real play, which is why posing a scenario is preferred over playing
+toward it. A scenario that sits minutes of play away is posed through
 the debug API rather than simulated toward, a requirement behind a timer sets the
-timer and advances past it, and a requirement about a seeded random draw chooses
-the seed that produces the case it is about. An integration validator is the one
+timer and advances past it, and a requirement about a random draw poses the
+outcome it is about through the debug API. An integration validator is the one
 shape that replays a game end to end, and it carries that cost because the replay
 is the requirement.
 
@@ -566,8 +662,34 @@ When designing or revising a case's debug API and validators:
   reported by a read the validators drive.
 - Each assertion traces to a statement in the specs, not to the reference
   implementation, and every spec-honoring design passes.
+- Nothing a validator relies on comes from the reference: no pool size, hash
+  pattern, draw order, or generator structure the specs leave unstated, and no
+  sample sized to the reference's speed.
 - Every threshold a check compares against is a figure the specs state, and a
   check wanting one they do not state is deleted or its figure is specified.
+- Every random draw a validator touches has an operation posing its outcome,
+  and a gate stops any draw the game would make on its own while a scenario is
+  posed.
+- No operation seeds, skips, or counts draws, and neither the declared state
+  nor `snapshot()` carries generator state.
+- No validator seeds, reads generator state, counts draws, compares two runs
+  for sameness, or searches for the input that produces an outcome.
+- A figure the simulation integrates is compared within a stated tolerance, and
+  a requirement that is itself a probability is sampled through an operation
+  performing that one draw, at most a few hundred times, inside a band derived
+  from the spec's figure at six standard deviations, and is deleted where a few
+  hundred draws cannot separate the spec's meaningful alternatives.
+- No validator makes thousands of draws, kills, spawns, or rolls, generates a
+  world more than once, or reads a density or share off generated worlds.
+- A posed outcome is asserted to be honored, a handful of unposed draws to lie
+  inside the spec's set, and a small sample to hold two distinct values only
+  where the draw is continuous or equally likely; no validator asserts that
+  every member of a set appears.
+- No validator or harness reads the wall clock or pauses for a real duration.
+  Simulated time is driven through the debug API or the engine's scripted
+  clock, the only waits are the browser's next paint before a pixel read and a
+  state predicate under a failure cap, and an item only real time can decide is
+  rewritten to scripted frames or deleted.
 - No item decides behavior the engine owns, and an item that is the build's work
   under one engine alone carries `engines` naming it.
 - Every figure a suite asserts comes from the project's own `constants.ts`,
@@ -598,8 +720,10 @@ When designing or revising a case's debug API and validators:
   refuses, or intercepts a load.
 - Each replay brackets the behavior its check backs, with a short run-up and a
   short settle around it.
-- Most validators finish in one to three seconds, each stays under five, and
-  every validator other than an integration validator is under ten.
+- Under the engine projects every validator finishes in under three seconds,
+  with a cost independent of the build's generator and of any long play; an
+  engineless validator stays under five, and every validator other than an
+  integration validator is under ten.
 - The whole suite finishes in fifteen minutes on a two-core host.
 - Integration validators exist only where the game replays to a known outcome
   without a validator-side player.

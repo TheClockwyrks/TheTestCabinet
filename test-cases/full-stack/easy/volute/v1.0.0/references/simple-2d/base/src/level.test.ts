@@ -43,7 +43,7 @@ describe("levelSpec", () => {
 
 describe("markForNextDelivery", () => {
   it("marks every twelfth core, cycling the four kinds", () => {
-    const draft = createDraft(1);
+    const draft = createDraft();
     draft.level = 5;
     const quota = LEVELS[4].quota;
     const marks: (string | null)[] = [];
@@ -66,20 +66,20 @@ describe("markForNextDelivery", () => {
 
 describe("chargesOnChannel", () => {
   it("lists the distinct charges standing on it, in train order", () => {
-    const draft = createDraft(1);
+    const draft = createDraft();
     draft.cores = [
       { charge: "garnet", s: 300, mark: null, hold: 0 },
       { charge: "halide", s: 272, mark: null, hold: 0 },
       { charge: "garnet", s: 244, mark: null, hold: 0 },
     ];
     expect(chargesOnChannel(draft)).toEqual(["garnet", "halide"]);
-    expect(chargesOnChannel(createDraft(1))).toEqual([]);
+    expect(chargesOnChannel(createDraft())).toEqual([]);
   });
 });
 
 describe("opening and closing a run", () => {
   it("seeds the channel and draws a loaded and queued core", () => {
-    const draft = createDraft(1);
+    const draft = createDraft();
     startLevel(draft, 2);
     expect(draft.screen).toBe("playing");
     expect(draft.cores).toHaveLength(SEEDED_CORES);
@@ -89,7 +89,7 @@ describe("opening and closing a run", () => {
   });
 
   it("keeps the aim across a level change, and resets it on the way to the title", () => {
-    const draft = createDraft(1);
+    const draft = createDraft();
     draft.aim = 123;
     startRun(draft);
     expect(draft.aim).toBe(123);

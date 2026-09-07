@@ -57,7 +57,7 @@ export function diagnosticSources(
         return foes
           .map(
             (foe) =>
-              `#${foe.id} ${foe.kind} ${foe.x.toFixed(0)},${foe.y.toFixed(0)}`,
+              `#${foe.id} ${foe.kind} ${foe.x.toFixed(0)}, ${foe.y.toFixed(0)}`,
           )
           .join("  ");
       },

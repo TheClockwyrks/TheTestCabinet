@@ -71,7 +71,7 @@ for every variant and every engine. Each rule lives in exactly one file.
 | `overview.md`        | What is built, what stays as it is, the field's coordinate system and centre convention, the code quality, the commands run over the finished repository, and what a player must read at a glance. |
 | `field.md`           | The wrapping field, the seam and how a body crosses it, and the star fixed at the centre with its solid core.                                                                                      |
 | `gravity.md`         | The pull law, its softening, and which bodies it acts on and which are powered and never pulled.                                                                                                   |
-| `simulation.md`      | The fixed timestep, the order of work inside one tick, and seeded randomness.                                                                                                                      |
+| `simulation.md`      | The fixed timestep, the order of work inside one tick, and the draws the game makes at random.                                                                                                     |
 | `ship.md`            | The ship the player flies: rotation, thrust, drag, the speed cap and the safe point.                                                                                                               |
 | `weapons.md`         | What the ship shoots: the gun's muzzle velocity, lifetime, cap and gate, its trail, and the torpedo the warhead ruleset adds.                                                                      |
 | `rocks.md`           | The three sizes and their drift, the split ladder, star recycling, and the armor the warhead ruleset adds.                                                                                         |
@@ -83,7 +83,7 @@ for every variant and every engine. Each rule lives in exactly one file.
 | `ui.md`              | The five screens and their menus, how a mouse and a touch contact drive them, what the paused screen holds still, the HUD, and the wave banner.                                                    |
 | `audio.md`           | The six cues, the mute toggle, and that the game runs whether or not audio started.                                                                                                                |
 | `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                       |
-| `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the world gates and per-entity faculties, the snapshot shape, and the debug overlay.                                  |
+| `instrumentation.md` | The render-free core, every operation of the debug and automation surface, the world gates, per-entity faculties and posed draws, the snapshot shape, and the debug overlay.                       |
 | `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                                     |
 
 `field.md`, `ship.md`, `saucer.md` and `progression.md` are plain Markdown,
@@ -113,11 +113,11 @@ single game, rated on the same four domains, `gravity`, `flight`, `arcade` and
 
 - `base` — the endless arcade game: a rock is destroyed by a single hit and the
   ship carries only its gun. It adds no review point of its own, so a base run is
-  rated on the 236 common points. The reference ruleset.
+  rated on the 240 common points. The reference ruleset.
 - `warhead` — the same game with armored rocks, so a Large takes three hits, and
   a homing torpedo: one guided munition on a ten-second recharge that flies true
   through the well and destroys any rock outright, blasting its fragments outward
-  far harder than the gun does. It adds 54 points, so a warhead run is rated on 290.
+  far harder than the gun does. It adds 54 points, so a warhead run is rated on 294.
 
 Only the engine-backed project differs by variant, because its `src/constants.ts`
 carries the armor and torpedo figures and binds the torpedo key. The engineless
@@ -136,7 +136,7 @@ scenario still writes what it recorded.
 
 ## Validation
 
-This case is validator-rated: every one of the 290 checklist points carries a
+This case is validator-rated: every one of the 294 checklist points carries a
 Vitest suite, and the validators decide the functional rating through each point's
 failure cap. A reviewer rates the run's aesthetics through the four domains and
 may override a verdict.
@@ -161,10 +161,13 @@ emptied, the game's own wave loop and its saucer arrival are held off, the ship'
 lethal contact test is held off, and then exactly the entities the requirement
 concerns are added back, each of the saucer's three faculties held on its own.
 Turning a gate back on is the exception, and the point that does it is the point
-whose requirement that faculty is. No suite reaches a cleared wave with
-`clearRocks`: the wave points shoot the field down for real, through the build's
-own collision and split code. Every expected value a suite asserts comes from a
-figure the specs fix, never from a reference build.
+whose requirement that faculty is. Where a point's requirement touches a draw the
+game makes, the suite poses the outcome through the surface's posed draws, the
+saucer's due and its weave, and reads what the game does with it; a point about
+the draw itself poses nothing and reads the build's own. No suite reaches a
+cleared wave with `clearRocks`: the wave points shoot the field down for real,
+through the build's own collision and split code. Every expected value a suite
+asserts comes from a figure the specs fix, never from a reference build.
 
 Each project's `constants.ts` is where those figures live, transcribed from the
 `specs/` file named in each section heading, and every other file in the project
@@ -190,7 +193,7 @@ lives and grace around it), `arcade` (the rocks, the waves, the saucer and the
 score) and `presentation` (the screens, the HUD, the legibility of what was drawn,
 and the audio) — and its overall rating is the worst of the four.
 
-The 236 common points sit in eighteen categories. The warhead ruleset adds 54
+The 240 common points sit in eighteen categories. The warhead ruleset adds 54
 across six blocks: four fold into the common `Instrumentation`, `The rocks`,
 `Screens and menus` and `Look and readouts` categories by id, and two are
 categories of its own, `Homing torpedo` and `Detonation`. Each point names the

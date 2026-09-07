@@ -22,9 +22,8 @@
 // owes (the handle, the operations, the snapshot and surface types); the two
 // clocks the case chose (`TICK_HZ`, and the coarse {@link DRIVE_HZ} a check that
 // spends minutes of game time runs on); the off-camera {@link Harness.coast}, which
-// covers a span of game time in frames of its own size; {@link Harness.withOwnClock},
-// which hands the loop back to the build for a whole scenario; the readings over
-// the snapshot; and every compound sequence the checks share.
+// covers a span of game time in frames of its own size; the readings over the
+// snapshot; and every compound sequence the checks share.
 //
 // IT IS STILL A VITEST PROJECT, AND THAT IS DELIBERATE. The runner locates the
 // build output before it chooses between the vitest and browser paths, so `dist/`
@@ -62,17 +61,20 @@
 // check asks for a number of frames and gets exactly that number — no polling, no
 // waiting, and no measurement of the machine it ran on.
 //
-// EXCEPT WHERE THE QUESTION IS ABOUT TIME ITSELF, AND THAT EXCEPTION IS THE
-// POINT. A check about whether time passes — whether a pause freezes the floor,
-// whether the game advances itself, whether double speed runs twice the game
-// time — must be measured on THE CLOCK THE PLAYER'S GAME ACTUALLY RUNS ON, never
-// through `advance`. `advance` is instrumentation, and a build is free to gate it
-// separately from its own frame loop: a build that holds its pause in the shell
-// that drives the clock steps straight through an `advance`-based freeze check
-// while its floor is visibly stopped, and — far worse — a build whose pause menu
-// opens over a floor that keeps running passes such a check outright. So
-// {@link Harness.withOwnClock} hands the clock back to the build and spends real
-// windows on it, and every item governed by that rule is written against it.
+// THAT HOLDS FOR THE CHECKS ABOUT TIME ITSELF TOO. Whether a pause freezes the
+// floor, whether resuming runs it again, and what the speed toggle does are all
+// read over stated numbers of frames driven through `advance`, so the same game
+// time lands on any machine and a verdict never depends on how busy the host
+// was. The one claim only real time could decide — that the build's own loop
+// advances the game with nothing stepping it — is left to the engines, where the
+// loop is the engine's and the frames are the suite's.
+//
+// AND THE WALL CLOCK IS NOT ON THE HANDLE TO REACH FOR. The shared harness offers
+// two operations that hand the loop back and wait on real time, `runFor(ms)` and
+// `runUntil`, which are what a case with no scripted clock has to use. Meltdown
+// has one, so this project takes both off the handle it returns, in the type and
+// on the object: a check that reached for either would not compile, and every
+// frame this project spends is a frame a check asked for.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
@@ -207,6 +209,9 @@ export const REQUIRED_OPS = [
   "setSpeed",
   // The world gate.
   "setWaveSpawning",
+  // The vent pose and the vent draw.
+  "setSpawnVent",
+  "drawVent",
   // The towers.
   "addTower",
   "removeTower",
@@ -409,6 +414,8 @@ export interface MeltdownSnapshot {
   muted: boolean;
   /** The world gate: the run's own release of surge. */
   waveSpawning: boolean;
+  /** The vent posed for the run's own release, or `null` while it draws. */
+  spawnVent: Vent | null;
   /** Who drives the clock. This engine only. */
   autoStep: boolean;
   /** The pointer's own position, in logical stage units, and whether it is down. */
@@ -445,7 +452,7 @@ export interface MeltdownDebugApi {
   advance(seconds: number, frames?: number): Promise<void>;
 
   // The core.
-  reset(seed?: number): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<MeltdownSnapshot>;
 
   // The screen and the run.
@@ -464,6 +471,10 @@ export interface MeltdownDebugApi {
 
   // The world gate.
   setWaveSpawning(enabled: boolean): Promise<void>;
+
+  // The vent pose and the vent draw.
+  setSpawnVent(vent: Vent | null): Promise<void>;
+  drawVent(): Promise<Vent>;
 
   // The towers.
   addTower(
@@ -519,7 +530,7 @@ export interface MeltdownDebugApi {
 // heat model's two-phase rule is what makes a single frame's result exact rather
 // than order-dependent. So a build must reach the same place however that time
 // was divided, and the check that is ABOUT the division
-// (`instrumentation/deterministic-core`) drives the same second as one frame and
+// (`instrumentation/render-free-core`) drives the same second as one frame and
 // as many.
 //
 // The default is a steady 120 Hz, for two reasons. It is the rate the two
@@ -641,105 +652,26 @@ export interface CoastResult {
   snapshot: MeltdownSnapshot;
 }
 
-/** What a leg spent on the build's own clock cost, and whether it closed. */
-export interface GainResult {
-  /** Whether the build's clock gained the seconds asked for before the deadline. */
-  reached: boolean;
-  /**
-   * The real time the leg took.
-   *
-   * NOT a reading about the build — it is how busy the machine was — so no check
-   * asserts on it. What it is for is giving a leg that must be spent in real time
-   * (a PAUSED window, which cannot be closed on a gain that must never happen) the
-   * same stretch of real time the running leg beside it needed, so the two legs
-   * offer a build the same opportunity to be caught however loaded the host is.
-   */
-  elapsedMs: number;
-}
-
-/**
- * The build running itself, handed to a scenario by {@link Harness.withOwnClock}.
- *
- * There is no `advance` here, and there must not be: this is the whole point of
- * the scope. Inside it the game is driving its own frame loop from the wall
- * clock exactly as it does for a player, so what a check spends is REAL time and
- * what it reads is the state that loop produced.
- */
-export interface OwnClock {
-  /**
-   * The state the game was in AT THE INSTANT THE CLOCK WAS HANDED BACK.
-   *
-   * THE ONE READING A SCENARIO CANNOT TAKE FOR ITSELF, and the reason this field
-   * exists rather than a first {@link read}. Handing the clock back and reading
-   * the state are two crossings into the page, and between them the build is
-   * running itself: on a host that is short of cores that gap is long enough for
-   * a posed tower to fire, a walker to move, a countdown to start. A scenario
-   * that opens with `await clock.read()` and then asserts the opening state is
-   * what it arranged — a heat of exactly zero, say — is asserting that the gap
-   * was short, which is a fact about the machine and not about the build.
-   *
-   * So the snapshot is taken inside the SAME evaluation that calls
-   * `setAutoStep(true)`, before the build has run a frame of its own, and every
-   * scenario's opening reading comes from here.
-   */
-  readonly opened: MeltdownSnapshot;
-  /** Let the build run itself for `ms` of real time. */
-  settle(ms: number): Promise<void>;
-  /**
-   * Let the build run itself until ITS OWN clock has gained `seconds`, and
-   * report whether it got there before `deadlineMs` of real time ran out.
-   *
-   * THE READING THAT MAKES A REAL WINDOW REPEATABLE. A leg that spends a fixed
-   * stretch of wall clock and then asks how far the game got is asking two
-   * questions at once — did the build advance itself, and did this machine give
-   * its loop enough of a core to do it in — and the second one is not about the
-   * build. A host running a hundred other things hands a page's frame callback a
-   * fraction of the frames it asks for, and a leg read that way fails a
-   * conformant build for the load on the runner that scored it.
-   *
-   * So the length of the leg is fixed on the BUILD'S clock and the wall clock is
-   * demoted to a deadline. `simTime` is what `specs/waves.md` says accumulates
-   * the game time every frame advances by, so a leg closed on it covers the same
-   * stretch of the game however many frames the host allowed and however long it
-   * took — and everything read off the leg (how far a Mote walked, how much heat
-   * a tower gained) follows from the game time rather than from the machine.
-   *
-   * WHAT STILL FAILS, and it is the whole of what this leg was ever asking: a
-   * build whose simulation does not advance unless something steps it never
-   * gains the seconds and comes back `false` when the deadline runs out. The
-   * deadline is the only wall clock left, and it is set so wide that reaching it
-   * means the build is not running rather than that the host is busy.
-   *
-   * Nothing here steps the game: the poll is the build's own `snapshot`, which
-   * `specs/instrumentation.md` requires to change nothing, run inside the page
-   * while the build's loop drives itself.
-   */
-  gain(seconds: number, deadlineMs: number): Promise<GainResult>;
-  /** Read the game's state. It moves nothing. */
-  read(): Promise<MeltdownSnapshot>;
-  /**
-   * Press a key as a player does, held long enough for the build's own loop to
-   * run frames while it is down.
-   *
-   * {@link Harness.tap} cannot be used in here: it drives a frame with
-   * `advance`, which is exactly what a check on this clock must never call. So
-   * the key is held for a few real frames instead, which is what makes the press
-   * visible to a build that latches the edge in its event handler AND to one
-   * that compares held state at the top of each frame.
-   */
-  press(code: string): Promise<void>;
-}
-
 /**
  * Everything a check reads off one page running this build.
  *
- * The shared harness's, with the four things that are Meltdown's own laid over
- * it: the coarse off-camera `coast` and `coastUntil`, which cover a span of GAME
- * TIME in frames of a size the caller chooses; the scope `withOwnClock` opens;
- * and `armAudio`, which this case delivers from the check rather than at the
- * harness's opening.
+ * The shared harness's, less the two operations that spend REAL time, with the
+ * three things that are Meltdown's own laid over it: the coarse off-camera
+ * `coast` and `coastUntil`, which cover a span of GAME TIME in frames of a size
+ * the caller chooses, and `armAudio`, which this case delivers from the check
+ * rather than at the harness's opening.
+ *
+ * `runFor` and `runUntil` are the two that go. Both hand the build's own loop
+ * back and wait on the wall clock, which is how a case with no scripted clock has
+ * to work; `specs/instrumentation.md` gives Meltdown one, so every frame this
+ * project spends is a frame a check asked for, and the two are off the handle
+ * rather than merely unused.
  */
 export type Harness = BaseHarness<MeltdownSnapshot, MeltdownDebugApi> & {
+  /** Off this handle: it hands the build's loop back for a stretch of wall clock. */
+  runFor: never;
+  /** Off this handle: it polls the build's own loop against the wall clock. */
+  runUntil: never;
   /**
    * Run `duration` seconds of GAME TIME, diced into `hz` frames a second,
    * WITHOUT opening a recorded frame.
@@ -760,45 +692,6 @@ export type Harness = BaseHarness<MeltdownSnapshot, MeltdownDebugApi> & {
     predicate: (snapshot: MeltdownSnapshot) => boolean,
     options?: CoastOptions,
   ): Promise<CoastResult>;
-  /**
-   * Hand the clock back to the BUILD, run `scenario` while it drives itself in
-   * real time, and take the clock back however the scenario ends.
-   *
-   * THIS IS HOW EVERY CHECK ABOUT WHETHER TIME PASSES IS MEASURED, and calling
-   * `advance` — or anything built on it, `tap` included — inside the scenario
-   * defeats the whole exercise. `advance` bottoms out in a debug operation the
-   * build is free to gate separately from its own frame loop, so it measures
-   * where a build put its gate rather than whether the floor moved.
-   * `specs/waves.md` says the floor freezes while paused and runs while it is
-   * not; that is a claim about the clock the player is on, and this is that
-   * clock.
-   *
-   * The shape every such check takes is a CONTRAST over windows of the same
-   * length, because a frozen floor and a floor that never moved look identical
-   * in one window:
-   *
-   * ```ts
-   * const legs = await h.withOwnClock(async (clock) => {
-   *   await clock.gain(LEG_SECONDS, LEG_DEADLINE_MS); // the running leg
-   *   await clock.press(BINDINGS.pause);
-   *   const pressed = await clock.read();             // ONE snapshot, on the press
-   *   await clock.settle(pausedMs);                   // the paused leg
-   *   return { pressed, settled: await clock.read() };
-   * });
-   * ```
-   *
-   * The opening state is {@link OwnClock.opened} and never a `read` of the
-   * scenario's own: a first `read` is a round trip taken while the build is
-   * already running, so what it reports is how quickly this machine answered.
-   */
-  withOwnClock<T>(scenario: (clock: OwnClock) => Promise<T>): Promise<T>;
-  /**
-   * Let the build run itself for `ms` of real time, and take the clock back.
-   *
-   * The one-window form of {@link withOwnClock}, for a check that needs the
-   * build's own loop to have run and has nothing to do in the middle of it.
-   */
-  settle(ms: number): Promise<void>;
   /** Give the build a real, browser-trusted gesture, so its audio can open. */
   armAudio(): Promise<void>;
 };
@@ -828,30 +721,6 @@ class CoastClock implements Clock {
 }
 
 /**
- * How often {@link OwnClock.gain} asks the page whether the build's clock has
- * got there yet: ten times a second.
- *
- * Inside the page, so it costs no round trip. Ten a second is fine enough that a
- * leg closes within a frame or two of the game time it asked for, and coarse
- * enough that the poll is not competing with the frame callback it is watching
- * on a machine that is short of both.
- */
-const OWN_CLOCK_POLL_MS = 100;
-
-/**
- * How long a key is held down inside {@link Harness.withOwnClock}.
- *
- * Geometry, not a tolerance: it says how a press is delivered, not how far a
- * build may miss by. Inside that scope the build is running its own loop, so a
- * down and an up delivered back to back could fall between two of its frames and
- * be invisible to a build that compares held state at the top of each — a build
- * a real player has no trouble with. A few frames of hold is what makes the
- * press visible however the build reads its keyboard, and the time it costs is
- * spent inside the leg the caller is already measuring.
- */
-const PRESS_HOLD_MS = 50;
-
-/**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
  *
@@ -869,8 +738,6 @@ export async function createHarness(
   const clock = new CoastClock(options.clock ?? new ConstantClock(kit.TICK_MS));
   const base = await kit.createHarness({ ...options, clock });
   const page: Page = base.page;
-  const handle = base.config.handle;
-  const recorder = base.config.recorderGlobal;
 
   /** Run `duration` seconds of game time over `frames` frames, off camera. */
   const run = async (duration: number, frames: number): Promise<void> => {
@@ -883,101 +750,7 @@ export async function createHarness(
     }
   };
 
-  let openedAt: MeltdownSnapshot | null = null;
-  const ownClock: OwnClock = {
-    get opened(): MeltdownSnapshot {
-      if (openedAt === null) {
-        throw new Error("OwnClock.opened is only readable inside withOwnClock");
-      }
-      return openedAt;
-    },
-    settle: (ms) => page.waitForTimeout(ms),
-    async gain(secondsWanted, deadlineMs) {
-      const from = (await base.snapshot()).simTime;
-      const startedMs = Date.now();
-      try {
-        // Polled INSIDE the page, so waiting costs one crossing however long the
-        // wait runs — and so a host that is starving the page's frame callback is
-        // not also being asked to service a round trip ten times a second.
-        await page.waitForFunction(
-          ([name, target]) =>
-            (
-              window as unknown as Record<
-                string,
-                { snapshot(): { simTime: number } }
-              >
-            )[name as string]!.snapshot().simTime >= (target as number),
-          [handle, from + secondsWanted] as const,
-          { timeout: deadlineMs, polling: OWN_CLOCK_POLL_MS },
-        );
-        return { reached: true, elapsedMs: Date.now() - startedMs };
-      } catch {
-        return { reached: false, elapsedMs: Date.now() - startedMs };
-      }
-    },
-    read: () => base.snapshot(),
-    async press(code) {
-      await page.keyboard.down(code);
-      await page.waitForTimeout(PRESS_HOLD_MS);
-      await page.keyboard.up(code);
-    },
-  };
-
-  const withOwnClock = async <T>(
-    scenario: (clock: OwnClock) => Promise<T>,
-  ): Promise<T> => {
-    if (base.surfaceFault !== null) failSurface(base.surfaceFault);
-    // Real elapsed time is the one thing a browser's own idea of which page
-    // matters can distort. The launch already turns the throttling off; bringing
-    // the page forward as well means this does not rest on a flag alone.
-    await page.bringToFront().catch(() => undefined);
-    // The handover and the opening reading are ONE crossing. A scenario's first
-    // statement used to be a `read`, which is a second round trip taken while the
-    // build is already running itself — and on a loaded host that gap is long
-    // enough for a posed tower to fire and for an opening state a check arranged
-    // to have moved before the check saw it. Nothing runs between the
-    // `setAutoStep(true)` and the `snapshot()` below, so `clock.opened` is the
-    // state the scope opened in on any machine.
-    openedAt = (await page.evaluate(
-      ([name, rec]) => {
-        (window as unknown as Record<string, { setMode(m: string): void }>)[
-          rec as string
-        ]!.setMode("raf");
-        const api = (
-          window as unknown as Record<
-            string,
-            { setAutoStep(on: boolean): void; snapshot(): unknown }
-          >
-        )[name as string]!;
-        api.setAutoStep(true);
-        return api.snapshot();
-      },
-      [handle, recorder] as const,
-    )) as MeltdownSnapshot;
-    try {
-      return await scenario(ownClock);
-    } finally {
-      // In a `finally`, so a scenario that threw still leaves the clock where
-      // every other helper in this file expects to find it.
-      await page.evaluate(
-        ([name, rec]) => {
-          (
-            window as unknown as Record<
-              string,
-              { setAutoStep(on: boolean): void }
-            >
-          )[name as string]!.setAutoStep(false);
-          (window as unknown as Record<string, { setMode(m: string): void }>)[
-            rec as string
-          ]!.setMode("manual");
-        },
-        [handle, recorder] as const,
-      );
-      openedAt = null;
-    }
-  };
-
-  return Object.assign(base, {
+  const handle = Object.assign(base, {
     async coast(duration: number, hz = 60) {
       await run(duration, Math.ceil(duration * hz));
     },
@@ -1004,10 +777,6 @@ export async function createHarness(
       return { hit: false, elapsed, snapshot };
     },
 
-    withOwnClock,
-
-    settle: (ms: number) => withOwnClock((clock) => clock.settle(ms)),
-
     // A GENUINE browser gesture, not a posed one: a build is free to open its
     // audio context from a real DOM event alone (both are conformant), so a key
     // delivered any other way would leave a perfectly good build silent. The key
@@ -1015,6 +784,20 @@ export async function createHarness(
     // and `Backquote`), so arming changes no game state and toggles no overlay.
     armAudio: () => page.keyboard.press(UNBOUND_KEY),
   });
+
+  // AND THE TWO OPERATIONS THAT SPEND REAL TIME COME OFF THE HANDLE. The shared
+  // harness offers `runFor(ms)` and `runUntil`, which hand the build's own loop
+  // back and wait on the wall clock; they are what a case with no scripted clock
+  // has to use, and `specs/instrumentation.md` gives Meltdown one. Taking them off
+  // is what makes the claim above about the SURFACE rather than about the checks
+  // that happen to be written over it: no check here can reach real time, whoever
+  // writes the next one. Nothing the shared kit exports calls either.
+  const removable = handle as Partial<
+    BaseHarness<MeltdownSnapshot, MeltdownDebugApi>
+  >;
+  delete removable.runFor;
+  delete removable.runUntil;
+  return handle as unknown as Harness;
 }
 
 /* ---- The long-drive clock ------------------------------------------------- */
@@ -1030,7 +813,7 @@ export async function createHarness(
 // SAYS SO. `specs/waves.md` mandates no fixed timestep: every rate is per second
 // and integrated against the game time a frame advances by, so "an interval of
 // game time reaches the same state however it was divided into frames", and
-// `instrumentation/deterministic-core` is the point that grades that claim on its
+// `instrumentation/render-free-core` is the point that grades that claim on its
 // own. {@link TICK_HZ} is this suite's convenience for stating tolerances in
 // frames, not a figure any specification fixes.
 //
@@ -1748,6 +1531,32 @@ export async function poseWalker(
     );
   }
   return added.id;
+}
+
+/**
+ * A run of `count` vent draws through `drawVent`, in order.
+ *
+ * The first goes through the harness's own operation, so a missing or
+ * malformed `drawVent` fails the way every other missing operation does; the
+ * rest run inside the page in one round trip, which is what lets a sampling
+ * check make thousands of draws in well under a second. Each is one independent
+ * draw and poses nothing (`specs/instrumentation.md`).
+ */
+export async function drawVents(h: Harness, count: number): Promise<Vent[]> {
+  const first = await h.debug.drawVent();
+  if (count <= 1) return [first];
+  const rest = await h.page.evaluate(
+    ([handle, n]) => {
+      const api = (window as unknown as Record<string, { drawVent(): Vent }>)[
+        handle
+      ];
+      const out: Vent[] = [];
+      for (let i = 0; i < n; i += 1) out.push(api.drawVent());
+      return out;
+    },
+    [HANDLE, count - 1] as const,
+  );
+  return [first, ...rest];
 }
 
 /**

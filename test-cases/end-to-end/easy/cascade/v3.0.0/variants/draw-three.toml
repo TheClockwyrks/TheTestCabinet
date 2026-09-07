@@ -28,20 +28,18 @@ description = "The stock turns three cards at a time, fanned, with only the fron
 # `wasteVisibleCount` was a Draw Three affordance.
 
 # What the game looks like played correctly, shown before anyone runs it: one
-# whole game of Draw Three, dealt from a chosen seed and played to the victory
+# whole game of Draw Three, dealt by the game itself and played to the victory
 # cascade with the REAL MOUSE against `references/none/draw-three`, and three
 # frames taken out of that same take. `showcase/draw-three/showcase.toml` lists
 # the media in carousel order and `showcase/draw-three/showcase.md` carries the
 # player-facing description.
 #
 # Every outcome on screen arose from the game's own rules under real pointer
-# input. The debug surface is reached for exactly twice over: `reset({ seed })`
-# once, before the first gesture, which is what chooses the deal, and
-# `snapshot()`, which is READ — after each gesture, to check that the game did
-# what the plan expected, so that a divergence fails the capture rather than
-# reaching the clip. Nothing is posed; posing an outcome through the surface
-# would be fabrication. `showcase/capture/README.md` records how each committed
-# file was produced and how to produce it again.
+# input. The debug surface is only ever READ: `snapshot()` after each gesture,
+# to check that the game did what the plan expected, so that a divergence fails
+# the capture rather than reaching the clip. Nothing is posed; posing an outcome
+# through the surface would be fabrication. `showcase/capture/README.md` records
+# how each committed file was produced and how to produce a fresh take.
 showcase = "showcase/draw-three"
 
 # The authored, *correct* build of this variant, one directory per supported

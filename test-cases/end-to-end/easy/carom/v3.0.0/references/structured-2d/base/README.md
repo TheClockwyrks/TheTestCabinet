@@ -114,9 +114,9 @@ written _inside_, and the build's own code is the subclasses:
   _before anything moves_, since controllers tick first.
 - **State in framework objects.** The game instance (`CaromGame`) carries what
   must survive a level transition — the remembered title selection, `simTime`,
-  the seeded generator, the AI's two faculties, and the surface's hold on each
-  paddle. The world's game state carries the screen, the mode, the two menu
-  figures, the winner, and the receiver, with the two scores on the player
+  the AI's two faculties, and the surface's hold on each paddle. The world's
+  game state carries the screen, the mode, the two menu figures, the winner,
+  and the receiver, with the two scores on the player
   states. The actors carry the field's bodies. Nothing lives in a module-level
   variable.
 - **Audio, input, rendering, the fit, the overlay** — all the engine's. The
@@ -151,16 +151,16 @@ await engine.advance(30);
 const { ball } = engine.debug.snapshot();
 ```
 
-| Group             | Operations                                                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| The world         | `clearWorld()`, `spawnBall()`, `spawnObstacle(index)`, `reset()`, `setSeed(seed)`                                         |
-| Screens and menus | `setScreen(screen)`, `setMode(mode)`, `setMenuIndex(index)`, `setTitleIndex(index)`, `setResumeScreen(screen)`            |
-| Match state       | `setScore(p1, p2)`, `setWinner(side)`, `setReceiver(side)`                                                                |
-| Paddles           | `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side, driven)`                                         |
-| The ball          | `setBallPosition(x, y)`, `setBallVelocity(vx, vy)`, `setBallSpin(spin)`, `setBallHeld(held)`, `setBallHoldTimer(seconds)` |
-| The AI            | `setAiTracking(enabled)`, `setAiMovement(enabled)`                                                                        |
-| Audio             | `setMuted(muted)`                                                                                                         |
-| Readings          | `snapshot()`, `menuItemRect(index)`                                                                                       |
+| Group             | Operations                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The world         | `clearWorld()`, `spawnBall()`, `spawnObstacle(index)`, `reset()`                                                                                                           |
+| Screens and menus | `setScreen(screen)`, `setMode(mode)`, `setMenuIndex(index)`, `setTitleIndex(index)`, `setResumeScreen(screen)`                                                             |
+| Match state       | `setScore(p1, p2)`, `setWinner(side)`, `setReceiver(side)`                                                                                                                 |
+| Paddles           | `setPaddleCy(side, cy)`, `setPaddleVy(side, vy)`, `setPaddleDriven(side, driven)`                                                                                          |
+| The ball          | `setBallPosition(x, y)`, `setBallVelocity(vx, vy)`, `setBallSpin(spin)`, `setBallHeld(held)`, `setBallHoldTimer(seconds)`, `setBallServeSign(sign)`, `drawBallServeSign()` |
+| The AI            | `setAiTracking(enabled)`, `setAiMovement(enabled)`                                                                                                                         |
+| Audio             | `setMuted(muted)`                                                                                                                                                          |
+| Readings          | `snapshot()`, `menuItemRect(index)`                                                                                                                                        |
 
 `snapshot()` reports every field an operation sets, so each one is verified by
 setting a value and reading it back, and `menuItemRect(index)` reports the hit

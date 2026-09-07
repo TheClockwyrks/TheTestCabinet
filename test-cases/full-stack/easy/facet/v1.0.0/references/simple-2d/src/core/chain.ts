@@ -27,7 +27,7 @@ import {
   SWAP_SECONDS,
   WAVE_SECONDS,
 } from "../constants";
-import { cursor } from "./rng";
+import { randomPicker } from "./random";
 import {
   applyStrain,
   applySwap,
@@ -37,11 +37,13 @@ import {
   lastFall,
   legalSwapExists,
   placeCreations,
+  posedRefill,
   prismSeed,
   removeCells,
   scoreClearSet,
   seedFromRuns,
   settleAndRefill,
+  type RefillKindAt,
   type StepSeed,
   type SwapVerdict,
 } from "./rules";
@@ -98,7 +100,6 @@ export function stepHold(state: FacetState): number {
 /** What one chain step did, beside the board it left. */
 export interface StepOutcome {
   readonly board: BoardState;
-  readonly rngState: number;
   /** How many cells the step cleared. */
   readonly cleared: number;
   /** What the step scored, at its multiplier. */
@@ -122,13 +123,16 @@ export interface StepOutcome {
  *   5. The clear set is removed, leaving its cells empty.
  *   6. R8 creates the cut gems, into cells the removal just emptied.
  *   7. R9 settles each column, refills it, and gives every gem its `fell`.
+ *
+ * `refill` is what the refill deals into each emptied cell: the draw R9
+ * states, or a kind a pose stands in for it.
  */
 export function resolveStep(
   board: BoardState,
-  rngState: number,
   multiplier: number,
   seed: StepSeed,
   chainSwap: CellPair | null,
+  refill: RefillKindAt,
 ): StepOutcome {
   const expanded = expandClearSet(board, seed.cells);
   const cleared = expanded.cells;
@@ -137,10 +141,8 @@ export function resolveStep(
   const emptied = removeCells(strained.board, cleared);
   const creations = creationsFor(seed.runs, chainSwap);
   const cut = placeCreations(emptied, creations);
-  const rng = cursor(rngState);
   return {
-    board: settleAndRefill(cut, rng),
-    rngState: rng.state,
+    board: settleAndRefill(cut, refill),
     cleared: cleared.size,
     points,
     waves: expanded.waves,
@@ -163,16 +165,15 @@ function takeStep(
 ): Stepped {
   const outcome = resolveStep(
     state.board,
-    state.rngState,
     multiplierFor(chainStep),
     seed,
     state.chainSwap,
+    posedRefill(state.refillKinds, randomPicker),
   );
   return {
     state: {
       ...state,
       board: outcome.board,
-      rngState: outcome.rngState,
       score: state.score + outcome.points,
       levelScore: state.levelScore + outcome.points,
       moveScore: state.moveScore + outcome.points,

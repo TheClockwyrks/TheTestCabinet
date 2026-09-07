@@ -7,7 +7,7 @@
 // This module holds no state: every function takes the current `CaromState` and
 // returns the next, leaving the one it was handed as it was.
 
-import { DEFAULT_SEED, FIELD_CY, HOLD_TIME } from "./constants";
+import { FIELD_CY, HOLD_TIME } from "./constants";
 import { centeredPaddle, createBalls, createObstacles } from "./entities";
 import type { CaromState, Mode } from "./game";
 import type { DeepReadonly } from "ts-essentials";
@@ -41,8 +41,6 @@ export function createInitialState(): CaromState {
     obstacles: createObstacles(),
     simTime: 0,
     muted: false,
-    seed: DEFAULT_SEED,
-    rngState: DEFAULT_SEED,
     presses: [],
   };
 }
@@ -51,7 +49,7 @@ export function createInitialState(): CaromState {
  * The title screen.
  *
  * Every declared field takes its title value except `titleIndex`, `simTime`,
- * `muted`, `seed`, and `rngState`, which keep theirs, and `menuIndex`, which
+ * and `muted`, which keep theirs, and `menuIndex`, which
  * becomes `titleIndex`: the entry that led away from the title is the entry
  * highlighted on the way back to it (specs/ui.md).
  */
@@ -62,8 +60,6 @@ export function toTitle(state: DeepReadonly<CaromState>): CaromState {
     titleIndex: state.titleIndex,
     simTime: state.simTime,
     muted: state.muted,
-    seed: state.seed,
-    rngState: state.rngState,
   };
 }
 

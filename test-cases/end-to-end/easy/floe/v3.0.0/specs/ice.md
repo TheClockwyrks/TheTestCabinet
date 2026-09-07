@@ -66,9 +66,12 @@ strait's edges included: a vehicle carried off one edge returns at the other so
 the run of vehicle and gap continues unbroken, and a lane always carries enough
 vehicles to reach both edges of the strait.
 
-Where a lane's pattern sits along its row when a level is laid out is drawn from
-the game's own seeded randomness. The phases drawn leave the band staggered: no
-column of the strait is covered by a vehicle in all eight ice rows at once.
+Where a lane's pattern sits along its row is drawn at random when a level is laid
+out. A lane's phase is the left edge of one of its vehicles, and the rest of the
+lane follows the spacing rule from it. The eight phases are drawn uniformly and
+independently, each from one period of its own lane's spacing,
+`[0, (len + gap) * TILE)`, conditioned on the band being staggered: no column of
+the strait is covered by a vehicle in all eight ice rows at once.
 
 ## The per-level scaling
 

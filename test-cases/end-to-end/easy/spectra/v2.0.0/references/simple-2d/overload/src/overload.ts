@@ -24,7 +24,8 @@ import {
   muzzleY,
 } from "./bullets";
 import { enterPlunge } from "./drones";
-import { drawInt, type FrameEvents, type MutDrone, type Sim } from "./sim";
+import { randomInt } from "./random";
+import type { FrameEvents, MutDrone, Sim } from "./sim";
 import { freeFormationSlot, freshDrone } from "./wave";
 import type { Band } from "./game";
 
@@ -85,7 +86,7 @@ function overloadPrism(sim: Sim, drone: MutDrone): void {
   if (!drone.shellAlive) return;
 
   for (let escort = 0; escort < OVERLOAD_PRISM_ESCORTS; escort++) {
-    const band: Band = drawInt(sim, 0, 1) === 0 ? "cyan" : "magenta";
+    const band: Band = randomInt(0, 1) === 0 ? "cyan" : "magenta";
     const side = escort % 2 === 0 ? 1 : -1;
     const x = drone.x + side * ESCORT_SPAWN_DX;
     const slot = freeFormationSlot(sim, x, drone.y);

@@ -72,7 +72,7 @@ const PAINT_FRAMES = framesFor(0.25);
  * The painted sample only has to have MOVED from the felt sample, and nothing
  * about it is measured. The case fixes no palette, so how far a stamp reads from
  * the felt is the reviewer's; both readings are the same point of the same screen
- * drawn by the same build, and rendering is deterministic, so any difference at
+ * drawn by the same build, so any difference at
  * all is the paint.
  */
 

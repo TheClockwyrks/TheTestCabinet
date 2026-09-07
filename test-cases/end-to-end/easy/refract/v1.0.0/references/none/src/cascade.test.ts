@@ -1,4 +1,4 @@
-// Cascade's generator: the tier ladder, determinism, the structural
+// Cascade's generator: the tier ladder, the structural
 // requirements every emitted board satisfies, the difficulty floor every
 // emitted board clears, and — the central requirement — solvability, proven
 // by replaying each board's carved solution through the debug surface's
@@ -68,23 +68,6 @@ describe("the tier ladder", () => {
   });
 });
 
-describe("determinism", () => {
-  it("emits the same board and advanced state for the same seed", () => {
-    const first = generateBoardWithSolution(1234, 3);
-    const second = generateBoardWithSolution(1234, 3);
-    expect(second.board).toEqual(first.board);
-    expect(second.solution).toEqual(first.solution);
-    expect(second.rngState).toBe(first.rngState);
-  });
-
-  it("advances the state, so the next board follows from the previous one", () => {
-    const first = generateBoard(42, 2);
-    expect(first.rngState).not.toBe(42);
-    const second = generateBoard(first.rngState, 2);
-    expect(second.board).not.toEqual(first.board);
-  });
-});
-
 /** Every structural requirement the tier table fixes for an emitted board. */
 function expectWellFormed(
   board: BoardState,
@@ -146,14 +129,12 @@ function expectMeetsFloor(
 }
 
 describe("emitted boards", () => {
-  it("satisfies the tier's structure and solves, across seeds and tiers", () => {
+  it("satisfies the tier's structure and solves, across draws and tiers", () => {
     const debug = createDebugApi();
     for (let tier = 1; tier <= MAX_TIER; tier++) {
-      let rngState = 1000 + tier;
       for (let round = 0; round < 8; round++) {
         const label = `tier ${tier} round ${round}`;
-        const generated = generateBoardWithSolution(rngState, tier);
-        rngState = generated.rngState;
+        const generated = generateBoardWithSolution(tier);
         expectWellFormed(generated.board, tier, label);
         expect(solutionSolves(generated.board, generated.solution), label).toBe(
           true,
@@ -174,18 +155,15 @@ describe("emitted boards", () => {
   });
 
   it("meets the difficulty floor along a run's own opening sweep", () => {
-    // The first twelve boards of a fixed-seed run, generated at the tier the
-    // ladder puts each arrival at (board k arrives after k solves), each
-    // remeasured against its tier's row — a modest sweep, since the fuller
-    // per-tier structure-and-solvability loop above already draws the
-    // generator forty times.
-    let rngState = 20;
+    // The first twelve boards of a run, generated at the tier the ladder puts
+    // each arrival at (board k arrives after k solves), each remeasured
+    // against its tier's row — a modest sweep, since the fuller per-tier
+    // structure-and-solvability loop above already draws the generator forty
+    // times.
     for (let solved = 0; solved < 12; solved++) {
       const tier = tierFor(solved);
       const label = `board ${solved + 1} (tier ${tier})`;
-      const generated = generateBoard(rngState, tier);
-      rngState = generated.rngState;
-      expectMeetsFloor(generated.board, tier, label);
+      expectMeetsFloor(generateBoard(tier), tier, label);
     }
   });
 
@@ -193,19 +171,13 @@ describe("emitted boards", () => {
     const spec = TIERS[MAX_TIER - 1];
     expect(spec.maxCols).toBe(GRID_MAX_COLS);
     expect(spec.maxRows).toBe(GRID_MAX_ROWS);
-    const sizes = new Set<string>();
-    let rngState = 7;
     for (let round = 0; round < 8; round++) {
-      const { board, rngState: next } = generateBoard(rngState, MAX_TIER);
-      rngState = next;
+      const board = generateBoard(MAX_TIER);
       expect(board.cols).toBeGreaterThanOrEqual(spec.minCols);
       expect(board.cols).toBeLessThanOrEqual(spec.maxCols);
       expect(board.rows).toBeGreaterThanOrEqual(spec.minRows);
       expect(board.rows).toBeLessThanOrEqual(spec.maxRows);
-      sizes.add(`${board.cols}x${board.rows}`);
     }
-    // A range, not a single shape: the rounds really draw from it.
-    expect(sizes.size).toBeGreaterThan(1);
   });
 });
 

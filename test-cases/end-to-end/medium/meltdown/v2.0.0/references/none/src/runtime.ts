@@ -21,10 +21,10 @@
 // THE CLOCK CAN BE TAKEN AWAY. `setAutoStep(false)` stops the loop advancing the
 // simulation from the wall clock, and `advance(seconds, frames)` runs an exact
 // number of whole frames at an exact delta — the two operations
-// `specs/instrumentation.md` puts on `window.__meltdown`, and what makes a driven
-// scenario reproducible on any machine. Drawing is unaffected either way: the
-// loop keeps presenting, so the canvas always shows the state the most recent
-// frame left.
+// `specs/instrumentation.md` puts on `window.__meltdown`, and what lets a driven
+// scenario cover exact game time on any machine. Drawing is unaffected either
+// way: the loop keeps presenting, so the canvas always shows the state the most
+// recent frame left.
 
 import { AudioBus, type AudioContextSource, type CueSpec } from "./audio-bus";
 import { Keyboard, asKeyboardEvent } from "./keyboard";

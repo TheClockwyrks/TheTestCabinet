@@ -1,13 +1,14 @@
 // Refract — cascade/restart: RESTART drops to tier 1.
 //
 // specs/modes/cascade.md "The solved screen": RESTART returns solvedCount to
-// 0 and tier to 1, generates a board, and moves to playing. Two real solves
-// stand progress up, then RESTART is chosen the way a player chooses it —
-// `down` from NEXT BOARD (menuIndex 0 on arriving at solved) to RESTART, then
-// `confirm` — and the sequence reads freshly begun: count 0, tier 1, a board
-// present, every beam empty. (The spec's no-reseed clause — RESTART carries
-// the generator on rather than reseeding — fixes an internal the snapshot
-// does not expose per-board, so it is not asserted here.)
+// 0 and tier to 1, generates a board, and moves to playing. The run is posed
+// at one solve through `setSolvedCount` and `setTier`
+// (specs/instrumentation.md) and a posed board is solved for the second, so
+// progress stands and the solved screen is reached the way a player's solve
+// reaches it. RESTART is chosen the way a player chooses it — `down` from
+// NEXT BOARD (menuIndex 0 on arriving at solved) to RESTART, then `confirm` —
+// and the sequence reads freshly begun: count 0, tier 1, a board present
+// carrying tier 1's channel count, every beam empty.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -16,15 +17,18 @@ import {
   assertGreaterThanOrEqual,
 } from "../assert";
 import {
+  boardFromSnapshot,
   captureStill,
   createHarness,
-  solveGenerated,
+  poseCascadeRun,
+  resetTo,
+  solvePosedBoard,
   tapAction,
   type Harness,
 } from "../harness";
+import { TIERS, channelsPresent } from "../notation";
 import { assertEveryBeamEmpty } from "./helpers";
 
-const SEED = 1;
 const SOLVES = 2;
 
 let h: Harness;
@@ -37,12 +41,19 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("returns solvedCount to 0 and tier to 1, and opens a fresh board", async () => {
-  await solveGenerated(h, SOLVES, SEED);
-  const solvedScreen = h.snapshot();
+it("returns solvedCount to 0 and tier to 1, and opens a fresh tier-1 board", async () => {
+  await resetTo(h);
+  poseCascadeRun(h, SOLVES - 1);
+  const solvedScreen = await solvePosedBoard(h);
+  assertEqual(
+    solvedScreen.solved,
+    true,
+    "precondition: the posed board solves",
+  );
   assertEqual(solvedScreen.screen, "solved", "the second solve's screen is up");
   assertEqual(solvedScreen.solvedCount, SOLVES, "two solves stand to discard");
   assertEqual(solvedScreen.menuIndex, 0, "the menu rests on NEXT BOARD");
+  await h.advance(1);
 
   // Down to RESTART, then take it.
   await tapAction(h, "down");
@@ -70,6 +81,11 @@ it("returns solvedCount to 0 and tier to 1, and opens a fresh board", async () =
     restarted.board.nodes.length,
     0,
     "a board is generated: nodes",
+  );
+  assertEqual(
+    channelsPresent(boardFromSnapshot(restarted)).length,
+    TIERS[0].channels,
+    "the board RESTART generates carries tier 1's channel count",
   );
   assertEveryBeamEmpty(
     restarted,

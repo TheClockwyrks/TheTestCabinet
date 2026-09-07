@@ -32,7 +32,7 @@
 // somehow carried a flawed gem into step 2 fails here as the scenario it is.
 //
 // WHY THE SECOND SET IS READ OFF THE BOARD THAT WAS OBSERVED. R9 refills from the
-// game's own seeded generator, so what lands in the emptied cells is the build's
+// game's own random draw, so what lands in the emptied cells is the build's
 // business and no check may predict it. But the board step 1 LEFT is exactly the
 // board step 2 reads and scores, and it is readable: the check reads it back as
 // notation and computes step 2's clear set over it by R4, R5 and R6 as `board.ts`
@@ -87,7 +87,7 @@ import type { FacetSnapshot } from "../surface";
  * The jade at `(3,5)` sits under the run and does not move; the two above fall
  * onto it. Nothing here is three of a kind before the swap. All three cells of
  * the run step 2 clears are SURVIVORS of step 1 rather than refills, so the
- * second step happens whatever the build's generator dealt into the top of the
+ * second step happens whatever R9's draw dealt into the top of the
  * column.
  */
 const CHAIN_CELLS: readonly PlacedToken[] = [

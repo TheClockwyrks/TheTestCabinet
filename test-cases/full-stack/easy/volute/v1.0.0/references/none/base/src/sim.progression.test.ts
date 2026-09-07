@@ -61,7 +61,7 @@ describe("the level table", () => {
 
   it("uses only its own charges", () => {
     LEVELS.forEach((level, index) => {
-      const hall = harness(index + 7);
+      const hall = harness();
       hall.api.startLevel(index + 1);
       const seen = new Set(
         hall.api.snapshot().train.map((core) => core.charge),

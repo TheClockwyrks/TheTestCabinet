@@ -71,9 +71,6 @@ export async function carryAcross(h: Harness, tick: number): Promise<Crossing> {
 }
 
 /** An isolated night with `events` alone, which every check in this family poses. */
-export function isolateForEvents(
-  h: Harness,
-  seed?: number,
-): Promise<WickSnapshot> {
-  return isolate(h, { seed, on: ["events"] });
+export function isolateForEvents(h: Harness): Promise<WickSnapshot> {
+  return isolate(h, { on: ["events"] });
 }

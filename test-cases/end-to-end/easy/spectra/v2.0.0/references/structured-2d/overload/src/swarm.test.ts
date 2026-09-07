@@ -53,18 +53,21 @@ describe("the entrance", () => {
   });
 
   it("carries every drone across the field's top within a second of release", () => {
-    const state = wave();
-    const crossed = new Map<number, number>();
-    for (let frame = 0; frame < 60 * 12; frame += 1) {
-      run(state, STEP);
-      for (const drone of state.drones) {
-        if (drone.y >= FIELD_TOP && !crossed.has(drone.id)) {
-          crossed.set(drone.id, state.simTime - releaseTime(drone));
+    // Over several drawn layouts, so the widest row a wave can draw is covered.
+    for (let draw = 0; draw < 6; draw += 1) {
+      const state = wave();
+      const crossed = new Map<number, number>();
+      for (let frame = 0; frame < 60 * 12; frame += 1) {
+        run(state, STEP);
+        for (const drone of state.drones) {
+          if (drone.y >= FIELD_TOP && !crossed.has(drone.id)) {
+            crossed.set(drone.id, state.simTime - releaseTime(drone));
+          }
         }
       }
+      expect(crossed.size).toBe(state.drones.length);
+      for (const late of crossed.values()) expect(late).toBeLessThanOrEqual(1);
     }
-    expect(crossed.size).toBe(state.drones.length);
-    for (const late of crossed.values()) expect(late).toBeLessThanOrEqual(1);
   });
 
   it("settles every drone into its slot within six seconds of its release", () => {
@@ -235,14 +238,18 @@ describe("the dive", () => {
     state.diveClock = 0;
     state.diveLaunching = true;
     const launches: number[] = [];
-    const seen = new Set<number>();
+    // A launch is a drone leaving the formation for a dive, counted whichever
+    // drone the launcher drew and however often the same one is drawn again.
+    const phases = new Map(
+      state.drones.map((drone) => [drone.id, drone.phase]),
+    );
     for (let frame = 0; frame < 60 * 20; frame += 1) {
       run(state, STEP);
       for (const drone of state.drones) {
-        if (drone.phase === "diving" && !seen.has(drone.id)) {
-          seen.add(drone.id);
+        if (drone.phase === "diving" && phases.get(drone.id) === "formation") {
           launches.push(state.simTime);
         }
+        phases.set(drone.id, drone.phase);
       }
     }
     expect(launches.length).toBeGreaterThan(3);

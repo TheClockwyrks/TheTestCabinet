@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 import { fromCore } from "./bridge";
 import {
   CELL_PITCH,
-  DEFAULT_SEED,
   FACET_DEBUG_VERSION,
   GEM_HIT_R,
   GRID_COLS,
@@ -123,7 +122,7 @@ describe("snapshot", () => {
       bestMove: 0,
       bestChain: 0,
       legalSwap: false,
-      rngState: DEFAULT_SEED,
+      refillKinds: ["", "", "", "", "", "", "", ""],
       pointer: { x: 0, y: 0, down: false, device: "mouse" },
       armedTarget: null,
       targets: targetsFor("title").map((target) => ({ ...target })),
@@ -194,9 +193,13 @@ describe("snapshot", () => {
 });
 
 describe("the poses over the screens", () => {
-  it("resets every declared field, seeding the generator", () => {
-    const played = debug.setScore(debug.setLevel(posed(), 6), 5000);
-    const reset = debug.reset({ ...played, muted: true }, { seed: 31 });
+  it("resets every declared field", () => {
+    const played = debug.setRefillKinds(
+      debug.setScore(debug.setLevel(posed(), 6), 5000),
+      2,
+      "RA",
+    );
+    const reset = debug.reset({ ...played, muted: true });
 
     expect(reset.screen).toBe("title");
     expect(reset.menuIndex).toBe(0);
@@ -216,21 +219,32 @@ describe("the poses over the screens", () => {
     expect(reset.armedTarget).toBeNull();
     expect(reset.pointer).toEqual({ x: 0, y: 0, down: false, device: "mouse" });
     expect(reset.simTime).toBe(0);
-    expect(reset.rngState).toBe(31);
+    expect(reset.refillKinds).toEqual(["", "", "", "", "", "", "", ""]);
     // The runtime owns muting, so a reset is no reason to start making noise.
     expect(reset.muted).toBe(true);
     // The one field past the declaration resets with it.
     expect(reset.chainSwap).toBeNull();
   });
 
-  it("defaults the seed when none is named", () => {
-    expect(debug.reset(opening()).rngState).toBe(DEFAULT_SEED);
+  it("poses one column's refill and clears every pose", () => {
+    const one = debug.setRefillKinds(posed(), 1, "RA");
+    const two = debug.setRefillKinds(one, 6, "J");
+    expect(two.refillKinds).toEqual(["", "RA", "", "", "", "", "J", ""]);
+    expect(debug.snapshot(two).refillKinds).toEqual(two.refillKinds);
+    expect(debug.clearRefillKinds(two).refillKinds).toEqual([
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
   });
 
   it("deals a round's board through the game's own code", () => {
-    const snapshot = debug.snapshot(
-      started(debug.reset(opening(), { seed: 3 })),
-    );
+    const snapshot = debug.snapshot(started(debug.reset(opening())));
 
     expect(snapshot.screen).toBe("playing");
     expect(snapshot.board.cols).toBe(GRID_COLS);
@@ -298,7 +312,7 @@ describe("the poses over the board", () => {
     expect(state.chainStep).toBe(0);
     expect(state.selection).toBeNull();
     expect(state.offer).toBeNull();
-    // score, level, levelScore, rngState and simTime stand where they were.
+    // score, level, levelScore, refillKinds and simTime stand where they were.
     expect(state.score).toBe(90);
     expect(state.levelScore).toBe(40);
   });

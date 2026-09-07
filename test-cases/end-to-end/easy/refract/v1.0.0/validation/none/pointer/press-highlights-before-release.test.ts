@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 it("highlights the pressed item while the press is still held", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
   assertEqual(
     (await h.snapshot()).menuIndex,

@@ -26,11 +26,11 @@
 // writes the figure again, so a reading taken after the game had run would be
 // about whatever happened since rather than about what the deal wrote.
 //
-// WHY SEVERAL SEEDS. Each seed is a different draw off the build's own random
+// WHY SEVERAL DEALS. Each deal is a different draw off the build's own random
 // source, and the property has to hold of every board it deals rather than of a
-// lucky one. specs/instrumentation.md makes a round from a known deal `reset`
-// carrying a seed followed by a `dealBoard`, which is what the harness's
-// `startRound` runs and what the sweep below does twelve times.
+// lucky one. A round from the title is a `reset` followed by the harness's
+// `startRound`, which deals through the build's own `dealBoard`, and the sweep
+// below opens one several times over.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";
@@ -45,12 +45,14 @@ import {
 import type { FacetSnapshot } from "../surface";
 
 /**
- * The seeds a round is dealt from.
+ * How many rounds are dealt.
  *
- * Twelve arbitrary positive numbers, each a different draw off the build's own
- * seeded source. Nothing is asserted about any particular one.
+ * One deal proves nothing: a build that never checks its deal still passes when
+ * the draw happens to come out right. Each deal here is a fresh draw off the
+ * build's own random source, nothing is asserted about any particular one, and
+ * the property under test has to hold of all of them.
  */
-const SEEDS = [1, 2, 3, 5, 8, 13, 21, 42, 99, 1234, 7777, 99991] as const;
+const DEALS = 8;
 
 /**
  * Frames recorded after the first deal, purely so the replay holds the arrival.
@@ -66,9 +68,9 @@ const REPLAY_FRAMES = 32;
 
 let h: Harness;
 
-/** Seed the game's random source and open a fresh round on it. */
-async function deal(seed: number): Promise<FacetSnapshot> {
-  await h.debug.reset({ seed });
+/** Open a fresh round from the title, which deals a fresh opening board. */
+async function deal(): Promise<FacetSnapshot> {
+  await h.debug.reset();
   return startRound(h);
 }
 
@@ -80,27 +82,27 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("deals every gem in from above its own row, from every seed", async () => {
-  for (const seed of SEEDS) {
+it("deals every gem in from above its own row, deal after deal", async () => {
+  for (let deal_ = 1; deal_ <= DEALS; deal_ += 1) {
     // The evidence is the first deal's worth, and the reading it is taken from
     // is the one the deal returned, before the recorded frames ran.
     const opened =
-      seed === SEEDS[0]
+      deal_ === 1
         ? await captureReplay(h, "deal", async () => {
-            const reading = await deal(seed);
+            const reading = await deal();
             await h.advance(REPLAY_FRAMES);
             return reading;
           })
-        : await deal(seed);
+        : await deal();
 
     // Every cell has to be reported before "every gem fell" means anything: a
     // board of forty cells would satisfy the loop below and still be no opening
     // board.
-    assertEqual(opened.screen, "playing", `screen dealt from seed ${seed}`);
+    assertEqual(opened.screen, "playing", `screen of deal ${deal_}`);
     assertLength(
       opened.board.cells,
       GRID_COLS * GRID_ROWS,
-      `cells dealt from seed ${seed}`,
+      `cells of deal ${deal_}`,
     );
 
     for (const cell of opened.board.cells) {
@@ -110,7 +112,7 @@ it("deals every gem in from above its own row, from every seed", async () => {
       assertFell(
         cell.fell,
         { atLeast: cell.row + 1 },
-        `the fell of (${cell.col},${cell.row}) dealt from seed ${seed}`,
+        `the fell of (${cell.col},${cell.row}) of deal ${deal_}`,
       );
     }
   }

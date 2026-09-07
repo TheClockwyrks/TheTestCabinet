@@ -46,10 +46,9 @@ export default defineEngineValidationConfig({
   // from anywhere.
   root: new URL("..", import.meta.url).pathname,
   // A Deepcore scenario is posed rather than played to, so most cost
-  // milliseconds; the headroom is for the Core Sample's ninety-second timer and
-  // the generation sweeps over several seeds at the Marathon size, both driven
-  // off the clock rather than waited out. This is the figure the checks here were
-  // measured against, and it is the one dial this project sets below the
-  // factory's own default.
+  // milliseconds; the headroom is for the Core Sample's ninety-second timer,
+  // driven off the clock rather than waited out. This is the figure the checks
+  // here were measured against, and it is the one dial this project sets below
+  // the factory's own default.
   testTimeout: 60_000,
 });

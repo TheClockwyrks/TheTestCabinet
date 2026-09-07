@@ -13,15 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cellCenter } from "./board";
 import { CAMPAIGN_BOARDS } from "./campaign";
-import { generateBoardWithSolution } from "./cascade";
-import {
-  CAMPAIGN_LENGTH,
-  CUES,
-  DEFAULT_SEED,
-  LAYOUT,
-  STAGE_H,
-  STAGE_W,
-} from "./constants";
+import { CAMPAIGN_LENGTH, CUES, LAYOUT, STAGE_H, STAGE_W } from "./constants";
 import { game, RefractState } from "./game";
 import { createHarness, FRAME_MS, type Harness } from "./harness";
 import { CHANNEL_COLOR, rgbOf } from "./theme";
@@ -44,6 +36,13 @@ function played(): string[] {
 }
 
 // ---- Boot ----------------------------------------------------------------
+
+/** The one route that solves the posed board `TtT`, left to right. */
+const ROUTE_TTT = [
+  { col: 0, row: 0 },
+  { col: 1, row: 0 },
+  { col: 2, row: 0 },
+];
 
 describe("initialization", () => {
   it("opens on the title screen with the state at rest", () => {
@@ -367,17 +366,14 @@ describe("solving a cascade board", () => {
     h.tap("Enter");
     await h.engine.advance(1);
     expect(h.state.mode).toBe("cascade");
+    expect(h.state.board.nodes.length).toBeGreaterThan(0);
 
-    // The board the sequence opened with is the one the seed dictates, so its
-    // carved solution is known.
-    const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
-    expect(h.state.board).toEqual(expected.board);
-    for (const route of expected.solution) {
-      await h.drag(route);
-    }
+    // A known board posed over the generated one, so the solving route is
+    // known: a posed board is a board like any other, and the run counts it.
+    h.debug.loadBoard(["TtT"]);
+    await h.drag(ROUTE_TTT);
     expect(h.state.screen).toBe("solved");
     expect(h.state.solvedCount).toBe(1);
-    expect(h.state.rngState).toBe(expected.rngState);
 
     h.tap("Enter"); // NEXT BOARD
     await h.engine.advance(1);
@@ -523,14 +519,11 @@ describe("the solved and complete screens", () => {
     expect(h.state.selectIndex).toBe(0);
   });
 
-  it("restarts cascade from its solved menu without reseeding", async () => {
+  it("restarts cascade from its solved menu on a fresh tier-1 board", async () => {
     await h.enterCascade();
-    const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
-    for (const route of expected.solution) {
-      await h.drag(route);
-    }
+    h.debug.loadBoard(["TtT"]);
+    await h.drag(ROUTE_TTT);
     expect(h.state.screen).toBe("solved");
-    const before = h.state.rngState;
 
     h.tap("ArrowDown");
     await h.engine.advance(1);
@@ -539,15 +532,14 @@ describe("the solved and complete screens", () => {
     expect(h.state.screen).toBe("playing");
     expect(h.state.solvedCount).toBe(0);
     expect(h.state.tier).toBe(1);
-    expect(h.state.rngState).not.toBe(before);
+    expect(h.state.board.nodes.length).toBeGreaterThan(0);
+    expect(h.state.beams.every((beam) => beam.cells.length === 0)).toBe(true);
   });
 
   it("leaves cascade's solved screen to the title with back", async () => {
     await h.enterCascade();
-    const expected = generateBoardWithSolution(DEFAULT_SEED, 1);
-    for (const route of expected.solution) {
-      await h.drag(route);
-    }
+    h.debug.loadBoard(["TtT"]);
+    await h.drag(ROUTE_TTT);
     h.tap("Escape");
     await h.engine.advance(1);
     expect(h.state.screen).toBe("title");

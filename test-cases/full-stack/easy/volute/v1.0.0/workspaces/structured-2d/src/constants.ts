@@ -353,6 +353,3 @@ export const LOOPING_CUES: readonly CueName[] = [
 
 /** The version the debug surface reports as `version`. */
 export const VOLUTE_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;

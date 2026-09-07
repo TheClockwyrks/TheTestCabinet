@@ -9,7 +9,7 @@
 //   - `specs/state.md` (`WickState`): "`accumulator`: the frame time waiting
 //     for the next whole tick, in seconds, at least `0` and below `TICK_DT`. It
 //     grows on `playing` alone".
-//   - `specs/instrumentation.md` ("A deterministic core"): "A tick is consumed
+//   - `specs/instrumentation.md` ("A render-free core"): "A tick is consumed
 //     while the accumulator is at least `TICK_DT − TICK_EPSILON`".
 //
 // THE DRIVE. An isolated run, every switch off, so nothing but the clock

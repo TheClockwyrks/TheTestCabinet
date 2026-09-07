@@ -5,9 +5,8 @@
 // columns carry no ore cell in any generated mine, and the first digs out of the
 // camp yield nothing.
 //
-// Read across several seeds and every world size, because a rule that holds for
-// one mine and not the next is a rule the build does not have. Read on generated
-// mines rather than posed ones: `clearMine` opens the whole grid and would report
+// Read on a fresh mine at every world size, and on generated mines rather than
+// posed ones: `clearMine` opens the whole grid and would report
 // no ore wherever generation put it.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -15,8 +14,6 @@ import { assertDeepEqual } from "../assert";
 import { ORE_MIN_ROW, WORLD_SIZES, type WorldSize } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look } from "./mine-scan";
-
-const SEEDS = [1, 2, 3, 7, 19] as const;
 
 let h: Harness;
 
@@ -30,13 +27,11 @@ afterEach(async () => {
 
 it("puts no ore vein above row 4", async () => {
   for (const size of WORLD_SIZES) {
-    for (const seed of SEEDS) {
-      const scan = await generatedMine(h, seed, size as WorldSize);
-      const shallow = scan.ores
-        .filter((cell) => cell.row < ORE_MIN_ROW)
-        .map((cell) => `${cell.ore} at (${cell.col}, ${cell.row})`);
-      assertDeepEqual(shallow, [], `${size} mine on seed ${seed}`);
-    }
+    const scan = await generatedMine(h, size as WorldSize);
+    const shallow = scan.ores
+      .filter((cell) => cell.row < ORE_MIN_ROW)
+      .map((cell) => `${cell.ore} at (${cell.col}, ${cell.row})`);
+    assertDeepEqual(shallow, [], `${size} mine`);
   }
 
   // The picture: the plain rock directly under the camp.

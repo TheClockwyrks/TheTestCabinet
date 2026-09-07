@@ -41,9 +41,8 @@ timestep of its own. Every rate in this specification is integrated against that
 delta time: the speeds in units per second, the spin in units per second squared,
 the spin decay per second, and the hold in seconds.
 
-`specs/instrumentation.md` states the determinism this rests on: a render-free
-core, seeded randomness, and an interval of game time reaching the same state
-however it was divided into frames.
+`specs/instrumentation.md` states the render-free core this rests on and the
+agreement two step sizes reach.
 
 ### Sub-steps
 
@@ -217,8 +216,11 @@ returns to its own. `BALL_HOMES` holds the three, in play order:
 | `BALL_HOMES[1]` | `(640, 360)`, the field center |
 | `BALL_HOMES[2]` | `(640, 540)` |
 
-Parking a ball puts it at its home point with zero velocity and zero spin and
-clears its trail.
+Parking a ball puts it at its home point, held, with zero velocity, zero spin,
+an empty trail, and a fresh `launchAngle`, drawn uniformly over `[0, 2 * PI)`
+radians. A ball is parked at the title screen, when a match starts, by
+`spawnBall`, and after a point. Between one parking and the next, `launchAngle`
+keeps the value it was drawn or posed at.
 
 ## The hold and the launch
 
@@ -234,9 +236,10 @@ carries its own hold timer, independent of the other two.
 - On the first frame a waiting ball's timer, after subtracting `dt`, is `<= 0`,
   that ball launches on that same frame: its timer becomes `0`, `held` becomes
   `false`, its trail is cleared, its spin is `0`, and it leaves at `SERVE_SPEED`
-  along an angle drawn uniformly over the full circle from the generator seeded
-  by `rngState`. Every launch draws a fresh angle, the first launch of a match
-  and every relaunch alike.
+  along its `launchAngle`: `vx = SERVE_SPEED * cos(launchAngle)` and
+  `vy = SERVE_SPEED * sin(launchAngle)`. The launch leaves `launchAngle` as it
+  is. Every parking draws a fresh angle, so the first launch of a match and every
+  relaunch each leave along their own draw.
 - The ball launched on a frame is advanced on that same frame.
 - The screen becomes `playing` on the first `countdown` frame on which no ball is
   held, after the balls have been advanced.
@@ -256,12 +259,18 @@ only things that change it.
 ## Serving
 
 A ball is either waiting to be served or in flight, and `held` says which: it is
-`true` while the ball waits and `false` from the frame it is served. A waiting
-ball sits parked at its home point with zero velocity, zero spin, and an empty
-trail, while the ball's `holdTimer` counts down from `HOLD_TIME` (`1.0`
-second). The screen is `countdown` while the ball waits. Every `countdown` frame
-subtracts `dt` from `holdTimer`; on the first frame on which the result is
-`<= 0`, the ball is served on that same frame:
+`true` while the ball waits and `false` from the frame it is served.
+
+Parking the ball puts it at its home point, held, with zero velocity, zero spin,
+an empty trail, and a fresh `serveSign`, `1` and `-1` each equally likely. The
+ball is parked at the title screen, when a match starts, by `spawnBall`, and
+after a point. Between one parking and the next, `serveSign` keeps the value it
+was drawn or posed at.
+
+A waiting ball sits parked while its `holdTimer` counts down from `HOLD_TIME`
+(`1.0` second). The screen is `countdown` while the ball waits. Every
+`countdown` frame subtracts `dt` from `holdTimer`; on the first frame on which
+the result is `<= 0`, the ball is served on that same frame:
 
 - `holdTimer` becomes `0`, `held` becomes `false`, the trail is cleared, and
   `screen` becomes `playing`.
@@ -269,12 +278,11 @@ subtracts `dt` from `holdTimer`; on the first frame on which the result is
   first serve of a match travels toward player one (`"left"`).
 - The serve leaves at `SERVE_SPEED` at `SERVE_ANGLE` (`12deg`) from horizontal:
   `vx = dir * SERVE_SPEED * cos(SERVE_ANGLE)` with `dir = -1` toward `"left"` and
-  `+1` toward `"right"`, and `vy = s * SERVE_SPEED * sin(SERVE_ANGLE)` with `s`
-  either `+1` or `-1`.
-- `s` is drawn afresh from the generator seeded by `rngState` on every serve, the
-  first serve of a match and every serve after a point alike, with `+1` and `-1`
-  each equally likely. Over a run of serves toward the same receiver the ball
-  therefore leaves upward on some and downward on others.
+  `+1` toward `"right"`, and `vy = serveSign * SERVE_SPEED * sin(SERVE_ANGLE)`.
+  The serve leaves `serveSign` as it is.
+- Every parking draws `serveSign` afresh, so the first serve of a match and every
+  serve after a point each take their own draw. Over a run of serves toward the
+  same receiver the ball leaves upward on some and downward on others.
 
 The ball is not advanced on the frame it is served. An elapsed `holdTimer` is the
 one thing that serves the ball.
@@ -303,8 +311,9 @@ on which a ball in flight has `x - BALL_R > FIELD_W` (player one scores) or
 
 If the win rule then holds, `winner` becomes the scorer, `screen` becomes
 `matchover`, `menuIndex` becomes `0`, and every ball is left where it is.
-Otherwise the ball that crossed is parked at its own home point and becomes
-`held` with a full `HOLD_TIME` timer, and it relaunches when that timer elapses.
+Otherwise the ball that crossed is parked at its own home point, which draws its
+`launchAngle`, and becomes `held` with a full `HOLD_TIME` timer, and it
+relaunches when that timer elapses.
 The other two balls carry on through that respawn, on a field that keeps running,
 and points from all three balls accumulate into the same two scores.
 {{else}}
@@ -314,7 +323,7 @@ scores). The scorer's score increments.
 
 If the win rule then holds, `winner` becomes the scorer, `screen` becomes
 `matchover`, `menuIndex` becomes `0`, and the ball is left where it is.
-Otherwise the ball is parked at its home point, the trail is cleared, `receiver`
-becomes the side that was scored on, `holdTimer` becomes `HOLD_TIME`, and
-`screen` becomes `countdown`.
+Otherwise the ball is parked at its home point, which clears the trail and draws
+`serveSign`, `receiver` becomes the side that was scored on, `holdTimer` becomes
+`HOLD_TIME`, and `screen` becomes `countdown`.
 {{/if}}

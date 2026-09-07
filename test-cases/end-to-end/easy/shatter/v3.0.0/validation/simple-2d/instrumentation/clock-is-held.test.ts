@@ -5,8 +5,8 @@
 //   1. ASKING FOR NO FRAMES RUNS NOTHING. `engine.advance(0)` runs no frame, so the
 //      build's `update` is never reached and the field must read back exactly as it
 //      stood. What this catches is a build that moved the game from somewhere other
-//      than its own `update` — a timer of its own, a `requestAnimationFrame` it
-//      started, a body stepped inside a debug operation. `specs/instrumentation.md`
+//      than its own `update` — a timer of its own, a frame callback it started, a
+//      body stepped inside a debug operation. `specs/instrumentation.md`
 //      puts the clock with the engine under this engine, and `specs/simulation.md`
 //      makes the game advance "from the elapsed time the game is handed" and from
 //      nothing else, so a build with a second source of motion is wrong, and every
@@ -15,7 +15,7 @@
 //   2. READING THE GAME DOES NOT MOVE IT. `specs/instrumentation.md` makes
 //      `snapshot()` "a pure read of the state" that "changes nothing", and this
 //      project reads the game through it hundreds of times per scenario. A
-//      `snapshot` that stepped a timer, consumed a queue, or reseeded the generator
+//      `snapshot` that stepped a timer, consumed a queue, or moved a clock
 //      on its way past would make every one of those readings a different reading
 //      from the one before it. So the same field is read many times over and the
 //      last reading is held against the first, exactly.

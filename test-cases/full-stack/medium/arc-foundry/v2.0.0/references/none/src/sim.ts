@@ -7,9 +7,9 @@
 // the UPGRADE QUALITY refinement track, eight base component types plus assembled combination
 // towers firing automatically with travelling
 // projectiles / arcs, the economy and Grid Integrity, and the wave campaign with its Dynamo
-// boss. The simulation is DOM-free and its control API is INPUT-FREE and DETERMINISTIC — no
-// pointer, no clock, no rng from the wall — so the browser and the headless balance harness
-// drive it identically: a fixed seed + a fixedStep(dt) loop reproduces a match exactly.
+// boss. The simulation is DOM-free and its control API is INPUT-FREE — no pointer, no
+// clock, nothing read from the wall — so the browser and the headless balance harness
+// drive it the same way: a fixedStep(dt) loop advances it from elapsed time alone.
 // Rendering, audio, and particles read this state and drain its fx/sound queues each frame.
 
 import {
@@ -20,7 +20,6 @@ import {
   COMBO_FIRE_CUE,
   COMPONENT_ORDER,
   DEFAULT_MAP,
-  DEFAULT_SEED,
   DIFFICULTY,
   FOUNDRY_DEBUG_VERSION,
   LOAD,
@@ -72,15 +71,6 @@ import type {
   Tier,
   Unit,
 } from "./types";
-import { Rng } from "./rng";
-
-// The seed for the scrap-press roll. Fixed so a given sequence of placements reproduces
-// exactly; the wave composition seeds itself per wave (waves.ts).
-const PRESS_SEED = 0x51a6c0de;
-
-// The seed for the COMBAT rng — crit rolls (specs/components.md). Separate from the press so
-// build rolls and combat randomness are independent and each stays deterministic.
-const COMBAT_SEED = 0x2f9d3b17;
 
 // How long an aura source waits between pulses, in seconds. Shorter than the produced
 // system's own run, so a structure that keeps standing is marked continuously rather than
@@ -116,10 +106,6 @@ export class Game {
   // components, candidates, and blockers — the maze (specs/scrap-press.md)
   structures: Structure[] = [];
 
-  // The scrap-press seed. `reset` is what sets it and the only thing that does, so the
-  // same seed and the same calls reach the same run every time (specs/instrumentation.md).
-  pressSeed = PRESS_SEED;
-
   // Build / selection UI state.
   // The highlighted entry on the menu screen showing, counted from 0 (specs/ui.md). It lives
   // on the game because `reset` restores it and the snapshot reports it.
@@ -142,9 +128,9 @@ export class Game {
   leakCount = 0;
 
   // The next roll armed by the debug/automation API's setNextRoll (specs/instrumentation.md):
-  // a one-shot override so a scenario can reproduce a specific board. When set, the NEXT
-  // placeRock rolls this exact (type, tier) instead of drawing from the seeded press, then
-  // clears. Null in normal play — placement rolls the real seeded RNG.
+  // a one-shot override so a scenario can pose a specific board. When set, the NEXT
+  // placeRock rolls this exact (type, tier) instead of drawing at random, then clears. Null
+  // in normal play, where placement draws the real roll.
   armedRoll: { type: ComponentType; tier: Tier } | null = null;
 
   // View-only flags MIRRORED from the presentation layer purely so snapshot() / the debug
@@ -162,7 +148,7 @@ export class Game {
   // plays one kill cue rather than one per unit.
   private cuesThisStep = new Set<Cue>();
 
-  // Internal, deterministic state (not part of the read surface).
+  // Internal state the read surface derives from rather than reports.
   private activeWave: Wave | null = null;
   // The driver's hold on the spawner (specs/instrumentation.md). While it is engaged the run
   // is in a live wave whose spawn schedule is empty, so nothing arrives that the debug
@@ -173,8 +159,6 @@ export class Game {
   private waveClock = 0; // ms into the active wave
   private simTime = 0; // seconds of live-wave sim elapsed this run (drives status-effect timers)
   private nextId = 1;
-  private press: Rng;
-  private combat: Rng; // crit rolls (specs/components.md) — deterministic, separate from the press
   private occ: Occupancy; // cached occupancy of the current structures + housings
   // Cached ground maze route + its length in tiles (the HUD readout + hover overlay). The
   // route only changes when the walls do, so it is recomputed lazily and invalidated on any
@@ -189,8 +173,6 @@ export class Game {
     this.map = map;
     this.diff = diff;
     this.board = new Board(map);
-    this.press = new Rng(this.pressSeed);
-    this.combat = new Rng(COMBAT_SEED);
     this.nextWave = buildWave(1, diff);
     this.occ = this.board.occupancy([]);
   }
@@ -239,11 +221,6 @@ export class Game {
     this.nextId = 1;
     // The press keeps whatever `setNextRoll` armed: only a rock consuming it or
     // `clearNextRoll` clears the arming (specs/instrumentation.md).
-    this.press = new Rng(this.pressSeed);
-    // Derive the combat (crit) rng from the press seed too, so seeding the run through
-    // reset({seed}) makes EVERY random draw — build rolls and crit rolls — reproducible
-    // (specs/instrumentation.md). The default fixed press seed keeps COMBAT_SEED's role.
-    this.combat = new Rng((this.pressSeed ^ COMBAT_SEED) >>> 0);
     this.nextWave = buildWave(1, this.diff);
     this.occ = this.board.occupancy(this.structures);
     this.mazeCache = null;
@@ -531,7 +508,7 @@ export class Game {
 
   // Order two in-range units under `mode`, best first (specs/components.md). A negative
   // result puts `a` first. Every priority breaks its ties toward the unit further along the
-  // chain, so the choice is deterministic and does not depend on spawn order.
+  // chain, so the choice does not depend on spawn order.
   private rank(
     mode: TargetingMode,
     a: Unit,
@@ -583,9 +560,13 @@ export class Game {
     const muzzle = 16;
     const mx = center.x + Math.cos(c.aimAngle) * muzzle;
     const my = center.y + Math.sin(c.aimAngle) * muzzle;
-    // Crit (combo-only): roll off the deterministic combat rng; a crit multiplies the shot.
+    // Crit (combo-only): the outcome `setNextCrit` armed for this shot, or the stated chance
+    // rolled afresh (specs/components.md). The shot consumes the arming either way.
+    const armed = c.armedCrit;
+    c.armedCrit = null;
     const isCrit =
-      stats.critChance > 0 && this.combat.next() < stats.critChance;
+      stats.critChance > 0 &&
+      (armed === null ? Math.random() < stats.critChance : armed);
     const dmg = isCrit ? stats.dmg * stats.critMult : stats.dmg;
     this.projectiles.push({
       id: this.nextId++,
@@ -1083,6 +1064,7 @@ export class Game {
       kills: 0,
       damageDealt: 0,
       auraBonus: 0,
+      armedCrit: null,
     };
     this.structures[i] = comp;
     const ctr = footprintCenter(comp.col, comp.row);
@@ -1147,6 +1129,7 @@ export class Game {
       kills: 0,
       damageDealt: 0,
       auraBonus: 0,
+      armedCrit: null,
     };
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
@@ -1218,6 +1201,7 @@ export class Game {
       kills: 0,
       damageDealt: 0,
       auraBonus: 0,
+      armedCrit: null,
     };
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
@@ -1286,7 +1270,7 @@ export class Game {
   }
 
   private rollType(): ComponentType {
-    let r = this.press.next();
+    let r = Math.random();
     for (const t of COMPONENT_ORDER) {
       r -= STAMP_TYPE_WEIGHT[t];
       if (r <= 0) return t;
@@ -1297,7 +1281,7 @@ export class Game {
   // Quality roll biased by the current Refinement level (specs/scrap-press.md — Refinement).
   private rollTier(): Tier {
     const odds = QUALITY_ODDS_BY_R[this.refinement]!;
-    let r = this.press.next();
+    let r = Math.random();
     for (let tier = 1; tier <= MAX_TIER; tier++) {
       r -= odds[tier - 1]!;
       if (r <= 0) return tier as Tier;
@@ -1345,8 +1329,8 @@ export class Game {
       this.structures = this.structures.filter((s) => s.id !== onBlocker.id);
     }
     this.stampsUsed += 1;
-    // The roll happens on the drop: from the seeded press, OR the exact value armed by the
-    // debug API's setNextRoll (a one-shot override that then clears, specs/instrumentation.md).
+    // The roll happens on the drop: a random draw, OR the exact value armed by the debug
+    // API's setNextRoll (a one-shot override that then clears, specs/instrumentation.md).
     const armed = this.armedRoll;
     this.armedRoll = null;
     const cand: Candidate = {
@@ -1983,11 +1967,10 @@ export class Game {
   // An argument outside the domain an operation states throws; a control a player operates
   // is REFUSED rather than throwing, wherever the control itself would be refused.
 
-  // Return the game to its title state and reseed every random draw. The mute bit and the
-  // pointer are deliberately untouched: both belong to the runtime layer rather than to the
-  // game (specs/instrumentation.md).
-  debugReset(seed: number = DEFAULT_SEED): void {
-    this.pressSeed = seed >>> 0;
+  // Return the game to its title state. The mute bit and the pointer are deliberately
+  // untouched: both belong to the runtime layer rather than to the game
+  // (specs/instrumentation.md).
+  debugReset(): void {
     this.map = DEFAULT_MAP;
     this.board = new Board(this.map);
     this.diff = DIFFICULTY.medium;
@@ -2026,8 +2009,6 @@ export class Game {
     this.waveClock = 0;
     this.simTime = 0;
     this.nextId = 1;
-    this.press = new Rng(this.pressSeed);
-    this.combat = new Rng((this.pressSeed ^ COMBAT_SEED) >>> 0);
     this.nextWave = buildWave(1, this.diff);
     this.occ = this.board.occupancy([]);
     this.mazeCache = null;
@@ -2051,8 +2032,7 @@ export class Game {
 
   // Enter a run on the current map at the current difficulty, opening it on its first build
   // phase with the allocation specs/campaign.md states. This is the path confirming the
-  // difficulty select takes. It never reseeds: every random draw runs off the generator
-  // reset seeded, and nothing else seeds it (specs/instrumentation.md).
+  // difficulty select takes.
   startRun(): void {
     this.startOn(this.map, this.diff);
   }
@@ -2165,6 +2145,31 @@ export class Game {
     this.armedRoll = null;
   }
 
+  // One press roll at the current refinement level, exactly as a dropped rock rolls, and
+  // nothing else: no rock lands, no stamp is spent, and an armed roll stays armed
+  // (specs/instrumentation.md).
+  rollPress(): { type: ComponentType; quality: Tier } {
+    return { type: this.rollType(), quality: this.rollTier() };
+  }
+
+  // A live structure whose stats carry a crit chance: the subject `setNextCrit` takes.
+  critStructureById(id: number): Component | null {
+    const c = this.componentById(id);
+    return c && this.statsOf(c).critChance > 0 ? c : null;
+  }
+
+  // Arm the outcome of the crit roll on the next shot a structure launches
+  // (specs/instrumentation.md). The shot consumes it; until then a later call replaces it.
+  armNextCrit(id: number, crit: boolean): void {
+    const c = this.critStructureById(id);
+    if (c) c.armedCrit = crit;
+  }
+
+  clearNextCrit(id: number): void {
+    const c = this.critStructureById(id);
+    if (c) c.armedCrit = null;
+  }
+
   // Stand a permanent firing component up at an anchor, at that type and quality. It spends
   // no stamp, consumes no harvest, costs no Charge, and starts no wave; it is subject to the
   // placement conditions of specs/yard.md and the never-seal rule of specs/pathing.md, and is
@@ -2193,6 +2198,7 @@ export class Game {
       kills: 0,
       damageDealt: 0,
       auraBonus: 0,
+      armedCrit: null,
     };
     this.structures.push(comp);
     this.rePath();
@@ -2221,6 +2227,7 @@ export class Game {
       kills: 0,
       damageDealt: 0,
       auraBonus: 0,
+      armedCrit: null,
     };
     this.structures.push(comp);
     this.rePath();
@@ -2534,6 +2541,7 @@ export class Game {
     auraRadius: number;
     auraBonus: number;
     abilities: string[];
+    nextCrit: boolean | null;
   } {
     const ctr = footprintCenter(s.col, s.row);
     const inert = {
@@ -2561,6 +2569,7 @@ export class Game {
         auraRadius: 0,
         auraBonus: 0,
         abilities: [],
+        nextCrit: null,
       };
     }
     if (s.kind === "candidate") {
@@ -2578,6 +2587,7 @@ export class Game {
         auraRadius: st.auraRadius,
         auraBonus: st.auraBonus,
         abilities: abilitiesOf(st),
+        nextCrit: null,
       };
     }
     const isCombo = !!s.combo;
@@ -2604,6 +2614,7 @@ export class Game {
       auraRadius: base.auraRadius,
       auraBonus: base.auraBonus,
       abilities: abilitiesOf(eff),
+      nextCrit: s.armedCrit,
     };
   }
 }

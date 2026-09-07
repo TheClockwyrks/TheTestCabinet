@@ -25,8 +25,8 @@
 // HOW `d` IS RECOVERED. `director/swarms.ts` states it: the mean of the
 // twenty-four positions is the line's center, because the offsets sum to zero,
 // and `d` is the unit vector to it. No angle is assumed, because the angle is
-// "drawn uniformly from the seeded generator" and the specification fixes no
-// value for it.
+// "drawn uniformly over the full circle" and the specification fixes no value
+// for it.
 //
 // WHY THE WORLD IS POSED AS IT IS. An isolated night with `events` alone: the
 // window timer's own spawns would land among the gnats and be read as part of

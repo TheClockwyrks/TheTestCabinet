@@ -61,42 +61,54 @@ resolves from the heats a frame opened on rather than from a tick boundary, the
 clock operations take seconds, and each validator constructs its own clock and
 asks for exactly the frames its measurement wants.
 
-## Whether time passes is measured on the clock the game runs on
+## Whether time passes is measured over driven frames
 
-`v1.0.0`'s pause check paused the game and then stepped it, which measures where
-a build puts its pause gate rather than whether the floor freezes. A build
-holding the pause in the shell that drives the clock is equally legal, and it
-stepped straight through the check while its real-time clip showed the surge
-stopping dead, so the verdict contradicted its own evidence. Worse in the other
-direction: a build whose pause menu opens over a floor that keeps running, the
-defect the item exists to catch, passed outright whenever the step happened to be
-gated.
+`v1.0.0`'s pause check paused the game and then stepped it through a stepping
+operation a build could gate apart from its own frame loop, and a version of this
+case answered that by spending the pause items over stretches of real time on
+the build's own loop. Real time measures the host as well as the build: a
+starved loop hands the game fewer frames, and a correct build lost the point for
+the load on the runner that scored it.
 
-That fix is now a rule the whole case is built to: an item about whether time
-passes is measured on the clock the player's game actually runs on, never through
-the stepping operation, because the stepping operation is instrumentation and the
-question is about the game. Which clock that is differs by engine, and the rule
-is the same either way. Under `none` the clock operations belong to the surface
-the build wrote and can be gated apart from its own frame loop, so such an item
-hands the clock back with `setAutoStep(true)`, spends the window in real time,
-and never calls `advance`. Under either engine `engine.advance` is the engine's
-own frame loop with a clock of the suite's own, running the identical frame a
-player's frame runs, so it is the player's clock and the item advances through
-it.
+Every item about whether time passes is now read over a stated number of driven
+frames of a stated length, so the same game time lands on any machine. Under
+either engine `engine.advance` is the engine's own frame loop running the
+identical frame a player's frame runs; under `none` the frames go through the
+surface's `advance`, which `specs/instrumentation.md` makes "the same update the
+loop runs followed by a render". The pause is still a real key press, never
+`setScreen`.
 
-The window is two legs of equal length on whichever clock that is. A running leg
-the floor must really travel in comes first, then a paused leg whose positional
-drift and simulated-clock gain must both stay under a ceiling, with both readings
-taken from the one snapshot on the press so the pair spans the paused window and
+The window is two legs of equal length. A running leg the floor must really
+travel in comes first, then a paused leg whose positional drift and
+simulated-clock gain must both stay under a ceiling, with both readings taken
+from the one snapshot on the press so the pair spans the paused window and
 nothing else. The running leg is what stops a dead floor passing vacuously, and
-the tolerances are non-zero on purpose because the pause and the position are
-read a round trip apart. Five items carry it: the two pause items, the resume,
-the game running on its own clock, and the speed toggle.
+the tolerances are non-zero on purpose because a build may resolve an injected
+key on the frame after it arrived. Four items carry that window under every
+engine: the two pause items, the resume, and the item that the toggle doubles the
+game time. A fifth, that the same game time reaches the same state at either
+speed, drives two legs of deliberately different lengths for the same reason. The
+item that the game advances by the elapsed time of its frames is decided under
+the engines alone, where the frame loop is the engine's; under `none` the loop is
+the build's own and only real time could decide it.
+
+## Random draws are sampled sparingly
+
+The vent draw is the game's one random draw, and the items about it read the
+draw itself rather than a whole walking wave. That the draw varies is decided
+over forty draws through `drawVent` holding both vents; that every answer is a
+vent is decided over the same shape of run; and clearing a posed vent is decided
+on the next handful of released units each entering at a vent the specification
+names. There is no item on the proportion the two vents come up in. The
+specification names the vents "equally likely" and names no alternative
+proportion beside it, so a sample small enough to belong in a validator can only
+separate a half from a vent that never comes up, which the forty draws already
+decide; which side of a half a build sits is left to the reviewer.
 
 ## Every review item is decided by a validator
 
-The checklist grew from `107` items to `376`, and the twenty-nine categories that
-held them became nineteen. Every one of the `376` names a Vitest suite under
+The checklist grew from `107` items to `378`, and the twenty-nine categories that
+held them became nineteen. Every one of the `378` names a Vitest suite under
 `validation/<engine>/`, the domains its failure lowers, and how far it lowers
 them. The `100` standalone `.mjs` browser drivers of `v1.0.0`, and the single
 module they shared, are gone, and so are the seven items it left for a reviewer
@@ -191,8 +203,8 @@ Seven rules `v1.0.0` left to each build to invent, or left contradicting
 themselves, could not be checked as they stood. Each is now stated exactly, and
 every value chosen sits inside what `v1.0.0` described.
 
-The wave composition, size and cadence are closed forms with a seeded per-unit
-vent draw, where `v1.0.0` said the per-wave count, spawn timing and vent split
+The wave composition, size and cadence are closed forms with a per-unit vent
+draw, where `v1.0.0` said the per-wave count, spawn timing and vent split
 were the build's to design. The Hundred's flat HP factor and its hundred-unit
 composition are stated. Bottleneck's "marked central zone" is stated as exact
 columns and rows. The order heat flows resolve in within a frame is stated as a

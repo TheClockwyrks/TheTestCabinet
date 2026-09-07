@@ -46,7 +46,7 @@ its bay, as `specs/scoring.md` fixes.
 | A bonus catch lingers in its bay this long, then leaves.                                            | `FISH_LINGER` (`5` s)   |
 | The next appears this long after the previous one leaves.                                           | `FISH_INTERVAL` (`8` s) |
 
-The bay a bonus catch appears in is drawn from the game's own seeded randomness,
+The bay a bonus catch appears in is drawn at random when it appears, uniformly
 among the bays that are open at that moment other than the bay the previous
 bonus catch occupied. Where no such bay exists, none appears and the next arrives
 `FISH_INTERVAL` later.

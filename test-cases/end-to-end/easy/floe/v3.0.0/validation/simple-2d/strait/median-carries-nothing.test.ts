@@ -82,11 +82,12 @@ const SAMPLE_SECONDS = 0.5;
 /**
  * Ticks per frame while the section runs.
  *
- * The simulation advances by the whole `TICK_DT` ticks a frame's delta completes
- * and reaches the same state however an interval was divided into frames
- * (specs/overview.md), so four ticks a frame runs exactly the same section as one
- * tick a frame — and `instrumentation/deterministic-core` is the point that
- * decides it. Four rather than the harness's coarser `skip` pace so the whole
+ * The simulation advances by the whole `TICK_DT` ticks a frame's delta
+ * completes, and the number of ticks run over an interval is the same however
+ * it was divided into frames (specs/overview.md), so four ticks a frame runs
+ * the same section as one tick a frame — `instrumentation/render-free-core` is
+ * the point that decides the division, and `instrumentation/tick-length` the
+ * tick. Four rather than the harness's coarser `skip` pace so the whole
  * section still records at thirty frames a second, and nothing here is read off a
  * picture: every reading below is spaced in GAME time.
  */

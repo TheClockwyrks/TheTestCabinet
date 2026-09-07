@@ -28,7 +28,7 @@
 // THE VISIT IS RENEWED, BECAUSE A VISIT IS FINITE. `specs/saucer.md` takes the
 // saucer off the field `SAUCER_LIFETIME` (`12` s) after it enters and fires one
 // round every `SAUCER_FIRE_INTERVAL` (`1.6` s), so a single visit yields seven
-// rounds and no more. A point that wants sixty poses a fresh gunner the moment the
+// rounds and no more. A point that wants eight poses a fresh gunner the moment the
 // slot reports clear — which is what {@link collectShots} does, at the same place
 // and on the same course, so every round in the answer was aimed from one point at
 // one ship.
@@ -51,14 +51,14 @@ import { bearing, headingOf } from "../geometry";
 import type { ShatterSnapshot } from "../surface";
 
 /**
- * The whole simulation ticks one frame is worth when a run is watched for sixty
- * rounds.
+ * The whole simulation ticks one frame is worth when a run is watched for a
+ * handful of rounds.
  *
- * Sixty rounds at `SAUCER_FIRE_INTERVAL` is a hundred seconds of game time across
- * nine visits, which at one tick a frame is thirteen thousand renders. Four ticks
- * a frame is the same game — `specs/simulation.md` converts whatever delta a frame
+ * Eight rounds at `SAUCER_FIRE_INTERVAL` is thirteen seconds of game time across
+ * two visits, which at one tick a frame is sixteen hundred frames. Four ticks a
+ * frame is the same game — `specs/simulation.md` converts whatever delta a frame
  * brings into whole ticks, so an interval of game time reaches the same state
- * however it was divided — at a quarter of the drawing.
+ * however it was divided — at a quarter of the frames.
  *
  * WHAT THE STRIDE COSTS IS A LAUNCH READING UP TO THREE TICKS OLD. A round is
  * ballistic from the moment it leaves (`specs/saucer.md`: "It is pulled by the
@@ -74,8 +74,8 @@ export const SHOT_TICKS_PER_FRAME = 4;
  * How many frames may run between two emptyings of the render record.
  *
  * The harness records every call the render makes so the presentation points can
- * read them, and a hundred seconds of collection draws hundreds of thousands.
- * Nothing here reads a call, so the record is emptied as the collection runs.
+ * read them, and a collection of any length would pile them up. Nothing here
+ * reads a call, so the record is emptied as the collection runs.
  */
 const RECORD_CHUNK = 120;
 
@@ -173,12 +173,11 @@ export async function collectShots(
   // arrangement rather than to the reading.
   for (const round of h.snapshot().enemyBullets) seen.add(round.id);
 
-  // UNDRAWN, BECAUSE THE READING IS A LIST OF VELOCITIES. The three aim items
-  // read sixty rounds apiece, which is a minute and a half of game time sampled
-  // a frame at a time so that no round is stepped over. The frames, the samples
-  // and the rounds caught are the same either way; what is gone is the ten
-  // thousand pictures none of them reads. Each item draws one frame of its own
-  // for the still it captures.
+  // UNDRAWN, BECAUSE THE READING IS A LIST OF VELOCITIES. The aim items read
+  // a handful of rounds apiece, sampled a frame at a time so that no round is
+  // stepped over. The frames, the samples and the rounds caught are the same
+  // either way; what is gone is the pictures none of them reads. Each item
+  // draws one frame of its own for the still it captures.
   await h.quiet(async () => {
     for (let frame = 0; frame < frames && shots.length < count; frame += 1) {
       await h.advance(1);

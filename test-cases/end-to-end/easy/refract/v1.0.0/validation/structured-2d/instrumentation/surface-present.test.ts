@@ -89,7 +89,7 @@ it("carries a version and every specified operation, as functions", () => {
 
 it("is live: loadBoard poses a board, trace draws on it, and the snapshot and the canvas both change", async () => {
   // A clean, rendered title to measure every change against.
-  await resetTo(h, 1);
+  await resetTo(h);
   const title = h.snapshot();
   assertEqual(title.screen, "title");
   const titlePixels = canvasPixels(h);

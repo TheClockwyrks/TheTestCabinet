@@ -64,18 +64,15 @@ describe("the deal", () => {
     expect(new Set(cards.map((c) => c.id)).size).toBe(52);
   });
 
-  it("repeats under one seed and differs under two", () => {
-    const one = testState(11);
-    const two = testState(11);
-    const other = testState(12);
+  it("shuffles afresh, so two deals lay out different columns", () => {
+    const one = testState();
+    const other = testState();
     dealCards(one);
-    dealCards(two);
     dealCards(other);
     const shape = (s: typeof one) =>
       s.tableau.map((c) =>
         c.map((card) => `${card.suit}${card.rank}`).join(","),
       );
-    expect(shape(one)).toEqual(shape(two));
     expect(shape(one)).not.toEqual(shape(other));
   });
 

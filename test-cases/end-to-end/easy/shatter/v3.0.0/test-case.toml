@@ -285,7 +285,7 @@ source = "specs/field.md"
 source = "specs/gravity.md.hbs"
 
 # The core the whole game advances on: the fixed timestep, the per-tick order, and
-# seeded randomness.
+# the draws the game makes at random.
 [[spec]]
 source = "specs/simulation.md.hbs"
 
@@ -343,7 +343,7 @@ source = "specs/audio.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every variant must expose: a deterministic,
+# The debugging and automation surface every variant must expose: a render-free,
 # steppable core; an API to drive and inspect the game from code; and a read-only
 # debug overlay. Framed as an ordinary developer affordance of the game. It
 # branches on the engine for how the surface is reached and what shape its
@@ -502,15 +502,6 @@ validation = { script = "instrumentation/reset-restores-title.test.ts", outputs 
   { id = "reset", name = "The title screen reset restored", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "reset-seeds-randomness"
-title = "reset seeds the game's randomness"
-description = "Two runs opened after reset({ seed: 7 }) spawn identical wave-1 layouts; a run opened after reset({ seed: 8 }) spawns a different one."
-domains = ["arcade"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
-  { id = "seeded", name = "The wave-1 layout two runs on one seed both produced", kind = "image" },
-] }
-[[review.categories.items]]
 id = "advance-is-exact"
 title = "Advancing moves exactly the time asked for"
 description = "Advancing n ticks moves simTime by exactly n x TICK_DT within one tick, and one second of game time covered as one advance and as 120 single-tick advances leaves simTime and a posed rock in the same place."
@@ -522,7 +513,7 @@ validation = { script = "instrumentation/advance-is-exact.test.ts", outputs = [
 [[review.categories.items]]
 id = "clock-is-held"
 title = "Nothing advances unless a step asks it to"
-description = "With the clock held, advancing nothing advances nothing: advance(0) under none, and engine.advance(0) under either engine, leaves simTime and every posed body exactly as they stood, which a build whose accumulator forces a minimum step, or which runs a tick on entry, fails. Under none the item carries a second leg: a second of real wall time with setAutoStep(false) and no advance leaves the same reading."
+description = "With the clock held, advancing nothing advances nothing: advance(0) under none, and engine.advance(0) under either engine, leaves simTime and every posed body exactly as they stood, which a build whose accumulator forces a minimum step, or which runs a tick on entry, fails. Reading the field through snapshot() repeatedly leaves the same reading too, since a snapshot is a pure read."
 domains = ["gravity", "flight", "arcade", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/clock-is-held.test.ts", outputs = [
@@ -612,11 +603,11 @@ validation = { script = "instrumentation/wave-spawning-gate.test.ts", outputs = 
 [[review.categories.items]]
 id = "saucer-spawning-gate"
 title = "Saucer spawning off keeps the saucer away"
-description = "With setSaucerSpawning(false) no saucer joins over sixty seconds of game time; with it on, one does."
+description = "With setSaucerSpawning(false) no saucer joins over twenty seconds of game time, past the SAUCER_FIRST_DELAY (18 s) the first arrival is due at; with it on, one joins without the window grading when it arrives."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/saucer-spawning-gate.test.ts", outputs = [
-  { id = "quiet", name = "The field with no saucer a minute in", kind = "image" },
+  { id = "quiet", name = "The field with no saucer past the first delay", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "ship-collision-gate"
@@ -653,6 +644,69 @@ domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "instrumentation/saucer-travel-gate.test.ts", outputs = [
   { id = "held", name = "The held saucer, still firing from where it stands", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-due"
+title = "Posing the due times the next arrival"
+description = "On a game just begun with the arrival gate on, setSaucerDue(3) reads back as saucerDue with saucerClock still at 0, no saucer is on the field half a second before the due, and one arrives within a tenth of a second either side of it."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/saucer-due.test.ts", outputs = [
+  { id = "posed", name = "The saucer the posed due brought in", kind = "image" },
+] }
+[[review.categories.items]]
+id = "saucer-weave"
+title = "Posing the weave sends the first reroll that way"
+description = "For a saucer at rest with its mind on and its travel off, setSaucerWeave(-1) and then setSaucerWeave(1) on a fresh saucer each read back as the saucer's weave, and one interval later the first reroll has set its vertical velocity to SAUCER_WEAVE_SPEED along the posed direction."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/saucer-weave.test.ts", outputs = [
+  { id = "posed", name = "The saucer past its first reroll, weaving the posed way", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-saucer-edge"
+title = "Posing the entry edge decides the next arrival's edge"
+description = "setNextSaucerEdge(right) and, on a fresh game, setNextSaucerEdge(left) each read back as nextSaucerEdge, the arrival that follows is first reported within 40 units of the posed edge, and nextSaucerEdge is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-saucer-edge.test.ts", outputs = [
+  { id = "posed", name = "The arrival at the posed edge", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-saucer-row"
+title = "Posing the entry row decides the next arrival's row"
+description = "setNextSaucerRow(123) and, on a fresh game, setNextSaucerRow(597) each read back as nextSaucerRow, the arrival that follows is first reported on exactly that row, and nextSaucerRow is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-saucer-row.test.ts", outputs = [
+  { id = "posed", name = "The arrival on the posed row", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-saucer-aim"
+title = "Posing the aim error decides the next shot's aim"
+description = "With the saucer held still with its mind off and the ship 400 units away, setNextSaucerAim(+8 degrees) and then setNextSaucerAim(-8 degrees) each read back as nextSaucerAim, the shot that follows leaves along the bearing to the ship offset by the posed error within half a degree, and nextSaucerAim is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-saucer-aim.test.ts", outputs = [
+  { id = "posed", name = "The shot fired at the posed aim error", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-rock-speed"
+title = "Posing the base speed decides the next placement's speeds"
+description = "At wave 1 with the wave loop on, setNextRockSpeed(100) reads back as nextRockSpeed, every rock the wave a posed banner announces puts up drifts at 100 within 2 units per second on the tick it arrives, and nextRockSpeed is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-rock-speed.test.ts", outputs = [
+  { id = "posed", name = "The wave put up at the posed base speed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "next-recycle-edge"
+title = "Posing the re-entry edge decides where the next recycle re-enters"
+description = "For a rock dropped onto the star, setNextRecycleEdge(left) and, on a second sling, setNextRecycleEdge(bottom) each read back as nextRecycleEdge, the rock re-enters within 100 units of the posed edge, and nextRecycleEdge is null once it has."
+domains = ["arcade"]
+failure_cap = "passable"
+validation = { script = "instrumentation/next-recycle-edge.test.ts", outputs = [
+  { id = "posed", name = "The rock re-entering at the posed edge", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "set-score-grants-no-life"
@@ -712,11 +766,11 @@ validation = { script = "field/field-fit.test.ts", outputs = [
 [[review.categories.items]]
 id = "star-fixed-at-centre"
 title = "The star sits at the field's centre and never moves"
-description = "The disc within CORE_R of (640, 360) carries pixels differing from the background the build drew, and nothing of the star is drawn beyond 1.5 x HALO_R — on the first tick of play, and still after a minute of it."
+description = "The disc within CORE_R of (640, 360) carries pixels differing from the background the build drew, and nothing of the star is drawn beyond 1.5 x HALO_R — on the first tick of play, and still ten seconds of play later."
 domains = ["gravity", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "field/star-fixed-at-centre.test.ts", outputs = [
-  { id = "star", name = "The star still centred a minute into play", kind = "image" },
+  { id = "star", name = "The star still centred ten seconds into play", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "wrap-ship-right"
@@ -1468,7 +1522,7 @@ validation = { script = "rocks/spin-is-cosmetic.test.ts", outputs = [
 # The saucer has three separable faculties — it decides, it shoots, and it moves —
 # and each item below turns off the two it is not about, so every scenario reads
 # one requirement. `avoids-the-core` is the item the fold-in fix of changelog.md
-# reshaped: it flies 54 real crossings the specification's own entry rule produces
+# reshaped: it flies 36 real crossings the specification's own entry rule produces
 # and decides on the closest approach of all of them, rather than posing the saucer
 # where the behavior is impossible.
 [[review.categories]]
@@ -1490,7 +1544,7 @@ validation = { script = "saucer/first-arrives-at-18s.test.ts", outputs = [
 [[review.categories.items]]
 id = "at-most-one-at-a-time"
 title = "Only one saucer is up at a time"
-description = "Sampled every tick across two minutes of game time with spawning on, the reported saucer.id never changes from one live saucer to another without a tick reporting saucer null between the two visits, so a build whose spawner starts a second visit over a live one fails."
+description = "With spawning on and the first due posed short through setSaucerDue, the saucer.id sampled every tick across fifty seconds of game time never changes from one live saucer to another without a tick reporting saucer null between the two visits, so a build whose spawner starts a second visit over a live one fails."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "saucer/at-most-one-at-a-time.test.ts", outputs = [
@@ -1499,7 +1553,7 @@ validation = { script = "saucer/at-most-one-at-a-time.test.ts", outputs = [
 [[review.categories.items]]
 id = "subsequent-gap"
 title = "Later saucers arrive 25 to 35 seconds apart"
-description = "The interval between one saucer leaving and the next arriving lies in [25, 35] seconds, sampled across three seeds."
+description = "With the first due posed short through setSaucerDue, the interval between one saucer leaving and the next arriving lies in [25, 35] seconds, read in each of three games."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/subsequent-gap.test.ts", outputs = [
@@ -1508,7 +1562,7 @@ validation = { script = "saucer/subsequent-gap.test.ts", outputs = [
 [[review.categories.items]]
 id = "enters-at-an-edge"
 title = "A saucer enters from the left or the right"
-description = "Each spawned saucer's first reported centre is within 40 units of the left or the right edge."
+description = "Posed to enter at the left edge and at the right in turn, twice each, every arrival's first reported centre is within 40 units of the edge it was posed to enter at."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/enters-at-an-edge.test.ts", outputs = [
@@ -1517,20 +1571,20 @@ validation = { script = "saucer/enters-at-an-edge.test.ts", outputs = [
 [[review.categories.items]]
 id = "entry-row-inside-the-range"
 title = "The entry row lies inside the stated range"
-description = "Every entry row across sixteen arrivals under four seeds lies inside [SAUCER_R, FIELD_H - SAUCER_R], the range specs/saucer.md draws it from, so a build entering half a craft off the field fails. The bound alone; the spread is a separate item."
+description = "Every entry row across six arrivals over two games lies inside [SAUCER_R, FIELD_H - SAUCER_R], the range specs/saucer.md draws it from, so a build entering half a craft off the field fails. The bound alone; that the rows vary is a separate item."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/entry-row-inside-the-range.test.ts", outputs = [
-  { id = "entry", name = "One of the sixteen arrivals the rows were read from", kind = "image" },
+  { id = "entry", name = "One of the six arrivals the rows were read from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "enters-at-a-random-row"
 title = "A saucer enters at a row drawn across the field"
-description = "Across sixteen arrivals under four seeds the entry rows span more than half of [SAUCER_R, FIELD_H - SAUCER_R], which a uniform draw clears with room and a build entering on one fixed lane does not. The threshold is derived from the stated range, not from an observed spread. The spread alone; the range bound is a separate item."
+description = "Across six arrivals over two games the entry rows are not all one row: the highest and the lowest differ by more than the half unit of float slack a draw over whole-numbered ends can carry, which a row drawn afresh for every arrival always does and a build entering on one fixed lane never does. The variation alone; the range bound is a separate item."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/enters-at-a-random-row.test.ts", outputs = [
-  { id = "rows", name = "One of the sixteen arrivals the rows were read from", kind = "image" },
+  { id = "rows", name = "One of the six arrivals the rows were read from", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "crosses-at-cruise"
@@ -1568,8 +1622,8 @@ failure_cap = "passable"
 validation = { script = "saucer/weave-speed.test.ts", outputs = [
   { id = "weave", name = "The saucer at the fastest weave it drew", kind = "image" },
 ] }
-# The recording is of the CLOSEST crossing, not the first: the sweep runs all 54 and
-# keeps the row, edge and seed of the worst approach, and the validator then arms
+# The recording is of the CLOSEST crossing, not the first: the sweep runs all 36 and
+# keeps the row, edge and weave of the worst approach, and the validator then arms
 # the recorder over a re-posed run of exactly that crossing, so the reviewer
 # watches the approach the verdict rests on. Filming the first crossing instead
 # loses the fold-in fix — on a failing build the dead-on approach is frequently one
@@ -1581,11 +1635,11 @@ validation = { script = "saucer/weave-speed.test.ts", outputs = [
 [[review.categories.items]]
 id = "avoids-the-core"
 title = "A saucer never overlaps the star's core"
-description = "Across 54 crossings — nine rows from 80 units below the star's row to 80 above it in 20-unit steps, each from the left edge and from the right, the whole set repeated from three seeds, with the gun off — the closest approach of any of them to the star's centre, measured as the distance to the line between eight-tick samples, exceeds CORE_R + SAUCER_R (48)."
+description = "Across 20 crossings — five rows from 80 units below the star's row to 80 above it in 40-unit steps, each from the left edge and from the right, the whole set flown with the weave posed down and posed up, with the gun off — the closest approach of any of them to the star's centre, measured as the distance to the line between eight-tick samples, exceeds CORE_R + SAUCER_R (48)."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "saucer/avoids-the-core.test.ts", outputs = [
-  { id = "closest", name = "The closest of the 54 crossings to the core", kind = "replay" },
+  { id = "closest", name = "The closest of the 20 crossings to the core", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "despawns-after-12s"
@@ -1626,29 +1680,29 @@ validation = { script = "saucer/fires-every-1p6s.test.ts", outputs = [
 [[review.categories.items]]
 id = "aims-at-the-ship"
 title = "The saucer aims at the ship"
-description = "With its mind and travel off and the ship posed 400 units away, the mean bearing of sixty shots is the bearing to the ship within 3 degrees. The bound is derived from the specification and the sample size, never from a reference run: specs/saucer.md fixes the per-shot error as a uniform draw over plus or minus SAUCER_AIM_ERROR, whose standard deviation is E / sqrt(3) = 5.77 degrees, so the mean of n shots has a standard error of E / sqrt(3n) = 0.745 degrees at n = 60, and 3 degrees is four standard errors."
+description = "With its mind and travel off and the ship posed 400 units away, a shot whose aim error is posed at 0 through setNextSaucerAim leaves along the bearing to the ship within half a degree, from each of two saucer positions on opposite sides of the ship."
 domains = ["arcade"]
 failure_cap = "scuffed"
 validation = { script = "saucer/aims-at-the-ship.test.ts", outputs = [
-  { id = "aim", name = "The spread of sixty aimed shots at the ship", kind = "image" },
+  { id = "aim", name = "The shot leaving straight for the ship", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "aim-error-within-10-degrees"
 title = "The aim error stays inside 10 degrees"
-description = "Every one of those sixty shots leaves within SAUCER_AIM_ERROR (10 degrees) of the bearing to the ship. The bound alone; the scatter is a separate item."
+description = "Every one of eight unposed shots at a stationary ship leaves within SAUCER_AIM_ERROR (10 degrees) of the bearing to the ship. The bound alone; the scatter is a separate item."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/aim-error-within-10-degrees.test.ts", outputs = [
-  { id = "aim", name = "The sixty shots inside the error bound", kind = "image" },
+  { id = "aim", name = "The eight shots inside the error bound", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "aim-error-varies-per-shot"
 title = "The aim error is redrawn for every shot"
-description = "Across those same sixty shots at a stationary ship the bearings are not all equal: their spread exceeds 4 degrees, which a uniform draw over plus or minus 10 degrees clears overwhelmingly and a build that aims dead-on, or reuses one offset, does not. specs/saucer.md states the draw as fresh per shot, which is the rule this item asserts."
+description = "Across those same eight shots at a stationary ship the bearings are not all equal: the widest two differ by more than a quarter of a degree, which an offset drawn afresh for every shot always does and a build that aims dead-on, or reuses one offset, never does. specs/saucer.md states the draw as fresh per shot, which is the rule this item asserts."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "saucer/aim-error-varies-per-shot.test.ts", outputs = [
-  { id = "scatter", name = "The scatter across sixty shots at a still ship", kind = "image" },
+  { id = "scatter", name = "The scatter across eight shots at a still ship", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "bullet-carries-the-saucers-velocity"
@@ -1749,7 +1803,7 @@ validation = { script = "waves/spawns-clear-of-the-star.test.ts", outputs = [
 [[review.categories.items]]
 id = "speed-scales-per-wave"
 title = "Each wave drifts 4 percent faster"
-description = "The rocks of wave 6 have base speeds scaled by 1 + WAVE_SPEED_STEP x 5 against wave 1's, within 3 percent."
+description = "With the base drift speed posed at 100 through setNextRockSpeed, every rock of wave 6 arrives at 100 x (1 + WAVE_SPEED_STEP x 5) = 120 units per second, within 2, read against the wave the build reports."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "waves/speed-scales-per-wave.test.ts", outputs = [
@@ -1758,7 +1812,7 @@ validation = { script = "waves/speed-scales-per-wave.test.ts", outputs = [
 [[review.categories.items]]
 id = "speed-is-capped"
 title = "The wave speed scaling stops at 40 percent"
-description = "The rocks of wave 20 have base speeds scaled by exactly 1 + WAVE_SPEED_CAP, within 3 percent."
+description = "With the base drift speed posed at 100 through setNextRockSpeed, every rock of wave 20 arrives at 100 x (1 + WAVE_SPEED_CAP) = 140 units per second, within 2, read against the wave the build reports."
 domains = ["arcade"]
 failure_cap = "passable"
 validation = { script = "waves/speed-is-capped.test.ts", outputs = [

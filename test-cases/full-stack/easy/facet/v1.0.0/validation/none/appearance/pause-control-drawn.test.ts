@@ -51,16 +51,6 @@ import {
   type Viewport,
 } from "../harness";
 
-/**
- * Real milliseconds the produced art is given before the frame is read.
- *
- * specs/assets.md has a build ship its art as produced files decoded off the
- * frame loop, and a frame drawn before they arrive is a frame drawn from
- * placeholders. This spends REAL time only: the simulation stands still through
- * it.
- */
-const ART_SETTLE_MS = 250;
-
 /** The target the control carries, from specs/controls.md's table for `playing`. */
 const TARGET_ID = "pause";
 
@@ -141,7 +131,6 @@ it("draws the PAUSE label and puts something inside the pause target it reports"
   // setting anything off.
   const posed = await loadBoard(h, quietRowsWithEscape([]));
   assertEqual(posed.screen, "playing", "the screen a posed board stands on");
-  await h.settle(ART_SETTLE_MS);
 
   // One frame, and everything it put on screen.
   const frame = await h.frameText();

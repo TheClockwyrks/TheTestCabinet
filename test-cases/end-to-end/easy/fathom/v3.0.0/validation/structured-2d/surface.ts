@@ -29,13 +29,13 @@
 // declared optional here so one harness serves both workspaces, and the kindle
 // slice under `kindle/` requires it before a check reads it.
 
-import { DEFAULT_SEED, FATHOM_DEBUG_VERSION } from "./constants";
+import { FATHOM_DEBUG_VERSION } from "./constants";
 
-// The two figures this module states about the surface are the specification's
-// like every other figure in this project, so they live in `constants.ts` with
-// the rest and are re-exported here for the checks that already name them off
-// the surface description.
-export { DEFAULT_SEED, FATHOM_DEBUG_VERSION };
+// The one figure this module states about the surface is the specification's
+// like every other figure in this project, so it lives in `constants.ts` with
+// the rest and is re-exported here for the checks that already name it off the
+// surface description.
+export { FATHOM_DEBUG_VERSION };
 
 /**
  * A menu item's hit region, as `menuItemRect` reports it (specs/instrumentation.md).
@@ -283,7 +283,7 @@ export interface FathomSnapshot {
 export interface FathomDebugApi {
   version: number;
   /** Restores every observable field to its title-screen value. */
-  reset(seed?: number): void;
+  reset(): void;
   /** A pure read of the game. */
   snapshot(): FathomSnapshot;
   /**

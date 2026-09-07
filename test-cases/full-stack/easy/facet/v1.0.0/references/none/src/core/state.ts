@@ -8,11 +8,11 @@
 //
 // EVERY FIELD IS `readonly`, on purpose. A frame is a transition — the next
 // state built from the current one — rather than a mutation, which is what the
-// `structured-2d` and `simple-2d` engines require of `update` and what makes a
-// posed scenario reproduce exactly. The core is written that way for all three
-// builds so there is one implementation, not three.
+// `structured-2d` and `simple-2d` engines require of `update`. The core is
+// written that way for all three builds so there is one implementation, not
+// three.
 
-import { CUTS, DEFAULT_SEED, GEM_KINDS } from "../constants";
+import { CUTS, GEM_KINDS, GRID_COLS } from "../constants";
 
 /** One of the seven kinds in `GEM_KINDS` (specs/board.md). */
 export type GemKind = (typeof GEM_KINDS)[number];
@@ -147,12 +147,21 @@ export interface FacetState {
   readonly muted: boolean;
   readonly simTime: number;
 
-  /** The whole state of the seeded generator (specs/instrumentation.md). */
-  readonly rngState: number;
+  /**
+   * The kinds posed for each column's refill, `GRID_COLS` entries: the string
+   * `setRefillKinds` posed for that column, and `""` for a column that draws
+   * (specs/instrumentation.md).
+   */
+  readonly refillKinds: readonly string[];
 }
 
 /** No board in play, which is what the snapshot reports off every menu. */
 export const EMPTY_BOARD: BoardState = { cols: 0, rows: 0, gems: [] };
+
+/** No refill posed on any column: every column draws as R9 states. */
+export const NO_REFILL: readonly string[] = Object.freeze(
+  Array.from({ length: GRID_COLS }, () => ""),
+);
 
 /**
  * The nine events one frame can raise, which `specs/ui.md` maps to the nine
@@ -219,7 +228,7 @@ export function quiet(state: FacetState): Stepped {
  * surface's `reset` restores. `muted` is the runtime's, so `reset` carries the
  * caller's bit over this one rather than taking the `false` here.
  */
-export function createInitialState(seed: number = DEFAULT_SEED): FacetState {
+export function createInitialState(): FacetState {
   return {
     screen: "title",
     menuIndex: 0,
@@ -246,6 +255,6 @@ export function createInitialState(seed: number = DEFAULT_SEED): FacetState {
     armedTarget: null,
     muted: false,
     simTime: 0,
-    rngState: seed,
+    refillKinds: NO_REFILL,
   };
 }

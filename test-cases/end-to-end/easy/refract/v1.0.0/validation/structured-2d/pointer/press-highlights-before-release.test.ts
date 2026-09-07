@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 it("highlights the pressed item while the press is still held", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   assertEqual(h.snapshot().menuIndex, 0, "the title opens with menuIndex 0");
 
   const item = targetCenter(targetById(h.snapshot(), "menu-1"));

@@ -48,7 +48,7 @@ test-cases/end-to-end/<difficulty>/<slug>/<version>/
    so it stands alone without the reference source and links to nothing outside
    itself.
 4. Mandate [instrumentation](/testing/end-to-end/instrumentation/) in a spec of
-   its own: a debug API on a case-specific global, a deterministic core, and a
+   its own: a debug API on a case-specific global, a render-free core, and a
    read-only debug overlay. Frame it as an ordinary debugging feature of the
    game. Every review point declares a `validation` script, which requires the
    case to declare an `[instrumentation]` handle.

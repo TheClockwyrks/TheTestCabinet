@@ -83,11 +83,13 @@ const STAGE: Region = { x: 0, y: 0, w: STAGE_W, h: STAGE_H };
  * The fastest speed step. A run's outcome does not turn on it — "`advance(1, 1)`
  * and `advance(1, 60)` cover the same cycles and reach the same outcome"
  * (`specs/instrumentation.md`) — so the fastest step is chosen for one reason
- * only: it is how few frames the reference's cycle budget costs.
+ * only: a cycle is `1 / SPEEDS[speed]` seconds, so it is the shortest span of
+ * game time the budget's cycles can be driven as.
  */
 const FAST_SPEED = SPEEDS.length - 1;
 
-/** How many cycles one call to the clock covers while the run is walked out. */
+/** How many cycles one call to the clock covers, in ONE frame, while the run
+ * is walked out; "the span is the same however it is divided". */
 const CYCLES_PER_STEP = 25;
 
 let h: Harness;
@@ -194,7 +196,7 @@ async function settle(): Promise<OrrerySnapshot> {
     covered < CAMPAIGN_REFERENCE_CYCLES && snapshot.sim?.status === "running";
     covered += CYCLES_PER_STEP
   ) {
-    await advanceCycles(h, CYCLES_PER_STEP, CYCLES_PER_STEP);
+    await advanceCycles(h, CYCLES_PER_STEP, 1);
     snapshot = await h.snapshot();
   }
   return snapshot;

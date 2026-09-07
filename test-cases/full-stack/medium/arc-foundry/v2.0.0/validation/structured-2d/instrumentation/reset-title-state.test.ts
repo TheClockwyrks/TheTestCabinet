@@ -34,9 +34,6 @@ import {
   standComponent,
 } from "../harness";
 
-/** The seed the reset under test is given. */
-const SEED = 7;
-
 /** Two clear anchors on the map the dirtied run opens on. */
 const FIRST_AT = { col: 20, row: 10 };
 const SECOND_AT = { col: 24, row: 10 };
@@ -47,10 +44,23 @@ const UNIT_AT = tileCenter(23, 10);
 /** The resting record `held` reports when no rock is on the cursor. */
 const HELD_AT_REST = { active: false, col: 0, row: 0, legal: false };
 
+/**
+ * The rate the dirtying run is driven at.
+ *
+ * Nothing here is read off a position or a rate: what the drive is for is that a
+ * wave, a clock and a firing structure have all been dirtied before the reset.
+ * specs/instrumentation.md guarantees that "an interval of simulation time
+ * reaches the same state however it was divided into frames".
+ */
+const DIRTY_HZ = 20;
+
+/** How long the dirtied run is driven for, in seconds of simulation. */
+const DIRTY_SECONDS = 2;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: DIRTY_HZ });
 });
 
 afterEach(() => {
@@ -89,7 +99,7 @@ it("restores every title-screen value after a run has been driven", async () => 
   // A live wave, a walked clock, and a firing structure, so the fields a run
   // fills in on its own are filled in too.
   parkUnit(h, "overload", UNIT_AT);
-  await h.advanceSeconds(2);
+  await h.advanceSeconds(DIRTY_SECONDS);
   h.debug.setPaused(true);
 
   // The precondition, read back: reset can only be shown to have restored a
@@ -115,7 +125,7 @@ it("restores every title-screen value after a run has been driven", async () => 
 
   /* ---- Then reset, and read the title state back ------------------------ */
 
-  h.debug.reset({ seed: SEED });
+  h.debug.reset();
   await h.advance(1);
   captureStill(h, "title");
 

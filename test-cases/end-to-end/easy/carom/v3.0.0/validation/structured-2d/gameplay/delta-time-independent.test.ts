@@ -2,7 +2,7 @@
 // on a count of frames.
 //
 // One scenario is driven three times — under a steady step, under an uneven
-// repeating pattern, and under a seeded jitter — and the three runs must agree.
+// repeating pattern, and under a jittered step — and the three runs must agree.
 // The runtime's clock is replaceable, so the same posed situation can be replayed
 // at a different step size without touching the build.
 //
@@ -76,8 +76,11 @@ const SCHEDULES: { name: string; clock: () => Clock; replay?: string }[] = [
   // in their clocks, so three recordings under the one declared output would
   // leave whichever happened to run last, and the point this evidence is for is
   // that the scenario plays out the same way under a clock that is not steady.
+  // The clock's third argument fixes the validator's own frame schedule, so a
+  // failing drive reruns under the same frame lengths. It reaches nothing in the
+  // build, which is handed only the length of each frame.
   {
-    name: "a seeded jitter",
+    name: "a jittered step",
     clock: () => new JitterClock(10, 16, 20250819),
     replay: "drive",
   },

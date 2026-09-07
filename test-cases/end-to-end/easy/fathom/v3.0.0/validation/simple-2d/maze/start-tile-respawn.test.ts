@@ -8,7 +8,7 @@
 // wrong rows. WHERE the start tile is allowed to sit is
 // `maze.start-tile-in-range`.
 //
-// IT IS MEASURED ON THE FIRST FEW SEEDS, because each costs a staged catch and
+// IT IS MEASURED ON A FEW FRESH BOARDS, because each costs a staged catch and
 // the whole suite runs inside a budget. A build that respawns wrongly does so on
 // the first board as readily as on the eighth.
 //
@@ -32,16 +32,15 @@ import {
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import { tileKey } from "../maze";
-import { SEEDS } from "./boards";
 
 /**
- * The seeds the respawn half is measured on.
+ * How many fresh boards the respawn half is measured on.
  *
  * Three, which is "several freshly laid out mazes" without spending a staged
  * catch on all eight: the rule is about where an attempt opens rather than about
  * a generator's spread, and a build that respawns wrongly does so on every board.
  */
-const RESPAWN_SEEDS = SEEDS.slice(0, 3);
+const RESPAWN_BOARDS = 3;
 
 /**
  * The ticks one staged catch is given before the check gives up on it.
@@ -68,8 +67,8 @@ afterEach(async () => {
 });
 
 it("puts the forager back on the maze's start tile after a life is lost", async () => {
-  for (const seed of RESPAWN_SEEDS) {
-    const opened = await startPlaying(h, { seed });
+  for (let board = 1; board <= RESPAWN_BOARDS; board += 1) {
+    const opened = await startPlaying(h);
     const start = foragerTile(opened);
     await holdPredators(h);
     h.debug.setPredatorTile(0, opened.forager.tx, opened.forager.ty);
@@ -78,21 +77,21 @@ it("puts the forager back on the maze's start tile after a life is lost", async 
       (s) => s.lives < opened.lives || s.screen === "gameover",
       { maxFrames: CATCH_TICKS, poll: 2 },
     );
-    if (seed === RESPAWN_SEEDS[0]) {
+    if (board === 1) {
       // Before the assertions, so a failing check still leaves the board it read.
       captureStill(h, "respawn");
     }
     assertEqual(
       taken.hit,
       true,
-      `contact took a life on the maze laid out from seed ${seed}, which is ` +
+      `contact took a life on board ${board} the game laid out, which is ` +
         "what sets the next attempt up (specs/gameplay.md)",
     );
     assertEqual(
       foragerTile(taken.snapshot),
       start,
-      `the tile the forager stands on for the next attempt at the maze laid ` +
-        `out from seed ${seed}, which is that maze's own start tile ` +
+      `the tile the forager stands on for the next attempt at board ${board} ` +
+        `the game laid out, which is that maze's own start tile ` +
         "(specs/progression.md)",
     );
   }

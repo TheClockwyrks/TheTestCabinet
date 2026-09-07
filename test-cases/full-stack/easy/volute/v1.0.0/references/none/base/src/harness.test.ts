@@ -38,9 +38,9 @@ export interface Harness {
   since(marker: number): CueName[];
 }
 
-/** Build a hall under test, seeded. */
-export function harness(seed = 1): Harness {
-  const state = createState(seed);
+/** Build a hall under test. */
+export function harness(): Harness {
+  const state = createState();
   const held = new Set<string>();
   const edges = new Set<string>();
   let pointer: { x: number; y: number } | null = null;

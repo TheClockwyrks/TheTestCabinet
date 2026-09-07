@@ -63,8 +63,7 @@
 // takes the game off real time and `advance(seconds, frames)` runs whole frames of
 // a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of frames and gets exactly that number — no polling, no
-// waiting, and no measurement of the machine it ran on. A check that is ABOUT the
-// loop running itself hands it back with `runFor`.
+// waiting, and no measurement of the machine it ran on.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
@@ -98,7 +97,6 @@ import {
   BAND_ORDER,
   CAVE_MOUTH_COL,
   CORE_COL,
-  DEFAULT_SEED,
   HUD_H,
   MINER_H,
   MINER_W,
@@ -231,12 +229,6 @@ const kit = createCaseHarness<DeepcoreSnapshot, DeepcoreDebugApi>({
   // game state. The checks that read sound arm it themselves through
   // {@link Harness.armAudio}, after the harness is built — see `audio/probe.ts`.
   arm: { kind: "key", code: UNBOUND_KEY },
-  // The seed the opening `reset` fixes, so a scenario driven from a fresh
-  // harness is reproducible from that line on. `specs/instrumentation.md`
-  // defaults `options.seed` to `DEFAULT_SEED` itself, and the harness passes it
-  // explicitly so the call the build sees is the same one whether or not a check
-  // named a seed of its own.
-  defaultSeed: DEFAULT_SEED,
   // FIFTEEN SECONDS RATHER THAN THE FIVE A SHORTER CASE ALLOWS, because the
   // ceiling is not really on the build: it is on the host. This project holds
   // several pages of one browser open at once, the machine that runs it is
@@ -359,6 +351,24 @@ export interface Harness extends BaseHarness<
 }
 
 /**
+ * Wait for the page's next paint, twice over.
+ *
+ * The one wait a check makes on the browser rather than on the game's clock: two
+ * animation frames, because the first is the one that may already have been
+ * scheduled before whatever the check just delivered landed. Nothing here
+ * advances the simulation: the game is off its clock, so the build's loop draws
+ * and drains its input and steps nothing.
+ */
+export function nextPaint(h: Pick<Harness, "page">): Promise<void> {
+  return h.page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => done()));
+      }),
+  );
+}
+
+/**
  * Load the built site in a browser, take the game off the wall clock, and hand
  * back everything a check reads.
  *
@@ -397,19 +407,9 @@ export async function createHarness(
    * specification requires the runtime to report whether an action went down THIS
    * FRAME, which is a frame the build's loop opens. `advance` is not that loop, so
    * a browser key followed straight by a read would be read before the page had
-   * had a chance to see it. Two animation frames, because the first is the one
-   * that may already have been scheduled before the key landed.
-   *
-   * Nothing here advances the simulation: the game is off its clock, so the
-   * build's loop draws and drains its input and steps nothing.
+   * had a chance to see it.
    */
-  const settlePage = (): Promise<void> =>
-    base.page.evaluate(
-      () =>
-        new Promise<void>((done) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => done()));
-        }),
-    );
+  const settlePage = (): Promise<void> => nextPaint(base);
 
   const harness: Harness = {
     ...base,
@@ -666,8 +666,6 @@ export function loadFraction(snapshot: DeepcoreSnapshot): number {
 
 /** How a scene opens. Everything is optional; the defaults are the resting world. */
 export interface SceneOptions {
-  /** The generator's seed. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /**
    * The world size.
    *
@@ -692,7 +690,7 @@ export interface SceneOptions {
 
 /**
  * The opening every posed check shares: the game off the clock, the world back at
- * its resting value on a named seed, and the screen the check is about.
+ * its resting value, and the screen the check is about.
  *
  * What it leaves is an EMPTY mine — `reset` restores the grid to what `clearMine`
  * leaves — with the miner standing at the camp, tier 1 everywhere, a full tank and
@@ -707,7 +705,7 @@ export async function openScene(
   options: SceneOptions = {},
 ): Promise<void> {
   await h.debug.setAutoStep(false);
-  await h.debug.reset({ seed: options.seed ?? DEFAULT_SEED });
+  await h.debug.reset();
   if (options.size !== undefined) {
     await h.debug.setWorldSize(options.size);
     await h.debug.clearMine();
@@ -1001,8 +999,8 @@ export const ACTION_KEY = Object.fromEntries(
 ) as Record<Action, string>;
 
 /**
- * Open an expedition through the SURFACE alone: the mode, the size, a mine
- * generated from the seed, and the miner standing at the spawn.
+ * Open an expedition through the SURFACE alone: the mode, the size, a freshly
+ * generated mine, and the miner standing at the spawn.
  *
  * This is how a check about the MINE reaches its ground without driving the
  * menus — a build with a broken menu and a working world must fail the navigation
@@ -1011,10 +1009,10 @@ export const ACTION_KEY = Object.fromEntries(
  */
 export async function openExpedition(
   h: Harness,
-  options: { seed?: number; size?: WorldSize; mode?: Mode } = {},
+  options: { size?: WorldSize; mode?: Mode } = {},
 ): Promise<void> {
   await h.debug.setAutoStep(false);
-  await h.debug.reset({ seed: options.seed ?? DEFAULT_SEED });
+  await h.debug.reset();
   if (options.mode !== undefined) await h.debug.setMode(options.mode);
   if (options.size !== undefined) await h.debug.setWorldSize(options.size);
   await h.debug.generateMine();

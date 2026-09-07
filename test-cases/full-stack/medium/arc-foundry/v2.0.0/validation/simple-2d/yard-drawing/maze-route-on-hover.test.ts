@@ -67,6 +67,18 @@ const OFF = { x: 500, y: 400 };
 /** How many of the route's tile centers a drawn route has to reach. */
 const ENOUGH = 3;
 /**
+ * The rate this check is driven at.
+ *
+ * EVERY FRAME A PIXEL READING IS TAKEN OVER IS A FRAME THE HOST HAS TO RASTERIZE,
+ * so the frames a span is cut into are what such a check costs. The specification
+ * fixes no frame size and guarantees that "an interval of simulation time reaches
+ * the same state however it was divided into frames and whatever frame rate
+ * produced it" (specs/instrumentation.md), so each span below is the span it
+ * always was and only the number of frames it is divided into is this check's.
+ */
+const HOVER_HZ = 20;
+
+/**
  * How many frames the route's tile centers are watched over, pointer off.
  *
  * Two seconds of them, which outlasts a full turn of any plausible idle pulse.
@@ -74,14 +86,14 @@ const ENOUGH = 3;
  * breathing it, so a point counts as drawn over only once it moves further than
  * the ground moves unasked.
  */
-const IDLE_MOMENTS = 120;
+const IDLE_MOMENTS = 2 * HOVER_HZ;
 
 type Pixel = [number, number, number, number];
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: HOVER_HZ });
 });
 
 afterEach(() => {

@@ -51,8 +51,7 @@ Whatever its shape, the state carries the following.
 - Whether sound is muted, refreshed from the runtime's mute bit in every update.
 - The simulation time, in seconds, which every update adds the game time it
   advanced by, whatever the screen.
-- The state of the seeded random generator, which the vent each unit enters at is
-  drawn from.
+- The vent the debug surface has posed for the run's own release, or none.
 - Whatever the game needs to hand a fresh id to the next tower or unit it
   creates, so no two entities live at one moment share an id.
 
@@ -155,12 +154,12 @@ export interface MeltdownState {
   readonly build: BuildState | null;
 
   readonly waveSpawning: boolean;
+  readonly spawnVent: VentName | null;
   readonly pointer: PointerState;
   readonly muted: boolean;
 
   readonly nextId: number;
   readonly simTime: number;
-  readonly rngState: number;
 }
 ```
 {{else}}
@@ -182,8 +181,8 @@ live objects: a tick writes the fields it advances in place, and each field init
 same value the debug surface's `reset` restores.
 
 `GameState` comes from the engine's package, and `TowerType`, `SurgeType`,
-`ModeName`, `DifficultyName`, `VentName`, `DIFFICULTY_TABLE`, `START_LIVES`, and
-`DEFAULT_SEED` from `src/constants.ts`.
+`ModeName`, `DifficultyName`, `VentName`, `DIFFICULTY_TABLE`, and `START_LIVES`
+from `src/constants.ts`.
 
 ```ts
 export type Screen =
@@ -270,12 +269,12 @@ export class MeltdownState extends GameState {
   build: BuildState | null = null;
 
   waveSpawning = true;
+  spawnVent: VentName | null = null;
   pointer: PointerState = { x: 0, y: 0, down: false };
   muted = false;
 
   nextId = 1;
   simTime = 0;
-  rngState = DEFAULT_SEED;
 }
 ```
 {{/if}}
@@ -358,6 +357,8 @@ is appended to it.
 
 - `waveSpawning` — whether the run's own release of surge runs, which the debug
   surface poses.
+- `spawnVent` — the vent the debug surface has posed for the run's own release,
+  or `null` while the release draws its vents.
 - `muted` — the game's readable copy of the runtime's mute bit, refreshed in
   every update. The runtime owns muting, and this field is what the debug surface
   reports.
@@ -365,8 +366,6 @@ is appended to it.
   moment share one.
 - `simTime` — accumulated simulation time, in seconds. Every update adds the game
   time it advanced by, whatever the screen.
-- `rngState` — the state of the game's seeded random generator. The vent each
-  unit enters at is drawn from it.
 
 ## The contract
 

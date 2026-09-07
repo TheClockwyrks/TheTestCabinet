@@ -202,6 +202,14 @@ export interface RunState {
   readonly spawnTimer: number;
   readonly firedEvents: readonly number[];
   readonly nextId: number;
+  /** The posed outcomes of specs/instrumentation.md, `null` while none is posed. */
+  readonly nextSpawnAngle: number | null;
+  readonly nextSwarmAngle: number | null;
+  readonly nextSpawnType: EnemyId | null;
+  readonly nextPuddleOffset: { readonly x: number; readonly y: number } | null;
+  readonly nextStrikeTarget: number | null;
+  readonly nextChestItem: WeaponId | PassiveId | null;
+  readonly nextDrop: NextDrop | null;
   /** Added by this build: ticks on which the lamplighter moved, for the walk. */
   readonly movedTicks: number;
   /** Added by this build: whether the lamplighter moved on the last tick. */
@@ -219,7 +227,6 @@ export interface WickState {
   readonly accumulator: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
   readonly spawning: boolean;
   readonly events: boolean;
   readonly despawning: boolean;
@@ -325,12 +332,21 @@ export interface WickSnapshot {
     firedEvents: number[];
     aliveCommons: number;
     nextId: number;
+    nextSpawnAngle: number | null;
+    nextSwarmAngle: number | null;
+    nextSpawnType: string | null;
+    nextPuddleOffset: { x: number; y: number } | null;
+    nextStrikeTarget: number | null;
+    nextChestItem: string | null;
+    nextDrop: NextDrop | null;
   };
   muted: boolean;
   accumulator: number;
   simTime: number;
-  rngState: number;
 }
+
+/** What `setNextDrop` poses for the next common kill's roll. */
+export type NextDrop = "bread" | "draft" | "none";
 
 /** A rectangle on the stage, as `menuRects` and `tabRects` report one. */
 export interface WickRect {
@@ -342,10 +358,7 @@ export interface WickRect {
 
 export interface WickDebugApi {
   readonly version: number;
-  reset(
-    state: DeepReadonly<WickState>,
-    options?: { readonly seed?: number },
-  ): WickState;
+  reset(state: DeepReadonly<WickState>): WickState;
   snapshot(state: DeepReadonly<WickState>): WickSnapshot;
   menuRects(state: DeepReadonly<WickState>): readonly WickRect[];
   tabRects(state: DeepReadonly<WickState>): readonly WickRect[];
@@ -362,7 +375,21 @@ export interface WickDebugApi {
   setProgression(state: DeepReadonly<WickState>, on: boolean): WickState;
   setTick(state: DeepReadonly<WickState>, tick: number): WickState;
   setSpawnTimer(state: DeepReadonly<WickState>, seconds: number): WickState;
-  advanceRng(state: DeepReadonly<WickState>, draws: number): WickState;
+  setNextSpawnAngle(state: DeepReadonly<WickState>, degrees: number): WickState;
+  setNextSwarmAngle(state: DeepReadonly<WickState>, degrees: number): WickState;
+  setNextSpawnType(state: DeepReadonly<WickState>, id: EnemyId): WickState;
+  setNextPuddleOffset(
+    state: DeepReadonly<WickState>,
+    dx: number,
+    dy: number,
+  ): WickState;
+  setNextStrikeTarget(state: DeepReadonly<WickState>, id: number): WickState;
+  setNextChestItem(
+    state: DeepReadonly<WickState>,
+    id: WeaponId | PassiveId,
+  ): WickState;
+  setNextDrop(state: DeepReadonly<WickState>, kind: NextDrop): WickState;
+  rollDrop(state: DeepReadonly<WickState>): NextDrop;
   setPlayerPosition(
     state: DeepReadonly<WickState>,
     x: number,

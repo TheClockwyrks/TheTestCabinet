@@ -8,12 +8,11 @@
 //
 // `openingState` is the whole of the opening state, built in one go, so every
 // field of `SpectraState` is present before a frame can observe one, and
-// `resetToTitle` is the same values written over a state that has been played —
-// which is what makes the debug surface's `reset` enough to replay a scenario
-// exactly.
+// `resetToTitle` is the same values written over a state that has been played,
+// which is what makes the debug surface's `reset` enough to pose a scenario from
+// a clean field.
 
 import {
-  DEFAULT_SEED,
   DIVE_FIRST_DELAY,
   GAME_OVER_ITEMS,
   PAUSE_ITEMS,
@@ -30,7 +29,6 @@ import {
 import { emptyArt, type Art } from "./assets";
 import { LANE_CENTER } from "./ship";
 import { award } from "./scoring";
-import { seedState } from "./rng";
 import { buildWave } from "./waves";
 import type { FrameEvents, Sim } from "./sim";
 import type { SpectraState } from "./game";
@@ -90,7 +88,6 @@ export function openingState(art: Art): SpectraState {
     nextId: 1,
     simTime: 0,
     muted: false,
-    rngState: seedState(DEFAULT_SEED),
 
     art,
   };
@@ -102,13 +99,12 @@ export function bareOpeningState(): SpectraState {
 }
 
 /**
- * Restore every declared field to its title-screen value, seeding the game's
- * randomness from `seed`.
+ * Restore every declared field to its title-screen value.
  *
  * `muted` is left exactly as it stands, because muting is a player preference the
  * runtime owns, and the art is left alone because it is not the game's state.
  */
-export function resetToTitle(sim: Sim, seed: number): void {
+export function resetToTitle(sim: Sim): void {
   const opening = openingState(sim.art);
   sim.screen = opening.screen;
   sim.phase = opening.phase;
@@ -141,16 +137,13 @@ export function resetToTitle(sim: Sim, seed: number): void {
 
   sim.nextId = opening.nextId;
   sim.simTime = opening.simTime;
-  sim.rngState = seedState(seed);
 }
 
 /**
  * Open a new run: stage 1, `START_LIVES` lives, a score of `0`, and its intro.
  *
- * The run's own figures go back to their opening values and nothing else does. A
- * new run does not re-seed the generator — seeding is what `reset` is for, so a
- * second run in one session draws on rather than replaying the first — and it
- * does not rewind the accumulated simulation time or the id counter.
+ * The run's own figures go back to their opening values and nothing else does: a
+ * new run does not rewind the accumulated simulation time or the id counter.
  */
 export function startRun(sim: Sim): void {
   sim.score = 0;

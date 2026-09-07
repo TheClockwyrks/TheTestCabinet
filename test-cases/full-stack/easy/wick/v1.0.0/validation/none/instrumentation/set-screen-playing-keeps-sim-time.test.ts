@@ -3,9 +3,8 @@
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `setScreen(name)`):
 // "Nothing else changes: the run, the loadout, `offers`, `nextOffers`,
-// `chestResult`, `pendingLevelUps`, `rngState`, `simTime`, and the driver
-// switches all stand exactly as they were." `rngState` across the same call is
-// `instrumentation/set-screen-playing-keeps-rng`'s.
+// `chestResult`, `pendingLevelUps`, every posed outcome, `simTime`, and the
+// driver switches all stand exactly as they were."
 //
 // WHY THE WORLD IS POSED AS IT IS. A few title frames are run first so
 // `simTime` is not `0` and a build that restarted its clock on this pose is
@@ -25,7 +24,6 @@ import {
   type Harness,
 } from "../harness";
 
-const SEED = 5150;
 const TITLE_FRAMES = 3;
 
 let h: Harness;
@@ -39,7 +37,7 @@ afterEach(async () => {
 });
 
 it("leaves simTime as it is across the pose", async () => {
-  await h.debug.reset({ seed: SEED });
+  await h.debug.reset();
   const before = await h.step(TITLE_FRAMES);
   assertNotEqual(before.simTime, 0, "simTime before the pose");
 

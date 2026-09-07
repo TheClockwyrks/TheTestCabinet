@@ -1,7 +1,7 @@
 // instrumentation/pose-refusal-is-silent — a pose the game's rules refuse changes
 // nothing and reports nothing.
 //
-// `specs/instrumentation.md` § A deterministic core: "Silent refusal as data. A
+// `specs/instrumentation.md` § A render-free core: "Silent refusal as data. A
 // pose the game's own rules refuse leaves the state exactly as it was, so a
 // caller reads the outcome of any pose back from `snapshot` rather than from a
 // return value." The rule over every operation says what "exactly as it was"

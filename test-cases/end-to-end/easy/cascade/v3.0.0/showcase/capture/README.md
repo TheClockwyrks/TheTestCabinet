@@ -5,19 +5,22 @@
 `showcase/draw-three/` from the case's **engineless** reference implementations,
 by playing a real game of Cascade: the title screen's NEW GAME control is clicked
 with the mouse, the deal the game deals is read, a solve is planned through it,
-and that plan is then
-performed one ordinary gesture at a time — a click on the stock, a drag of a run
-between columns, a double-click that sends a card home — until the game declares
-itself won and the victory cascade runs.
+and that plan is then performed one ordinary gesture at a time — a click on the
+stock, a drag of a run between columns, a double-click that sends a card home —
+until the game declares itself won and the victory cascade runs.
 
-Nothing on screen is posed. The debug surface is reached for exactly twice over.
-`reset({ seed })` is called once, before the first gesture, and it is what chooses
-the deal. `snapshot()` is read throughout — but a read changes nothing: it is how
-the driver **checks** that the game did what the plan expected, and a divergence
-fails the capture rather than being papered over. Nothing calls `move`,
-`autoMove`, `turnStock`, `deal`, `addCard`, `setScreen`, or any pose operation,
-and nothing touches the clock: the game runs on its own animation frame, in real
-time, which is what makes the recording a recording of the game.
+Nothing on screen is posed, and nothing chooses the deal. The debug surface is
+only ever **read**: `snapshot()` is read throughout, but a read changes nothing —
+it is how the driver checks that the game did what the plan expected, and a
+divergence fails the capture rather than being papered over. Nothing calls
+`reset`, `move`, `autoMove`, `turnStock`, `deal`, `addCard`, `setScreen`, or any
+pose operation, and nothing touches the clock: the game runs on its own animation
+frame, in real time, which is what makes the recording a recording of the game.
+
+Because the deal is the game's own, a capture is an **audition**: the driver
+plays several takes, each on whatever deal the game dealt, abandons the takes
+whose deal the planner cannot win inside the move budget, and keeps the best of
+the ones it could.
 
 The plan is made with perfect knowledge — the search reads the face-down cards
 too, which `snapshot()` reports and a player cannot see. That is what makes a
@@ -58,6 +61,7 @@ capture files in beside it:
 cd references/none/draw-three          # or references/none/draw-one
 npm ci && npm run build                # the suite serves dist/ to Chromium
 cp -r ../../../validation/none validation
+cp -r ../../../../../../../packages/case-harness/src validation/case-harness
 cp ../../../showcase/capture/showcase-solitaire.ts validation/
 cp ../../../showcase/capture/showcase-player.ts validation/
 cp ../../../showcase/capture/draw-three.showcase-capture.test.ts \
@@ -79,10 +83,9 @@ directory from the reference workspace.
 
 | Variable                                           | What it does                                                                                                                                        |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TCAB_SHOWCASE_OUT`                                | Where the clip and the stills are written. **Unset, the driver plays and reports but writes nothing**, which is how a take is auditioned.           |
-| `TCAB_SHOWCASE_SEED`                               | The deal to play. Recording one take is what this file does by default; the committed seed is the default.                                          |
-| `TCAB_SHOWCASE_SEEDS`                              | Several seeds, comma-separated, played in turn with the recorder off. Naming more than one is an audition and writes nothing.                       |
-| `TCAB_SHOWCASE_SWEEP`                              | A seed range (`1-250`). Solves every deal in it and prints the plan figures, without opening a browser or playing anything.                         |
+| `TCAB_SHOWCASE_OUT`                                | Where the winning take's clip and stills are written. **Unset, the driver plays and reports but writes nothing**, which is how the pace is tuned.   |
+| `TCAB_SHOWCASE_TAKES`                              | How many won takes to play before choosing between them. Three by default.                                                                          |
+| `TCAB_SHOWCASE_DEALS`                              | How many deals may be dealt looking for those takes. A deal the planner cannot win costs a page load and a search, so the default is generous.      |
 | `TCAB_SHOWCASE_MAX_MOVES`                          | The longest plan the search will accept, in gestures. It is also the search's main prune, so lowering it makes the search both quicker and pickier. |
 | `TCAB_SHOWCASE_MAX_NODES` / `TCAB_SHOWCASE_WEIGHT` | How hard the search looks, and how greedily.                                                                                                        |
 | `TCAB_SHOWCASE_MID_STILL`                          | How far into the plan to start looking for the mid-play still, as a share of its gestures.                                                          |
@@ -100,49 +103,42 @@ regardless.
 
 ## How a take is judged
 
-The capture is deterministic: the same seed deals the same game, the plan is a
-function of the deal alone, and the pace is fixed, so a take can be auditioned
-with the recorder off and then re-run under it and be the same game.
+The plan is a function of the deal alone and the pace is fixed, so what a take
+shows is decided by the deal the game happened to shuffle when NEW GAME was
+clicked. A deal the planner cannot win inside the move budget is abandoned
+before the first gesture: the page is closed, its recording is discarded, and the
+next take deals afresh. That costs a page load and a second of search, which is
+why the deal budget is generous — under Draw One only a few deals in a thousand
+come in under a hundred gestures, and under Draw Three about one in seven.
 
-Auditioning happens in two passes. The first is over the PLANS, and needs no
-browser at all — a take is half a minute of Chromium and a plan is a second of
-arithmetic, so the seeds worth playing are found on paper and only the short list
-is ever played:
-
-```sh
-TCAB_SHOWCASE_SWEEP=1-250 npx vitest run --config validation/vitest.config.ts \
-  validation/showcase-capture.test.ts
-```
-
-Each seed that can be won inside the move budget is printed with the figures that
-decide whether its clip is worth watching: how many gestures it takes (which is
-very nearly how long the clip runs), how long its longest unbroken stretch of
-stock turns is (which is its longest lull), how much of it is cards carried
-between piles rather than clicked off the stock, and how many times the stock has
-to come back around. A wide range is worth sharding across processes — seeds
-1-2000 take about a quarter of an hour split eight ways.
-
-The second pass plays the short list against the real build, with
-`TCAB_SHOWCASE_OUT` unset so nothing is written:
+Every won take is recorded into its own subdirectory of `TCAB_SHOWCASE_OUT` and
+reported with the figures that decide whether its clip is worth watching: how
+many gestures it takes (which is very nearly how long the clip runs), how long
+its longest unbroken stretch of stock turns is (which is its longest lull), how
+much of it is cards carried between piles rather than clicked off the stock, and
+how many times the stock has to come back around. Once enough takes have been
+won the shortest is kept — ties going to the shortest run of stock turns — its
+four files are moved up into `TCAB_SHOWCASE_OUT`, and the rest are deleted.
 
 ```sh
-TCAB_SHOWCASE_SEEDS=13,411,479,548,795,1130,1474,1757 \
+TCAB_SHOWCASE_OUT=/tmp/showcase-out TCAB_SHOWCASE_TAKES=5 \
   npx vitest run --config validation/vitest.config.ts \
   validation/showcase-capture.test.ts
 ```
 
-That is what says how long a take actually runs, and it proves the build accepts
-every gesture in the plan. The winner is then recorded.
+The figures are printed for every take, so a person can re-run for more takes
+when none of a batch reads well, and the winning take proves the build accepts
+every gesture in its plan.
 
 ## What is committed
 
-Both takes were chosen that way, over seeds 1-2000.
+Both takes were chosen the same way: eight won deals were played for each
+variant, and the take that read best on the figures above was kept.
 
-### Draw One — seed 13
+### Draw One
 
-Eight of the two thousand deals could be won inside the hundred-gesture budget
-(13, 411, 479, 548, 795, 1130, 1474 and 1757). All eight were played; seed 13 was
-the shortest take of them and tied for the fewest stock turns in a row.
+The committed take was the shortest of its eight and tied for the fewest stock
+turns in a row.
 
 Its game is 95 gestures: 24 turns of the stock with no recycle at all, so the
 deck is played out in a single pass; 19 runs carried between piles (11 between
@@ -159,15 +155,12 @@ six. The take runs 30.3 s from the title screen to the end of the cascade.
 - `the-cascade.png` — the cascade three seconds in, the felt already buried.
 - `title.png` — the title screen the take opened on, with its DRAW ONE label.
 
-### Draw Three — seed 822
+### Draw Three
 
-Two hundred and eighty-six of the two thousand deals came in inside a
-hundred-and-two gestures, and the eight best on the plan figures were played
-(1016, 1102, 822, 75, 865, 1427, 549 and 1474). Seed 822 was taken over the two
-shorter takes because it is the least stock-bound game of the eight: the joint
-fewest turns of the stock (twelve, with seed 75) and the joint shortest run of
-them (two, with seed 865), in a field that mostly turns the stock seventeen to
-nineteen times and sits on it three or four turns together.
+The committed take was taken over two shorter ones because it is the least
+stock-bound game of its eight: the joint fewest turns of the stock (twelve) and
+the joint shortest run of them (two), in a field that mostly turns the stock
+seventeen to nineteen times and sits on it three or four turns together.
 
 Its game is 90 gestures: 12 turns of the stock, one of them the recycle that
 brings the waste back around; 26 runs carried between piles (12 between columns,
@@ -181,9 +174,9 @@ columns. The take runs 28.9 s.
 - `the-cascade.png` — the cascade three seconds in.
 - `title.png` — the title screen, with its DRAW THREE label.
 
-### Reproducing either
+### Re-recording either
 
-The seed is the driver's default, so the command is the plain one:
+The command is the plain one:
 
 ```sh
 TCAB_SHOWCASE_OUT=/tmp/showcase-out \
@@ -191,35 +184,23 @@ TCAB_SHOWCASE_OUT=/tmp/showcase-out \
   validation/showcase-capture.test.ts
 ```
 
-The game that is played is fixed by the seed and by the search — `MAX_MOVES`,
-`MAX_NODES` and `WEIGHT` at the top of the driver — so changing any of those
-changes the plan and therefore the clip, and the stills with it. What does move
-between hosts is the clip's exact length, by as much as a second over a take this
+A fresh capture plays a fresh deal, so it is a different game from the committed
+one: a different board, a different plan, and a clip of a different length. What
+stays the same is everything the deal does not decide — the search (`MAX_MOVES`,
+`MAX_NODES` and `WEIGHT` at the top of the driver), the pace figures, and the
+build's own look — and changing any of those changes every take. The clip's
+exact length also moves between hosts, by as much as a second over a take this
 long: the pace figures are floors under the browser's own round trips, and a
 slower host — or a busier one — spends a little more than the floor on every one
 of ninety gestures.
 
-### What comes back byte for byte, and what cannot
+### What a fresh take says about the committed one
 
-Two of the four files reproduce exactly and two do not, and the split is the
-difference between a settled table and one in motion.
-
-`title.png` and `mid-play.png` are both taken with nothing moving — the title
-screen before the first gesture, and a table left to settle after one — so a
-re-run reproduces them byte for byte. A difference in either is a real change in
-the build, and worth chasing.
-
-`the-cascade.png` and `cascade-solved.webm` are of the game in motion, and
-nothing here touches the clock. The still is taken after a wall-clock wait while
-fifty-two cards are in flight on the page's own animation frame, so on a host
-that got there sooner it lands a frame or two further along; the clip is a
-real-time screencast, re-encoded. Neither will ever match byte for byte, and a
-checksum says nothing about either.
-
-Compare them by what they show. Decode the clip to frames and match it against a
-second take of the SAME seed, allowing for the drift in length — the figure that
-decides it is whether the committed file differs from a fresh take by more than
-two fresh takes differ from EACH OTHER. If it does not, nothing has moved. Both
-committed clips were checked that way and both cleared it: on downscaled frames,
-draw one's committed take sits 0.84/255 mean absolute difference from a fresh one
-where two fresh ones sit 1.12 apart, and draw three's sits 1.39 against 1.15.
+No file comes back byte for byte, because no two takes play the same deal.
+`title.png` is the one picture the deal does not touch — the title screen before
+the first gesture — so a difference there is a real change in the build's title
+screen and worth chasing. Everything else is compared by what it shows: whether
+the table is drawn the same way, whether a lifted run is carried the same way,
+whether the cascade buries the felt the same way. A fresh take that reads the
+same as the committed one on those says nothing has moved; one that does not
+names what did.

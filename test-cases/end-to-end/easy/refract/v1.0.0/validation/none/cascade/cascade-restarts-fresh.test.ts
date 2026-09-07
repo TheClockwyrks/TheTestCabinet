@@ -7,25 +7,25 @@
 // cascade/cascade-back-to-title's point; here the subject is what the NEXT run
 // starts from.
 //
-// The run being abandoned is a real one: five boards are genuinely solved first
-// (solvedCount 5, tier 2), so "fresh" afterwards is distinguishable from "the
-// run that was left". The solve is done by the case's own spec-derived solver
-// through `solveGenerated`; the boards being solvable at all is
-// `boards-are-solvable`'s point, so a sweep that did not solve fails here as an
-// unmet precondition, named as such.
+// The run being abandoned is one in progress: it is posed at five solves
+// through `setSolvedCount` and `setTier` (specs/instrumentation.md), so it
+// stands at solvedCount 5 and tier 2 and "fresh" afterwards is distinguishable
+// from "the run that was left". The board it is left on is posed through
+// `loadBoard`, a board like any other.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { GEO_3X3 } from "../fixtures";
+import { TIER_ADVANCE, tierForSolvedCount } from "../notation";
 import {
   captureStill,
   createHarness,
   fireAction,
-  solveGenerated,
+  loadBoard,
+  poseCascadeRun,
   startCascade,
   type Harness,
 } from "../harness";
-
-const SEED = 2;
 
 let h: Harness;
 
@@ -38,22 +38,21 @@ afterEach(async () => {
 });
 
 it("re-entering after a back starts from solvedCount 0 and tier 1", async () => {
-  const sweep = await solveGenerated(h, 5, SEED);
-  for (const [index, after] of sweep.afterSolve.entries()) {
-    assertEqual(
-      after.solved,
-      true,
-      `precondition: board ${index + 1} of the arranging sweep solved (see boards-are-solvable)`,
-    );
-  }
-
-  // Off the fifth solved screen onto a board of the run in progress, then out.
-  await fireAction(h, "confirm");
+  await poseCascadeRun(h, TIER_ADVANCE);
+  await loadBoard(h, GEO_3X3);
+  const abandoned = await h.snapshot();
+  assertEqual(abandoned.screen, "playing", "precondition: a board in play");
   assertEqual(
-    (await h.snapshot()).solvedCount,
-    5,
+    abandoned.solvedCount,
+    TIER_ADVANCE,
     "precondition: five boards solved in the run being abandoned",
   );
+  assertEqual(
+    abandoned.tier,
+    tierForSolvedCount(TIER_ADVANCE),
+    "precondition: the run being abandoned has climbed past tier 1",
+  );
+
   await fireAction(h, "back");
   assertEqual(
     (await h.snapshot()).screen,

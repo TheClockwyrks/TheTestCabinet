@@ -49,7 +49,7 @@ each reading the field as the last left it.
 
 The second half of the case is a direct-manipulation editor of real size: a
 tray measured in fixed slots, drags with legality ghosts, track laid hex by hex,
-a tape panel with a cursor, deterministic scroll rules, two macros computed from
+a tape panel with a cursor, fixed scroll rules, two macros computed from
 an arm's own pose history, and session-wide undo. The whole surface is driveable
 through the debug API's pointer operations and real key events, and whole
 machines load and read back as JSON. Validators can therefore smoke-test the
@@ -91,8 +91,8 @@ specification fixes the geometry, the rules, the ten Extras challenges, and the
 campaign's obligations exactly; the palette, the type, and the look of the sky
 are the build's.
 
-Every point on the checklist is decided by a validator: `1065` review items
-across `16` categories worth `1067` points, each one observable behavior posed
+Every point on the checklist is decided by a validator: `1054` review items
+across `16` categories worth `1056` points, each one observable behavior posed
 through the game's own instrumentation surface and read back, and each with a
 suite in the validator project of every engine the item covers. The reviewer's
 judgement goes into the per-domain ratings of visuals, polish and feel.

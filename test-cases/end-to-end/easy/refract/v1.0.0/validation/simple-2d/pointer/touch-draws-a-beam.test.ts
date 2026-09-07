@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 it("leaves the same beam a mouse leaves, drawn from a touch", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   const board = await loadBoard(h, R9_UNIQUE);
 
   const start = cellCenterOf(board, { col: 0, row: 0 });
@@ -60,7 +60,7 @@ it("leaves the same beam a mouse leaves, drawn from a touch", async () => {
   captureStill(h, "drawn");
 
   // The identical gesture from a mouse, on a board posed fresh.
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
   h.debug.pointerDown(start.x, start.y, "mouse");
   h.debug.pointerMove(next.x, next.y, "mouse");

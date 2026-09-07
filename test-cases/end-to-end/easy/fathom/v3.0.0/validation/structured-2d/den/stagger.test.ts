@@ -46,9 +46,6 @@ import {
   watchSeconds,
 } from "./schedule";
 
-/** The seed the dive is opened on, so the maze this watch runs in replays. */
-const SEED = 1;
-
 /**
  * How much of the dive countdown is watched before it is ended, in seconds.
  *
@@ -75,7 +72,7 @@ afterEach(() => {
 });
 
 it("releases the den one predator at a time, DEN_RELEASE_GAP apart, in DEN_ORDER, and none during the countdown", async () => {
-  h.debug.reset(SEED);
+  h.debug.reset();
   // The board, its den, its roster, and the forager parked across the rock from
   // all of it. The most expensive thing that can happen to this measurement is
   // the forager being caught — a life lost re-dens every predator and starts the

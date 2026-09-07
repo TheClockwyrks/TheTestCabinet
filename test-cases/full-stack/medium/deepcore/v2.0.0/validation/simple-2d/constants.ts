@@ -179,29 +179,8 @@ export function drillHitsFor(health: number, damagePerHit: number): number {
 /* What generation places (specs/world.md)                                    */
 /* -------------------------------------------------------------------------- */
 
-/** The share of minable cells that hold an ore vein, the same at every depth. */
-export const ORE_DENSITY = 0.14;
-
 /** "No ore appears above `ORE_MIN_ROW`", so the first three rows are plain rock. */
 export const ORE_MIN_ROW = 4;
-
-/** Unbreakable stone's share, rising linearly across the rockbed and below. */
-export const STONE_DENSITY_MIN = 0.02;
-export const STONE_DENSITY_MAX = 0.08;
-
-/** A gas pocket's share, over the same span. */
-export const GAS_DENSITY_MIN = 0.004;
-export const GAS_DENSITY_MAX = 0.012;
-
-/** Lava's share, rising linearly from the top of the deepstone. */
-export const LAVA_DENSITY_MIN = 0.03;
-export const LAVA_DENSITY_MAX = 0.1;
-
-/**
- * "Every measurable share above holds within `DENSITY_TOLERANCE` of the stated
- * value, measured relative to that value over a whole band."
- */
-export const DENSITY_TOLERANCE = 0.25;
 
 /* -------------------------------------------------------------------------- */
 /* Tile kinds (specs/world.md)                                                */
@@ -814,8 +793,7 @@ export const EMERGENCY_FUEL = 30;
 /**
  * The Quantum Teleporter's two draws: "a height drawn uniformly from `1` to `8`
  * tiles with a downward speed drawn uniformly from `150` to `700` units per
- * second", both inclusive. They are a live player action and are not required to
- * be reproducible from the seed.
+ * second", both inclusive.
  */
 export const TELEPORT_HEIGHT_TILES_MIN = 1;
 export const TELEPORT_HEIGHT_TILES_MAX = 8;
@@ -1177,9 +1155,6 @@ export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 
 /** "The surface carries `version` (`DEEPCORE_DEBUG_VERSION`, `1`)". */
 export const DEEPCORE_DEBUG_VERSION = 1;
-
-/** "`options.seed` seeds the game's generator, defaulting to `DEFAULT_SEED` (`1`)". */
-export const DEFAULT_SEED = 1;
 
 /* ---- What the specification leaves to the build --------------------------- */
 //

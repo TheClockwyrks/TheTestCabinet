@@ -13,9 +13,10 @@ reviewer minutes of fiddling before the check can begin.
 Instrumentation is how a case makes itself checkable. It is the set of
 inspection-and-control systems a case requires the build to implement so a run
 can be driven and read programmatically: a debug API that puts the game into a
-precise state and reports the state it is in, a deterministic core that makes
-that reproducible, a read-only debug overlay for a human reviewer, and, where a
-game's state is rich enough to warrant it, a save/load format. Together they let
+precise state and reports the state it is in, a render-free core that lets a
+driver step the game without a canvas or a clock, a read-only debug overlay for
+a human reviewer, and, where a game's state is rich enough to warrant it, a
+save/load format. Together they let
 The Test Cabinet construct the exact scenarios a review needs, capture the
 evidence, and decide the verdict for a large class of requirements.
 
@@ -102,16 +103,15 @@ anyway.
 Every case's debug API exposes the same three core operations, so a driver's
 lifecycle is uniform across the catalog.
 
-- `reset(options?)` returns the build to a known initial state. When the game
-  has any randomness, an `options.seed` seeds all of it, so a scenario replays
-  identically. See [Determinism](#determinism).
+- `reset(options?)` returns the build to a known initial state. A case states
+  any options its reset takes.
 - `step(amount)` advances the simulation by exactly `amount`, running the
   build's fixed timestep internally rather than waiting on real time. The case
   pins the unit: seconds of simulation time, or whole simulation ticks. A case
   that steps in ticks declares its rate as `tick_hz` in the manifest, which is
   what lets the validation runtime relate stepped ticks back to real time. This
   is what lets a driver run the real systems forward from a precondition and
-  observe where they land, deterministically and fast.
+  observe where they land without waiting on real time.
 - `snapshot()` returns a JSON-serializable object describing the full observable
   game state: the current screen or phase, scores, the position, velocity, and
   per-entity state of every live object, and whatever else a check asserts on.
@@ -213,23 +213,50 @@ that is the rule in
 [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/):
 a validator always reaches a verdict.
 
-## Determinism
+## A render-free core
 
-The debug API is reproducible only if the game underneath it is, so a case that
-mandates instrumentation must also require a deterministic core.
+The debug API can step a game only if the game's state advances apart from its
+drawing, so a case that mandates instrumentation also requires a render-free,
+fixed-timestep core.
 
-- The simulation advances on a fixed timestep decoupled from rendering, so a
-  step means the same thing every time regardless of frame rate or wall-clock
-  timing.
+- The simulation advances on a fixed timestep decoupled from rendering. Game
+  state advances from the elapsed simulation time it is handed, so a step means
+  the same thing whatever the frame rate.
 - The simulation is render-free at its core: game state advances with no canvas
-  and no real time, so a driver can step it headlessly.
-- All randomness is seedable through `reset({ seed })`. Given the same seed and
-  the same sequence of control operations and steps, the build reaches the same
-  state every time.
+  and no wall clock, so a driver can step it headlessly.
 
-Determinism is worth requiring on its own merits, since it is what makes a
-captured scenario reproducible and a reported bug replayable. It is also the
-precondition that lets the debug API be trusted.
+The spec stops there. It says nothing about seeds, generators, or replaying a
+session identically, because such a rule constrains a build's internals without
+naming a behavior a validator can read. A build may keep any private random
+source it likes, and the case never speaks of it.
+
+## Posed randomness
+
+Where the game draws at random, the spec states the draw as behavior: the set
+it is uniform over, the probability it carries, and when it is drawn. The spec
+names no generator, gives the game's declared state and snapshot no generator
+state, and offers no operation that seeds, skips, or counts draws.
+
+For every random draw a validator's requirement touches, the debug API carries
+an operation that sets the outcome the draw decides: spawn this enemy type at
+this position, deal this exact board, land the next critical hit, release the
+next unit from this vent. Where the game would otherwise keep drawing on its
+own, the API also carries a gate that stops the automatic draw while a scenario
+is posed, such as a spawn gate a validator switches off before it spawns by
+hand. Each is an ordinary control operation: atomic, one field, scalar
+arguments, enumerated in the spec by name, signature, and effect, and graded
+under the case's instrumentation items like the rest.
+
+A posed outcome sits on the precondition side of the
+[guardrail](#the-precondition-guardrail). The operation decides what the draw
+would have decided; the systems that follow from it run for real, and the
+validator reads where they land. A validator seeds nothing, reads no generator
+state, counts no draws, and compares no two runs for sameness. It drives
+simulated time through the API's step and control operations and never waits
+on real time. The design rules are in Writing Debug APIs and Validators, for
+[the API](/guides/authoring/writing-debug-apis-and-validators/#random-draws-are-posed-as-outcomes)
+and for
+[the validators](/guides/authoring/writing-debug-apis-and-validators/#validators-pose-what-the-game-would-draw).
 
 ## The debug overlay
 
@@ -281,7 +308,7 @@ versioned, and loaded through the same path a player's save uses.
 ## Use in validation
 
 For the objective, mechanically verifiable portion of a review, The Test Cabinet
-drives the build itself: `reset(seed)` to a known start, the case's control
+drives the build itself: `reset()` to a known start, the case's control
 operations to establish a review item's precondition, `step()` to run the real
 systems forward, and `snapshot()` and the rendered canvas to read the result.
 From that it both synthesizes the item's proof media and, where the outcome is
@@ -339,8 +366,11 @@ When adding instrumentation to a case's specification:
   [guardrail](#the-precondition-guardrail). A well-designed operation sets one
   value rather than announcing an outcome; see
   [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
-- Require the deterministic core the API rests on, fixed-timestep, render-free,
-  and seedable, in the same spec that covers the simulation.
+- Require the render-free, fixed-timestep core the API rests on in the same
+  spec that covers the simulation.
+- State each random draw as a distribution, and give the debug API an operation
+  that poses the outcome of every draw a validator touches, with a gate wherever
+  the game would keep drawing on its own.
 - Require the read-only overlay, naming its toggle key and the state it must
   show. Mandate cheats and save/load only where they pull their weight.
 - Keep the review checklist out of the run. The properties a driver asserts are

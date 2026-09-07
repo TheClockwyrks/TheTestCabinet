@@ -23,14 +23,23 @@
 //
 // THE CLOCK IS THE GROUP'S, NOT THE SUITE'S. A flight integrates under
 // acceleration, and a quantity under acceleration is not independent of how an
-// interval was divided into frames, so every check in this group builds its
+// interval was divided into frames, so a check that reads a flight builds its
 // harness at `CASCADE_HZ` — 1/240 s frames, fine enough that a figure quantised
 // to a frame boundary still meets the tolerances the checks state.
 // {@link createFlightHarness} is that one call, written once so no check in the
-// group can quietly step at some other rate.
+// group can quietly step at some other rate. The checks that read something OTHER
+// than a flight take their clock from here too and each says why it must:
+// {@link createRunoutHarness} for the three that wait a whole cascade out, and
+// {@link createCadenceHarness} for the one that reads the launch clock.
 
 import { fail } from "../assert";
-import type { Rect } from "../constants";
+import {
+  FOUNDATION_COUNT,
+  FOUNDATION_X,
+  LAUNCH_VY,
+  TOP_ROW_Y,
+  type Rect,
+} from "../constants";
 import {
   card,
   createHarness,
@@ -65,32 +74,85 @@ export function flightSeconds(frames: number): number {
 }
 
 /**
- * A harness whose clock steps the frames a RUN-OUT is waited out in — the suite's
- * own `TICK_HZ`, not this group's {@link CASCADE_HZ}.
+ * The frame a RUN-OUT is stepped in — neither this group's {@link CASCADE_HZ} nor
+ * the suite's `TICK_HZ`.
  *
- * Two checks in this group have to sit through the whole victory cascade before
- * they can read anything: `cascade-completes` and `trail-survives-completion`.
- * Twelve and a half seconds of game time at `CASCADE_HZ` is three thousand frames,
- * and every one of them renders up to fifty-two card faces into a real canvas — so
- * the WAIT, and not the reading, is what those two cost, and what they cost is what
- * a busy host turns into a timeout against a build that did nothing wrong.
+ * Three checks in this group have to sit through the whole victory cascade before
+ * they can read anything: `cascade-completes`, `launch-takes-top-card` and
+ * `trail-survives-completion`. Twelve and a half seconds of game time at
+ * `CASCADE_HZ` is three thousand frames, and every one of them renders up to
+ * fifty-two card faces into a real canvas — so the WAIT, and not the reading, is
+ * what those three cost, and what they cost is what a busy host turns into a
+ * timeout against a build that did nothing wrong.
  *
- * NEITHER READS AN ACCELERATED QUANTITY, which is the whole reason this group steps
- * finely: they read the cascade's own end flag, the launched count, the flight being
- * empty, and how much of the table is still painted — facts about where the cascade
- * ENDED, none of them quantised to a frame. `specs/instrumentation.md` has the game
- * integrate whatever delta a frame supplies and `instrumentation/advances-in-frames`
- * is the point that grades it, and the references were measured at 240, 120, 60 and
- * 30 Hz: the cascade ends `cascadeDone` with all fifty-two launched and nothing in
- * flight, at the same `12.57` s of game time, at every one of them.
+ * NONE OF THE THREE READS AN ACCELERATED QUANTITY, which is the whole reason this
+ * group otherwise steps finely: they read the cascade's own end flag, the launched
+ * count, the flight being empty, which card left which foundation, and how much of
+ * the table is still painted — facts about where the cascade ended and what it
+ * carried there, none of them quantised to a frame.
+ *
+ * AND WHERE A CASCADE ENDS IS NOT A FRAME-RATE QUANTITY EITHER. Two things decide
+ * it, and specs/victory.md integrates both exactly however an interval is divided
+ * into frames: the launch clock adds each frame's delta, so the fifty-second launch
+ * falls at the same game time whatever the frames were, and a card retires on `x`
+ * alone, which advances by `vx * dt` at a `vx` the flight never changes. What
+ * gravity and the floor do to `y` in between is the one part a coarser frame moves,
+ * and it is exactly what {@link CASCADE_HZ} is for.
+ *
+ * Thirty is a frame length an ordinary machine really delivers, so the ending these
+ * three watch is an ending a player could sit through. A launch interval of `0.18`
+ * s is still five frames at it, so a frame carries at most one launch.
  */
+export const RUNOUT_HZ = 30;
+
+/** A harness whose clock steps the frames a run-out is waited out in. */
 export function createRunoutHarness(): Promise<Harness> {
-  return createHarness();
+  return createHarness({ hz: RUNOUT_HZ });
 }
 
 /** Whole frames of the run-out clock covering `duration` seconds. */
 export function runoutFrames(duration: number): number {
-  return framesFor(duration);
+  return framesFor(duration, RUNOUT_HZ);
+}
+
+/**
+ * The frame the LAUNCH CADENCE is watched in — neither {@link CASCADE_HZ} nor
+ * {@link RUNOUT_HZ}.
+ *
+ * `launch-cadence` reads two facts about the launch clock over three seconds of a
+ * running cascade: how many cards left, and the mean gap between them. Neither is
+ * a frame-rate quantity. specs/victory.md's clock adds each frame's delta and
+ * carries what it does not spend, so the k-th card leaves at
+ * `k * LAUNCH_INTERVAL` however the interval was divided into frames, and a frame
+ * decides only which frame a launch is OBSERVED on. Stepped at
+ * {@link CASCADE_HZ} that one check spends seven hundred and twenty rendered
+ * frames reading seventeen launches.
+ *
+ * A COARSER FRAME ALSO READS THE CARRY, which is half of what the rule states. At
+ * `1 / 240` s the interval is `43.2` frames, so a build that ZEROED its clock
+ * where the specification subtracts the interval launches every forty-fourth
+ * frame: a cadence `1.9` percent wide and a count those three seconds cannot tell
+ * from the requirement. At `1 / 40` s the interval is `7.2` frames, so the same
+ * build launches every eighth — a `0.2` s cadence, and fifteen cards over the
+ * hold rather than seventeen.
+ *
+ * FORTY RATHER THAN {@link RUNOUT_HZ} because of what the observation rounds. A
+ * launch is read at the end of the frame it happened in, so the mean over the
+ * hold's gaps carries that rounding: at `1 / 40` s the seventeenth card's `2.88`
+ * s is read at `2.9`, and the mean lands `0.31` ms under the interval, a twelfth
+ * of the two percent that check allows. The run-out's thirty would spend a
+ * quarter of the same allowance on the same rounding.
+ */
+export const CADENCE_HZ = 40;
+
+/** A harness whose clock steps the frames a launch cadence is watched in. */
+export function createCadenceHarness(): Promise<Harness> {
+  return createHarness({ hz: CADENCE_HZ });
+}
+
+/** Whole frames of the cadence clock covering `duration` seconds. */
+export function cadenceFrames(duration: number): number {
+  return framesFor(duration, CADENCE_HZ);
 }
 
 /**
@@ -149,6 +211,61 @@ export function poseFlight(h: Harness, pose: FlyerPose): number {
     pose.vx,
     pose.vy,
   );
+}
+
+/**
+ * Perform `count` launch draws through `drawLaunchVx` and hand back what each
+ * returned, in order.
+ *
+ * specs/instrumentation.md has `drawLaunchVx` perform exactly the draw a launch
+ * performs and nothing else, so this is the launch's `vx` read without the
+ * launch: no cascade is run, no card is launched, and nothing is in flight. A
+ * value that is not a finite number is failed here, because a check comparing
+ * it against a range would otherwise report the range.
+ */
+export function drawLaunches(h: Harness, count: number): number[] {
+  return Array.from({ length: count }, (_, index) => {
+    const value: unknown = h.debug.drawLaunchVx();
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      fail(
+        "drawLaunchVx() to return a finite number, the signed vx it drew " +
+          "(specs/instrumentation.md)",
+        `draw ${index + 1} returned ${JSON.stringify(value)}`,
+      );
+    }
+    return value;
+  });
+}
+
+/**
+ * How long the drawn speeds are flown for before the still is taken, in
+ * seconds. A picture's duration and nothing a check asserts: long enough for
+ * the fan of cards to show which way each drawn speed carries its card.
+ */
+const DRAWN_FLIGHT_SECONDS = 0.6;
+
+/**
+ * Put the drawn speeds on the table for the still: one card in flight per
+ * value, launched from the foundation anchors in turn at `LAUNCH_VY`, and flown
+ * for {@link DRAWN_FLIGHT_SECONDS} so the fan is visible.
+ *
+ * Arrangement for the picture alone. Nothing a `launch-vx` check asserts is read
+ * from the flyers this poses; the draws were read before it ran.
+ */
+export async function poseDrawnFlight(
+  h: Harness,
+  speeds: readonly number[],
+): Promise<void> {
+  openFlight(h);
+  for (const [index, vx] of speeds.entries()) {
+    poseFlight(h, {
+      x: FOUNDATION_X[index % FOUNDATION_COUNT],
+      y: TOP_ROW_Y,
+      vx,
+      vy: LAUNCH_VY,
+    });
+  }
+  await h.advance(flightFrames(DRAWN_FLIGHT_SECONDS));
 }
 
 /**
@@ -278,10 +395,13 @@ function shrankFoundation(before: number[], after: number[]): number {
  * flight.
  *
  * One frame at a time because a launch's velocity is what the launch gave it:
- * read a few frames later, `vy` has been through gravity. The frames are this
- * group's own (1/240 s), which is far finer than the launch interval
- * specs/victory.md fixes, so a frame carries at most one launch and each is
- * reported on its own.
+ * read a few frames later, `vy` has been through gravity. Which clock those frames
+ * come off is the caller's: the checks that read a launch VELOCITY step this
+ * group's own (1/240 s), `launch-cadence` steps {@link CADENCE_HZ}, and
+ * `launch-takes-top-card`, which reads only which card left which foundation,
+ * steps {@link RUNOUT_HZ}. All three are finer than the launch interval
+ * specs/victory.md fixes, so a frame carries at most one launch whichever it is
+ * and each is reported on its own.
  *
  * `stop` ends the sweep early when it has seen everything the check asked for.
  */

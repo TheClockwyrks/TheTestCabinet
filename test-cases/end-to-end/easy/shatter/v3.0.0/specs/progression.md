@@ -34,10 +34,10 @@ the game is over.
 The game is an endless series of waves of rocks.
 
 Wave `N` spawns `WAVE_BASE_ROCKS + N` (`3 + N`) Large rocks, so wave 1 puts up
-four and wave 2 puts up five. Each is placed at a random position at least
-`WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least `WAVE_MIN_STAR_DIST`
-(`200`) from the star, both by the shortest wrapped separation, and set drifting
-in a random direction.
+four and wave 2 puts up five. Each is placed at a position drawn uniformly from
+the points of the field at least `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at
+least `WAVE_MIN_STAR_DIST` (`200`) from the star, both by the shortest wrapped
+separation, and set drifting in a direction drawn uniformly over the full turn.
 
 Each rock's speed is a Large's base drift speed (`specs/rocks.md`) multiplied by
 

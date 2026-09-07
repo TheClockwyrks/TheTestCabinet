@@ -67,6 +67,8 @@ export const BACKGROUND: string = FIELD_BACKGROUND;
 // ---- The declared state (specs/state.md) ---------------------------------
 
 export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type SaucerEdge = "left" | "right";
+export type FieldEdge = "top" | "bottom" | "left" | "right";
 
 export interface ShipState {
   readonly x: number;
@@ -108,6 +110,7 @@ export interface SaucerState {
   readonly mind: boolean;
   readonly gun: boolean;
   readonly travel: boolean;
+  readonly weave: 1 | -1;
   readonly fireClock: number;
   readonly weaveClock: number;
   readonly age: number;
@@ -149,11 +152,16 @@ export interface ShatterState {
   readonly saucerClock: number;
   readonly saucerDue: number;
 
+  readonly nextSaucerEdge: SaucerEdge | null;
+  readonly nextSaucerRow: number | null;
+  readonly nextSaucerAim: number | null;
+  readonly nextRockSpeed: number | null;
+  readonly nextRecycleEdge: FieldEdge | null;
+
   readonly tickClock: number;
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 
   /**
    * The seconds left on the extra-ship announcement `specs/scoring.md` asks

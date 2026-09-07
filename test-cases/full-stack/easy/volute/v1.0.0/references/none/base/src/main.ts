@@ -10,7 +10,6 @@
 // picture in `src/render.ts`, and the surface in `src/debug.ts`.
 
 import { loadAssets } from "./assets";
-import { DEFAULT_SEED } from "./constants";
 import { installDebugApi } from "./debug";
 import { createRuntime } from "./runtime";
 
@@ -24,7 +23,7 @@ async function boot(): Promise<void> {
   // frame and the first thing drawn is the finished hall.
   const assets = await loadAssets();
 
-  const runtime = createRuntime({ canvas, assets, seed: DEFAULT_SEED });
+  const runtime = createRuntime({ canvas, assets });
 
   // window.__volute (see src/debug.ts and specs/instrumentation.md). Installed on
   // every build, and inert during normal play.

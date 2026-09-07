@@ -30,8 +30,6 @@ import {
 } from "../harness";
 import { assertEveryBeamEmpty } from "./helpers";
 
-const SEED = 1;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -43,7 +41,7 @@ afterEach(() => {
 });
 
 it("starts the sequence on CASCADE: playing, count 0, tier 1, a fresh board", async () => {
-  await startCascade(h, SEED);
+  await startCascade(h);
   // The first generated board, as the frame that landed it drew it.
   captureStill(h, "board");
 

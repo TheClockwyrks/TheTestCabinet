@@ -31,9 +31,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed the deal runs off; nothing this point reads turns on it. */
-const SEED = 1;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -45,7 +42,7 @@ afterEach(() => {
 });
 
 it("deals a full deck and stays in play when the HUD's NEW GAME is clicked", async () => {
-  openTable(h, SEED);
+  openTable(h);
   const before = h.snapshot();
   assertEqual(
     before.screen,

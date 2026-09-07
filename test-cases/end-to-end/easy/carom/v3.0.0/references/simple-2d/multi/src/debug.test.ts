@@ -12,7 +12,6 @@ import {
   BALL_COUNT,
   BALL_HOMES,
   CAROM_DEBUG_VERSION,
-  DEFAULT_SEED,
   FIELD_CY,
   HOLD_TIME,
   MATCHOVER_ITEMS,
@@ -40,8 +39,6 @@ function rally(): CaromState {
     score: { p1: 3, p2: 5 },
     simTime: 12.5,
     muted: true,
-    seed: 99,
-    rngState: 12345,
     paddles: {
       left: { cy: 200, vy: 50, driven: false, drivenVy: 0 },
       right: { cy: 500, vy: -50, driven: false, drivenVy: 0 },
@@ -69,7 +66,8 @@ describe("every operation", () => {
       debug.spawnBall(before, 0),
       debug.spawnObstacle(before, 1),
       debug.reset(before),
-      debug.setSeed(before, 7),
+      debug.setBallLaunchAngle(before, 0, 1),
+      debug.drawBallLaunchAngle(before, 0),
       debug.setScreen(before, "paused"),
       debug.setMode(before, "versus"),
       debug.setMenuIndex(before, 2),
@@ -130,6 +128,7 @@ describe("spawnBall", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      launchAngle: expect.any(Number),
       trail: [],
     });
   });
@@ -141,7 +140,8 @@ describe("spawnBall", () => {
   });
 
   it("returns a ball already present to that same arrangement", () => {
-    const respawned = debug.spawnBall(rally(), 0);
+    const before = rally();
+    const respawned = debug.spawnBall(before, 0);
     expect(respawned.balls).toHaveLength(BALL_COUNT);
     expect(respawned.balls[0]).toEqual({
       index: 0,
@@ -152,10 +152,11 @@ describe("spawnBall", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      launchAngle: expect.any(Number),
       trail: [],
     });
     // And nothing else moved.
-    expect(respawned.balls[1]).toEqual(rally().balls[1]);
+    expect(respawned.balls[1]).toEqual(before.balls[1]);
   });
 
   it("leaves the state alone for an index this variant does not have", () => {
@@ -191,13 +192,19 @@ describe("spawnObstacle", () => {
 describe("reset", () => {
   it("restores every declared field but muted", () => {
     const reset = debug.reset(rally());
-    expect(reset).toEqual({ ...createInitialState(), muted: true });
+    expect(reset).toEqual({
+      ...createInitialState(),
+      muted: true,
+      // Each parked ball draws its own launch angle.
+      balls: reset.balls.map((ball, index) => ({
+        ...createInitialState().balls[index],
+        launchAngle: ball.launchAngle,
+      })),
+    });
   });
 
-  it("reseeds from DEFAULT_SEED and returns the clock to zero", () => {
+  it("returns the clock to zero", () => {
     const reset = debug.reset(rally());
-    expect(reset.seed).toBe(DEFAULT_SEED);
-    expect(reset.rngState).toBe(DEFAULT_SEED);
     expect(reset.simTime).toBe(0);
   });
 
@@ -228,14 +235,25 @@ describe("reset", () => {
   });
 });
 
-describe("setSeed", () => {
-  it("sets the seed and the generator state together, and nothing else", () => {
+describe("setBallLaunchAngle", () => {
+  it("sets one ball's launch angle and nothing else", () => {
     const before = rally();
-    const seeded = debug.setSeed(before, 42);
-    expect(seeded.seed).toBe(42);
-    expect(seeded.rngState).toBe(42);
-    expect(seeded.balls).toEqual(before.balls);
-    expect(seeded.simTime).toBe(before.simTime);
+    const posed = debug.setBallLaunchAngle(before, 1, 2.5);
+    expect(posed.balls[1].launchAngle).toBe(2.5);
+    expect(posed.balls[0]).toEqual(before.balls[0]);
+    expect(posed.balls[2]).toEqual(before.balls[2]);
+    expect(posed.simTime).toBe(before.simTime);
+  });
+});
+
+describe("drawBallLaunchAngle", () => {
+  it("draws one ball's launch angle afresh, inside the circle", () => {
+    const before = debug.setBallLaunchAngle(rally(), 1, -1);
+    const drawn = debug.drawBallLaunchAngle(before, 1);
+    expect(drawn.balls[1].launchAngle).toBeGreaterThanOrEqual(0);
+    expect(drawn.balls[1].launchAngle).toBeLessThan(2 * Math.PI);
+    expect(drawn.balls[0]).toEqual(before.balls[0]);
+    expect(drawn.balls[2]).toEqual(before.balls[2]);
   });
 });
 
@@ -379,8 +397,6 @@ describe("snapshot", () => {
       score: { p1: 3, p2: 5 },
       winner: null,
       muted: true,
-      seed: 99,
-      rngState: 12345,
       paddles: {
         left: { cy: 200, vy: 50, drivenVy: 0, driven: false },
         right: { cy: 500, vy: -50, drivenVy: 0, driven: false },
@@ -396,6 +412,7 @@ describe("snapshot", () => {
         spin: 20,
         held: ball.held,
         holdTimer: ball.holdTimer,
+        launchAngle: ball.launchAngle,
         trail: [{ x: ball.x - 10, y: 299, t: 12.4 }],
       })),
       obstacles: [
@@ -436,8 +453,6 @@ describe("snapshot", () => {
     expect(snap.titleIndex).toBe(0);
     expect(snap.resumeScreen).toBe("playing");
     expect(snap.winner).toBeNull();
-    expect(snap.seed).toBe(DEFAULT_SEED);
-    expect(snap.rngState).toBe(DEFAULT_SEED);
     expect(snap.simTime).toBe(0);
     expect(snap.paddles.left).toEqual({
       cy: FIELD_CY,

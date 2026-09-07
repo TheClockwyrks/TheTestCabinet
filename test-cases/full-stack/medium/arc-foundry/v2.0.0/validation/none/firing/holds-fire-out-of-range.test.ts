@@ -8,8 +8,8 @@
 //
 // The unit is parked one logical unit beyond the radius specs/components.md gives
 // the structure — `100` at Scrap — and held there, so it cannot drift into range
-// while the check is watching. Five seconds is more than three of this
-// structure's cadences, so a build that fires at it has ample room to be caught.
+// while the check is watching. `WATCHED` is more than three of this structure's
+// cadences, so a build that fires at it has ample room to be caught.
 // Three readings say it held: no projectile ever appeared, the structure's
 // `firing` flag stayed down, and its damage tally never moved.
 
@@ -33,8 +33,8 @@ const ANCHOR = { col: 10, row: 10 };
 /** One unit beyond the Scrap Capacitor's radius. */
 const BEYOND = componentRange("capacitor", 1) + 1;
 
-/** How long the structure is watched, in seconds. */
-const WATCHED = 5;
+/** How long the structure is watched, in seconds: past three of any cadence. */
+const WATCHED = 3;
 
 /** Frames between samples: a shot at this range would be in flight far longer. */
 const SAMPLE_FRAMES = 2;

@@ -28,10 +28,15 @@
 // THE THREE PARTS. The interval is read as a cadence: the ticks a spawn lands
 // on across two whole intervals, which the timer rule fixes at `1`, `1 + k` and
 // `1 + 2k` with `k` = `round(interval × TICK_HZ)`, and no tick between. The
-// types are read across thirty spawns, each posed by clearing the field and
-// setting the timer to `0` so the next tick spawns, so the cap never binds and
-// every draw is the window's own; every draw must be one of the row's types,
-// and each of them must come up at least once. The cap is read by posing
+// types are read two ways. Each type the row lists is posed in turn through
+// `setNextSpawnType`, which specs/instrumentation.md gives the surface for this
+// draw ("The next window spawn is of that type in place of the type drawn from
+// the window's types"), and the spawn the next due tick lands must be of it: a
+// build whose window cannot spawn one of the row's types fails on that type.
+// Then `UNPOSED_DRAWS` spawns are drawn with nothing posed, each on its own due
+// tick with the field cleared between so the cap never binds, and every one
+// must be a type the row lists: a build that reaches into another window's
+// roster fails on the first spawn outside it. The cap is read by posing
 // exactly `cap` commons alive and running two whole intervals: nothing spawns,
 // and the timer rests at `0`, as "When the cap is full the timer rests at `0`"
 // states. That reading is one-sided on its own — a build whose cap is BELOW the
@@ -42,10 +47,16 @@
 // sides, so each row's own check decides that row's figure.
 //
 // WHY THE FIELD IS CLEARED BETWEEN SPAWNS. `aliveCommons` is "the number of
-// live enemies of rank `common` other than gnats", and rows 0 to 9 cap it below
-// thirty, so thirty spawns left standing would hit the cap and stop the timer.
-// Clearing is a pose of the field alone and decides nothing the check reads:
-// which type each spawn is, is the draw the tick made.
+// live enemies of rank `common` other than gnats", and every spawn left standing
+// counts toward the cap, so the field is cleared before each posed and unposed
+// draw. Clearing is a pose of the field alone and decides nothing the check
+// reads: which type each spawn is, is the draw the tick made.
+//
+// HOW THE CAP'S CROWD IS POSED. A row's cap runs to `200`, and each of those
+// commons is posed through the build's own `window.__wick.spawnEnemy`, called
+// the way any caller would call it; what one evaluation saves over one crossing
+// per common is the round trips, exactly as `rollDrops` in `../pickups/stage`
+// makes its calls.
 //
 // WHAT IS HELD. `spawning` alone, so nothing despawns, no scripted event fires,
 // nothing moves, nothing touches the lamplighter and no weapon is held. Every
@@ -59,6 +70,7 @@ import {
   assertTrue,
 } from "../assert";
 import {
+  HANDLE,
   SPAWN_WINDOWS,
   TIMER_TOL,
   dueTicks,
@@ -72,8 +84,8 @@ import {
   type WickSnapshot,
 } from "../harness";
 
-/** How many spawns the type reading draws. */
-export const TYPE_DRAWS = 30;
+/** How many spawns are drawn with nothing posed for the type. */
+export const UNPOSED_DRAWS = 6;
 
 /** The common posed to fill the cap: rank `common` and not a gnat, so it counts. */
 export const CAP_FILLER: EnemyId = "moth";
@@ -94,9 +106,19 @@ export interface CadenceReading {
   cadence: WickSnapshot;
 }
 
+/** One posed type and what the due tick spawned under it. */
+export interface PosedSpawn {
+  /** The type posed through `setNextSpawnType`. */
+  posed: EnemyId;
+  /** The type of the enemy the next due tick spawned. */
+  spawned: EnemyId;
+}
+
 /** What one window's drive read. */
 export interface WindowReading extends CadenceReading {
-  /** The type of each of the {@link TYPE_DRAWS} posed spawns, in order. */
+  /** Each of the row's types posed in turn, and what spawned under it. */
+  posedTypes: PosedSpawn[];
+  /** The type of each of the {@link UNPOSED_DRAWS} unposed spawns, in order. */
   types: EnemyId[];
   /** How many enemies landed across the run at the cap. */
   spawnsAtCap: number;
@@ -141,31 +163,67 @@ async function readCadence(h: Harness, index: number): Promise<CadenceReading> {
   return { spawnTicks, spawnCounts, cadence };
 }
 
-/** Draw `TYPE_DRAWS` spawns, one per tick, with the field cleared between. */
-async function readTypes(h: Harness): Promise<EnemyId[]> {
+/** Clear the field, make the timer due, and read the type the next tick spawns. */
+async function drawOne(h: Harness, label: string): Promise<EnemyId> {
+  await h.debug.clearEnemies();
+  await h.debug.setSpawnTimer(0);
+  const before = await h.snapshot();
+  const after = await h.step(1);
+  const arrivals = newEnemies(before, after);
+  assertEqual(
+    arrivals.length,
+    1,
+    `enemies the window spawned on a tick its timer was due (${label})`,
+  );
+  return arrivals[0]!.type;
+}
+
+/** Pose each of the row's types in turn and read what spawned under each. */
+async function readPosedTypes(
+  h: Harness,
+  index: number,
+): Promise<PosedSpawn[]> {
+  const posedTypes: PosedSpawn[] = [];
+  for (const posed of SPAWN_WINDOWS[index]!.types) {
+    await h.debug.setNextSpawnType(posed);
+    const spawned = await drawOne(h, `${posed} posed`);
+    posedTypes.push({ posed, spawned });
+  }
+  return posedTypes;
+}
+
+/** Draw `UNPOSED_DRAWS` spawns with nothing posed, one per due tick. */
+async function readUnposedTypes(h: Harness): Promise<EnemyId[]> {
   const types: EnemyId[] = [];
-  for (let draw = 0; draw < TYPE_DRAWS; draw += 1) {
-    await h.debug.clearEnemies();
-    await h.debug.setSpawnTimer(0);
-    const before = await h.snapshot();
-    const after = await h.step(1);
-    const arrivals = newEnemies(before, after);
-    assertEqual(
-      arrivals.length,
-      1,
-      `enemies the window spawned on a tick its timer was due (draw ${draw + 1})`,
-    );
-    types.push(arrivals[0]!.type);
+  for (let draw = 0; draw < UNPOSED_DRAWS; draw += 1) {
+    types.push(await drawOne(h, `unposed draw ${draw + 1}`));
   }
   return types;
 }
 
-/** Clear the field and stand `count` commons well clear of the spawn ring. */
+/**
+ * Clear the field and stand `count` commons well clear of the spawn ring, all
+ * through the build's own `spawnEnemy` inside one evaluation.
+ */
 async function poseCommons(h: Harness, count: number): Promise<void> {
   await h.debug.clearEnemies();
-  for (let held = 0; held < count; held += 1) {
-    await h.debug.spawnEnemy(CAP_FILLER, FILLER_X + held * FILLER_GAP, 0);
-  }
+  await h.page.evaluate(
+    ([handle, type, total, x, gap]) => {
+      const api = (
+        window as unknown as Record<
+          string,
+          Record<string, (...a: unknown[]) => unknown>
+        >
+      )[handle];
+      if (api === undefined) {
+        throw new Error(`wick: the surface ${handle} is not installed`);
+      }
+      for (let held = 0; held < total; held += 1) {
+        api.spawnEnemy!(type, x + held * gap, 0);
+      }
+    },
+    [HANDLE, CAP_FILLER, count, FILLER_X, FILLER_GAP] as const,
+  );
 }
 
 /**
@@ -211,8 +269,8 @@ async function readCap(
  * three figures its row states.
  *
  * `film` wraps the cadence run alone, which is the part of the drive a reviewer
- * watches: the two runs after it pose two hundred commons and clear the field
- * thirty times, and neither is a picture of the window.
+ * watches: the runs after it pose a crowd and clear the field between draws,
+ * and neither is a picture of the window.
  */
 export async function readWindow(
   h: Harness,
@@ -221,9 +279,10 @@ export async function readWindow(
 ): Promise<WindowReading> {
   await isolate(h, { on: ["spawning"] });
   const cadence = await film(() => readCadence(h, index));
-  const types = await readTypes(h);
+  const posedTypes = await readPosedTypes(h, index);
+  const types = await readUnposedTypes(h);
   const cap = await readCap(h, index);
-  return { ...cadence, types, ...cap };
+  return { ...cadence, posedTypes, types, ...cap };
 }
 
 /** Assert every figure of row `index` against what {@link readWindow} read. */
@@ -242,16 +301,22 @@ export function assertWindow(index: number, reading: WindowReading): void {
     `enemies each of window ${index}'s due ticks spawned`,
   );
 
+  assertDeepEqual(
+    reading.posedTypes.map((entry) => entry.posed),
+    [...row.types],
+    `the types posed for window ${index}, one per type the row lists`,
+  );
+  for (const { posed, spawned } of reading.posedTypes) {
+    assertEqual(
+      spawned,
+      posed,
+      `the type window ${index} spawned with ${posed} posed`,
+    );
+  }
   for (const [draw, type] of reading.types.entries()) {
     assertTrue(
       row.types.includes(type),
-      `spawn ${draw + 1} of window ${index} (${type}) among the row's types (${row.types.join(", ")})`,
-    );
-  }
-  for (const type of row.types) {
-    assertTrue(
-      reading.types.includes(type),
-      `${type} among window ${index}'s ${TYPE_DRAWS} spawns (${[...new Set(reading.types)].join(", ")})`,
+      `unposed spawn ${draw + 1} of window ${index} (${type}) among the row's types (${row.types.join(", ")})`,
     );
   }
 

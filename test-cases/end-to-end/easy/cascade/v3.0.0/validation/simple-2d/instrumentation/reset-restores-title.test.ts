@@ -9,7 +9,7 @@
 // the painted layer cleared and `trailStamps` `0`; and `simTime` `0`.
 //
 // WHY IT MATTERS BEYOND ITS OWN POINT. `reset` is the operation that makes a
-// scenario reproducible: `openTable` in `harness.ts` opens every scenario in this
+// scenario start clean: `openTable` in `harness.ts` opens every scenario in this
 // project with it, and a `reset` that leaves a card, a flyer or a gate behind
 // carries one scenario into the next.
 //

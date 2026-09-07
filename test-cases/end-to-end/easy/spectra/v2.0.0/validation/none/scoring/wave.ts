@@ -39,6 +39,14 @@ import {
 } from "../harness";
 
 /**
+ * The band clock a shimmering Flux is settled to before it is shot, in seconds.
+ *
+ * Zero, the start of a window, which is inside the held part for every stage
+ * (`fluxHold(stage)` is at least `1.0` s, `specs/stages.md`).
+ */
+const HELD_CLOCK = 0;
+
+/**
  * The one spot every kill in these four checks happens at.
  *
  * A clear stretch of the play field: below the formation grid's lowest row
@@ -127,6 +135,17 @@ export async function openWave(
  * (`specs/drones.md`), and its `effectiveBand` is read again in between because
  * breaking the shell swaps it.
  *
+ * A SHIMMERING FLUX IS SETTLED ONTO A BAND BEFORE IT IS SHOT. "No shot destroys a
+ * shimmering Flux, of either band" (`specs/drones.md`), and a wave the build laid
+ * out is free to open a Flux anywhere inside its band window — including the
+ * shimmer, where nothing this helper could fire would destroy it. So a Flux read
+ * shimmering has its band clock posed to {@link HELD_CLOCK}, the start of a
+ * window, which `specs/drones.md` puts squarely in the HELD part; with
+ * {@link openWave} holding the oscillation gate shut the clock stays there. WHICH
+ * band it then reads is the build's own stored band, read back off the state the
+ * pose left rather than assumed. The rhythm itself is `drones`'s to grade; here
+ * it is only kept out of a reading that is about a figure.
+ *
  * It fails, rather than returning, if the drone is still standing afterwards: a
  * check about what a stage's end pays cannot go on with a drone it believes it
  * destroyed.
@@ -149,8 +168,13 @@ export async function destroyDrone(
   // breaking the shell swaps it — and because a kill can start an inversion that
   // swaps every drone's.
   for (let shot = 0; shot < 2; shot += 1) {
-    const standing = droneById(state, id);
+    let standing = droneById(state, id);
     if (standing === undefined) break;
+    if (standing.kind === "flux" && standing.shimmer) {
+      state = await h.pose([["setDroneBandClock", id, HELD_CLOCK]]);
+      standing = droneById(state, id);
+      if (standing === undefined) break;
+    }
     const fired = await fireAt(
       h,
       KILL_AT.x,

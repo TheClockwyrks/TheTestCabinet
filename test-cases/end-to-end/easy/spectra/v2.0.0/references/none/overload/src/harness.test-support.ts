@@ -12,7 +12,7 @@
 
 import { createDebugApi, type SpectraDebugApi } from "./debug";
 import { createGame } from "./game";
-import { DEFAULT_SEED, type ActionName } from "./constants";
+import type { ActionName } from "./constants";
 import type { Sprites } from "./assets";
 import type { Game, InitApi, UpdateApi } from "./runtime";
 import type { SpectraState } from "./types";
@@ -72,7 +72,7 @@ export function stubSprites(burst: ParticleSystem | null = null): Sprites {
 
 /** Stand the game up over a fake runtime and return the driver. */
 export function driver(
-  options: { seed?: number; burst?: ParticleSystem | null } = {},
+  options: { burst?: ParticleSystem | null } = {},
 ): Driver {
   const held = new Set<string>();
   const edges = new Set<string>();
@@ -117,7 +117,6 @@ export function driver(
     stubSprites(options.burst ?? null),
   );
   const state = game.initialize(initApi);
-  state.rngState = (options.seed ?? DEFAULT_SEED) >>> 0;
 
   const frame = (seconds: number): void => {
     game.update(state, updateApi, seconds);

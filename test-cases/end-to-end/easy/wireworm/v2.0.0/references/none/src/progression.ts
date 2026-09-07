@@ -25,7 +25,7 @@ import {
   wormLength,
 } from "./constants";
 import { emptyField, scatterField } from "./field";
-import { nextChance } from "./rng";
+import { randomChance } from "./rng";
 import { addScore } from "./scoring";
 import type { CueSink, Tile, WirewormState } from "./types";
 
@@ -57,7 +57,7 @@ export function toTitle(state: WirewormState, index = 0): void {
  */
 export function startRun(state: WirewormState): void {
   state.field = emptyField();
-  scatterField(state.field, state);
+  scatterField(state.field);
   state.worms = [];
   state.foes = [];
   state.bolts = [];
@@ -85,7 +85,8 @@ export function startRun(state: WirewormState): void {
  *
  * Every segment is laid on row 0, the head furthest from the edge it entered at
  * and the tail nearest it, so the whole chain stands on the board from the
- * moment it arrives. The side is drawn from the run's seeded generator.
+ * moment it arrives. The side is a coin flip, unless the debug surface posed
+ * it, in which case the pose decides this one entry and is consumed by it.
  *
  * Gated by `wormEntry`, which is the level's and the respawn's entry and nothing
  * else: a worm already on the board steps as usual whatever the gate says.
@@ -93,7 +94,9 @@ export function startRun(state: WirewormState): void {
 export function enterLevelWorm(state: WirewormState): void {
   if (!state.wormEntry) return;
   const length = wormLength(state.level);
-  const fromLeft = nextChance(state, 0.5);
+  const posed = state.nextWormEntry;
+  state.nextWormEntry = null;
+  const fromLeft = posed === null ? randomChance(0.5) : posed === "left";
   const segments: Tile[] = [];
   for (let i = 0; i < length; i += 1) {
     const c = fromLeft ? length - 1 - i : COLS - length + i;

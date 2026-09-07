@@ -8,10 +8,11 @@
 //     visit is distinguishable from the next (`specs/instrumentation.md`). One
 //     counter on the state hands them out and never goes backwards, so an id is
 //     never reused while anything holds it.
-//   * SEEDED RANDOMNESS. Every draw `specs/simulation.md` lists — a rock's spawn,
-//     its drift, the point a recycled rock re-enters at, the saucer's edge and
-//     row, a rock's drawn spin — comes from the generator on the state
-//     (`src/rng.ts`), so a seeded replay reproduces the field exactly.
+//   * POSED DRAWS. Every draw `specs/simulation.md` lists — a rock's drift, the
+//     edge and point a recycled rock re-enters at, the saucer's edge, row and
+//     weave direction — is made here from the build's own source (`src/rng.ts`),
+//     and where the debug surface has posed the outcome the pose is taken in its
+//     place and consumed (`specs/instrumentation.md`).
 //
 // Nothing here steps anything: these are constructors, and how a body then
 // behaves is in the system that owns it.
@@ -34,10 +35,11 @@ import {
   TAU,
   type RockSize,
 } from "./constants";
-import { random, range, rangeInt } from "./rng";
+import { random, range, rangeInt, sign } from "./rng";
 import type {
   Bullet,
   EnemyBullet,
+  FieldEdge,
   Rock,
   Saucer,
   ShatterState,
@@ -55,8 +57,18 @@ import type {
  */
 export const NOSE_OFFSET = 12;
 
-/** Everything an entity factory needs off the state: the ids and the generator. */
-type Source = Pick<ShatterState, "rng" | "nextId">;
+/** Everything an entity factory needs off the state: the ids. */
+type Source = Pick<ShatterState, "nextId">;
+
+/** What a placement the debug surface can pose reads off the state. */
+type Posed = Pick<
+  ShatterState,
+  | "nextId"
+  | "nextSaucerEdge"
+  | "nextSaucerRow"
+  | "nextRockSpeed"
+  | "nextRecycleEdge"
+>;
 
 /** The next unused id, advancing the counter. Never reused within a game. */
 export function takeId(source: Source): number {
@@ -109,11 +121,11 @@ export function shipNose(ship: Ship): Vec {
  * An irregular angular outline: per-vertex radii jittered around the collision
  * radius, so a rock reads as tumbling debris while colliding as a clean circle.
  */
-function makeOutline(source: Source, radius: number): number[] {
-  const count = rangeInt(source, 9, 12);
+function makeOutline(radius: number): number[] {
+  const count = rangeInt(9, 12);
   const verts: number[] = [];
   for (let i = 0; i < count; i += 1) {
-    verts.push(radius * range(source, 0.78, 1.12));
+    verts.push(radius * range(0.78, 1.12));
   }
   return verts;
 }
@@ -136,15 +148,18 @@ export function makeRock(
     vy,
     size,
     radius,
-    angle: range(source, 0, TAU),
-    spin: range(source, -1, 1),
-    verts: makeOutline(source, radius),
+    angle: range(0, TAU),
+    spin: range(-1, 1),
+    verts: makeOutline(radius),
   };
 }
 
 /**
- * A rock drifting from `(x, y)` on a random heading at its size's base drift
- * speed, scaled by the wave's multiplier (`specs/progression.md`).
+ * A rock drifting from `(x, y)` on a random heading at a base drift speed,
+ * scaled by the wave's multiplier (`specs/progression.md`).
+ *
+ * The base speed is `base` where the caller holds a posed one, and otherwise the
+ * draw from the size's own range (`specs/rocks.md`).
  */
 export function driftRock(
   source: Source,
@@ -152,10 +167,11 @@ export function driftRock(
   x: number,
   y: number,
   speedScale: number,
+  base: number | null = null,
 ): Rock {
   const speed =
-    range(source, ROCK_SPEED_MIN[size], ROCK_SPEED_MAX[size]) * speedScale;
-  const heading = range(source, 0, TAU);
+    (base ?? range(ROCK_SPEED_MIN[size], ROCK_SPEED_MAX[size])) * speedScale;
+  const heading = range(0, TAU);
   return makeRock(
     source,
     size,
@@ -176,42 +192,46 @@ export function driftRock(
  * over never accelerates.
  *
  * It re-enters at a random point on one of the four edges, heading into the
- * field.
+ * field. The edge and the base speed are the posed ones where the debug surface
+ * has posed them, and each pose taken is consumed.
  */
-export function recycleRock(source: Source, rock: Rock): void {
-  const speed = range(
-    source,
-    ROCK_SPEED_MIN[rock.size],
-    ROCK_SPEED_MAX[rock.size],
-  );
+export function recycleRock(source: Posed, rock: Rock): void {
+  const speed =
+    source.nextRockSpeed ??
+    range(ROCK_SPEED_MIN[rock.size], ROCK_SPEED_MAX[rock.size]);
+  source.nextRockSpeed = null;
   // Within a third of a turn either side of straight in, so it always heads into
   // the field from the edge it entered at.
-  const spread = range(source, -Math.PI / 3, Math.PI / 3);
+  const spread = range(-Math.PI / 3, Math.PI / 3);
   const along = Math.cos(spread) * speed;
   const across = Math.sin(spread) * speed;
-  const edge = rangeInt(source, 0, 3);
-  if (edge === 0) {
+  const edge = source.nextRecycleEdge ?? FIELD_EDGES[rangeInt(0, 3)];
+  source.nextRecycleEdge = null;
+  if (edge === "left") {
     rock.x = 0;
-    rock.y = range(source, 0, FIELD_H);
+    rock.y = range(0, FIELD_H);
     rock.vx = along;
     rock.vy = across;
-  } else if (edge === 1) {
+  } else if (edge === "right") {
     rock.x = FIELD_W;
-    rock.y = range(source, 0, FIELD_H);
+    rock.y = range(0, FIELD_H);
     rock.vx = -along;
     rock.vy = across;
-  } else if (edge === 2) {
-    rock.x = range(source, 0, FIELD_W);
+  } else if (edge === "top") {
+    rock.x = range(0, FIELD_W);
     rock.y = 0;
     rock.vx = across;
     rock.vy = along;
   } else {
-    rock.x = range(source, 0, FIELD_W);
+    rock.x = range(0, FIELD_W);
     rock.y = FIELD_H;
     rock.vx = across;
     rock.vy = -along;
   }
 }
+
+/** The four edges, in the order a drawn index names them. */
+const FIELD_EDGES: readonly FieldEdge[] = ["left", "right", "top", "bottom"];
 
 // ---- Shots ---------------------------------------------------------------
 
@@ -272,6 +292,8 @@ export function makeSaucer(
     mind: true,
     gun: true,
     travel: true,
+    // Down, for a saucer posed onto the field; an arrival draws its own.
+    weave: 1,
     fireTimer: SAUCER_FIRE_INTERVAL,
     weaveTimer: SAUCER_WEAVE_INTERVAL,
     age: 0,
@@ -280,16 +302,23 @@ export function makeSaucer(
 
 /**
  * A saucer arriving the way the game's own cadence brings one in: at the left
- * edge or the right, chosen at random, at a row drawn uniformly across the field,
- * crossing into it at cruise (`specs/saucer.md`).
+ * edge or the right, each half the time, at a row drawn uniformly across the
+ * field, crossing into it at cruise, with a weave direction of its own
+ * (`specs/saucer.md`). A posed edge or row is taken in place of its draw and
+ * consumed.
  */
-export function enterSaucer(source: Source): Saucer {
-  const fromLeft = random(source) < 0.5;
-  const y = range(source, SAUCER_R, FIELD_H - SAUCER_R);
-  return makeSaucer(
+export function enterSaucer(source: Posed): Saucer {
+  const edge = source.nextSaucerEdge ?? (random() < 0.5 ? "left" : "right");
+  source.nextSaucerEdge = null;
+  const y = source.nextSaucerRow ?? range(SAUCER_R, FIELD_H - SAUCER_R);
+  source.nextSaucerRow = null;
+  const fromLeft = edge === "left";
+  const saucer = makeSaucer(
     source,
     fromLeft ? SAUCER_R : FIELD_W - SAUCER_R,
     y,
     fromLeft ? SAUCER_SPEED : -SAUCER_SPEED,
   );
+  saucer.weave = sign();
+  return saucer;
 }

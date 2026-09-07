@@ -2,9 +2,8 @@
 //
 // A `Session` is everything one run of play holds: the score, the lives, the
 // wave, the deflector, the three rings, the balls, the falling pods, the
-// effects, and the seeded pod stream's state. `KesslerState` in `src/game.ts`
-// — the world's live game state — implements it, and every function here
-// writes that live object in place. The boot layout is the state `reset`
+// effects. `KesslerState` in `src/game.ts` — the world's live game state —
+// implements it, and every function here writes that live object in place. The boot layout is the state `reset`
 // restores behind the title screen (`specs/instrumentation.md`); starting a
 // session parks the first ball on it, and a wave transition relays the rings
 // for the next wave (`specs/rings.md`). The span is derived: it is `72` while
@@ -73,8 +72,6 @@ export interface Session {
   /** Every falling pod, in spawn order, oldest first. */
   pods: Pod[];
   effects: Effects;
-  /** The seeded pod stream's whole state (`src/rng.ts`). */
-  rngState: number;
   /** The next ball or pod identity, never reused within a session. */
   nextId: number;
 }
@@ -101,9 +98,8 @@ export function clearedEffects(): Effects {
  * deflector at angle `90` with its baseline span, every slot filled at full
  * hit points with every ring at angle `0` and the wave-1 speeds, and no
  * balls, pods, or effects. This is the state behind the title screen;
- * starting the session parks the first ball on it. The pod stream's state and
- * the identity counter are the caller's, since `reset` seeds one and neither
- * belongs to a layout.
+ * starting the session parks the first ball on it. The identity counter is
+ * the caller's, since it belongs to no layout.
  */
 export function bootSession(session: Session): void {
   session.score = 0;

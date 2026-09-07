@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 it("a second segment onto a loaded emitter is refused", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R5_EMITTER);
 
   // Draw T(0,0)-t(1,0) and release: the emitter now carries its one segment.

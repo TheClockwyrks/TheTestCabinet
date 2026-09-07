@@ -1,23 +1,21 @@
-// instrumentation/overlay-read-only — a session watched through the overlay
-// ends exactly where the same session unwatched ends.
+// instrumentation/overlay-read-only — a game watched through the overlay ends
+// exactly where it stood before the overlay was shown.
 //
 // WHAT THE SPECIFICATION FIXES. specs/instrumentation.md (Diagnostics): "keep
-// every source a pure read, so watching the overlay leaves the game as it is",
-// backed by the deterministic core: "given the same seed and the same sequence
-// of operations and elapsed ticks, the game reproduces identical snapshots
-// every time".
+// every source a pure read, so watching the overlay leaves the game as it is".
 //
-// THE READ IS THE DETERMINISM ITSELF. Two sessions pose the same seeded, busy
-// scene — a ball in flight, targets it can reach, a falling pod, a running
-// pierce timer, the shield — and run the same ticks. One shows the overlay over
-// the middle stretch and hides it again; the other presses an unbound key at
-// the same moments, so both feel the same key edges and the same tick count.
-// If every diagnostic source is a pure read, the final snapshots are identical
-// to the float; any divergence is the overlay writing into the game.
+// THE READ IS BEFORE AND AFTER ON ONE SESSION. A busy scene — a ball in
+// flight, targets it can reach, a falling pod, a running pierce timer, the
+// shield, a posed pod outcome — is posed and then held on the `paused` screen,
+// where specs/screens.md keeps the field "exactly as the tick that paused it
+// left it" and a tick advances nothing but the tick counter. The overlay is
+// shown, the panel reports over a stretch of ticks, and the overlay is hidden;
+// the snapshots on either side must agree on everything but `ticks`, which the
+// frozen screen still counts. Any other difference is the overlay writing into
+// the game.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertDeepEqual } from "../assert";
-import { OVERLAY_TOGGLE_CODE, UNBOUND_KEY } from "../constants";
+import { assertDeepEqual, assertEqual } from "../assert";
 import {
   advanceTicks,
   captureReplay,
@@ -25,66 +23,48 @@ import {
   openHarness,
   spawnBallPolar,
   spawnPodPolar,
-  tap,
   type Harness,
-  type KesslerSnapshot,
 } from "../harness";
+import { pressToggle } from "./overlay";
 
-/** The session seed and the stretch the overlay watches. */
-const SEED = 5;
-const LEAD_TICKS = 30;
+/** The stretch the overlay watches, in ticks; each toggle costs one more. */
 const WATCH_TICKS = 60;
-const TAIL_TICKS = 30;
 
-/**
- * One session: the busy seeded scene, the lead, a key edge, the watched
- * stretch, the same key edge again, and the tail. `code` is the only
- * difference between the two runs.
- */
-async function runSession(
-  h: Harness,
-  code: string,
-  watched: (h: Harness) => Promise<unknown>,
-): Promise<KesslerSnapshot> {
-  await isolate(h, SEED);
+let h: Harness;
+
+beforeEach(async () => {
+  h = await openHarness();
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("leaves the watched game exactly as it stood", async () => {
+  await isolate(h);
   await h.debug.spawnTarget(1, 2, 1);
   await h.debug.spawnTarget(2, 5, 2);
   await spawnBallPolar(h, 250, 180, 300, 45);
   await spawnPodPolar(h, "widen", 420, 300);
   await h.debug.setEffectTicks("pierce", 200);
   await h.debug.setShield(true);
+  await h.debug.setNextPod("shield");
+  await h.debug.setScreen("paused");
 
-  await advanceTicks(h, LEAD_TICKS);
-  await tap(h, code);
-  await watched(h);
-  await tap(h, code);
-  await advanceTicks(h, TAIL_TICKS);
-  return h.snapshot();
-}
+  const before = await h.snapshot();
+  await pressToggle(h);
+  await captureReplay(h, "watched", () => advanceTicks(h, WATCH_TICKS));
+  await pressToggle(h);
+  const after = await h.snapshot();
 
-let a: Harness;
-let b: Harness;
-
-beforeEach(async () => {
-  a = await openHarness();
-  b = await openHarness();
-});
-
-afterEach(async () => {
-  await a.dispose();
-  await b.dispose();
-});
-
-it("leaves the watched session identical to the unwatched one", async () => {
-  const unwatched = await runSession(a, UNBOUND_KEY, (h) =>
-    advanceTicks(h, WATCH_TICKS),
-  );
-  const watched = await runSession(b, OVERLAY_TOGGLE_CODE, (h) =>
-    captureReplay(h, "watched", () => advanceTicks(h, WATCH_TICKS)),
+  assertEqual(
+    after.ticks,
+    before.ticks + WATCH_TICKS + 2,
+    "ticks counted on the frozen screen, the two toggle presses included",
   );
   assertDeepEqual(
-    watched,
-    unwatched,
-    "the watched session's final snapshot against the unwatched one",
+    { ...after, ticks: before.ticks },
+    before,
+    "the snapshot after the watched stretch against the one before it",
   );
 });

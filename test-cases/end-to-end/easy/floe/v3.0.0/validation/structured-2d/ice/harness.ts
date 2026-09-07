@@ -42,21 +42,14 @@ export const ICE_ROWS: readonly number[] = Array.from(
   (_unused, index) => ICE_TOP + index,
 );
 
-/** What `layOutLevel` may vary beyond the level itself. */
-export interface LayoutOptions {
-  /** The seed all of the game's randomness runs off, `DEFAULT_SEED` by default. */
-  seed?: number;
-}
-
 /**
  * Lay the strait out for a level and hand back the level exactly as it was laid.
  *
  * The sequence, and why each part of it is here:
  *
- *   - `reset` puts every field back to its title-screen value and seeds the
- *     generator the lanes' phases are drawn from (specs/instrumentation.md), so
- *     what follows is a level laid out from a known start rather than whatever
- *     the previous reading left.
+ *   - `reset()` puts every field back to its title-screen value
+ *     (specs/instrumentation.md), so what follows is a level laid out from a
+ *     known start rather than whatever the previous reading left.
  *   - `setLevel(level)` re-lays the sixteen lanes for the level asked for. It is
  *     called even for level `1`, so every level this group reads arrives by the
  *     same route and a reading at level `4` is not being compared against one
@@ -79,9 +72,8 @@ export interface LayoutOptions {
 export async function layOutLevel(
   h: Harness,
   level = 1,
-  options: LayoutOptions = {},
 ): Promise<FloeSnapshot> {
-  resetTo(h, options.seed);
+  resetTo(h);
   h.debug.setLevel(level);
   h.debug.setFishCadence(false);
   h.debug.setScreen("playing");

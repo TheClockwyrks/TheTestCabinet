@@ -21,11 +21,13 @@
 
 import type { CueName } from "./constants";
 import type {
+  Edge,
   FoeKind,
   Phase,
   PressAnchor,
   Screen,
   Sprites,
+  Tile,
   WirewormState,
 } from "./game";
 import type { DeepReadonly } from "ts-essentials";
@@ -130,15 +132,23 @@ export interface Sim {
   glitchTimer: number;
   corruptorTimer: number;
   dropperTimer: number;
+  nextWormEntry: Edge | null;
+  nextGlitchEntry: MutTile | null;
+  nextDropperEntry: MutTile | null;
+  nextCorruptorEntry: MutTile | null;
 
   nextId: number;
   simTime: number;
   muted: boolean;
-  rngState: number;
 
   presses: PressAnchor[];
 
   sprites: Sprites;
+}
+
+/** A posed tile, copied, or `null` where none is posed. */
+function copyTile(tile: DeepReadonly<Tile> | null): MutTile | null {
+  return tile === null ? null : { c: tile.c, r: tile.r };
 }
 
 /** Copy the state handed in into a value this transition may write. */
@@ -201,11 +211,14 @@ export function toSim(state: DeepReadonly<WirewormState>): Sim {
     glitchTimer: state.glitchTimer,
     corruptorTimer: state.corruptorTimer,
     dropperTimer: state.dropperTimer,
+    nextWormEntry: state.nextWormEntry,
+    nextGlitchEntry: copyTile(state.nextGlitchEntry),
+    nextDropperEntry: copyTile(state.nextDropperEntry),
+    nextCorruptorEntry: copyTile(state.nextCorruptorEntry),
 
     nextId: state.nextId,
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
 
     presses: state.presses.map((press) => ({
       id: press.id,

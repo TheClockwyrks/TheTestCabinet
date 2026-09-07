@@ -275,9 +275,9 @@ function poseTheApproach(h: Harness): ShipSnapshot {
  * free, which leaves the canvas holding a frame from a second later; this poses
  * the same approach again and stops on the tick the contact resolved, so the
  * picture a reviewer looks at is the moment the item is named for. The approach
- * is deterministic — a posed ship, no key held, an empty field and no draw of
- * the game's randomness anywhere in it — so the frame it stops on is the one the
- * reading was taken from.
+ * is a posed ship, no key held, an empty field and no draw of the game's
+ * randomness anywhere in it, so the frame it stops on is the one the reading was
+ * taken from.
  */
 export async function showTheContact(h: Harness, graze: Graze): Promise<void> {
   poseTheApproach(h);

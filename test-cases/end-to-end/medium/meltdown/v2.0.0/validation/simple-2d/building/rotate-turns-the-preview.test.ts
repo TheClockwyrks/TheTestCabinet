@@ -74,7 +74,7 @@ const PATCH = {
  * How far apart two samples of one pixel must be to count as a different pixel,
  * per channel.
  *
- * A rasterizer is deterministic frame to frame, so a conformant build repeats a
+ * A rasterizer draws the same pixels frame to frame, so a conformant build repeats a
  * pixel exactly; this band exists so a build that dithers or animates a highlight
  * by a shade is not counted as having turned anything. For scale, the smallest
  * change this reading has to see is a face mark appearing where the floor was, and

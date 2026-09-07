@@ -39,7 +39,6 @@ import {
   tapAction,
   type Harness,
 } from "../harness";
-import { DEFAULT_SEED } from "../surface";
 import { chargeOf, readyOf, setCharge } from "./scene";
 
 /** The charge a game opens on (`specs/weapons.md`). */
@@ -78,7 +77,7 @@ afterEach(() => {
 });
 
 it("opens a game with the charge full and the torpedo ready", async () => {
-  h.debug.reset({ seed: DEFAULT_SEED });
+  h.debug.reset();
   setCharge(h, TITLE_CHARGE);
 
   const title = h.snapshot();

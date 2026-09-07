@@ -11,7 +11,7 @@
 //     whether a tick opened an overlay or ended the run, `pause` was pressed,
 //     or the debug surface posed the screen, so the accumulator is `0` on every
 //     screen but `playing` by every route."
-//   - `specs/instrumentation.md` ("A deterministic core"): "On `playing`, each
+//   - `specs/instrumentation.md` ("A render-free core"): "On `playing`, each
 //     frame's delta time joins the accumulator, every whole `TICK_DT` in it is
 //     consumed as a tick, and the remainder waits for the next frame."
 //

@@ -220,7 +220,7 @@ export function remainingFrom(
 /**
  * The tile a unit standing on `(col, row)` steps to next: the neighbour that
  * minimises the step's cost plus that neighbour's own route. Ties are broken by
- * the order of `STEPS`, orthogonals first, so the choice is deterministic;
+ * the order of `STEPS`, orthogonals first, so the choice is fixed;
  * nothing in the specification fixes which of several equal-cost routes a unit
  * takes.
  */

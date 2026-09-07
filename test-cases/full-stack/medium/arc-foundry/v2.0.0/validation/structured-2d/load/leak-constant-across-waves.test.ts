@@ -24,15 +24,15 @@
 // (specs/instrumentation.md), which `instrumentation/frame-division-movement`
 // decides — and nothing read here is a projectile: the Capacitor `openField`
 // stands is `310` units from the walk, far outside its `100` reach, and the
-// unit walks away from it. So the frames are taken at {@link HZ}, where the
-// fastest unit in the roster still steps a fifth of a tile.
+// unit walks away from it. So the frames are taken at `VITALS_HZ`, the rate
+// every field `load/vitals.ts` poses runs at, where the fastest unit in the
+// roster still steps under a third of a tile.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { LOAD_ROSTER } from "../constants";
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { captureStill, createHarness, type Harness } from "../harness";
-import { leakFor, openField } from "./vitals";
+import { leakFor, openField, VITALS_HZ } from "./vitals";
 import {
   DEEP,
   DIFFICULTY,
@@ -41,17 +41,10 @@ import {
   healthStillScales,
 } from "./constant";
 
-/**
- * The frame rate the walks are taken at: `30` Hz, a quarter of this project's
- * default. The Spark, the roster's fastest unit at `120` units per second, still
- * steps `4` units a frame, a fifth of a tile.
- */
-const HZ = 30;
-
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(1000 / HZ) });
+  h = await createHarness({ hz: VITALS_HZ });
 });
 
 afterEach(() => {

@@ -28,7 +28,7 @@
 // menus), and no overlay drawing or toggle (the runtime draws the panel and owns
 // the backtick key).
 
-import { CAROM_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
+import { CAROM_DEBUG_VERSION } from "./constants";
 import { ballSpeed, createBall } from "./entities";
 import {
   toTitle,
@@ -40,6 +40,7 @@ import {
 } from "./game";
 import { menuItemRect, type MenuRect } from "./menu";
 import { isObstacleIndex, placeObstacle, poseObstacles } from "./obstacles";
+import { drawServeSign } from "./random";
 
 /** The `window` property the API is installed on. */
 export const CAROM_HANDLE = "__carom";
@@ -82,6 +83,8 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** The vertical sign the serve takes. */
+  serveSign: 1 | -1;
   /** The ball's trail samples, oldest first. */
   trail: TrailSampleSnapshot[];
 }
@@ -125,8 +128,6 @@ export interface CaromSnapshot {
   score: { p1: number; p2: number };
   winner: Side | null;
   muted: boolean;
-  seed: number;
-  rngState: number;
   paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
   ai: { tracking: boolean; movement: boolean };
   receiver: Side;
@@ -155,7 +156,6 @@ export interface CaromDebugApi {
   spawnBall(): void;
   spawnObstacle(index: number): void;
   reset(): void;
-  setSeed(seed: number): void;
 
   /* Screens and menus. */
   setScreen(screen: Screen): void;
@@ -180,6 +180,8 @@ export interface CaromDebugApi {
   setBallSpin(spin: number): void;
   setBallHeld(held: boolean): void;
   setBallHoldTimer(seconds: number): void;
+  setBallServeSign(sign: 1 | -1): void;
+  drawBallServeSign(): void;
 
   /* The AI opponent: one operation per faculty. */
   setAiTracking(enabled: boolean): void;
@@ -201,7 +203,7 @@ export interface CaromDebugApi {
  * Restore every declared field of the state to its title-screen value.
  *
  * The game's own return to the title does most of it; a reset additionally starts
- * the simulation clock over, reseeds the generator, and puts both menu indices
+ * the simulation clock over and puts both menu indices
  * back to `0` — the title-screen values `specs/state.md` gives them, which the
  * return to the title deliberately keeps instead.
  *
@@ -215,8 +217,6 @@ function poseTitle(state: CaromState): void {
   state.titleIndex = 0;
   toTitle(state);
   state.simTime = 0;
-  state.seed = DEFAULT_SEED;
-  state.rngState = DEFAULT_SEED;
 }
 
 /** Build the API over one live state object and the runtime driving it. */
@@ -293,12 +293,6 @@ export function createDebugApi(
      */
     reset() {
       poseTitle(state);
-    },
-
-    /** Seed the game's random generator: `seed`, and the generator's start state. */
-    setSeed(seed) {
-      state.seed = seed;
-      state.rngState = seed;
     },
 
     /* ---- Screens and menus ---------------------------------------------- */
@@ -409,6 +403,16 @@ export function createDebugApi(
       if (state.ball !== null) state.ball.holdTimer = seconds;
     },
 
+    /** The vertical sign the ball's serve takes, `1` or `-1`. */
+    setBallServeSign(sign) {
+      if (state.ball !== null) state.ball.serveSign = sign < 0 ? -1 : 1;
+    },
+
+    /** The one draw parking makes, made again on its own (specs/balls.md). */
+    drawBallServeSign() {
+      if (state.ball !== null) state.ball.serveSign = drawServeSign();
+    },
+
     /* ---- The AI opponent ------------------------------------------------ */
 
     /** Whether the AI senses the ball and chooses a target. */
@@ -472,8 +476,6 @@ export function createDebugApi(
         score: { p1: state.score.p1, p2: state.score.p2 },
         winner: state.winner,
         muted: state.muted,
-        seed: state.seed,
-        rngState: state.rngState,
         paddles: {
           left: paddleView(state, "left"),
           right: paddleView(state, "right"),
@@ -492,6 +494,7 @@ export function createDebugApi(
                 spin: ball.spin,
                 held: ball.held,
                 holdTimer: ball.holdTimer,
+                serveSign: ball.serveSign,
                 trail: ball.trail.map((sample) => ({
                   x: sample.x,
                   y: sample.y,

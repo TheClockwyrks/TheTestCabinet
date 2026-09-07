@@ -54,7 +54,7 @@ export const TARGET = { x: HEAD.x + 80, y: HEAD.y };
 export const RUN_UP = ticks(0.1);
 
 /**
- * Drive the opening build phase until the build's audio has actually opened.
+ * Let the build's audio open, and hand back what it has emitted by then.
  *
  * `specs/ui.md` leaves the first-interaction unlock to the runtime layer an
  * engineless build writes, and a browser opens an audio context asynchronously
@@ -64,32 +64,52 @@ export const RUN_UP = ticks(0.1);
  * the build. A run-up held silent has to start after that, or the bed's own start
  * lands inside it and is read as the build blipping.
  *
- * So this drives the run, in short steps with real time between them, until the
- * build has emitted its first sound — and gives up after a bounded number of
- * tries, because a build that plays nothing at all has nothing to wait for and
- * fails the points that listen for a cue rather than this helper.
+ * THE FRAMES ARE FIXED AND THE WAITING IS NOT. Two rounds, each of exactly
+ * {@link ROUND_FRAMES} frames of the build phase followed by a wait on the state
+ * the build reaches — a bounded number of asks for the count the harness's probe
+ * keeps, each its own crossing into the page and none of them moving the
+ * simulation on. So the build gets an update to ask for its bed, then the page
+ * gets its turns to open the context and decode the files, then the build gets
+ * further updates in case it only asks once the context is open. The same
+ * `ROUNDS * ROUND_FRAMES` frames land whatever the machine did, and only the
+ * number of asks — which nothing reads and which cost no simulation — differs.
+ *
+ * Nothing here reads a clock or pauses for a real duration. The asks are capped
+ * so a build that opens no audio at all fails the points that listen for a cue
+ * rather than hanging here, and the frames are spent in the opening build phase,
+ * which `specs/campaign.md` leaves untimed.
  */
-export async function settle(h: Harness): Promise<void> {
-  for (let attempt = 0; attempt < SETTLE_TRIES; attempt += 1) {
-    await h.page.waitForTimeout(SETTLE_WAIT_MS);
-    await h.advance(ticks(0.02));
-    if ((await sounds(h)) > 0) return;
+export async function firstSound(h: Harness, from = 0): Promise<number> {
+  let heard = await sounds(h);
+  for (let round = 0; round < ROUNDS; round += 1) {
+    await h.advance(ROUND_FRAMES);
+    for (let ask = 0; ask < ASKS && heard <= from; ask += 1) {
+      heard = await sounds(h);
+    }
   }
+  return heard;
 }
 
+/** Rounds of frames-then-wait, and the frames each of them drives. */
+const ROUNDS = 2;
+const ROUND_FRAMES = ticks(0.25);
+
 /**
- * How many chances the build is given to open its audio, and how much real time
- * each waits.
+ * How many times a round asks the page whether the build has emitted anything.
  *
  * Generous, because opening a browser's audio means fetching and decoding every
  * produced cue file — a couple of megabytes for a build that also produced a music
- * bed — and this project drives four pages at once, so how long that takes is a
- * fact about the machine rather than about the build. The loop returns the instant
- * the build has emitted anything, so the budget is paid only by a build that has
- * not opened its audio at all, whose cue points then fail on their own terms.
+ * bed — and this project drives several pages at once, so how many crossings that
+ * takes is a fact about the machine rather than about the build. An ask is a
+ * failure cap and never a measurement: nothing reads how many were spent, and the
+ * whole budget is paid only by a build that has not opened its audio at all.
+ *
+ * The worst case is worth naming, because it is what the number costs: a build
+ * that never opens its audio spends {@link ROUNDS} times this many crossings into
+ * the page here — two thousand, none of them moving the simulation — and then the
+ * points that listen for a cue fail on their own terms.
  */
-const SETTLE_TRIES = 60;
-const SETTLE_WAIT_MS = 50;
+const ASKS = 1000;
 
 /**
  * How many sounds the build has emitted since the page loaded.

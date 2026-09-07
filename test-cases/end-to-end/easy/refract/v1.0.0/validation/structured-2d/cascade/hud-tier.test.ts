@@ -26,7 +26,6 @@ import {
 } from "../harness";
 import { assertLabeledDigitClear, boardKeepOut } from "./helpers";
 
-const SEED = 1;
 /** A fresh sequence opens at tier 1 (specs/modes/cascade.md). */
 const OPENING_TIER = 1;
 
@@ -41,7 +40,7 @@ afterEach(() => {
 });
 
 it("draws TIER with the current tier's digit beside it, clear of the board", async () => {
-  await startCascade(h, SEED);
+  await startCascade(h);
   const snapshot = h.snapshot();
   assertEqual(snapshot.screen, "playing", "the fresh sequence is playing");
   assertEqual(

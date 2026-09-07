@@ -5,21 +5,17 @@
 // simulation clock does instead — it advances by `dt * speed` on `playing` unless
 // the game is paused — and names no overlay among the things that stop it.
 //
-// So the same ten seconds are run three times from the same seed, with both
-// overlays closed, with the recipe book open, and with the leaderboard open, and
-// the run has to arrive at the same place each time: the same simulation clock,
-// and the same unit at the same point of the same leg of the chain. The unit is
-// released travelling rather than held, because a held unit would still be where
-// it started under an overlay that froze everything.
-//
-// `openYard` resets between the three, and `reset` seeds every random draw from
-// `DEFAULT_SEED`, so the three runs are the same run.
+// So ten seconds are run with the recipe book open and again with the
+// leaderboard open, and each run has to keep going: the simulation clock advances
+// by the ten seconds, and a released unit walks on along the chain at its roster
+// speed. The unit is released travelling rather than held, because a held unit
+// would still be where it started under an overlay that froze everything.
 
-import { ConstantClock } from "@clockwyrks/structured-2d";
 import { afterEach, beforeEach, it } from "vitest";
-import { assertCloseTo, assertEqual } from "../assert";
+import { assertCloseTo, assertEqual, assertLessThan } from "../assert";
 import {
   captureReplay,
+  compareAlongChain,
   createHarness,
   lastUnit,
   openYard,
@@ -31,113 +27,67 @@ import {
 const SPAN = 10;
 
 /**
- * The frame all three runs are stepped in: `20` Hz, a sixth of this project's
- * default.
+ * The frame the runs are stepped in: `10` Hz, a twelfth of this project's default.
  *
- * THE STEP CANCELS OUT, BECAUSE THE CLAIM IS THAT THE THREE RUNS AGREE. What is
- * compared is one run against another, and all three take the same clock from the
- * same seed, so whatever a coarser frame does to where a Mote stands after ten
- * seconds it does identically three times. Nothing here is measured against a
- * figure the specs state — no speed, no distance, no rate — and no projectile
- * flies, so the one step size this project has to respect does not arise.
- *
- * `specs/instrumentation.md` fixes no frame size and guarantees that an interval
- * of simulation time reaches the same state however it was divided into frames,
- * which `instrumentation/frame-division-movement` and
- * `instrumentation/frame-division-projectile` are the two items that decide. The
- * ten seconds `specs/hud.md`'s point is stated over are unchanged; only the frames
+ * Nothing here is measured against a distance or a rate, and no projectile flies,
+ * so the one step size this project has to respect does not arise. The ten
+ * seconds `specs/hud.md`'s point is stated over are unchanged; only the frames
  * they are divided into are.
  */
-const SPAN_HZ = 20;
+const SPAN_HZ = 10;
 
 /** Frames of that clock covering `s` seconds of simulation, rounded up. */
 function spanFrames(seconds: number): number {
   return Math.ceil(seconds * SPAN_HZ);
 }
-/** A thousandth of a unit: floating point, not a rule about the game. */
+/** A thousandth of a second: floating point, not a rule about the game. */
 const DIGITS = 3;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness({ clock: new ConstantClock(1000 / SPAN_HZ) });
+  h = await createHarness({ hz: SPAN_HZ });
 });
 
 afterEach(() => {
   h.dispose();
 });
 
-interface Reached {
-  simTime: number;
-  x: number;
-  y: number;
-  waypointIndex: number;
-  progress: number;
-}
-
-/** Ten seconds of the same run, with `overlay` open, or with neither. */
-async function tenSeconds(
-  overlay: "combos" | "damage" | null,
-): Promise<Reached> {
+/** Ten seconds of a run with `overlay` open, read off the released unit. */
+async function tenSeconds(overlay: "combos" | "damage"): Promise<void> {
   openYard(h);
-  if (overlay !== null) h.debug.setOverlay(overlay, true);
+  h.debug.setOverlay(overlay, true);
   releaseUnit(h, "mote");
-  await h.advance(spanFrames(SPAN));
-  const snapshot = h.snapshot();
-  const unit = lastUnit(snapshot);
-  return {
-    simTime: snapshot.simTime,
-    x: unit.x,
-    y: unit.y,
-    waypointIndex: unit.waypointIndex,
-    progress: unit.progress,
-  };
-}
+  const opened = h.snapshot();
+  const released = lastUnit(opened);
 
-it("runs the same ten seconds with either overlay open as with neither", async () => {
-  const closed = await tenSeconds(null);
+  await h.advance(spanFrames(SPAN));
+  const reached = h.snapshot();
+  const what =
+    overlay === "combos" ? "the recipe book" : "the damage leaderboard";
+
   assertCloseTo(
-    closed.simTime,
+    reached.simTime - opened.simTime,
     SPAN,
     DIGITS,
-    "the simulation clock after ten seconds with both overlays closed",
+    `the simulation clock over ten seconds with ${what} open (specs/hud.md)`,
   );
+  const unit = lastUnit(reached);
+  assertEqual(unit.id, released.id, `the released unit still on the yard`);
+  assertEqual(
+    unit.speed,
+    unit.baseSpeed,
+    `the unit's speed with ${what} open, against its roster speed`,
+  );
+  assertLessThan(
+    compareAlongChain(unit, released),
+    0,
+    `the unit's place along the chain after ten seconds with ${what} open, ` +
+      `against where it was released: it walked on`,
+  );
+}
 
-  const withBook = await captureReplay(h, "inert", () => tenSeconds("combos"));
-  const withBoard = await tenSeconds("damage");
-
-  for (const [what, reached] of [
-    ["the recipe book", withBook],
-    ["the damage leaderboard", withBoard],
-  ] as const) {
-    assertCloseTo(
-      reached.simTime,
-      closed.simTime,
-      DIGITS,
-      `the simulation clock after ten seconds with ${what} open`,
-    );
-    assertEqual(
-      reached.waypointIndex,
-      closed.waypointIndex,
-      `the checkpoint the unit is heading for with ${what} open`,
-    );
-    assertCloseTo(
-      reached.progress,
-      closed.progress,
-      DIGITS,
-      `the route the unit has left with ${what} open`,
-    );
-    assertCloseTo(
-      reached.x,
-      closed.x,
-      DIGITS,
-      `where the unit stands with ${what} open`,
-    );
-    assertCloseTo(
-      reached.y,
-      closed.y,
-      DIGITS,
-      `where the unit stands with ${what} open`,
-    );
-  }
+it("runs ten seconds with either overlay open", async () => {
+  await captureReplay(h, "inert", () => tenSeconds("combos"));
+  await tenSeconds("damage");
 });

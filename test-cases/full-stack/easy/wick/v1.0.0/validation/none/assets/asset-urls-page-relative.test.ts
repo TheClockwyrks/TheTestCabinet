@@ -18,9 +18,11 @@
 // script or asset URLs were built against the origin root.
 //
 // THE TOLERANCE. None on the paths: a request is under the mount or it is not.
-// The settling wait is the harness's own allowance, not a figure of the
-// specification's: a full-stack build fetches its produced files after the page
-// loads, and the log is read once they have had time to arrive.
+// The log is read once the surface is up, which specs/instrumentation.md puts
+// after the game has initialized with every produced file decoded, and after
+// one more paint of the page, so every request the build makes for its files
+// has been made and answered by then; the wait for the surface is bounded by a
+// cap that serves only to call a mount that never comes up a failure.
 //
 // WHAT IT DELIBERATELY DOES NOT READ. That the build invokes no tool and fetches
 // nothing from outside its own output is `assets/build-self-contained`; what the
@@ -37,9 +39,6 @@ const PREFIX = "/mounted/deep/";
 
 /** How long the surface is waited for before the mount is called a failure. */
 const SURFACE_TIMEOUT_MS = 15_000;
-
-/** How long the produced files are given to arrive before the log is read. */
-const SETTLE_MS = 2_000;
 
 /** How many escaped or failed requests a failure names before it stops listing. */
 const LISTED = 5;
@@ -59,7 +58,12 @@ it("runs unchanged mounted under a sub-path", async () => {
     } catch {
       surfaced = false;
     }
-    await site.page.waitForTimeout(SETTLE_MS);
+    await site.page.evaluate(
+      () =>
+        new Promise<void>((paint) => {
+          requestAnimationFrame(() => paint());
+        }),
+    );
     writeImageBytes("resolved", await site.page.screenshot({ type: "png" }));
 
     const escaped = site.requests.filter(

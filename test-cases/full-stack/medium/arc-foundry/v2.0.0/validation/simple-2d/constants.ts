@@ -321,6 +321,14 @@ export const COMPONENT_NAMES: Readonly<Record<ComponentType, string>> = {
  */
 export const TYPE_ROLL_ODDS = 1 / COMPONENT_TYPES.length;
 
+/**
+ * How many standard deviations either side of its expected count a sampled rate
+ * is held to, for a requirement that is itself a probability. Six, so a build
+ * honouring the stated rate never fails on chance (the authoring rule for a
+ * bounded sample of one draw).
+ */
+export const SAMPLE_BAND_SIGMAS = 6;
+
 /** "Seven of the eight fire. The Regulator never fires". */
 export const FIRING_COMPONENT_TYPES = [
   "capacitor",
@@ -1203,11 +1211,8 @@ export type EffectName = (typeof EFFECTS)[number];
 /* The surface itself (specs/instrumentation.md)                              */
 /* -------------------------------------------------------------------------- */
 
-/** "The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `4`), a plain number". */
-export const FOUNDRY_DEBUG_VERSION = 4;
-
-/** "`options.seed` seeds every random draw, defaulting to `DEFAULT_SEED` (`1`)". */
-export const DEFAULT_SEED = 1;
+/** "The surface carries `version` (`FOUNDRY_DEBUG_VERSION`, `5`), a plain number". */
+export const FOUNDRY_DEBUG_VERSION = 5;
 
 /* -------------------------------------------------------------------------- */
 /* The figures the specification states as a rule rather than as a table      */

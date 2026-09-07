@@ -1,7 +1,7 @@
 // Refract — instrumentation/advances-on-elapsed-time: the simulation advances
 // on the elapsed time it is handed.
 //
-// specs/instrumentation.md "A deterministic core": every rate is integrated
+// specs/instrumentation.md "A render-free core": every rate is integrated
 // against the delta time the game is given, so one second of game time reaches
 // the same simTime however it is divided into frames. Under this engine the
 // step size is the CLOCK's, so the suite builds two harnesses of its own — one
@@ -34,8 +34,8 @@ afterEach(() => {
 it("one second as a single frame and as sixty frames adds 1.0 to simTime either way", async () => {
   const coarse = await harnessWithStep(1000);
   const fine = await harnessWithStep(1000 / 60);
-  await resetTo(coarse, 1);
-  await resetTo(fine, 1);
+  await resetTo(coarse);
+  await resetTo(fine);
 
   const coarseStart = coarse.snapshot().simTime;
   await coarse.advance(1);

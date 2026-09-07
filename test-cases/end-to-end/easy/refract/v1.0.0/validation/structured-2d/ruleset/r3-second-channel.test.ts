@@ -44,7 +44,7 @@ afterEach(() => {
 });
 
 it("a second channel drawing the same segment is refused", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R3_TWO_CHANNELS);
 
   // Triangle draws the crystal-to-crystal segment on its way across.

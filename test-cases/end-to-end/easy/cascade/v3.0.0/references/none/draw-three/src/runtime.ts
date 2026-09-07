@@ -27,7 +27,7 @@
 // simulation from the wall clock and `advance(seconds, frames)` runs an exact
 // number of whole frames at an exact delta, which is what
 // `specs/instrumentation.md` exposes on `window.__cascade` and what makes a driven
-// scenario reproducible on any machine. Drawing is unaffected either way: the loop
+// scenario the same on any machine. Drawing is unaffected either way: the loop
 // keeps presenting, so the canvas always shows the state the most recent frame
 // left.
 

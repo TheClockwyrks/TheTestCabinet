@@ -5,23 +5,27 @@
 // probability". The magnitude is the whole of what this point reads; which SIDE a
 // card goes is `launch-vx-both-signs`.
 //
-// ALL FIFTY-TWO LAUNCHES ARE READ, because the figure is a range over a random
-// draw and one sample says almost nothing about it: a build drawing from
-// `[0, 420]`, or from `[180, 1200]`, or handing every card the same speed, is
-// only visible across the whole cascade. Nothing here asserts that the draw is
-// uniform or that the range is covered — `specs/victory.md` fixes a distribution,
-// and fifty-two samples cannot decide one without failing conformant builds by
-// chance. What it fixes and what is read is that no launch leaves the range.
+// THE DRAW IS TAKEN ALONE. `specs/instrumentation.md` has `drawLaunchVx` perform
+// exactly the draw a launch performs and nothing else, so the magnitude is read
+// off that operation rather than off a whole cascade: a handful of draws go over
+// in one crossing, where fifty-two launches took nine seconds of game time driven
+// frame by frame.
 //
-// A flyer's `vx` never changes after the launch (`specs/victory.md`'s five steps
-// touch `vy`, `x` and `y`, and the bounce leaves `vx` alone), so the reading is
-// the launch value however many frames later it is taken.
+// A HANDFUL OF DRAWS ARE READ, because the figure is a range over a random draw
+// and one sample says little about it: a build drawing from `[0, 420]`, or from
+// `[180, 1200]`, is visible only across several draws. Nothing here asserts that
+// the draw is uniform or that the range is covered — `specs/victory.md` fixes a
+// distribution, and a sample cannot decide one without failing conformant builds
+// by chance. What it fixes and what is read is that no draw leaves the range.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween } from "../assert";
-import { DECK_SIZE, LAUNCH_VX_MAX, LAUNCH_VX_MIN } from "../constants";
+import { LAUNCH_VX_MAX, LAUNCH_VX_MIN } from "../constants";
 import { type Harness, captureStill, createHarness } from "../harness";
-import { openCascade, readLaunches } from "./flight";
+import { drawLaunches, poseDrawnFlight } from "./flight";
+
+/** How many draws are read. Every one of them is held to the range. */
+const DRAW_COUNT = 8;
 
 /**
  * The slack on each end of the range, in units per second.
@@ -43,17 +47,18 @@ afterEach(async () => {
 });
 
 it("draws every launch's horizontal speed from [LAUNCH_VX_MIN, LAUNCH_VX_MAX]", async () => {
-  await openCascade(harness);
+  await harness.debug.reset();
+  const speeds = await drawLaunches(harness, DRAW_COUNT);
 
-  const launches = await readLaunches(harness, DECK_SIZE);
+  await poseDrawnFlight(harness, speeds);
   await captureStill(harness, "launches");
 
-  for (const launch of launches) {
+  for (const [index, vx] of speeds.entries()) {
     assertBetween(
-      Math.abs(launch.flyer.vx),
+      Math.abs(vx),
       LAUNCH_VX_MIN - RANGE_SLACK,
       LAUNCH_VX_MAX + RANGE_SLACK,
-      `the |vx| of launch ${launch.ordinal}, which was ${launch.flyer.vx}`,
+      `the |vx| of draw ${index + 1} of drawLaunchVx(), which was ${vx}`,
     );
   }
 });

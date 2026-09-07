@@ -92,6 +92,12 @@ const POSED = {
    */
   saucerVx: -33,
   saucerVy: 22,
+  /** The cadence's due, in seconds: neither the first delay nor a gap. */
+  saucerDue: 7.5,
+  /** The posed draws: each a value the draw could decide, and none a default. */
+  entryRow: 333,
+  aim: 0.05,
+  rockSpeed: 95,
 } as const;
 
 /**
@@ -223,6 +229,66 @@ it("reports back the saucer's posed velocity", () => {
     QUIET_CORNER_OPPOSITE.y,
     "setSaucerVelocity moves no position: y",
   );
+});
+
+it("reports back the saucer's posed weave direction", () => {
+  startPlaying(h);
+  poseSaucer(h, QUIET_CORNER_OPPOSITE.x, QUIET_CORNER_OPPOSITE.y);
+
+  // A saucer `addSaucer` brings on weaves down first
+  // (specs/instrumentation.md), so up is the pose that reads as a change.
+  assertEqual(
+    requireSaucer(h.snapshot(), "the posed saucer").weave,
+    1,
+    "addSaucer brings a saucer on with its weave direction 1",
+  );
+  for (const direction of [-1, 1] as const) {
+    h.debug.setSaucerWeave(direction);
+    assertEqual(
+      requireSaucer(h.snapshot(), "the posed saucer").weave,
+      direction,
+      `setSaucerWeave(${direction}) reads back`,
+    );
+  }
+});
+
+it("reports back the cadence's posed due and the five posed draws", () => {
+  startPlaying(h);
+
+  h.debug.setSaucerDue(POSED.saucerDue);
+  h.debug.setNextSaucerEdge("right");
+  h.debug.setNextSaucerRow(POSED.entryRow);
+  h.debug.setNextSaucerAim(POSED.aim);
+  h.debug.setNextRockSpeed(POSED.rockSpeed);
+  h.debug.setNextRecycleEdge("top");
+
+  const s = h.snapshot();
+  assertCloseTo(
+    s.saucerDue,
+    POSED.saucerDue,
+    READ_BACK_DIGITS,
+    "setSaucerDue reads back",
+  );
+  assertEqual(s.nextSaucerEdge, "right", "setNextSaucerEdge reads back");
+  assertCloseTo(
+    s.nextSaucerRow ?? Number.NaN,
+    POSED.entryRow,
+    READ_BACK_DIGITS,
+    "setNextSaucerRow reads back",
+  );
+  assertCloseTo(
+    s.nextSaucerAim ?? Number.NaN,
+    POSED.aim,
+    READ_BACK_DIGITS,
+    "setNextSaucerAim reads back",
+  );
+  assertCloseTo(
+    s.nextRockSpeed ?? Number.NaN,
+    POSED.rockSpeed,
+    READ_BACK_DIGITS,
+    "setNextRockSpeed reads back",
+  );
+  assertEqual(s.nextRecycleEdge, "top", "setNextRecycleEdge reads back");
 });
 
 it("brings a saucer on with its three clocks at their arrival values", () => {

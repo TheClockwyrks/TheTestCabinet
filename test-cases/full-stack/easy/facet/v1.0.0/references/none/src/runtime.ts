@@ -25,8 +25,8 @@
 // THE CLOCK CAN BE TAKEN AWAY. `setAutoStep(false)` stops the loop advancing
 // the simulation from the wall clock and `advance(seconds, frames)` runs an
 // exact number of whole frames at an exact delta, which is what
-// `specs/instrumentation.md` exposes on `window.__facet` and what makes a
-// driven scenario reproducible on any machine. Drawing is unaffected either
+// `specs/instrumentation.md` exposes on `window.__facet` and what lets a
+// scenario be driven from code on any machine. Drawing is unaffected either
 // way: the loop keeps presenting, so the canvas always shows the state the
 // most recent frame left.
 
@@ -105,7 +105,7 @@ export interface InitApi<S> {
      * it is handed, called on every draw. */
     register(name: string, source: (state: S) => unknown): void;
   };
-  /** The produced files, loading in the background from the first frame. */
+  /** The produced files, loading from the first frame; `null` until each lands. */
   readonly assets: AssetStore;
   /** Offscreen contexts, for compositing the particle fields. */
   readonly scratch: ScratchCanvas;
@@ -192,6 +192,15 @@ export interface Runtime<S, D> {
   /** Build the state, arm the listeners, start the asset load, and fit the
    * canvas. Runs no frame. */
   initialize(): S;
+  /**
+   * Settles once every load of a produced file has settled.
+   *
+   * The load `initialize` starts is the last thing initialization waits on
+   * (specs/assets.md), and `src/main.ts` installs `window.__facet` after it, so
+   * a frame driven through the surface draws from the produced art. Rejects
+   * before `initialize`, because there is no load to wait on yet.
+   */
+  loaded(): Promise<void>;
   /** Replace the state with what `pose` returns for it. No frame runs. */
   apply(pose: (state: S) => S): void;
   /** Start the frame loop. */
@@ -449,6 +458,9 @@ export function createRuntime<S, D>(
     diagnostics.toggle();
   };
 
+  /** The load `initialize` started, or `null` before it has. */
+  let loading: Promise<void> | null = null;
+
   function held(): { state: S; debug: D } {
     if (live === null) {
       throw new Error("Facet: the runtime has not initialized yet");
@@ -473,13 +485,23 @@ export function createRuntime<S, D>(
       audio.armUnlock(surface.events());
       surface.events().addEventListener("keydown", onOverlayKey);
       syncCanvas();
-      // Started here rather than awaited: the game is playable and
-      // `window.__facet` is reachable from the first tick, and each sprite
-      // joins the picture on the frame after it lands (src/assets.ts).
-      void assets.load();
+      // Started here rather than awaited: the loop is free to draw the title
+      // and its progress while the files land, and each sprite joins the
+      // picture on the frame after it arrives (src/assets.ts). What waits on
+      // the load is the debug surface, through `loaded` below.
+      loading = assets.load().then(() => undefined);
       const [state, debug] = game.initialize(initApi);
       live = { state, debug };
       return state;
+    },
+
+    loaded(): Promise<void> {
+      if (loading === null) {
+        return Promise.reject(
+          new Error("Facet: the runtime has not initialized yet"),
+        );
+      }
+      return loading;
     },
 
     apply(pose: (state: S) => S): void {

@@ -1,40 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { Rng, seedState } from "./rng";
+import { Rng } from "./rng";
 
-describe("the seeded generator", () => {
-  it("reduces any seed to a 32-bit state", () => {
-    expect(seedState(1)).toBe(1);
-    expect(seedState(-1)).toBe(0xffffffff);
-    expect(seedState(2 ** 40 + 5)).toBe(5);
-    expect(seedState(NaN)).toBe(0);
-  });
+/** A source that hands out `values` in order, then starts over. */
+function cycling(values: readonly number[]): () => number {
+  let at = 0;
+  return () => {
+    const value = values[at % values.length];
+    at += 1;
+    return value;
+  };
+}
 
-  it("replays the same sequence from the same state", () => {
-    const cellA = { rngState: 7 };
-    const cellB = { rngState: 7 };
-    const rngA = new Rng(() => cellA);
-    const rngB = new Rng(() => cellB);
-    const first = Array.from({ length: 20 }, () => rngA.next());
-    const second = Array.from({ length: 20 }, () => rngB.next());
-    expect(first).toEqual(second);
-    expect(cellA.rngState).toBe(cellB.rngState);
-  });
-
-  it("draws on [0, 1) and keeps a whole 32-bit state in the cell", () => {
-    const cell = { rngState: 1 };
-    const rng = new Rng(() => cell);
+describe("the random source", () => {
+  it("draws on [0, 1) from Math.random by default", () => {
+    const rng = new Rng();
     for (let i = 0; i < 1000; i += 1) {
       const value = rng.next();
       expect(value).toBeGreaterThanOrEqual(0);
       expect(value).toBeLessThan(1);
-      expect(Number.isInteger(cell.rngState)).toBe(true);
-      expect(cell.rngState).toBeGreaterThanOrEqual(0);
-      expect(cell.rngState).toBeLessThan(2 ** 32);
     }
   });
 
+  it("draws from the source it is given", () => {
+    const rng = new Rng(cycling([0.25, 0.75]));
+    expect(rng.next()).toBe(0.25);
+    expect(rng.next()).toBe(0.75);
+    expect(rng.next()).toBe(0.25);
+  });
+
   it("samples distinct items without replacement, all of them when short", () => {
-    const rng = new Rng(() => ({ rngState: 3 }));
+    const rng = new Rng();
     const items = ["a", "b", "c", "d", "e"];
     const drawn = rng.sample(items, 3);
     expect(drawn).toHaveLength(3);
@@ -47,12 +42,17 @@ describe("the seeded generator", () => {
   });
 
   it("picks an index inside the range", () => {
-    const rng = new Rng(() => ({ rngState: 11 }));
+    const rng = new Rng();
     for (let i = 0; i < 200; i += 1) {
       const index = rng.index(4);
       expect(index).toBeGreaterThanOrEqual(0);
       expect(index).toBeLessThan(4);
     }
     expect(["p", "q"]).toContain(rng.pick(["p", "q"]));
+  });
+
+  it("picks by the source's draw", () => {
+    expect(new Rng(() => 0).pick(["p", "q"])).toBe("p");
+    expect(new Rng(() => 0.999).pick(["p", "q"])).toBe("q");
   });
 });

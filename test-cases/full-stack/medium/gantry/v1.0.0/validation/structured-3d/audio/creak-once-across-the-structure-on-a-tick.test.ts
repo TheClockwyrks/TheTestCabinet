@@ -31,14 +31,13 @@
 // The crossing is put on tick 3, since "no member creaks on a run's first tick".
 //
 // AND THE TWO RUNS ARE TWO RUNS OF ONE PAGE, one after the other, because that is
-// all the comparison asks for. The determinism the reading rests on is the
-// build's own — "the same structure and the same tape produce the same run, tick
-// for tick, every time" (specs/instrumentation.md) — and the two runs differ in
-// the load's mass alone. `openSite` is what parts them: it "carries the effects
-// `specs/state.md` states for opening a site", which puts the run back to its
-// idle placeholder and the camera back at its start pose while leaving the
-// structure and the tape stored on the site, so the second run is posed by
-// re-adding the load and starting it rather than by rebuilding the crane.
+// all the comparison asks for: the same crane and the same tape, so the two runs
+// differ in the load's mass alone. `openSite` is what parts them: it "carries
+// the effects `specs/state.md` states for opening a site", which puts the run
+// back to its idle placeholder and the camera back at its start pose while
+// leaving the structure and the tape stored on the site, so the second run is
+// posed by re-adding the load and starting it rather than by rebuilding the
+// crane.
 //
 // THE FIRST RUN IS CARRIED PAST ITS OWN COOLDOWN BEFORE THE SECOND IS POSED. The
 // gate is "at most one `creak` across the structure per `CREAK_COOLDOWN` (`0.5`)

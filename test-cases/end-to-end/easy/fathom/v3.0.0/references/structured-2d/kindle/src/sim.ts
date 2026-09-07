@@ -2,9 +2,8 @@
 //
 // `specs/movement.md` fixes the tick as the game's whole clock: the simulation
 // advances in whole `TICK_DT` steps and every rate in the specification is
-// integrated in them, so the same starting state driven by the same inputs over
-// the same elapsed game time reaches the same state every time. Nothing here
-// reads the renderer, a canvas or the wall clock.
+// integrated in them, so a step means the same thing whatever the frame rate.
+// Nothing here reads the renderer, a canvas or the wall clock.
 //
 // One tick is `stepTick`, and the game mode's tick runs as many of them as the
 // frame's delta completes. Everything the tick advances it writes onto the live

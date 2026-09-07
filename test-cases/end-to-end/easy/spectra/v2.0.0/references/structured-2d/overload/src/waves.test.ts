@@ -12,14 +12,16 @@ import {
   FORM_CENTER_X,
   isChallengeStage,
 } from "./constants";
+import { fluxWindowAt } from "./bands";
 import { buildWave, composition, fluxCount, prismCount } from "./waves";
 import { liveState, run, STEP } from "./fixtures";
-import { seedRandom } from "./rng";
 
-function stageWave(stage: number, seed = 1) {
+/** How many freshly drawn waves a rule about the draw is checked over. */
+const DRAWS = 5;
+
+function stageWave(stage: number) {
   const state = liveState();
   state.stage = stage;
-  seedRandom(state, seed);
   buildWave(state);
   return state;
 }
@@ -112,25 +114,31 @@ describe("a standard wave", () => {
     expect(state.diveTarget).toBe(DIVE_FIRST_DELAY);
   });
 
-  it("draws its layout from the seed, so one seed replays and another differs", () => {
-    const first = stageWave(4, 7).drones.map(
-      (drone) => `${drone.kind}@${drone.slotX},${drone.slotY}:${drone.band}`,
-    );
-    const same = stageWave(4, 7).drones.map(
-      (drone) => `${drone.kind}@${drone.slotX},${drone.slotY}:${drone.band}`,
-    );
-    const other = stageWave(4, 8).drones.map(
-      (drone) => `${drone.kind}@${drone.slotX},${drone.slotY}:${drone.band}`,
-    );
-    expect(same).toEqual(first);
-    expect(other).not.toEqual(first);
+  it("holds both bands and mirrors its block however the draw falls", () => {
+    for (let draw = 0; draw < DRAWS; draw += 1) {
+      const drones = stageWave(4).drones;
+      expect(drones.some((drone) => drone.band === "cyan")).toBe(true);
+      expect(drones.some((drone) => drone.band === "magenta")).toBe(true);
+      for (const drone of drones) {
+        const mirror = 2 * FORM_CENTER_X - drone.slotX;
+        expect(
+          drones.some(
+            (other) => other.slotY === drone.slotY && other.slotX === mirror,
+          ),
+        ).toBe(true);
+      }
+    }
   });
 
   it("starts each Flux somewhere inside its own band window", () => {
     const clocks = new Set<number>();
-    for (const seed of [1, 2, 3, 4, 5]) {
-      for (const drone of stageWave(7, seed).drones) {
-        if (drone.kind === "flux") clocks.add(drone.bandClock);
+    for (let draw = 0; draw < DRAWS; draw += 1) {
+      for (const drone of stageWave(7).drones) {
+        if (drone.kind === "flux") {
+          expect(drone.bandClock).toBeGreaterThanOrEqual(0);
+          expect(drone.bandClock).toBeLessThan(fluxWindowAt(7));
+          clocks.add(drone.bandClock);
+        }
       }
     }
     expect(clocks.size).toBeGreaterThan(3);
@@ -146,12 +154,14 @@ describe("a standard wave", () => {
     }
   });
 
-  it("draws a composition over the state's own generator", () => {
+  it("draws a composition that fills every slot of the block it lays out", () => {
     const state = liveState();
     state.stage = 5;
-    const before = state.rngState;
-    composition(state);
-    expect(state.rngState).not.toBe(before);
+    const entries = composition(state);
+    const slots = new Set(
+      entries.map((entry) => `${entry.slot.col},${entry.slot.row}`),
+    );
+    expect(slots.size).toBe(entries.length);
   });
 });
 

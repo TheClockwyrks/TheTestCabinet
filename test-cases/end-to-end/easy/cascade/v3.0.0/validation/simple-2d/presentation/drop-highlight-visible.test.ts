@@ -121,8 +121,8 @@ const HELD_MARGIN = 12;
  * under a held run to read apart from the same pile drawn without the highlight,
  * and it fixes no colour, no form and no coverage: a wash, an outline, a glow and
  * a brightened card are all honest, and how loudly any of them reads is the
- * reviewer's. Rendering is deterministic here — the same drawing operations
- * produce the same buffer, and the run stays in hand across both frames — so a
+ * reviewer's. The same drawing operations produce the same buffer here, and
+ * the run stays in hand across both frames, so a
  * build that drew no highlight paints the two frames identically at every point,
  * and any difference at all is the highlight.
  *

@@ -25,8 +25,8 @@
 // indication: a filled bar, an outline, a caret drawn beside the label and a
 // recoloured word are all honest, and the last two leave most of the region
 // untouched. A mean over the region would wash them out. So the reading counts
-// the cells that changed, and asks that at least one of them did. Rendering is
-// deterministic and the two frames differ in nothing but the selection, so a
+// the cells that changed, and asks that at least one of them did. The two
+// frames differ in nothing but the selection, so a
 // build that draws no indication changes none of them and no threshold is needed
 // or stated. The region is read at unit pitch so that a one-unit caret or outline
 // lands on cells rather than between them.

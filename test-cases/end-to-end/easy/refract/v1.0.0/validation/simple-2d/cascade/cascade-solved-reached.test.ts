@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 it("solving moves to solved with the first choice highlighted", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCascade(h);
 
   await loadBoard(h, GEO_3X3);

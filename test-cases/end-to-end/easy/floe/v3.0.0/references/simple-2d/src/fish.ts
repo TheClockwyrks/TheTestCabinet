@@ -3,10 +3,10 @@
 // One small fish visits the open bays, at most one on the strait at a time. Its
 // whole cadence is one countdown and one draw: `FISH_INTERVAL` from the level being
 // laid out (or from the previous one leaving) to the next appearing, then
-// `FISH_LINGER` in the bay it appeared in, then it leaves. The bay is drawn from the
-// seeded generator among the bays open at that moment other than the one the
-// previous catch occupied, and where no such bay exists none appears and the next
-// arrives an interval later.
+// `FISH_LINGER` in the bay it appeared in, then it leaves. The bay is drawn
+// uniformly among the bays open at that moment other than the one the previous
+// catch occupied, and where no such bay exists none appears and the next arrives
+// an interval later.
 //
 // `setFishCadence(false)` gates exactly this — one appearing, lingering and moving
 // on — and nothing else. A catch posed through the surface with the cadence off
@@ -66,7 +66,5 @@ export function stepFish(sim: Sim, dt: number): void {
     sim.fishTimer = FISH_INTERVAL;
     return;
   }
-  const [index, next] = nextIndex(sim.rngState, open.length);
-  sim.rngState = next;
-  placeFish(sim, open[index]);
+  placeFish(sim, open[nextIndex(open.length)]);
 }

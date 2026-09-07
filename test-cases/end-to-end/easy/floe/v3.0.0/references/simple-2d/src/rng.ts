@@ -1,34 +1,18 @@
-// Floe — the game's seeded random generator (`specs/instrumentation.md`).
+// Floe — the game's own random source.
 //
-// The whole of the generator's state is the single `rngState` field of
-// `FloeState`, which is what makes `reset({ seed })` enough to replay a scenario
-// exactly: nothing here holds or advances anything of its own, a draw is a
-// function of the integer it is handed, and it returns the value drawn beside the
-// generator state that follows it.
-//
-// Two things in Floe are drawn from it: where each of the sixteen lanes' patterns
-// sits along its row when a level is laid out, and which open bay each bonus catch
-// appears in.
+// Two things in Floe are drawn at random: where each of the sixteen lanes'
+// patterns sits along its row when a level is laid out (`specs/ice.md`,
+// `specs/water.md`), and which open bay each bonus catch appears in
+// (`specs/bays.md`). The specification fixes the distribution of each draw and
+// nothing about how it is made, so the host's own `Math.random` is the source,
+// behind two helpers so a draw reads the same everywhere it is taken.
 
-/**
- * The next draw in `[0, 1)`, and the generator state that follows `state`.
- *
- * mulberry32: one 32-bit word of state, and every step is a `Math.imul` or a
- * shift, so the sequence is bit-for-bit reproducible in any JavaScript engine.
- */
-export function nextRandom(state: number): readonly [number, number] {
-  const next = (state + 0x6d2b79f5) | 0;
-  let t = next;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return [((t ^ (t >>> 14)) >>> 0) / 4294967296, next];
+/** The next draw in `[0, 1)`. */
+export function nextRandom(): number {
+  return Math.random();
 }
 
-/** A whole draw in `[0, count)`, and the generator state that follows. */
-export function nextIndex(
-  state: number,
-  count: number,
-): readonly [number, number] {
-  const [value, next] = nextRandom(state);
-  return [Math.min(count - 1, Math.floor(value * count)), next];
+/** A whole draw in `[0, count)`, each index equally likely. */
+export function nextIndex(count: number): number {
+  return Math.min(count - 1, Math.floor(nextRandom() * count));
 }

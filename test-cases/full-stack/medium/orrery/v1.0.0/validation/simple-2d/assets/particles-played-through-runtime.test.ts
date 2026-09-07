@@ -6,8 +6,8 @@
 // name, using its `./canvas` binding: a player is constructed over a parsed
 // system and a 2D rendering context and advanced each frame with that frame's
 // delta, and it simulates the system and composites the particles itself. Its
-// options carry the seed, the composite mode, and whether the context is cleared
-// before compositing, and the package's own types are the authoritative API."
+// options carry the composite mode and whether the context is cleared before
+// compositing, and the package's own types are the authoritative API."
 //
 // WHY IT IS ASKED. `particle-2d` authors a system as data, and what turns that
 // data into moving particles is the runtime: emitters, forces, curves, sub-
@@ -15,7 +15,7 @@
 // own would be showing a picture its `system.json` does not describe, and every
 // point that reads a produced system as the thing the game plays would be reading
 // a file the game ignores. "Each play of a system varies, and that variation is
-// correct" is the runtime's seeded randomness, not the build's.
+// correct" is the runtime's own random draws, not the build's.
 //
 // WHAT IT READS. The build's own source, for the bare specifier
 // `@clockwyrks/particle-runtime/canvas` in any of the forms an import takes —

@@ -2,7 +2,7 @@
 // switch back on.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, "The
-// driver switches": "each is restored to on by `reset`", and `reset(options)`:
+// driver switches": "each is restored to on by `reset`", and `reset()`:
 // "every driver switch on". `specs/state.md`: the nine "each `true` from
 // `initialize` and after `reset`".
 //

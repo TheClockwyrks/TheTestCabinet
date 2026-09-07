@@ -5,7 +5,7 @@
 # against the game's own rules — rather than a moment arranged to make a point.
 # The two stills follow it: the first is a frame of that same take, and the
 # second is the title screen the take opened from, drawn by the same reference
-# implementation at the same seed.
+# implementation once the take was recorded.
 #
 # `showcase/capture/README.md` records how each file was produced.
 

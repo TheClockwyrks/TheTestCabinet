@@ -48,14 +48,17 @@ import type { DeepReadonly } from "ts-essentials";
 /** The version the surface reports as `version` (`SHATTER_DEBUG_VERSION`). */
 export const SHATTER_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 /** The five screens the game moves between. */
 export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
 
 /** The three rock sizes. */
 export type RockSize = "large" | "medium" | "small";
+
+/** The edge a saucer enters at. */
+export type SaucerEdge = "left" | "right";
+
+/** An edge of the field, where a recycled rock re-enters. */
+export type FieldEdge = "top" | "bottom" | "left" | "right";
 
 /**
  * A menu entry's hit region, in logical field units, with `(x, y)` its top-left
@@ -133,6 +136,8 @@ export interface SaucerSnapshot {
   gun: boolean;
   /** Its locomotion runs. */
   travel: boolean;
+  /** The direction its next reroll takes from rest: `1` down, `-1` up. */
+  weave: 1 | -1;
   /** Seconds until its next aimed shot; `SAUCER_FIRE_INTERVAL` on arrival. */
   fireClock: number;
   /** Seconds until it rerolls its weave; `SAUCER_WEAVE_INTERVAL` on arrival. */
@@ -183,6 +188,16 @@ export interface ShatterSnapshot {
   saucerClock: number;
   /** What `saucerClock` must reach for the next saucer to arrive, in seconds. */
   saucerDue: number;
+  /** The posed entry edge of the next arrival, `null` when none stands. */
+  nextSaucerEdge: SaucerEdge | null;
+  /** The posed entry row of the next arrival, `null` when none stands. */
+  nextSaucerRow: number | null;
+  /** The posed aim error of the saucer's next shot, in radians. */
+  nextSaucerAim: number | null;
+  /** The posed base drift speed of the next placement of rocks. */
+  nextRockSpeed: number | null;
+  /** The posed edge the next recycled rock re-enters at. */
+  nextRecycleEdge: FieldEdge | null;
   ship: ShipSnapshot;
   /** Every one of the ship's bullets in flight, in roster order. */
   bullets: BulletSnapshot[];
@@ -217,7 +232,7 @@ export interface ShatterDebugApi<S = unknown> {
   /* ---- The core ---------------------------------------------------------- */
 
   /** Restores every declared field to its title-screen value. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): ShatterSnapshot;
 
@@ -239,6 +254,8 @@ export interface ShatterDebugApi<S = unknown> {
   setWaveSpawning(state: DeepReadonly<S>, enabled: boolean): S;
   /** Gates the game's own arrival of a saucer, and nothing else. */
   setSaucerSpawning(state: DeepReadonly<S>, enabled: boolean): S;
+  /** Sets what `saucerClock` must reach for the next arrival, in seconds. */
+  setSaucerDue(state: DeepReadonly<S>, seconds: number): S;
 
   /* ---- The ship ---------------------------------------------------------- */
 
@@ -319,6 +336,21 @@ export interface ShatterDebugApi<S = unknown> {
   setSaucerGun(state: DeepReadonly<S>, enabled: boolean): S;
   /** Gates the locomotion alone; the mind and the gun run on. */
   setSaucerTravel(state: DeepReadonly<S>, enabled: boolean): S;
+  /** Sets the direction the next reroll takes from rest: `1` down, `-1` up. */
+  setSaucerWeave(state: DeepReadonly<S>, direction: 1 | -1): S;
+
+  /* ---- The posed draws --------------------------------------------------- */
+
+  /** Poses the edge the next arrival enters at. */
+  setNextSaucerEdge(state: DeepReadonly<S>, edge: SaucerEdge): S;
+  /** Poses the row the next arrival enters at. */
+  setNextSaucerRow(state: DeepReadonly<S>, y: number): S;
+  /** Poses the aim error of the saucer's next shot, in radians. */
+  setNextSaucerAim(state: DeepReadonly<S>, radians: number): S;
+  /** Poses the base drift speed every rock of the next placement takes. */
+  setNextRockSpeed(state: DeepReadonly<S>, speed: number): S;
+  /** Poses the edge the next recycled rock re-enters at. */
+  setNextRecycleEdge(state: DeepReadonly<S>, edge: FieldEdge): S;
 
   /* ---- The torpedoes: `warhead` only ------------------------------------- */
 
@@ -363,6 +395,7 @@ export const REQUIRED_OPS = [
   "setWaveBanner",
   "setWaveSpawning",
   "setSaucerSpawning",
+  "setSaucerDue",
   "setShipPosition",
   "setShipVelocity",
   "setShipAngle",
@@ -385,6 +418,12 @@ export const REQUIRED_OPS = [
   "setSaucerMind",
   "setSaucerGun",
   "setSaucerTravel",
+  "setSaucerWeave",
+  "setNextSaucerEdge",
+  "setNextSaucerRow",
+  "setNextSaucerAim",
+  "setNextRockSpeed",
+  "setNextRecycleEdge",
 ] as const;
 
 /**
@@ -425,6 +464,19 @@ export const SNAPSHOT_FIELDS: Readonly<Record<string, string>> = {
   enemyBullets: "object",
   simTime: "number",
 };
+
+/**
+ * The posed draws `snapshot()` reports, each `null` until a pose stands, so they
+ * are checked for presence and for `null` on a field nothing has posed rather
+ * than by a `typeof`.
+ */
+export const POSED_DRAW_FIELDS = [
+  "nextSaucerEdge",
+  "nextSaucerRow",
+  "nextSaucerAim",
+  "nextRockSpeed",
+  "nextRecycleEdge",
+] as const;
 
 /** Every field the ship's entry reports, with its documented type. */
 export const SHIP_FIELDS: Readonly<Record<string, string>> = {
@@ -471,6 +523,7 @@ export const SAUCER_FIELDS: Readonly<Record<string, string>> = {
   mind: "boolean",
   gun: "boolean",
   travel: "boolean",
+  weave: "number",
   fireClock: "number",
   weaveClock: "number",
   age: "number",

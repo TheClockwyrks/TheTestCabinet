@@ -5,8 +5,9 @@
 // level as the one the engine opens first, and `VoluteGame` as the instance
 // class. The instance is the ONE framework object that outlives every level
 // transition, so it carries exactly what `specs/state.md` says must survive one
-// — the seeded generator's whole state, the origin the reported simulation time
-// is measured from, and the request a pending transition is opening with — and
+// — the two faculty gates, the charge posed for the next emission, the origin
+// the reported simulation time is measured from, and the request a pending
+// transition is opening with — and
 // nothing that belongs to a level: the run, the train, and the hall's bodies
 // live in the world the levels build (`src/state.ts`, `src/actors.ts`).
 //
@@ -18,7 +19,7 @@
 
 import { GameInstance } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
-import { ACTIONS, BINDINGS, DEFAULT_SEED, WORLDS } from "./constants";
+import { ACTIONS, BINDINGS, WORLDS } from "./constants";
 import type { ChargeId, WorldName } from "./constants";
 import { loadAssets } from "./assets";
 import { createDebugSurface, type VoluteDebug } from "./debug";
@@ -28,7 +29,7 @@ import {
 } from "./diagnostics";
 import { HallMode } from "./hall-mode";
 import { hall, title } from "./levels";
-import { pick, seedState } from "./rng";
+import { pick } from "./rng";
 import { COLOR } from "./theme";
 
 // The surface's types are part of the module contract, declared beside the game
@@ -74,11 +75,12 @@ interface Pending {
 /** The one object that outlives a level transition. */
 export class VoluteGame extends GameInstance<VoluteDebug> {
   /**
-   * The seeded generator's whole state (`src/rng.ts`). Every random draw the
-   * game makes comes from it: the charges of the cores a level opens with, the
-   * charge of each emitted core, and the charges the injector loads and queues.
+   * The charge posed for the next core the inlet emits, and `null` while none
+   * is posed (specs/state.md). `setNextEmitted` sets it, the emission that
+   * takes it clears it, and a `reset` clears it. It lives on the instance
+   * because a level opening leaves it standing.
    */
-  rngState: number = DEFAULT_SEED;
+  nextEmitted: ChargeId | null = null;
 
   /**
    * Whether the inlet emits, and whether the train advances.
@@ -152,11 +154,16 @@ export class VoluteGame extends GameInstance<VoluteDebug> {
     return mode;
   }
 
-  /** One charge from the seeded generator, uniformly over `from`. */
+  /** One charge drawn at random, uniformly over `from`. */
   drawCharge(from: readonly ChargeId[]): ChargeId {
-    const drawn = pick(this.rngState, from);
-    this.rngState = drawn.state;
-    return drawn.value;
+    return pick(from);
+  }
+
+  /** The posed emission charge, taken by the emission that consumes it. */
+  takeNextEmitted(): ChargeId | null {
+    const posed = this.nextEmitted;
+    this.nextEmitted = null;
+    return posed;
   }
 
   /** The simulation time the run has accumulated, in seconds. */
@@ -169,9 +176,9 @@ export class VoluteGame extends GameInstance<VoluteDebug> {
     return this.engine.world.audio.muted();
   }
 
-  /** Reseed the generator, restart the reported clock, and return to the title. */
-  reset(seed: number): void {
-    this.rngState = seedState(seed);
+  /** Clear the posed emission, restart the reported clock, and return to the title. */
+  reset(): void {
+    this.nextEmitted = null;
     this.simOriginMs = this.engine.frame().timeMs;
     this.toTitle();
   }

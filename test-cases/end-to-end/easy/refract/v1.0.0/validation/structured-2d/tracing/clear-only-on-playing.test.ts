@@ -39,7 +39,7 @@ afterEach(() => {
 
 it("KeyR on the title and on the select screen changes nothing", async () => {
   // On the title.
-  await resetTo(h, 1);
+  await resetTo(h);
   const titleBefore = h.snapshot();
   assertEqual(titleBefore.screen, "title", "the pose opens on the title");
 
@@ -53,7 +53,7 @@ it("KeyR on the title and on the select screen changes nothing", async () => {
   );
 
   // On the select screen, entered the way a player enters it.
-  await startCampaign(h, 1);
+  await startCampaign(h);
   const selectBefore = h.snapshot();
   assertEqual(selectBefore.screen, "select", "the pose lands on select");
 

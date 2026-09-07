@@ -59,24 +59,22 @@ take's three files into `showcase/<variant>/`:
 
 ## Why every take is recorded
 
-A seed fixes the whole round, so a take could be played silently, judged, and
-replayed identically under the recorder. Every take is recorded as it is played
-anyway, because that makes the take that was judged provably the take that was
-committed — and replaying the winner is the expensive half of doing it the other
-way. Each take also gets its own engine: a round replayed over a world that has
-already run inherits its frame counter, the input edges the last take left
-armed, and whatever the last render left on the canvas.
+Every take is a round the game draws for itself, so no take can be played
+again. Each is recorded as it is played, judged from what it produced, and the
+best recording is the one kept, which makes the take that was judged provably
+the take that was committed. Each take also gets its own engine: a round played
+over a world that has already run inherits its frame counter, the input edges
+the last take left armed, and whatever the last render left on the canvas.
 
 ## What the driver may touch
 
 Two debug operations, and no others:
 
-- `reset({ seed })`, which chooses the seed the pellet generator is laid with.
-  Choosing the session is what lets a take be auditioned at all.
+- `reset()`, which opens a fresh session for the take.
 - `snapshot()`, a reading that changes nothing.
 
 Everything on screen is the game's own: the snake turns because an arrow key was
-struck, every pellet is where the round's generator put it, every point is the
+struck, every pellet is where the round's own draw put it, every point is the
 eat's, and the multiplier is whatever the window the game ran left standing.
 
 ## The sprites, and where the `ImageBitmap` name comes from
@@ -102,8 +100,7 @@ carry a `$opaque` argument.
 | Variable                          | Default | What it does                                                                                                                    |
 | --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`   | The harness's replay cap, patched above to read it. At `1900` a take of this length is kept whole, at 64 fps, with no thinning. |
-| `TCAB_SHOWCASE_TAKES`             | `8`     | How many seeds to play and judge.                                                                                               |
-| `TCAB_SHOWCASE_FIRST_SEED`        | `1`     | The first seed of that run of takes.                                                                                            |
+| `TCAB_SHOWCASE_TAKES`             | `8`     | How many takes to play and judge.                                                                                               |
 | `TCAB_SHOWCASE_MIN_SECONDS`       | `22`    | The clip ends at the first eat past this.                                                                                       |
 | `TCAB_SHOWCASE_MAX_SECONDS`       | `28`    | The take is abandoned here, wherever it had got to.                                                                             |
 
@@ -115,10 +112,10 @@ half the mechanic.
 
 ## What shipped
 
-Both takes ran at `TCAB_SHOWCASE_TAKES=24` from seed `1`, at the default bounds
-and a `1900`-frame cap, so both replays are whole and unthinned.
+Both variants ran at `TCAB_SHOWCASE_TAKES=24`, at the default bounds and a
+`1900`-frame cap, so both replays are whole and unthinned.
 
-| Variant | Winning seed | What it plays                                                                                   |
-| ------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| `base`  | 12           | 26.3 s, 13 pellets, 510 points, chain of 16, `x5` held over 8 eats, one window lost and rebuilt |
-| `maze`  | 23           | 26.3 s, 14 pellets, 560 points, chain of 17, `x5` held over 9 eats, one window lost and rebuilt |
+| Variant | What the committed take plays                                                                   |
+| ------- | ----------------------------------------------------------------------------------------------- |
+| `base`  | 26.3 s, 13 pellets, 510 points, chain of 16, `x5` held over 8 eats, one window lost and rebuilt |
+| `maze`  | 26.3 s, 14 pellets, 560 points, chain of 17, `x5` held over 9 eats, one window lost and rebuilt |

@@ -234,7 +234,7 @@ src/
   flow.ts             The run, the six screens, and every transition between
   screens.ts          What a frame's input does to the screen in front of you
   timing.ts           When a countdown has run out
-  rng.ts              The seeded generator: a draw beside the next state
+  rng.ts              The game's random source, behind two helpers
   input.ts            The registered actions and their edge reads
   audio.ts            The ten engine cues, played once per event per tick
   assets.ts           The seven sprite folders, loaded through the engine

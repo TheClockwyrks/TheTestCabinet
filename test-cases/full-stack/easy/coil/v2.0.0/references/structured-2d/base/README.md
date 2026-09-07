@@ -110,10 +110,12 @@ module-level variable or a closure: the controller, the draw components, and the
 diagnostic sources all read the state off the world at the call, so what is drawn
 is the frame this tick produced.
 
-The pellet generator is part of that: its whole state is one 32-bit word held in
-`CoilState.rngState`, and each draw returns the next word beside its result, so
-reseeding is assigning a number and replaying the same calls reproduces the same
-pellet sequence exactly.
+The pellet draw is the one thing the state does not decide on its own:
+`src/rng.ts` draws the spawn cell from the build's own random source, and a
+scenario that needs a particular cell poses it with the surface's
+`setNextPellet`, which `CoilState.nextPellet` carries until the spawn that takes
+it. The surface's `drawPelletCell` performs the draw on its own, off the board as
+it stands, and places nothing.
 
 ## Rendering, as two layers
 
@@ -149,14 +151,15 @@ await engine.advance(8);
 const { score, snake } = engine.debug.snapshot();
 ```
 
-The operations are `reset` (seedable), `snapshot`, `setScreen`, `setMenuIndex`,
+The operations are `reset`, `snapshot`, `setScreen`, `setMenuIndex`,
 `setScore`, `setBest`, `setCombo`, `setComboWindow`, `setSnake`, `setDirection`,
-`clearTurns`, `setPellet`, `clearPellet`, and the three driver switches
-`setSnakeSteering`, `setSnakeTravel`, and `setPelletRespawn`. A pose sets one
-thing and the game's own tick, turning, collision, pellet placement and scoring
-run from there exactly as they do in play. Everything about _driving a browser
-game_ — the clock, exact frames, key events — is the engine's, which is why the
-surface carries no `advance` and no `keyDown`. It is inert during normal play.
+`clearTurns`, `setPellet`, `clearPellet`, `setNextPellet`, `drawPelletCell`, and
+the three driver switches `setSnakeSteering`, `setSnakeTravel`, and
+`setPelletRespawn`. A pose sets one thing and the game's own tick, turning,
+collision, pellet placement and scoring run from there exactly as they do in
+play. Everything about _driving a browser game_ — the clock, exact frames, key
+events — is the engine's, which is why the surface carries no `advance` and no
+`keyDown`. It is inert during normal play.
 
 Classic lays no obstacle cell, so it carries no obstacle operation. The Maze
 variant beside this one adds `clearObstacles` and `addObstacle`.
@@ -252,7 +255,7 @@ npm test               # vitest, with coverage over src/
 
 `npm test` runs the build's own suite **in process**, with no browser. Some of it
 is arithmetic over the state — the tick, the turn buffer, the collision rules,
-the combo, the pellet generator, and the screen routing — and the rest stands a
+the combo, the pellet draw, and the screen routing — and the rest stands a
 **real engine** up through `src/harness.ts`, over an `@napi-rs/canvas` canvas and
 a `SurfaceMetrics` of its own, steps it with `engine.advance` against a
 `ConstantClock`, drives the keyboard by dispatching events at the surface's event
@@ -274,7 +277,7 @@ pipeline produced. `src/render.test.ts` draws both layers through an
 | `src/board.ts`       | The grid's geometry and the valid pellet set.                     |
 | `src/mode.ts`        | What the mode this build ships means for the rest of it.          |
 | `src/menus.ts`       | The items each menu-bearing screen holds.                         |
-| `src/rng.ts`         | The seeded generator the pellet is drawn from.                    |
+| `src/rng.ts`         | The random source the pellet is drawn from.                       |
 | `src/input.ts`       | The engine actions, registered and read one edge per frame.       |
 | `src/audio.ts`       | The four cues, declared and played by name.                       |
 | `src/assets.ts`      | The produced sprite set, loaded through the engine's loader.      |

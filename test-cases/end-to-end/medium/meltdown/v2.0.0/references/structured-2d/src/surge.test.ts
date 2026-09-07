@@ -213,25 +213,23 @@ describe("the wave progression", () => {
     harness.dispose();
   });
 
-  it("draws each unit's vent from the seed, and replays it", async () => {
+  it("uses both vents across a long release with no vent posed", async () => {
     const harness = await createHarness();
-    const run = async (seed: number): Promise<string[]> => {
-      harness.debug.reset(seed);
-      startRun(harness);
-      harness.debug.reset(seed);
-      harness.debug.setScreen("playing");
-      harness.debug.setPhase("building");
-      harness.debug.setWaveSpawning(true);
-      harness.tap("Space");
-      await stepSeconds(harness, WAVE_SPAWN_INTERVAL * 5, 60);
-      return harness.debug.snapshot().surge.map((unit) => unit.vent);
-    };
-    const first = await run(7);
-    const second = await run(7);
-    const other = await run(99);
-    expect(first).toEqual(second);
-    expect(first.length).toBeGreaterThan(3);
-    expect(new Set([...first, ...other]).size).toBe(2);
+    startRun(harness);
+    harness.debug.setLives(1_000);
+    harness.debug.setWave(4);
+    harness.debug.setWaveSpawning(true);
+    harness.tap("Space");
+    // Gathered as they arrive, because an undefended floor leaks them again.
+    const vents = new Map<number, string>();
+    for (let interval = 0; interval < 40; interval += 1) {
+      await stepSeconds(harness, WAVE_SPAWN_INTERVAL, 60);
+      for (const unit of harness.debug.snapshot().surge) {
+        vents.set(unit.id, unit.vent);
+      }
+    }
+    expect(vents.size).toBe(40);
+    expect(new Set(vents.values()).size).toBe(2);
     harness.dispose();
   });
 });

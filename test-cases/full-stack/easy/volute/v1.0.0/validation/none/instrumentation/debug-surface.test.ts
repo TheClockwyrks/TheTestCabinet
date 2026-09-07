@@ -61,7 +61,6 @@ import {
   ANGLE_TOL,
   CELLS,
   CHARGE_IDS,
-  DEFAULT_SEED,
   HANDLE,
   INJECTOR_FIELDS,
   MACHINERY_KINDS,
@@ -90,24 +89,6 @@ import {
   type Harness,
   type VoluteSnapshot,
 } from "../harness";
-
-/**
- * Real time allowed to pass with the game off the wall clock.
- *
- * Long enough that a build still driving itself off `requestAnimationFrame` would
- * have run tens of ticks in it, and short enough to cost the suite nothing.
- */
-const FROZEN_MS = 500;
-
-/**
- * Real time the game is handed back to its own clock for.
- *
- * `setAutoStep(true)` "returns it to running itself", and the only reading of
- * that is time passing while nothing steps it. A third of a second is many frames
- * on any refresh rate a browser runs at, so the check turns on whether the loop
- * reconnected rather than on how fast it runs.
- */
-const RUNNING_MS = 300;
 
 /** Ticks stepped where a check only needs the drive to have really moved. */
 const DRIVE_TICKS = 30;
@@ -168,43 +149,29 @@ it("carries the documented version and every operation, as functions", async () 
 
 /* ---- The clock the surface owns -------------------------------------------- */
 
-it("takes the hall off the wall clock, runs whole ticks, and gives it back", async () => {
-  // The harness has already called `setAutoStep(false)`. So a hall is posed and
-  // real time is simply allowed to pass: a build still running itself off the
-  // wall clock accumulates ticks while this waits, and one that really
-  // disconnected accumulates none.
+it("runs whole ticks through step", async () => {
+  // The harness has already called `setAutoStep(false)`, so the hall posed here
+  // moves only when `step` says so. `step(ticks)` "Runs `ticks` whole simulation
+  // ticks", each worth `TICK_DT`, so the game's own accumulated simulation time
+  // moves by exactly the time those ticks cover, and the train it carries moves
+  // with it. Nothing here waits on real time: a stretch of the wall clock decides
+  // nothing about the build, and the rule that the hall is off the clock is read
+  // through what the counted ticks did.
   await startRun(h);
   await poseHall(h, { cores: spacedBlock(1000, 3, "halide") });
-  const frozen = await h.snapshot();
-  await h.page.waitForTimeout(FROZEN_MS);
-  const still = await h.snapshot();
+  const posed = await h.snapshot();
 
-  // Exact rather than tolerant: nothing stepped, so nothing may have moved at
-  // all. A build whose `setAutoStep(false)` did not disconnect fails by whole
-  // ticks, not by a rounding.
-  assertEqual(still.simTime, frozen.simTime, "simTime while nothing stepped");
-  assertEqual(head(still).s, head(frozen).s, "the head while nothing stepped");
-
-  // And `step` runs whole ticks: the game's own accumulated simulation time moves
-  // by exactly the time those ticks cover.
   const driven = await h.step(DRIVE_TICKS);
   assertNear(
-    driven.simTime - frozen.simTime,
+    driven.simTime - posed.simTime,
     seconds(DRIVE_TICKS),
     SIM_TIME_TOL,
     `the simulated seconds ${DRIVE_TICKS} ticks covered`,
   );
-
-  // `setAutoStep(true)` "returns it to running itself": the harness hands the
-  // page back to its own frame loop for a stretch of real time, and the hall
-  // advances without anything stepping it. HOW FAST it runs is
-  // `channel/self-advancing`; that it runs at all is the surface's half.
-  await h.runFor(RUNNING_MS);
-  const ran = await h.snapshot();
   assertGreaterThan(
-    ran.simTime,
-    driven.simTime,
-    "simTime after the game was handed back its own clock",
+    head(driven).s,
+    head(posed).s,
+    `the head's arc position after ${DRIVE_TICKS} stepped ticks`,
   );
 });
 
@@ -224,7 +191,8 @@ it("restores every declared field to its title value on reset", async () => {
   await fireAt(h, 90);
   await h.step(DRIVE_TICKS);
 
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.setNextEmitted("sulfur");
+  await h.debug.reset();
   const title = await h.snapshot();
 
   // Read without stepping: `reset` "Restores every declared field of the game's
@@ -241,6 +209,7 @@ it("restores every declared field to its title value on reset", async () => {
   assertEqual(title.interlude, 0, "the interlude a reset leaves");
   assertNull(title.injector.loaded, "the loaded core a reset leaves");
   assertNull(title.injector.queued, "the queued core a reset leaves");
+  assertNull(title.nextEmitted, "the posed emission charge a reset leaves");
   assertEqual(title.injector.cooldown, 0, "the cooldown a reset leaves");
   assertAngleNear(
     title.injector.aim,
@@ -256,7 +225,7 @@ it("restores every declared field to its title value on reset", async () => {
 });
 
 it("sets each single field it is given, and opens a level with startLevel", async () => {
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
 
   // Each pose "changes nothing else", so the four are set in turn against a hall
   // that has just been reset and read back together: a build that routed any of
@@ -357,6 +326,21 @@ it("holds the charges it is given and releases the loaded one on fire", async ()
   const held = await h.snapshot();
   assertEqual(held.injector.loaded, "cobalt", "the charge setLoaded set");
   assertEqual(held.injector.queued, "garnet", "the charge setQueued set");
+
+  // "The snapshot reports the pose as `nextEmitted`, and `null` while none
+  // stands": the read-back of the pose alone. What the inlet then emits under it
+  // is `instrumentation/set-next-emitted-poses-the-charge`.
+  await h.debug.setNextEmitted("sulfur");
+  assertEqual(
+    (await h.snapshot()).nextEmitted,
+    "sulfur",
+    "the charge setNextEmitted posed",
+  );
+  await h.debug.setNextEmitted(null);
+  assertNull(
+    (await h.snapshot()).nextEmitted,
+    "the pose setNextEmitted(null) cleared",
+  );
 
   // "Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and does nothing
   // else": -90 is 270 once normalized, which is what makes this a reading of the
@@ -505,7 +489,6 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
     "chainTimer",
     "interlude",
     "simTime",
-    "rngState",
   ] as const) {
     assertEqual(typeof s[field], "number", `snapshot().${field}`);
   }
@@ -518,6 +501,12 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
   ] as const) {
     assertEqual(typeof s[field], "boolean", `snapshot().${field}`);
   }
+  // A charge id while a pose stands, and `null` otherwise.
+  assertContains(
+    [...CHARGE_IDS, null],
+    s.nextEmitted,
+    "snapshot().nextEmitted",
+  );
 
   // The train, head first, with every documented field on every entry.
   assertGreaterThan(s.train.length, 0, "the cores snapshot() reports");

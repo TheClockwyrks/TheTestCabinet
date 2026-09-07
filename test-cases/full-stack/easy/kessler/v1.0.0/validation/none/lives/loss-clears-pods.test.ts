@@ -7,8 +7,8 @@
 // neither can be caught or burn on its own, and the emptying read on the loss
 // tick is the loss's work.
 //
-// THE WORLD IS THE DOOMED BALL AND TWO PODS. No targets; the pod generator's
-// own draws are already off in the isolated world.
+// THE WORLD IS THE DOOMED BALL AND TWO PODS. No targets; the pod draw is
+// already held off in the isolated world.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength, assertTrue } from "../assert";

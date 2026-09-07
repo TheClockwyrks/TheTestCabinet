@@ -32,8 +32,8 @@
 // cyan drone in formation with all three of its faculties on, `setDroneBand` moves
 // the stored band and leaves the band clock exactly where it stands, a world gate
 // stays off until something turns it back on, and `reset` gives everything back.
-// Posing through it is how a scenario is reproducible, and it is the seam the
-// case's specification documents. `surface.ts` is that specification as types, and
+// Posing through it is how a scenario is arranged the same way in every build,
+// and it is the seam the case's specification documents. `surface.ts` is that specification as types, and
 // it is the only description of the surface this harness reads: the build's own
 // module for the surface is never imported.
 //
@@ -70,7 +70,7 @@
 // can be stated in ticks and mean the same thing on every machine. 120 Hz is also
 // exactly `1 / SUBSTEP_MAX`, so one frame of the default clock is one whole
 // sub-step and nothing is ever measured across a partial one. An item that is
-// specifically about the step size — `instrumentation.deterministic-core` — builds
+// specifically about the step size — `instrumentation.elapsed-time-steps` — builds
 // its own harnesses with clocks of its own.
 //
 // THE SEEDED ART IS SERVED HEADLESS. specs/assets.md has the build load its four
@@ -445,23 +445,9 @@ export type { UntilOptions };
 export type UntilResult = SweptResult<SpectraSnapshot>;
 
 /**
- * How long a wait on the engine's own frame loop may run before it gives up.
- *
- * The bound on `runUntil`, and it is a bound rather than a measurement: the wait
- * ends the moment the build's own reading says what the check is waiting for, so
- * a quiet host leaves it in a fraction of a second and a host running a hundred
- * other jobs simply takes longer to get there. What reaching this bound means is
- * that the loop never ran, which is the failure the point is looking for.
- */
-const FREE_RUN_DEADLINE_MS = 30_000;
-
-/** How often the build is asked what its own loop has done, while it holds the clock. */
-const FREE_RUN_POLL_MS = 25;
-
-/**
  * What Spectra adds to the package's engine harness, and what it takes back.
  *
- * Six members differ from the kit's, and each is a deliberate keep rather than an
+ * Four members differ from the kit's, and each is a deliberate keep rather than an
  * omission:
  *
  *  - {@link SpectraModel.pointer} is ASYNC and runs the one driven frame that
@@ -471,9 +457,6 @@ const FREE_RUN_POLL_MS = 25;
  *  - {@link SpectraModel.advanceSeconds} takes SECONDS of the default clock. The
  *    engineless half's member of that name takes a span the BUILD divides, which is
  *    a different call entirely.
- *  - {@link SpectraModel.runFor} and {@link SpectraModel.runUntil} drive the
- *    engine's OWN frame loop in real time. Nothing in the kit does that, because
- *    nothing else needs it.
  *  - {@link SpectraModel.state} and {@link SpectraModel.css} are this engine's
  *    state model and this case's gesture arithmetic.
  *
@@ -511,40 +494,10 @@ interface SpectraModel {
    *
    * `ticksFor(duration)` frames of the DEFAULT clock. A harness built with a clock
    * of its own advances the frames that clock hands out, so an item that supplied
-   * one — `instrumentation.deterministic-core` is the only one that does — counts
+   * one — `instrumentation.elapsed-time-steps` is the only one that does — counts
    * its own frames with {@link Harness.advance} instead.
    */
   advanceSeconds(duration: number): Promise<void>;
-  /**
-   * Drive the engine's own frame loop for `ms` of real time, then halt it.
-   *
-   * NO POINT MAY BE SIZED AGAINST THIS. How many frames a loop covers over a
-   * stretch of the wall clock is a fact about the machine, not about the build, so
-   * a reading taken across a fixed `ms` reaches further on a quiet host than on a
-   * busy one. A point that genuinely needs the build's own clock uses `runUntil`,
-   * which ends on the build's own reading passing a floor and simply takes longer
-   * on a loaded host; a point that needs game time to pass uses `advance`. This is
-   * the raw primitive both of those rest on, kept for a caller that wants the loop
-   * running and asserts nothing about how far it got.
-   */
-  runFor(ms: number): Promise<void>;
-  /**
-   * Drive the engine's own frame loop until `predicate` holds of what the build
-   * reports, then halt it, and hand back the state that ended it.
-   *
-   * The wait a point about the build's own clock runs. Real time passes and
-   * nothing steps the game, exactly as `runFor` leaves it, but what ends the wait
-   * is the build's own reading rather than a stretch of the wall clock: how many
-   * frames a host's frame callback delivers in a given second is a fact about the
-   * machine, so a host running a hundred other jobs makes this wait longer
-   * instead of making the build look stopped. `deadlineMs` bounds it, and a build
-   * whose loop never runs reaches that bound with the predicate still false.
-   */
-  runUntil(
-    predicate: (snapshot: SpectraSnapshot) => boolean,
-    options?: { deadlineMs?: number; pollMs?: number },
-  ): Promise<SpectraSnapshot>;
-
   /** Where a logical point lands in CSS pixels, which is where a gesture goes. */
   css(x: number, y: number): Point;
   /**
@@ -791,7 +744,6 @@ const kit = createEngineCaseHarness<
     const raisePointer = base.pointer.bind(base);
     const step = base.advance.bind(base);
     const deviceOf = base.device.bind(base);
-    const read = base.snapshot.bind(base);
     return {
       get state() {
         return engine.state;
@@ -806,36 +758,6 @@ const kit = createEngineCaseHarness<
 
       advanceSeconds: (duration: number): Promise<void> =>
         step(ticksFor(duration)),
-
-      async runFor(ms: number): Promise<void> {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((resolve) => setTimeout(resolve, ms));
-        controller.abort();
-        await running;
-      },
-
-      async runUntil(
-        predicate: (snapshot: SpectraSnapshot) => boolean,
-        options: { deadlineMs?: number; pollMs?: number } = {},
-      ): Promise<SpectraSnapshot> {
-        const deadline =
-          Date.now() + (options.deadlineMs ?? FREE_RUN_DEADLINE_MS);
-        const pollMs = Math.max(1, options.pollMs ?? FREE_RUN_POLL_MS);
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        try {
-          let snapshot = read();
-          while (!predicate(snapshot) && Date.now() < deadline) {
-            await new Promise((resolve) => setTimeout(resolve, pollMs));
-            snapshot = read();
-          }
-          return snapshot;
-        } finally {
-          controller.abort();
-          await running;
-        }
-      },
 
       css: (x: number, y: number): Point => {
         const at = deviceOf(x, y);
@@ -1155,7 +1077,7 @@ export const LANE_CENTER = (SHIP_X_MIN + SHIP_X_MAX) / 2;
  * reading needs.
  *
  * It is written for a FRESH harness, whose state is the opening one, so it does not
- * reset: the seed and the art are already as a run finds them. A validator that
+ * reset: the state and the art are already as a run finds them. A validator that
  * reuses a harness across scenarios calls `h.debug.reset()` first.
  */
 export function startPosed(h: Harness): void {
@@ -1269,6 +1191,31 @@ export async function startStage(h: Harness, n: number): Promise<void> {
   h.debug.setScreen("stageIntro");
   h.debug.setPhaseTimer(0);
   await h.advance(1);
+}
+
+/**
+ * Stand the wave the game built where its entrance ends: every drone at its own
+ * slot, in phase `formation`, with the entry gate shut behind it.
+ *
+ * For the items whose requirement is the ASSEMBLED block the build laid out — its
+ * composition, its symmetry, the bands it holds — and not the entrance that
+ * assembles it. Every drone reports the slot it is bound for from the moment the
+ * wave is built (specs/swarm.md, specs/instrumentation.md), and a drone in phase
+ * `formation` sits at that slot plus the sway, so posing each drone there is the
+ * state its entrance would leave it in, reached without flying the twelve seconds
+ * `swarm/assembles` grades. Nothing about the roster is touched: which drones the
+ * wave holds, their kinds, their stored bands and their slots are all still the
+ * build's. The entry gate is shut so the wave's own release schedule cannot send a
+ * drone back out on its way in.
+ *
+ * Call it after {@link startStage}. It poses and returns; it runs no frame.
+ */
+export function settleWave(h: Harness): void {
+  h.debug.setWaveEntry(false);
+  for (const drone of h.snapshot().drones) {
+    h.debug.setDronePhase(drone.id, "formation");
+    h.debug.setDronePosition(drone.id, drone.slotX, drone.slotY);
+  }
 }
 
 /**

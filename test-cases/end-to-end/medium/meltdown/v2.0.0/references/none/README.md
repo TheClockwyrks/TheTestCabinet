@@ -139,7 +139,7 @@ asset loader, because Meltdown loads nothing — and it is six files:
 
 The build exposes the surface `specs/instrumentation.md` specifies on
 **`window.__meltdown`**, so a scenario can be posed in Meltdown's own world from
-code — 47 operations over a deterministic core:
+code — 49 operations over a render-free core:
 
 - `setAutoStep(enabled)` and `advance(seconds, frames)` — the **clock**. Nothing
   outside this build owns it, so the surface carries it: `setAutoStep(false)`
@@ -149,8 +149,8 @@ code — 47 operations over a deterministic core:
   either way, so the canvas always shows the state the last frame left. Because
   every rate is integrated against the frame's delta, `advance(1, 1)` and
   `advance(1, 120)` reach the same outcome.
-- `reset(options?)` and `snapshot()` — return to the title screen (seedable) and
-  read a JSON-serializable view of the whole state: the run, the routes, every
+- `reset()` and `snapshot()` — return to the title screen and read a
+  JSON-serializable view of the whole state: the run, the routes, every
   panel control's hit rectangle, every tower with its live heat, damage and
   radiator faces, and every surge unit.
 - The **run**: `setScreen`, `setPhase`, `setMenuIndex`, `setMode`,
@@ -161,6 +161,11 @@ code — 47 operations over a deterministic core:
 - The **world gate**: `setWaveSpawning(false)` stops the run releasing surge of
   its own accord, so a scenario can put exactly the units it means on the floor
   and nothing else arrives.
+- The **vent pose** and the **vent draw**: `setSpawnVent("left" | "top" | null)`
+  fixes the vent every unit the run releases enters at in place of the draw, so
+  a scenario can watch one vent's entries, and `null` returns the release to the
+  draw; `drawVent()` performs one draw on its own and returns the vent, so a
+  scenario can sample the draw without releasing anything.
 - The **towers**: `addTower`, `removeTower`, `clearTowers`, and the poses
   `setTowerHeat`, `setTowerTripped`, `setTowerTripTimer`, `setTowerLevel`,
   `setTowerFresh`, plus two gates — `setTowerFiring` and `setTowerThermal` —
@@ -265,7 +270,6 @@ src/
   debug.ts            The window.__meltdown surface over MeltdownState
   state.ts            The whole state, and the two ways it is reset
   game.ts             The four functions the runtime drives, and the pause gate
-  rng.ts              The seeded generator, over MeltdownState.rngState
   grid.ts             Blocked tiles and the two distance fields the surge walks
   towers.ts           Everything derived from a tower rather than stored on one
   units.ts            Everything derived from a surge unit

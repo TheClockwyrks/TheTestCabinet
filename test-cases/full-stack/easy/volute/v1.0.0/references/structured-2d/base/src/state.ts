@@ -4,9 +4,9 @@
 // onto them like this:
 //
 //   * The game INSTANCE (`src/game.ts`) carries only what must survive a level
-//     transition: the seeded generator's whole state, the origin the reported
-//     simulation time is measured from, and the run a pending transition is
-//     opening with.
+//     transition: the two faculty gates, the charge posed for the next
+//     emission, the origin the reported simulation time is measured from, and
+//     the run a pending transition is opening with.
 //   * The open world's GAME STATE — this class — carries the run: the screen,
 //     the score, the level, the cells, the quota, the pressure, the chain, the
 //     machinery in force, the interlude, and the ORDER of the train and the

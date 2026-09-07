@@ -176,8 +176,9 @@ files:
   through.
 - **`src/assets.ts`** — the manifest of every produced file and the loader that
   fetches it. Loading runs in the background from the first frame, so the game
-  and `window.__facet` are up immediately and each sprite joins the picture on
-  the frame after it lands.
+  is up immediately and each sprite joins the picture on the frame after it
+  lands; `window.__facet` is installed once every load has settled, since the
+  specs make the load part of initialization.
 - **`src/audio-bus.ts`** — cues declared by name over the produced `.wav`s,
   decoded once through `decodeAudioData` on a Web Audio context opened by the
   first user gesture, plus the looping music bed. Muting is a gain of zero on the
@@ -190,11 +191,12 @@ files:
 
 ## The core, and what sits on it
 
-`src/core/` is Facet's whole simulation — the board and its notation, the seeded
-generator, R1 to R9, the chain cadence, the screens and their menus, the opening
-deal, and the pose logic behind the debug surface. It imports **nothing** but
-`src/constants.ts`: no engine, no renderer, no DOM. It is the same core the case's
-`simple-2d` and `structured-2d` reference builds carry, written once.
+`src/core/` is Facet's whole simulation — the board and its notation, the random
+source the deal and the refill draw from, R1 to R9, the chain cadence, the
+screens and their menus, the opening deal, and the pose logic behind the debug
+surface. It imports **nothing** but `src/constants.ts`: no engine, no renderer,
+no DOM. It is the same core the case's `simple-2d` and `structured-2d` reference
+builds carry, written once.
 
 `src/game.ts` is the bridge. It reads the frame's input, hands the core the
 frame's delta time, plays the cues the frame raised, and keeps the pointer and
@@ -203,8 +205,8 @@ mute mirrors honest. The one thing it adds is the link to the **presentation**
 shatter sheets and particle bursts need to know _which_ cells, so `reportFor`
 re-derives it from the core's own R5, R6, and R8 over the board that step read.
 None of that decoration is part of the state, because
-`specs/instrumentation.md` rests on the state being reproducible from a seed and
-a delta time.
+`specs/instrumentation.md` rests on the state advancing from the delta time
+alone.
 
 ## Debugging and automation
 
@@ -252,9 +254,9 @@ for the registered actions (the runtime's keyboard is driven by dispatching real
 key events at the page) and none for the overlay (the runtime owns the backtick
 key).
 
-The surface is inert during normal play. All randomness runs off the seeded
-generator state the snapshot reports as `rngState`, so a given seed deals the
-same opening board and the same refills exactly.
+The surface is inert during normal play. The deal and the refill draw from the
+game's own random source, and a scenario that needs a refill pinned down poses
+it with `setRefillKinds`.
 
 ## Requirements
 
@@ -319,7 +321,7 @@ vite.config.ts        Build config (base "./", emits to dist/)
 vitest.config.ts      The build's own test suite, over src/
 public/assets/        The produced art, effects, and audio, copied into dist/
 src/
-  main.ts             Bootstrap: stand the runtime up, initialize, install, run
+  main.ts             Bootstrap: stand the runtime up, initialize, run, install
   runtime.ts          The frame loop, the manual clock, and the wiring
   viewport.ts         The canvas fit and the pointer map: scale, letterbox, dpr
   keyboard.ts         Named actions over key codes, with edge detection

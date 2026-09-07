@@ -14,7 +14,9 @@ import {
   advance,
   applyBurn,
   applySlow,
+  armNextCrit,
   armNextRoll,
+  clearNextCrit,
   board,
   clearStructures,
   clearUnits,
@@ -23,12 +25,14 @@ import {
   downgrade,
   keep,
   placeBlocker,
+  placeCombo,
   placeComponent,
   placeStamp,
   pullPress,
   candidates,
   removeStructure,
   resetWorld,
+  rollPress,
   select,
   setCharge,
   setDifficulty,
@@ -49,9 +53,9 @@ import { footprintCenter, tileCenter } from "./tables";
 import type { FoundryWorld } from "./types";
 
 /** A run posed on an empty yard with nothing but what a check puts on it. */
-function openRun(seed = 1): FoundryWorld {
+function openRun(): FoundryWorld {
   const w = createWorld(noAssets());
-  resetWorld(w, seed);
+  resetWorld(w);
   startRun(w);
   clearStructures(w);
   clearUnits(w);
@@ -127,6 +131,20 @@ describe("the scrap-press", () => {
     expect(w.holding).toBe(true);
   });
 
+  it("rolls the press on its own without landing anything", () => {
+    const w = openRun();
+    armNextRoll(w, "coil", 4);
+    pullPress(w);
+    setRefinement(w, 8);
+    const before = JSON.stringify(snapshot(w));
+    for (let i = 0; i < 50; i++) {
+      const roll = rollPress(w);
+      expect(roll.quality).toBeGreaterThanOrEqual(2);
+      expect(roll.quality).toBeLessThanOrEqual(5);
+    }
+    expect(JSON.stringify(snapshot(w))).toBe(before);
+  });
+
   it("refuses an illegal drop without spending a stamp", () => {
     const w = openRun();
     const wp = board(w).map.waypoints[0]!;
@@ -151,8 +169,8 @@ describe("the scrap-press", () => {
   });
 
   it("biases the roll with refinement and nothing else", () => {
-    const w = openRun(99);
-    // At R0 the press rolls Scrap alone, whatever the seed.
+    const w = openRun();
+    // At R0 the press rolls Scrap alone.
     for (let i = 0; i < 5; i++) placeStamp(w, 4 + i * 3, 10);
     for (const s of snapshot(w).structures) expect(s.quality).toBe(1);
     setRefinement(w, 8);
@@ -298,6 +316,40 @@ describe("firing", () => {
     expect(u.maxHp - u.hp).toBeCloseTo(t.damageDealt, 6);
   });
 
+  it("lands the crit outcome armed for the next shot, and consumes it", () => {
+    const tower = placeCombo(w, "slagdriver", 20, 10)!;
+    const center = footprintCenter(20, 10);
+    const unit = spawnUnit(w, "overload")!;
+    setUnitPosition(w, unit, center.x + 40, center.y);
+    setUnitFrozen(unit, true);
+    const damage = snapshot(w).structures[0]!.damage;
+    armNextCrit(w, tower.id, true);
+    expect(snapshot(w).structures[0]!.nextCrit).toBe(true);
+    let tallied = 0;
+    while (tallied === 0) {
+      advance(w, FIXED_STEP);
+      tallied = snapshot(w).structures[0]!.damageDealt;
+    }
+    expect(tallied).toBeCloseTo(damage * 2, 6);
+    expect(snapshot(w).structures[0]!.nextCrit).toBeNull();
+    armNextCrit(w, tower.id, false);
+    let next = tallied;
+    while (next === tallied) {
+      advance(w, FIXED_STEP);
+      next = snapshot(w).structures[0]!.damageDealt;
+    }
+    expect(next - tallied).toBeCloseTo(damage, 6);
+  });
+
+  it("clears an armed crit outcome without firing", () => {
+    const tower = placeCombo(w, "slagdriver", 20, 10)!;
+    armNextCrit(w, tower.id, true);
+    clearNextCrit(w, tower.id);
+    const t = snapshot(w).structures[0]!;
+    expect(t.nextCrit).toBeNull();
+    expect(t.damageDealt).toBe(0);
+  });
+
   it("holds fire with nothing in range", () => {
     const tower = placeComponent(w, "capacitor", 1, 20, 10)!;
     const center = footprintCenter(20, 10);
@@ -441,8 +493,8 @@ describe("the economy", () => {
 
 describe("the clock", () => {
   it("reaches the same state however a span is divided into steps", () => {
-    const a = openRun(3);
-    const b = openRun(3);
+    const a = openRun();
+    const b = openRun();
     setWave(a, 4);
     setWave(b, 4);
     spawnUnit(a, "mote");
@@ -467,20 +519,6 @@ describe("the clock", () => {
     advance(w, 0.5);
     expect(snapshot(w).units.find((u) => u.id === unit.id)!.x).toBeGreaterThan(
       at,
-    );
-  });
-
-  it("runs the same seed to the same rolls", () => {
-    const a = openRun(4242);
-    const b = openRun(4242);
-    setRefinement(a, 5);
-    setRefinement(b, 5);
-    for (let i = 0; i < 5; i++) {
-      placeStamp(a, 4 + i * 3, 10);
-      placeStamp(b, 4 + i * 3, 10);
-    }
-    expect(snapshot(a).structures.map((s) => [s.type, s.quality])).toEqual(
-      snapshot(b).structures.map((s) => [s.type, s.quality]),
     );
   });
 });
@@ -620,7 +658,7 @@ describe("a whole run", () => {
     // held at full, because what is checked is that the campaign RESOLVES rather than
     // whether this particular maze is good enough to survive forty waves.
     const w = createWorld(noAssets());
-    resetWorld(w, 5);
+    resetWorld(w);
     setDifficulty(w, "easy");
     startRun(w);
     let level = 0;

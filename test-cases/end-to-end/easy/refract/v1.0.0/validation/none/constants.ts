@@ -53,9 +53,6 @@ export const TARGET_MIN_H = 72;
 export const BACK_LABEL = "BACK";
 export const CLEAR_LABEL = "CLEAR";
 
-/** What `reset` seeds `rngState` with when no seed is given (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
-
 /* -------------------------------------------------------------------------- */
 /* Keys                                                                       */
 /* -------------------------------------------------------------------------- */

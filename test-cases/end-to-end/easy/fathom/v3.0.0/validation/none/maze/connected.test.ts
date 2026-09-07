@@ -17,7 +17,7 @@
 // between any two neighbors. A board whose left and right halves join only
 // through the tunnel is one region, and the point says so.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -56,7 +56,7 @@ it("lays out one connected region, reaching every corridor tile from the forager
       `corridor tiles reachable over corridor neighbors from the forager's ` +
         `start tile (${one.start.tx}, ${one.start.ty}), which the layout marks ` +
         `'${tileAt(one.board.snapshot, one.start.tx, one.start.ty) ?? "off the board"}', ` +
-        `of the ${one.total} the maze laid out from seed ${one.board.seed} carries`,
+        `of the ${one.total} maze ${one.board.ordinal} the game laid out carries`,
     );
   }
 });

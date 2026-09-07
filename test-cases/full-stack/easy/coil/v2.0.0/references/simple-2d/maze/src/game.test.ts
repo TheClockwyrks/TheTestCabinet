@@ -31,8 +31,8 @@ import { HOWTO_ITEMS, menuItems } from "./menus";
 import { menuItemRect } from "./menus";
 import type { PointerSample, UpdateApi } from "@clockwyrks/simple-2d";
 
-function opening(seed = 1): CoilState {
-  return createInitialState(NO_SPRITES, false, seed);
+function opening(): CoilState {
+  return createInitialState(NO_SPRITES, false);
 }
 
 /** What a frame did to the bus, for the cue checks to read. */

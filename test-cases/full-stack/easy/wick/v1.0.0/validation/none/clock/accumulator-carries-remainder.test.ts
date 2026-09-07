@@ -1,7 +1,7 @@
 // clock/accumulator-carries-remainder — the part of a frame shorter than a tick
 // waits for the next frame.
 //
-// WHERE THE THRESHOLD COMES FROM. specs/instrumentation.md ("A deterministic
+// WHERE THE THRESHOLD COMES FROM. specs/instrumentation.md ("A render-free
 // core"): "On `playing`, each frame's delta time joins the accumulator, every
 // whole `TICK_DT` in it is consumed as a tick, and the remainder waits for the
 // next frame." And of `advance(seconds)`: "on `playing` the delta joins the

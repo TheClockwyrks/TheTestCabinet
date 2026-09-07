@@ -15,7 +15,7 @@
 #     slightly lighter shades of the band fill, covering the whole tile with NO big empty
 #     areas and NO single large blob (real dirt/rock, not patchy blotches — specs/assets.md,
 #     specs/world.md). The 3 variants share the band fill + palette and differ ONLY in the
-#     fine-grain LAYOUT (a different PRNG seed), so every variant reads as the same even
+#     fine-grain LAYOUT (a different grain number), so every variant reads as the same even
 #     dirt. Grain reaches all edges evenly so neighbouring tiles seam.
 #   • the unminable BEDROCK border, the carved-out dark TUNNEL interior fill, and the NEW
 #     unbreakable STONE boulder (two variants) — a hard, cold, SMOOTH dark block that reads
@@ -93,7 +93,7 @@ newsheet() {
 }
 s() { draw-sheet "$@" --config "$CFG" >/dev/null; }
 
-# --- deterministic PRNG (a plain LCG) so the grain is reproducible per seed -------
+# --- a plain LCG, so one grain number always lays the same layout -------------------
 RSEED=0
 rnd() {  # rnd <n> : sets R to a value in [0, n)
   RSEED=$(( (RSEED * 1103515245 + 12345) & 0x7fffffff ))

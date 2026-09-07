@@ -52,7 +52,7 @@ export function registerDiagnostics(
       ? "none"
       : state.foes
           .map(
-            (foe) => `#${foe.id} ${foe.kind} ${fixed(foe.x)},${fixed(foe.y)}`,
+            (foe) => `#${foe.id} ${foe.kind} ${fixed(foe.x)}, ${fixed(foe.y)}`,
           )
           .join(" | "),
   );

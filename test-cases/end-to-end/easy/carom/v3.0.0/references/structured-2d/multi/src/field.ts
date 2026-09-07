@@ -31,6 +31,7 @@ import {
   TAGS,
 } from "./constants";
 import { Paddle } from "./paddle";
+import { drawLaunchAngle } from "./random";
 import { Obstacle } from "./scenery";
 import type { Side } from "./sim";
 import { stateOf, type ResumeScreen, type Screen } from "./state";
@@ -162,6 +163,7 @@ export interface BallArrangement {
   spin: number;
   held: boolean;
   holdTimer: number;
+  launchAngle: number;
   trail: readonly TrailSample[];
 }
 
@@ -206,6 +208,7 @@ export function captureArrangement(world: World): Arrangement {
       spin: ball.spin,
       held: ball.held,
       holdTimer: ball.holdTimer,
+      launchAngle: ball.launchAngle,
       trail: ball.trail,
     })),
     obstacles: obstaclesOf(world).map((obstacle) => obstacle.index),
@@ -237,6 +240,7 @@ export function applyArrangement(world: World, arrangement: Arrangement): void {
     actor.spin = ball.spin;
     actor.held = ball.held;
     actor.holdTimer = ball.holdTimer;
+    actor.launchAngle = ball.launchAngle;
     actor.trail = ball.trail;
   }
   for (const index of arrangement.obstacles) spawnObstacle(world, index);
@@ -264,6 +268,7 @@ export function titleArrangement(menuIndex: number): Arrangement {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      launchAngle: drawLaunchAngle(),
       trail: [],
     })),
     obstacles: OBSTACLE_CENTERS.map((_centre, index) => index),

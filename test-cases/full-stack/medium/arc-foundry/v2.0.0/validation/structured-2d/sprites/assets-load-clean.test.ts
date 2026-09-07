@@ -34,9 +34,24 @@
 //
 // The drive is the three phases `specs/campaign.md` has — a build phase, a wave,
 // and the finale — with something of every kind on the yard: a component firing, a
-// rock stamped, six of the seven Load types walking, and the Overload Dynamo. A
-// build that loads a file lazily is what it is for, and it is the replay this
-// point keeps as evidence.
+// rock stamped, six of the seven Load types walking, one of them burning and dying
+// inside the wave, and the Overload Dynamo. A build that loads a file lazily is
+// what it is for, and it is the replay this point keeps as evidence.
+//
+// THE DEATH IS POSED RATHER THAN WAITED FOR. What makes a build reach for its
+// burn art and its death burst is a Load burning and dying, and waiting for the
+// standing component to finish one off makes whether those files are asked for a
+// question of how long the wave window happens to run. One Load is stood up on a
+// single point of health under a burn instead, so the death lands inside the
+// window on every build and the window is only as long as the phase needs.
+//
+// THE CLOCK IS THE CHECK'S. What the drive spends its frames on is reaching the
+// three phases rather than reading anything positional, and
+// `specs/instrumentation.md` guarantees that "an interval of simulation time
+// reaches the same state however it was divided into frames and whatever frame
+// rate produced it", so it runs at `DRIVE_HZ`. A shot still steps well inside the
+// `2 * PROJECTILE_HIT_R` window it has to be caught in, so the impacts that make
+// a build reach for its impact art still land.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -49,12 +64,18 @@ import {
   type Harness,
   holdWaveClear,
   openYard,
+  parkUnit,
   pressAction,
   putAwayHeld,
   releaseUnit,
   standComponent,
 } from "../harness";
-import { ASSET_ROOT, LOAD_TYPES, structureCenter } from "../constants";
+import {
+  ASSET_ROOT,
+  LOAD_TYPES,
+  structureCenter,
+  tileCenter,
+} from "../constants";
 
 /** The repository this project sits in, which is where `assets/` is rooted. */
 const REPOSITORY = fileURLToPath(new URL("../../", import.meta.url));
@@ -62,10 +83,26 @@ const REPOSITORY = fileURLToPath(new URL("../../", import.meta.url));
 /** A path that leaves the page's own base path (specs/assets.md). */
 const ESCAPES = /^\/|^[a-z][a-z0-9+.-]*:/i;
 
+/** The rate the three phases are driven at. */
+const DRIVE_HZ = 60;
+
+/** Clear ground, away from the map's waypoint platforms and its chain. */
+const BURNING = { col: 21, row: 18 };
+
+/** The burn the posed Load dies under: enough to take a point of health at once. */
+const BURN_DPS = 500;
+const BURN_SECONDS = 3;
+
+/** Seconds spent in each of the three phases. */
+const BUILD_SECONDS = 0.5;
+const STANDING_SECONDS = 0.5;
+const WAVE_SECONDS = 1.5;
+const FINALE_SECONDS = 1;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: DRIVE_HZ });
 });
 
 afterEach(() => {
@@ -89,21 +126,26 @@ it("asks the site for nothing it does not carry, across all three phases", async
     await pressAction(h, "stamp");
     const rock = structureCenter(20, 20);
     h.pointerMove(rock.x, rock.y);
-    await h.advanceSeconds(0.5);
+    await h.advanceSeconds(BUILD_SECONDS);
     h.debug.placeRock(20, 20);
     putAwayHeld(h);
     standComponent(h, "capacitor", 4, 10, 10);
-    await h.advanceSeconds(1);
+    await h.advanceSeconds(STANDING_SECONDS);
 
-    // A wave: every Load type the roster carries, walking and being shot at.
+    // A wave: every Load type the roster carries, walking and being shot at, and
+    // one of them burning to death on clear ground away from the chain.
     holdWaveClear(h);
     for (const type of LOAD_TYPES) releaseUnit(h, type);
-    await h.advanceSeconds(4);
+    parkUnit(h, "mote", tileCenter(BURNING.col, BURNING.row), {
+      hp: 1,
+      burn: { dps: BURN_DPS, seconds: BURN_SECONDS },
+    });
+    await h.advanceSeconds(WAVE_SECONDS);
 
     // The finale: the Overload Dynamo, which no wave carries.
     h.debug.clearUnits();
     releaseUnit(h, "overload");
-    await h.advanceSeconds(2);
+    await h.advanceSeconds(FINALE_SECONDS);
   });
 
   const asked = [

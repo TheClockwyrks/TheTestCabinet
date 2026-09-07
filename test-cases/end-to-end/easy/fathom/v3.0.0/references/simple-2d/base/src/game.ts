@@ -27,17 +27,16 @@
 //   * Nothing authoritative lives anywhere else. There is no module-level game
 //     state in this build and no closure over mutable data — every module beside
 //     the state is arithmetic over it — so `reset` restoring the declared fields
-//     is enough to make a scenario replay identically.
+//     returns the whole game to its initial state.
 //
 // The fixed timestep is `src/simulate.ts`'s. `dt` is real elapsed seconds, the
 // simulation advances the whole `TICK_DT` ticks that delta completes, and the
-// remainder is carried into the next frame, so the same interval of game time
-// reaches the same state however it was divided into frames
+// remainder is carried into the next frame, so the number of ticks run over an
+// interval of game time is the same however it was divided into frames
 // (`specs/movement.md`).
 
 import {
   CUES,
-  DEFAULT_SEED,
   GAMEOVER_ITEMS,
   INK_COOLDOWN,
   PAUSE_ITEMS,
@@ -423,7 +422,7 @@ export const game: Game<FathomState, FathomDebugApi> = {
     const sheets = await loadSheets(api.assets);
     // A session opens with sound on, and every frame mirrors the engine's bit
     // back into the state from there (`specs/progression.md`).
-    return [openingState(sheets, DEFAULT_SEED, false), createDebugApi()];
+    return [openingState(sheets, false), createDebugApi()];
   },
 
   /**

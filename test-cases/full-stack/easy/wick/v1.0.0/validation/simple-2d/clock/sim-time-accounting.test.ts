@@ -1,7 +1,7 @@
 // Wick — clock/sim-time-accounting: simTime accounts for every frame.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
-//   - `specs/instrumentation.md` ("A deterministic core"): "`simTime` rises by
+//   - `specs/instrumentation.md` ("A render-free core"): "`simTime` rises by
 //     every frame's delta time on every screen"; and "On every other screen a
 //     frame ticks nothing and the accumulator holds `0`."
 //   - `specs/state.md` (`WickState`): "`simTime`: accumulated simulation time,

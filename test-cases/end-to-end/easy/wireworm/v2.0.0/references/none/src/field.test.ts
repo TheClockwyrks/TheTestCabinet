@@ -25,9 +25,9 @@ import {
 /** The tiles the scatter may use. */
 const SCATTER_TILES = (SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1) * COLS;
 
-function scattered(seed: number): Int8Array {
+function scattered(): Int8Array {
   const field = emptyField();
-  scatterField(field, { rngState: seed });
+  scatterField(field);
   return field;
 }
 
@@ -81,7 +81,7 @@ describe("the field", () => {
   });
 
   test("clearing empties the whole board", () => {
-    const field = scattered(4);
+    const field = scattered();
     expect(listNodes(field).length).toBeGreaterThan(0);
     clearNodes(field);
     expect(listNodes(field)).toEqual([]);
@@ -101,8 +101,8 @@ describe("the field", () => {
 
 describe("the starting scatter", () => {
   test("it lays between a tenth and a seventh of the scatter rows", () => {
-    for (const seed of [1, 2, 3, 7, 8, 99]) {
-      const laid = listNodes(scattered(seed)).length;
+    for (let draw = 0; draw < 6; draw += 1) {
+      const laid = listNodes(scattered()).length;
       expect(laid).toBeGreaterThanOrEqual(
         Math.floor(SCATTER_TILES * SCATTER_MIN_FRACTION),
       );
@@ -113,8 +113,8 @@ describe("the starting scatter", () => {
   });
 
   test("it keeps out of the entry row and the player band", () => {
-    for (const seed of [1, 5, 12]) {
-      for (const node of listNodes(scattered(seed))) {
+    for (let draw = 0; draw < 3; draw += 1) {
+      for (const node of listNodes(scattered())) {
         expect(node.r).toBeGreaterThanOrEqual(SCATTER_TOP_ROW);
         expect(node.r).toBeLessThanOrEqual(SCATTER_BOTTOM_ROW);
       }
@@ -122,15 +122,12 @@ describe("the starting scatter", () => {
   });
 
   test("every node it lays is inert", () => {
-    for (const node of listNodes(scattered(3))) expect(node.charge).toBe(0);
+    for (const node of listNodes(scattered())) expect(node.charge).toBe(0);
   });
 
-  test("one seed lays one field and two seeds lay two", () => {
-    const first = listNodes(scattered(7));
-    const again = listNodes(scattered(7));
-    expect(again).toEqual(first);
-
-    const other = listNodes(scattered(8));
+  test("two scatters lay two fields", () => {
+    const first = listNodes(scattered());
+    const other = listNodes(scattered());
     const shared = other.filter((node) =>
       first.some((seen) => seen.c === node.c && seen.r === node.r),
     ).length;

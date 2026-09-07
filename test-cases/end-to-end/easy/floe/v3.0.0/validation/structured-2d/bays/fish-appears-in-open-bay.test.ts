@@ -2,7 +2,7 @@
 // in a bay that is OPEN.
 //
 // specs/bays.md: "A bonus catch is a small fish that visits the open bays ... The
-// bay a bonus catch appears in is drawn from the game's own seeded randomness,
+// bay a bonus catch appears in is drawn at random when it appears, uniformly
 // among the bays that are open at that moment other than the bay the previous
 // bonus catch occupied."
 //

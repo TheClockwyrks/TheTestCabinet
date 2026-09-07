@@ -27,7 +27,6 @@ import {
   STAR_X,
   STAR_Y,
 } from "../constants";
-import { DEFAULT_SEED } from "../surface";
 import { fail } from "../assert";
 import {
   directDistanceToStar,
@@ -48,7 +47,12 @@ import {
   type AimedRound,
   type Harness,
 } from "../harness";
-import type { RockSize, RockSnapshot, ShatterSnapshot } from "../surface";
+import type {
+  FieldEdge,
+  RockSize,
+  RockSnapshot,
+  ShatterSnapshot,
+} from "../surface";
 
 /* -------------------------------------------------------------------------- */
 /* Small vector arithmetic                                                    */
@@ -175,11 +179,8 @@ export const MOST_HITS = 3;
  * that is why this route never calls `startPlaying`, and why it is the only place
  * in this group where the game's own wave loop runs at all.
  */
-export async function startGameFromTitle(
-  h: Harness,
-  seed: number = DEFAULT_SEED,
-): Promise<void> {
-  h.debug.reset({ seed });
+export async function startGameFromTitle(h: Harness): Promise<void> {
+  h.debug.reset();
   await tapAction(h, "confirm");
 }
 
@@ -684,9 +685,11 @@ export interface Edge {
  * the field lies from there.
  *
  * `specs/field.md` gives the field no walls and `specs/rocks.md` re-places a
- * recycled rock "at a random point on one of the four edges of the field, heading
- * inward into the field", so both of those readings are taken against the edge the
- * rock actually came back at rather than against a fixed one.
+ * recycled rock at "a point on one of the four edges of the field, the edge drawn
+ * with probability `1/4` each and the point drawn uniformly along the whole length
+ * of that edge, heading inward into the field", so both of those readings are
+ * taken against the edge the rock actually came back at rather than against a
+ * fixed one.
  */
 export function nearestEdge(point: Point): Edge {
   const edges: Edge[] = [
@@ -706,6 +709,27 @@ export function nearestEdge(point: Point): Edge {
   return edges.reduce((nearest, edge) =>
     edge.distance < nearest.distance ? edge : nearest,
   );
+}
+
+/**
+ * How far a point stands from one named edge of the field, in units.
+ *
+ * The reading a posed re-entry is graded by: `specs/rocks.md` draws the point
+ * uniformly along the whole length of the posed edge, so a rock coming back near
+ * a corner can stand nearer to the perpendicular edge than to the one it entered
+ * at, and only its distance from the edge that was posed says anything.
+ */
+export function distanceFromEdge(point: Point, edge: FieldEdge): number {
+  switch (edge) {
+    case "left":
+      return point.x;
+    case "right":
+      return FIELD_W - point.x;
+    case "top":
+      return point.y;
+    case "bottom":
+      return FIELD_H - point.y;
+  }
 }
 
 /** The star's centre, as a point (`specs/field.md`). */

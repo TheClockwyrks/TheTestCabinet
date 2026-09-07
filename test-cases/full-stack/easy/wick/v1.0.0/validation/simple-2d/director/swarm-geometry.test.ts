@@ -5,7 +5,7 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/enemies.md` ("Scripted events"): "A gnat swarm spawns `SWARM_SIZE`
 //     (`24`) gnats on the same tick along a line perpendicular to a direction
-//     `d`, a unit vector at an angle drawn uniformly from the seeded generator.
+//     `d`, a unit vector at an angle drawn uniformly over the full circle.
 //     The line is `SWARM_LINE` (`720`) units long, centered `SPAWN_DISTANCE`
 //     from the lamplighter along `d`, and the gnats are evenly spaced along it
 //     with one at each end: center = player + d * SPAWN_DISTANCE; perp =

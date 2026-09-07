@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 it("a press on a released beam's live end resumes the trace there, and an extension succeeds", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_7X6);
 
   // Draw A -> B -> C and release: `traceCells` runs press, move per cell,

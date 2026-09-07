@@ -87,7 +87,6 @@ function rig(): Rig {
   const runtime = createRuntime({
     canvas,
     assets,
-    seed: 1,
     surface,
     // No Web Audio in Node; the bus degrades to silence and the beds are read off
     // the bus's own bookkeeping rather than off a sound.
@@ -343,7 +342,7 @@ describe("the surface on the page", () => {
       ] as ReturnType<typeof import("./debug").createDebugApi>;
     })();
     api.setAutoStep(false);
-    api.reset({ seed: 3 });
+    api.reset();
     api.setScore(0);
     api.setCells(CELLS);
     api.startLevel(1);

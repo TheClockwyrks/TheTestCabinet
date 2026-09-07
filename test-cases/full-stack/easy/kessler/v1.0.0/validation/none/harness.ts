@@ -39,9 +39,7 @@
 // tick accumulator, and `step(ticks)` runs whole ticks immediately, each the
 // full tick followed by a render. Every harness opens by taking the game off
 // the clock, so a check asks for a number of ticks and gets exactly that number
-// — no polling, no waiting, and no measurement of the machine it ran on. The
-// one check that is ABOUT the loop running itself hands it back with
-// {@link Harness.runFor}.
+// — no polling, no waiting, and no measurement of the machine it ran on.
 //
 // WHERE THE COMPOUND SEQUENCES LIVE. Here, and nowhere else. The debug surface
 // is atomic by design — one field, one read, one clock move — so posing an
@@ -332,11 +330,8 @@ export interface Harness extends Omit<
   tickCount(): number;
   /** Run `ticks` whole simulation ticks, and read what they left. */
   tick(ticks?: number): Promise<KesslerSnapshot>;
-  /**
-   * Reset to the boot state through the build's `reset`, seeding the pod
-   * generator when `seed` is given, and read what it left.
-   */
-  reset(seed?: number): Promise<KesslerSnapshot>;
+  /** Reset to the boot state through the build's `reset`, and read what it left. */
+  reset(): Promise<KesslerSnapshot>;
   /** Let the build's own animation loop run at least one frame of its own. */
   settleFrame(): Promise<void>;
   /** Press a key and leave it down, as a player holding it would. */
@@ -462,10 +457,8 @@ export async function openHarness(
       return snapshot;
     },
 
-    async reset(seed) {
-      await (seed === undefined
-        ? base.debug.reset()
-        : base.debug.reset(seed as never));
+    async reset() {
+      await base.debug.reset();
       return harness.snapshot();
     },
 
@@ -789,14 +782,13 @@ export async function samplePoints(
  * Reset the game and stand it on an EMPTY `playing` field with both autonomous
  * consequences held: no targets, no balls, no pods, `waveAdvance` off (so an
  * emptied field does not clear into the interstitial), and `podSpawn` off (so a
- * destruction the scenario stages sheds nothing it did not ask for and the
- * seeded stream stays where it stands).
+ * destruction the scenario stages sheds nothing it did not ask for).
  *
  * The scenario then spawns back exactly what its requirement is about —
  * `spawnTarget` for the one target, `spawnBall` for the one ball, `spawnPod`
  * for the one pod — and turns a switch back on only when the switch's own
- * consequence IS the requirement. `seed` seeds the pod generator for a scenario
- * that will turn `podSpawn` back on.
+ * consequence IS the requirement. A scenario that turns `podSpawn` back on
+ * poses the draw's outcome through `setNextPod` first.
  *
  * Every call here is one of the surface's atomic poses, in a deliberate order:
  * the reset first, which is what puts the wave-1 figures in force and stands
@@ -805,11 +797,8 @@ export async function samplePoints(
  * and nothing else; then the clears, which take away the full wave the reset
  * laid; then the two switches.
  */
-export async function isolate(
-  h: Harness,
-  seed?: number,
-): Promise<KesslerSnapshot> {
-  await (seed === undefined ? h.debug.reset() : h.debug.reset(seed));
+export async function isolate(h: Harness): Promise<KesslerSnapshot> {
+  await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.clearTargets();
   await h.debug.clearBalls();
@@ -830,11 +819,8 @@ export async function isolate(
  * `Space` also carries `launch` — a check that is about WHICH key confirms
  * presses its own.
  */
-export async function startPlay(
-  h: Harness,
-  seed?: number,
-): Promise<KesslerSnapshot> {
-  await (seed === undefined ? h.debug.reset() : h.debug.reset(seed));
+export async function startPlay(h: Harness): Promise<KesslerSnapshot> {
+  await h.debug.reset();
   await tap(h, "Enter");
   return h.snapshot();
 }
@@ -890,7 +876,7 @@ export async function spawnBallPolar(
 /**
  * Spawn one pod of `kind` posed polar-wise, at radius `r` and stage angle
  * `thetaDeg`. It falls radially inward at the fixed fall speed from the call
- * onward, exactly as a drawn pod does, and the generator is not consumed.
+ * onward, exactly as a drawn pod does, and no draw is made.
  */
 export async function spawnPodPolar(
   h: Harness,
@@ -903,6 +889,34 @@ export async function spawnPodPolar(
 }
 
 /**
+ * Perform `count` pod draws through the build's `drawPod`, one independent
+ * draw each, and hand back their outcomes in order: a kind name, or `null`
+ * for a draw that shed nothing. The first draw crosses into the page on its
+ * own, so a missing or broken surface fails the way every operation fails;
+ * the rest run inside the page in one round trip, which is what lets a
+ * sampling check make thousands of draws in well under a second.
+ */
+export async function drawPods(
+  h: Harness,
+  count: number,
+): Promise<(string | null)[]> {
+  const first = await h.debug.drawPod();
+  if (count <= 1) return [first];
+  const rest = await h.page.evaluate(
+    ([handle, n]) => {
+      const api = (
+        window as unknown as Record<string, { drawPod(): string | null }>
+      )[handle];
+      const out: (string | null)[] = [];
+      for (let i = 0; i < n; i += 1) out.push(api.drawPod());
+      return out;
+    },
+    [HANDLE, count - 1] as const,
+  );
+  return [first, ...rest];
+}
+
+/**
  * Start a fresh session the way confirming START starts one, out of atomic
  * poses: the reset lays wave 1 — score `0`, `3` lives, wave `1`, every slot
  * filled, every ring angle at `0`, the wave-1 figures in force, the deflector
@@ -911,14 +925,10 @@ export async function spawnPodPolar(
  *
  * `setScreen` is atomic by specification, so the arrangement is this sequence
  * rather than the call: the guide puts every compound sequence in the harness,
- * and this is the one every check that needs a session in play shares. `seed`
- * seeds the pod generator.
+ * and this is the one every check that needs a session in play shares.
  */
-export async function startFreshSession(
-  h: Harness,
-  seed?: number,
-): Promise<KesslerSnapshot> {
-  await (seed === undefined ? h.debug.reset() : h.debug.reset(seed));
+export async function startFreshSession(h: Harness): Promise<KesslerSnapshot> {
+  await h.debug.reset();
   await h.debug.setScreen("playing");
   await h.debug.parkBall();
   return h.snapshot();

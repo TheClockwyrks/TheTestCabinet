@@ -1,7 +1,7 @@
 // Refract — instrumentation/rules-read-nothing-from-the-renderer: whether a
 // segment may be added is decided from the board and the beams alone.
 //
-// specs/instrumentation.md "A deterministic core": whether a segment may be
+// specs/instrumentation.md "A render-free core": whether a segment may be
 // added is decided from the board and the beams alone, never from anything the
 // renderer holds. So the same rules decision — a refused move (R2's foreign
 // lens) and an accepted one — is taken twice, and the contrast is whether the
@@ -39,7 +39,7 @@ let h: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
-  await resetTo(h, 1);
+  await resetTo(h);
 });
 
 afterEach(() => {

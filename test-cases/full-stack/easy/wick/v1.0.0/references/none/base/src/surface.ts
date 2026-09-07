@@ -9,8 +9,8 @@
 
 import {
   DAWN_TICK,
-  DEFAULT_SEED,
   GEM_TIERS,
+  OIL_SCATTER,
   MAX_WEAPON_LEVEL,
   OFFER_COUNT,
   PASSIVES,
@@ -18,6 +18,7 @@ import {
   PICKUP_KINDS,
   WEAPON_SLOTS,
   WICK_DEBUG_VERSION,
+  type EnemyId,
   type Facing,
   type GemTier,
   type OfferId,
@@ -27,10 +28,11 @@ import {
 } from "./constants";
 import type { Game } from "./game";
 import { menuRects, tabRects } from "./layout";
-import { nextRandom } from "./rng";
 import {
+  NEXT_DROPS,
   SWITCH_NAMES,
   type Enemy,
+  type NextDrop,
   type RunState,
   type SwitchName,
 } from "./state";
@@ -41,12 +43,13 @@ import {
   spawnEnemy,
   spawnWindow,
 } from "./sim/enemies";
-import { forgetHits } from "./sim/effects";
+import { drawDrop, forgetHits } from "./sim/effects";
 import { unit } from "./sim/geometry";
 import { candidatePool, isOfferId, isPassiveId } from "./sim/progression";
 import {
   PROJECTILE_WEAPONS,
   PUDDLE_WEAPONS,
+  isBaseWeapon,
   isEvolution,
   isWeaponId,
   makeProjectile,
@@ -155,11 +158,17 @@ export interface WickSnapshot {
     firedEvents: number[];
     aliveCommons: number;
     nextId: number;
+    nextSpawnAngle: number | null;
+    nextSwarmAngle: number | null;
+    nextSpawnType: string | null;
+    nextPuddleOffset: { x: number; y: number } | null;
+    nextStrikeTarget: number | null;
+    nextChestItem: string | null;
+    nextDrop: NextDrop | null;
   };
   muted: boolean;
   accumulator: number;
   simTime: number;
-  rngState: number;
 }
 
 export interface WickDebugApi {
@@ -167,7 +176,7 @@ export interface WickDebugApi {
   setAutoStep(auto: boolean): void;
   step(ticks?: number): void;
   advance(seconds: number): void;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): WickSnapshot;
   menuRects(): WickRect[];
   tabRects(): WickRect[];
@@ -184,7 +193,14 @@ export interface WickDebugApi {
   setProgression(on: boolean): void;
   setTick(tick: number): void;
   setSpawnTimer(seconds: number): void;
-  advanceRng(draws: number): void;
+  setNextSpawnAngle(degrees: number): void;
+  setNextSwarmAngle(degrees: number): void;
+  setNextSpawnType(id: EnemyId): void;
+  setNextPuddleOffset(dx: number, dy: number): void;
+  setNextStrikeTarget(id: number): void;
+  setNextChestItem(id: string): void;
+  setNextDrop(kind: string): void;
+  rollDrop(): NextDrop;
   setPlayerPosition(x: number, y: number): void;
   setFacing(facing: Facing): void;
   setHp(hp: number): void;
@@ -280,6 +296,13 @@ function oneOf<T extends string>(
 }
 
 const RUN_SCREENS: readonly Screen[] = ["playing", "paused"];
+
+/** A posed angle: a real number of at least `0` and below `360`. */
+function angle(value: unknown): number {
+  const degrees = real(value, "degrees", 0);
+  if (degrees >= 360) invalid("degrees must be below 360");
+  return degrees;
+}
 
 /** The clock the surface takes hold of: the frame loop's three operations. */
 export interface Clock {
@@ -415,11 +438,18 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
         firedEvents: r.firedEvents.slice(),
         aliveCommons: aliveCommons(r),
         nextId: r.nextId,
+        nextSpawnAngle: r.nextSpawnAngle,
+        nextSwarmAngle: r.nextSwarmAngle,
+        nextSpawnType: r.nextSpawnType,
+        nextPuddleOffset:
+          r.nextPuddleOffset === null ? null : { ...r.nextPuddleOffset },
+        nextStrikeTarget: r.nextStrikeTarget,
+        nextChestItem: r.nextChestItem,
+        nextDrop: r.nextDrop,
       },
       muted: s.muted,
       accumulator: s.accumulator,
       simTime: s.simTime,
-      rngState: s.rngState,
     };
   };
 
@@ -453,12 +483,8 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       if (dt <= 0) invalid("seconds must be above 0");
       clock.advance(dt);
     },
-    reset(options) {
-      const seed =
-        options && options.seed !== undefined
-          ? whole(options.seed, "seed", 0, 2 ** 32 - 1)
-          : DEFAULT_SEED;
-      game.reset(seed);
+    reset() {
+      game.reset();
     },
     snapshot,
     menuRects: () => menuRects(state()).map((rect) => ({ ...rect })),
@@ -495,18 +521,61 @@ export function createApi(game: Game, clock: Clock): WickDebugApi {
       });
     },
 
-    /**
-     * Take `draws` draws off the generator and discard them, so `rngState`
-     * lands where `draws` random choices would have left it. Nothing is
-     * chosen with what was drawn. Applies on every screen, so it runs outside
-     * `pose`.
-     */
-    advanceRng(draws) {
-      const count = whole(draws, "draws", 0);
-      const s = state();
-      for (let i = 0; i < count; i += 1) {
-        s.rngState = nextRandom(s.rngState).state;
+    // ---- Drawn outcomes ----------------------------------------------
+    // Each sets what the next draw of its kind decides; the draw consumes it.
+
+    setNextSpawnAngle(degrees) {
+      const value = angle(degrees);
+      pose(() => {
+        run().nextSpawnAngle = value;
+      });
+    },
+    setNextSwarmAngle(degrees) {
+      const value = angle(degrees);
+      pose(() => {
+        run().nextSwarmAngle = value;
+      });
+    },
+    setNextSpawnType(id) {
+      if (typeof id !== "string" || !isEnemyId(id))
+        invalid(`${String(id)} is no enemy`);
+      const type = id;
+      pose(() => {
+        run().nextSpawnType = type;
+      });
+    },
+    setNextPuddleOffset(dx, dy) {
+      const x = real(dx, "dx");
+      const y = real(dy, "dy");
+      if (Math.hypot(x, y) > OIL_SCATTER) {
+        invalid(`an offset must be at most OIL_SCATTER (${OIL_SCATTER}) long`);
       }
+      pose(() => {
+        run().nextPuddleOffset = { x, y };
+      });
+    },
+    setNextStrikeTarget(id) {
+      pose(() => {
+        run().nextStrikeTarget = enemyById(id).id;
+      });
+    },
+    setNextChestItem(id) {
+      if (typeof id !== "string" || !(isBaseWeapon(id) || isPassiveId(id))) {
+        invalid(`${String(id)} is no base weapon or passive`);
+      }
+      const item = id;
+      pose(() => {
+        run().nextChestItem = item;
+      });
+    },
+    setNextDrop(kind) {
+      const value: NextDrop = oneOf(kind, "kind", NEXT_DROPS);
+      pose(() => {
+        run().nextDrop = value;
+      });
+    },
+    rollDrop() {
+      return drawDrop(game.rng);
     },
 
     setPlayerPosition(x, y) {

@@ -137,6 +137,7 @@ export const REQUIRED_OPS = [
   "setBobVelocity",
   "setLoadPose",
   "setLoadPhase",
+  "setRunTick",
   "setSpeedIndex",
   "pointerMove",
   "pointerDown",
@@ -228,8 +229,10 @@ const kit = createCaseHarness<GantrySnapshot, GantryDebugApi>({
   // a page that is painting freely costs about ten times one into a page that is
   // not, and this project drives enough of them for that to decide whether its
   // suites finish inside the platform's cap. The file's own header carries the
-  // full reasoning, and `releasePaint` below is the way out for the one check
-  // whose subject is the free-running loop itself.
+  // full reasoning, and `capture` below pumps one of the held frames so a still
+  // shows the page as it stands, `paint` pumps the one a check asks for before it
+  // captures the state it posed, and `paintFrames` runs as many as the check about
+  // the build's own loop asks for.
   extraInitScripts: ["cues-init.js", "paint-gate.js"],
   projectRoot: PROJECT_ROOT,
 });
@@ -356,35 +359,25 @@ export interface Harness {
   capture(id: string, name: string): Promise<void>;
 
   /**
-   * Hand the page back its own paint loop, for the rest of this harness's life.
+   * Draw the state as it stands, advancing nothing.
    *
-   * ONLY FOR A CHECK WHOSE SUBJECT IS THAT LOOP. The harness holds the build's
-   * free-running frames back (see `paint-gate.js`), which is invisible to every
-   * check that drives the game with `advance` — the render each advanced frame is
-   * specified to run still happens. It is NOT invisible to a check that lets
-   * wall-clock time pass and asserts what did or did not move in it: a build that
-   * keeps stepping through a `setAutoStep(false)` shows itself only to a page
-   * that is still painting. Such a check calls this first, and pays the crossings
-   * back at the free-running price.
+   * WHAT IT IS FOR. A still is whatever the last frame that ran drew, and a pose
+   * draws nothing: an arrangement made through the debug API leaves the picture
+   * as the frame before it left it. A check whose evidence is the arrangement
+   * ITSELF — rather than what the simulation made of it — paints one frame
+   * before it captures, and this is that frame.
    *
-   * A no-op on the two engines, which have no page and no paint clock.
+   * IT ADVANCES NOTHING. The frame is one of the build's own, released by this
+   * project's paint gate, and this harness has taken the game off the wall clock
+   * with `setAutoStep(false)` — under which `specs/instrumentation.md` has the
+   * game change "only when `advance` says so" while "drawing is unaffected
+   * either way". So the frame draws the state as it stands and moves none of it.
+   *
+   * IT IS NOT A SUBSTITUTE FOR A FRAME A CHECK OWES. A check that asks what the
+   * simulation DID advances it; this one asks only what the screen says about a
+   * state nothing has run over yet.
    */
-  releasePaint(): Promise<void>;
-
-  /**
-   * Run one of the frames the page has asked for and is being held back from.
-   *
-   * FOR A CHECK THAT READS WHAT THE BUILD DRAWS AROUND THE CANVAS. `advance`
-   * draws the canvas itself — the specification has every advanced frame followed
-   * by a render, and that render happens inside the call — so a check reading the
-   * picture needs nothing from this. A build is free to refresh what sits outside
-   * the canvas on its own loop instead (this case's reference draws its
-   * diagnostics overlay that way), and that loop is held; one pumped frame is
-   * what a page painting freely would have given it.
-   *
-   * A no-op on the two engines, for the reason `releasePaint` gives.
-   */
-  paintFrame(): Promise<void>;
+  paint(): Promise<void>;
 
   /**
    * Every operation the last CLOSED frame made on the screen layer, as draw
@@ -408,6 +401,24 @@ export interface Harness {
   screenCalls(): Promise<DrawCall[]>;
 
   /* ---- This engine's own, for the few suites that are about it ------------ */
+
+  /**
+   * Run `count` of the frames the build's own loop has asked the page for and
+   * this project's paint gate is holding back.
+   *
+   * FOR THE CHECK ABOUT THE CLOCK. `advance` runs the frames a check asks for;
+   * these are the frames the BUILD asked for, each handed the timestamp a real
+   * loop would have handed it — `1 / TICK_HZ` of a second apart — so a build
+   * still stepping from its frame loop steps here. A build that honours
+   * `setAutoStep(false)` draws and moves nothing.
+   *
+   * The two engine projects have no such thing: the engine owns the frame loop
+   * there and holds no frame back, so the suite that pumps one carries
+   * `engines = ["none"]`. What all three do carry is {@link Harness.paint},
+   * which is one frame drawn over the state as it stands rather than a stretch
+   * of the build's own loop.
+   */
+  paintFrames(count: number): Promise<void>;
 
   /** Why the build's surface cannot be driven, or `null` when it can. */
   readonly surfaceFault: string | null;
@@ -546,16 +557,13 @@ export async function createHarness(
     cues: () => readCues(base, "take"),
     loopingCues: () => readCues(base, "looping"),
 
-    releasePaint: () => paint(base, "release"),
-    paintFrame: () => paint(base, "pump"),
-
     async capture(id, name) {
       // One held frame first, so the picture composited into the still is the one
       // the build has just drawn. Everything the build draws on the canvas is
       // already there — `advance` renders — but a build is free to refresh what
       // sits AROUND the canvas on its own frame (this case's reference draws its
       // diagnostics overlay that way), and a still is the whole page.
-      await paint(base, "pump");
+      await pump(base);
       // The still is addressed by the review item's output id; the name is what
       // the reviewer is being shown, and it goes to the run log so a person
       // scanning the output can tell one still from another without opening it.
@@ -563,7 +571,13 @@ export async function createHarness(
       console.log(`gantry: captured ${id} — ${name}`);
     },
 
+    async paint() {
+      await pump(base);
+    },
+
     screenCalls: () => base.lastCalls(),
+
+    paintFrames: (count) => pump(base, count),
 
     surfaceFault: base.surfaceFault,
     pageErrors: base.pageErrors,
@@ -577,30 +591,30 @@ export async function createHarness(
 }
 
 /**
- * Drive this project's paint gate.
+ * Run `count` of the frames this project's paint gate is holding back.
  *
  * As with the cue probe, a page that does not carry it is a fault in this
  * project rather than in the build — the gate is injected before a line of the
  * build runs — so it says so rather than carrying on against a page whose frames
  * are not where this harness believes they are.
  */
-async function paint(
+async function pump(
   base: BaseHarness<GantrySnapshot, GantryDebugApi>,
-  op: "pump" | "release",
+  count = 1,
 ): Promise<void> {
   const ran = await base.page.evaluate(
-    ([global, name]) => {
+    ([global, frames]) => {
       const gate = (
         window as unknown as Record<
           string,
-          Record<string, () => void> | undefined
+          { pump(count: number): void } | undefined
         >
-      )[global];
+      )[global as string];
       if (gate === undefined) return false;
-      gate[name]!();
+      gate.pump(frames as number);
       return true;
     },
-    [PAINT_GLOBAL, op] as const,
+    [PAINT_GLOBAL, count] as [string, number],
   );
   if (!ran) {
     throw new Error(
@@ -610,22 +624,6 @@ async function paint(
         "in the build",
     );
   }
-}
-
-/**
- * Run one held frame on a page this project opened but does not hold a harness
- * for — a second page serving the build a swapped asset, say.
- *
- * The gate is installed on the CONTEXT, so every page in it carries one; what
- * such a page has no other route to is the harness method.
- */
-export async function paintPage(page: Page): Promise<void> {
-  await page.evaluate((global) => {
-    const gate = (
-      window as unknown as Record<string, { pump(): void } | undefined>
-    )[global];
-    if (gate !== undefined) gate.pump();
-  }, PAINT_GLOBAL);
 }
 
 /**

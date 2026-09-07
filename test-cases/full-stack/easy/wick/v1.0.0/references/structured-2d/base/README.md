@@ -81,7 +81,8 @@ half.
 - `src/constants.ts`: every figure the specification fixes, in one place.
 - `src/state.ts`: `WickState`, the world's live game state, the idle run, and
   a fresh run.
-- `src/rng.ts`: the seeded generator whose whole state is `rngState`.
+- `src/rng.ts`: the game's private random source, drawn from where the debug
+  surface has posed no outcome.
 - `src/stats.ts`: the derived stats the passives feed.
 - `src/sim/`: one tick of the night in the order the specification fixes:
   the timers, the lamplighter, the enemies, the weapons' firing and placement,

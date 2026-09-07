@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 it("the solving move ends the trace, and the beams hold thereafter", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
 
   const solution: ReadonlyArray<readonly [number, number]> = [

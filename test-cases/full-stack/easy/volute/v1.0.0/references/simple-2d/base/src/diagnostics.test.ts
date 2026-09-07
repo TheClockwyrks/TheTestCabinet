@@ -43,7 +43,7 @@ describe("the overlay's values", () => {
   });
 
   it("reads a running hall off the state it is handed", () => {
-    const draft = createDraft(1);
+    const draft = createDraft();
     startLevel(draft, 3);
     draft.score = 1234;
     draft.pressure = 50;
@@ -69,7 +69,7 @@ describe("the overlay's values", () => {
   });
 
   it("reads an empty title hall without reaching for anything that is not there", () => {
-    const state = freeze(createDraft(1));
+    const state = freeze(createDraft());
     const read = new Map(
       [...sources()].map(([name, source]) => [name, source(state)]),
     );
@@ -82,7 +82,7 @@ describe("the overlay's values", () => {
   });
 
   it("leaves the state exactly as it was", () => {
-    const state = freeze(createDraft(5));
+    const state = freeze(createDraft());
     const before = JSON.stringify(state);
     for (const source of sources().values()) source(state);
     expect(JSON.stringify(state)).toBe(before);

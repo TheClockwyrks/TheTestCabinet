@@ -101,9 +101,8 @@ export function poseWaveReady(
   mode: ModeName = "containment",
   difficulty: DifficultyName = "medium",
 ): void {
-  // `startRun` resets the game first, which reseeds the generator every vent draw
-  // comes from to `DEFAULT_SEED` (specs/instrumentation.md). That is what makes
-  // two watches in one check two runs of the SAME seed.
+  // `startRun` resets the game first, so the vent pose is `null` and every vent
+  // is the release's own draw unless the check poses one (specs/instrumentation.md).
   startRun(h, mode, difficulty);
   h.debug.setWave(wave);
   h.debug.setLives(WATCHED_LIVES);

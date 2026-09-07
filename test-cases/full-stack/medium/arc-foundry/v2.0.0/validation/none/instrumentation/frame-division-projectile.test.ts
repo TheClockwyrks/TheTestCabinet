@@ -1,7 +1,7 @@
 // instrumentation/frame-division-projectile — a shot flies the same distance
 // however the interval was divided into frames.
 //
-// `specs/instrumentation.md` states determinism as a property of the interval
+// `specs/instrumentation.md` states the step as a property of the interval
 // rather than of the frame: "an interval of simulation time reaches the same
 // state however it was divided into frames and whatever frame rate produced it".
 // So one flight interval is covered twice, once as a single frame and once as
@@ -30,9 +30,6 @@ import {
   standComponent,
   type Harness,
 } from "../harness";
-
-/** The seed both halves of every comparison run under. */
-const SEED = 3;
 
 /** Where the firing structure stands, and where its target is held. */
 const TOWER_AT = { col: 20, row: 10 };
@@ -74,7 +71,7 @@ it("flies a projectile the same distance however the interval is divided", async
   // a fixed line and the comparison reads travel alone.
   const armed: { id: number; x: number; y: number }[] = [];
   for (const h of [coarse, fine]) {
-    await openYard(h, { seed: SEED, wave: 1 });
+    await openYard(h, { wave: 1 });
     await standComponent(h, "discharge", 5, TOWER_AT.col, TOWER_AT.row);
     await parkUnit(h, "overload", TARGET_AT);
 

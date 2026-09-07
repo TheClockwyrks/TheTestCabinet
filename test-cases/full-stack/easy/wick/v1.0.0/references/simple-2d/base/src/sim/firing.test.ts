@@ -25,7 +25,7 @@ interface World {
 
 /** A `playing` run holding `weapons` alone, every other faculty held. */
 function playing(...weapons: [WeaponId, number][]): World {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.run.weapons = weapons.map(([id, level]) => ({
     id,
@@ -39,7 +39,7 @@ function playing(...weapons: [WeaponId, number][]): World {
   state.despawning = false;
   state.enemyMotion = false;
   state.enemyContact = false;
-  return { state, rng: new Rng(() => state), cues: new Set() };
+  return { state, rng: new Rng(), cues: new Set() };
 }
 
 function hold(world: World, id: PassiveId, level: number): void {
@@ -485,6 +485,21 @@ describe("Oil Splash", () => {
     expect(world.state.run.weapons[0].cooldown).toBe(2);
   });
 
+  it("lands the firing's first puddle at nextPuddleOffset and consumes it", () => {
+    const world = playing(["oil-splash", 8]);
+    world.state.run.player.x = 1000;
+    world.state.run.player.y = 20;
+    world.state.run.nextPuddleOffset = { x: -300, y: 40 };
+    step(world);
+    const puddles = world.state.run.zones;
+    expect(puddles).toHaveLength(4);
+    expect(puddles[0]).toMatchObject({ x: 700, y: 60 });
+    for (const puddle of puddles.slice(1)) {
+      expect(Math.hypot(puddle.x - 1000, puddle.y - 20)).toBeLessThan(400);
+    }
+    expect(world.state.run.nextPuddleOffset).toBeNull();
+  });
+
   it("covers the scatter disk uniformly over many firings", () => {
     const world = playing(["oil-splash", 8]);
     hold(world, "mirror", 2);
@@ -546,6 +561,58 @@ describe("Spark", () => {
     world.state.run.zones = [];
     step(world, ticksOf(1.4));
     expect(world.state.run.zones).toHaveLength(2);
+  });
+
+  it("strikes the posed nextStrikeTarget first and consumes it", () => {
+    const world = playing(["spark", 8]);
+    const owls = [];
+    for (let i = 0; i < 6; i += 1) {
+      owls.push(
+        spawnEnemy(
+          world.state.run,
+          "owl",
+          200 * Math.cos(i),
+          200 * Math.sin(i),
+        ),
+      );
+    }
+    for (let firing = 0; firing < 10; firing += 1) {
+      const posed = owls[5];
+      world.state.run.zones = [];
+      world.state.run.weapons[0].cooldown = 0;
+      world.state.run.nextStrikeTarget = posed.id;
+      step(world);
+      expect(world.state.run.zones).toHaveLength(4);
+      expect(world.state.run.zones[0]).toMatchObject({
+        x: posed.x,
+        y: posed.y,
+      });
+      const struck = new Set(
+        world.state.run.zones.map((zone) => `${zone.x},${zone.y}`),
+      );
+      expect(struck.size).toBe(4);
+      expect(world.state.run.nextStrikeTarget).toBeNull();
+    }
+  });
+
+  it("discards a posed target out of range and draws every strike", () => {
+    const world = playing(["spark", 1]);
+    const far = spawnEnemy(world.state.run, "owl", 700, 0);
+    spawnEnemy(world.state.run, "owl", 100, 50);
+    world.state.run.nextStrikeTarget = far.id;
+    step(world);
+    expect(world.state.run.zones).toHaveLength(1);
+    expect(world.state.run.zones[0]).toMatchObject({ x: 100, y: 50 });
+    expect(world.state.run.nextStrikeTarget).toBeNull();
+  });
+
+  it("keeps a posed target across a tick Spark does not fire on", () => {
+    const world = playing(["spark", 1]);
+    const far = spawnEnemy(world.state.run, "owl", 700, 0);
+    world.state.run.nextStrikeTarget = far.id;
+    step(world);
+    expect(world.state.run.zones).toHaveLength(0);
+    expect(world.state.run.nextStrikeTarget).toBe(far.id);
   });
 
   it("is not scaled in range by Glass", () => {

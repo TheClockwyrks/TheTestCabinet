@@ -143,7 +143,7 @@ export async function playSystem(file: string): Promise<SystemPlay> {
 
   let simulator: ParticleSimulator;
   try {
-    simulator = new Simulator(parsed as ParticleSystem, { seed: 1 });
+    simulator = new Simulator(parsed as ParticleSystem);
   } catch (error) {
     return {
       ...empty,

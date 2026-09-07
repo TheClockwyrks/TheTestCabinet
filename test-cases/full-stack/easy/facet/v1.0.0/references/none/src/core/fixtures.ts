@@ -14,7 +14,7 @@
 // touch stays out of the way.
 
 import { GRID_COLS, GRID_ROWS } from "../constants";
-import { loadBoard, setScreen } from "./debug";
+import { loadBoard, setRefillKinds, setScreen } from "./debug";
 import { createInitialState, type FacetState } from "./state";
 
 /** The kind letters of the notation, in the order of `GEM_KINDS`. */
@@ -59,6 +59,19 @@ export function rewrite(
   return grid.map((line) => line.join(" "));
 }
 
+/**
+ * The refill posed on columns 2 to 4, the columns a run across row 4 of the
+ * quiet board empties, with kinds that complete no run against what the quiet
+ * board leaves standing. A chain posed over it settles where the rules end it
+ * rather than where a draw would, so a test about the end of a chain reads one
+ * answer every time.
+ */
+export function withQuietRefill(state: FacetState): FacetState {
+  let posed = setRefillKinds(state, 2, "SMRJ");
+  posed = setRefillKinds(posed, 3, "JBSM");
+  return setRefillKinds(posed, 4, "CJBS");
+}
+
 /** The quiet board with the given cells rewritten, which is the usual pose. */
 export function quietRowsWith(
   edits: Readonly<Record<string, string>>,
@@ -74,10 +87,9 @@ export function quietRowsWith(
  */
 export function posedPlaying(
   edits: Readonly<Record<string, string>> = {},
-  seed = 1,
 ): FacetState {
   return setScreen(
-    loadBoard(createInitialState(seed), quietRowsWith(edits)),
+    loadBoard(createInitialState(), quietRowsWith(edits)),
     "playing",
   );
 }

@@ -1,27 +1,29 @@
 // Refract — cascade/restart: RESTART drops to tier 1.
 //
 // specs/modes/cascade.md "The solved screen": RESTART returns `solvedCount`
-// to 0 and `tier` to 1, generates a board, and moves to `playing`. Two boards
-// are really solved first — the spec-derived solver's beams drawn through the
-// pointer operations — so the progression being dropped is real (solvedCount
-// 2), and
-// RESTART is chosen the way a player chooses it: `down` from NEXT BOARD to
-// RESTART on the solved menu, then `confirm`, through the registered actions.
-// (The spec's no-reseed clause is the generator's internals and is not
-// asserted; what is observable is the progression dropping and a fresh board
-// arriving.)
+// to 0 and `tier` to 1, generates a board, and moves to `playing`. The run is
+// posed at one solve through `setSolvedCount` and `setTier`
+// (specs/instrumentation.md) and a posed board is solved for the second, so
+// the progression being dropped is real (solvedCount 2) and the solved screen
+// is reached the way a player's solve reaches it. RESTART is chosen the way a
+// player chooses it: `down` from NEXT BOARD to RESTART on the solved menu,
+// then `confirm`, through the registered actions. The board RESTART generates
+// is read for tier 1's channel count, which is what "generates a board" at
+// tier 1 means.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
+  oracleBoard,
+  poseCascadeRun,
   resetTo,
-  solveGenerated,
-  startCascade,
+  solvePosedBoard,
   tapAction,
   type Harness,
 } from "../harness";
+import { TIERS, channelsPresent } from "../notation";
 
 let h: Harness;
 
@@ -33,15 +35,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("returns solvedCount to 0 and tier to 1, and moves to playing on a fresh board", async () => {
-  await resetTo(h, 1);
-  await startCascade(h);
-  await solveGenerated(h, 2);
+it("returns solvedCount to 0 and tier to 1, and moves to playing on a fresh tier-1 board", async () => {
+  await resetTo(h);
+  poseCascadeRun(h, 1);
+  const arrived = await solvePosedBoard(h);
+  assertEqual(arrived.solved, true, "precondition: the posed board solves");
   assertEqual(
-    h.snapshot().solvedCount,
+    arrived.screen,
+    "solved",
+    "precondition: on the solved screen (see cascade-solved-reached)",
+  );
+  assertEqual(
+    arrived.solvedCount,
     2,
     "two boards are recorded solved before RESTART (precondition)",
   );
+  await h.advance(1);
 
   // down moves the solved menu's highlight from NEXT BOARD to RESTART.
   await tapAction(h, "down");
@@ -62,7 +71,18 @@ it("returns solvedCount to 0 and tier to 1, and moves to playing on a fresh boar
     0,
     "RESTART generates a board (specs/modes/cascade.md)",
   );
-  for (const [channel, beam] of Object.entries(snapshot.beams)) {
+  assertEqual(
+    channelsPresent(oracleBoard(snapshot)).length,
+    TIERS[0].channels,
+    "the board RESTART generates carries tier 1's channel count",
+  );
+  const beams = Object.entries(snapshot.beams);
+  assertGreaterThan(
+    beams.length,
+    0,
+    "the generated board carries a beam entry",
+  );
+  for (const [channel, beam] of beams) {
     assertEqual(
       beam.cells.length,
       0,

@@ -86,7 +86,7 @@ class CoilMode extends GameMode {
  *
  * Implement the instance and the mode, and split the work across new modules
  * under `src/` however you like — the board, the tick and its six steps, the turn
- * buffer, the pellet and its seeded placement, the combo, the actors and
+ * buffer, the pellet and its placement, the combo, the actors and
  * components that render, the debug surface, and so on. Nothing else in the
  * project needs changing for the game to run: `src/main.ts` already binds this
  * definition to the engine.

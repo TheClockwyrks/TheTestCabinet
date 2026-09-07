@@ -24,7 +24,6 @@
 
 import {
   BALL_CAP,
-  DEFAULT_SEED,
   PADDLE_CONTACT_RADIUS,
   POD_KINDS,
   RINGS,
@@ -45,7 +44,7 @@ import {
   type MenuItemRect,
 } from "./menus";
 import { normalizeDeg, pointAt, polarOf } from "./polar";
-import { launchParkedBall } from "./sim";
+import { launchParkedBall, rollPod, type PodPose } from "./sim";
 import { piercingNow, spanOf } from "./state";
 
 /** The plain, JSON-serializable read `snapshot` returns. */
@@ -55,10 +54,10 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
-  seed: number;
   interstitialTicks: number;
   waveAdvance: boolean;
   podSpawn: boolean;
+  nextPod: PodPose;
   paddle: { angleDeg: number; spanDeg: number };
   balls: {
     x: number;
@@ -85,7 +84,7 @@ export interface KesslerSnapshot {
 
 /** The reads and poses of the debug surface. */
 export interface KesslerDebugApi {
-  reset(state: View, seed?: number): KesslerState;
+  reset(state: View): KesslerState;
   snapshot(state: View): KesslerSnapshot;
   menuItemRect(state: View, index: number): MenuItemRect | null;
   setScreen(state: View, name: ScreenName): KesslerState;
@@ -116,6 +115,8 @@ export interface KesslerDebugApi {
   setRingSpeed(state: View, ring: number, degPerSec: number): KesslerState;
   clearPods(state: View): KesslerState;
   spawnPod(state: View, kind: PodKind, x: number, y: number): KesslerState;
+  setNextPod(state: View, kind: PodKind | "none"): KesslerState;
+  drawPod(state: View): PodKind | null;
   setEffectTicks(
     state: View,
     kind: "widen" | "narrow" | "pierce",
@@ -166,14 +167,11 @@ export function createDebugApi(): KesslerDebugApi {
   return {
     /**
      * The boot state (`specs/instrumentation.md`): the title screen over the
-     * boot layout, zero ticks, both driver switches on, and the pod stream
-     * seeded with `seed`, defaulting to `DEFAULT_SEED`.
+     * boot layout, zero ticks, both driver switches on, and no posed pod
+     * outcome.
      */
-    reset(state, seed) {
-      return resetState(
-        state,
-        seed === undefined ? DEFAULT_SEED : mustWhole("reset seed", seed, 0),
-      );
+    reset(state) {
+      return resetState(state);
     },
 
     /** A pure read of the state. It poses nothing, so it returns no state. */
@@ -186,10 +184,10 @@ export function createDebugApi(): KesslerDebugApi {
         wave: session.wave,
         score: session.score,
         lives: session.lives,
-        seed: state.seed,
         interstitialTicks: state.interstitialTicks,
         waveAdvance: state.waveAdvance,
         podSpawn: state.podSpawn,
+        nextPod: state.nextPod,
         paddle: { angleDeg: session.paddleAngleDeg, spanDeg: spanOf(session) },
         balls: session.balls.map((ball) => ({
           x: ball.x,
@@ -402,7 +400,7 @@ export function createDebugApi(): KesslerDebugApi {
       return draft;
     },
 
-    /** The generator is not consumed; the seeded sequence stays where it is. */
+    /** No draw is made, so a posed outcome stays where it stands. */
     spawnPod(state, kind, x, y) {
       if (!POD_KINDS.includes(kind)) {
         throw new Error(`spawnPod: unknown kind ${String(kind)}`);
@@ -416,6 +414,25 @@ export function createDebugApi(): KesslerDebugApi {
         spawnTick: draft.simTicks,
       });
       return draft;
+    },
+
+    /** Poses the outcome the next pod draw sheds: a kind, or `none`. */
+    setNextPod(state, kind) {
+      if (kind !== "none" && !POD_KINDS.includes(kind)) {
+        throw new Error(`setNextPod: unknown kind ${String(kind)}`);
+      }
+      const draft = cloneState(state);
+      draft.nextPod = kind;
+      return draft;
+    },
+
+    /**
+     * One pod draw alone: the random outcome a destruction would draw, with
+     * nothing spawned and the posed outcome left where it stands. A reading,
+     * so it returns what it drew rather than a state.
+     */
+    drawPod() {
+      return rollPod(Math.random);
     },
 
     setEffectTicks(state, kind, ticks) {

@@ -274,12 +274,7 @@ export function runFrame(
 
   playFrameEvents(api, outcome.events, outcome.rung, outcome.state.screen);
 
-  presentation.observe(
-    previous.board,
-    outcome.state.board,
-    outcome.steps,
-    assets,
-  );
+  presentation.observe(previous, outcome.state, outcome.steps, assets);
   presentation.advance(dt);
 
   return outcome.state;

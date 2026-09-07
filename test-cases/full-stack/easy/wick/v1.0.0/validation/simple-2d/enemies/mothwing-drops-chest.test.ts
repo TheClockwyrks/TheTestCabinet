@@ -8,7 +8,7 @@
 //     center on the tick it dies", and an `elite` leaves "One chest".
 //   - `specs/world.md` ("Pickups"): a `chest` is dropped by "An elite, at its
 //     position, on the tick it dies"; ("The drop roll"): "Elites and the Dark
-//     make no draw; an elite drops its chest", so the chest is the whole of
+//     make no roll; an elite drops its chest", so the chest is the whole of
 //     what the death leaves.
 //
 // WHAT IS READ. The one tick the bolt kills the mothwing on: `pickups` holds

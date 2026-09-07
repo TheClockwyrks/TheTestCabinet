@@ -23,7 +23,7 @@
 // them the negation of another's expected answer, so a build that pulls AWAY from
 // the star misses all four rather than passing two.
 //
-// A BUILD THAT NEVER PULLS AT ALL FAILS HERE TOO, DETERMINISTICALLY. A body still
+// A BUILD THAT NEVER PULLS AT ALL FAILS HERE TOO, EVERY TIME. A body still
 // at rest after the tick reads as bearing 0 (`law.ts`), and the four bearings the
 // pull is wanted on are 210, 300, 30 and 120 degrees — every one of them further
 // from 0 than the tolerance below. There is no bearing at which "no velocity" is

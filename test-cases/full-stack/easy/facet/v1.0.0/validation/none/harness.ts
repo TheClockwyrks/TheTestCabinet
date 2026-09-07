@@ -56,15 +56,14 @@
 // takes the game off real time and `advance(seconds, frames)` runs whole frames
 // of a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of frames and gets exactly that number — no polling, no
-// waiting, and no measurement of the machine it ran on. The one check that is
-// ABOUT the loop running itself hands it back with `runFor`.
+// waiting, and no measurement of the machine it ran on.
 //
 // POSES DO NOT ADVANCE. Every helper below that only poses returns the state the
 // pose left, with no frame run: `specs/instrumentation.md` says a pointer edge and
 // a requested swap take effect at the call, and Facet plays in one level, so
 // nothing here is a transition that needs a frame to land. Beside the three
-// members that ARE the clock — `advance`, `advanceSeconds` and `until` — and the
-// two that hand it over for real time — `runFor` and `warmAudio` — exactly seven
+// members that ARE the clock — `advance`, `advanceSeconds` and `until` — and
+// `warmAudio`, which drives frames until a sound goes out, exactly seven
 // helpers run a frame of their own: `swapAndStep`, `advanceStep`,
 // `resolveChain`, `swapAndResolve`, `frameCalls`, `frameText` and `tap` (with
 // `tapAction`, which is one `tap`). Everything else leaves the clock where it
@@ -126,7 +125,6 @@ import { fail } from "./assert";
 import {
   type ActionName,
   BINDINGS,
-  DEFAULT_SEED,
   HANDLE,
   MAX_CHAIN_STEPS,
   PATCH_HALF,
@@ -187,7 +185,7 @@ export type {
  * re-exported from the engine package, so a suite imports its clocks from
  * `./harness` whichever engine ran and the three read the same; there is no
  * engine here to re-export from, so they come from `@clockwyrks/case-harness`,
- * whose copies are the same names, the same behavior and the same seeded jitter
+ * whose copies are the same names, the same behavior and the same jitter
  * constants. What this project does with a delta is its own: each one becomes a
  * `__facet.advance(dt / 1000, 1)`.
  */
@@ -285,8 +283,6 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
-  /** The seed the opening `reset` carries. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /**
    * The sub-path the built site is served from. Defaults to `"/"`.
    *
@@ -416,8 +412,6 @@ export interface Harness {
     predicate: (snapshot: FacetSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Hand the game back to its own frame loop for `ms` of real time, then take it back. */
-  runFor(ms: number): Promise<void>;
 
   /**
    * Press a key and leave it down, as a player holding it would.
@@ -586,16 +580,19 @@ export interface Harness {
   /** Give the build a real, browser-trusted gesture, so its audio can open. */
   armAudio(): Promise<void>;
   /**
-   * Open the build's audio and wait until it has actually made a sound.
+   * Open the build's audio and drive frames until it has actually made a sound.
    *
    * `specs/assets.md` has the build DECODE its produced `.wav`s with the Web Audio
    * API, which is asynchronous, and `specs/ui.md` has audio start only after the
    * player has interacted with the page. So a build is conformant when its first
-   * frames are silent while the files decode, and a cue check that observed the
-   * very first event would be reading the decoder rather than the build. This
-   * gives the gesture and then waits, in real time, until a sound has gone out —
-   * which under `specs/ui.md` it must, since one of the two music beds plays on
-   * every screen.
+   * frames after the gesture are silent while the sound decodes, and a cue check
+   * that observed the very first event would be reading the decoder rather than
+   * the build. This gives the gesture and then drives one frame at a time, each
+   * a crossing into the page that lets a decode land between them, until a
+   * sound has gone out — which under `specs/ui.md` it must, since one of the two
+   * music beds plays on every screen. The frames are counted, never timed: the
+   * cap is a failure cap on how many frames a build is given, not a stretch of
+   * real time.
    *
    * IT COUNTS BEDS AS WELL AS CUES, and it has to: the sound a title screen makes
    * is a LOOPING one, so a warm-up that waited for a one-shot would wait out its
@@ -606,15 +603,6 @@ export interface Harness {
    * arranging and take {@link Harness.frame} readings after.
    */
   warmAudio(): Promise<boolean>;
-  /**
-   * Let `ms` of REAL time pass while the game stands still.
-   *
-   * The game is off the wall clock, so nothing here advances it. What this is for
-   * is the work a build does off the frame loop: decoding a sound, resolving a
-   * fetch, decoding an image. Never use it to wait for something the simulation
-   * does — that is what {@link Harness.advance} is for.
-   */
-  settle(ms: number): Promise<void>;
 
   /** Release the page. The context, and the browser, stay. */
   dispose(): Promise<void>;
@@ -675,7 +663,6 @@ const kit = createCaseHarness<FacetSnapshot, FacetSurface>({
   step: { kind: "seconds-frames", op: "advance" },
   stage: { width: STAGE_W, height: STAGE_H },
   tickHz: TICK_HZ,
-  defaultSeed: DEFAULT_SEED,
   // Measure every text call a frame made, in the page and under the build's own
   // loaded fonts, so the shared harness's readers over LOGICAL RUNS of text can
   // coalesce a heading drawn a glyph at a time back into the word it spells;
@@ -689,10 +676,11 @@ const kit = createCaseHarness<FacetSnapshot, FacetSurface>({
   // a press anywhere is a press on something. `UNBOUND_KEY` is bound to nothing
   // in specs/controls.md's whole binding table.
   arm: { kind: "key", code: UNBOUND_KEY },
-  // A build installs its surface while its entry module runs, so a page that has
-  // fired `load` has either installed it already or is not going to. Facet's
-  // build decodes its whole produced asset set before its first frame, so the
-  // wait is the generous one rather than the short one.
+  // specs/assets.md makes the load part of initialization and
+  // specs/instrumentation.md puts the surface up once the game has initialized,
+  // so a build installs its surface once every load it started has settled. The
+  // wait is therefore the generous one rather than the short one, and it is a
+  // failure cap on a predicate — the surface being present — not a pause.
   surfaceTimeoutMs: 15_000,
   specPath: SPEC_PATH,
   replayBackground: REPLAY_BACKGROUND,
@@ -768,9 +756,16 @@ function normalizeBasePath(basePath: string): string {
   return trimmed === "" ? "/" : `/${trimmed}/`;
 }
 
-/** Real milliseconds a warm-up waits between attempts, and how many it makes. */
-const AUDIO_WARM_POLL_MS = 50;
-const AUDIO_WARM_ATTEMPTS = 40;
+/**
+ * How many frames {@link Harness.warmAudio} drives before it gives up.
+ *
+ * NOT a specification figure. specs/assets.md fixes only that a produced sound is
+ * decoded asynchronously, never how many frames that takes, so this is the
+ * suite's own patience: a failure cap, counted in frames rather than measured in
+ * real time, and wide enough that a decode kicked off by the gesture lands
+ * inside it.
+ */
+const AUDIO_WARM_FRAMES = 240;
 
 /**
  * The browser, the instrumented context, and the pages this worker opened.
@@ -839,8 +834,8 @@ function baseOf(h: Harness): BaseHarness<FacetSnapshot, FacetSurface> {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Load the built site in a browser, take the game off the wall clock, reset it on
- * a known seed, and hand back everything a check reads.
+ * Load the built site in a browser, take the game off the wall clock, reset it to
+ * its title screen, and hand back everything a check reads.
  *
  * The default shape is the stage's own size at one device pixel per CSS pixel, so
  * a logical coordinate and a canvas pixel are the same thing and only a check
@@ -849,7 +844,6 @@ function baseOf(h: Harness): BaseHarness<FacetSnapshot, FacetSurface> {
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
-  const seed = options.seed ?? DEFAULT_SEED;
   const basePath = normalizeBasePath(options.basePath ?? "/");
   const mounted = basePath !== "/";
 
@@ -921,7 +915,6 @@ export async function createHarness(
     cssWidth: options.cssWidth,
     cssHeight: options.cssHeight,
     dpr: options.dpr,
-    seed,
     beforeLoad: watch,
   });
 
@@ -943,13 +936,13 @@ export async function createHarness(
     });
     if (base.surfaceFault === null) {
       // The opening the shared harness performs on its own navigation, performed
-      // again on this one: off the wall clock, back to a known title screen on
-      // this harness's seed, and a recorder over the surface before a check can
-      // arm one. A build is free to ask for its 2D context on the frame it first
-      // draws, so the surface can be answering before any context exists to
-      // record — and a `captureReplay` armed in that window writes no evidence.
+      // again on this one: off the wall clock, back to the title screen, and a
+      // recorder over the surface before a check can arm one. A build is free to
+      // ask for its 2D context on the frame it first draws, so the surface can be
+      // answering before any context exists to record — and a `captureReplay`
+      // armed in that window writes no evidence.
       await base.debug.setAutoStep(false);
-      await base.debug.reset({ seed });
+      await base.debug.reset();
       await base.page
         .waitForFunction(
           (recorder) =>
@@ -1075,11 +1068,6 @@ export async function createHarness(
       const swept = await base.until(predicate, untilOptions);
       await noteLoops();
       return swept;
-    },
-
-    async runFor(ms) {
-      await base.runFor(ms);
-      await noteLoops();
     },
 
     hold: (code) => base.hold(code),
@@ -1220,18 +1208,15 @@ export async function createHarness(
 
     async warmAudio() {
       await base.armAudio();
-      for (let attempt = 0; attempt < AUDIO_WARM_ATTEMPTS; attempt += 1) {
+      for (let frame = 0; frame < AUDIO_WARM_FRAMES; frame += 1) {
         // A frame, so the build asks for the screen's bed and for anything else it
-        // plays from `update`; then real time, so a decode that frame kicked off
-        // can finish.
+        // plays from `update`. Each is its own crossing into the page, so a decode
+        // the gesture kicked off lands between one frame and the next.
         await drive(1);
         if ((await soundsHeard()) > 0) return true;
-        await base.page.waitForTimeout(AUDIO_WARM_POLL_MS);
       }
       return (await soundsHeard()) > 0;
     },
-
-    settle: (ms) => base.page.waitForTimeout(ms),
 
     dispose: () => base.dispose(),
   };
@@ -1743,13 +1728,27 @@ export async function loadBoard(
 }
 
 /**
+ * Pose what R9's refill deals into each named column, one `setRefillKinds`
+ * per column, so a scenario whose outcome a draw would otherwise decide is the
+ * rules' alone. Every column not named keeps whatever pose it had, and a
+ * `reset` returns every column to drawing.
+ */
+export async function poseRefill(
+  h: Harness,
+  poses: readonly (readonly [col: number, kinds: string])[],
+): Promise<FacetSnapshot> {
+  for (const [col, kinds] of poses) await h.debug.setRefillKinds(col, kinds);
+  return h.snapshot();
+}
+
+/**
  * Begin a fresh round, exactly as choosing `PLAY` from the title does.
  *
  * Every figure specs/rules.md returns to its opening value when a round starts,
  * written one at a time, and then the opening board dealt through the game's own
- * code from `rngState` — which is the one part of it that cannot be decomposed,
- * since what makes a dealt board an opening board is R4 and the generator rather
- * than any cell a check could write.
+ * code — which is the one part of it that cannot be decomposed, since what makes
+ * a dealt board an opening board is R4 and the draw rather than any cell a check
+ * could write.
  *
  * `PLAY AGAIN` on the game-over menu opens the same round; specs/ui.md gives the
  * two menu items the same effect.

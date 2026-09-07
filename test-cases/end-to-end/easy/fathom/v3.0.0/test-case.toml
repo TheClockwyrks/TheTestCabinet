@@ -356,7 +356,7 @@ source = "specs/assets.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build exposes, over a deterministic,
+# The debugging and automation surface every build exposes, over a render-free,
 # steppable core, framed as an ordinary developer affordance of the game.
 # Branches on engine (how the surface is reached and its calling convention) and
 # on variant (what `setBrightness` recomputes); it seeds to
@@ -509,7 +509,7 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These points check that it is really there,
-# really wired to the running game, and really deterministic. A surface that
+# really wired to the running game, and really off the wall clock. A surface that
 # reports a plausible-looking object unconnected to what is on screen is the
 # failure mode worth naming, and it also shows up as every other suite failing to
 # run.
@@ -567,8 +567,8 @@ validation = { script = "instrumentation/menu-rect.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "manual-clock"
-title = "The game holds still on the driver's clock"
-description = "The other half of the deterministic-core contract: with the simulation taken off the wall clock, nothing advances between steps — simTime does not move and no predator moves over a second of real time — while a step of n ticks advances simTime by exactly n * TICK_DT (1/120 s) within one tick, and covering one second of game time as one step and as sixty steps leaves simTime the same either way."
+title = "The game holds still when it is handed no time"
+description = "The other half of the render-free core: with nothing handing the game time, nothing advances — across a second of frames each carrying no elapsed time under an engine, and across advance(0) under none, simTime does not move and no body on the board moves — while a step of n ticks advances simTime by exactly n * TICK_DT (1/120 s), so one second of game time asked for as 120 ticks lands simTime one second on."
 domains = ["navigation", "sensing", "predators", "progression", "presentation"]
 failure_cap = "broken"
 # The cap sits level with `surface-present` and `snapshot-shape` rather than a
@@ -576,12 +576,59 @@ failure_cap = "broken"
 # hold still is a core no scenario can be posed against, so every point on this
 # checklist ends up decided against a game that moved under the reading. That is
 # the same loss to a player as a surface that was never installed.
-# Automated validation: take the clock (setAutoStep(false) under `none`; the
-# harness's own ConstantClock under an engine), let real time pass with nothing
-# stepping the game, then cover the same second of game time under two step sizes.
-# See validation/<engine>/instrumentation/manual-clock.test.ts.
+# Automated validation: pose a sealed room and a witness that moves under its own
+# power, hand the game no time (frames of zero delta on the harness's scripted
+# clock under an engine; advance(0) under `none`) and read the world before and
+# after, then step one second of game time and read simTime. Nothing here waits
+# on real time. See validation/<engine>/instrumentation/manual-clock.test.ts.
 validation = { script = "instrumentation/manual-clock.test.ts", outputs = [
-  { id = "held", name = "The game held still while real time passes", kind = "replay" },
+  { id = "held", name = "The game held still while it is handed no time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "advances-by-delta"
+title = "A frame advances the game by the whole ticks its delta completes"
+description = "specs/movement.md has the simulation advance by the whole TICK_DT ticks the delta a frame is handed completes: a frame handed the elapsed time of 24 ticks advances simTime by exactly 24 * TICK_DT, so five such frames land simTime one second on, and a released predator's position changes over them."
+domains = ["navigation", "sensing", "predators", "progression", "presentation"]
+failure_cap = "broken"
+# The cap is `broken` for the reason `manual-clock`'s is: a build that steps one
+# tick per frame whatever the frame carried runs at a fraction of its speed on
+# every display slower than the tick rate, which is every display, so the dive a
+# player opens is not the dive the specification describes.
+# Scoped to the two engines because an engineless build owns its own frame loop
+# and measures its own elapsed time, so no frame can be handed a delta from
+# outside and nothing about the rule is readable without real time passing.
+# Automated validation: pose a hunter at a dead end with the forager well down the
+# corridor, hand the engine's loop five frames each worth 24 ticks of elapsed
+# time through the harness's scripted clock, and read simTime and the hunter's
+# position before and after. See
+# validation/<engine>/instrumentation/advances-by-delta.test.ts.
+validation = { script = "instrumentation/advances-by-delta.test.ts", engines = [
+  "simple-2d",
+  "structured-2d",
+], outputs = [
+  { id = "before", name = "The instant before the frames are handed over", kind = "image" },
+  { id = "after", name = "One second of game time later, in five frames", kind = "image" },
+] }
+[[review.categories.items]]
+id = "carries-remainder"
+title = "The part of a delta that completes no tick is carried into the next frame"
+description = "specs/movement.md carries the remainder of a frame's delta into the next frame: a frame handed three quarters of a tick of elapsed time advances simTime by nothing, and three such frames advance it by exactly 2 * TICK_DT between them."
+domains = ["navigation", "sensing", "predators", "progression", "presentation"]
+failure_cap = "passable"
+# The cap is `passable`: a build that drops the fraction on every frame runs slow
+# by that fraction, which on a sixty-hertz display is nothing at all and on an
+# uneven one is a reef that drifts a little under its stated speeds, so the dive
+# plays and every rule holds, a shade slower than specified.
+# Scoped to the two engines for the reason `advances-by-delta` is.
+# Automated validation: pose a sealed room with a drifter for the clip, hand the
+# engine's loop three frames each worth three quarters of a tick through the
+# harness's scripted clock, and read simTime after the first and after the third.
+# See validation/<engine>/instrumentation/carries-remainder.test.ts.
+validation = { script = "instrumentation/carries-remainder.test.ts", engines = [
+  "simple-2d",
+  "structured-2d",
+], outputs = [
+  { id = "carried", name = "Three frames of less than a tick each, between two stretches of whole ticks", kind = "replay" },
 ] }
 
 # --- Controls -----------------------------------------------------------------
@@ -797,20 +844,6 @@ validation = { script = "controls/countdown-ignores-confirm.test.ts", outputs = 
   { id = "ignored", name = "The countdown running its own length under a pressed key", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances itself in real time"
-description = "On a real wall clock, with nothing stepping the game from outside, live play advances: simTime rises and a released predator's position changes over a stretch of real time."
-domains = ["navigation", "sensing", "predators", "progression", "presentation"]
-failure_cap = "broken"
-# Automated validation: hand the game a real wall clock, let the loop run itself
-# for a stretch of real time, and confirm simTime and a predator both moved — a
-# build that only advances when something pokes it stays where it was put. See
-# validation/<engine>/controls/advances-in-real-time.test.ts.
-validation = { script = "controls/advances-in-real-time.test.ts", outputs = [
-  { id = "before", name = "The instant the wall clock is handed over", kind = "image" },
-  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
-] }
-[[review.categories.items]]
 id = "setmaze-houses-predators"
 title = "setMaze sets the layout and nothing else"
 description = "The layout is the whole of what setMaze sets: with the score, lives, depth, screen, both cooldowns, the plankton, a drifter, the forager's tile and facing and a roster of three hunters all posed away from the values an opening dive carries, posing a layout over them leaves the tiles the rows it was handed and every one of those readings exactly as it stood — each predator's kind, tile, facing, state and released flag included — and a hunter the new layout closes over holds the tile it stands on, because travel carries a body only along tiles open to it."
@@ -958,7 +991,7 @@ description = "No 2x2 block of the grid is four corridor tiles, so the corridors
 domains = ["navigation"]
 failure_cap = "scuffed"
 # Automated validation: scan every 2x2 window of the reported layout across
-# several freshly seeded mazes. See validation/<engine>/maze/corridors-one-wide.test.ts.
+# several freshly laid-out mazes. See validation/<engine>/maze/corridors-one-wide.test.ts.
 validation = { script = "maze/corridors-one-wide.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
@@ -969,7 +1002,7 @@ description = "Column c and column GRID_COLS - 1 - c carry the same kind of tile
 domains = ["navigation"]
 failure_cap = "passable"
 # Automated validation: compare every mirrored column pair of the reported layout
-# across several freshly seeded mazes. See validation/<engine>/maze/symmetry.test.ts.
+# across several freshly laid-out mazes. See validation/<engine>/maze/symmetry.test.ts.
 validation = { script = "maze/symmetry.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
@@ -980,7 +1013,7 @@ description = "Row 0, row 17, column 0 and column 35 carry rock at every positio
 domains = ["navigation"]
 failure_cap = "scuffed"
 # Automated validation: walk the four border lines of the reported layout and
-# count everything on them that is not rock, across several freshly seeded
+# count everything on them that is not rock, across several freshly laid-out
 # mazes. See validation/<engine>/maze/solid-border.test.ts.
 validation = { script = "maze/solid-border.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
@@ -992,7 +1025,7 @@ description = "Every corridor tile is reachable from every other by moving betwe
 domains = ["navigation"]
 failure_cap = "broken"
 # Automated validation: flood the reported layout from one corridor tile and
-# confirm it reaches every other, across several freshly seeded mazes. See
+# confirm it reaches every other, across several freshly laid-out mazes. See
 # validation/<engine>/maze/connected.test.ts.
 validation = { script = "maze/connected.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
@@ -1004,7 +1037,7 @@ description = "Every corridor tile has at least two corridor neighbors, so the m
 domains = ["navigation"]
 failure_cap = "passable"
 # Automated validation: count the corridor neighbors of every corridor tile in the
-# reported layout, across several freshly seeded mazes. See
+# reported layout, across several freshly laid-out mazes. See
 # validation/<engine>/maze/no-dead-ends.test.ts.
 validation = { script = "maze/no-dead-ends.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
@@ -1016,7 +1049,7 @@ description = "Measured over the corridor tiles alone, with den interior and den
 domains = ["navigation"]
 failure_cap = "passable"
 # Automated validation: compute the three measures from the reported layout, by
-# the definitions in specs/maze.md, across several freshly seeded mazes. See
+# the definitions in specs/maze.md, across several freshly laid-out mazes. See
 # validation/<engine>/maze/proportions.test.ts.
 validation = { script = "maze/proportions.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
@@ -1029,7 +1062,7 @@ domains = ["navigation"]
 failure_cap = "passable"
 # Automated validation: read the den-interior tiles out of the reported layout and
 # hold them against the rectangle those four bounds name, in both directions,
-# across several freshly seeded mazes. The GATE is den-one-exit's, the wall around
+# across several freshly laid-out mazes. The GATE is den-one-exit's, the wall around
 # the chamber is den-enclosed's, and whether the chamber leads anywhere is
 # den-reachable's. See validation/<engine>/maze/den-bounds.test.ts.
 validation = { script = "maze/den-bounds.test.ts", outputs = [
@@ -1042,7 +1075,7 @@ description = "No den-interior tile has a corridor neighbor, so the chamber's on
 domains = ["navigation", "predators"]
 failure_cap = "scuffed"
 # Automated validation: walk the den-interior tiles of the reported layout and
-# check every neighbor of each, across several freshly seeded mazes. See
+# check every neighbor of each, across several freshly laid-out mazes. See
 # validation/<engine>/maze/den-enclosed.test.ts.
 validation = { script = "maze/den-enclosed.test.ts", outputs = [
   { id = "board", name = "The den chamber and the corridor outside its gate", kind = "image" },
@@ -1054,7 +1087,7 @@ description = "The layout carries exactly one den-gate tile, and it sits on the 
 domains = ["navigation", "predators"]
 failure_cap = "passable"
 # Automated validation: count the gate tiles in the reported layout and check
-# where the one sits relative to the chamber, across several freshly seeded
+# where the one sits relative to the chamber, across several freshly laid-out
 # mazes. See validation/<engine>/maze/den-one-exit.test.ts.
 validation = { script = "maze/den-one-exit.test.ts", outputs = [
   { id = "board", name = "The den chamber and the corridor outside its gate", kind = "image" },
@@ -1067,7 +1100,7 @@ domains = ["navigation", "predators"]
 failure_cap = "broken"
 # Automated validation: flood the reported layout from each den-interior tile over
 # the tiles a predator may enter and confirm it reaches the forager's start tile,
-# across several freshly seeded mazes. See validation/<engine>/maze/den-reachable.test.ts.
+# across several freshly laid-out mazes. See validation/<engine>/maze/den-reachable.test.ts.
 validation = { script = "maze/den-reachable.test.ts", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
@@ -1079,7 +1112,7 @@ domains = ["navigation"]
 failure_cap = "scuffed"
 # Automated validation: count the rows whose two border tiles are both open in
 # the reported layout and read what the one pierced row holds, across several
-# freshly seeded mazes. See validation/<engine>/maze/one-pierced-row.test.ts.
+# freshly laid-out mazes. See validation/<engine>/maze/one-pierced-row.test.ts.
 validation = { script = "maze/one-pierced-row.test.ts", outputs = [
   { id = "board", name = "The maze board and its pierced row", kind = "image" },
 ] }

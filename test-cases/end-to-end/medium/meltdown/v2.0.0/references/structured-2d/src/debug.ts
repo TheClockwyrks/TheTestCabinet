@@ -46,7 +46,7 @@ import {
   type TowerType,
   type VentName,
 } from "./constants";
-import { menuRows, resetWith } from "./flow";
+import { menuRows, resetState } from "./flow";
 import { menuRowRect, panelControls } from "./layout";
 import {
   damageOf,
@@ -61,7 +61,13 @@ import {
   worldRadiatorsOf,
 } from "./stats";
 import { sizeOf, tileAt } from "./geometry";
-import { dropUnit, exhaustOf, spawnUnit, unitRemaining } from "./surge";
+import {
+  drawVent,
+  dropUnit,
+  exhaustOf,
+  spawnUnit,
+  unitRemaining,
+} from "./surge";
 import {
   pointerDown,
   pointerMove,
@@ -190,6 +196,7 @@ export interface MeltdownSnapshot {
   speed: number;
   muted: boolean;
   waveSpawning: boolean;
+  spawnVent: VentName | null;
   pointer: { x: number; y: number; down: boolean };
   selected: number | null;
   hoverShop: TowerType | null;
@@ -226,7 +233,7 @@ export interface MeltdownSnapshot {
 export interface MeltdownDebugApi {
   version: number;
 
-  reset(seed?: number): void;
+  reset(): void;
   snapshot(): MeltdownSnapshot;
 
   setScreen(screen: Screen): void;
@@ -243,6 +250,9 @@ export interface MeltdownDebugApi {
   setSpeed(speed: number): void;
 
   setWaveSpawning(enabled: boolean): void;
+  setSpawnVent(vent: VentName | null): void;
+  /** One vent draw as the release makes it; a reading, so it poses nothing. */
+  drawVent(): VentName;
 
   addTower(type: TowerType, col: number, row: number, rotation: number): void;
   removeTower(id: number): void;
@@ -386,8 +396,8 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
   return {
     version: MELTDOWN_DEBUG_VERSION,
 
-    reset(seed) {
-      resetWith(read(), seed);
+    reset() {
+      resetState(read());
       sync();
     },
 
@@ -419,6 +429,7 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
         speed: state.speed,
         muted: state.muted,
         waveSpawning: state.waveSpawning,
+        spawnVent: state.spawnVent,
         pointer: {
           x: state.pointer.x,
           y: state.pointer.y,
@@ -511,6 +522,12 @@ export function createDebugApi(world: () => World): MeltdownDebugApi {
 
     setWaveSpawning(enabled) {
       read().waveSpawning = enabled;
+    },
+    setSpawnVent(vent) {
+      read().spawnVent = vent === "left" || vent === "top" ? vent : null;
+    },
+    drawVent() {
+      return drawVent();
     },
 
     // ---- The towers -------------------------------------------------------

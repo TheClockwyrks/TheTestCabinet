@@ -17,7 +17,7 @@ import {
   SCATTER_TOP_ROW,
   TILE,
 } from "./constants";
-import { nextInt, nextRange } from "./rng";
+import { randomInt } from "./rng";
 import type { FrameEvents, MutNode, Sim } from "./sim";
 
 /** The reading order the field is kept in: ascending row, then column. */
@@ -96,19 +96,15 @@ export const SCATTER_TILES = COLS * (SCATTER_BOTTOM_ROW - SCATTER_TOP_ROW + 1);
 /**
  * Lay the starting field (`specs/nodes.md`): a scatter of inert nodes across
  * rows `SCATTER_TOP_ROW..SCATTER_BOTTOM_ROW`, covering between
- * `SCATTER_MIN_FRACTION` and `SCATTER_MAX_FRACTION` of those tiles, drawn from
- * the run's own generator so two seeds lay different fields.
+ * `SCATTER_MIN_FRACTION` and `SCATTER_MAX_FRACTION` of those tiles, each tile
+ * drawn at random so two runs lay different fields.
  */
 export function scatterField(sim: Sim): void {
   sim.nodes = [];
-  const [fraction, afterFraction] = nextRange(
-    sim.rngState,
-    SCATTER_MIN_FRACTION,
-    SCATTER_MAX_FRACTION,
+  const wanted = randomInt(
+    Math.round(SCATTER_MIN_FRACTION * SCATTER_TILES),
+    Math.round(SCATTER_MAX_FRACTION * SCATTER_TILES),
   );
-  sim.rngState = afterFraction;
-
-  const wanted = Math.round(fraction * SCATTER_TILES);
   const taken = new Set<number>();
   // Bounded by construction: the tiles wanted are at most 15% of the rows, so
   // the draw runs out of fresh tiles long before it runs out of attempts.
@@ -116,9 +112,8 @@ export function scatterField(sim: Sim): void {
   const limit = SCATTER_TILES * 8;
   while (taken.size < wanted && attempts < limit) {
     attempts += 1;
-    const [c, afterC] = nextInt(sim.rngState, 0, COLS - 1);
-    const [r, afterR] = nextInt(afterC, SCATTER_TOP_ROW, SCATTER_BOTTOM_ROW);
-    sim.rngState = afterR;
+    const c = randomInt(0, COLS - 1);
+    const r = randomInt(SCATTER_TOP_ROW, SCATTER_BOTTOM_ROW);
     taken.add(r * COLS + c);
   }
 

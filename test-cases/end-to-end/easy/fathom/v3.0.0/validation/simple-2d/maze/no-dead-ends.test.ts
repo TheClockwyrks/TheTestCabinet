@@ -16,7 +16,7 @@
 // below has one corridor neighbor and is still not a dead end, because it is not
 // a corridor tile.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -65,7 +65,7 @@ it("lays out a braided maze, with at least two corridor neighbors on every corri
       one.ends.length,
       MAX_DEAD_ENDS,
       `corridor tiles with fewer than two corridor neighbors in the maze laid ` +
-        `out from seed ${one.board.seed}` +
+        `out from board ${one.board.ordinal}` +
         (named === "" ? "" : `, at ${named}`),
     );
   }

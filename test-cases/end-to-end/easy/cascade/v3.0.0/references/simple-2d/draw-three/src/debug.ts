@@ -30,12 +30,12 @@ import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
-  DEFAULT_SEED,
   RANK_MAX,
   RANK_MIN,
   TURN_COUNT,
 } from "./constants";
 import { cardColor } from "./cards";
+import { drawLaunchVx } from "./cascade";
 import { resetToTitle } from "./flow";
 import { moveTo, pressAt, releaseAt } from "./pointer";
 import {
@@ -126,10 +126,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<CascadeState>,
-    options?: { seed?: number },
-  ): CascadeState;
+  reset(state: DeepReadonly<CascadeState>): CascadeState;
   snapshot(state: DeepReadonly<CascadeState>): CascadeSnapshot;
 
   /**
@@ -247,6 +244,8 @@ export interface CascadeDebugApi {
     seconds: number,
   ): CascadeState;
   clearTrail(state: DeepReadonly<CascadeState>): CascadeState;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(state: DeepReadonly<CascadeState>): number;
 }
 
 /** Write `change` into a copy of the state and hand the copy back. */
@@ -294,9 +293,9 @@ export function createDebugApi(): CascadeDebugApi {
   return {
     version: CASCADE_DEBUG_VERSION,
 
-    reset: (state, options) =>
+    reset: (state) =>
       pose(state, (sim) => {
-        resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
+        resetToTitle(sim);
       }),
 
     snapshot: (state) => ({
@@ -560,5 +559,8 @@ export function createDebugApi(): CascadeDebugApi {
       pose(state, (sim) => {
         eraseTrail(sim);
       }),
+
+    /** The launch's own draw, taken without a launch. It reads no field. */
+    drawLaunchVx: () => drawLaunchVx(),
   };
 }

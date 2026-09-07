@@ -42,7 +42,7 @@ afterEach(() => {
 });
 
 it("leaves the beam ending at the last segment the limits permitted", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R2_FOREIGN);
 
   // The third cell is another channel's lens: R2 refuses that hop, and the

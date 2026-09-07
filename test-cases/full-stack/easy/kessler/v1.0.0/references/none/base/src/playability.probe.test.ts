@@ -4,8 +4,9 @@
 // the deflector toward the ball's projected paddle-crossing angle at the held
 // rate the spec fixes, and serves the parked ball as soon as one parks. Waves
 // 1 to 3 each run standalone with three lives for up to 120 seconds of game
-// time, over several pod-stream seeds (with a seed-varied pre-serve rotation
-// so the opening trajectories differ). The probe measures, per wave: the mean
+// time, over several runs, each on its own random source and with a varied
+// pre-serve rotation so the opening trajectories differ. The probe measures,
+// per wave: the mean
 // rally length (deflector bounces per life), lives lost per simulated minute,
 // the fraction of paddle-crossing returns that were geometrically unreachable
 // (the angular gap beyond the span edge exceeded what the turn rate could
@@ -23,7 +24,6 @@ import {
   TICK_HZ,
 } from "./constants";
 import { angularOffsetDeg, polarOf, radialAt, dot } from "./polar";
-import { mulberry32 } from "./rng";
 import { launchParkedBall, tickPlaying, type TickIo } from "./sim";
 import {
   bootSession,
@@ -39,8 +39,21 @@ import { liveTargetCount } from "./rings";
 const RUN_CAP_TICKS = 120 * TICK_HZ;
 /** The deadband that stops the tracker oscillating, half a tick's turn. */
 const TRACK_DEADBAND_DEG = (PADDLE_TURN_RATE * TICK_DT) / 2;
-/** The pod-stream seeds each wave runs under. */
-const SEEDS = [1, 2, 3, 4, 5];
+/** The runs each wave is probed over, each numbering its random source. */
+const RUNS = [1, 2, 3, 4, 5];
+
+/**
+ * A small linear congruential source over `start`, so a run's pod draws
+ * differ from the other runs' and the probe's figures hold still between
+ * invocations.
+ */
+function scriptedRandom(start: number): () => number {
+  let state = start >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
 
 /** One inward ball's projected crossing of the deflector contact radius. */
 interface Crossing {
@@ -86,7 +99,7 @@ interface ReturnEvent {
 
 /** What one wave's probe run measured. */
 interface RunResult {
-  seed: number;
+  run: number;
   ticks: number;
   paddleBounces: number;
   livesLost: number;
@@ -111,17 +124,18 @@ function initialTargetCount(): number {
  * ball served after `preServeTicks` of rightward rotation, the tracking
  * player at the stick, up to the 120-second cap.
  */
-function runWave(wave: number, seed: number, preServeTicks: number): RunResult {
+function runWave(wave: number, run: number, preServeTicks: number): RunResult {
   const session: Session = bootSession();
   layOutWave(session, wave);
   session.lives = START_LIVES;
   parkFreshBall(session, 0);
 
-  const rng = mulberry32(seed);
+  const rng = scriptedRandom(run);
   const held = { left: false, right: false };
   const io: TickIo = {
     held,
     rng,
+    takePosedPod: () => null,
     podSpawn: true,
     waveAdvance: true,
     tickIndex: 0,
@@ -135,7 +149,7 @@ function runWave(wave: number, seed: number, preServeTicks: number): RunResult {
   };
 
   const result: RunResult = {
-    seed,
+    run,
     ticks: 0,
     paddleBounces: 0,
     livesLost: 0,
@@ -261,7 +275,7 @@ interface WaveReport {
 }
 
 function probeWave(wave: number): WaveReport {
-  const runs = SEEDS.map((seed, index) => runWave(wave, seed, index * 4));
+  const runs = RUNS.map((run, index) => runWave(wave, run, index * 4));
   const totalBounces = runs.reduce((sum, run) => sum + run.paddleBounces, 0);
   const lifeSegments = runs.reduce((sum, run) => sum + run.rallies.length, 0);
   const totalLivesLost = runs.reduce((sum, run) => sum + run.livesLost, 0);
@@ -294,7 +308,7 @@ function printReport(report: WaveReport): void {
         ? `game over at ${run.survivedSec.toFixed(1)}s`
         : `capped at ${run.survivedSec.toFixed(1)}s`;
     lines.push(
-      `  seed ${run.seed}: ${end}, ${run.targetsDestroyed}/48 targets, ` +
+      `  run ${run.run}: ${end}, ${run.targetsDestroyed}/48 targets, ` +
         `${run.livesLost} lives lost, ${run.paddleBounces} paddle bounces, ` +
         `rallies [${run.rallies.join(", ")}]`,
     );
@@ -306,11 +320,11 @@ describe("playability probe (design gate, tracking player)", () => {
   const reports = [1, 2, 3].map(probeWave);
   for (const report of reports) printReport(report);
 
-  it("a tracking player survives 60s of wave 1 on 3 lives, every seed", () => {
+  it("a tracking player survives 60s of wave 1 on 3 lives, every run", () => {
     for (const run of reports[0].runs) {
       expect(
         run.gameOver && run.survivedSec < 60,
-        `seed ${run.seed} exhausted 3 lives at ${run.survivedSec.toFixed(1)}s`,
+        `run ${run.run} exhausted 3 lives at ${run.survivedSec.toFixed(1)}s`,
       ).toBe(false);
     }
   });

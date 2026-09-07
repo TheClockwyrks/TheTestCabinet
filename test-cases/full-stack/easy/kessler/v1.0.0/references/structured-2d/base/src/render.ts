@@ -60,7 +60,7 @@ interface Star {
   phase: number;
 }
 
-/** A tiny fixed LCG for the star layout — never the game's pod stream. */
+/** A tiny fixed LCG for the star layout alone; the pod draw never reads it. */
 function starfield(count: number): Star[] {
   let s = 0x9d2c5680;
   const next = (): number => {

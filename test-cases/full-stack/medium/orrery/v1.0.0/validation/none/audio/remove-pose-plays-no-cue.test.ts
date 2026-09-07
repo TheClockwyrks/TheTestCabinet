@@ -3,7 +3,7 @@
 //
 // THE RULE. "Audio belongs to the frames. A pose changes the state alone and
 // SOUNDS NOTHING, the pointer operations included; the cues a scenario hears come
-// from the frames advanced after it" (`specs/instrumentation.md`, A deterministic
+// from the frames advanced after it" (`specs/instrumentation.md`, A render-free
 // core). `removePart(part)` is a row of that surface's machine group — "Removes
 // one placed part, discarding its tape and its tape-panel row exactly as
 // `part-delete` does" — and it is a pose like every other one there.

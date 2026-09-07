@@ -33,7 +33,6 @@ import {
   CAM_LEAD_MAX,
   CORE_TIMER,
   DEEPCORE_DEBUG_VERSION,
-  DEFAULT_SEED,
   GEMSTONE_IDS,
   ITEM_IDS,
   MATERIALS,
@@ -44,6 +43,10 @@ import {
   PANELS,
   ROCKET_COMPONENTS,
   SCREENS,
+  TELEPORT_HEIGHT_TILES_MAX,
+  TELEPORT_HEIGHT_TILES_MIN,
+  TELEPORT_SPEED_MAX,
+  TELEPORT_SPEED_MIN,
   TILE_KINDS,
   TRACKS,
   WORLD_COLS,
@@ -278,6 +281,8 @@ export interface DeepcoreSnapshot {
   };
   notice: null | { hazard: NoticeHazard; shown: boolean };
   noticesFired: { gas: boolean; lava: boolean };
+  nextTeleportHeight: number | null;
+  nextTeleportSpeed: number | null;
   summary: null | {
     deepestDepthMeters: number;
     creditsEarned: number;
@@ -306,7 +311,7 @@ export interface DeepcoreDebugApi {
   controlRect(control: ControlName, subject: ControlSubject): HitRect | null;
 
   // Restoring the world
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   generateMine(): void;
   clearMine(): void;
   clearCargo(): void;
@@ -345,6 +350,8 @@ export interface DeepcoreDebugApi {
   setNoticeFired(hazard: NoticeHazard, fired: boolean): void;
   setCameraLead(lead: number): void;
   setElapsed(seconds: number): void;
+  setNextTeleportHeight(tiles: number | null): void;
+  setNextTeleportSpeed(speed: number | null): void;
   clearSave(): void;
 
   // The controls
@@ -564,6 +571,8 @@ export function readSnapshot(
       ? { hazard: state.notice.hazard, shown: state.notice.shown }
       : null,
     noticesFired: { ...state.noticesFired },
+    nextTeleportHeight: state.nextTeleportHeight,
+    nextTeleportSpeed: state.nextTeleportSpeed,
     summary: state.summary ? { ...state.summary } : null,
   };
 }
@@ -712,19 +721,15 @@ export function createDebugApi(world: () => World): DeepcoreDebugApi {
     // ---- Restoring the world ----
 
     /**
-     * Every field the state owns back at its title-screen value, with the
-     * generator seeded. `muted` is deliberately untouched — muting is a player
-     * preference the engine owns — and so is the save slot, which outlives the
-     * session; `clearSave` is what deletes it. The bursts on screen are not
-     * state, so they are simply taken off.
+     * Every field the state owns back at its title-screen value. `muted` is
+     * deliberately untouched — muting is a player preference the engine owns —
+     * and so is the save slot, which outlives the session; `clearSave` is what
+     * deletes it. The bursts on screen are not state, so they are simply taken
+     * off.
      */
-    reset(options) {
-      const seed =
-        options?.seed === undefined
-          ? DEFAULT_SEED
-          : requireInteger("reset", "seed", options.seed, 0, 0xffffffff);
+    reset() {
       pose((d) => {
-        d.restore({ seed });
+        d.restore();
         d.hasSave = hasSave();
         clearEffects();
       });
@@ -1123,6 +1128,40 @@ export function createDebugApi(world: () => World): DeepcoreDebugApi {
         clearSaveSlot();
         d.hasSave = hasSave();
       }),
+
+    // ---- Posing the Quantum Teleporter ----
+
+    setNextTeleportHeight(tiles) {
+      const value =
+        tiles === null
+          ? null
+          : requireRange(
+              "setNextTeleportHeight",
+              "tiles",
+              tiles,
+              TELEPORT_HEIGHT_TILES_MIN,
+              TELEPORT_HEIGHT_TILES_MAX,
+            );
+      pose((d) => {
+        d.nextTeleportHeight = value;
+      });
+    },
+
+    setNextTeleportSpeed(speed) {
+      const value =
+        speed === null
+          ? null
+          : requireRange(
+              "setNextTeleportSpeed",
+              "speed",
+              speed,
+              TELEPORT_SPEED_MIN,
+              TELEPORT_SPEED_MAX,
+            );
+      pose((d) => {
+        d.nextTeleportSpeed = value;
+      });
+    },
 
     // ---- The controls ----
 

@@ -26,8 +26,6 @@ import { depthFraction, ORES, type Ore } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, look } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 4] as const;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -39,25 +37,23 @@ afterEach(async () => {
 });
 
 it("holds every vein to an ore whose curve is open at its depth", async () => {
-  for (const seed of SEEDS) {
-    const scan = await generatedMine(h, seed);
-    const slack = 2 / (scan.coreRow - 1);
-    const wrong: string[] = [];
-    for (const cell of scan.ores) {
-      const def = ORES[cell.ore as Ore];
-      if (def === undefined) {
-        wrong.push(`(${cell.col}, ${cell.row}) holds "${cell.ore}"`);
-        continue;
-      }
-      const f = depthFraction(cell.row, scan.coreRow);
-      if (Math.abs(f - def.peak) > def.spread + slack) {
-        wrong.push(
-          `${cell.ore} at row ${cell.row}, f ${f.toFixed(3)}, peak ${def.peak}, spread ${def.spread}`,
-        );
-      }
+  const scan = await generatedMine(h);
+  const slack = 2 / (scan.coreRow - 1);
+  const wrong: string[] = [];
+  for (const cell of scan.ores) {
+    const def = ORES[cell.ore as Ore];
+    if (def === undefined) {
+      wrong.push(`(${cell.col}, ${cell.row}) holds "${cell.ore}"`);
+      continue;
     }
-    assertDeepEqual(wrong.slice(0, 5), [], `seed ${seed}`);
+    const f = depthFraction(cell.row, scan.coreRow);
+    if (Math.abs(f - def.peak) > def.spread + slack) {
+      wrong.push(
+        `${cell.ore} at row ${cell.row}, f ${f.toFixed(3)}, peak ${def.peak}, spread ${def.spread}`,
+      );
+    }
   }
+  assertDeepEqual(wrong.slice(0, 5), [], "specs/mining.md");
 
   // The picture: the mix at one depth, halfway down the mine.
   await look(h, 16, 250);

@@ -4,7 +4,7 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
 // `setScreen`: "Sets `screen` to `name` ... Nothing else changes: the run, the
 // loadout, `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`,
-// `rngState`, `simTime`, and the driver switches all stand exactly as they
+// every posed outcome, `simTime`, and the driver switches all stand exactly as they
 // were", with `menuIndex` `0`, and "Applies on every screen". "The pose sets
 // the screen and nothing else, so a run is never begun, discarded, ended, or
 // grown by it": the run is ENDED through the ending rule instead, "the fallen

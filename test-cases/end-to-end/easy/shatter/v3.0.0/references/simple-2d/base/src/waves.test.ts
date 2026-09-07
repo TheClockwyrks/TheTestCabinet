@@ -32,7 +32,6 @@ describe("a wave", () => {
   it("spawns clear of the ship and the star, at the wave's own speed", () => {
     for (const wave of [1, 3, 12]) {
       const sim = toSim(openingState());
-      sim.rngState = wave * 977;
       spawnWave(sim, wave);
 
       expect(sim.rocks).toHaveLength(waveRockCount(wave));

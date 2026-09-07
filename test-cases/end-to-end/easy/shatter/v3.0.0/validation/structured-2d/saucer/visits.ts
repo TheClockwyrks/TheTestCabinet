@@ -5,10 +5,18 @@
 // what it does once it has: the first arrival at `SAUCER_FIRST_DELAY` (`18` s),
 // the `SAUCER_GAP_MIN`–`SAUCER_GAP_MAX` (`25`–`35` s) gap after each one leaves,
 // the edge and the row each enters at, that only one is ever up, and — through the
-// avoidance sweep — fifty-four whole crossings. Every one of them needs MINUTES of
-// game time, and this module is the one reading they share: the game opened the
-// way a player opens it, emptied of everything the point is not about, and then
-// watched arrival by arrival.
+// avoidance sweep — twenty whole crossings. Every one of them needs long
+// stretches of game time, and this module is the one reading they share: the game
+// opened the way a player opens it, emptied of everything the point is not about,
+// and then watched arrival by arrival.
+//
+// THE DUE IS POSED WHERE THE CADENCE IS NOT THE REQUIREMENT. `specs/saucer.md`
+// draws the gap between visits from twenty-five to thirty-five seconds, and
+// `setSaucerDue` sets the figure that draw decides (`specs/instrumentation.md`).
+// A point about the entry edge or the entry row wants an arrival rather than a
+// wait, so {@link closeUpArrival} poses a due a quarter of a second out and
+// catches the arrival that follows; the two points about the cadence itself pose
+// nothing and read the build's own clock.
 //
 // WHY A FRAME IS WORTH SEVERAL TICKS HERE. `specs/simulation.md` fixes the game's
 // timestep at `TICK_HZ` and has the game convert whatever delta a frame brings
@@ -17,9 +25,9 @@
 // `specs/instrumentation.md` states outright as the property the whole surface
 // rests on. A frame worth {@link MARCH_TICKS} ticks is therefore exactly as much
 // game as {@link MARCH_TICKS} frames worth one, and it is what makes these points
-// affordable: sixteen arrivals under four seeds is eleven minutes of game time,
-// which is eighty thousand ticks, and the engine renders once per FRAME rather
-// than once per tick.
+// affordable: a watch for a second arrival is fifty seconds of game time even
+// with the first due posed short, which is six thousand ticks, and the engine
+// renders once per FRAME rather than once per tick.
 //
 // WHAT THE COARSER FRAME COSTS, AND WHERE IT IS PAID. A reading can only be taken
 // on a frame boundary, so a sample lands up to {@link MARCH_TICKS} ticks after the
@@ -27,8 +35,9 @@
 // units — a saucer at `SAUCER_SPEED` (`140`) covers `9.3` units in eight ticks,
 // which is why `enters-at-an-edge` reads a `40`-unit band and not a tighter one —
 // and no point marches where it needs a tick-exact reading. `at-most-one-at-a-time`
-// samples every tick and so builds its own harness at the default clock; nothing
-// here forces a stride on a check that does not want one.
+// marches too, because a second visit begun over a live one shows as one live id
+// followed straight by another at any stride, while a conformant clear stretch
+// between visits lasts twenty-five seconds and more.
 //
 // THE DRAW CALLS ARE DROPPED AS THE MARCH GOES. The harness records every call the
 // render makes so the presentation points can read them, and a two-minute march
@@ -43,6 +52,7 @@
 
 import { ConstantClock } from "@clockwyrks/structured-2d";
 import { FACE_UP, SAFE_X, SAFE_Y, TICK_HZ } from "../constants";
+import { fail } from "../assert";
 import {
   clearCalls,
   clearWorld,
@@ -105,8 +115,7 @@ export async function march(h: Harness, frames: number): Promise<void> {
  *
  * `specs/saucer.md` times the first arrival "`SAUCER_FIRST_DELAY` (`18` seconds)
  * of game time after the game begins", so the game has to BEGIN rather than be
- * posed: `reset` for the title and a seeded generator, then `confirm` on `PLAY`
- * (`specs/ui.md`). One frame runs, the frame that carries the key's edge, and its
+ * posed: `reset` for the title, then `confirm` on `PLAY` (`specs/ui.md`). One frame runs, the frame that carries the key's edge, and its
  * ticks are the first ticks of the game — which is the count answered here, so a
  * point that marches to a stated moment of game time knows where it is starting
  * from.
@@ -122,8 +131,8 @@ export async function march(h: Harness, frames: number): Promise<void> {
  * `saucerSpawning` is left ON. It is the faculty every point that calls this is
  * about, and `reset` restores it on.
  */
-export async function openQuietGame(h: Harness, seed: number): Promise<number> {
-  await startRun(h, seed);
+export async function openQuietGame(h: Harness): Promise<number> {
+  await startRun(h);
 
   h.debug.setWaveSpawning(false);
   clearWorld(h);
@@ -198,7 +207,7 @@ export interface WatchOptions {
  * THE WATCH RUNS UNDRAWN. Every frame is a whole frame — the world ticks and the
  * pipeline walks the scene — but none of them puts ink on the canvas, because
  * what a watch reads is one id per frame and `at-most-one-at-a-time` alone spends
- * two minutes of game time here. A handler that wants a picture of the moment
+ * fifty seconds of game time here. A handler that wants a picture of the moment
  * asks for one with {@link Harness.paint}.
  */
 export async function watchVisits(
@@ -254,4 +263,55 @@ export async function watchVisits(
   clearCalls(h);
 
   return { visits, overlaps, snapshot };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bringing an arrival on                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The due a check poses to bring an arrival on at once, in seconds.
+ *
+ * `setSaucerDue` sets the figure the gap draw decides
+ * (`specs/instrumentation.md`), so a check that wants an arrival without waiting
+ * out the cadence poses a short one. A quarter of a second, which is thirty
+ * ticks: long enough that a build's clock has whole ticks to reach it, short
+ * enough that the watch to the arrival costs a handful of frames.
+ */
+export const SHORT_DUE = 0.25;
+
+/** How long a wait for a posed arrival runs before the scenario is unreachable. */
+const ARRIVAL_CEILING_SECONDS = 2;
+
+/**
+ * Pose a due of {@link SHORT_DUE} and watch until the arrival it times is on the
+ * field, answering that visit as the watch first saw it.
+ *
+ * The field must be clear of a saucer when this is called: the cadence runs only
+ * while it is (`specs/saucer.md`), and the watch reads the first visit it sees.
+ * A conformant build brings the saucer on within a quarter of a second; a build
+ * that ignores the posed due is reported as an arrival that never came, inside
+ * two seconds, rather than as a bad edge or row.
+ */
+export async function closeUpArrival(h: Harness): Promise<Visit> {
+  if (h.snapshot().saucer !== null) {
+    fail(
+      "a field clear of a saucer when a posed due is set, so the arrival it " +
+        "times is the next one (specs/saucer.md)",
+      "a saucer is already up",
+    );
+  }
+  h.debug.setSaucerDue(SHORT_DUE);
+  const watch = await watchVisits(h, marchFrames(ARRIVAL_CEILING_SECONDS), {
+    done: (visits) => visits.length >= 1,
+  });
+  const visit = watch.visits[0];
+  if (visit === undefined) {
+    fail(
+      `a saucer arriving within ${ARRIVAL_CEILING_SECONDS} s of game time of ` +
+        `setSaucerDue(${SHORT_DUE}) on a clear field (specs/instrumentation.md)`,
+      "no saucer arrived",
+    );
+  }
+  return visit;
 }

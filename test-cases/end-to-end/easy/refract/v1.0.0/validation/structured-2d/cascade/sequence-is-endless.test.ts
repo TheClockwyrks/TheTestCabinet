@@ -2,11 +2,17 @@
 //
 // specs/modes/cascade.md: MAX_TIER is the top of the ladder and holds from the
 // twentieth board solved onward — play continues there indefinitely, on fresh
-// boards each time. The sweep drives PAST the top: twenty-six boards solved in
-// a row, so six arrive after the ladder has topped out. Each of those arrives
-// well formed at MAX_TIER with solvedCount one higher than the board before,
-// and NEXT BOARD still hands over a fresh, well-formed board afterwards — no
-// last board, no stall, no plateau in the count.
+// boards each time. The run is posed past the twentieth solve through
+// `setSolvedCount` and `setTier` (specs/instrumentation.md), and five more
+// times over a posed board is solved and NEXT BOARD taken. Each solve raises
+// solvedCount by one and holds the tier at MAX_TIER, and each NEXT BOARD
+// hands over a fresh, well-formed board carrying MAX_TIER's channel count —
+// no last board, no stall, no plateau in the count.
+//
+// The board solved each time is the minimal board, posed through `loadBoard`
+// over whatever NEXT BOARD dealt: "a board posed this way is a board like any
+// other" (specs/instrumentation.md), so the solve counts exactly as a generated
+// one would, and the generator's own boards are what NEXT BOARD is read on.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -14,17 +20,19 @@ import {
   boardFromSnapshot,
   captureStill,
   createHarness,
-  solveGenerated,
+  poseCascadeRun,
+  resetTo,
+  solvePosedBoard,
   tapAction,
   type Harness,
 } from "../harness";
-import { MAX_TIER, TIER_ADVANCE } from "../notation";
+import { MAX_TIER, TIER_ADVANCE, TIERS, channelsPresent } from "../notation";
 import { assertGeneratedBoardWellFormed } from "./helpers";
 
-const SEED = 1;
-/** Six boards past the twentieth solve, where the ladder tops out. */
-const BOARDS = TIER_ADVANCE * (MAX_TIER - 1) + 6;
-const FIRST_TOP_TIER_BOARD = TIER_ADVANCE * (MAX_TIER - 1);
+/** The twentieth solve is where the ladder tops out. */
+const TOP = TIER_ADVANCE * (MAX_TIER - 1);
+/** How far past the top the sequence is driven. */
+const BEYOND = 5;
 
 let h: Harness;
 
@@ -37,31 +45,42 @@ afterEach(() => {
 });
 
 it("keeps producing boards at MAX_TIER, the count rising one per solve", async () => {
-  const solved = await solveGenerated(h, BOARDS, SEED);
+  await resetTo(h);
+  poseCascadeRun(h, TOP);
 
-  for (let k = FIRST_TOP_TIER_BOARD; k < solved.length; k += 1) {
-    const { arrival, board } = solved[k];
+  for (let index = 0; index < BEYOND; index += 1) {
+    const solved = TOP + index + 1;
+    const after = await solvePosedBoard(h);
     assertEqual(
-      arrival.solvedCount,
-      k,
-      `solvedCount keeps rising one per solve at board ${k + 1}`,
+      after.solved,
+      true,
+      `precondition: the board posed for solve ${solved} solves`,
     );
-    assertEqual(arrival.tier, MAX_TIER, `board ${k + 1} arrives at MAX_TIER`);
-    assertGeneratedBoardWellFormed(
-      board,
-      `board ${k + 1}, past the top of the ladder`,
+    assertEqual(
+      after.solvedCount,
+      solved,
+      `solvedCount keeps rising one per solve at solve ${solved}`,
+    );
+    assertEqual(after.tier, MAX_TIER, `solve ${solved} holds at MAX_TIER`);
+
+    await h.advance(1);
+    await tapAction(h, "confirm");
+    const next = h.snapshot();
+    const at = `board ${solved + 1}, past the top of the ladder`;
+    assertEqual(
+      next.screen,
+      "playing",
+      `${at}: NEXT BOARD keeps the sequence going`,
+    );
+    const board = boardFromSnapshot(next);
+    assertGeneratedBoardWellFormed(board, at);
+    assertEqual(
+      channelsPresent(board).length,
+      TIERS[MAX_TIER - 1].channels,
+      `${at}: generated at MAX_TIER, carrying its channel count`,
     );
   }
-  assertEqual(h.snapshot().solvedCount, BOARDS, "every solve counted");
 
-  // Deeper still: NEXT BOARD after the sweep hands over yet another board.
-  await tapAction(h, "confirm");
-  const deeper = h.snapshot();
-  assertEqual(deeper.screen, "playing", "NEXT BOARD keeps the sequence going");
   // A fresh board deep into the sequence.
   captureStill(h, "board");
-  assertGeneratedBoardWellFormed(
-    boardFromSnapshot(deeper),
-    `board ${BOARDS + 1}`,
-  );
 });

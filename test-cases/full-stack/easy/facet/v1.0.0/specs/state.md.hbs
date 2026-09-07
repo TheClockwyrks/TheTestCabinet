@@ -44,8 +44,9 @@ Whatever its shape, the state carries the following:
 - The simulation time, in seconds, which every update adds its `dt` to whatever
   the screen, the menus included. The snapshot reports it as `simTime`.
 - The runtime's mute bit, as the game's readable copy of it.
-- The state of the seeded random generator, which the deal of an opening board
-  and the refill in R9 draw from.
+- The kinds posed for each column's refill, as `setRefillKinds` in
+  `specs/instrumentation.md` writes them, and nothing for a column that draws.
+  The snapshot reports them as `refillKinds`.
 
 Whether a legal swap exists on the board follows from R1 and R3 in
 `specs/rules.md` over the board as it stands. The current screen's pointer
@@ -144,7 +145,7 @@ export interface FacetState {
   readonly pointer: PointerState;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
+  readonly refillKinds: readonly string[];
 }
 ```
 
@@ -258,9 +259,10 @@ posed and read back by reading them.
 - `muted` — the game's readable copy of the engine's mute bit, which every
   `update` carries into the state it returns. The engine owns muting, and this
   field is what the debug surface reports.
-- `rngState` — the state of the game's seeded random generator. A `reset` with a
-  seed sets it, so reseeding and replaying the same calls reproduces the same
-  result. The deal of an opening board and the refill in R9 draw from it.
+- `refillKinds` — the kinds posed for each column's refill, `GRID_COLS` (`8`)
+  entries, one per column: the string `setRefillKinds` in
+  `specs/instrumentation.md` posed for that column, and `""` for a column that
+  draws as R9 states. Every entry is `""` until a refill is posed.
 
 Six facts the game shows follow from the declared fields rather than being
 fields of their own. A cell's center comes from the cell center formulas in
@@ -305,8 +307,7 @@ a single level, the game never opens another, and every screen is a value of
 framework's states are live objects: a tick writes the fields it advances in
 place, and each field initializer below is that field's title-screen value, the
 same value the debug surface's `reset` restores. `GameState` comes from the
-engine's package, and `DEFAULT_SEED` (`1`) is the seed a `reset` applies when it
-is given none.
+engine's package.
 
 ```ts
 export type GemKind =
@@ -394,7 +395,7 @@ export class FacetState extends GameState {
   pointer: PointerState = { x: 0, y: 0, down: false, device: "mouse" };
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
+  refillKinds: string[] = ["", "", "", "", "", "", "", ""];
 }
 ```
 
@@ -509,9 +510,10 @@ reading them.
 - `muted` — the game's readable copy of the engine's mute bit, refreshed every
   frame. The engine owns muting, and this field is what the debug surface
   reports.
-- `rngState` — the state of the game's seeded random generator. A `reset` with a
-  seed sets it, so reseeding and replaying the same calls reproduces the same
-  result. The deal of an opening board and the refill in R9 draw from it.
+- `refillKinds` — the kinds posed for each column's refill, `GRID_COLS` (`8`)
+  entries, one per column: the string `setRefillKinds` in
+  `specs/instrumentation.md` posed for that column, and `""` for a column that
+  draws as R9 states. Every entry is `""` until a refill is posed.
 
 Six facts the game shows follow from the declared fields rather than being
 fields of their own. A cell's center comes from the cell center formulas in

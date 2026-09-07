@@ -54,16 +54,6 @@ import {
   type Harness,
 } from "../harness";
 
-/**
- * Real milliseconds the produced art is given before the frame is read.
- *
- * specs/assets.md has a build ship its art as produced files decoded off the
- * frame loop, and a frame drawn before they arrive is a frame drawn from
- * placeholders. This spends REAL time only: the simulation stands still through
- * it.
- */
-const ART_SETTLE_MS = 250;
-
 /** The target the control carries, from specs/controls.md's table for `howto`. */
 const TARGET_ID = "back";
 
@@ -124,7 +114,6 @@ it("draws the BACK label and puts something inside the back target it reports", 
     "howto",
     "the screen the how-to poses reach",
   );
-  await h.settle(ART_SETTLE_MS);
 
   // One frame, and everything it drew.
   const frame = await h.frameCalls();

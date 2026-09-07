@@ -28,7 +28,6 @@
 // key.
 
 import {
-  DEFAULT_SEED,
   ROCK_HEALTH,
   SAUCER_SPEED,
   SHATTER_DEBUG_VERSION,
@@ -43,8 +42,7 @@ import {
   makeTorpedo,
 } from "./entities";
 import { menuItemRect, type Rect } from "./menus";
-import { seed } from "./rng";
-import type { ShatterState } from "./types";
+import type { FieldEdge, SaucerEdge, ShatterState } from "./types";
 import { toTitle } from "./world";
 
 /** The `window` property the surface is installed on. */
@@ -116,6 +114,8 @@ export interface SaucerSnapshot {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  /** The direction its next reroll takes from rest: `1` down, `-1` up. */
+  weave: 1 | -1;
   fireClock: number;
   weaveClock: number;
   age: number;
@@ -150,6 +150,12 @@ export interface ShatterSnapshot {
   saucerSpawning: boolean;
   saucerClock: number;
   saucerDue: number;
+  /** The posed draws, each `null` when no pose stands. */
+  nextSaucerEdge: SaucerEdge | null;
+  nextSaucerRow: number | null;
+  nextSaucerAim: number | null;
+  nextRockSpeed: number | null;
+  nextRecycleEdge: FieldEdge | null;
   /** Whether the frame loop advances the simulation. */
   autoStep: boolean;
   ship: ShipSnapshot;
@@ -170,7 +176,7 @@ export interface ShatterSnapshot {
 export interface ShatterDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): ShatterSnapshot;
   menuItemRect(index: number): Rect | null;
 
@@ -186,6 +192,7 @@ export interface ShatterDebugApi {
 
   setWaveSpawning(enabled: boolean): void;
   setSaucerSpawning(enabled: boolean): void;
+  setSaucerDue(seconds: number): void;
 
   setShipPosition(x: number, y: number): void;
   setShipVelocity(vx: number, vy: number): void;
@@ -213,6 +220,13 @@ export interface ShatterDebugApi {
   setSaucerMind(enabled: boolean): void;
   setSaucerGun(enabled: boolean): void;
   setSaucerTravel(enabled: boolean): void;
+  setSaucerWeave(direction: number): void;
+
+  setNextSaucerEdge(edge: SaucerEdge): void;
+  setNextSaucerRow(y: number): void;
+  setNextSaucerAim(radians: number): void;
+  setNextRockSpeed(speed: number): void;
+  setNextRecycleEdge(edge: FieldEdge): void;
 
   setTorpedoCharge(fraction: number): void;
   addTorpedo(x: number, y: number, heading: number): void;
@@ -226,6 +240,12 @@ export interface ShatterDebugApi {
 function finite(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
+
+/** The two edges a saucer enters at. */
+const SAUCER_EDGES: readonly SaucerEdge[] = ["left", "right"];
+
+/** The four edges a recycled rock re-enters at. */
+const FIELD_EDGES: readonly FieldEdge[] = ["top", "bottom", "left", "right"];
 
 /** Build the surface over one live state object and the runtime driving it. */
 export function createDebugApi(
@@ -242,8 +262,8 @@ export function createDebugApi(
     version: SHATTER_DEBUG_VERSION,
 
     /**
-     * Restore every declared field of the state to its title-screen value and
-     * seed the game's randomness.
+     * Restore every declared field of the state to its title-screen value,
+     * every posed draw included.
      *
      * `muted` is deliberately untouched, because muting is a player preference
      * the runtime owns. The clock is untouched too: whether the game is stepping
@@ -251,9 +271,8 @@ export function createDebugApi(
      * said, and a caller that resets mid-scenario means to re-pose the world
      * rather than to hand it back to real time.
      */
-    reset(options) {
+    reset() {
       toTitle(state);
-      seed(state, finite(options?.seed ?? DEFAULT_SEED, DEFAULT_SEED));
     },
 
     /** A pure read. It changes nothing. */
@@ -278,6 +297,11 @@ export function createDebugApi(
         saucerSpawning: state.saucerSpawning,
         saucerClock: state.saucerClock,
         saucerDue: state.saucerDue,
+        nextSaucerEdge: state.nextSaucerEdge,
+        nextSaucerRow: state.nextSaucerRow,
+        nextSaucerAim: state.nextSaucerAim,
+        nextRockSpeed: state.nextRockSpeed,
+        nextRecycleEdge: state.nextRecycleEdge,
         autoStep: clock.autoStep(),
         ship: {
           x: ship.x,
@@ -321,6 +345,7 @@ export function createDebugApi(
                 mind: state.saucer.mind,
                 gun: state.saucer.gun,
                 travel: state.saucer.travel,
+                weave: state.saucer.weave,
                 fireClock: state.saucer.fireTimer,
                 weaveClock: state.saucer.weaveTimer,
                 age: state.saucer.age,
@@ -417,6 +442,14 @@ export function createDebugApi(
 
     setSaucerSpawning(enabled) {
       state.saucerSpawning = Boolean(enabled);
+    },
+
+    /**
+     * Set what the arrival clock must reach for the next saucer, which is the
+     * figure the gap draw decides. The clock itself stands where it is.
+     */
+    setSaucerDue(seconds) {
+      state.saucerDue = Math.max(0, finite(seconds, state.saucerDue));
     },
 
     setShipPosition(x, y) {
@@ -574,6 +607,39 @@ export function createDebugApi(
     setSaucerTravel(enabled) {
       if (state.saucer === null) return;
       state.saucer.travel = Boolean(enabled);
+    },
+
+    /** Set the direction the saucer's next reroll takes from rest. */
+    setSaucerWeave(direction) {
+      if (state.saucer === null) return;
+      state.saucer.weave = finite(direction, 1) < 0 ? -1 : 1;
+    },
+
+    // ---- Posed draws -----------------------------------------------------
+    //
+    // Each sets the outcome the game's next draw of one kind would decide, and
+    // the draw that takes it returns the field to `null`
+    // (`specs/instrumentation.md`). A value outside what the draw could decide
+    // is ignored, so the field only ever holds an outcome the rule accepts.
+
+    setNextSaucerEdge(edge) {
+      if (SAUCER_EDGES.includes(edge)) state.nextSaucerEdge = edge;
+    },
+
+    setNextSaucerRow(y) {
+      if (Number.isFinite(y)) state.nextSaucerRow = y;
+    },
+
+    setNextSaucerAim(radians) {
+      if (Number.isFinite(radians)) state.nextSaucerAim = radians;
+    },
+
+    setNextRockSpeed(speed) {
+      if (Number.isFinite(speed) && speed >= 0) state.nextRockSpeed = speed;
+    },
+
+    setNextRecycleEdge(edge) {
+      if (FIELD_EDGES.includes(edge)) state.nextRecycleEdge = edge;
     },
 
     setTorpedoCharge(fraction) {

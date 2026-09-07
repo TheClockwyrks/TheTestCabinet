@@ -28,7 +28,6 @@
 // the game's copy of it).
 
 import {
-  DEFAULT_SEED,
   ENEMY_BULLET_SPEED,
   PLAYER_BULLET_SPEED,
   RESONANCE_MAX,
@@ -136,7 +135,7 @@ export interface SpectraSnapshot {
 export interface SpectraDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): SpectraSnapshot;
   menuItemRect(index: number): MenuRect | null;
 
@@ -212,8 +211,8 @@ export function createDebugApi(world: () => World): SpectraDebugApi {
   return {
     version: SPECTRA_DEBUG_VERSION,
 
-    reset(options) {
-      resetToTitle(read(), options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetToTitle(read());
     },
 
     snapshot() {

@@ -204,9 +204,7 @@ export function newExpedition(d: Draft, mode: Mode, size: WorldSize): void {
   d.mode = mode;
   d.worldSize = size;
   d.coreRow = coreRowFor(size);
-  const draws = new Draws(d.rngState);
-  const mine = generateMine(draws, d.coreRow);
-  d.rngState = draws.state;
+  const mine = generateMine(Draws.fresh(), d.coreRow);
   d.grid = mine.grid;
   d.nodes = mine.nodes.map((node) => ({ ...node }));
   d.credits = 0;
@@ -330,9 +328,7 @@ export function clearMine(d: Draft): void {
 
 /** Replace every cell with a freshly generated mine at the current world size. */
 export function regenerateMine(d: Draft): void {
-  const draws = new Draws(d.rngState);
-  const mine = generateMine(draws, d.coreRow);
-  d.rngState = draws.state;
+  const mine = generateMine(Draws.fresh(), d.coreRow);
   d.grid = mine.grid;
   d.nodes = mine.nodes.map((node) => ({ ...node }));
 }

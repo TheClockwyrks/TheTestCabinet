@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 it("keeps the partial beam in the snapshot, and a press on either end resumes it", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
   const at = (col: number, row: number): { x: number; y: number } =>
     nodeCenter(col, row, 4, 3);

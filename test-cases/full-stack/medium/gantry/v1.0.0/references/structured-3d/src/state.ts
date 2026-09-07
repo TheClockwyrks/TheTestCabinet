@@ -282,6 +282,11 @@ export function abortRun(state: GantryState): void {
   state.screen = "build";
 }
 
+/** The run's tick count, from which the run clock follows. */
+export function setRunTick(state: GantryState, tick: number): void {
+  state.run.tick = tick;
+}
+
 /** The watch speed, as an index into `RUN_SPEEDS`. */
 export function setSpeedIndex(state: GantryState, index: number): void {
   state.run.speedIndex = index;

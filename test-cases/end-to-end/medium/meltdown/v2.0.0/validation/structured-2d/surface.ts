@@ -34,9 +34,6 @@
 /** The surface's version, reported as `version`. */
 export const MELTDOWN_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 /** The eight screens the game moves between. */
 export type Screen =
   | "title"
@@ -271,6 +268,8 @@ export interface MeltdownSnapshot {
   muted: boolean;
   /** The world gate. */
   waveSpawning: boolean;
+  /** The vent posed for the run's own release, or `null` while it draws. */
+  spawnVent: VentName | null;
   /** The pointer's own position and press state, in logical stage units. */
   pointer: { x: number; y: number; down: boolean };
   selected: number | null;
@@ -312,7 +311,7 @@ export interface MeltdownSnapshot {
 export interface MeltdownDebugApi {
   version: number;
 
-  reset(seed?: number): void;
+  reset(): void;
   snapshot(): MeltdownSnapshot;
 
   setScreen(screen: Screen): void;
@@ -329,6 +328,17 @@ export interface MeltdownDebugApi {
   setSpeed(speed: number): void;
 
   setWaveSpawning(enabled: boolean): void;
+
+  /**
+   * Poses the vent the run's own release enters units at, `null` to return the
+   * release to the draw. It moves no live unit.
+   */
+  setSpawnVent(vent: VentName | null): void;
+  /**
+   * Performs one vent draw as the release performs it and returns the vent
+   * drawn. It poses nothing: no unit is added and a posed `spawnVent` stands.
+   */
+  drawVent(): VentName;
 
   addTower(type: TowerType, col: number, row: number, rotation: number): void;
   removeTower(id: number): void;
@@ -406,6 +416,10 @@ export const REQUIRED_OPS = [
 
   // The world gate.
   "setWaveSpawning",
+
+  // The vent pose and the vent draw.
+  "setSpawnVent",
+  "drawVent",
 
   // The towers.
   "addTower",

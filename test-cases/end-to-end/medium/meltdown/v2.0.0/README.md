@@ -35,7 +35,7 @@ consistent.
 A major bump. Three engines instead of one; a debug surface rewritten from
 nothing, with no operation carrying its old signature; a rewritten and re-split
 spec set; per-engine reference implementations; per-engine Vitest validator
-suites deciding all 376 review items; captured baseline media per engine; and a
+suites deciding all 378 review items; captured baseline media per engine; and a
 case showcase in place of the proof captures. `changelog.md` carries the full
 entry.
 
@@ -130,7 +130,7 @@ that, against an RGB distance and never a hex value.
 
 ## Validation
 
-This case is validator-rated: all 376 review items carry a Vitest suite, and the
+This case is validator-rated: all 378 review items carry a Vitest suite, and the
 validators decide the functional rating through each item's failure cap. A
 reviewer rates the run's aesthetics and may override a verdict.
 
@@ -144,8 +144,7 @@ The engineless project stands on `@clockwyrks/case-harness`, the shared
 engineless harness the runner stages beside it: the browser, the driven frame,
 the draw recorder, the audio probe and the evidence writers are that package's.
 What sits beside it is what is Meltdown's own — the contract the build owes, the
-two clocks the case chose, the scope that hands the frame loop back to the build,
-and the compound sequences the checks share.
+two clocks the case chose, and the compound sequences the checks share.
 
 Each project carries the same spec-derived oracle beside its harness:
 `thermal.ts` recomputes the two-phase heat model from the specification's own
@@ -153,18 +152,18 @@ figures, and `routes.ts` recomputes the route metric the same way, so every
 thermal and pathing expectation is derived from the specs rather than from a
 number the reference produced.
 
-One rule governs every item about whether time passes, and it is the lesson
-`v1.0.0` bought: the reading is taken on the clock the player's game actually
-runs on, never through the stepping operation, because stepping is
-instrumentation and the question is about the game. Under `none` the clock
-operations are the build's own and can be gated apart from its frame loop, so
-such an item hands the clock back with `setAutoStep(true)`, spends the window in
-real time, and never calls `advance`. Under either engine `engine.advance` is the
-engine's own frame loop running the identical frame a player's frame runs, so it
-is the player's clock and the item advances through it. Either way the window is
-two legs of equal length: a running leg the floor must really travel in, and a
-paused leg whose positional drift and simulated-clock gain must both stay under a
-ceiling, with both readings taken from the one snapshot on the press.
+One rule governs every item about whether time passes: the reading is taken
+over a stated number of driven frames of a stated length, never over a stretch
+of real time, so the same game time lands on any machine and no verdict depends
+on how busy the host was. Under either engine `engine.advance` is the engine's
+own frame loop running the identical frame a player's frame runs; under `none`
+the frames are driven through the surface's `advance`, which the specification
+makes the same update the loop runs. A pause item's window is two legs of equal
+length: a running leg the floor must really travel in, and a paused leg whose
+positional drift and simulated-clock gain must both stay under a ceiling, with
+both readings taken from the one snapshot on the press. The one claim only real
+time could decide, that the build's own loop advances the game with nothing
+stepping it, is left to the engines, where the loop is the engine's.
 
 `validation-baseline/<engine>/<variant>/` holds the media the same suites
 captured from that engine's reference build, so a reviewer sees the build's

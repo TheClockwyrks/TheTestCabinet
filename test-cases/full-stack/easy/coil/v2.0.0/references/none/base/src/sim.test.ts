@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   COMBO_MAX,
   COMBO_WINDOW,
-  DEFAULT_SEED,
   GRID_COLS,
   GRID_ROWS,
   PELLET_POINTS,
@@ -15,7 +14,7 @@ import {
 import { Sim, isAdjacent, isPerpendicular } from "./sim";
 
 function sim(): Sim {
-  const s = new Sim(DEFAULT_SEED);
+  const s = new Sim();
   s.layRound();
   return s;
 }
@@ -38,8 +37,8 @@ describe("the opening board", () => {
   });
 
   it("places the first pellet clear of the starting chain", () => {
-    for (let seed = 1; seed <= 24; seed++) {
-      const s = new Sim(seed);
+    for (let round = 0; round < 24; round++) {
+      const s = new Sim();
       s.layRound();
       const pellet = s.pellet;
       expect(pellet).not.toBeNull();
@@ -55,20 +54,64 @@ describe("the opening board", () => {
     }
   });
 
-  it("draws the same pellet sequence from the same seed", () => {
-    const run = (): string[] => {
-      const s = new Sim(99);
-      s.layRound();
-      const cells: string[] = [];
-      for (let i = 0; i < 6; i++) {
-        cells.push(`${s.pellet!.col},${s.pellet!.row}`);
-        s.setSnake(chain(s.pellet!.col - 1, s.pellet!.row, 3));
-        s.dir = "right";
-        s.tick();
-      }
-      return cells;
-    };
-    expect(run()).toEqual(run());
+  it("lays the first pellet on the posed cell when it is valid", () => {
+    const s = new Sim();
+    s.setNextPellet(20, 4);
+    s.layRound();
+    expect(s.pellet).toEqual({ col: 20, row: 4 });
+    expect(s.nextPellet).toBeNull();
+  });
+
+  it("discards a posed cell under the starting chain", () => {
+    const s = new Sim();
+    s.setNextPellet(START_CELLS[0]!.col, START_CELLS[0]!.row);
+    s.layRound();
+    expect(s.pellet).not.toEqual(START_CELLS[0]);
+    expect(s.nextPellet).toBeNull();
+  });
+});
+
+describe("the posed spawn", () => {
+  it("places the next pellet on the posed cell and consumes the pose", () => {
+    const s = sim();
+    s.setSnake(chain(10, 8, 3));
+    s.dir = "right";
+    s.setPellet(11, 8);
+    s.setNextPellet(20, 4);
+    s.tick();
+    expect(s.pellet).toEqual({ col: 20, row: 4 });
+    expect(s.nextPellet).toBeNull();
+  });
+
+  it("discards a posed cell the chain holds and draws instead", () => {
+    const s = sim();
+    s.setSnake(chain(10, 8, 3));
+    s.dir = "right";
+    s.setPellet(11, 8);
+    s.setNextPellet(9, 8);
+    s.tick();
+    expect(s.pellet).not.toBeNull();
+    expect(s.pellet).not.toEqual({ col: 9, row: 8 });
+    expect(s.nextPellet).toBeNull();
+  });
+
+  it("keeps the pose while respawn is off", () => {
+    const s = sim();
+    s.setSnake(chain(10, 8, 3));
+    s.dir = "right";
+    s.setPellet(11, 8);
+    s.pelletRespawn = false;
+    s.setNextPellet(20, 4);
+    s.tick();
+    expect(s.pellet).toBeNull();
+    expect(s.nextPellet).toEqual({ col: 20, row: 4 });
+  });
+
+  it("replaces an earlier pose with a later one", () => {
+    const s = sim();
+    s.setNextPellet(20, 4);
+    s.setNextPellet(21, 5);
+    expect(s.nextPellet).toEqual({ col: 21, row: 5 });
   });
 });
 
@@ -444,7 +487,7 @@ describe("restore", () => {
     s.steering = false;
     s.travel = false;
     s.pelletRespawn = false;
-    s.restore(DEFAULT_SEED);
+    s.restore();
     expect(s.snake).toEqual(START_CELLS.map((cell) => ({ ...cell })));
     expect(s.dir).toBe("right");
     expect(s.turns).toEqual([]);

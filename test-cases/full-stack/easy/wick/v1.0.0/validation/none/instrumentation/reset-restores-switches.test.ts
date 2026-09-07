@@ -2,7 +2,7 @@
 // switches posed off, `reset()` leaves every one of them `true`.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "The driver
-// switches"): "each is restored to on by `reset`"; and `reset(options)`:
+// switches"): "each is restored to on by `reset`"; and `reset()`:
 // "Restores every declared field ... and every driver switch on". The nine
 // names are the table's, "reported by the snapshot under the same name".
 //

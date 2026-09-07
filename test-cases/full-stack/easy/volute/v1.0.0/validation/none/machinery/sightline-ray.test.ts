@@ -9,10 +9,12 @@
 // So a lone core whose center the aim passes through stops the ray 14 units
 // short of that center — the review item's "the core's near edge".
 //
-// HOW THE RAY IS ISOLATED. Two halls, posed identically from the same seed and
-// stepped the same number of ticks, one of them granted sightline. Everything
-// the two draw is the same picture except the ray, so the pixels they differ in
-// ARE the ray. `specs/ui.md` fixes no palette and no styling, and the HUD it
+// HOW THE RAY IS ISOLATED. Two halls, posed identically through the surface —
+// the same level, the same lone core, the same loaded and queued charges, every
+// other field at the value `poseHall` sets — and stepped the same single tick,
+// one of them granted sightline. Nothing either hall shows is left to a draw,
+// so everything the two draw is the same picture except the ray, and the pixels
+// they differ in ARE the ray. `specs/ui.md` fixes no palette and no styling, and the HUD it
 // specifies carries no machinery readout, so nothing here reads a colour: only
 // whether a pixel changed when the machinery was granted.
 //

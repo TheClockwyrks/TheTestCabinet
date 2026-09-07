@@ -188,9 +188,9 @@ the frame loop replaces each frame.
 | `assets/`                               | The produced models (`.glb`) and sounds (`.wav`), committed                                                                                                 |
 | `scripts/`                              | What produced them. Nothing here runs at build time                                                                                                         |
 
-The simulation is deterministic and has no randomness anywhere: the same crane
-and the same tape produce the same run, tick for tick, at any watch speed and
-any frame rate.
+The simulation advances on its fixed tick, apart from the canvas and the wall
+clock: a run is the ticks the tape drives, at any watch speed and any frame
+rate.
 
 ## Driving it from code
 

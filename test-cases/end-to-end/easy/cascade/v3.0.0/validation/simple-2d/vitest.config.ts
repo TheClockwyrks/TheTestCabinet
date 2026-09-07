@@ -36,8 +36,8 @@ export default defineEngineValidationConfig({
   // use a machine of any ordinary size properly, while leaving the host something
   // to run the build's own work with.
   maxWorkers: 8,
-  // WHAT THESE TWO BOUND, AND WHAT THEY MUST NOT DECIDE. A suite here is
-  // deterministic: it poses a board, steps a counted number of frames, and reads
+  // WHAT THESE TWO BOUND, AND WHAT THEY MUST NOT DECIDE. A suite here
+  // poses a board, steps a counted number of frames, and reads
   // what they left, and not one assertion in the project reads a wall clock. What
   // a timeout can therefore only ever measure is how much of this machine the
   // suite was given — so a figure that a correct build can cross on a busy host is
@@ -49,9 +49,9 @@ export default defineEngineValidationConfig({
   // for a little over twelve seconds of game time and puts up to fifty-two cards
   // in the air; every frame of it renders every one of them into
   // `@napi-rs/canvas`, and a card face is five runs of text, so the run-out is the
-  // most expensive thing this project does — around a minute of it on an idle
-  // host. Ten minutes is that with an order of magnitude of room, which is what it
-  // takes to survive a host running many times its own number of cores. It is
+  // most expensive thing this project does even stepped at `RUNOUT_HZ`. Ten
+  // minutes is that with orders of magnitude of room, which is what it takes to
+  // survive a host running many times its own number of cores. It is
   // still a ceiling and not a target: a suite that hangs costs this and no more,
   // and every suite here finishes in seconds when the machine is its own.
   testTimeout: 600_000,

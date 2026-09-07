@@ -374,6 +374,14 @@ describe("the run in progress", () => {
     expect(debug.snapshot(s).run.loads[0].pos).toEqual(point(0, 2, 10));
   });
 
+  it("sets the run's tick count, and with it the run clock", () => {
+    const s = debug.setRunTick(running(), 1200);
+    expect(debug.snapshot(s).run.tick).toBe(1200);
+    expect(debug.snapshot(s).run.time).toBeCloseTo(1200 / TICK_HZ, 12);
+    expect(() => debug.setRunTick(running(), -1)).toThrow(/tick/);
+    expect(() => debug.setRunTick(running(), 1.5)).toThrow(/tick/);
+  });
+
   it("sets the watch speed on the run screen, ended or not", () => {
     const ended = enterSite(0);
     ended.screen = "run";

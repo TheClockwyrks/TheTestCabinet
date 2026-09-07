@@ -4,7 +4,7 @@
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `advance(seconds)`):
 // "On any other screen the frame ticks nothing and the accumulator stays `0`";
-// "the keys are read, `simTime` rises by `seconds`". And "A deterministic core":
+// "the keys are read, `simTime` rises by `seconds`". And "A render-free core":
 // "On every other screen a frame ticks nothing and the accumulator holds `0`."
 // The accumulator reading is exact, since nothing may join it; `simTime` is
 // read to `TIMER_TOL`.

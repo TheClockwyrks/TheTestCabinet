@@ -104,7 +104,7 @@ function footprintPoints(at: {
  * A PAINTED footprint only has to read DIFFERENTLY from the bare table, and how
  * far apart the two sit is not measured: `specs/overview.md` fixes no palette, so
  * that is the reviewer's. It is a precondition — what this point decides is the
- * reading after the clear — and rendering is deterministic, so any difference at
+ * reading after the clear — so any difference at
  * all is the paint.
  */
 

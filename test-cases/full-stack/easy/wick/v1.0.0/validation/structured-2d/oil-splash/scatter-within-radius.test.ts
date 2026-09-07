@@ -17,7 +17,7 @@
 //
 // WHY TWENTY FIRINGS AT TWENTY CENTERS. A single draw says little about a
 // disk; twenty firings at level 8, four puddles each, sample it eighty times
-// from one seeded generator. Before each firing the lamplighter is posed at a
+// with the build's own draws. Before each firing the lamplighter is posed at a
 // fresh center well over 400 from the origin and from every other center, so
 // a build that scattered about the origin, or about where the run began,
 // lands its puddles outside the disk about the center of the tick and fails.
@@ -77,7 +77,7 @@ it("lands every puddle of twenty firings at most OIL_SCATTER from the lamplighte
     const center = centerOf(i);
     let firing;
     if (i === 0) {
-      firing = await fireOilSplash(h, LEVEL, undefined, center);
+      firing = await fireOilSplash(h, LEVEL, center);
       slot = firing.slot;
     } else {
       h.debug.setPlayerPosition(center.x, center.y);

@@ -1,24 +1,28 @@
 // Cascade — the scripted player that captures the showcase. CAPTURE-ONLY: this
 // file is never staged into a run and no validator imports it.
 //
-// WHAT IT DOES. It opens the reference build in a real browser, resets it to a
-// chosen seed, and then PLAYS: it clicks NEW GAME on the title screen with the
-// real mouse, reads the deal the game dealt, plans a solve through
-// `showcase-solitaire.ts`, and performs that plan one ordinary gesture at a time
-// — a click on the stock, a drag of a run between columns, a double-click that
-// sends a card home. Chromium records the page while it does, and the `.webm` it
-// writes is the showcase's leading entry.
+// WHAT IT DOES. It opens the reference build in a real browser and PLAYS: it
+// clicks NEW GAME on the title screen with the real mouse, reads the deal the
+// game dealt, plans a solve through `showcase-solitaire.ts`, and performs that
+// plan one ordinary gesture at a time — a click on the stock, a drag of a run
+// between columns, a double-click that sends a card home. Chromium records the
+// page while it does, and the `.webm` it writes is the showcase's leading entry.
 //
-// NOTHING ON SCREEN IS POSED. The surface is reached for exactly twice over.
-// `reset({ seed })` is called once, before the first gesture, and it is what
-// chooses the deal. `snapshot()` is read throughout — but a read changes nothing:
-// it is how the driver CHECKS that the game did what the plan expected, and a
-// divergence fails the capture rather than being papered over. Every card that
-// moves on screen moved because the build's own rules accepted a mouse gesture.
-// Nothing here calls `move`, `autoMove`, `turnStock`, `deal`, `addCard`,
-// `setScreen`, or any of the pose operations, and nothing here touches the clock:
-// the game runs on its own animation frame, in real time, which is what makes the
-// recording a recording of the game rather than of the harness.
+// THE DEAL IS THE GAME'S OWN. Nothing chooses it: the game shuffles when NEW
+// GAME is clicked, the driver reads what it dealt, and a deal the planner cannot
+// win inside the move budget is a take that is abandoned. So a capture is an
+// AUDITION — several takes are played, each on the deal the game happened to
+// deal, and the best of the ones that could be won is kept.
+//
+// NOTHING ON SCREEN IS POSED. The surface is only ever READ. `snapshot()` is
+// read throughout — but a read changes nothing: it is how the driver CHECKS that
+// the game did what the plan expected, and a divergence fails the capture rather
+// than being papered over. Every card that moves on screen moved because the
+// build's own rules accepted a mouse gesture. Nothing here calls `reset`,
+// `move`, `autoMove`, `turnStock`, `deal`, `addCard`, `setScreen`, or any of the
+// pose operations, and nothing here touches the clock: the game runs on its own
+// animation frame, in real time, which is what makes the recording a recording
+// of the game rather than of the harness.
 //
 // WHY THE MOUSE AND NOT `pointerDown`. `specs/controls.md` gives the surface's
 // pointer operations the same path a real event takes, so either would drive the
@@ -28,8 +32,10 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   readdirSync,
   renameSync,
+  rmSync,
   statSync,
   unlinkSync,
 } from "node:fs";
@@ -48,13 +54,14 @@ import {
   STAGE_W,
   STOCK_X,
   TABLEAU_Y,
-  TITLE_NEW_GAME,
+  TITLE_NEW_GAME_ITEM,
   TOP_ROW_Y,
   WASTE_X,
 } from "./constants";
 import {
   type CascadeSnapshot,
   type CardView,
+  type MenuRect,
   type Point,
   columnCardTops,
   facesOf,
@@ -69,7 +76,6 @@ import {
   apply,
   cardsHome,
   codeOf,
-  dealFor,
   describe,
   isWin,
   nameOf,
@@ -167,6 +173,21 @@ async function snapshot(page: Page): Promise<CascadeSnapshot> {
   return (await call(page, "snapshot")) as CascadeSnapshot;
 }
 
+/**
+ * Where the build drew item `index` of the menu the current screen shows, as
+ * the surface's `menuItemRect` reports it. A reading, like `snapshot`: the
+ * layout is the build's own, so the driver asks rather than assumes.
+ */
+async function menuItemRect(page: Page, index: number): Promise<MenuRect> {
+  const rect = (await call(page, "menuItemRect", [index])) as MenuRect | null;
+  if (rect === null) {
+    throw new Error(
+      `cascade: menuItemRect(${index}) reports no item on the current screen`,
+    );
+  }
+  return rect;
+}
+
 /** The face-down cards of a column, which are always the ones at its head. */
 function downCount(column: readonly CardView[]): number {
   let count = 0;
@@ -203,13 +224,6 @@ function dealOf(state: CascadeSnapshot): Deal {
     ),
     stock: state.stock.map((card) => codeOf(card.suit, card.rank)),
   };
-}
-
-function sameDeal(a: Deal, b: Deal): boolean {
-  return (
-    JSON.stringify(a.columns) === JSON.stringify(b.columns) &&
-    JSON.stringify(a.stock) === JSON.stringify(b.stock)
-  );
 }
 
 /**
@@ -449,11 +463,9 @@ function landingTopLeft(
 export interface TakeRequest {
   /** How many cards a turn of the stock moves: `1` or `3`. */
   turnCount: number;
-  /** The deal to play. The whole take is a function of it. */
-  seed: number;
-  /** Where the media goes. Nothing is written when it is absent. */
+  /** Where this take's media goes. Nothing is written when it is absent. */
   outDir?: string;
-  /** Whether Chromium records the page. An audition runs with it off. */
+  /** Whether Chromium records the page. A take with no `outDir` never does. */
   record: boolean;
   /** How hard to look for a plan, and how long a plan may be. */
   search: SearchLimits;
@@ -471,8 +483,18 @@ export interface TakeRequest {
 }
 
 export interface TakeReport {
-  seed: number;
+  /**
+   * Whether the deal the game dealt could be won inside the move budget. A take
+   * that could not is abandoned before a single gesture, and every other field
+   * below is zero.
+   */
+  solved: boolean;
   moves: number;
+  /** Turns of the stock, and how many of them brought the waste back around. */
+  turns: number;
+  recycles: number;
+  /** Cards carried between piles, which is what the clip is worth watching for. */
+  drags: number;
   /** How long the take ran, wall clock, in seconds. */
   seconds: number;
   /** The longest stretch with no card moving, in seconds. */
@@ -484,12 +506,14 @@ export interface TakeReport {
 }
 
 /**
- * Play one whole game and, when asked, record it.
+ * Play one whole game on whatever deal the game deals and, when asked, record
+ * it.
  *
- * The take is deterministic: the same seed deals the same game, the plan is a
- * function of the deal alone, and the pace is fixed. So a take can be auditioned
- * with the recorder off and then re-run with it on, and the second run is the
- * same game as the first.
+ * The plan is a function of the deal alone and the pace is fixed, so what a take
+ * shows is decided by the deal the game happened to shuffle. A deal the planner
+ * cannot win inside the move budget ends the take before its first gesture, with
+ * `solved` false and nothing written; {@link auditionTakes} is what plays takes
+ * until enough have been won.
  */
 export async function captureTake(
   browserWs: string,
@@ -499,17 +523,9 @@ export async function captureTake(
   const pace = request.pace ?? DEFAULT_PACE;
   const files: string[] = [];
 
-  // The plan, before a browser is opened: a seed that cannot be solved inside
-  // the limits is not worth a page.
-  const deal = dealFor(request.seed);
-  const { plan } = solve(deal, request.turnCount, request.search);
-  if (plan === null) {
-    throw new Error(
-      `cascade: no solve found for seed ${request.seed} inside ${request.search.maxMoves} moves`,
-    );
-  }
-
-  const browser: Browser = await connectChromium(browserWs);
+  const browser: Browser = await connectChromium(browserWs, {
+    slug: "cascade",
+  });
   const context: BrowserContext = await browser.newContext({
     viewport: { width: STAGE_W, height: STAGE_H },
     deviceScaleFactor: 1,
@@ -541,10 +557,6 @@ export async function captureTake(
       { timeout: SURFACE_TIMEOUT_MS },
     );
 
-    // The deal, chosen. This is the only thing the surface is ever asked to DO;
-    // every other crossing below reads it.
-    await call(page, "reset", [{ seed: request.seed }]);
-
     const hand = new Hand(page);
     await hand.glide({ x: STAGE_W / 2, y: 620 }, 300, 8);
 
@@ -561,7 +573,58 @@ export async function captureTake(
       );
     }
     if (aimed.screen !== "title") {
-      throw new Error(`cascade: reset left the game on ${aimed.screen}`);
+      throw new Error(`cascade: the page opened on ${aimed.screen}`);
+    }
+
+    const started = Date.now();
+    let lastEvent = started;
+    let longestLull = 0;
+    const beat = (): void => {
+      longestLull = Math.max(longestLull, (Date.now() - lastEvent) / 1000);
+      lastEvent = Date.now();
+    };
+
+    // The title screen, then NEW GAME: the deal comes from the game's own
+    // control, pressed with the mouse, like everything after it.
+    await hand.glide({ x: STAGE_W / 2, y: 560 }, 260, 7);
+    if (request.outDir !== undefined) {
+      const name = "title.png";
+      await page.screenshot({ path: `${request.outDir}/${name}` });
+      files.push(name);
+    }
+    await sleep(pace.titleMs);
+    await hand.glide(
+      rectCenter(await menuItemRect(page, TITLE_NEW_GAME_ITEM)),
+      pace.approachMs,
+      pace.approachSteps,
+    );
+    await hand.down();
+    await hand.up();
+    beat();
+    await sleep(pace.dealMs);
+
+    const dealt = await snapshot(page);
+    if (dealt.screen !== "playing") {
+      throw new Error(`cascade: NEW GAME left the game on ${dealt.screen}`);
+    }
+
+    // The plan, made against the deal the game dealt. A deal that cannot be won
+    // inside the limits ends the take here: the page is closed, its recording is
+    // discarded, and the next take deals afresh.
+    const deal = dealOf(dealt);
+    const { plan } = solve(deal, request.turnCount, request.search);
+    if (plan === null) {
+      return {
+        solved: false,
+        moves: 0,
+        turns: 0,
+        recycles: 0,
+        drags: 0,
+        seconds: 0,
+        longestLull: 0,
+        longestTurnRun: 0,
+        files: [],
+      };
     }
 
     // The clip is a recording of real time, so the page has to be RUNNING in real
@@ -590,44 +653,8 @@ export async function captureTake(
       );
     }
 
-    const started = Date.now();
-    let lastEvent = started;
-    let longestLull = 0;
-    const beat = (): void => {
-      longestLull = Math.max(longestLull, (Date.now() - lastEvent) / 1000);
-      lastEvent = Date.now();
-    };
-
-    // The title screen, then NEW GAME: the deal comes from the game's own
-    // control, pressed with the mouse, like everything after it.
-    await hand.glide({ x: STAGE_W / 2, y: 560 }, 260, 7);
-    if (request.outDir !== undefined) {
-      const name = "title.png";
-      await page.screenshot({ path: `${request.outDir}/${name}` });
-      files.push(name);
-    }
-    await sleep(pace.titleMs);
-    await hand.glide(
-      rectCenter(TITLE_NEW_GAME),
-      pace.approachMs,
-      pace.approachSteps,
-    );
-    await hand.down();
-    await hand.up();
-    beat();
-    await sleep(pace.dealMs);
-
-    const dealt = await snapshot(page);
-    if (dealt.screen !== "playing") {
-      throw new Error(`cascade: NEW GAME left the game on ${dealt.screen}`);
-    }
-    if (!sameDeal(dealOf(dealt), deal)) {
-      throw new Error(
-        `cascade: the game's deal for seed ${request.seed} is not the one the plan was made against`,
-      );
-    }
-
     const model = positionFor(deal);
+    const figures = scorePlan(plan, deal, request.turnCount);
     // The mid-play still is taken at the first settled moment past this share of
     // the plan at which the table is worth a picture: the stock still holding
     // cards, the waste showing everything a turn of this deal mode shows, and
@@ -746,8 +773,11 @@ export async function captureTake(
       files.push(name);
     }
     return {
-      seed: request.seed,
+      solved: true,
       moves: plan.length,
+      turns: figures.turns,
+      recycles: figures.recycles,
+      drags: figures.drags,
       seconds: Number(seconds.toFixed(1)),
       longestLull: Number(longestLull.toFixed(2)),
       longestTurnRun,
@@ -985,86 +1015,151 @@ async function drop(
 }
 
 /* -------------------------------------------------------------------------- */
-/* The first pass of an audition, which needs no browser                       */
+/* What a plan promises, and the audition that picks a take                    */
 /* -------------------------------------------------------------------------- */
 
 /** What a plan promises about the take it would make. */
-export interface PlanScore {
-  seed: number;
-  /** Gestures, which is very nearly how long the clip runs. */
-  moves: number;
+interface PlanFigures {
   turns: number;
   /** Turns made on an empty stock, each of which brings the waste back around. */
   recycles: number;
-  /** Consecutive stock turns at their longest, which is the take's longest lull. */
-  longestTurnRun: number;
   /** Cards carried between piles, which is what the clip is worth watching for. */
   drags: number;
 }
 
-/**
- * Solve every deal in a range of seeds and score the plans, best first.
- *
- * This is the cheap half of an audition. A take is thirty seconds of browser and
- * a plan is a second of arithmetic, so the seeds worth playing are found here and
- * only the short list is ever played. Nothing about the ordering is a judgement
- * the driver makes for you — it is printed, and a person picks.
- */
-export function sweepPlans(
-  from: number,
-  to: number,
+/** Read a plan's figures off the model, before a gesture is made. */
+function scorePlan(
+  plan: readonly Move[],
+  deal: Deal,
   turnCount: number,
-  search: SearchLimits,
-): PlanScore[] {
-  const scored: PlanScore[] = [];
-  for (let seed = from; seed <= to; seed += 1) {
-    const deal = dealFor(seed);
-    const { plan } = solve(deal, turnCount, search);
-    if (plan === null) continue;
-
-    const position = positionFor(deal);
-    let recycles = 0;
-    let run = 0;
-    let longestTurnRun = 0;
-    for (const move of plan) {
-      if (move.kind === "turn" && position.stock.length === 0) recycles += 1;
-      run = move.kind === "turn" ? run + 1 : 0;
-      if (run > longestTurnRun) longestTurnRun = run;
-      apply(position, move, turnCount);
-    }
-    const score: PlanScore = {
-      seed,
-      moves: plan.length,
-      turns: plan.filter((move) => move.kind === "turn").length,
-      recycles,
-      longestTurnRun,
-      drags: plan.filter(
-        (move) => move.kind === "column-column" || move.kind === "waste-column",
-      ).length,
-    };
-    scored.push(score);
-    process.stdout.write(
-      `seed ${score.seed}: ${score.moves} gestures, ${score.turns} turns ` +
-        `(longest run ${score.longestTurnRun}, ${score.recycles} recycles), ` +
-        `${score.drags} drags\n`,
-    );
+): PlanFigures {
+  const position = positionFor(deal);
+  let recycles = 0;
+  for (const move of plan) {
+    if (move.kind === "turn" && position.stock.length === 0) recycles += 1;
+    apply(position, move, turnCount);
   }
-  scored.sort(
-    (a, b) => a.moves - b.moves || a.longestTurnRun - b.longestTurnRun,
-  );
-  return scored;
+  return {
+    turns: plan.filter((move) => move.kind === "turn").length,
+    recycles,
+    drags: plan.filter(
+      (move) => move.kind === "column-column" || move.kind === "waste-column",
+    ).length,
+  };
 }
 
-/** `TCAB_SHOWCASE_SWEEP` as a seed range: `1-2000`, or `7` for one seed. */
-export function sweepRange(raw: string): { from: number; to: number } {
-  const match = /^(\d+)(?:-(\d+))?$/.exec(raw.trim());
-  if (match === null) {
-    throw new Error(
-      `cascade: TCAB_SHOWCASE_SWEEP wants a seed range like 1-2000, got ${raw}`,
-    );
+/** The four files a recorded take writes, and the order they are moved in. */
+const TAKE_FILES = [
+  "title.png",
+  "mid-play.png",
+  "the-cascade.png",
+  "cascade-solved.webm",
+] as const;
+
+export interface AuditionRequest {
+  turnCount: number;
+  /** Where the winning take's media goes. Nothing is written when absent. */
+  outDir?: string;
+  /** How many won takes to play before choosing between them. */
+  takes: number;
+  /** How many deals to try before giving up on finding `takes` won ones. */
+  deals: number;
+  search: SearchLimits;
+  pace?: Pace;
+  midStillAt?: number;
+  bitrate?: string;
+  verbose?: boolean;
+  /** Called with each take's report as it finishes. */
+  report?: (take: number, report: TakeReport) => void;
+}
+
+export interface AuditionReport {
+  /** Every won take, in the order it was played. */
+  played: TakeReport[];
+  /** The index into `played` of the take that was kept, or `-1` for none. */
+  winner: number;
+  /** How many deals were dealt, won or not. */
+  dealt: number;
+}
+
+/**
+ * Play takes until `takes` of them have been won, or `deals` deals have been
+ * tried, and keep the best.
+ *
+ * Each won take is recorded into its own subdirectory of `outDir`, and once the
+ * audition is over the winner's four files are moved up into `outDir` itself and
+ * the rest are deleted. The winner is the shortest take, and among takes of the
+ * same length the one with the shortest run of nothing but stock turns — the
+ * figures that decide how long the clip runs and how long its longest lull is.
+ * Nothing about the ordering is a judgement made for you beyond that: every
+ * take's figures are reported, so a person can re-run for more.
+ */
+export async function auditionTakes(
+  browserWs: string,
+  url: string,
+  request: AuditionRequest,
+): Promise<AuditionReport> {
+  const played: TakeReport[] = [];
+  const dirs: string[] = [];
+  let dealt = 0;
+
+  while (played.length < request.takes && dealt < request.deals) {
+    dealt += 1;
+    const takeDir =
+      request.outDir === undefined
+        ? undefined
+        : join(request.outDir, `take-${String(played.length + 1)}`);
+    if (takeDir !== undefined) mkdirSync(takeDir, { recursive: true });
+
+    const report = await captureTake(browserWs, url, {
+      turnCount: request.turnCount,
+      outDir: takeDir,
+      record: takeDir !== undefined,
+      search: request.search,
+      pace: request.pace,
+      midStillAt: request.midStillAt,
+      bitrate: request.bitrate,
+      verbose: request.verbose,
+    });
+    if (!report.solved) {
+      if (takeDir !== undefined)
+        rmSync(takeDir, { recursive: true, force: true });
+      continue;
+    }
+    played.push(report);
+    if (takeDir !== undefined) dirs.push(takeDir);
+    request.report?.(played.length, report);
   }
-  const from = Number(match[1]);
-  return { from, to: match[2] === undefined ? from : Number(match[2]) };
+
+  let winner = -1;
+  for (const [index, report] of played.entries()) {
+    if (winner < 0) {
+      winner = index;
+      continue;
+    }
+    const best = played[winner];
+    if (
+      report.moves < best.moves ||
+      (report.moves === best.moves &&
+        report.longestTurnRun < best.longestTurnRun)
+    ) {
+      winner = index;
+    }
+  }
+
+  if (request.outDir !== undefined) {
+    for (const [index, dir] of dirs.entries()) {
+      if (index === winner) {
+        for (const name of TAKE_FILES) {
+          const from = join(dir, name);
+          if (existsSync(from)) renameSync(from, join(request.outDir, name));
+        }
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  return { played, winner, dealt };
 }
 
 /* -------------------------------------------------------------------------- */

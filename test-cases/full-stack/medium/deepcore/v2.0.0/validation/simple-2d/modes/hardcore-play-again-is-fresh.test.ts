@@ -7,7 +7,7 @@
 // the camp ground at `SPAWN_COL`, at tier `1` on every upgrade track, with a full
 // fuel tank and a full hull, `0` Credits, an empty cargo bay, an empty satchel, no
 // field supplies, and no rocket component installed. The mine is generated fresh
-// from the current seed at the chosen size."
+// at the chosen size."
 //
 // SO THE READING IS TWO-SIDED. What must be UNCHANGED — the mode and the world
 // size — and what must be BACK AT ITS STARTING VALUE, which is every holding.

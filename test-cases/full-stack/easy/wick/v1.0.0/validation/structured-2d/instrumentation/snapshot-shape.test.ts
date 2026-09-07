@@ -8,8 +8,9 @@
 // nested `player`, `weapons[]`, `passives[]`, `enemies[]`, `projectiles[]`,
 // `zones[]`, `gems[]`, and `pickups[]` entry, with its type; "`zones[].ttl` is
 // `null` for a zone that never expires, and `width` and `height` appear on a
-// slash alone"; and "`nextOffers`: what `setNextOffers` queued, or `null`".
-// The field lists below are that block, transcribed.
+// slash alone"; "`nextOffers`: what `setNextOffers` queued, or `null`"; and
+// the six posed outcomes, "each null while none is posed". The field lists
+// below are that block, transcribed.
 //
 // THE POSE. An isolated run, every switch off so nothing moves what was
 // posed, holding: Ember at level 3 and Brass at level 2, a moth at (200, 0), an
@@ -70,7 +71,6 @@ const SNAPSHOT_FIELDS = [
   "muted",
   "accumulator",
   "simTime",
-  "rngState",
 ] as const;
 
 /** The fields of `run`. */
@@ -104,6 +104,13 @@ const RUN_FIELDS = [
   "firedEvents",
   "aliveCommons",
   "nextId",
+  "nextSpawnAngle",
+  "nextSwarmAngle",
+  "nextSpawnType",
+  "nextPuddleOffset",
+  "nextStrikeTarget",
+  "nextChestItem",
+  "nextDrop",
 ] as const;
 
 /** The numeric fields of `run`. */
@@ -222,7 +229,7 @@ it("reports the whole documented shape from a posed run", async () => {
   ] as const) {
     assertTypeOf(s[flag], "boolean", `snapshot().${flag}`);
   }
-  for (const field of ["accumulator", "simTime", "rngState"] as const) {
+  for (const field of ["accumulator", "simTime"] as const) {
     assertTypeOf(s[field], "number", `snapshot().${field}`);
   }
 
@@ -323,4 +330,17 @@ it("reports the whole documented shape from a posed run", async () => {
   assertDeepEqual(run.nextOffers, QUEUED, "run.nextOffers");
   assertNull(run.chestResult, "run.chestResult");
   assertDeepEqual(run.firedEvents, [], "run.firedEvents");
+
+  // The posed outcomes, none posed.
+  for (const field of [
+    "nextSpawnAngle",
+    "nextSwarmAngle",
+    "nextSpawnType",
+    "nextPuddleOffset",
+    "nextStrikeTarget",
+    "nextChestItem",
+    "nextDrop",
+  ] as const) {
+    assertNull(run[field], `run.${field} while none is posed`);
+  }
 });

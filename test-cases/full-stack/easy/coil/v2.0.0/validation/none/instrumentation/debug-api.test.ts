@@ -36,7 +36,9 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLength,
+  assertNotNull,
   assertNull,
+  assertTrue,
 } from "../assert";
 import {
   COIL_DEBUG_VERSION,
@@ -46,6 +48,7 @@ import {
   SCREENS,
   START_CELLS,
   TICK_SECONDS,
+  type Cell,
 } from "../constants";
 import {
   captureStill,
@@ -55,6 +58,7 @@ import {
   failSurface,
   FRAME_HZ,
   FRAMES_PER_TICK,
+  isInterior,
   HANDLE,
   OBSTACLE_OPS,
   obstacleSurface,
@@ -63,8 +67,13 @@ import {
   type Harness,
 } from "../harness";
 
-/** Real time allowed to pass with the game off the clock and nothing advancing it. */
-const FROZEN_MS = 750;
+/**
+ * Paints of the page's own loop let by with the game off the clock and nothing
+ * advancing it. The loop keeps rendering while the simulation is held
+ * (specs/instrumentation.md), so each paint is a frame that loop ran, and a
+ * build still feeding elapsed time to the simulation from it ticks within a few.
+ */
+const FROZEN_PAINTS = 8;
 
 /** The chain this point poses to read the surface against, head first. */
 const POSED_HEAD = { col: 12, row: 6 };
@@ -121,9 +130,9 @@ it("carries its version and every operation its mode names, as functions", async
 
 it("takes the game off the wall clock, and runs whole frames on demand", async () => {
   // The harness has already called `setAutoStep(false)`. So a round is posed and
-  // real time is simply allowed to pass: a build still running itself off the
-  // wall clock resolves ticks and moves the snake while this waits, and one that
-  // really disconnected does not move at all.
+  // the page's own loop is let run for a count of paints: a build still feeding
+  // its simulation from that loop resolves ticks and moves the snake across
+  // them, and one that really disconnected does not move at all.
   const posed = await poseScene(h, {
     snake: chainFrom(POSED_HEAD, "right", 3),
     dir: "right",
@@ -131,7 +140,7 @@ it("takes the game off the wall clock, and runs whole frames on demand", async (
   });
   assertEqual(posed.autoStep, false, "autoStep after setAutoStep(false)");
 
-  await h.page.waitForTimeout(FROZEN_MS);
+  await h.awaitPaints(FROZEN_PAINTS);
   const still = await h.snapshot();
   assertEqual(still.ticks, posed.ticks, "ticks with the clock disconnected");
   assertCloseTo(
@@ -191,6 +200,11 @@ it("reports the whole documented snapshot shape, off a driven game", async () =>
   assertEqual(typeof s.steering, "boolean", "steering");
   assertEqual(typeof s.travel, "boolean", "travel");
   assertEqual(typeof s.pelletRespawn, "boolean", "pelletRespawn");
+  assertEqual(
+    s.nextPellet === null || typeof s.nextPellet.col === "number",
+    true,
+    "nextPellet",
+  );
   for (const cell of [...s.snake, ...s.obstacles]) {
     assertEqual(typeof cell.col, "number", "a cell's col");
     assertEqual(typeof cell.row, "number", "a cell's row");
@@ -237,6 +251,7 @@ it("poses the running game through each of its operations", async () => {
   await debug.setSnakeSteering(false);
   await debug.setSnakeTravel(false);
   await debug.setPelletRespawn(false);
+  await debug.setNextPellet(24, 13);
   await debug.setScreen("playing");
 
   const posed = await h.snapshot();
@@ -251,7 +266,30 @@ it("poses the running game through each of its operations", async () => {
   assertEqual(posed.steering, false, "setSnakeSteering");
   assertEqual(posed.travel, false, "setSnakeTravel");
   assertEqual(posed.pelletRespawn, false, "setPelletRespawn");
+  assertDeepEqual(posed.nextPellet, { col: 24, row: 13 }, "setNextPellet");
   assertEqual(posed.screen, "playing", "setScreen");
+
+  // And the reading that performs the draw alone, which specs/instrumentation.md
+  // words as a cell drawn from the valid set on the board as it stands. What is
+  // read here is that it answers a cell of that set: an interior cell off the
+  // chain and off the live pellet. That it changes nothing is
+  // `draw-pellet-cell-changes-nothing`, and that the draw moves is
+  // `growth/respawn-varies`.
+  const drawn = await debug.drawPelletCell();
+  assertNotNull(drawn, "drawPelletCell on a board with free cells");
+  const cell = drawn as Cell;
+  assertTrue(
+    isInterior(cell.col, cell.row),
+    `drawPelletCell answering an interior cell, got (${cell.col}, ${cell.row})`,
+  );
+  assertTrue(
+    !chain.some((c) => c.col === cell.col && c.row === cell.row),
+    "drawPelletCell answering a cell off the chain",
+  );
+  assertTrue(
+    cell.col !== 20 || cell.row !== 6,
+    "drawPelletCell answering a cell other than the live pellet's",
+  );
 
   // A pose holds across frames rather than being a one-frame nudge.
   await h.advance(FRAMES_PER_TICK);

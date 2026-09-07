@@ -63,9 +63,9 @@
 // takes the game off real time and `advance(seconds, frames)` runs whole frames
 // of a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of frames and gets exactly that number — no polling, no
-// waiting, and no measurement of the machine it ran on. The one check that is
-// ABOUT the loop running itself (`progression/advances-in-real-time`) hands it
-// back with `runFor`.
+// waiting, and no measurement of the machine it ran on. Nothing here hands the
+// loop back: a check that could only be decided by real time passing would
+// grade the host it ran on, so no point asks for one.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
@@ -206,6 +206,10 @@ export const REQUIRED_OPS = [
   "setFoeSpawning",
   "setWormEntry",
   "setCursorContact",
+  // The level's draws.
+  "setSpawnTimer",
+  "setNextFoeEntry",
+  "setNextWormEntry",
   // The cursor and its bolts.
   "setCursor",
   "setCursorInvulnerable",
@@ -251,6 +255,9 @@ export type Phase = "banner" | "active" | "respawn";
 
 /** The three support foes (`specs/foes.md`). */
 export type FoeKind = "glitch" | "dropper" | "corruptor";
+
+/** The two side edges the level's worm and its edge-entering foes come in at. */
+export type Edge = "left" | "right";
 
 /** One tile of the board. */
 export interface Tile {
@@ -325,6 +332,15 @@ export interface WirewormSnapshot {
   muted: boolean;
   foeSpawning: boolean;
   wormEntry: boolean;
+  /** The level's spawner clocks, in seconds left (`specs/foes.md`). */
+  glitchTimer: number;
+  dropperTimer: number;
+  corruptorTimer: number;
+  /** The posed draws, each `null` until posed and again once consumed. */
+  nextWormEntry: Edge | null;
+  nextGlitchEntry: Tile | null;
+  nextDropperEntry: Tile | null;
+  nextCorruptorEntry: Tile | null;
   wormStepInterval: number;
   wormLength: number;
   cursor: { x: number; y: number; invulnerable: number; contact: boolean };
@@ -353,7 +369,7 @@ export interface MenuRect {
 export interface WirewormDebugApi {
   setAutoStep(enabled: boolean): Promise<void>;
   advance(seconds: number, frames?: number): Promise<void>;
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<WirewormSnapshot>;
 
   setScreen(screen: Screen): Promise<void>;
@@ -369,6 +385,10 @@ export interface WirewormDebugApi {
   setFoeSpawning(enabled: boolean): Promise<void>;
   setWormEntry(enabled: boolean): Promise<void>;
   setCursorContact(enabled: boolean): Promise<void>;
+
+  setSpawnTimer(kind: FoeKind, seconds: number): Promise<void>;
+  setNextFoeEntry(kind: FoeKind, c: number, r: number): Promise<void>;
+  setNextWormEntry(edge: Edge): Promise<void>;
 
   setCursor(x: number, y: number): Promise<void>;
   setCursorInvulnerable(seconds: number): Promise<void>;
@@ -410,7 +430,7 @@ export interface WirewormDebugApi {
 // time of the frame, and the one clocked quantity — the worm's tile step —
 // accumulates that same elapsed time and carries its remainder. So a build must
 // reach the same place however that time was divided, and the check that is ABOUT
-// the division (`instrumentation/deterministic-core`) drives the same second as
+// the division (`instrumentation/render-free-core`) drives the same second as
 // one frame and as sixty.
 //
 // The default is a steady 100 Hz, for one reason: every duration `specs/` fixes
@@ -1321,11 +1341,8 @@ export async function startPlaying(
  * posed: `reset` is the surface's own, and the rest is a real key through
  * Chromium's input pipeline.
  */
-export async function startRunFromTitle(
-  h: Harness,
-  options: { seed?: number } = {},
-): Promise<void> {
-  await h.debug.reset(options.seed === undefined ? undefined : options);
+export async function startRunFromTitle(h: Harness): Promise<void> {
+  await h.debug.reset();
   await h.debug.setMenuIndex(0);
   await h.tap("Enter");
   await h.advance(1);

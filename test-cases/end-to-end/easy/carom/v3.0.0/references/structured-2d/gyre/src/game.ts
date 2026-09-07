@@ -6,8 +6,8 @@
 // class. The instance is the ONE framework object that outlives every level
 // transition (the engine constructs it once and keeps it), so it carries
 // exactly the state specs/state.md says must survive one — the mode of the
-// current or most recent match, the title menu's remembered selection, the
-// simulation clock, and the seeded generator — plus, while a transition is in
+// current or most recent match, the title menu's remembered selection, and the
+// simulation clock — plus, while a transition is in
 // flight, the carry the incoming world is dressed from (`src/carry.ts`).
 // Everything scoped to the open world lives on that world's game state and its
 // actors (`src/state.ts`).
@@ -28,7 +28,7 @@
 
 import { GameInstance } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
-import { DEFAULT_SEED, LEVELS } from "./constants";
+import { LEVELS } from "./constants";
 import { defineCues } from "./audio";
 import {
   applyCarry,
@@ -41,7 +41,6 @@ import { createDebugSurface, type CaromDebug } from "./debug";
 import { diagnosticSources } from "./diagnostics";
 import { registerActions } from "./input";
 import { match, title } from "./levels";
-import { nextSign } from "./rng";
 import { CaromState, levelOf, type Mode, type Screen } from "./state";
 import { COLOR } from "./theme";
 
@@ -85,12 +84,6 @@ export class CaromGame extends GameInstance<CaromDebug> {
    * `reset` returns it to zero (specs/state.md).
    */
   simTime = 0;
-
-  /** The seed the generator was last seeded from (src/rng.ts). */
-  seed: number = DEFAULT_SEED;
-
-  /** That generator's whole state. Every draw stores the follow-on state back. */
-  rngState: number = DEFAULT_SEED;
 
   /**
    * The state the next world to open is dressed from. It is set by whichever
@@ -151,7 +144,6 @@ export class CaromGame extends GameInstance<CaromDebug> {
     this.mode = "solo";
     this.titleIndex = 0;
     this.simTime = 0;
-    this.reseed(DEFAULT_SEED);
     this.open(titleCarry(0));
   }
 
@@ -174,21 +166,6 @@ export class CaromGame extends GameInstance<CaromDebug> {
   private open(carry: CaromCarry): void {
     this.carried = carry;
     this.engine.world.open(levelOf(carry.screen));
-  }
-
-  // ---- The seeded generator ----------------------------------------------
-
-  /** Draw the serve's vertical sign from the seeded generator. */
-  drawServeSign(): 1 | -1 {
-    const [sign, next] = nextSign(this.rngState);
-    this.rngState = next;
-    return sign;
-  }
-
-  /** Seed the generator, as `setSeed` does (specs/instrumentation.md). */
-  reseed(seed: number): void {
-    this.seed = seed;
-    this.rngState = seed;
   }
 }
 

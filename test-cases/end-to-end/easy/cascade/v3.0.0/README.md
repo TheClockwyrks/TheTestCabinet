@@ -105,7 +105,7 @@ for every run. Each rule lives in exactly one file.
 | `screens.md`         | The four screens, their literal copy, the HUD's three controls, and the deal-mode label.                                                                                                                                     |
 | `audio.md`           | The ten cues, what each sounds on, and the mute that silences them all.                                                                                                                                                      |
 | `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                                                                 |
-| `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the four faculty gates, the snapshot shape, the identity rules, and the debug overlay.                                                          |
+| `instrumentation.md` | The render-free core, every operation of the debug and automation surface, the four faculty gates, the snapshot shape, the identity rules, and the debug overlay.                                                            |
 | `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                                                               |
 
 `deal.md`, `foundations.md`, `tableau.md`, `screens.md` and `victory.md` are

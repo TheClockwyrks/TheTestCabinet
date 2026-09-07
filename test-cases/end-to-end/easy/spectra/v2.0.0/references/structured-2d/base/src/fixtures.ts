@@ -11,13 +11,11 @@
 import { SpectraState } from "./game";
 import type { Band, BulletState, DroneKind, DroneState } from "./game";
 import { takeId } from "./entities";
-import { seedState } from "./rng";
-import { DEFAULT_SEED, PLAYER_BULLET_SPEED } from "./constants";
+import { PLAYER_BULLET_SPEED } from "./constants";
 
 /** A live, quiet, empty wave at stage 1. */
 export function liveWave(): SpectraState {
   const state = new SpectraState();
-  state.rngState = seedState(DEFAULT_SEED);
   state.screen = "inWave";
   state.phase = "live";
   state.phaseTimer = 0;

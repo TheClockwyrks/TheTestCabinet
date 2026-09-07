@@ -72,24 +72,22 @@ this file specifies.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic: every rate integrated
-against the delta time the game is given, so an interval of game time reaches the
-same state however it was divided into frames. Two more properties make it
-driveable from code:
+The surface rests on a render-free core. Game state advances from the elapsed
+simulation time the game is handed, independent of a canvas, of the frame loop
+that measured it, and of wall-clock time, so a step means the same thing whatever
+the frame rate. The dependency runs one way: the simulation reads nothing from
+the renderer.
 
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer.
-- Seeded randomness. Any randomness the game uses runs off a generator seeded by
-  `setSeed`, and the game keeps that generator's whole state, so reseeding and
-  replaying the same calls reproduces the same result exactly. A build that uses
-  no randomness never draws from it.
-
-Given the same seed and the same sequence of calls and elapsed game time, the game
-reaches the same state every time.
+Every rate is integrated against that delta time, so a scenario driven twice
+under frame lengths anywhere between `2` and `16` milliseconds plays out the
+same way. Both drives reach the same paddle contacts, the same wall bounces, and
+the same points; the ball's speed agrees within `10` units per second; its
+direction agrees axis by axis, with a vertical speed under `120` units per second
+counting as level; and the scenario takes the same game time within `8` per
+cent. Positions carry the drift a change in step size explains and are held to
+no bound.
 
 ## What the runtime provides instead
 
@@ -182,9 +180,8 @@ recent frame left.
 and `frames` defaults to `1`. Each is a real frame, the same update the loop runs
 followed by a render, so the game's own collisions and AI produce the result and
 the canvas reflects it. `advance(1, 1)` and `advance(1, 60)` cover the same second
-of game time and reach the same outcome, beyond the drift a change in step size
-explains. Advancing while the game is still stepping
-automatically adds to what the wall clock is already doing.
+of game time. Advancing while the game is still stepping automatically adds to
+what the wall clock is already doing.
 
 {{/if}}
 ### The world
@@ -201,9 +198,9 @@ The game has one ball, which every operation below acts on. Obstacle indices are
 | --- | --- |
 | `clearWorld()` | Removes every ball and every obstacle from the field, leaving it empty. The paddles stay. |
 {{#if (eq variant.slug "multi")}}
-| `spawnBall(index)` | Places ball `index` at its home point, held, with `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, and an empty trail. |
+| `spawnBall(index)` | Places ball `index` at its home point, held, with `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, an empty trail, and a fresh `launchAngle`, drawn as `specs/balls.md` states. |
 {{else}}
-| `spawnBall()` | Places the ball at its home point, held, with `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, and an empty trail. |
+| `spawnBall()` | Places the ball at its home point, held, with `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, an empty trail, and a fresh `serveSign`, drawn as `specs/balls.md` states. |
 {{/if}}
 {{#if (eq variant.slug "gyre")}}
 | `spawnObstacle(index)` | Places obstacle `index` in the pose `specs/playfield.md`'s formulas give at the current `obstacleClock`. |
@@ -211,7 +208,6 @@ The game has one ball, which every operation below acts on. Obstacle indices are
 | `spawnObstacle(index)` | Places obstacle `index` at `OBSTACLE_CENTERS[index]`. |
 {{/if}}
 | `reset()` | Returns the game to its title-screen state. |
-| `setSeed(seed)` | Seeds the game's random generator. `seed` becomes the value given and `rngState` becomes that generator's starting state. |
 
 An absent ball takes no part in a frame: it is not advanced, it is not drawn, it
 collides with nothing, and it scores no point. An absent obstacle is not drawn and
@@ -282,6 +278,8 @@ Each sets its own field alone. Driving the paddles above states how `drivenVy` a
 | `setBallSpin(index, spin)` | Sets ball `index`'s spin, in units per second squared. |
 | `setBallHeld(index, held)` | Sets whether ball `index` waits at its home point rather than flying. |
 | `setBallHoldTimer(index, seconds)` | Sets the seconds remaining of ball `index`'s hold. |
+| `setBallLaunchAngle(index, angle)` | Sets ball `index`'s `launchAngle`, in radians. |
+| `drawBallLaunchAngle(index)` | Draws ball `index`'s `launchAngle` afresh, exactly as parking it does, and changes nothing else. |
 {{else}}
 ### The ball
 
@@ -292,6 +290,8 @@ Each sets its own field alone. Driving the paddles above states how `drivenVy` a
 | `setBallSpin(spin)` | Sets the ball's spin, in units per second squared. |
 | `setBallHeld(held)` | Sets whether the ball waits at its home point rather than flying. |
 | `setBallHoldTimer(seconds)` | Sets the seconds remaining of the ball's hold. |
+| `setBallServeSign(sign)` | Sets the ball's `serveSign` to `1` or `-1`. |
+| `drawBallServeSign()` | Draws the ball's `serveSign` afresh, exactly as parking it does, and changes nothing else. |
 {{/if}}
 
 {{#if (eq variant.slug "multi")}}
@@ -303,10 +303,10 @@ is absent. Setting the hold timer to `0` ends the hold.
 {{/if}}
 {{#if (eq variant.slug "multi")}}
 That ball launches on the next advanced frame through the game's own rule, as
-`specs/balls.md` states.
+`specs/balls.md` states, along the `launchAngle` it holds at that moment.
 {{else}}
 The ball is served on the next advanced frame through the game's own rule, as
-`specs/balls.md` states.
+`specs/balls.md` states, with the `serveSign` it holds at that moment.
 {{/if}}
 
 ### The AI opponent
@@ -382,8 +382,6 @@ current screen shows.
   score: { p1: <number>, p2: <number> },
   winner: "left" | "right" | null,   // the winning side once the match is over
   muted: <boolean>,                  // whether the mute toggle is currently on
-  seed: <number>,                    // the seed the generator was last seeded from
-  rngState: <number>,                // that generator's current state
   paddles: {
     // `vy` is the velocity the last frame integrated; `drivenVy` is the velocity
     // `setPaddleVy` last set for that side.
@@ -394,19 +392,22 @@ current screen shows.
 
 {{#if (eq variant.slug "multi")}}
   // Every ball present, in play order. Each `trail` carries that ball's samples,
-  // oldest first, as `specs/state.md` declares them.
+  // oldest first, as `specs/state.md` declares them, and each `launchAngle` is
+  // the angle its next launch leaves along, in radians.
   balls: [
     { index: <number>, x: <number>, y: <number>, vx: <number>, vy: <number>,
       speed: <number>, spin: <number>, held: <boolean>, holdTimer: <number>,
+      launchAngle: <number>,
       trail: [{ x: <number>, y: <number>, t: <number> }] },
   ],
 {{else}}
   receiver: "left" | "right",
   // The ball, or null while no ball is present. Its `trail` carries the ball's
-  // samples, oldest first, as `specs/state.md` declares them.
+  // samples, oldest first, as `specs/state.md` declares them, and `serveSign`
+  // is the vertical sign its serve takes.
   ball: { x: <number>, y: <number>, vx: <number>, vy: <number>,
           speed: <number>, spin: <number>, held: <boolean>,
-          holdTimer: <number>,
+          holdTimer: <number>, serveSign: 1 | -1,
           trail: [{ x: <number>, y: <number>, t: <number> }] } | null,
 {{/if}}
 
@@ -455,12 +456,16 @@ an empty array and a `null` ball.
 Each ball's `holdTimer` is posed by `setBallHoldTimer` and then counted down by
 the game on every frame, by the rule `specs/balls.md` states. A ball's `trail`
 is emptied by `spawnBall` and written by the game alone, by the rule
-`specs/state.md` states.
+`specs/state.md` states. A ball's `launchAngle` is posed by `setBallLaunchAngle`
+and drawn by `drawBallLaunchAngle` and by every parking, by the rule
+`specs/balls.md` states.
 {{else}}
 The ball's `holdTimer` is posed by `setBallHoldTimer` and then counted down by
 the game on every frame, by the rule `specs/balls.md` states. The ball's `trail`
 is emptied by `spawnBall` and written by the game alone, by the rule
-`specs/state.md` states.
+`specs/state.md` states. The ball's `serveSign` is posed by `setBallServeSign`
+and drawn by `drawBallServeSign` and by every parking, by the rule
+`specs/balls.md` states.
 {{/if}}
 
 ## Diagnostics

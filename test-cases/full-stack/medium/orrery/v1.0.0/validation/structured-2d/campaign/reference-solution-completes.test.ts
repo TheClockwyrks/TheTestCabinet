@@ -26,10 +26,12 @@
 // of game time and no more, in chunks, stopping as soon as the run is no longer
 // `running`. So "within 600 cycles" is enforced by the DRIVE rather than by
 // reading a metric back: a run still running when the budget is gone has not
-// completed within it, whatever it reports. The chunks are divided into whole
-// frames, and "an interval of game time reaches the same state however it was
-// divided into frames" (`specs/instrumentation.md`), so the division decides
-// nothing.
+// completed within it, whatever it reports. A chunk runs in a single frame, and
+// only the opening cycles of the recorded run take the frames a cycle is
+// watchable at: "a frame may complete several cycles; each runs in full, in
+// order" (`specs/simulation.md`), and "an interval of game time reaches the same
+// state however it was divided into frames" (`specs/instrumentation.md`), so the
+// division decides nothing.
 //
 // THE VERDICT, for every challenge of the course: within the budget the run
 // reaches `sim.status` `complete`, and at that point every set the machine placed
@@ -63,21 +65,40 @@ afterEach(async () => {
   await h.dispose();
 });
 
-/** How many cycles of the budget one drive spends before the status is read. */
+/**
+ * How many cycles of the budget one drive spends before the status is read, and
+ * it spends them in ONE frame: "a frame may complete several cycles; each runs
+ * in full, in order" (`specs/simulation.md`), and "an interval of game time
+ * reaches the same state however it was divided into frames"
+ * (`specs/instrumentation.md`).
+ */
 const CHUNK = 20;
+
+/**
+ * How many cycles at the head of a recorded run take the watchable division.
+ *
+ * The recording opens on the machine moving rather than on a stop-motion of it,
+ * and the budget after them runs a whole chunk to the frame. A run no recording
+ * is taken of is driven a chunk to the frame throughout.
+ */
+const WATCHED_CYCLES = 2;
 
 /**
  * Drive the live run until it stops being `running`, or until the reference's
  * whole budget of `CAMPAIGN_REFERENCE_CYCLES` cycles has been spent.
  */
-async function runWithinTheBudget(
-  h: Harness,
-  framesPerCycle: number,
-): Promise<void> {
-  for (let spent = 0; spent < CAMPAIGN_REFERENCE_CYCLES; spent += CHUNK) {
+async function runWithinTheBudget(h: Harness, watched: number): Promise<void> {
+  let spent = 0;
+  if (watched > 0) {
+    await advanceCycles(h, watched, watched * FRAMES_PER_CYCLE);
+    spent = watched;
+  }
+  while (spent < CAMPAIGN_REFERENCE_CYCLES) {
     const sim = (await h.snapshot()).sim;
     if (sim === null || sim.status !== "running") return;
-    await advanceCycles(h, CHUNK, CHUNK * framesPerCycle);
+    const run = Math.min(CHUNK, CAMPAIGN_REFERENCE_CYCLES - spent);
+    await advanceCycles(h, run, 1);
+    spent += run;
   }
 }
 
@@ -103,10 +124,10 @@ it("completes every challenge of the course with its own reference machine", asy
     // challenge of the course turns out to fail.
     if (index === 0) {
       await captureReplay(h, "run", () =>
-        runWithinTheBudget(h, FRAMES_PER_CYCLE),
+        runWithinTheBudget(h, WATCHED_CYCLES),
       );
     } else {
-      await runWithinTheBudget(h, 1);
+      await runWithinTheBudget(h, 0);
     }
 
     const at = `campaign challenge ${index + 1}`;

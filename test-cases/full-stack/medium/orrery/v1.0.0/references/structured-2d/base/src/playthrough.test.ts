@@ -21,7 +21,7 @@ import type { Metrics, Mode } from "./types";
  * apiece, so `CAMPAIGN_REFERENCE_CYCLES` cycles at the top speed are twenty
  * frames rather than twelve hundred. A run advances by whole cycles however the
  * time was divided, so the outcome is the one a player reaches
- * (specs/instrumentation.md "A deterministic core").
+ * (specs/instrumentation.md "A render-free core").
  */
 const LONG_FRAME_MS = 1000;
 

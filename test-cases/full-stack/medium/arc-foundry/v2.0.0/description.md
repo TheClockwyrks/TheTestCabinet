@@ -43,7 +43,7 @@ and the run writes the game and its debug surface against them. On an engineless
 run the project carries no source at all, and the run writes the runtime as well
 as the game. Under all three the maze router, the never-seal test, the projectile
 flight and the scrap-press roll are the run's own work: no engine supplies
-pathfinding, collision response, or a seeded random source.
+pathfinding, collision response, or a random source.
 
 What the run is not given is any art. This is a full-stack case, so it produces
 the game's own assets during the run with the six asset-generation tools on the

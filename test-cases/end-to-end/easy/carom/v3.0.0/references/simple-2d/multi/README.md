@@ -163,7 +163,7 @@ every declared field at once, leaving only the mute bit alone.
   obstacle; `spawnBall(state, index)` and `spawnObstacle(state, index)` put one
   back, in play order. An absent ball takes no part in a frame — it is not
   advanced, not drawn, collides with nothing, and scores nothing. `reset(state)`
-  and `setSeed(state, seed)` complete the group.
+  completes the group.
 - **Screens and menus.** `setScreen`, `setMode`, `setMenuIndex`, `setTitleIndex`,
   and `setResumeScreen`, each setting its own field alone.
 - **Match state.** `setScore(state, p1, p2)` and `setWinner(state, side)`. The win
@@ -175,7 +175,8 @@ every declared field at once, leaving only the mute bit alone.
   frames; `vy` is what the last frame actually integrated, which is what the spin
   mechanic reads at contact.
 - **Balls.** `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,
-  and `setBallHoldTimer`, each taking the ball's play-order **`index` first**.
+  `setBallHoldTimer`, `setBallLaunchAngle`, and `drawBallLaunchAngle`, each
+  taking the ball's play-order **`index` first**.
   An operation naming an absent ball does nothing at all.
 - **The AI.** `setAiTracking(state, enabled)` and `setAiMovement(state, enabled)`
   gate the opponent's two faculties separately: sensing the balls, and travelling
@@ -209,8 +210,8 @@ spreading the parts that change over the parts that do not. There is no
 module-level game state and no closure over mutable data. So `step` in
 `src/physics.ts` returns `{ balls, events }` rather than writing the balls it was
 given, `updateAi` returns the paddle after the frame, `recordTrail` returns the
-ball with a longer trail, and a draw from `src/rng.ts` returns
-`[value, nextRngState]` for the caller to thread into the state it builds. The
+ball with a longer trail, and `drawLaunchAngle` from `src/random.ts` returns
+the angle a freshly parked ball will launch along. The
 state type declares every field `readonly` and every array as a readonly array,
 so the `DeepReadonly<CaromState>` view the engine hands out and `CaromState` are
 the same shape, and a spread of one is the other with no cast.
@@ -311,8 +312,7 @@ src/
                       returned beside the state by game.ts's initialize
   game.ts             The state contract, the state machine, and the three
                       functions the engine drives
-  rng.ts              The seeded generator: a draw from CaromState.rngState
-                      returns the value beside the next state
+  random.ts           The launch angle draw a parked ball takes
   entities.ts         Paddle, ball, and obstacle arithmetic, geometry, and the
                       home points
   trail.ts            One ball's motion trail, a fixed slice of time

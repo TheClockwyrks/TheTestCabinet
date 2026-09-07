@@ -269,10 +269,9 @@ function emitGasSeeps(d: Draft, dt: number): void {
   const [c, r] = pockets[d.gasSeepIndex];
   // Scatter the wisp across the cell's face, clear of its very edges so it is
   // never ambiguous which cell is breathing.
-  const draws = new Draws(d.rngState);
+  const draws = Draws.fresh();
   const jx = 0.18 + draws.float() * 0.64;
   const jy = 0.18 + draws.float() * 0.64;
-  d.rngState = draws.state;
   fx(d, "gas-seep", c * TILE + TILE * jx, r * TILE + TILE * jy);
 }
 

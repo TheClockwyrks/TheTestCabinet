@@ -31,6 +31,7 @@ import {
   assertCloseTo,
   assertContains,
   assertEqual,
+  assertHasProperty,
   assertLength,
 } from "../assert";
 import { ROCK_RADIUS, ROCK_SIZES } from "../constants";
@@ -62,6 +63,18 @@ const ENEMY_BULLET_PLACE = { x: 900, y: 660 } as const;
 
 /** Where the saucer hangs, 260 units clear of the star's centre. */
 const SAUCER_PLACE = { x: 640, y: 100 } as const;
+
+/**
+ * The five posed draws `specs/instrumentation.md` lists, each reported `null`
+ * while no pose stands — and none is posed here.
+ */
+const POSED_DRAW_FIELDS = [
+  "nextSaucerEdge",
+  "nextSaucerRow",
+  "nextSaucerAim",
+  "nextRockSpeed",
+  "nextRecycleEdge",
+] as const;
 
 /** The velocity the ship is posed at, so `speed` has something to be built from. */
 const SHIP_VELOCITY = { vx: 60, vy: -80 } as const;
@@ -140,6 +153,11 @@ it("reports the whole documented snapshot shape over a populated field", async (
   ] as const) {
     assertEqual(typeof s[field], "boolean", field);
   }
+  // And the five posed draws, present and `null` while no pose stands.
+  for (const field of POSED_DRAW_FIELDS) {
+    assertHasProperty(s, field, field);
+    assertEqual(s[field], null, `${field} with no pose standing`);
+  }
 
   // The ship.
   for (const field of [
@@ -208,4 +226,5 @@ it("reports the whole documented snapshot shape over a populated field", async (
   for (const field of ["mind", "gun", "travel"] as const) {
     assertEqual(typeof saucer[field], "boolean", `saucer.${field}`);
   }
+  assertContains([1, -1], saucer.weave, "saucer.weave");
 });

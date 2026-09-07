@@ -165,6 +165,7 @@ export interface Component extends StructureBase {
   kills: number; // units this component has destroyed (inspector tally, specs/components.md)
   damageDealt: number; // total damage this component has applied (inspector tally)
   auraBonus: number; // cached external aura buff (sum of nearby Regulator/aura auras, 0..1); recomputed on maze change
+  armedCrit: boolean | null; // the crit outcome `setNextCrit` armed for the next shot; null rolls the chance
 }
 
 // A CANDIDATE: a rock placed THIS build phase that has rolled a random type + quality and

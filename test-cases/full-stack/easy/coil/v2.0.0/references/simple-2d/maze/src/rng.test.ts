@@ -1,56 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { drawBelow, nextRandom, seedState } from "./rng";
+import { drawBelow } from "./rng";
 
-describe("the seeded generator", () => {
-  it("reproduces the same sequence from the same seed", () => {
-    const take = (seed: number): number[] => {
-      let state = seedState(seed);
-      const values: number[] = [];
-      for (let i = 0; i < 12; i++) {
-        const draw = nextRandom(state);
-        values.push(draw.value);
-        state = draw.state;
-      }
-      return values;
-    };
-    expect(take(7)).toEqual(take(7));
-  });
-
-  it("draws a different sequence from a different seed", () => {
-    expect(nextRandom(seedState(1)).value).not.toBe(
-      nextRandom(seedState(2)).value,
-    );
-  });
-
-  it("draws in [0, 1)", () => {
-    let state = seedState(99);
-    for (let i = 0; i < 2000; i++) {
-      const draw = nextRandom(state);
-      expect(draw.value).toBeGreaterThanOrEqual(0);
-      expect(draw.value).toBeLessThan(1);
-      state = draw.state;
-    }
-  });
-
+describe("drawBelow", () => {
   it("draws a whole number below the count it is given", () => {
-    let state = seedState(5);
     const seen = new Set<number>();
-    for (let i = 0; i < 500; i++) {
-      const draw = drawBelow(state, 4);
-      expect(Number.isInteger(draw.index)).toBe(true);
-      expect(draw.index).toBeGreaterThanOrEqual(0);
-      expect(draw.index).toBeLessThan(4);
-      seen.add(draw.index);
-      state = draw.state;
+    for (let i = 0; i < 512; i++) {
+      const value = drawBelow(5);
+      expect(Number.isInteger(value)).toBe(true);
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(5);
+      seen.add(value);
     }
-    expect(seen.size).toBe(4);
+    expect(seen.size).toBe(5);
   });
 
-  it("returns the generator state beside every draw, so nothing is held", () => {
-    const first = nextRandom(seedState(3));
-    const second = nextRandom(first.state);
-    expect(second.value).not.toBe(first.value);
-    // Replaying from the same state reproduces the same draw exactly.
-    expect(nextRandom(first.state).value).toBe(second.value);
+  it("answers 0 for a count of 1", () => {
+    for (let i = 0; i < 16; i++) expect(drawBelow(1)).toBe(0);
   });
 });

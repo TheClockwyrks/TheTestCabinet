@@ -31,19 +31,12 @@ import {
   type VehicleSnapshot,
 } from "../harness";
 
-/** What `layOutLevel` may vary beyond the level itself. */
-export interface LayoutOptions {
-  /** The seed all of the game's randomness runs off, `DEFAULT_SEED` by default. */
-  seed?: number;
-}
-
 /**
  * Lay the strait out for a level and hand back the level exactly as it was laid.
  *
  * The sequence, and why each part of it is here:
  *
- *   - `reset(options)` puts every field back to its title-screen value and seeds
- *     the generator the lanes' phases are drawn from
+ *   - `reset()` puts every field back to its title-screen value
  *     (specs/instrumentation.md), so what follows is a level laid out from a
  *     known start rather than whatever the previous reading left.
  *   - `setLevel(level)` re-lays the sixteen lanes for the level asked for. It is
@@ -69,10 +62,8 @@ export interface LayoutOptions {
 export async function layOutLevel(
   h: Harness,
   level = 1,
-  options: LayoutOptions = {},
 ): Promise<FloeSnapshot> {
-  if (options.seed === undefined) h.debug.reset();
-  else h.debug.reset({ seed: options.seed });
+  h.debug.reset();
   h.debug.setLevel(level);
   h.debug.setFishCadence(false);
   h.debug.setScreen("playing");

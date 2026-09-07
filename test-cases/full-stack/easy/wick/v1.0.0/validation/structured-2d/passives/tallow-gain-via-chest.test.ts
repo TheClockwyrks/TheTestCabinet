@@ -7,8 +7,8 @@
 // that `maxHp` does." The chest is one such path: `specs/evolutions.md`
 // (Opening a chest) makes its second rule "One held item below its max level,
 // a base weapon below `MAX_WEAPON_LEVEL` or a passive below its own max, is
-// chosen uniformly at random from the game's seeded generator and rises by
-// `1`, exactly as accepting a `+1 level` offer does." With Tallow at `1` and
+// chosen uniformly at random and rises by `1`, exactly as accepting a `+1
+// level` offer does." With Tallow at `1` and
 // `maxHp` `115`, the level makes both `130`.
 //
 // WHY THE RESULT IS NOT A DRAW. The run holds no weapon at all, so the chest's

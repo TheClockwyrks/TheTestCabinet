@@ -24,7 +24,13 @@
 // how far apart the ring poses the lamplighter — is named here; every figure
 // the specification states is imported from `../constants`.
 
-import { SPAWN_WINDOW, TICK_HZ, type EnemyId } from "../constants";
+import { fail } from "../assert";
+import {
+  SPAWN_WINDOW,
+  SPAWN_WINDOWS,
+  TICK_HZ,
+  type EnemyId,
+} from "../constants";
 import {
   placeEnemy,
   pointAt,
@@ -109,6 +115,85 @@ export async function driveArrivals(
     if (stopAfter !== undefined && arrivals.length >= stopAfter) break;
   }
   return { arrivals, snapshot, ticks: driven };
+}
+
+/**
+ * How many spawns a window's cadence is read over: the spawn a posed timer of
+ * `0` lands at once and one more at the end of each of two whole intervals.
+ */
+export const CADENCE_SPAWNS = 3;
+
+/** How many window spawns a type reading draws with nothing posed. */
+export const UNPOSED_DRAWS = 6;
+
+/**
+ * Draw `count` window spawns one to a tick, each posed by setting the timer to
+ * `0` so the next tick spawns and cleared away as it lands, and answer each
+ * arrival in order, read on the tick it landed.
+ *
+ * The cap never binds, since nothing is left standing, and every draw is the
+ * window's own: the type "chosen uniformly from the window's types" and the
+ * angle "drawn uniformly over the full circle" (`specs/enemies.md`, "The
+ * spawn timer" and "The spawn ring"). Each draw costs one tick whatever the
+ * window's interval, so a reading over many draws finishes in seconds.
+ */
+export async function drawSpawns(
+  h: Harness,
+  count: number,
+): Promise<Arrival[]> {
+  const spawns: Arrival[] = [];
+  for (let draw = 0; draw < count; draw += 1) {
+    h.debug.setSpawnTimer(0);
+    const drive = await driveArrivals(h, 1, { removeOnArrival: true });
+    if (drive.arrivals.length !== 1) {
+      fail(
+        `one enemy spawned on a tick the window's timer was due, draw ${draw + 1} (specs/enemies.md, The spawn timer)`,
+        drive.arrivals.length,
+      );
+    }
+    spawns.push(drive.arrivals[0]);
+  }
+  return spawns;
+}
+
+/**
+ * The type of each of `count` window spawns drawn by {@link drawSpawns} with
+ * nothing posed, in order. Each must be one the row lists, which is what a
+ * handful of draws decides: a build that reaches into another window's roster
+ * fails on the first spawn outside the row.
+ */
+export async function drawTypes(
+  h: Harness,
+  count = UNPOSED_DRAWS,
+): Promise<EnemyId[]> {
+  return (await drawSpawns(h, count)).map((spawn) => spawn.enemy.type);
+}
+
+/** One posed type and the type of the spawn the next due tick landed. */
+export interface PosedSpawn {
+  posed: EnemyId;
+  spawned: EnemyId;
+}
+
+/**
+ * Pose each type of window `index`'s row in turn through `setNextSpawnType`,
+ * which "The next window spawn is of that type in place of the type drawn
+ * from the window's types" (`specs/instrumentation.md`, "Drawn outcomes"), and
+ * answer what the next due tick spawned under each, read the way
+ * {@link drawSpawns} reads a draw. A build whose window cannot spawn one of
+ * the row's types fails on that type.
+ */
+export async function drawPosedTypes(
+  h: Harness,
+  index: number,
+): Promise<PosedSpawn[]> {
+  const posedTypes: PosedSpawn[] = [];
+  for (const posed of SPAWN_WINDOWS[index].types) {
+    h.debug.setNextSpawnType(posed);
+    const [spawn] = await drawSpawns(h, 1);
+    posedTypes.push({ posed, spawned: spawn.enemy.type });
+  }
+  return posedTypes;
 }
 
 /**

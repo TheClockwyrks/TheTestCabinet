@@ -1,5 +1,5 @@
 // Wick — the screens wrapped around the simulation (specs/ui.md,
-// specs/controls.md, specs/instrumentation.md "A deterministic core").
+// specs/controls.md, specs/instrumentation.md "A render-free core").
 //
 // The nine screens, the menus, the tick accumulator, and the routing of one
 // action to what it does on the screen the game is on. Only `playing` ticks;
@@ -75,9 +75,13 @@ const MUSIC_SCREENS: readonly Screen[] = [
 /** The screens a run is live on: the ones most poses apply to. */
 export const RUN_SCREENS: readonly Screen[] = ["playing", "paused"];
 
-/** The generator over `state`'s `rngState`. */
+/** The game's private random source, drawn from where nothing is posed. */
+const rng = new Rng();
+
+/** The random source a tick over `state` draws from. */
 export function rngOf(state: WickState): Rng {
-  return new Rng(() => state);
+  void state;
+  return rng;
 }
 
 /** The looping cues the state calls for on this frame. */

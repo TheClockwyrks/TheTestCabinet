@@ -1,7 +1,7 @@
 // Refract — instrumentation/advances-on-elapsed-time: the simulation advances
 // on the elapsed time it is handed.
 //
-// specs/instrumentation.md "A deterministic core": every rate is integrated
+// specs/instrumentation.md "A render-free core": every rate is integrated
 // against the delta time the game is given, so an interval of game time reaches
 // the same state however it was divided into frames.
 //
@@ -21,7 +21,7 @@ it("adds 1.0 to simTime whether one second is one frame or sixty", async () => {
   // One second as a single frame…
   const one = await createHarness({ clock: new ConstantClock(1000) });
   try {
-    await resetTo(one, 1);
+    await resetTo(one);
     const opened = one.snapshot().simTime;
     await one.advance(1);
     assertCloseTo(
@@ -37,7 +37,7 @@ it("adds 1.0 to simTime whether one second is one frame or sixty", async () => {
   // …and the same second as sixty frames.
   const sixty = await createHarness({ clock: new ConstantClock(1000 / 60) });
   try {
-    await resetTo(sixty, 1);
+    await resetTo(sixty);
     const opened = sixty.snapshot().simTime;
     await sixty.advance(60);
     assertCloseTo(

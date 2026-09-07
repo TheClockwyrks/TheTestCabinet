@@ -3,8 +3,9 @@
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `setScreen(name)`):
 // "Sets `screen` to `name` ... Nothing else changes: the run, the loadout,
-// `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, `rngState`,
-// `simTime`, and the driver switches all stand exactly as they were." The
+// `offers`, `nextOffers`, `chestResult`, `pendingLevelUps`, every posed
+// outcome, `simTime`, and the driver switches all stand exactly as they were."
+// The
 // comparison is exact equality of the documented run across the call, over the
 // one direction a build reads as a resume.
 //

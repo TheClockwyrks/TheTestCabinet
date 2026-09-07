@@ -15,7 +15,7 @@ import {
 } from "./constants";
 import type { Dir, Tile } from "./state";
 
-/** The four cardinal directions, in a fixed order so a scan is deterministic. */
+/** The four cardinal directions, in a fixed order so every scan walks them alike. */
 export const DIRS: readonly Dir[] = ["up", "down", "left", "right"];
 
 /** The step one move in `dir` takes, in tiles. */

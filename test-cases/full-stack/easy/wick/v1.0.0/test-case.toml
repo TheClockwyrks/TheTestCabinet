@@ -301,9 +301,9 @@ source = "specs/controls.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# seedable core, the nine driver switches, an API to pose and inspect the game
-# from code, and a read-only debug overlay. It branches on the engine, for how the
+# The debugging and automation surface every build must expose: a render-free,
+# fixed-timestep core, the nine driver switches, an API to pose and inspect the
+# game from code, and a read-only debug overlay. It branches on the engine, for how the
 # surface is reached, what shape its operations take, and the `setAutoStep`,
 # `step`, and `advance` trio only an engineless build carries (under an engine the
 # runtime's own clock is driven instead).
@@ -585,14 +585,6 @@ failure_cap = "passable"
 validation = { script = "instrumentation/reset-restores-switches.test.ts", outputs = [ { id = "switches", name = "The nine switches after reset", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "reset-seeds-rng"
-title = "reset seeds the generator"
-description = "reset({ seed }) seeds rngState from the seed, and reset() with no seed seeds it from DEFAULT_SEED (1), so two resets with the same seed leave the same rngState and a run from each draws the same spawns."
-domains = ["survival", "progression"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seeds-rng.test.ts", outputs = [ { id = "seeded", name = "Two resets from one seed", kind = "image" } ] }
-
-[[review.categories.items]]
 id = "reset-keeps-muted"
 title = "reset leaves muted untouched"
 description = "muted holds the same value after reset() as before it, whether it was true or false."
@@ -603,7 +595,7 @@ validation = { script = "instrumentation/reset-keeps-muted.test.ts", outputs = [
 [[review.categories.items]]
 id = "reset-keeps-clock-hold"
 title = "reset leaves the caller's hold on the clock in place"
-description = "reset() leaves the game off real time when a scenario has taken it off: under none autoStep reads false after a reset issued while it was false, and under an engine the harness clock keeps driving frame by frame, so run.tick stays 0 until the scenario advances it."
+description = "reset() leaves the game off real time when a scenario has taken it off: under none autoStep reads false after a reset issued while it was false and a run posed afterward moves only by the frames step drives, and under an engine the harness clock keeps driving frame by frame, so run.tick stays 0 until the scenario advances it."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/reset-keeps-clock-hold.test.ts", outputs = [ { id = "held", name = "The clock still held after reset", kind = "image" } ] }
@@ -617,20 +609,12 @@ failure_cap = "passable"
 validation = { script = "instrumentation/reset-stops-loops.test.ts", outputs = [ { id = "silenced", name = "The loops stopped by reset", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "seeded-replay-deterministic"
-title = "A seeded run replays to identical snapshots"
-description = "Two runs given reset({ seed }) with the same seed, the same sequence of operations, and the same number of ticks report identical run and rngState, the same spawns of the same types at the same points and the same offers in the same order included."
-domains = ["survival", "arsenal", "progression"]
-failure_cap = "passable"
-validation = { script = "instrumentation/seeded-replay-deterministic.test.ts", outputs = [ { id = "seeded", name = "A seeded run", kind = "replay" } ] }
-
-[[review.categories.items]]
 id = "clock-held-off-real-time"
 title = "The game steps off real time"
-description = "With the wall clock held off the simulation (setAutoStep(false) under none, a scripted clock under an engine), run.tick advances only when the scenario advances it, while the build keeps rendering frames and a menu still answers a key press; giving the clock back (setAutoStep(true) under none) lets run.tick advance on its own again."
+description = "With the wall clock held off the simulation by the engine's scripted clock, a title frame with ArrowDown held draws and moves the highlight with run.tick at 0, and a posed run's run.tick rises by exactly the frames the scenario advances. Under none the hold can only be read off real time, so the item is not decided there."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "broken"
-validation = { script = "instrumentation/clock-held-off-real-time.test.ts", outputs = [ { id = "held", name = "The run held off real time", kind = "image" } ] }
+validation = { script = "instrumentation/clock-held-off-real-time.test.ts", engines = ["simple-2d", "structured-2d"], outputs = [ { id = "held", name = "The run held off real time", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "frame-is-one-tick-on-playing"
@@ -713,6 +697,222 @@ failure_cap = "passable"
 validation = { script = "instrumentation/set-spawn-timer.test.ts", outputs = [ { id = "timer", name = "A spawn landing when the posed timer is due", kind = "replay" } ] }
 
 [[review.categories.items]]
+id = "set-next-spawn-angle"
+title = "setNextSpawnAngle poses the next spawn angle"
+description = "setNextSpawnAngle(30) on playing sets nextSpawnAngle to 30, the snapshot reads it back, and the next window spawn lands SPAWN_DISTANCE from the lamplighter at 30 degrees from +x toward +y."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-spawn-angle.test.ts", outputs = [ { id = "spawned", name = "The spawn landing at the posed angle", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-spawn-angle-consumed"
+title = "The spawn consumes the posed angle"
+description = "The window spawn that lands at a posed angle consumes it, so nextSpawnAngle reads null after the spawn tick."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-spawn-angle-consumed.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by its spawn", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-spawn-angle-out-of-range"
+title = "setNextSpawnAngle refuses an angle outside [0, 360)"
+description = "setNextSpawnAngle(360) and setNextSpawnAngle(-1) each throw and leave the snapshot exactly as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-spawn-angle-out-of-range.test.ts", outputs = [ { id = "refused", name = "The state unchanged by the refused calls", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-spawn-type"
+title = "setNextSpawnType poses the next window spawn's type"
+description = "With the clock posed into window 2 (moth, bat, rat), setNextSpawnType('rat') on playing sets nextSpawnType to rat, the snapshot reads it back, and the next window spawn is a rat."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-spawn-type.test.ts", outputs = [ { id = "spawned", name = "The window spawn of the posed type", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-spawn-type-consumed"
+title = "The window spawn consumes the posed type"
+description = "The window spawn that takes a posed type consumes it, so nextSpawnType reads null after the spawn tick."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-spawn-type-consumed.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by its spawn", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-spawn-type-discarded"
+title = "A posed type the window's row does not list is discarded"
+description = "With the clock posed into window 0 (moth alone) and setNextSpawnType('hound') posed, the next window spawn is a moth and nextSpawnType reads null after the spawn tick."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-spawn-type-discarded.test.ts", outputs = [ { id = "discarded", name = "The spawn drawn from the row instead", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-spawn-type-unknown-id"
+title = "setNextSpawnType refuses an id that is no enemy"
+description = "setNextSpawnType('taper'), setNextSpawnType('brass'), and setNextSpawnType('shadow') each throw and leave the snapshot exactly as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-spawn-type-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state unchanged by the refused calls", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-swarm-angle"
+title = "setNextSwarmAngle poses the next swarm direction"
+description = "setNextSwarmAngle(30) on playing sets nextSwarmAngle to 30, the snapshot reads it back, and the next gnat swarm is centered SPAWN_DISTANCE from the lamplighter at 30 degrees with every gnat heading back along that direction."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-swarm-angle.test.ts", outputs = [ { id = "swarm", name = "The swarm arriving from the posed direction", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-swarm-angle-consumed"
+title = "The swarm consumes the posed direction"
+description = "A posed swarm angle stands across a window spawn, which draws no swarm direction, and reads null once the 1:00 swarm has taken it."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-swarm-angle-consumed.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by its swarm", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-swarm-angle-out-of-range"
+title = "setNextSwarmAngle refuses an angle outside [0, 360)"
+description = "setNextSwarmAngle(360) and setNextSwarmAngle(-1) each throw and leave the snapshot exactly as it was."
+domains = ["survival"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-swarm-angle-out-of-range.test.ts", outputs = [ { id = "refused", name = "The state unchanged by the refused calls", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-puddle-offset"
+title = "setNextPuddleOffset poses where the next puddle lands"
+description = "setNextPuddleOffset(-120, 200) on playing sets nextPuddleOffset to (-120, 200), the snapshot reads it back, and the next level-1 Oil Splash firing lands its one puddle at the lamplighter's center plus that offset."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-puddle-offset.test.ts", outputs = [ { id = "landed", name = "The puddle landing at the posed offset", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-puddle-offset-consumed"
+title = "The firing consumes the posed offset"
+description = "The Oil Splash firing that lands a puddle at a posed offset consumes it, so nextPuddleOffset reads null after the firing tick."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-puddle-offset-consumed.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by its firing", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-puddle-offset-beyond-scatter"
+title = "setNextPuddleOffset refuses an offset longer than OIL_SCATTER"
+description = "setNextPuddleOffset(400, 1) throws and leaves the snapshot exactly as it was, while setNextPuddleOffset(400, 0), exactly OIL_SCATTER long, is accepted."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-puddle-offset-beyond-scatter.test.ts", outputs = [ { id = "refused", name = "The state unchanged by the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-strike-target"
+title = "setNextStrikeTarget poses the next strike's target"
+description = "With four owls within SPARK_RANGE and Spark at level 1, setNextStrikeTarget(id) naming the third owl reads back as nextStrikeTarget and each of ten firings under the pose lands its strike on that owl."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-strike-target.test.ts", outputs = [ { id = "struck", name = "The strike landing on the posed owl", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-strike-target-consumed"
+title = "The firing consumes the posed target"
+description = "The Spark firing that strikes a posed target consumes it, so nextStrikeTarget reads null after the firing tick."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-strike-target-consumed.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by its firing", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-strike-target-discarded"
+title = "A posed target out of range on the firing tick is discarded"
+description = "With a posed target moved SPARK_RANGE + 1 units out before the firing, the level-1 strike lands on the one eligible owl and nextStrikeTarget reads null."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-strike-target-discarded.test.ts", outputs = [ { id = "discarded", name = "The strike on the eligible owl after the pose was discarded", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-strike-target-unknown-id"
+title = "setNextStrikeTarget refuses an id that names no live enemy"
+description = "setNextStrikeTarget(id) with an id no live enemy holds throws and leaves the snapshot exactly as it was."
+domains = ["arsenal"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-strike-target-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state unchanged by the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-chest-item"
+title = "setNextChestItem poses the item the next chest levels"
+description = "With Taper at level 3 and Brass at level 1 held and nothing eligible to evolve, setNextChestItem('brass') reads back as nextChestItem and each of ten chests opened under the pose reports a level result naming brass at level 2, with Brass held at level 2."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-chest-item.test.ts", outputs = [ { id = "leveled", name = "The chest leveling the posed item", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-chest-item-consumed"
+title = "The chest consumes the posed item whatever its result"
+description = "With Taper at MAX_WEAPON_LEVEL beside Wick, a chest opened under setNextChestItem('brass') evolves Taper, leaves Brass at level 1, and reads nextChestItem null."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-chest-item-consumed.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by an evolving chest", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-chest-item-discarded"
+title = "A posed item at its max is discarded"
+description = "With Taper at MAX_WEAPON_LEVEL beside no Wick and Brass at level 1, a chest opened under setNextChestItem('taper') levels Brass to 2, leaves Taper at 8, and reads nextChestItem null."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-chest-item-discarded.test.ts", outputs = [ { id = "discarded", name = "The chest drawing among the items below their max", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-chest-item-unknown-id"
+title = "setNextChestItem refuses an id that is no base weapon or passive"
+description = "setNextChestItem('pyre'), setNextChestItem(LAMP_OIL_ID), and setNextChestItem('moth') each throw and leave the snapshot exactly as it was."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-chest-item-unknown-id.test.ts", outputs = [ { id = "refused", name = "The state unchanged by the refused calls", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-drop"
+title = "setNextDrop poses what the next common kill drops"
+description = "setNextDrop('draft') on playing sets nextDrop to draft, the snapshot reads it back, and the next moth killed by a weapon with drops on leaves one gem and one draft."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-drop.test.ts", outputs = [ { id = "dropped", name = "The kill dropping the posed draft", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-drop-consumed"
+title = "The kill consumes the posed drop"
+description = "The common kill that takes a posed drop consumes it, so nextDrop reads null after the tick of death."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-drop-consumed.test.ts", outputs = [ { id = "consumed", name = "The pose consumed by its kill", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-drop-none"
+title = "setNextDrop('none') makes the next kill drop its gem alone"
+description = "With setNextDrop('none') posed, the next moth killed by a weapon with drops on leaves one gem and no pickup."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-drop-none.test.ts", outputs = [ { id = "gem", name = "The kill leaving its gem alone", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "set-next-drop-unknown-kind"
+title = "setNextDrop refuses a kind outside bread, draft, and none"
+description = "setNextDrop('chest') throws and leaves the snapshot exactly as it was."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/set-next-drop-unknown-kind.test.ts", outputs = [ { id = "refused", name = "The state unchanged by the refused call", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "roll-drop"
+title = "rollDrop makes one drop roll and returns it"
+description = "Each of a hundred rollDrop() calls on playing, and each of a hundred more on title, returns one of bread, draft, and none."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/roll-drop.test.ts", outputs = [ { id = "rolled", name = "The run the rolls were made on", kind = "image" } ] }
+
+[[review.categories.items]]
+id = "roll-drop-changes-nothing"
+title = "rollDrop changes nothing"
+description = "With a moth alive, Taper held, and setNextDrop('bread') posed on playing, a hundred rollDrop() calls leave the snapshot exactly as it was, nextDrop still bread."
+domains = ["progression"]
+failure_cap = "passable"
+validation = { script = "instrumentation/roll-drop-changes-nothing.test.ts", outputs = [ { id = "unchanged", name = "The state unchanged by the rolls", kind = "image" } ] }
+
+[[review.categories.items]]
 id = "set-screen-title"
 title = "setScreen('title') stands the game on the title screen"
 description = "setScreen('title') stands the game on title with menuIndex 0, discarding no run of its own."
@@ -743,14 +943,6 @@ description = "setScreen('playing') from title, howto, fallen, or dawn stands th
 domains = ["survival", "progression"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-playing.test.ts", outputs = [ { id = "playing", name = "The playing screen the pose stands on", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "set-screen-playing-keeps-rng"
-title = "setScreen('playing') leaves rngState as it is"
-description = "rngState holds the same value after setScreen('playing') as before it, so a run from a known seed is reset followed by setScreen('playing')."
-domains = ["survival", "progression"]
-failure_cap = "passable"
-validation = { script = "instrumentation/set-screen-playing-keeps-rng.test.ts", outputs = [ { id = "kept", name = "The generator across the pose", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "set-screen-playing-keeps-sim-time"
@@ -795,7 +987,7 @@ validation = { script = "instrumentation/set-screen-keeps-offers.test.ts", outpu
 [[review.categories.items]]
 id = "set-screen-levelup"
 title = "setScreen('levelup') stands the game on the level-up screen"
-description = "setScreen('levelup') from playing stands the game on levelup with menuIndex 0, drawing no offers and spending nothing from the generator; opening the overlay for real is a queued level-up and a tick."
+description = "setScreen('levelup') from playing stands the game on levelup with menuIndex 0, with offers, nextOffers, and the pool empty; opening the overlay for real is a queued level-up and a tick."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "instrumentation/set-screen-levelup.test.ts", outputs = [ { id = "levelup", name = "The level-up screen the pose stands on", kind = "image" } ] }
@@ -1747,7 +1939,7 @@ validation = { script = "instrumentation/overlay-off-at-start.test.ts", engines 
 [[review.categories.items]]
 id = "overlay-read-only"
 title = "The overlay reads the game without changing it"
-description = "Showing the overlay, letting it report over 120 ticks of a posed run, and hiding it leaves the game exactly as an identical run without it: the two runs' snapshots are identical."
+description = "Showing the overlay, letting it report over 120 frames, and hiding it leaves the run as it stood: on a posed run paused through the surface the documented run reads the same before and after the watched stretch, and on an isolated playing run the stretch raises tick by 120 and time to tick / TICK_HZ and changes nothing else."
 domains = ["survival", "arsenal", "progression", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The watched stretch the overlay reports over", kind = "replay" } ] }
@@ -1763,8 +1955,8 @@ title = "The Tick"
 
 [[review.categories.items]]
 id = "fixed-tick-division"
-title = "A span of game time reaches the same state however it is divided"
-description = "From one isolated posed run, 0.5 s delivered as one frame, as fifty frames of 0.01 s, and as thirty frames of TICK_DT each leave run.tick 30 higher and the same run and rngState, so the simulation advances in whole ticks and drawing advances nothing."
+title = "A span of game time runs the same ticks however it is divided"
+description = "From one isolated posed run holding a chasing moth and a flying bolt, 0.5 s delivered as one frame, as fifty frames of 0.01 s, and as thirty frames of TICK_DT each leave run.tick 30 higher, the moth thirty chase steps closer, and the bolt thirty steps along, within the project's motion tolerance, so the simulation advances in whole ticks and drawing advances nothing."
 domains = ["survival", "arsenal", "progression"]
 failure_cap = "scuffed"
 validation = { script = "clock/fixed-tick-division.test.ts", outputs = [ { id = "divided", name = "Three divisions of the same half second", kind = "replay" } ] }
@@ -3565,7 +3757,7 @@ validation = { script = "oil-splash/scatter-within-radius.test.ts", outputs = [ 
 [[review.categories.items]]
 id = "scatter-varies"
 title = "Puddles land at random points"
-description = "Across twenty firings from one seed the puddles land at more than one point, and two runs from different seeds land their first puddle at different points."
+description = "Across twenty firings of Oil Splash at level 1, with nothing posed for the landing point, the puddles land at more than one point."
 domains = ["arsenal"]
 failure_cap = "passable"
 validation = { script = "oil-splash/scatter-varies.test.ts", outputs = [ { id = "random", name = "Puddles at differing points", kind = "image" } ] }
@@ -3717,7 +3909,7 @@ validation = { script = "spark/fewer-when-fewer.test.ts", outputs = [ { id = "fe
 [[review.categories.items]]
 id = "target-varies"
 title = "The target is chosen at random"
-description = "With four moths within range and Spark firing forty times at level 1 from one seed, each of the four is struck at least once."
+description = "With four enemies within range and Spark firing sixteen times at level 1, with nothing posed for the target, every strike lands on one of the four and at least two distinct enemies are struck."
 domains = ["arsenal"]
 failure_cap = "passable"
 validation = { script = "spark/target-varies.test.ts", outputs = [ { id = "random", name = "The strikes spread across the targets", kind = "image" } ] }
@@ -4271,10 +4463,10 @@ validation = { script = "evolutions/chest-fallback-level.test.ts", outputs = [ {
 [[review.categories.items]]
 id = "chest-level-choice-varies"
 title = "The chest's leveled item is chosen at random"
-description = "With Taper at level 3 and Brass at level 1 held, chests opened from twenty different seeds level Taper on some and Brass on others."
+description = "With Taper at level 3 and Brass at level 1 held and nothing posed for the item, each of thirty chests opened over the two levels one of them, and the item leveled takes at least two distinct values across the thirty."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "evolutions/chest-level-choice-varies.test.ts", outputs = [ { id = "random", name = "The leveled item varying with the seed", kind = "image" } ] }
+validation = { script = "evolutions/chest-level-choice-varies.test.ts", outputs = [ { id = "random", name = "The leveled item varying between chests", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "chest-level-skips-maxed"
@@ -5107,12 +5299,12 @@ failure_cap = "scuffed"
 validation = { script = "progression/offers-three-distinct.test.ts", outputs = [ { id = "offers", name = "Three distinct offers", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "offers-vary-with-seed"
+id = "offers-drawn-at-random"
 title = "The offers are drawn at random"
-description = "Overlays opened over the same pool from ten different seeds do not all present the same three ids in the same order."
+description = "Ten overlays opened over the same pool, each left through setScreen('playing') so the slots stand, do not all present the same three ids in the same order."
 domains = ["progression"]
 failure_cap = "passable"
-validation = { script = "progression/offers-vary-with-seed.test.ts", outputs = [ { id = "random", name = "The draws differing by seed", kind = "image" } ] }
+validation = { script = "progression/offers-drawn-at-random.test.ts", outputs = [ { id = "random", name = "The draws differing between overlays", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "offers-whole-small-pool"
@@ -5599,7 +5791,7 @@ validation = { script = "director/spawn-ring-distance.test.ts", outputs = [ { id
 [[review.categories.items]]
 id = "spawn-angle-varies"
 title = "Spawn angles are drawn at random"
-description = "Across thirty window spawns from one seed the spawn angles are not all equal, and two runs from different seeds place their first spawn at different angles."
+description = "Across thirty window spawns of one run, with nothing posed for the angle, the spawn angles are not all equal."
 domains = ["survival"]
 failure_cap = "passable"
 validation = { script = "director/spawn-angle-varies.test.ts", outputs = [ { id = "angles", name = "Spawns around the ring", kind = "image" } ] }
@@ -5671,7 +5863,7 @@ validation = { script = "director/last-window-runs-to-dawn.test.ts", outputs = [
 [[review.categories.items]]
 id = "window-0"
 title = "Window 0 spawns moth every 1 s up to 20"
-description = "With the clock posed into window 0 (from 0:00), spawning on alone, and the timer at 0, the director spawns one enemy every 60 ticks, every spawn is one of moth and each of those types appears across thirty spawns, and with 20 commons posed alive no spawn lands, as row 0 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 0 (from 0:00), spawning on alone, and the timer at 0, the director spawns one enemy every 60 ticks, every spawn is one of moth, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 20 commons posed alive no spawn lands, as row 0 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-0.test.ts", outputs = [ { id = "window", name = "Window 0's spawns", kind = "replay" } ] }
@@ -5679,7 +5871,7 @@ validation = { script = "director/window-0.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-1"
 title = "Window 1 spawns moth, bat every 0.8 s up to 30"
-description = "With the clock posed into window 1 (from 0:30), spawning on alone, and the timer at 0, the director spawns one enemy every 48 ticks, every spawn is one of moth, bat and each of those types appears across thirty spawns, and with 30 commons posed alive no spawn lands, as row 1 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 1 (from 0:30), spawning on alone, and the timer at 0, the director spawns one enemy every 48 ticks, every spawn is one of moth, bat, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 30 commons posed alive no spawn lands, as row 1 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-1.test.ts", outputs = [ { id = "window", name = "Window 1's spawns", kind = "replay" } ] }
@@ -5687,7 +5879,7 @@ validation = { script = "director/window-1.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-2"
 title = "Window 2 spawns moth, bat, rat every 0.6 s up to 40"
-description = "With the clock posed into window 2 (from 1:00), spawning on alone, and the timer at 0, the director spawns one enemy every 36 ticks, every spawn is one of moth, bat, rat and each of those types appears across thirty spawns, and with 40 commons posed alive no spawn lands, as row 2 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 2 (from 1:00), spawning on alone, and the timer at 0, the director spawns one enemy every 36 ticks, every spawn is one of moth, bat, rat, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 40 commons posed alive no spawn lands, as row 2 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-2.test.ts", outputs = [ { id = "window", name = "Window 2's spawns", kind = "replay" } ] }
@@ -5695,7 +5887,7 @@ validation = { script = "director/window-2.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-3"
 title = "Window 3 spawns bat, rat, beetle every 0.5 s up to 50"
-description = "With the clock posed into window 3 (from 1:30), spawning on alone, and the timer at 0, the director spawns one enemy every 30 ticks, every spawn is one of bat, rat, beetle and each of those types appears across thirty spawns, and with 50 commons posed alive no spawn lands, as row 3 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 3 (from 1:30), spawning on alone, and the timer at 0, the director spawns one enemy every 30 ticks, every spawn is one of bat, rat, beetle, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 50 commons posed alive no spawn lands, as row 3 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-3.test.ts", outputs = [ { id = "window", name = "Window 3's spawns", kind = "replay" } ] }
@@ -5703,7 +5895,7 @@ validation = { script = "director/window-3.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-4"
 title = "Window 4 spawns bat, rat, beetle every 0.5 s up to 60"
-description = "With the clock posed into window 4 (from 2:00), spawning on alone, and the timer at 0, the director spawns one enemy every 30 ticks, every spawn is one of bat, rat, beetle and each of those types appears across thirty spawns, and with 60 commons posed alive no spawn lands, as row 4 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 4 (from 2:00), spawning on alone, and the timer at 0, the director spawns one enemy every 30 ticks, every spawn is one of bat, rat, beetle, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 60 commons posed alive no spawn lands, as row 4 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-4.test.ts", outputs = [ { id = "window", name = "Window 4's spawns", kind = "replay" } ] }
@@ -5711,7 +5903,7 @@ validation = { script = "director/window-4.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-5"
 title = "Window 5 spawns rat, beetle, wisp every 0.4 s up to 70"
-description = "With the clock posed into window 5 (from 2:30), spawning on alone, and the timer at 0, the director spawns one enemy every 24 ticks, every spawn is one of rat, beetle, wisp and each of those types appears across thirty spawns, and with 70 commons posed alive no spawn lands, as row 5 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 5 (from 2:30), spawning on alone, and the timer at 0, the director spawns one enemy every 24 ticks, every spawn is one of rat, beetle, wisp, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 70 commons posed alive no spawn lands, as row 5 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-5.test.ts", outputs = [ { id = "window", name = "Window 5's spawns", kind = "replay" } ] }
@@ -5719,7 +5911,7 @@ validation = { script = "director/window-5.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-6"
 title = "Window 6 spawns beetle, wisp, spider every 0.4 s up to 80"
-description = "With the clock posed into window 6 (from 3:00), spawning on alone, and the timer at 0, the director spawns one enemy every 24 ticks, every spawn is one of beetle, wisp, spider and each of those types appears across thirty spawns, and with 80 commons posed alive no spawn lands, as row 6 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 6 (from 3:00), spawning on alone, and the timer at 0, the director spawns one enemy every 24 ticks, every spawn is one of beetle, wisp, spider, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 80 commons posed alive no spawn lands, as row 6 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-6.test.ts", outputs = [ { id = "window", name = "Window 6's spawns", kind = "replay" } ] }
@@ -5727,7 +5919,7 @@ validation = { script = "director/window-6.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-7"
 title = "Window 7 spawns wisp, spider, crow every 0.35 s up to 90"
-description = "With the clock posed into window 7 (from 3:30), spawning on alone, and the timer at 0, the director spawns one enemy every 21 ticks, every spawn is one of wisp, spider, crow and each of those types appears across thirty spawns, and with 90 commons posed alive no spawn lands, as row 7 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 7 (from 3:30), spawning on alone, and the timer at 0, the director spawns one enemy every 21 ticks, every spawn is one of wisp, spider, crow, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 90 commons posed alive no spawn lands, as row 7 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-7.test.ts", outputs = [ { id = "window", name = "Window 7's spawns", kind = "replay" } ] }
@@ -5735,7 +5927,7 @@ validation = { script = "director/window-7.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-8"
 title = "Window 8 spawns spider, crow, shade every 0.3 s up to 100"
-description = "With the clock posed into window 8 (from 4:00), spawning on alone, and the timer at 0, the director spawns one enemy every 18 ticks, every spawn is one of spider, crow, shade and each of those types appears across thirty spawns, and with 100 commons posed alive no spawn lands, as row 8 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 8 (from 4:00), spawning on alone, and the timer at 0, the director spawns one enemy every 18 ticks, every spawn is one of spider, crow, shade, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 100 commons posed alive no spawn lands, as row 8 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-8.test.ts", outputs = [ { id = "window", name = "Window 8's spawns", kind = "replay" } ] }
@@ -5743,7 +5935,7 @@ validation = { script = "director/window-8.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-9"
 title = "Window 9 spawns crow, shade, moth every 0.3 s up to 110"
-description = "With the clock posed into window 9 (from 4:30), spawning on alone, and the timer at 0, the director spawns one enemy every 18 ticks, every spawn is one of crow, shade, moth and each of those types appears across thirty spawns, and with 110 commons posed alive no spawn lands, as row 9 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 9 (from 4:30), spawning on alone, and the timer at 0, the director spawns one enemy every 18 ticks, every spawn is one of crow, shade, moth, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 110 commons posed alive no spawn lands, as row 9 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-9.test.ts", outputs = [ { id = "window", name = "Window 9's spawns", kind = "replay" } ] }
@@ -5751,7 +5943,7 @@ validation = { script = "director/window-9.test.ts", outputs = [ { id = "window"
 [[review.categories.items]]
 id = "window-10"
 title = "Window 10 spawns shade, crow, hound every 0.25 s up to 120"
-description = "With the clock posed into window 10 (from 5:00), spawning on alone, and the timer at 0, the director spawns one enemy every 15 ticks, every spawn is one of shade, crow, hound and each of those types appears across thirty spawns, and with 120 commons posed alive no spawn lands, as row 10 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 10 (from 5:00), spawning on alone, and the timer at 0, the director spawns one enemy every 15 ticks, every spawn is one of shade, crow, hound, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 120 commons posed alive no spawn lands, as row 10 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-10.test.ts", outputs = [ { id = "window", name = "Window 10's spawns", kind = "replay" } ] }
@@ -5759,7 +5951,7 @@ validation = { script = "director/window-10.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-11"
 title = "Window 11 spawns bat, shade, hound every 0.25 s up to 130"
-description = "With the clock posed into window 11 (from 5:30), spawning on alone, and the timer at 0, the director spawns one enemy every 15 ticks, every spawn is one of bat, shade, hound and each of those types appears across thirty spawns, and with 130 commons posed alive no spawn lands, as row 11 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 11 (from 5:30), spawning on alone, and the timer at 0, the director spawns one enemy every 15 ticks, every spawn is one of bat, shade, hound, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 130 commons posed alive no spawn lands, as row 11 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-11.test.ts", outputs = [ { id = "window", name = "Window 11's spawns", kind = "replay" } ] }
@@ -5767,7 +5959,7 @@ validation = { script = "director/window-11.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-12"
 title = "Window 12 spawns rat, spider, hound every 0.2 s up to 140"
-description = "With the clock posed into window 12 (from 6:00), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of rat, spider, hound and each of those types appears across thirty spawns, and with 140 commons posed alive no spawn lands, as row 12 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 12 (from 6:00), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of rat, spider, hound, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 140 commons posed alive no spawn lands, as row 12 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-12.test.ts", outputs = [ { id = "window", name = "Window 12's spawns", kind = "replay" } ] }
@@ -5775,7 +5967,7 @@ validation = { script = "director/window-12.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-13"
 title = "Window 13 spawns beetle, crow, hound every 0.2 s up to 150"
-description = "With the clock posed into window 13 (from 6:30), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of beetle, crow, hound and each of those types appears across thirty spawns, and with 150 commons posed alive no spawn lands, as row 13 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 13 (from 6:30), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of beetle, crow, hound, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 150 commons posed alive no spawn lands, as row 13 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-13.test.ts", outputs = [ { id = "window", name = "Window 13's spawns", kind = "replay" } ] }
@@ -5783,7 +5975,7 @@ validation = { script = "director/window-13.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-14"
 title = "Window 14 spawns wisp, shade, hound every 0.2 s up to 160"
-description = "With the clock posed into window 14 (from 7:00), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of wisp, shade, hound and each of those types appears across thirty spawns, and with 160 commons posed alive no spawn lands, as row 14 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 14 (from 7:00), spawning on alone, and the timer at 0, the director spawns one enemy every 12 ticks, every spawn is one of wisp, shade, hound, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 160 commons posed alive no spawn lands, as row 14 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-14.test.ts", outputs = [ { id = "window", name = "Window 14's spawns", kind = "replay" } ] }
@@ -5791,7 +5983,7 @@ validation = { script = "director/window-14.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-15"
 title = "Window 15 spawns spider, crow, hound every 0.15 s up to 170"
-description = "With the clock posed into window 15 (from 7:30), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of spider, crow, hound and each of those types appears across thirty spawns, and with 170 commons posed alive no spawn lands, as row 15 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 15 (from 7:30), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of spider, crow, hound, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 170 commons posed alive no spawn lands, as row 15 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-15.test.ts", outputs = [ { id = "window", name = "Window 15's spawns", kind = "replay" } ] }
@@ -5799,7 +5991,7 @@ validation = { script = "director/window-15.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-16"
 title = "Window 16 spawns crow, shade, hound every 0.15 s up to 180"
-description = "With the clock posed into window 16 (from 8:00), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of crow, shade, hound and each of those types appears across thirty spawns, and with 180 commons posed alive no spawn lands, as row 16 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 16 (from 8:00), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of crow, shade, hound, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 180 commons posed alive no spawn lands, as row 16 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-16.test.ts", outputs = [ { id = "window", name = "Window 16's spawns", kind = "replay" } ] }
@@ -5807,7 +5999,7 @@ validation = { script = "director/window-16.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-17"
 title = "Window 17 spawns shade, hound, bat every 0.15 s up to 190"
-description = "With the clock posed into window 17 (from 8:30), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of shade, hound, bat and each of those types appears across thirty spawns, and with 190 commons posed alive no spawn lands, as row 17 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 17 (from 8:30), spawning on alone, and the timer at 0, the director spawns one enemy every 9 ticks, every spawn is one of shade, hound, bat, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 190 commons posed alive no spawn lands, as row 17 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-17.test.ts", outputs = [ { id = "window", name = "Window 17's spawns", kind = "replay" } ] }
@@ -5815,7 +6007,7 @@ validation = { script = "director/window-17.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-18"
 title = "Window 18 spawns shade, hound, crow every 0.1 s up to 200"
-description = "With the clock posed into window 18 (from 9:00), spawning on alone, and the timer at 0, the director spawns one enemy every 6 ticks, every spawn is one of shade, hound, crow and each of those types appears across thirty spawns, and with 200 commons posed alive no spawn lands, as row 18 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 18 (from 9:00), spawning on alone, and the timer at 0, the director spawns one enemy every 6 ticks, every spawn is one of shade, hound, crow, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 200 commons posed alive no spawn lands, as row 18 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-18.test.ts", outputs = [ { id = "window", name = "Window 18's spawns", kind = "replay" } ] }
@@ -5823,7 +6015,7 @@ validation = { script = "director/window-18.test.ts", outputs = [ { id = "window
 [[review.categories.items]]
 id = "window-19"
 title = "Window 19 spawns hound, shade, spider every 0.1 s up to 200"
-description = "With the clock posed into window 19 (from 9:30), spawning on alone, and the timer at 0, the director spawns one enemy every 6 ticks, every spawn is one of hound, shade, spider and each of those types appears across thirty spawns, and with 200 commons posed alive no spawn lands, as row 19 of SPAWN_WINDOWS gives."
+description = "With the clock posed into window 19 (from 9:30), spawning on alone, and the timer at 0, the director spawns one enemy every 6 ticks, every spawn is one of hound, shade, spider, each of those types posed through setNextSpawnType spawns on the next due tick, six spawns with nothing posed are each one of them, and with 200 commons posed alive no spawn lands, as row 19 of SPAWN_WINDOWS gives."
 domains = ["survival"]
 failure_cap = "scuffed"
 validation = { script = "director/window-19.test.ts", outputs = [ { id = "window", name = "Window 19's spawns", kind = "replay" } ] }
@@ -5999,10 +6191,10 @@ validation = { script = "director/swarm-gnats-scaled.test.ts", outputs = [ { id 
 [[review.categories.items]]
 id = "swarm-direction-varies"
 title = "A swarm's direction is drawn at random"
-description = "Swarms from two different seeds line up along different directions."
+description = "The 1:00 swarms of six isolated nights, with nothing posed for the direction, do not all line up along one direction."
 domains = ["survival"]
 failure_cap = "passable"
-validation = { script = "director/swarm-direction-varies.test.ts", outputs = [ { id = "random", name = "Two swarms from two seeds", kind = "image" } ] }
+validation = { script = "director/swarm-direction-varies.test.ts", outputs = [ { id = "random", name = "Swarms from several nights", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "elites-spawn-at-spawn-point"
@@ -6023,8 +6215,9 @@ validation = { script = "director/dark-pursues.test.ts", outputs = [ { id = "pur
 # --- Gems and Pickups ---------------------------------------------------------
 # What the dead leave behind: each gem tier's value, attraction and its
 # boundary, flight, collection, the pickups' own collection rule and each
-# kind's effect, the one-chest rule, and the drop roll read over a large
-# seeded sample with its tails pinned.
+# kind's effect, the one-chest rule, what a kill posed to drop each kind
+# leaves, and the drop roll's rates read over a large sample with its tails
+# pinned.
 [[review.categories]]
 id = "pickups"
 title = "Gems and Pickups"
@@ -6214,49 +6407,25 @@ failure_cap = "passable"
 validation = { script = "pickups/all-drafts-collected.test.ts", outputs = [ { id = "all", name = "Two drafts collected at once", kind = "image" } ] }
 
 [[review.categories.items]]
-id = "drop-at-most-one"
-title = "A common kill drops at most one of bread and draft"
-description = "Over 4000 seeded common kills at distinct points, no two pickups share a center, so no kill dropped both bread and a draft; and the generator ends the sample exactly where advanceRng leaves it after one draw for each kill that dropped bread and two for each kill that did not, so the second draw was made only when the first missed."
-domains = ["progression"]
-failure_cap = "passable"
-validation = { script = "pickups/drop-at-most-one.test.ts", outputs = [ { id = "one", name = "At most one pickup per kill", kind = "image" } ] }
-
-[[review.categories.items]]
 id = "bread-drops"
 title = "Bread drops"
-description = "Over 4000 seeded common kills, at least one bread is dropped."
+description = "A moth killed by a weapon with drops on and setNextDrop('bread') posed leaves exactly one gem and exactly one pickup, a bread, both at the moth's center."
 domains = ["progression"]
 failure_cap = "scuffed"
-validation = { script = "pickups/bread-drops.test.ts", outputs = [ { id = "bread", name = "The bread the sweep dropped", kind = "image" } ] }
+validation = { script = "pickups/bread-drops.test.ts", outputs = [ { id = "bread", name = "The bread the posed kill dropped", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "drafts-drop"
 title = "Drafts drop"
-description = "Over 4000 seeded common kills, at least one draft is dropped."
+description = "A moth killed by a weapon with drops on and setNextDrop('draft') posed leaves exactly one gem and exactly one pickup, a draft, both at the moth's center."
 domains = ["progression"]
 failure_cap = "scuffed"
-validation = { script = "pickups/drafts-drop.test.ts", outputs = [ { id = "drafts", name = "The drafts the sweep dropped", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "bread-rate"
-title = "Bread drops at BREAD_CHANCE"
-description = "Over 4000 seeded common kills the bread count is between 40 and 125, the expected 80 at 0.02 with both tails below one in a hundred thousand."
-domains = ["progression"]
-failure_cap = "passable"
-validation = { script = "pickups/bread-rate.test.ts", outputs = [ { id = "rate", name = "The bread count over the sample", kind = "image" } ] }
-
-[[review.categories.items]]
-id = "draft-rate"
-title = "A draft drops at DRAFT_CHANCE"
-description = "Over 4000 seeded common kills the draft count is between 3 and 45, the expected 19.6 at 0.005 after a failed bread draw with both tails below one in a hundred thousand."
-domains = ["progression"]
-failure_cap = "passable"
-validation = { script = "pickups/draft-rate.test.ts", outputs = [ { id = "rate", name = "The draft count over the sample", kind = "image" } ] }
+validation = { script = "pickups/drafts-drop.test.ts", outputs = [ { id = "drafts", name = "The draft the posed kill dropped", kind = "image" } ] }
 
 [[review.categories.items]]
 id = "elites-make-no-draw"
-title = "An elite kill draws for no pickup"
-description = "Over twenty mothwing kills at the same seed, with spawning, events, and every weapon that draws at random held off, each leaves exactly its chest and nothing else, and rngState reads the same after the tick of each kill as before it."
+title = "An elite kill makes no drop roll"
+description = "Over twenty mothwing kills with drops on and setNextDrop('bread') posed, each leaves exactly its chest and nothing else, and nextDrop still reads 'bread' after the tick of each kill."
 domains = ["progression"]
 failure_cap = "passable"
 validation = { script = "pickups/elites-make-no-draw.test.ts", outputs = [ { id = "chest", name = "The elite's chest alone", kind = "image" } ] }

@@ -38,7 +38,7 @@ export function normalizeAngle(degrees: number): number {
 }
 
 /** A whole, complete state holding the title screen's values. */
-export function createState(seed: number): VoluteState {
+export function createState(): VoluteState {
   const state: VoluteState = {
     screen: "title",
     score: 0,
@@ -63,7 +63,7 @@ export function createState(seed: number): VoluteState {
     emission: true,
     feed: true,
     muted: false,
-    rngState: seed >>> 0,
+    nextEmitted: null,
   };
   return state;
 }
@@ -72,7 +72,7 @@ export function createState(seed: number): VoluteState {
  * Return every declared field to its title-screen value.
  *
  * `muted` is deliberately untouched — muting is a player preference the runtime
- * owns — and so is `rngState`, which only a `reset` reseeds.
+ * owns.
  */
 export function toTitle(state: VoluteState): void {
   state.screen = "title";
@@ -94,6 +94,7 @@ export function toTitle(state: VoluteState): void {
   state.interlude = 0;
   state.simTime = 0;
   state.accumulator = 0;
+  state.nextEmitted = null;
 }
 
 /** The distinct charges standing on the channel right now, in charge order. */
@@ -106,23 +107,18 @@ export function chargesOnChannel(state: VoluteState): ChargeId[] {
 }
 
 /**
- * One charge from the game's generator, by the rule an emitted core follows:
- * uniformly over the charges already on the channel, and uniformly over the
- * level's charge set when the channel carries none.
+ * One charge by the rule an emitted core follows: uniformly over the charges
+ * already on the channel, and uniformly over the level's charge set when the
+ * channel carries none.
  */
 export function drawCharge(state: VoluteState): ChargeId {
   const present = chargesOnChannel(state);
-  const from = present.length > 0 ? present : levelSpec(state.level).charges;
-  const drawn = pick(state.rngState, from);
-  state.rngState = drawn.state;
-  return drawn.value;
+  return pick(present.length > 0 ? present : levelSpec(state.level).charges);
 }
 
 /** One charge drawn uniformly over the level's own charge set. */
 export function drawLevelCharge(state: VoluteState): ChargeId {
-  const drawn = pick(state.rngState, levelSpec(state.level).charges);
-  state.rngState = drawn.state;
-  return drawn.value;
+  return pick(levelSpec(state.level).charges);
 }
 
 /**
@@ -147,9 +143,17 @@ function deliver(state: VoluteState, s: number, charge: ChargeId): Core {
   return { charge, s, mark, hold: 0 };
 }
 
-/** Place a core at the inlet, drawing its charge and its mark by the level's rules. */
+/**
+ * Place a core at the inlet, drawing its charge and its mark by the level's
+ * rules.
+ *
+ * A charge the debug surface posed with `setNextEmitted` stands in for the
+ * draw, and this emission consumes it, so the one after is drawn again.
+ */
 export function emitCore(state: VoluteState): void {
-  const charge = drawCharge(state);
+  const posed = state.nextEmitted;
+  state.nextEmitted = null;
+  const charge = posed ?? drawCharge(state);
   state.cores.push(deliver(state, 0, charge));
   resegment(state);
 }

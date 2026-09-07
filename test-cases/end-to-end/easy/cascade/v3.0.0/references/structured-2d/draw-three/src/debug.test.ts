@@ -3,6 +3,8 @@ import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   TURN_COUNT,
 } from "./constants";
 import {
@@ -43,6 +45,7 @@ const OPERATIONS = [
   "clearFlyers",
   "setLaunchClock",
   "clearTrail",
+  "drawLaunchVx",
 ] as const;
 
 let h: Harness;
@@ -204,6 +207,18 @@ describe("the poses", () => {
 
     h.debug.setLaunchClock(0.07);
     expect(h.debug.snapshot().launchClock).toBe(0.07);
+  });
+
+  it("draws a launch vx in range and changes nothing", () => {
+    h.debug.setScreen("won");
+    h.debug.addCard("foundation", 0, "spades", 13, true);
+    const before = h.debug.snapshot();
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = h.debug.drawLaunchVx();
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
+    expect(h.debug.snapshot()).toEqual(before);
   });
 
   it("appends a card to its pile's top and touches nothing else", () => {

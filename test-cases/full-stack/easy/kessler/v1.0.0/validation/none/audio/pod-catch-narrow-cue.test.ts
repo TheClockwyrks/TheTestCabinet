@@ -20,8 +20,7 @@
 // falls at the deflector's center angle, dead-center in the span.
 //
 // THE WORLD IS ONE POD AND THE DEFLECTOR: isolate() empties the field and
-// holds both driver switches, and spawnPod leaves the seeded generator where
-// it stands.
+// holds both driver switches, and spawnPod makes no draw.
 //
 // AUDIO IS ARMED WITH A REAL KEY FIRST. A browser opens no audio context
 // without a user gesture, so armAudio presses a key through Chromium's own

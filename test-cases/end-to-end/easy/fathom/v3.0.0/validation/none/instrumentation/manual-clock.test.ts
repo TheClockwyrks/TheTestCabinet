@@ -1,29 +1,37 @@
-// instrumentation/manual-clock — the game holds still on the driver's clock, and
-// a step of `n` ticks is worth exactly `n` ticks however it is spent.
+// instrumentation/manual-clock — the game holds still when it is handed no
+// ticks, and a step of `n` ticks is worth exactly `n` ticks.
 //
-// `specs/instrumentation.md` puts both halves of the deterministic core on the
-// clock. `setAutoStep(false)` "stops the frame loop advancing the simulation from
-// the wall clock, so the game changes only when `advance` says so", and
-// `advance(ticks)` "runs `ticks` whole simulation ticks immediately and in order,
-// each worth exactly one `TICK_DT`. The unit is ticks rather than seconds, so
-// nothing is rounded: `advance(1)` runs one tick and `advance(120)` covers one
-// second of game time."
+// `specs/instrumentation.md` puts both halves of the render-free core on the
+// clock. `advance(ticks)` "runs `ticks` whole simulation ticks immediately and in
+// order, each worth exactly one `TICK_DT`. The unit is ticks rather than seconds,
+// so nothing is rounded: `advance(1)` runs one tick and `advance(120)` covers one
+// second of game time", and "`ticks` is a non-negative whole number, and
+// `advance(0)` runs nothing." Both halves are readable with nothing left to real
+// time: a step of no ticks changes nothing, and a counted step moves `simTime` by
+// exactly what those ticks are worth.
 //
 // WHY THIS IS WORTH ITS OWN POINT. Nothing else in this suite can report it.
-// Every other check poses a scenario and then measures it, and a build that keeps
-// running through the pose simply arrives at the measurement in a different world
-// than the one the check set up — so the point that fails is whichever one
-// happened to be posed on something that moved. A run failed two movement points
-// because the forager had swum off the tile with the opening in it, and an audio
-// point because the pellet under the forager had been eaten, cue and all, before
-// the window opened. Not one of the three is about the clock. This is where that
-// defect belongs.
+// Every other check poses a scenario and then measures it, and a build whose
+// `advance` runs a tick whatever count it was handed, or keeps a timer of its
+// own, arrives at the measurement in a different world than the one the check
+// set up — so the point that fails is whichever one happened to be posed on
+// something that moved. A run failed two movement points because the forager had
+// swum off the tile with the opening in it, and an audio point because the pellet
+// under the forager had been eaten, cue and all, before the window opened. Not
+// one of the three is about the clock. This is where that defect belongs.
+//
+// THE STEPS ARE COUNTED, NOT WAITED FOR. Whether the build's own loop keeps
+// stepping the game on the wall clock once `setAutoStep(false)` has taken it off
+// is a question only real time elapsing could answer, and this suite reads no
+// real time: what it reads is the surface's own clock operations, which are the
+// build's deliverable, so `advance(0)` is called a handful of times with nothing
+// else touching the game and the world is read before and after.
 //
 // THE WITNESS IS A PREDATOR, NOT THE FORAGER. A forager with no key held rests
 // under either reading of `specs/movement.md`, so it would sit still whether or
 // not the clock were running and prove nothing. A released predator patrols on
 // the game's own clock whatever the player does (`specs/predators.md`), so it is
-// what a still-running clock would visibly carry across its corridor. That it can
+// what a step that ran ticks would visibly carry across its corridor. That it can
 // move at all is checked FIRST, over a stretch this check itself steps, so a
 // build whose predators never move fails this point instead of passing it on
 // nothing.
@@ -32,19 +40,24 @@
 // by a wall is only contained while the build's own movement rule holds, and a
 // build that walked a body through rock would end this scenario with a life lost
 // and report a movement defect under a heading about the clock. So the witness is
-// posed a distance away that no body could cross in the time this check ever runs
-// the game for: {@link REACH_TICKS} ticks buys {@link MAX_REACH} units even at
+// posed a distance away that no body could cross in the ticks this check ever
+// steps: {@link REACH_TICKS} ticks buys {@link MAX_REACH} units even at
 // `GLOAMFIN_CHASE_SPEED` (`134`), the fastest figure `specs/predators.md` gives
-// anything, and the separation the fixture poses is read back off the snapshot and
-// held above it. It is past `GLOAMFIN_HEAR` (`64`, 2 tiles) many times over, so
-// the witness never takes a close-hearing fix at all, and its own ping floods
+// anything, and the separation the fixture poses is read back off the snapshot
+// and held above it. It is past `GLOAMFIN_HEAR` (`64`, 2 tiles) many times over,
+// so the witness never takes a close-hearing fix at all, and its own ping floods
 // corridors that do not reach the forager.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   BRIGHT_HOLD,
   GLOAMFIN_CHASE_SPEED,
+  SIM_TIME_EPS,
   TICK_DT,
   TICK_HZ,
 } from "../constants";
@@ -81,63 +94,29 @@ const ART = [
 /** The kind posed loose as the witness. */
 const WITNESS = "gloamfin";
 
-/** One second of real time with nothing stepping the game. */
-const SETTLE_MS = 1000;
-
 /**
- * The most simulation time that may accrue over that second, in seconds.
+ * Steps of no ticks, made with nothing else touching the game.
  *
- * Two ticks. A conforming build accrues exactly none — `setAutoStep(false)` gates
- * the frame loop's stepping (`specs/instrumentation.md`) — so this is not room
- * for a different reading of the rule. It is room for a single frame already in
- * flight when the flag went down. A build that ignores the flag reports about
- * `1.0` here.
+ * A handful, each a call of its own, so a build whose `advance(0)` runs a tick
+ * anyway has run several of them by the time the world is read back.
  */
-const MAX_DRIFT = 2 * TICK_DT;
+const HELD_STEPS = 8;
 
-/**
- * The furthest anything on the board may drift over that second, in logical
- * units.
- *
- * The slowest thing that moves under its own power is the drifter at
- * `DRIFTER_SPEED` (`64`) and the witness patrols at `PREDATOR_SPEED` (`116`), so
- * a running clock carries the slowest of them two tiles in a second. Four units
- * is an eighth of a tile: rounding, and nothing else.
- */
-const MAX_TRAVEL = 4;
+/** The ticks each of those steps asks for: none. */
+const HELD_TICKS = 0;
 
 /** One second of game time, as `specs/instrumentation.md` counts it. */
 const STEP_TICKS = TICK_HZ;
 
-/** The same second, spent sixty steps at a time. */
-const SPLIT_STEPS = 60;
-const SPLIT_TICKS = STEP_TICKS / SPLIT_STEPS;
-
-/**
- * How far a stepped span's simulation time may sit from the time those ticks are
- * worth, in seconds.
- *
- * One tick. `advance(ticks)` runs whole ticks "each worth exactly one `TICK_DT`",
- * so the exact answer is `ticks * TICK_DT` and this is the accumulation of a
- * double, not a tolerance on the rule.
- */
-const STEP_EPS = TICK_DT;
-
-/** Recorded ticks either side of the wait, so the clip opens and closes on it. */
+/** Recorded ticks either side of the held steps, so the clip opens and closes on them. */
 const OPEN_TICKS = 24;
 
 /**
- * Every tick this check ever puts through the game, stepped or not.
+ * Every tick this check asks the game for, over the whole run.
  *
- * The clip's two ends, the driver's own second, the same second spent sixty ways,
- * and the second of real time the wait covers — which a build that ignores the
- * flag would run for the whole of.
+ * The clip's two ends and the driver's own second; the held steps ask for none.
  */
-const REACH_TICKS =
-  2 * OPEN_TICKS +
-  STEP_TICKS +
-  SPLIT_STEPS * SPLIT_TICKS +
-  (SETTLE_MS / 1000) * TICK_HZ;
+const REACH_TICKS = 2 * OPEN_TICKS + STEP_TICKS;
 
 /**
  * The furthest any body could travel across the whole run, in logical units.
@@ -182,12 +161,11 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("advances only when the driver steps it, by exactly the ticks it is given", async () => {
+it("advances only by the ticks it is stepped, by exactly the ticks it is given", async () => {
   await startPlaying(h);
-  // The operation under test. `createHarness` and `reset` both leave manual
-  // stepping armed already, so on a conforming build this changes nothing; it is
-  // here because the flag is what this point is about and the call is the
-  // documented way to set it.
+  // `createHarness` and `reset` both leave manual stepping armed already, so on a
+  // conforming build this changes nothing; it is here because the flag is what
+  // takes the game off real time and the call is the documented way to set it.
   await h.debug.setAutoStep(false);
 
   const board = await poseMaze(h, ART);
@@ -206,7 +184,7 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
   const guard = await sceneGuard(h, { foragerParked: false });
 
   // The fixture's own geometry: far enough that no body travelling flat out for
-  // every tick this check runs could reach the forager, so nothing here rests on
+  // every tick this check steps could reach the forager, so nothing here rests on
   // the rock between them holding.
   const posed = await h.snapshot();
   assertGreaterThan(
@@ -217,36 +195,28 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
     MAX_REACH,
     `the units between the witness and the forager, against the ` +
       `${MAX_REACH.toFixed(0)} a body could cover over the ${REACH_TICKS} ticks ` +
-      `this check runs at GLOAMFIN_CHASE_SPEED (${GLOAMFIN_CHASE_SPEED})`,
+      `this check steps at GLOAMFIN_CHASE_SPEED (${GLOAMFIN_CHASE_SPEED})`,
   );
 
   const run = await captureReplay(h, "held", async () => {
-    // The clip opens on the posed room, before the wait.
+    // The clip opens on the posed room, before the held steps.
     await h.advance(OPEN_TICKS);
 
     const before = await h.snapshot();
-    // The measurement: real wall-clock time, with nothing stepping the build.
-    // The page is brought forward first, because this is the one reading in the
-    // suite that turns on real elapsed time: a browser that throttled a
-    // background page would slow the very frame loop a defect here shows up in,
-    // and quietly turn a build that ignores the flag into a passing one.
-    await h.page.bringToFront().catch(() => undefined);
-    await h.page.waitForTimeout(SETTLE_MS);
+    // The measurement: steps of no ticks, with nothing else touching the build.
+    for (let i = 0; i < HELD_STEPS; i += 1) await h.debug.advance(HELD_TICKS);
     const after = await h.snapshot();
 
     // And closes on it, so the two halves of the clip are the same picture.
     await h.advance(OPEN_TICKS);
 
-    // Now the driver's own step, and the same second spent sixty ways.
+    // Now the driver's own second, asked for in the one call the specification
+    // states the figure for, rather than a tick at a time through the harness.
     const stepFrom = await h.snapshot();
-    await h.advance(STEP_TICKS);
+    await h.debug.advance(STEP_TICKS);
     const stepTo = await h.snapshot();
 
-    const splitFrom = await h.snapshot();
-    for (let i = 0; i < SPLIT_STEPS; i += 1) await h.advance(SPLIT_TICKS);
-    const splitTo = await h.snapshot();
-
-    return { before, after, stepFrom, stepTo, splitFrom, splitTo };
+    return { before, after, stepFrom, stepTo };
   });
 
   requireSceneHeld(await h.snapshot(), guard);
@@ -257,35 +227,26 @@ it("advances only when the driver steps it, by exactly the ticks it is given", a
     run.stepTo,
     witness,
     "patrol over a second the driver stepped, which is what makes " +
-      "'nothing moved while real time passed' a reading rather than a tautology",
+      "'nothing moved across steps of no ticks' a reading rather than a tautology",
   );
 
-  assertLessThanOrEqual(
+  assertEqual(
     run.after.simTime - run.before.simTime,
-    MAX_DRIFT,
-    `seconds of simulation time accrued over ${SETTLE_MS} ms of real time with ` +
-      `nothing stepping the game`,
+    0,
+    `seconds of simulation time accrued over ${HELD_STEPS} calls of ` +
+      `advance(${HELD_TICKS}), each of which runs nothing`,
   );
-  assertLessThanOrEqual(
+  assertEqual(
     widestTravel(run.before, run.after),
-    MAX_TRAVEL,
-    `the furthest the forager or any predator drifted, in logical units, over ` +
-      `that same second — so the clock was held rather than a counter stalled`,
+    0,
+    `the furthest the forager or any predator moved, in logical units, over ` +
+      `those same steps — so the clock was held rather than a counter stalled`,
   );
 
-  const stepped = run.stepTo.simTime - run.stepFrom.simTime;
   assertLessThanOrEqual(
-    Math.abs(stepped - STEP_TICKS * TICK_DT),
-    STEP_EPS,
+    Math.abs(run.stepTo.simTime - run.stepFrom.simTime - STEP_TICKS * TICK_DT),
+    SIM_TIME_EPS,
     `how far simTime moved from the ${STEP_TICKS * TICK_DT} s that ` +
       `advance(${STEP_TICKS}) is worth`,
-  );
-
-  const split = run.splitTo.simTime - run.splitFrom.simTime;
-  assertLessThanOrEqual(
-    Math.abs(split - stepped),
-    STEP_EPS,
-    `how far the same second differs when it is covered as ${SPLIT_STEPS} ` +
-      `steps of ${SPLIT_TICKS} ticks instead of one step of ${STEP_TICKS}`,
   );
 });

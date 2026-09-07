@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 it("a non-adjacent move is refused and an empty cell adds nothing", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R1_NON_ADJACENT);
 
   // A press on the emitter starts the beam there: one cell, no segments

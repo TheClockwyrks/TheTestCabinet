@@ -56,9 +56,6 @@ import { playedSince } from "./cues";
  */
 const QUIET = framesFor(DOUBLE_CLICK_WINDOW);
 
-/** The seed the board is posed with; nothing this point reads turns on it. */
-const SEED = 1;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -70,7 +67,7 @@ afterEach(() => {
 });
 
 it("plays CUES.win once on the move that puts the fifty-second card home, and not on the quiet frames either side", async () => {
-  const posed = poseNearlyWon(h, { seed: SEED });
+  const posed = poseNearlyWon(h);
   const cues = watchCues(h);
 
   await h.advance(QUIET);

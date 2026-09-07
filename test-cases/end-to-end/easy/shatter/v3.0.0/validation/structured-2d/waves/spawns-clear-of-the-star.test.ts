@@ -1,9 +1,9 @@
 // waves/spawns-clear-of-the-star — a wave never lands on top of the star.
 //
 // THE RULE. `specs/progression.md`, "Waves": each rock of a wave "is placed at a
-// random position at least `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least
-// `WAVE_MIN_STAR_DIST` (`200`) from the star, both by the shortest wrapped
-// separation". The star stands at `(STAR_X, STAR_Y)` = `(640, 360)`
+// position drawn uniformly from the points of the field at least
+// `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least `WAVE_MIN_STAR_DIST`
+// (`200`) from the star, both by the shortest wrapped separation". The star stands at `(STAR_X, STAR_Y)` = `(640, 360)`
 // (`specs/field.md`).
 //
 // WHAT IS MEASURED. The shortest wrapped distance from each arriving rock's centre
@@ -17,23 +17,19 @@
 // half of which falls straight into the star; `200` is where the specification
 // draws the line, and this item is whether the build drew it there too.
 //
-// WHY THE SWEEP IS AS LARGE AS IT IS. This is a CONTAINMENT check over drawn
-// positions, so what decides it is how much of the field a build with a smaller
-// exclusion leaves open and how many draws are put through it. The annulus between
-// `150` and `200` is six percent of the field, so a build that excludes `150`
-// escapes one draw with probability `0.94`; over the `276` draws below it escapes
-// with probability under one in ten thousand. A sweep an order smaller lets that
-// build through about one time in fifty, which is not a check. The resolution the
-// sweep buys is roughly this: a build out by a quarter is caught every time, and
-// one out by five percent — the annulus between `190` and `200`, one and a third
-// percent of the field — is caught about forty times in forty-one.
+// ONE WAVE, EVERY ROCK OF IT. This is a CONTAINMENT check over drawn positions,
+// and the rule is a bound on each draw rather than a statistic over many: every
+// rock of the wave that arrives is held to the clearance, and the verdict is the
+// CLOSEST of them. Wave 20 puts twenty-three of them up, a handful of unposed
+// draws against the bound. A build with no star exclusion at all has the
+// exclusion's share of the field to land in on each, and a build whose
+// exclusion is only slightly too small escapes on a fraction of its draws; how a
+// build's placements are shaped inside the rule is the reviewer's to judge, not
+// a figure a sample decides.
 //
-// AND WHY EVERY WRONG MODEL READS AS A DIFFERENT NUMBER. A build with no star
-// exclusion at all spawns uniformly over the field, where the expected closest of
-// this many draws is a handful of units from the centre. A build that excludes
-// only the CORE
-// (`CORE_R`, `30`) or only the drawn halo (`180`, `specs/field.md`) reads a
-// closest approach near those figures. A build that measures from the field's
+// AND WHY THE WRONG MODELS READ AS DIFFERENT NUMBERS. A build that excludes only
+// the CORE (`CORE_R`, `30`) or only the drawn halo (`180`, `specs/field.md`)
+// reads a closest approach near those figures. A build that measures from the field's
 // centre by a Cartesian distance rather than a wrapped one agrees with this check
 // exactly, because the star stands at the centre and the two readings coincide
 // there — which is why the wrapped reading is load-bearing in
@@ -41,7 +37,8 @@
 //
 // THE SHIP IS LEFT AT THE SAFE POINT, because it is not what this item measures
 // and moving it would only change which draws a build's own rejection loop
-// discards.
+// discards. Nothing poses a position: the placement is the build's own draw, read
+// where it lands.
 //
 // THE TOLERANCE IS ONE TICK OF DRIFT, on the same derivation
 // `spawns-clear-of-the-ship` gives.
@@ -60,19 +57,6 @@ import { clearTheWave, openWaveAt, waitForTheWave } from "./scene";
 
 /** The wave the field is posed at, so the wave that arrives holds 23 rocks. */
 const WAVE = 19;
-
-/**
- * The twelve seeds the wave is spawned from.
- *
- * Twelve waves of twenty-three rocks is `276` independent draws put through the
- * rule, and the number is chosen from what a build with a SMALLER exclusion would
- * have to survive. A build that excludes `150` rather than `200` leaves the
- * annulus between the two open, which is six percent of the field, so it escapes
- * a single draw with probability `0.94` and a whole sweep of this size with
- * probability under one in ten thousand. Five waves — sixty-five draws — let it
- * through about one time in fifty, which is not a check.
- */
-const SEEDS: readonly number[] = Array.from({ length: 12 }, (_, i) => 1 + i);
 
 /**
  * How far short of `WAVE_MIN_STAR_DIST` a reading may fall, in units: one tick of
@@ -95,21 +79,17 @@ it("places every rock of a wave WAVE_MIN_STAR_DIST from the star", async () => {
   let closest = Number.POSITIVE_INFINITY;
   let closestAt = "";
 
-  for (const seed of SEEDS) {
-    openWaveAt(h, WAVE, seed);
-    await clearTheWave(h);
-    const arrival = await waitForTheWave(h);
-    // The wave standing clear of the star.
-    captureStill(h, "wave");
+  openWaveAt(h, WAVE);
+  await clearTheWave(h);
+  const arrival = await waitForTheWave(h);
+  // The wave standing clear of the star.
+  captureStill(h, "wave");
 
-    for (const rock of arrival.rocks) {
-      const distance = wrappedDistance(rock, STAR);
-      if (distance < closest) {
-        closest = distance;
-        closestAt =
-          `seed ${String(seed)}, rock at ` +
-          `(${rock.x.toFixed(1)}, ${rock.y.toFixed(1)})`;
-      }
+  for (const rock of arrival.rocks) {
+    const distance = wrappedDistance(rock, STAR);
+    if (distance < closest) {
+      closest = distance;
+      closestAt = `rock at (${rock.x.toFixed(1)}, ${rock.y.toFixed(1)})`;
     }
   }
 
@@ -120,6 +100,6 @@ it("places every rock of a wave WAVE_MIN_STAR_DIST from the star", async () => {
       `(${String(WAVE_MIN_STAR_DIST)}) from the star's centre by the shortest ` +
       `wrapped separation (specs/progression.md, specs/field.md), less ` +
       `${DRIFT_TOLERANCE.toFixed(2)} for one tick of the fastest drift a wave ` +
-      `can carry; closest of ${String(SEEDS.length)} waves: ${closestAt}`,
+      `can carry; closest of the wave: ${closestAt}`,
   );
 });

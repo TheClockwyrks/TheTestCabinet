@@ -29,7 +29,7 @@
 // fixes its operations, so they mean the same thing in every build: `setSnake`
 // poses a chain, the three driver switches hold one faculty still while another
 // is watched, and `reset` gives everything back. Posing through it is how a
-// scenario is reproducible, and it is the seam the case's specification
+// scenario is arranged from code, and it is the seam the case's specification
 // documents. `surface.ts` is that specification as types, and it is the only
 // description of the surface this project holds: the build's own module for it is
 // never imported.
@@ -962,9 +962,6 @@ interface CoilModel {
     predicate: (snapshot: CoilSnapshot) => boolean,
     options?: UntilOptions,
   ): Promise<UntilResult>;
-  /** Hand the game to the engine's own frame loop for `ms` of real time. */
-  runFor(ms: number): Promise<void>;
-
   /** Forget every call recorded so far, so the next frame's render stands alone. */
   clearCalls(): void;
   /** Run exactly one frame and hand back everything its render issued. */
@@ -1156,14 +1153,6 @@ const kit = createEngineCaseHarness<
           if (predicate(snapshot)) return { hit: true, ticks, snapshot };
         }
         return { hit: false, ticks: maxTicks, snapshot };
-      },
-
-      async runFor(ms: number) {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((done) => setTimeout(done, ms));
-        controller.abort();
-        await running;
       },
 
       clearCalls: () => {
@@ -1463,8 +1452,6 @@ export function gatePelletRespawn(h: Harness, enabled: boolean): void {
 
 /** A world to pose, one field per thing on the board or switch over it. */
 export interface Scene {
-  /** The seed `reset` lays the pellet generator with. */
-  seed?: number;
   /**
    * The obstacle course: cleared outright, left as the mode lays it, or laid as
    * exactly these cells. Cleared by default — see {@link poseScene}.
@@ -1476,6 +1463,8 @@ export interface Scene {
   dir?: Dir;
   /** The live pellet, or `null` for a board with none. */
   pellet?: Cell | null;
+  /** The cell the next spawn places the pellet on, posed for one spawn. */
+  nextPellet?: Cell;
   score?: number;
   best?: number;
   /** The multiplier M. */
@@ -1502,7 +1491,7 @@ export interface Scene {
  * a scene starts from is a fresh session, on the title, with the starting chain,
  * no pellet, and every switch on. Then, in this order and for the reasons above:
  * the obstacles, the chain, the direction, an emptied turn buffer, the pellet,
- * the figures, the switches, and finally the screen.
+ * the posed spawn, the figures, the switches, and finally the screen.
  *
  * The turn buffer is emptied whether or not the scene names a direction, because
  * a posed world holds no steering request the scenario did not make.
@@ -1521,7 +1510,7 @@ export interface Scene {
  * own.
  */
 export function poseScene(h: Harness, scene: Scene = {}): CoilSnapshot {
-  h.debug.reset(scene.seed === undefined ? undefined : { seed: scene.seed });
+  h.debug.reset();
 
   const obstacles = scene.obstacles ?? "cleared";
   if (obstacles !== "course") {
@@ -1550,6 +1539,9 @@ export function poseScene(h: Harness, scene: Scene = {}): CoilSnapshot {
   if (scene.pellet !== undefined) {
     if (scene.pellet === null) h.debug.clearPellet();
     else h.debug.setPellet(scene.pellet.col, scene.pellet.row);
+  }
+  if (scene.nextPellet !== undefined) {
+    h.debug.setNextPellet(scene.nextPellet.col, scene.nextPellet.row);
   }
 
   if (scene.score !== undefined) h.debug.setScore(scene.score);

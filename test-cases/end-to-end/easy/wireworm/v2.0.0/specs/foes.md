@@ -16,6 +16,21 @@ falls in.
 Every foe carries a velocity in logical units per second, integrated against the
 delta time of each update.
 
+## The spawner clocks
+
+The level keeps one clock per foe kind, in seconds: the glitch's, the
+corruptor's, and the dropper's. Opening a run and clearing a level set all three
+to `0`. From the kind's first level on, a clock standing at `0` is drawn at the
+start of the next update of active play, to the value each kind's section below
+states, and a clock above `0` counts down against each update's delta while the
+level's play is active and its foe spawning is running. When a clock reaches `0`
+its kind's entry or check happens and the clock is drawn again the same way.
+
+A clock holds its value whenever it is not counting down: through the level's
+banner, through a respawn, on every other screen, and while foe spawning is off.
+Losing a life leaves all three clocks standing, and the banner or the respawn
+giving way to active play leaves them standing too.
+
 ## The glitch
 
 The glitch skitters through the lower board and eats the field.
@@ -51,18 +66,19 @@ discharge fires and no arc is reported.
 ### When one appears
 
 Glitches begin at `GLITCH_FROM_LEVEL` (`2`), and none appears at level `1`. From
-that level on, a glitch enters after an interval drawn from the run's seeded
-generator between `GLITCH_MIN_INTERVAL` (`7.0` s) and `GLITCH_MAX_INTERVAL`
-(`12.0` s), timed from the moment the level's play becomes active, and each
-further glitch after another such interval.
+that level on, the glitch's clock is drawn uniformly between
+`GLITCH_MIN_INTERVAL` (`7.0` s) and `GLITCH_MAX_INTERVAL` (`12.0` s), so a
+glitch enters after such an interval timed from the moment the level's play
+becomes active, and each further glitch after another such interval.
 
 At most `GLITCH_MAX_ON_BOARD` (`2`) glitches are on the board at once. While two
 are on it, no further glitch enters.
 
-A glitch enters with its center on the center of the edge column of the edge it
-entered at, at `x` of `16` entering from the left and `1264` entering from the
-right, and on the center of a row drawn from the run's seeded generator between
-`8` and `15` inclusive. Its horizontal direction points inward from that edge.
+A glitch enters from the left edge or the right edge, each with probability
+`1/2`, with its center on the center of the edge column of that edge, at `x` of
+`16` entering from the left and `1264` entering from the right, and on the center
+of a row drawn uniformly from `8` to `15` inclusive. Its horizontal direction
+points inward from that edge.
 
 ## The dropper
 
@@ -96,13 +112,13 @@ of its fall. A bolt into a dropper whose hit flag is already set destroys it.
 ### When one appears
 
 Droppers begin at `DROPPER_FROM_LEVEL` (`3`), and none appears at levels `1` and
-`2`. From that level on, the nodes standing in rows `10` to `19` are counted
-every `DROPPER_CHECK_INTERVAL` (`2.5` s) of active play. When that count is below
-`DROPPER_SPARSE_THRESHOLD` (`8`), one dropper enters; when it is `8` or above,
-none does.
+`2`. From that level on, the dropper's clock is drawn to `DROPPER_CHECK_INTERVAL`
+(`2.5` s), so the nodes standing in rows `10` to `19` are counted every `2.5` s
+of active play. When that count is below `DROPPER_SPARSE_THRESHOLD` (`8`), one
+dropper enters; when it is `8` or above, none does.
 
 A dropper enters with its center on the center of row `0`, at `y` of `96`, and on
-the center of a column drawn from the run's seeded generator, falling.
+the center of a column drawn uniformly from `0` to `39` inclusive, falling.
 
 ## The corruptor
 
@@ -129,12 +145,13 @@ rather than up one level. It lays no node on an empty tile.
 ### When one appears
 
 Corruptors begin at `CORRUPTOR_FROM_LEVEL` (`5`), and none appears at levels `1`
-through `4`. From that level on, a corruptor enters after an interval drawn from
-the run's seeded generator between `CORRUPTOR_MIN_INTERVAL` (`14.0` s) and
-`CORRUPTOR_MAX_INTERVAL` (`22.0` s), timed from the moment the level's play
+through `4`. From that level on, the corruptor's clock is drawn uniformly between
+`CORRUPTOR_MIN_INTERVAL` (`14.0` s) and `CORRUPTOR_MAX_INTERVAL` (`22.0` s), so
+a corruptor enters after such an interval timed from the moment the level's play
 becomes active, and each further corruptor after another such interval.
 
-A corruptor enters with its center on the center of the edge column of the edge
-it entered at, at `x` of `16` entering from the left and `1264` entering from the
-right, and on the center of a row drawn from the run's seeded generator between
-`1` and `6` inclusive. Its direction points inward from that edge.
+A corruptor enters from the left edge or the right edge, each with probability
+`1/2`, with its center on the center of the edge column of that edge, at `x` of
+`16` entering from the left and `1264` entering from the right, and on the center
+of a row drawn uniformly from `1` to `6` inclusive. Its direction points inward
+from that edge.

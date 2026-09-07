@@ -10,8 +10,14 @@
 //
 // SO THE SAME FLIGHT IS FLOWN TWICE, once over an empty yard and once under a
 // maze heavy enough to move the ground route a long way, and the two are compared
-// sample for sample and frame for frame. Nothing else about the two runs differs:
-// the same seed, the same speed multiplier, the same unit.
+// sample for sample and frame for frame. Nothing else about the two flights
+// differs: the same speed multiplier, the same clock, the same unit, released
+// from the same entry.
+//
+// THE CLOCK IS THE CHECK'S. Both flights are a SPAN rather than a reading, and
+// specs/instrumentation.md guarantees that "an interval of simulation time
+// reaches the same state however it was divided into frames and whatever frame
+// rate produced it", so they are flown at {@link FLIGHT_HZ}.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLength, assertLessThan } from "../assert";
@@ -45,9 +51,12 @@ const MAZE = [
   { col: 43, row: 18 },
 ];
 
+/** The rate both flights are flown at. */
+const FLIGHT_HZ = 15;
+
 /** The multiplier the flight is watched at, and how often it is sampled. */
 const FLIGHT_SPEED = 8;
-const SAMPLE_FRAMES = 10;
+const SAMPLE_FRAMES = 1;
 const MAX_SAMPLES = 300;
 
 /** How far apart two samples of the same flight may be, in logical units. */
@@ -63,7 +72,7 @@ interface Flight {
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: FLIGHT_HZ });
 });
 
 afterEach(() => {

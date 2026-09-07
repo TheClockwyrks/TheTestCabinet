@@ -24,10 +24,10 @@ hit on its face or its edge by two different crossings, and a moving ring can
 sweep its own edge into a ball. The deflector bounce is a four-step pipeline
 (specular, english from the contact offset, an exit-angle clamp, the wave's ball
 speed), every other reflection preserves speed, takes a kick from a moving ring,
-and decays toward the radial, and the whole simulation is deterministic under a
-seeded pod stream with pinned draw order. Around the core sit per-wave orbit and
-speed formulas, five pod effects on tick-counted timers, waves, lives, and six
-screens. None of it is exotic, and all of it has to be right.
+and decays toward the radial, and every destruction runs a pod draw at stated
+odds. Around the core sit per-wave orbit and speed formulas, five pod effects on
+tick-counted timers, waves, lives, and six screens. None of it is exotic, and all
+of it has to be right.
 
 The full-stack half asks for two sprite sets, a spin sheet, three
 radially-symmetric particle systems played through the particle runtime, and
@@ -90,10 +90,10 @@ for every run:
 | Spec                    | Covers                                                                           |
 | ----------------------- | -------------------------------------------------------------------------------- |
 | `overview.md`           | What is built, the runtime, the code quality, and the commands run over it.      |
-| `field.md`              | The stage, the polar mapping, every contact radius, the tick order, determinism. |
+| `field.md`              | The stage, the polar mapping, every contact radius, and the tick order.          |
 | `deflector-and-ball.md` | The deflector, serving and launching, the bounce pipeline, and every reflection. |
 | `rings.md`              | The three rings, their derelicts, orbits, contacts, destruction, and waves.      |
-| `pods.md`               | The seeded pod draw, the five kinds, and the effects they grant.                 |
+| `pods.md`               | The pod draw and its odds, the five kinds, and the effects they grant.           |
 | `scoring.md`            | The points, the lives, and the wave bonus.                                       |
 | `screens.md`            | The six screens, their transitions, the menus, and the HUD.                      |
 | `controls.md`           | The actions, the keys bound to them, and what each does on each screen.          |

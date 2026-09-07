@@ -399,8 +399,8 @@ source = "specs/challenges.md"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; an API to drive and inspect the game from code through its own
+# The debugging and automation surface every build must expose: a render-free,
+# fixed-timestep core; an API to drive and inspect the game from code through its own
 # real input path; and a read-only debug overlay. Framed as an ordinary developer
 # affordance of the game. It branches on the engine for how the surface is reached
 # and for the clock operations only an engineless build owns.
@@ -551,7 +551,7 @@ format = 2
 # The debug and automation surface every other category is driven through: that
 # it is present and live, that each operation poses exactly the one thing its row
 # names, that the snapshot reports the whole documented shape, that an illegal
-# argument fails loudly, and that the core underneath is deterministic. An
+# argument fails loudly, and that the core underneath is render-free. An
 # operation that cannot be driven fails its own point here as well as leaving the
 # point it was meant to reach undecided.
 [[review.categories]]
@@ -591,21 +591,14 @@ validation = { script = "instrumentation/invalid-argument-fails-loudly.test.ts",
 [[review.categories.items]]
 id = "frame-division-independent"
 title = "An interval of game time reaches the same state however it is divided"
-description = "One second of game time covered as a single frame and as sixty frames of a sixtieth each leave the same sim.cycle, sim.fraction, mote positions, tallies and area, so a run at DEFAULT_SPEED_INDEX (1) advances by SPEEDS[sim.speed] cycles per second of game time whatever the frame that crossed each cycle."
+description = "One second of game time covered as a single frame and as sixty frames of a sixtieth each leave the carrying machine's run at sim.cycle SPEEDS[DEFAULT_SPEED_INDEX] (3), sim.fraction 0, the carried mote resting on the hex its tape carried it to and drawn at that hex's center, the gripper open, the tallies empty and the area the hexes the run banked, so a run advances by SPEEDS[sim.speed] cycles per second of game time whatever the frame that crossed each cycle."
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/frame-division-independent.test.ts", outputs = [ { id = "divided", name = "The same second covered two ways", kind = "replay" } ] }
-[[review.categories.items]]
-id = "run-repeats-identically"
-title = "The same machine on the same challenge produces the same run"
-description = "Two sessions posed with the same challenge, the same machine, the same motes and the same advanced game time report identical snapshots cycle for cycle, so no rule of the simulation draws on randomness."
-domains = ["campaign", "extras", "workshop"]
-failure_cap = "passable"
-validation = { script = "instrumentation/run-repeats-identically.test.ts", outputs = [ { id = "repeat", name = "The run replayed to the same state", kind = "replay" } ] }
+validation = { script = "instrumentation/frame-division-independent.test.ts", outputs = [ { id = "divided", name = "The second covered by sixty frames", kind = "replay" } ] }
 [[review.categories.items]]
 id = "collision-decided-at-sample-fractions"
 title = "Collision is decided at the sample fractions, not at rendered frames"
-description = "The worked collision of specs/simulation.md freezes at the same sample fraction k / 8 and the same separation whether the cycle is covered by one frame, by eight, or by sixty, so the sample fractions rather than the frames decide it."
+description = "The worked collision A of specs/simulation.md freezes at t = 3/8 with the named pair 36.10 apart whether the cycle is covered by one frame, by eight, or by sixty, so the sample fractions rather than the frames decide it."
 domains = ["campaign", "extras", "workshop"]
 failure_cap = "passable"
 validation = { script = "instrumentation/collision-decided-at-sample-fractions.test.ts", outputs = [ { id = "frozen", name = "The collision frozen at its sample fraction", kind = "replay" } ] }
@@ -623,20 +616,18 @@ description = "Every pose changes the state alone and sounds nothing, the three 
 domains = ["presentation"]
 failure_cap = "great"
 validation = { script = "instrumentation/poses-sound-nothing.test.ts", outputs = [ { id = "silent", name = "The silently posed machine", kind = "replay" } ] }
-# The five points below are scoped to `none`. `specs/instrumentation.md` puts the
+# The four points below are scoped to `none`. `specs/instrumentation.md` puts the
 # clock switch and `advance` on the engineless surface alone; under `simple-2d`
 # and `structured-2d` the hold and the stepping are the engine's own scripted
 # clock, so a check on them returns the same verdict for every build. That an
 # interval of game time reaches the same state however it is divided into frames
 # is the build's own under every engine, and is decided by
 # `frame-division-independent` above.
-[[review.categories.items]]
-id = "clock-switch-holds-the-simulation"
-title = "The clock switch takes the game off real time"
-description = "With setAutoStep(false) the frame loop stops advancing the simulation from the wall clock, so a live run's cycle and fraction stand still across real time and change only when advance says so; setAutoStep(true) returns the game to running itself."
-domains = ["workshop"]
-failure_cap = "broken"
-validation = { script = "instrumentation/clock-switch-holds-the-simulation.test.ts", engines = ["none"], outputs = [ { id = "held", name = "The run held off the wall clock", kind = "replay" } ] }
+#
+# The hold ITSELF carries no point. Whether the simulation stands still while the
+# clock is held off it can only be read by letting real time pass, which makes the
+# verdict the host's scheduling rather than the build's work, so there is no point
+# on it and every point here is decided by frames the check drove.
 [[review.categories.items]]
 id = "clock-switch-leaves-input"
 title = "Input carries on while the simulation is held"
@@ -740,10 +731,10 @@ validation = { script = "instrumentation/reset-leaves-the-clock-switch.test.ts",
 [[review.categories.items]]
 id = "snapshot-is-a-pure-read"
 title = "snapshot changes nothing"
-description = "A session whose every frame is snapshotted reaches exactly the state of an identical session that is never snapshotted, so the read has no effect of its own."
+description = "Two snapshots taken with no frame between them report the same state, and a run snapshotted after every one of thirty frames still stands where those frames put it: two and a half cycles on, the grip held, the arm mid-sweep, and the carried mote drawn on its arc, so the read has no effect of its own."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/snapshot-is-a-pure-read.test.ts", outputs = [ { id = "watched", name = "The watched run beside the unwatched one", kind = "replay" } ] }
+validation = { script = "instrumentation/snapshot-is-a-pure-read.test.ts", outputs = [ { id = "watched", name = "The run read after every frame", kind = "replay" } ] }
 [[review.categories.items]]
 id = "snapshot-shape-complete"
 title = "Snapshot reports the full documented shape"
@@ -1538,10 +1529,10 @@ validation = { script = "instrumentation/overlay-sources-report-the-live-game.te
 [[review.categories.items]]
 id = "overlay-read-only"
 title = "Reading the diagnostics changes nothing"
-description = "A session that shows the overlay and lets it report across a stretch of advanced frames reaches exactly the state of an identical session that never shows it, so every source is a pure read."
+description = "A run that shows the overlay and lets it report across three advanced cycles stands where those cycles put it: the carrying machine's mote resting on the hex its tape carried it to, the gripper open, and the cycle counter at 3, so every source is a pure read."
 domains = ["workshop"]
 failure_cap = "passable"
-validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The watched run beside the unwatched one", kind = "replay" } ] }
+validation = { script = "instrumentation/overlay-read-only.test.ts", engines = ["none"], outputs = [ { id = "watched", name = "The run watched through the overlay", kind = "replay" } ] }
 [[review.categories.items]]
 id = "overlay-shows-on-the-backtick-key"
 title = "The backtick key shows the overlay"
@@ -7442,7 +7433,7 @@ validation = { script = "audio/muted-holds-across-frames-and-screens.test.ts", o
 [[review.categories.items]]
 id = "playable-while-muted"
 title = "The game plays unchanged with sound muted"
-description = "With muted true, the same posed machine on the same challenge reaches sim.status complete on the same cycle, with the same metrics, as with muted false."
+description = "With muted true, a posed one-delivery machine reaches sim.status complete on the cycle its tape fixes, with the cost, cycles, area and tally the rules fix, so muting reaches nothing the simulation decides."
 domains = ["workshop", "presentation"]
 failure_cap = "scuffed"
 validation = { script = "audio/playable-while-muted.test.ts", outputs = [ { id = "muted-run", name = "The muted run reaching completion", kind = "replay" } ] }

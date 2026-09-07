@@ -109,8 +109,7 @@ at the one of lower index when both lie in it, and at the run's cell at index
 Within each column, every surviving gem falls to the lowest empty cell below it,
 keeping the order its column held it in and carrying its strain and its cut.
 Each cell still empty is then filled from the top of its column with a `plain`
-gem at strain `0`, whose kind is drawn uniformly from `GEM_KINDS` off the game's
-seeded random source.
+gem at strain `0`, whose kind is drawn uniformly at random from `GEM_KINDS`.
 
 Every gem the step leaves on the board carries `fell`, how far it traveled to
 reach the cell it now holds, as a whole number of rows:
@@ -244,7 +243,7 @@ cells whose exchange R1 and R3 both accept.
 
 An opening board has two properties: it holds no run under R4, and at least one
 legal swap exists on it. Every gem on it is `plain` at strain `0`, with its kind
-drawn from `GEM_KINDS` off the game's seeded random source.
+drawn at random from `GEM_KINDS`.
 
 The whole board is dealt in from above, so a gem dealt into row `r` carries a
 `fell` of at least `r + 1`, exactly as a refilled gem does under R9. Which figure

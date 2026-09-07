@@ -9,10 +9,10 @@
 
 import type { DeepReadonly } from "ts-essentials";
 import {
-  DEFAULT_SEED,
   GEM_TIERS,
   MAX_WEAPON_LEVEL,
   OFFER_COUNT,
+  OIL_SCATTER,
   PASSIVES,
   PASSIVE_SLOTS,
   PICKUP_KINDS,
@@ -24,10 +24,15 @@ import {
   type PickupKind,
   type WeaponId,
 } from "./constants";
-import { choose as chooseOffer } from "./flow";
-import type { Screen, WickDebugApi, WickSnapshot, WickState } from "./game";
+import { choose as chooseOffer, rngOf } from "./flow";
+import type {
+  NextDrop,
+  Screen,
+  WickDebugApi,
+  WickSnapshot,
+  WickState,
+} from "./game";
 import { menuRects, tabRects } from "./menus";
-import { nextRandom, seedState } from "./rng";
 import {
   cloneState,
   initialState,
@@ -42,13 +47,14 @@ import {
   spawnEnemy,
   spawnWindow,
 } from "./sim/enemies";
-import { forgetHits } from "./sim/effects";
+import { drawDrop, forgetHits } from "./sim/effects";
 import { unit } from "./sim/geometry";
 import { DAWN_TICK } from "./sim/lamplighter";
 import { candidatePool, isOfferId, isPassiveId } from "./sim/progression";
 import {
   PROJECTILE_WEAPONS,
   PUDDLE_WEAPONS,
+  isBaseWeapon,
   isEvolution,
   isWeaponId,
   makeProjectile,
@@ -115,6 +121,16 @@ function oneOf<T extends string>(
 }
 
 const RUN_SCREENS: readonly Screen[] = ["playing", "paused"];
+
+/** What `setNextDrop` takes. */
+const NEXT_DROPS: readonly NextDrop[] = ["bread", "draft", "none"];
+
+/** A posed angle: a real number of at least `0` and below `360`. */
+function angle(value: unknown): number {
+  const degrees = real(value, "degrees", 0);
+  if (degrees >= 360) invalid("degrees must be below 360");
+  return degrees;
+}
 
 function onRunScreen(state: View): boolean {
   return RUN_SCREENS.includes(state.screen);
@@ -251,11 +267,18 @@ export function snapshot(state: View): WickSnapshot {
       firedEvents: [...r.firedEvents],
       aliveCommons: aliveCommons(r),
       nextId: r.nextId,
+      nextSpawnAngle: r.nextSpawnAngle,
+      nextSwarmAngle: r.nextSwarmAngle,
+      nextSpawnType: r.nextSpawnType,
+      nextPuddleOffset:
+        r.nextPuddleOffset === null ? null : { ...r.nextPuddleOffset },
+      nextStrikeTarget: r.nextStrikeTarget,
+      nextChestItem: r.nextChestItem,
+      nextDrop: r.nextDrop,
     },
     muted: state.muted,
     accumulator: state.accumulator,
     simTime: state.simTime,
-    rngState: state.rngState,
   };
 }
 
@@ -301,12 +324,8 @@ export function createDebugApi(): WickDebugApi {
   return {
     version: WICK_DEBUG_VERSION,
 
-    reset(state, options) {
-      const seed =
-        options && options.seed !== undefined
-          ? whole(options.seed, "seed", 0, 2 ** 32 - 1)
-          : DEFAULT_SEED;
-      const draft = initialState(seedState(seed));
+    reset(state) {
+      const draft = initialState();
       draft.muted = state.muted;
       return draft;
     },
@@ -345,19 +364,61 @@ export function createDebugApi(): WickDebugApi {
       });
     },
 
-    /**
-     * Take `draws` draws off the generator and discard them, so `rngState`
-     * lands where `draws` random choices would have left it. Nothing is
-     * chosen with what was drawn. Applies on every screen, so it clones the
-     * state itself rather than going through `pose`.
-     */
-    advanceRng(state, draws) {
-      const count = whole(draws, "draws", 0);
-      const draft = cloneState(state);
-      for (let i = 0; i < count; i += 1) {
-        draft.rngState = nextRandom(draft.rngState).state;
+    // ---- Drawn outcomes ----------------------------------------------
+    // Each sets what the next draw of its kind decides; the draw consumes it.
+
+    setNextSpawnAngle(state, degrees) {
+      const value = angle(degrees);
+      return pose(state, (draft) => {
+        draft.run.nextSpawnAngle = value;
+      });
+    },
+    setNextSwarmAngle(state, degrees) {
+      const value = angle(degrees);
+      return pose(state, (draft) => {
+        draft.run.nextSwarmAngle = value;
+      });
+    },
+    setNextSpawnType(state, id) {
+      if (typeof id !== "string" || !isEnemyId(id))
+        invalid(`${String(id)} is no enemy`);
+      const type = id;
+      return pose(state, (draft) => {
+        draft.run.nextSpawnType = type;
+      });
+    },
+    setNextPuddleOffset(state, dx, dy) {
+      const x = real(dx, "dx");
+      const y = real(dy, "dy");
+      if (Math.hypot(x, y) > OIL_SCATTER) {
+        invalid(`an offset must be at most OIL_SCATTER (${OIL_SCATTER}) long`);
       }
-      return draft;
+      return pose(state, (draft) => {
+        draft.run.nextPuddleOffset = { x, y };
+      });
+    },
+    setNextStrikeTarget(state, id) {
+      return pose(state, (draft) => {
+        draft.run.nextStrikeTarget = enemyById(draft, id).id;
+      });
+    },
+    setNextChestItem(state, id) {
+      if (typeof id !== "string" || !(isBaseWeapon(id) || isPassiveId(id))) {
+        invalid(`${String(id)} is no base weapon or passive`);
+      }
+      const item = id;
+      return pose(state, (draft) => {
+        draft.run.nextChestItem = item;
+      });
+    },
+    setNextDrop(state, kind) {
+      const value: NextDrop = oneOf(kind, "kind", NEXT_DROPS);
+      return pose(state, (draft) => {
+        draft.run.nextDrop = value;
+      });
+    },
+    rollDrop(state) {
+      return drawDrop(rngOf(state));
     },
 
     setPlayerPosition(state, x, y) {

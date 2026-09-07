@@ -62,12 +62,12 @@ describe("the diagnostic sources", () => {
 
     expect(sources.get("nodes")?.()).toBe(1);
     expect(sources.get("run")?.()).toBe("score 250  lives 2  level 4/12");
-    expect(sources.get("cursor")?.()).toBe("100,688");
+    expect(sources.get("cursor")?.()).toBe("100, 688");
     expect(sources.get("bolts")?.()).toBe(1);
     expect(String(sources.get("worms")?.())).toMatch(
       /#\d+ len 2 head 7,5 dh \+1 dv \+1 dive n/,
     );
-    expect(String(sources.get("foes")?.())).toMatch(/#\d+ glitch 304,384/);
+    expect(String(sources.get("foes")?.())).toMatch(/#\d+ glitch 304, 384/);
   });
 
   test("an empty roster reads as none, and a long one is summarized", () => {

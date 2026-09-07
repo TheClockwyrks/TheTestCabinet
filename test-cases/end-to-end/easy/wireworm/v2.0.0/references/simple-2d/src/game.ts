@@ -77,6 +77,8 @@ export type Phase = "banner" | "active" | "respawn";
 
 export type FoeKind = "glitch" | "dropper" | "corruptor";
 
+export type Edge = "left" | "right";
+
 export interface Tile {
   readonly c: number;
   readonly r: number;
@@ -176,11 +178,14 @@ export interface WirewormState {
   readonly glitchTimer: number;
   readonly corruptorTimer: number;
   readonly dropperTimer: number;
+  readonly nextWormEntry: Edge | null;
+  readonly nextGlitchEntry: Tile | null;
+  readonly nextDropperEntry: Tile | null;
+  readonly nextCorruptorEntry: Tile | null;
 
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 
   /** The presses in flight. Derived bookkeeping; see {@link PressAnchor}. */
   readonly presses: readonly PressAnchor[];

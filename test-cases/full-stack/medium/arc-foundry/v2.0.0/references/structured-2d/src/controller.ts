@@ -97,8 +97,6 @@ export function activate(
   }
   if (action.startsWith("difficulty-")) {
     setDifficulty(w, action.slice(11) as DifficultyId);
-    // The generator `reset` seeded is the only one the game draws off
-    // (specs/instrumentation.md), so entering a run seeds nothing of its own.
     startRun(w);
     return;
   }

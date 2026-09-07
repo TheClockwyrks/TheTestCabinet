@@ -20,6 +20,7 @@
 // the two positions this file chooses for itself (the ring a posed crowd stands
 // on, and the margin a sweep allows) are named and are not assertions.
 
+import { assertLength } from "../assert";
 import {
   SPAWN_WINDOW,
   SPAWN_WINDOWS,
@@ -115,6 +116,92 @@ export async function collectSpawns(
     h.debug.clearEnemies();
   }
   return spawns;
+}
+
+/**
+ * How many spawns a window's cadence is read over: the spawn a posed timer of
+ * `0` lands at once and one more at the end of each of two whole intervals.
+ */
+export const CADENCE_SPAWNS = 3;
+
+/** How many window spawns a type reading draws with nothing posed. */
+export const UNPOSED_DRAWS = 6;
+
+/**
+ * Draw `count` window spawns one to a tick, each posed by emptying the field
+ * and setting the timer to `0` so the next tick spawns, and answer each spawn
+ * in order, read on the tick it landed. The field is left empty.
+ *
+ * The cap never binds, since the field is empty on every due tick, and every
+ * draw is the window's own: the type "chosen uniformly from the window's
+ * types" and the angle "drawn uniformly over the full circle"
+ * (specs/enemies.md, "The spawn timer" and "The spawn ring"). Each draw costs
+ * one tick whatever the window's interval, so a reading over many draws
+ * finishes in seconds.
+ */
+export async function drawSpawns(h: Harness, count: number): Promise<Spawn[]> {
+  const spawns: Spawn[] = [];
+  for (let draw = 0; draw < count; draw += 1) {
+    h.debug.clearEnemies();
+    h.debug.setSpawnTimer(0);
+    const s = await h.tick(1);
+    assertLength(
+      s.run.enemies,
+      1,
+      `enemies the window spawned on a tick its timer was due (draw ${draw + 1})`,
+    );
+    const [enemy] = s.run.enemies;
+    spawns.push({
+      tick: s.run.tick,
+      type: enemy.type,
+      id: enemy.id,
+      x: enemy.x,
+      y: enemy.y,
+      player: { x: s.run.player.x, y: s.run.player.y },
+    });
+  }
+  h.debug.clearEnemies();
+  return spawns;
+}
+
+/**
+ * The type of each of `count` window spawns drawn by {@link drawSpawns} with
+ * nothing posed, in order. Each must be one the row lists, which is what a
+ * handful of draws decides: a build that reaches into another window's roster
+ * fails on the first spawn outside the row.
+ */
+export async function drawTypes(
+  h: Harness,
+  count = UNPOSED_DRAWS,
+): Promise<EnemyId[]> {
+  return (await drawSpawns(h, count)).map((spawn) => spawn.type);
+}
+
+/** One posed type and the type of the spawn the next due tick landed. */
+export interface PosedSpawn {
+  posed: EnemyId;
+  spawned: EnemyId;
+}
+
+/**
+ * Pose each type of window `index`'s row in turn through `setNextSpawnType`,
+ * which "The next window spawn is of that type in place of the type drawn
+ * from the window's types" (specs/instrumentation.md, "Drawn outcomes"), and
+ * answer what the next due tick spawned under each, read the way
+ * {@link drawSpawns} reads a draw. A build whose window cannot spawn one of
+ * the row's types fails on that type.
+ */
+export async function drawPosedTypes(
+  h: Harness,
+  index: number,
+): Promise<PosedSpawn[]> {
+  const posedTypes: PosedSpawn[] = [];
+  for (const posed of SPAWN_WINDOWS[index].types) {
+    h.debug.setNextSpawnType(posed);
+    const [spawn] = await drawSpawns(h, 1);
+    posedTypes.push({ posed, spawned: spawn.type });
+  }
+  return posedTypes;
 }
 
 /** The ticks between consecutive spawns, in order. */
@@ -221,8 +308,9 @@ export function enemiesOfType(
  * `center + perp * (i - (SWARM_SIZE - 1) / 2) * spacing` about
  * `center = player + d * SPAWN_DISTANCE`, and those offsets sum to zero over
  * the whole line, so the gnats' centroid is the center and the unit vector
- * from the lamplighter to it is `d`. The angle itself is "drawn uniformly from
- * the seeded generator", so no check may expect a particular one.
+ * from the lamplighter to it is `d`. The angle itself is "drawn uniformly over
+ * the full circle", so no check may expect a particular one unless it posed
+ * one through `setNextSwarmAngle`.
  */
 export function swarmDirection(
   gnats: readonly EnemySnapshot[],

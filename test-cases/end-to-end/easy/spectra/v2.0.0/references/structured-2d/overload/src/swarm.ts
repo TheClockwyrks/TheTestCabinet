@@ -46,7 +46,7 @@ import {
   droneShots,
   setDronePhase,
 } from "./drones";
-import { randomPick, randomRange } from "./rng";
+import { randomPick, randomRange } from "./random";
 import type { FrameCues } from "./audio";
 import type { DroneState, SpectraState } from "./game";
 
@@ -345,13 +345,13 @@ function runDiveLaunching(state: SpectraState, h: number): void {
   if (state.diveClock < state.diveTarget) return;
 
   const standing = state.drones.filter((drone) => drone.phase === "formation");
-  const chosen = randomPick(state, standing);
+  const chosen = randomPick(standing);
   if (chosen === undefined) return;
 
   setDronePhase(chosen, "diving");
   state.diveClock = 0;
   state.diveTarget =
-    randomRange(state, DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(state.stage);
+    randomRange(DIVE_GAP_MIN, DIVE_GAP_MAX) * diveGapScale(state.stage);
 }
 
 /**

@@ -1,41 +1,23 @@
-// generation — reading a whole generated mine, and the shares it is held to.
-// SHARED HELPER.
+// generation — reading a whole generated mine in one crossing. SHARED HELPER.
 //
 // Not a suite: nothing here decides a review point, and vitest never collects a
 // file that is not named `*.test.ts`. What it is, is the one reading a generation
-// check cannot take a cell at a time, plus the arithmetic `specs/world.md` states
-// over what generation places.
+// check cannot take a cell at a time.
 //
 // WHY THE SCAN EXISTS. `specs/world.md` states every generation rule as a property
-// of a WHOLE BAND — the share of its cells that hold ore, the share that are gas,
-// that no band is sealed across its width, that exactly one node sits in it — and
-// a band at the Standard size is 125 rows of 30 columns. Every check that measures
-// one walks the same grid, so the walk is written once: one pass calls the build's
-// own `tileAt` on every cell and hands back the kinds as one string per row plus
-// the ore and material cells as short lists.
+// of a WHOLE BAND — where each kind may and may not appear, that no band is sealed
+// across its width, that exactly one node sits in it — and a band at the Standard
+// size is 125 rows of 30 columns. Every check that reads one walks the same grid,
+// so the walk is written once: one pass calls the build's own `tileAt` on every
+// cell and hands back the kinds as one string per row plus the ore and material
+// cells as short lists.
 //
 // Nothing here poses anything, and nothing here reads the build's own modules. The
 // reading is the same `tileAt` `specs/instrumentation.md` fixes, taken in bulk, and
 // a build whose surface is missing it fails the check that reached for it naming
 // what the specification requires.
-//
-// THE SHARES ARE THE SPECIFICATION'S OWN ARITHMETIC. `specs/world.md` states each
-// of the three ramped densities as a line from a share at the top of one band to a
-// share at the bottom of the mine, and a check that re-derived one in its own body
-// would be a check whose target drifts file by file. Each is transcribed here once,
-// under the name the specification gives it.
 
-import {
-  GAS_DENSITY_MAX,
-  GAS_DENSITY_MIN,
-  LAVA_DENSITY_MAX,
-  LAVA_DENSITY_MIN,
-  PLAYABLE_COL_MAX,
-  PLAYABLE_COL_MIN,
-  STONE_DENSITY_MAX,
-  STONE_DENSITY_MIN,
-  WORLD_COLS,
-} from "../constants";
+import { PLAYABLE_COL_MAX, PLAYABLE_COL_MIN, WORLD_COLS } from "../constants";
 import { fail } from "../assert";
 import {
   bandAtFraction,
@@ -51,61 +33,6 @@ import {
   type TileKind,
   type WorldSize,
 } from "../harness";
-
-/* -------------------------------------------------------------------------- */
-/* The shares specs/world.md states                                           */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The depth fraction the rockbed starts at, and the deepstone.
- *
- * `specs/world.md` divides the minable rows into four equal bands, so the band
- * index of a row is `min(3, floor(4 * depthFraction(row)))` and a band's top is a
- * quarter of the mine below the one before it.
- */
-export const ROCKBED_TOP_FRACTION = 0.25;
-export const DEEPSTONE_TOP_FRACTION = 0.5;
-
-/** A share rising linearly from `min` at fraction `from` to `max` at `1`. */
-function rampedDensity(
-  f: number,
-  from: number,
-  min: number,
-  max: number,
-): number {
-  if (f < from) return 0;
-  return min + ((max - min) * (f - from)) / (1 - from);
-}
-
-/** Unbreakable stone's share at depth fraction `f`; `0` in the topsoil. */
-export function stoneDensityAt(f: number): number {
-  return rampedDensity(
-    f,
-    ROCKBED_TOP_FRACTION,
-    STONE_DENSITY_MIN,
-    STONE_DENSITY_MAX,
-  );
-}
-
-/** Gas's share at depth fraction `f`; `0` in the topsoil. */
-export function gasDensityAt(f: number): number {
-  return rampedDensity(
-    f,
-    ROCKBED_TOP_FRACTION,
-    GAS_DENSITY_MIN,
-    GAS_DENSITY_MAX,
-  );
-}
-
-/** Lava's share at depth fraction `f`; `0` above the deepstone. */
-export function lavaDensityAt(f: number): number {
-  return rampedDensity(
-    f,
-    DEEPSTONE_TOP_FRACTION,
-    LAVA_DENSITY_MIN,
-    LAVA_DENSITY_MAX,
-  );
-}
 
 /**
  * The five kinds `specs/world.md`'s tile table marks minable: the kinds that
@@ -271,24 +198,6 @@ export function tallyBand(scan: MineScan, band: Band): BandTally {
   return { band, from, to, cells, kinds };
 }
 
-/** Sum two tallies of the same band, so several mines can be pooled into one share. */
-export function poolTallies(tallies: readonly BandTally[]): BandTally {
-  const first = tallies[0];
-  const kinds = Object.fromEntries(
-    (Object.keys(KIND_CHAR) as TileKind[]).map((kind) => [
-      kind,
-      tallies.reduce((sum, t) => sum + t.kinds[kind], 0),
-    ]),
-  ) as Record<TileKind, number>;
-  return {
-    band: first.band,
-    from: first.from,
-    to: first.to,
-    cells: tallies.reduce((sum, t) => sum + t.cells, 0),
-    kinds,
-  };
-}
-
 /**
  * Whether a route runs from any cell of `fromRow` to any cell of `toRow` across
  * cells `passable` admits, moving orthogonally and staying within the rows given.
@@ -364,17 +273,13 @@ export function cellKey(col: number, row: number): number {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Generate a mine from `seed` at `size` and read the whole grid back.
+ * Generate a fresh mine at `size` and read the whole grid back.
  *
  * The expedition is opened through the surface rather than through the menus, so
  * a build with a broken title screen still has its generation graded.
  */
-export function generatedMine(
-  h: Harness,
-  seed: number,
-  size?: WorldSize,
-): MineScan {
-  openExpedition(h, { seed, size });
+export function generatedMine(h: Harness, size?: WorldSize): MineScan {
+  openExpedition(h, { size });
   return scanMine(h);
 }
 

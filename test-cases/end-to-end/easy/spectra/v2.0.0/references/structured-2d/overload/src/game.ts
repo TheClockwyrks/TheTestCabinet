@@ -39,12 +39,7 @@ import type {
 } from "@clockwyrks/structured-2d";
 import { defineCues, noCues, playCues } from "./audio";
 import { syncField } from "./actors";
-import {
-  DEFAULT_SEED,
-  DIVE_FIRST_DELAY,
-  LEVELS,
-  START_LIVES,
-} from "./constants";
+import { DIVE_FIRST_DELAY, LEVELS, START_LIVES } from "./constants";
 import { SpectraController } from "./controller";
 import { createDebugApi, type SpectraDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -204,7 +199,6 @@ export class SpectraState extends SpectraStateBase {
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 }
 
 /**

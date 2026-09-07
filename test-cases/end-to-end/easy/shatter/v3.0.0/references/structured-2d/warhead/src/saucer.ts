@@ -67,10 +67,10 @@ function awayFromStar(saucer: SaucerState): number {
  * steering that keeps it clear of the star's core.
  *
  * The weave's direction is opposite the vertical direction it is travelling in
- * at that moment, so its vertical direction reverses at every reroll; the first
- * reroll, taken from a saucer that entered with no vertical component, is drawn
- * at random. The core steering overrides the result whenever the course it is on
- * would bring it inside the standoff.
+ * at that moment, so its vertical direction reverses at every reroll; from no
+ * vertical motion at all it takes the weave direction the saucer carries, drawn
+ * when it entered or posed. The core steering overrides the result whenever the
+ * course it is on would bring it inside the standoff.
  */
 export function steerSaucer(state: ShatterState): void {
   const saucer = state.saucer;
@@ -79,8 +79,7 @@ export function steerSaucer(state: ShatterState): void {
   saucer.weaveClock -= TICK_DT;
   if (saucer.weaveClock <= 0) {
     saucer.weaveClock += SAUCER_WEAVE_INTERVAL;
-    const direction =
-      saucer.vy === 0 ? nextSign(state) : saucer.vy > 0 ? -1 : 1;
+    const direction = saucer.vy === 0 ? saucer.weave : saucer.vy > 0 ? -1 : 1;
     saucer.vy = direction * SAUCER_WEAVE_SPEED;
   }
 
@@ -113,7 +112,8 @@ export function integrateSaucer(state: ShatterState, moves: MoveTable): void {
 
 /**
  * The saucer's gun: one shot every `SAUCER_FIRE_INTERVAL`, aimed at the ship's
- * current position and offset by an angle drawn afresh for every shot.
+ * current position and offset by an angle drawn afresh for every shot, or by
+ * the error the debug surface posed for this one, which the shot consumes.
  */
 export function fireSaucerGun(state: ShatterState): void {
   const saucer = state.saucer;
@@ -123,9 +123,12 @@ export function fireSaucerGun(state: ShatterState): void {
   if (saucer.fireClock > 0) return;
   saucer.fireClock += SAUCER_FIRE_INTERVAL;
 
+  const error =
+    state.nextSaucerAim ?? nextRange(-SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+  state.nextSaucerAim = null;
   const aim =
     Math.atan2(deltaY(saucer.y, state.ship.y), deltaX(saucer.x, state.ship.x)) +
-    nextRange(state, -SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+    error;
 
   addEnemyBulletTo(
     state,
@@ -139,20 +142,28 @@ export function fireSaucerGun(state: ShatterState): void {
 /** The visit ends: the slot empties and the gap to the next arrival is drawn. */
 export function departSaucer(state: ShatterState): void {
   state.saucer = null;
-  state.saucerDue = nextRange(state, SAUCER_GAP_MIN, SAUCER_GAP_MAX);
+  state.saucerDue = nextRange(SAUCER_GAP_MIN, SAUCER_GAP_MAX);
   state.saucerClock = 0;
 }
 
-/** A saucer arrives: at the left edge or the right, at a row drawn across the field. */
+/**
+ * A saucer arrives: at the left edge or the right, at a row drawn across the
+ * field, with a weave direction of its own. A posed edge or row is taken in
+ * place of its draw and consumed (`specs/instrumentation.md`).
+ */
 export function arriveSaucer(state: ShatterState, cues: FrameCues): void {
-  const fromLeft = nextFloat(state) < 0.5;
-  const row = nextRange(state, SAUCER_R, FIELD_H - SAUCER_R);
+  const edge = state.nextSaucerEdge ?? (nextFloat() < 0.5 ? "left" : "right");
+  state.nextSaucerEdge = null;
+  const row = state.nextSaucerRow ?? nextRange(SAUCER_R, FIELD_H - SAUCER_R);
+  state.nextSaucerRow = null;
+  const fromLeft = edge === "left";
   const saucer = addSaucerTo(
     state,
     fromLeft ? SAUCER_R : FIELD_W - SAUCER_R,
     row,
   );
   saucer.vx = fromLeft ? SAUCER_SPEED : -SAUCER_SPEED;
+  saucer.weave = nextSign();
   cues.saucer = true;
 }
 

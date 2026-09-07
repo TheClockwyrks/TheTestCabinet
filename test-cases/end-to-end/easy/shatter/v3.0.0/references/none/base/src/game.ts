@@ -7,9 +7,9 @@
 //   * THE FIXED STEP. `specs/simulation.md` puts the timestep in the game rather
 //     than in the runtime: the loop measures how much real time a frame covered
 //     and hands it over, and the game runs whole `TICK_DT` ticks and carries the
-//     remainder into the next frame. So an interval of game time reaches the same
-//     state however it was divided into frames, which is what makes a driven
-//     scenario reproducible on any machine.
+//     remainder into the next frame. So a step means the same thing whatever the
+//     frame rate, which is what lets a driven scenario be stepped rather than
+//     timed.
 //   * THE ORDER INSIDE ONE TICK. `specs/simulation.md` fixes it — control forces,
 //     the star's pull, velocity, position, the wrap, then collision — and
 //     {@link stepPlaying} is that list, in that order, with each line a call into
@@ -23,7 +23,6 @@
 
 import {
   CUES,
-  DEFAULT_SEED,
   GAMEOVER_ITEMS,
   PAUSE_ITEMS,
   TICK_DT,
@@ -258,7 +257,7 @@ export const game: Game<ShatterState> = {
   initialize(api: InitApi): ShatterState {
     registerActions(api);
     defineCues(api);
-    const state = createState(DEFAULT_SEED);
+    const state = createState();
     registerDiagnostics(api, state);
     return state;
   },

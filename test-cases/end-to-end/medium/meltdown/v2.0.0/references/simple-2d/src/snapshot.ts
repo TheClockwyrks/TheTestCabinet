@@ -141,6 +141,7 @@ export interface MeltdownSnapshot {
   readonly speed: number;
   readonly muted: boolean;
   readonly waveSpawning: boolean;
+  readonly spawnVent: VentName | null;
   readonly pointer: {
     readonly x: number;
     readonly y: number;
@@ -208,6 +209,7 @@ export function snapshotOf(state: MeltdownState): MeltdownSnapshot {
     speed: state.speed,
     muted: state.muted,
     waveSpawning: state.waveSpawning,
+    spawnVent: state.spawnVent,
     pointer: {
       x: state.pointer.x,
       y: state.pointer.y,

@@ -51,6 +51,11 @@ export interface BallState {
   readonly spin: number;
   readonly held: boolean;
   readonly holdTimer: number;
+{{#if (eq variant.slug "multi")}}
+  readonly launchAngle: number;
+{{else}}
+  readonly serveSign: 1 | -1;
+{{/if}}
   readonly trail: readonly TrailSample[];
 }
 
@@ -90,8 +95,6 @@ export interface CaromState {
 
   readonly simTime: number;
   readonly muted: boolean;
-  readonly seed: number;
-  readonly rngState: number;
 }
 ```
 
@@ -195,6 +198,7 @@ ball carries:
 | `spin` | The signed spin scalar, in units per second squared, as `specs/balls.md` states. |
 | `held` | Whether that ball waits at its home point rather than flying. It is the ball's own flag, and a pause leaves it as it was. |
 | `holdTimer` | Seconds remaining of that wait. |
+| `launchAngle` | The angle, in radians, that ball's next launch leaves along. `specs/balls.md` states when it is drawn and how the launch uses it. |
 | `trail` | That ball's trail samples, oldest first, each a position in logical units and the simulation time it was recorded at. |
 
 On every `countdown` or `playing` frame, after the balls have been advanced, each
@@ -213,6 +217,7 @@ places it and what removes it. The ball carries:
 | `spin` | The signed spin scalar, in units per second squared, as `specs/balls.md` states. |
 | `held` | Whether the ball waits at its home point rather than flying. It is the ball's own flag, and a pause leaves it as it was. |
 | `holdTimer` | Seconds remaining of that wait. |
+| `serveSign` | The vertical sign the ball's serve takes, `1` or `-1`. `specs/balls.md` states when it is drawn and how the serve uses it. |
 | `trail` | The ball's trail samples, oldest first, each a position in logical units and the simulation time it was recorded at. |
 
 On every `countdown` or `playing` frame, after the ball has been advanced, the
@@ -248,14 +253,12 @@ Each obstacle carries `cx` and `cy`, its fixed center in logical units, which is
 `OBSTACLE_CENTERS[index]`.
 {{/if}}
 
-### Time, sound, and randomness
+### Time and sound
 
 | Field | Holds |
 | --- | --- |
 | `simTime` | Accumulated simulation time, in seconds. The game adds every update's delta time to it, whatever the screen, the paused screen and the menus included.{{#if (eq engine.slug "structured-2d")}} It is the game's own accumulator, carried across level transitions with the rest of the state that outlives a world.{{/if}} |
 | `muted` | The game's readable copy of the runtime's mute bit, which `specs/audio.md` states the game mirrors. |
-| `seed` | The seed the game's random generator was last seeded from. |
-| `rngState` | The whole state of that generator, as a single number. |
 
 ## The state at the title screen
 
@@ -276,9 +279,9 @@ The game opens on the title screen holding the values below.
 | Each paddle | `cy` at `FIELD_CY`, `vy` and `drivenVy` `0`, not driven |
 | The AI | `tracking` and `movement` both `true` |
 {{#if (eq variant.slug "multi")}}
-| The balls | all `BALL_COUNT` present, each at its own home point, held, `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, empty trail |
+| The balls | all `BALL_COUNT` present, each at its own home point, held, `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, empty trail, `launchAngle` drawn as `specs/balls.md` states |
 {{else}}
-| The ball | present at its home point, held, `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, empty trail |
+| The ball | present at its home point, held, `holdTimer` at `HOLD_TIME`, zero velocity, zero spin, empty trail, `serveSign` drawn as `specs/balls.md` states |
 {{/if}}
 {{#if (eq variant.slug "gyre")}}
 | The obstacles | both present, upright at `OBSTACLE_CENTERS` |
@@ -288,4 +291,3 @@ The game opens on the title screen holding the values below.
 {{/if}}
 | `simTime` | `0` |
 | `muted` | the runtime's mute bit |
-| `seed`, `rngState` | `DEFAULT_SEED` (`1`), and the generator seeded from it |

@@ -11,9 +11,7 @@
 // tick, and an audio bus that records what it was asked to play instead of making
 // a sound.
 
-import { DEFAULT_SEED } from "./constants";
 import { game } from "./game";
-import { seed } from "./rng";
 import type { PointerSample } from "./pointer";
 import type { UpdateApi } from "./runtime";
 import type { ShatterState } from "./types";
@@ -118,10 +116,9 @@ export interface Driven {
  * A game at its title values, ready to be driven a tick at a time.
  *
  * The state comes from the game's own `initialize`, so a test exercises the same
- * registration, the same cues and the same starting state a browser would. The
- * generator is then reseeded, so a scenario can be run again from another seed.
+ * registration, the same cues and the same starting state a browser would.
  */
-export function drive(seedValue: number = DEFAULT_SEED): Driven {
+export function drive(): Driven {
   const input = new TestInput();
   const audio = new TestAudio();
   const api: UpdateApi = {
@@ -142,7 +139,6 @@ export function drive(seedValue: number = DEFAULT_SEED): Driven {
     audio: { define: () => undefined },
     diagnostics: { register: () => undefined },
   });
-  seed(state, seedValue);
   const advance = (ticks: number): void => {
     for (let i = 0; i < ticks; i += 1) {
       game.tick(state, api);
@@ -171,8 +167,8 @@ export function drive(seedValue: number = DEFAULT_SEED): Driven {
  * test is deliberately left ON: it is the subject of several scenarios, and a
  * scenario that wants it off says so.
  */
-export function posed(seedValue: number = DEFAULT_SEED): Driven {
-  const driven = drive(seedValue);
+export function posed(): Driven {
+  const driven = drive();
   const state = driven.state;
   state.screen = "playing";
   state.menuIndex = 0;

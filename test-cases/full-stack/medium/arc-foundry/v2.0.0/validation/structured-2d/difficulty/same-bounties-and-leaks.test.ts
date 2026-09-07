@@ -11,7 +11,14 @@
 // run, off the refinement track, off standing structures, off the inspector, and
 // off a unit actually dying or leaking — and a build can leak the difficulty into
 // one of the five and not the others, so each is decided on its own and a grade
-// names which one drifted. This one is about what a kill pays and what a leak costs, for every type of the roster.
+// names which one drifted. This one is about what a kill pays, what a wave's clear
+// pays, and what a leak costs, for every type of the roster.
+//
+// THE THREE ARE READ APART. A kill's bounty and a wave's clear both pay into the
+// same counter, so the six kills are driven with the wave's clear-and-pay
+// resolution held (`specs/instrumentation.md`), which leaves the bounty as the
+// only thing that can move the bank; the hold then comes off over an empty yard
+// and what lands is the bonus on its own.
 //
 // THE COMPARISON IS BETWEEN THE DIFFICULTIES, not against the specification's
 // numbers: whether the starting Charge is `10`, what a Slug's bounty is, and what
@@ -33,10 +40,10 @@ import {
   captureStill,
   createHarness,
   type Harness,
+  holdWaveClear,
   openYard,
   parkUnit,
   releaseUnit,
-  ticks,
 } from "../harness";
 
 /** The wave every economy reading below is taken at. */
@@ -86,18 +93,21 @@ it("pays the same bounties and charges the same leaks at every difficulty", asyn
       const bounties: Record<string, number> = {};
       const leaks: Record<string, number> = {};
 
+      // THE KILLS, ON ONE YARD WITH THE WAVE'S RESOLUTION HELD. Each unit is held
+      // where it stands, dropped to a single point of health, and burned off it, so
+      // nothing on the yard is firing and nothing is walking; and with the clear
+      // held "no wave-clear bonus is paid" (specs/instrumentation.md), so what each
+      // death moved the bank by is its bounty and nothing else.
+      openYard(h, { difficulty, wave: WAVE, charge: 0 });
+      holdWaveClear(h);
       for (const unit of LOAD_ROSTER) {
-        // A KILL. The unit is held where it stands, dropped to a single point of
-        // health, and burned off it — so nothing on the yard is firing, nothing is
-        // walking, and the only Charge that can arrive is the bounty the death
-        // pays plus the bonus the wave's clear pays behind it.
-        openYard(h, { difficulty, wave: WAVE, charge: 0 });
+        const banked = h.snapshot().charge;
         parkUnit(h, unit.type, tileCenter(20, 20), {
           hp: 1,
           burn: { dps: 500, seconds: 3 },
         });
         const killed = await h.until((s) => s.units.length === 0, {
-          maxFrames: ticks(5),
+          maxFrames: h.ticks(5),
         });
         assertEqual(
           killed.hit,
@@ -105,24 +115,40 @@ it("pays the same bounties and charges the same leaks at every difficulty", asyn
           `a burned ${unit.type} on one point of health to die within five ` +
             "seconds (specs/enemies.md)",
         );
-        // The wave clears on the advance after its last unit has gone.
-        await h.advance(2);
-        bounties[unit.type] = h.snapshot().charge;
+        bounties[unit.type] = killed.snapshot.charge - banked;
+      }
 
-        // A LEAK. The unit is put at the collector heading for it, so it grounds
-        // out on the next advance without walking a maze first.
-        openYard(h, {
-          difficulty,
-          wave: WAVE,
-          integrity: INTEGRITY,
-        });
-        const collector = mapById(h.snapshot().map).collector;
+      // THE WAVE-CLEAR BONUS, off the same wave. The hold comes off with nothing
+      // left on the yard, so the wave resolves the ordinary way and what lands is
+      // the bonus alone.
+      const beforeClear = h.snapshot().charge;
+      holdWaveClear(h, false);
+      const cleared = await h.until((s) => s.phase === "build", {
+        maxFrames: h.ticks(5),
+      });
+      assertEqual(
+        cleared.hit,
+        true,
+        "the held wave to clear into a build phase once the hold comes off " +
+          "(specs/instrumentation.md)",
+      );
+      const bonus = cleared.snapshot.charge - beforeClear;
+
+      // THE LEAKS, on a yard of their own. Each unit is put at the collector
+      // heading for it, so it grounds out on the next advance without walking a
+      // maze first, and the resolution is held again so the six readings are of
+      // one wave.
+      openYard(h, { difficulty, wave: WAVE, integrity: INTEGRITY });
+      holdWaveClear(h);
+      const collector = mapById(h.snapshot().map).collector;
+      for (const unit of LOAD_ROSTER) {
+        const standing = h.snapshot().integrity;
         releaseUnit(h, unit.type, {
           waypoint: 7,
           at: tileCenter(collector.col, collector.row),
         });
         const leaked = await h.until((s) => s.units.length === 0, {
-          maxFrames: ticks(5),
+          maxFrames: h.ticks(5),
         });
         assertEqual(
           leaked.hit,
@@ -130,10 +156,10 @@ it("pays the same bounties and charges the same leaks at every difficulty", asyn
           `a ${unit.type} standing on the collector to ground out within five ` +
             "seconds (specs/enemies.md)",
         );
-        leaks[unit.type] = INTEGRITY - leaked.snapshot.integrity;
+        leaks[unit.type] = standing - leaked.snapshot.integrity;
       }
 
-      return { bounties, leaks };
+      return { bounties, leaks, bonus };
     },
   );
   captureStill(h, "economy");

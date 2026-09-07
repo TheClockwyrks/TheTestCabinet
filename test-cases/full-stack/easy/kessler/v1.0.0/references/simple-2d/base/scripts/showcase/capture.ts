@@ -173,7 +173,7 @@ async function play(frames: number): Promise<void> {
     await tap("Escape");
 
     // START, settle a moment, then record a sustained take of real play.
-    engine.apply((s) => engine.debug.reset(s, { seed: 3 }));
+    engine.apply((s) => engine.debug.reset(s));
     await engine.advance(2);
     await tap("Space");
     await play(90);

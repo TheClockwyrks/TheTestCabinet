@@ -55,7 +55,7 @@ afterEach(() => {
 });
 
 it("presses, extends by hit radius, ignores a dead move, and releases — all at the call", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   const oracle = await loadBoard(h, GEO_3X3);
 
   // The dead point really is beyond NODE_HIT_R of every center.

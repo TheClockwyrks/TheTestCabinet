@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 it("leaves no trace live after a press on the clear control", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
   assertEqual(
     h.snapshot().tracing,

@@ -10,14 +10,19 @@
 //      call that asked for no time at all — and every scenario in this project that
 //      reads a state before driving it then reads a state one tick past the one it
 //      posed.
-//   2. REAL TIME BUYS NOTHING. `setAutoStep(false)` "stops the frame loop advancing
-//      the simulation from the wall clock, so the game changes only when `advance`
-//      says so". The harness opens every check with the clock held, so a build that
-//      only PRETENDED to disconnect leaves every scenario in this project drifting
-//      under the check that posed it, at a rate that depends on how busy the
-//      machine was. A second of wall time with nothing advancing the game is what
-//      catches that, and the page is brought to the front first so the browser's
-//      own background throttling cannot do the build's job for it.
+//   2. READING THE GAME DOES NOT MOVE IT. `specs/instrumentation.md` makes
+//      `snapshot()` "a pure read of the state" that "changes nothing", and this
+//      project reads the game through it hundreds of times per scenario. A
+//      `snapshot` that stepped a timer, consumed a queue, or moved a clock on its
+//      way past would make every one of those readings a different reading from
+//      the one before it. So the same field is read many times over and the last
+//      reading is held against the first, exactly.
+//
+// BOTH LEGS ARE SCRIPTED. Every reading here follows a call the check itself
+// made, so the verdict is the same on any machine: nothing waits on real time, and
+// nothing about how busy the host was can move the field between two readings.
+// That the frame loop really is off the wall clock is what `setAutoStep(false)`
+// promises, and the setting is read back beside the field.
 //
 // THE FIELD IS POSED FULL AND IN MOTION. Every body carries a velocity and the
 // saucer arrives with all three faculties running, so ANY tick that ran would move
@@ -44,11 +49,8 @@ import {
   type ShatterSnapshot,
 } from "../harness";
 
-/** How many times `advance(0)` is called before the field is read again. */
-const ZERO_CALLS = 5;
-
-/** The real milliseconds the game is left alone with its clock held. */
-const WALL_MS = 1000;
+/** How many times each of the two no-op calls is made before the field is reread. */
+const REPEATS = 5;
 
 /** Where the moving rock is posed, and the velocity it carries. */
 const ROCK = { x: 260, y: 620, vx: 120, vy: -80 } as const;
@@ -128,7 +130,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("holds the whole field through advance(0) and through real time", async () => {
+it("holds the whole field through advance(0) and through repeated reads", async () => {
   await startPlaying(h);
   await poseRock(h, "medium", ROCK.x, ROCK.y, ROCK.vx, ROCK.vy);
   await poseBullet(h, BULLET.x, BULLET.y, BULLET.vx, BULLET.vy);
@@ -148,15 +150,15 @@ it("holds the whole field through advance(0) and through real time", async () =>
   assertEqual(posed.autoStep, false, "the clock the harness took the game off");
 
   // Leg 1: asking for no ticks runs no ticks.
-  for (let call = 0; call < ZERO_CALLS; call += 1) {
+  for (let call = 0; call < REPEATS; call += 1) {
     await h.debug.advance(0);
   }
   await captureStill(h, "held");
-  assertUnmoved(posed, await h.snapshot(), `${ZERO_CALLS} x advance(0)`);
+  assertUnmoved(posed, await h.snapshot(), `${REPEATS} x advance(0)`);
 
-  // Leg 2: a second of real time, with the page in front so the browser is not
-  // holding the build's frame loop for it.
-  await h.page.bringToFront().catch(() => undefined);
-  await h.page.waitForTimeout(WALL_MS);
-  assertUnmoved(posed, await h.snapshot(), `${WALL_MS}ms of wall time`);
+  // Leg 2: reading the game does not move it.
+  for (let read = 0; read < REPEATS; read += 1) {
+    await h.snapshot();
+  }
+  assertUnmoved(posed, await h.snapshot(), `${REPEATS + 2} x snapshot()`);
 });

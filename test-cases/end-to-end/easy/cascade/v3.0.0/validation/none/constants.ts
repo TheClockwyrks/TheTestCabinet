@@ -246,4 +246,3 @@ export const HOWTO_TOKENS = ["ACE", "KING", "STOCK", "DOUBLE-CLICK"] as const;
 /* -------------------------------------------------------------------------- */
 
 export const CASCADE_DEBUG_VERSION = 1;
-export const DEFAULT_SEED = 1;

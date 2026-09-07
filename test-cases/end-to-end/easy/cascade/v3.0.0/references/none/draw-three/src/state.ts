@@ -21,7 +21,6 @@
 
 import type { Card } from "./cards";
 import {
-  DEFAULT_SEED,
   FOUNDATION_COUNT,
   TABLEAU_COLUMNS,
   type CueName,
@@ -134,7 +133,6 @@ export interface CascadeState {
   simTime: number;
   /** The game's copy of the runtime's mute bit, refreshed in every update. */
   muted: boolean;
-  rngState: number;
   /** The identity the next card or flyer takes. */
   nextId: number;
   /** The cues this frame has raised, played once each at the end of it. */
@@ -181,20 +179,19 @@ export function createState(make?: LayerFactory): CascadeState {
     trailStamps: 0,
     simTime: 0,
     muted: false,
-    rngState: DEFAULT_SEED,
     nextId: 1,
     pendingCues: new Set(),
   };
 }
 
 /**
- * Restore every declared field to its title-screen value, and reseed.
+ * Restore every declared field to its title-screen value.
  *
  * `muted` is deliberately untouched: muting is a player preference the runtime
  * owns, and a reset is not a reason to start making noise again
  * (specs/instrumentation.md).
  */
-export function resetState(state: CascadeState, seed: number): void {
+export function resetState(state: CascadeState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.titleIndex = 0;
@@ -215,7 +212,6 @@ export function resetState(state: CascadeState, seed: number): void {
   state.cascadeDone = false;
   clearTrail(state);
   state.simTime = 0;
-  state.rngState = seed | 0;
   state.pendingCues.clear();
 }
 

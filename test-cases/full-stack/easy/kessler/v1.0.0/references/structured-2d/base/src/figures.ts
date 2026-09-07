@@ -42,10 +42,16 @@ export function ringSpeedForWave(spec: RingSpec, wave: number): number {
   );
 }
 
-/** The pod kind a shedding draw's second value `u2` selects. */
-export function podKindForRoll(u2: number): PodKind {
+/**
+ * The kind a uniform draw `u` in `[0, 1)` lands on: the rows of
+ * `POD_KIND_TABLE` laid end to end by probability, so each kind takes its
+ * share of the unit interval.
+ */
+export function podKindForRoll(u: number): PodKind {
+  let upTo = 0;
   for (const row of POD_KIND_TABLE) {
-    if (u2 < row.upTo) return row.kind;
+    upTo += row.probability;
+    if (u < upTo) return row.kind;
   }
   return POD_KIND_TABLE[POD_KIND_TABLE.length - 1].kind;
 }

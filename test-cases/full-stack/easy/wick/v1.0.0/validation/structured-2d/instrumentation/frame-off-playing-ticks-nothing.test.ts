@@ -3,7 +3,7 @@
 // by the frame's delta, and leaves `run.tick` at 0.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`, "A
-// deterministic core": "On every other screen a frame ticks nothing and the
+// render-free core": "On every other screen a frame ticks nothing and the
 // accumulator holds `0`" and "`simTime` rises by every frame's delta time on
 // every screen". `specs/ui.md`, `title`: "`up` and `down` move the highlight by
 // one item"; `specs/controls.md`: `ArrowDown` is `down`, a press edge off

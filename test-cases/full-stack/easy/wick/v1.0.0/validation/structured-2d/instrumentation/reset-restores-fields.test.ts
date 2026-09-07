@@ -4,7 +4,7 @@
 // at 0.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE. `specs/instrumentation.md`,
-// `reset(options)`: "Restores every declared field of the game's state to its
+// `reset()`: "Restores every declared field of the game's state to its
 // title-screen value: the `title` screen with `menuIndex`, `almanacTab`, and
 // `almanacScroll` all `0`, the idle run of `specs/state.md`, the accumulator
 // and `simTime` at `0`". `specs/state.md`, "The idle run", is the table
@@ -14,8 +14,8 @@
 // its value first, so a `reset` that restored only some of them is caught: the
 // lamplighter moved, turned, and hurt; level, xp, kills, tick, spawn timer,
 // pending level-ups, and a queued offer list posed; weapons and passives
-// held; an enemy, a bolt, a puddle, a gem, and a bread on the field; the
-// swarm event fired by carrying the clock over tick 3600 with `events` on;
+// held; an enemy, a bolt, a puddle, a gem, and a bread on the field; a drop
+// posed; the swarm event fired by carrying the clock over tick 3600 with `events` on;
 // then real ticks and a partial frame, so the accumulator and `simTime` are
 // off zero too. `almanacTab` and `almanacScroll` cannot be disturbed in that
 // same state, since they "are `0` on every screen but `almanac`"
@@ -23,7 +23,7 @@
 // idle run; so a second disturbance follows, on the almanac, with the tab
 // turned and the list scrolled by real presses, and `reset` is asked for the
 // title again. The switches and `muted` are other items' (`reset-restores-
-// switches`, `reset-keeps-muted`); `rngState` is `reset-seeds-rng`'s.
+// switches`, `reset-keeps-muted`).
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 it("returns every declared field to its title-screen value", async () => {
-  isolate(h, { seed: 3 });
+  isolate(h);
   h.debug.setTick(TICK_BEFORE_SWARM);
   enable(h, "events");
   await advanceTicks(h, 1);
@@ -75,6 +75,7 @@ it("returns every declared field to its title-screen value", async () => {
   h.debug.setKills(40);
   h.debug.setSpawnTimer(0.7);
   h.debug.setNextOffers(["pin", "lure"]);
+  h.debug.setNextDrop("draft");
   holdWeapon(h, "ember", 4);
   holdPassive(h, "brass", 2);
   placeEnemy(h, "moth", 200, 0);

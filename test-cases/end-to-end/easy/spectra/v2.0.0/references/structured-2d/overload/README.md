@@ -171,7 +171,7 @@ await engine.advance(6);
 const { drones, bullets, bursts } = engine.debug.snapshot();
 ```
 
-The operations are `reset` (seedable) and `snapshot`; the screen and run poses;
+The operations are `reset` and `snapshot`; the screen and run poses;
 the three **world gates** `setWaveEntry`, `setDiveLaunching` and `setShipContact`,
 each holding one faculty of the wave itself so a scenario can pose a field holding
 only what its requirement concerns, plus the wave's own `setDiveClock`; the ship
@@ -282,7 +282,7 @@ src/
   scoring.ts          Every figure the run is paid, and the extra life
   flow.ts             The screens, the holds, the lives, and reset
   bursts.ts           The seeded particle system, played per pop
-  rng.ts              The seeded generator, over the state's own field
+  random.ts           The game's random draws, off the host's own generator
   input.ts            The registered actions and the layout check
   audio.ts            The ten engine cues, played once per event per frame
   debug.ts            The debug surface: poses and readings over the live world

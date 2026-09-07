@@ -112,7 +112,7 @@ describe("spin", () => {
 
   it("is a pure function of the clock, never an integration", () => {
     // Reading the same clock twice gives the same pose, whatever happened in
-    // between — which is what makes a posed clock reproducible.
+    // between — which is what makes a posed clock hold its pose.
     expect(obstaclePose(0, 1.5)).toEqual(obstaclePose(0, 1.5));
   });
 });

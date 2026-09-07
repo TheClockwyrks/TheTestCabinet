@@ -30,8 +30,8 @@ import {
   slotX,
   slotY,
 } from "./constants";
-import { nextInt, shuffled } from "./rng";
-import { drawRange, type MutDrone, type Sim } from "./sim";
+import { randomInt, randomRange, shuffled } from "./random";
+import type { MutDrone, Sim } from "./sim";
 import type { Band, DroneKind } from "./game";
 
 /** How wide each row of the block is, from the top down. */
@@ -100,30 +100,25 @@ export function slotCentre(col: number, row: number): { x: number; y: number } {
 }
 
 /**
- * The layout of a standard stage's block, and the generator state that follows.
+ * The layout of a standard stage's block.
  *
  * The filled slots are whole rows, so the block is mirror-symmetric by
- * construction. What the seed decides is which mirrored pairs hold the Fluxes and
- * which way each row's Shard bands alternate.
+ * construction. What is drawn is which mirrored pairs hold the Fluxes and which
+ * way each row's Shard bands alternate.
  */
-export function waveLayout(
-  stage: number,
-  rngState: number,
-): readonly [Slot[], number] {
-  let rng = rngState;
+export function waveLayout(stage: number): Slot[] {
   const rows = waveRows(stage);
   const prisms = prismColumns(wavePrisms(stage));
 
   // Which mirrored pairs become Fluxes: the flanks of every row below the top,
-  // shuffled so the choice is the seed's.
+  // shuffled so the choice is a draw.
   const candidates: { col: number; row: number }[] = [];
   for (let row = 1; row < rows; row++) {
     for (const col of rowColumns(row)) {
       if (col < (FORM_COLS - 1) / 2) candidates.push({ col, row });
     }
   }
-  const [order, afterShuffle] = shuffled(rng, candidates);
-  rng = afterShuffle;
+  const order = shuffled(candidates);
   const fluxPairs = order.slice(0, waveFluxPairs(stage));
   const isFlux = (col: number, row: number): boolean =>
     fluxPairs.some(
@@ -135,9 +130,7 @@ export function waveLayout(
   // Which way each row's Shard bands alternate.
   const parity: number[] = [];
   for (let row = 0; row < rows; row++) {
-    const [flip, next] = nextInt(rng, 0, 1);
-    rng = next;
-    parity.push(flip);
+    parity.push(randomInt(0, 1));
   }
 
   const slots: Slot[] = [];
@@ -195,7 +188,7 @@ export function waveLayout(
       }
     });
 
-  return [slots, rng];
+  return slots;
 }
 
 /** Where a drone of a standard wave starts, given its slot and its place in line. */
@@ -251,8 +244,7 @@ function withSlot(drone: MutDrone, slot: Slot): MutDrone {
 
 /** Build the stage's standard wave onto the field. */
 function buildStandardWave(sim: Sim): void {
-  const [slots, rng] = waveLayout(sim.stage, sim.rngState);
-  sim.rngState = rng;
+  const slots = waveLayout(sim.stage);
 
   const placed = new Map<number, number>();
   const prismStarts: { x: number; y: number }[] = [];
@@ -298,7 +290,7 @@ function buildStandardWave(sim: Sim): void {
     if (drone.kind === "flux") {
       // A Flux enters part-way into a band window, so a wave's Fluxes shimmer
       // out of step with one another.
-      drone.bandClock = drawRange(sim, 0, fluxWindow(sim.stage));
+      drone.bandClock = randomRange(0, fluxWindow(sim.stage));
     }
     drones.push(drone);
   }

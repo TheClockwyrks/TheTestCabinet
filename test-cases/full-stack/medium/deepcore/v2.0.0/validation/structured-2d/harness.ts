@@ -39,7 +39,7 @@
 // fixes its operations, so they mean the same thing in every build: `clearMine`
 // leaves one kind of empty mine, `setMinerTravel(false)` holds the body and
 // nothing else, a posed velocity persists across frames, and `reset` gives
-// everything back. Posing through it is how a scenario is reproducible, and it is
+// everything back. Posing through it is how a scenario is arranged, and it is
 // the seam the case's specification documents. `surface.ts` is that specification
 // as types, and it is the only description of the surface this harness reads: the
 // build's own module for it is never imported.
@@ -167,7 +167,6 @@ import {
   BANDS,
   CAVE_MOUTH_COL,
   CORE_COL,
-  DEFAULT_SEED,
   HUD_H,
   MINER_H,
   MINER_W,
@@ -216,7 +215,6 @@ export {
   JitterClock,
   PacedClock,
   SequenceClock,
-  WallClock,
 } from "@clockwyrks/structured-2d";
 export type { Clock } from "@clockwyrks/structured-2d";
 
@@ -470,8 +468,6 @@ export interface DeepcoreSession {
    * CLOCK's, and the frames it runs are the kit's own driven frames.
    */
   advanceSeconds(s: number, frames?: number): Promise<void>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 }
 
 /** Everything a check reads off one engine running one build. */
@@ -762,9 +758,9 @@ const kit = createEngineCaseHarness<
  *     `initialize` can load what it produced, and given back by `dispose`;
  *   - the save slot, which `HarnessOptions.storage` asks for and nothing else in
  *     the package knows about;
- *   - `advanceSeconds` and `runFor`, which both need the clock THIS harness was
- *     built with — the one the caller passed, or the case's own 120 Hz — to put
- *     back after they have moved it.
+ *   - `advanceSeconds`, which needs the clock THIS harness was built with — the
+ *     one the caller passed, or the case's own 120 Hz — to put back after it has
+ *     moved it.
  */
 export async function createHarness(
   options: HarnessOptions = {},
@@ -789,14 +785,6 @@ export async function createHarness(
       } finally {
         h.engine.setClock(clock);
       }
-    },
-
-    async runFor(ms: number): Promise<void> {
-      const controller = new AbortController();
-      const running = h.engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
     },
 
     dispose(): void {
@@ -1034,8 +1022,6 @@ export function sounded(played: readonly PlayedCue[], cue: string): boolean {
 
 /** How a scene opens. Everything is optional; the defaults are the resting world. */
 export interface SceneOptions {
-  /** The generator's seed. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /**
    * The world size.
    *
@@ -1059,8 +1045,8 @@ export interface SceneOptions {
 }
 
 /**
- * The opening every posed check shares: the world back at its resting value on a
- * named seed, and the screen the check is about.
+ * The opening every posed check shares: the world back at its resting value, and
+ * the screen the check is about.
  *
  * What it leaves is an EMPTY mine — `reset` restores the grid to what `clearMine`
  * leaves — with the miner standing at the camp, tier 1 everywhere, a full tank and
@@ -1072,7 +1058,7 @@ export interface SceneOptions {
  * builds one.
  */
 export function openScene(h: Harness, options: SceneOptions = {}): void {
-  h.debug.reset({ seed: options.seed ?? DEFAULT_SEED });
+  h.debug.reset();
   if (options.size !== undefined) {
     h.debug.setWorldSize(options.size);
     h.debug.clearMine();
@@ -1357,8 +1343,8 @@ export const ACTION_KEY = Object.fromEntries(
 export const UNBOUND_KEY = "KeyZ";
 
 /**
- * Open an expedition through the SURFACE alone: the mode, the size, a mine
- * generated from the seed, and the miner standing at the spawn.
+ * Open an expedition through the SURFACE alone: the mode, the size, a freshly
+ * generated mine, and the miner standing at the spawn.
  *
  * This is how a check about the MINE reaches its ground without driving the menus
  * — a build with a broken menu and a working world must fail the navigation
@@ -1367,9 +1353,9 @@ export const UNBOUND_KEY = "KeyZ";
  */
 export function openExpedition(
   h: Harness,
-  options: { seed?: number; size?: WorldSize; mode?: Mode } = {},
+  options: { size?: WorldSize; mode?: Mode } = {},
 ): void {
-  h.debug.reset({ seed: options.seed ?? DEFAULT_SEED });
+  h.debug.reset();
   if (options.mode !== undefined) h.debug.setMode(options.mode);
   if (options.size !== undefined) h.debug.setWorldSize(options.size);
   h.debug.generateMine();

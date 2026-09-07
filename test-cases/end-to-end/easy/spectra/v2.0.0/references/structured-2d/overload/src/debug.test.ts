@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_SEED,
   OVERLOAD_AT,
   RESONANCE_MAX,
   SHIP_X_MAX,
@@ -251,11 +250,11 @@ describe("the surface", () => {
     expect([bullet.vx, bullet.vy]).toEqual([120, -60]);
   });
 
-  it("restores the title values and seeds the randomness", async () => {
+  it("restores the title values", async () => {
     const h = await posed();
     h.debug.setScore(500);
     h.debug.addDrone("shard", 400, 200);
-    h.debug.reset({ seed: 7 });
+    h.debug.reset();
     const snap = h.debug.snapshot();
     expect(snap).toMatchObject({
       screen: "title",
@@ -273,27 +272,5 @@ describe("the surface", () => {
     });
     expect(snap.drones).toHaveLength(0);
     expect(snap.ship.contact).toBe(true);
-    expect(DEFAULT_SEED).toBe(1);
-  });
-
-  it("builds the same wave from one seed and a different one from another", async () => {
-    const h = await createHarness();
-    const build = async (seed: number): Promise<string> => {
-      h.debug.reset({ seed });
-      h.debug.setScreen("stageIntro");
-      h.debug.setPhaseTimer(0);
-      await h.advance(1);
-      return h.debug
-        .snapshot()
-        .drones.map(
-          (drone) =>
-            `${drone.kind}@${drone.slotX},${drone.slotY}:${drone.band}`,
-        )
-        .join("|");
-    };
-    const seven = await build(7);
-    expect(await build(7)).toBe(seven);
-    expect(await build(8)).not.toBe(seven);
-    h.dispose();
   });
 });

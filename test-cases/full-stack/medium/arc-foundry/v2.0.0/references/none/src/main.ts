@@ -72,10 +72,6 @@ async function main(): Promise<void> {
   // drive the game by exact spans of elapsed time, and back on for a live clip.
   const clock = { autoStep: true };
 
-  // A fresh 32-bit seed per interactive run, so no two playthroughs draw the same component
-  // sequence. A run entered through the debug surface keeps the seed `reset` set, so a
-  // driven scenario stays reproducible.
-
   const gesture = (): void => {
     void audio.resume();
   };
@@ -110,8 +106,6 @@ async function main(): Promise<void> {
     }
     if (action.startsWith("diff:")) {
       game.setDifficulty(DIFFICULTY[action.slice(5) as Difficulty]);
-      // The generator `reset` seeded is the only one the game draws off
-      // (specs/instrumentation.md), so entering a run seeds nothing of its own.
       game.startRun();
       return;
     }

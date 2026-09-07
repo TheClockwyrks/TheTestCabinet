@@ -64,6 +64,18 @@ export function tileCenter(tx: number, ty: number): { x: number; y: number } {
 export const TICK_HZ = 120;
 export const TICK_DT = 1 / TICK_HZ;
 
+/**
+ * How far a read of `simTime` may sit from the seconds a counted run of ticks
+ * is worth.
+ *
+ * specs/state.md accumulates `simTime` a tick at a time, `TICK_DT` each, so the
+ * exact answer is `ticks * TICK_DT` and this is room for the rounding of a
+ * double summed a tick at a time: a millionth of a second, which is a fraction
+ * of a tick so small that a step one tick short or long still fails by a wide
+ * margin. It is a tolerance on floating point, not on the rule.
+ */
+export const SIM_TIME_EPS = 1e-6;
+
 /** Whole ticks covering `seconds` of simulated time, rounded up. */
 export function ticksFor(seconds: number): number {
   return Math.ceil(seconds * TICK_HZ);
@@ -212,9 +224,6 @@ export const SCORE_PLANKTON = 10;
 export const SCORE_DRIFTER = 200;
 export const SCORE_CLEAR = 500;
 export const START_LIVES = 3;
-
-/** The seed `reset()` takes when a caller names none. */
-export const DEFAULT_SEED = 1;
 
 // ---- The debugging surface (specs/instrumentation.md) --------------------
 

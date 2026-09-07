@@ -26,9 +26,11 @@
 // is read one tick after its own `reset`, so the game time and the other four
 // readouts are the same in all six and the filled bay is the only thing that
 // differs. A difference in the bar therefore cannot be the clock, because the clock
-// reads the same in all six — and `reset` seeds the randomness
-// (specs/instrumentation.md), so it cannot be a build's randomly placed ornament
-// either. That is what makes a volatility mask unnecessary.
+// reads the same in all six — and it cannot be anything the game draws at
+// random, because all of that is the strait's (the lanes' phases, specs/ice.md
+// and specs/water.md; the bonus bay, specs/bays.md) and nothing drawn on the
+// strait is drawn inside the HUD bar (specs/ui.md). That is what makes a
+// volatility mask unnecessary.
 //
 // ONLY THE HUD BAR IS READ, over `y` in `[0, HUD_H]` (specs/strait.md). Filling a
 // bay changes the FAR SHORE as well — that is `bays`' business, not this readout's

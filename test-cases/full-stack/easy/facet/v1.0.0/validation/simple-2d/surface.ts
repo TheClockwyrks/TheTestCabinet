@@ -31,7 +31,7 @@
 // build declared.
 
 import type { DeepReadonly } from "ts-essentials";
-import { DEFAULT_SEED, FACET_DEBUG_VERSION } from "./constants";
+import { FACET_DEBUG_VERSION } from "./constants";
 import type { Cut, GemKind, PointerDevice, Screen } from "./constants";
 import type { CellRef, TargetRect } from "./board";
 
@@ -41,7 +41,7 @@ import type { CellRef, TargetRect } from "./board";
 // re-exports rather than redeclaring. Two independent declarations of one union
 // drift silently, and a check reaching for a type through the surface must be
 // reaching for the same type a check reaching for it through the board gets.
-export { DEFAULT_SEED, FACET_DEBUG_VERSION };
+export { FACET_DEBUG_VERSION };
 export type { CellRef, Cut, GemKind, PointerDevice, Screen, TargetRect };
 
 /**
@@ -133,7 +133,11 @@ export interface FacetSnapshot {
   bestChain: number;
   /** Whether any legal swap exists, derived from R1 and R3. */
   legalSwap: boolean;
-  rngState: number;
+  /**
+   * The kinds posed for each column's refill, `GRID_COLS` entries: the string
+   * `setRefillKinds` posed for that column, and `""` for a column that draws.
+   */
+  refillKinds: string[];
   pointer: { x: number; y: number; down: boolean; device: PointerDevice };
   /** The id of the target the held press armed, or `null`. */
   armedTarget: string | null;
@@ -161,7 +165,7 @@ export interface FacetSnapshot {
  */
 export interface FacetDebugApi<S = unknown> {
   version: number;
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   snapshot(state: DeepReadonly<S>): FacetSnapshot;
   setScreen(state: DeepReadonly<S>, screen: Screen): S;
   setMenuIndex(state: DeepReadonly<S>, index: number): S;
@@ -169,6 +173,13 @@ export interface FacetDebugApi<S = unknown> {
   dealBoard(state: DeepReadonly<S>): S;
   clearBoard(state: DeepReadonly<S>): S;
   setGem(state: DeepReadonly<S>, col: number, row: number, token: string): S;
+  /**
+   * Poses what R9's refill deals into column `col`, letter by letter from the
+   * top of the board down; a row past the end of `kinds` draws.
+   */
+  setRefillKinds(state: DeepReadonly<S>, col: number, kinds: string): S;
+  /** Leaves no refill posed on any column, so every refill draws. */
+  clearRefillKinds(state: DeepReadonly<S>): S;
   setScore(state: DeepReadonly<S>, points: number): S;
   setLevel(state: DeepReadonly<S>, level: number): S;
   setLevelScore(state: DeepReadonly<S>, points: number): S;
@@ -215,7 +226,7 @@ export const READINGS = ["snapshot"] as const;
 /**
  * Every operation the surface must carry under this engine.
  *
- * Twenty-four: the twenty-six of specs/instrumentation.md less `setAutoStep`
+ * Twenty-six: the twenty-eight of specs/instrumentation.md less `setAutoStep`
  * and `advance`, which are the runtime's here and are not on the surface at all.
  *
  * EVERY ONE OF THEM WRITES ONE ELEMENT OF THE STATE or reads it. Reaching a
@@ -232,6 +243,8 @@ export const REQUIRED_OPS = [
   "dealBoard",
   "clearBoard",
   "setGem",
+  "setRefillKinds",
+  "clearRefillKinds",
   "setScore",
   "setLevel",
   "setLevelScore",

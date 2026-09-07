@@ -118,9 +118,9 @@ written _inside_, and the build's own code is the subclasses:
   moves_, since controllers tick first. `AiPaddleController` computes the same
   drive from the world (`src/ai.ts`).
 - **State in framework objects.** The game instance (`CaromGame`) carries what
-  outlives a transition: the last mode, the seeded generator, and the debug
-  driver's hold. Each world's game state carries its level's screens and match
-  figures — the obstacle clock among them — with the two scores on the
+  outlives a transition: the last mode and the debug driver's hold. Each
+  world's game state carries its level's screens and match figures — the
+  obstacle clock among them — with the two scores on the
   participants' player states. Nothing lives in a module-level variable.
 - **Audio, input, rendering, the fit, the overlay** — all the engine's. The
   build defines the four `CUES` and registers the eight `ACTIONS` once, in

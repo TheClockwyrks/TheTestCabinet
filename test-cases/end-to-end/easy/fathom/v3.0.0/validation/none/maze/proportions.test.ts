@@ -31,7 +31,7 @@
 // few long hallways both fail the same requirement, from opposite ends, and a
 // build that misses it misses one thing rather than three.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -90,18 +90,18 @@ it("lays out a maze whose openness, corridor run and density are all in range", 
   await captureBoard(h, witness(measured).board);
 
   for (const one of measured) {
-    const seed = `the maze laid out from seed ${one.board.seed}`;
+    const board = `maze ${one.board.ordinal} the game laid out`;
     assertBetween(
       one.open,
       MAZE_OPENNESS_MIN,
       MAZE_OPENNESS_MAX,
-      `openness, the mean corridor neighbors per corridor tile, in ${seed}`,
+      `openness, the mean corridor neighbors per corridor tile, in ${board}`,
     );
     assertBetween(
       one.run,
       MAZE_MAZING_MIN,
       MAZE_MAZING_MAX,
-      `the mean corridor-run length, in tiles, in ${seed}`,
+      `the mean corridor-run length, in tiles, in ${board}`,
     );
     assertBetween(
       one.fill,
@@ -109,7 +109,7 @@ it("lays out a maze whose openness, corridor run and density are all in range", 
       MAZE_DENSITY_MAX,
       `density, corridor tiles over the ` +
         `${(one.board.snapshot.grid.cols - 2) * (one.board.snapshot.grid.rows - 2)} ` +
-        `cells inside the border, in ${seed}`,
+        `cells inside the border, in ${board}`,
     );
   }
 });

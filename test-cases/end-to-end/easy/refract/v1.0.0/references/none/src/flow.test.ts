@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { campaignBoard } from "./campaign";
-import { CAMPAIGN_LENGTH, DEFAULT_SEED } from "./constants";
+import { CAMPAIGN_LENGTH } from "./constants";
 import {
   campaignSolvedItems,
   createInitialState,
@@ -39,7 +39,6 @@ describe("the initial state", () => {
       armedTarget: null,
       simTime: 0,
       muted: false,
-      rngState: DEFAULT_SEED,
     });
   });
 });
@@ -71,8 +70,6 @@ describe("entering the modes", () => {
     expect(state.tier).toBe(1);
     expect(state.board.nodes.length).toBeGreaterThan(0);
     expect(state.beams.every((beam) => beam.cells.length === 0)).toBe(true);
-    // Generating consumed the seeded generator.
-    expect(state.rngState).not.toBe(DEFAULT_SEED);
   });
 });
 
@@ -147,15 +144,15 @@ describe("the cascade solve transition", () => {
     expect(state.tier).toBe(2);
   });
 
-  it("restarts at tier 1 without reseeding", () => {
+  it("restarts at tier 1 on a fresh board", () => {
     let state = startMode(createInitialState(), "cascade");
     state = nextCascadeBoard(onSolved(state));
-    const before = state.rngState;
     const restarted = restartCascade(state);
     expect(restarted.solvedCount).toBe(0);
     expect(restarted.tier).toBe(1);
     expect(restarted.screen).toBe("playing");
-    expect(restarted.rngState).not.toBe(before);
+    expect(restarted.board.nodes.length).toBeGreaterThan(0);
+    expect(restarted.beams.every((beam) => beam.cells.length === 0)).toBe(true);
   });
 });
 

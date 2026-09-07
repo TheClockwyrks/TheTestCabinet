@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 it("drops every cell after the pressed node, keeps the rest, and resumes there", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
 
   traceRoute(h, [

@@ -21,8 +21,7 @@
 // falls at the deflector's center angle, dead-center in the span.
 //
 // THE WORLD IS ONE POD AND THE DEFLECTOR, per drive: isolate() empties the
-// field and holds both driver switches, and spawnPod leaves the seeded
-// generator where it stands.
+// field and holds both driver switches, and spawnPod makes no draw.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertLength, assertTrue } from "../assert";

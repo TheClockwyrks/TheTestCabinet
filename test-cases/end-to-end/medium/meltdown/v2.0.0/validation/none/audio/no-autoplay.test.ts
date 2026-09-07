@@ -35,15 +35,15 @@
 // them as a gesture. Each event is read back off the snapshot, so a build that
 // stayed silent by not playing at all fails here too.
 //
-// THE BUILD IS ALSO GIVEN ITS OWN CLOCK FOR A REAL WINDOW, before anything is
-// posed. `specs/audio.md` requires the game to "start[] and run[] correctly whether
-// or not audio can start", so the loop is handed back and left to run itself on the
-// title for `OWN_CLOCK_MS` of real time. A build with an attract-mode jingle, or one
-// that starts its sources on load and hopes, is caught there rather than on a
-// posed frame. The other half of that sentence — that the game RUNS correctly with
-// no audio — is read as the game staying on the screen it opened on across the
-// real-time window and then reaching every one of the three events, all with no
-// context to play through.
+// THE BUILD IS ALSO LEFT TO ITSELF ON THE TITLE FOR A STRETCH OF FRAMES, before
+// anything is posed. `specs/audio.md` requires the game to "start[] and run[]
+// correctly whether or not audio can start", so `IDLE_FRAMES` of the suite's
+// clock are driven on the title with nothing else happening. A build with an
+// attract-mode jingle, or one that starts its sources on load and hopes, is
+// caught there rather than on a posed frame. The other half of that sentence —
+// that the game RUNS correctly with no audio — is read as the game staying on
+// the screen it opened on across those frames and then reaching every one of the
+// three events, all with no context to play through.
 //
 // WHAT THIS POINT DOES NOT DECIDE: whether the build makes any sound after the
 // gesture. That is what the other eleven points of this group are for, and holding
@@ -54,6 +54,7 @@ import { assertEqual, assertGreaterThan, assertLength } from "../assert";
 import {
   captureStill,
   createHarness,
+  framesFor,
   posePinnedTower,
   poseTarget,
   poseWalker,
@@ -68,13 +69,15 @@ import { FREE_SITE } from "../fixtures";
 import { SHOT_CEILING, frameWhere, leakOut, poseAtExhaustDoor } from "./cues";
 
 /**
- * Real time the build is left to drive its own frame loop on the title, in
- * milliseconds.
+ * Frames the freshly loaded build is left to itself on the title.
  *
- * Not a tolerance: nothing is measured over it. It is how long a build that makes
- * noise on its own has to do it in, at whatever rate its own loop runs.
+ * Two seconds of the suite's clock, which is far longer than any opening
+ * animation or first-frame setup a title screen could carry, so a build that
+ * sounds anything on its own — a start-up sting, a menu blip on the frame it
+ * opens, a loop it left running — has sounded it inside this window. Not a
+ * tolerance: nothing is measured over it.
  */
-const OWN_CLOCK_MS = 700;
+const IDLE_FRAMES = framesFor(2);
 
 /** The heat the emitter is pinned at, where `specs/heat.md` fixes its multiplier. */
 const PINNED_HEAT = 0;
@@ -114,9 +117,9 @@ it("emits nothing at all while the page has seen no interaction", async () => {
   await h.advance(1);
   const title = await h.snapshot();
 
-  // The build driving its own loop in real time, on the screen it opened on.
-  await h.settle(OWN_CLOCK_MS);
-  const afterOwnClock = await h.snapshot();
+  // The build left to itself on the screen it opened on.
+  await h.advance(IDLE_FRAMES);
+  const afterIdle = await h.snapshot();
   const soundsOnTitle = await h.sounds();
   await captureStill(h, "silent");
 
@@ -149,9 +152,9 @@ it("emits nothing at all while the page has seen no interaction", async () => {
   // The build was alive and correct through the whole window.
   assertEqual(title.screen, "title", "the screen the game opens on");
   assertEqual(
-    afterOwnClock.screen,
+    afterIdle.screen,
     "title",
-    "the screen the build's own loop left it on",
+    `the screen ${IDLE_FRAMES} frames with no input left the build on`,
   );
   // And each of the three events really happened.
   assertEqual(kill.hit, true, "the pinned emitter to take the target to 0 hp");
@@ -176,7 +179,7 @@ it("emits nothing at all while the page has seen no interaction", async () => {
   assertEqual(
     soundsOnTitle,
     0,
-    "the sounds the page emitted while the build ran itself on the title",
+    `the sounds the page emitted across ${IDLE_FRAMES} frames on the title`,
   );
   assertEqual(
     soundsTotal,

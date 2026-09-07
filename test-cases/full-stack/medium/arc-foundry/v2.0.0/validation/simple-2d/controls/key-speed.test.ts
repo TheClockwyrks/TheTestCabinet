@@ -21,16 +21,24 @@ import {
   type Harness,
   openYard,
   pressAction,
-  ticks,
 } from "../harness";
 
 /** Seconds the multiplier is left alone for, to see whether it holds. */
 const HOLD_SECONDS = 2;
 
+/**
+ * The rate the hold below is covered at.
+ *
+ * Nothing is read across it but the multiplier itself, and
+ * specs/instrumentation.md guarantees that "an interval of simulation time
+ * reaches the same state however it was divided into frames".
+ */
+const HOLD_HZ = 20;
+
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: HOLD_HZ });
 });
 
 afterEach(() => {
@@ -64,7 +72,7 @@ it("steps the multiplier one place per press and wraps back to 1", async () => {
 
   // And it persists until changed: nothing but another activation moves it.
   const held = h.snapshot().speed;
-  await h.advance(ticks(HOLD_SECONDS));
+  await h.advanceSeconds(HOLD_SECONDS);
   assertEqual(
     h.snapshot().speed,
     held,

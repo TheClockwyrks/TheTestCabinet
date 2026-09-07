@@ -42,6 +42,7 @@ import {
   clearBoard,
   clearChain,
   clearOffer,
+  clearRefillKinds,
   clearRefusal,
   clearSelection,
   dealBoard,
@@ -59,6 +60,7 @@ import {
   setMenuIndex,
   setMoveScore,
   setOffer,
+  setRefillKinds,
   setScore,
   setScreen,
   setSelection,
@@ -80,7 +82,7 @@ type View = DeepReadonly<FacetState>;
  */
 export interface FacetDebugApi {
   version: number;
-  reset(state: View, options?: { seed?: number }): FacetState;
+  reset(state: View): FacetState;
   snapshot(state: View): FacetSnapshot;
   setScreen(state: View, screen: Screen): FacetState;
   setMenuIndex(state: View, index: number): FacetState;
@@ -88,6 +90,8 @@ export interface FacetDebugApi {
   dealBoard(state: View): FacetState;
   clearBoard(state: View): FacetState;
   setGem(state: View, col: number, row: number, token: string): FacetState;
+  setRefillKinds(state: View, col: number, kinds: string): FacetState;
+  clearRefillKinds(state: View): FacetState;
   setScore(state: View, points: number): FacetState;
   setLevel(state: View, level: number): FacetState;
   setLevelScore(state: View, points: number): FacetState;
@@ -126,7 +130,7 @@ export interface FacetDebugApi {
 export function createDebugApi(): FacetDebugApi {
   return {
     version: FACET_DEBUG_VERSION,
-    reset: (state, options) => fromCore(reset(toCore(state), options)),
+    reset: (state) => fromCore(reset(toCore(state))),
     snapshot: (state) => snapshot(toCore(state)),
     setScreen: (state, screen) => fromCore(setScreen(toCore(state), screen)),
     setMenuIndex: (state, index) =>
@@ -136,6 +140,9 @@ export function createDebugApi(): FacetDebugApi {
     clearBoard: (state) => fromCore(clearBoard(toCore(state))),
     setGem: (state, col, row, token) =>
       fromCore(setGem(toCore(state), col, row, token)),
+    setRefillKinds: (state, col, kinds) =>
+      fromCore(setRefillKinds(toCore(state), col, kinds)),
+    clearRefillKinds: (state) => fromCore(clearRefillKinds(toCore(state))),
     setScore: (state, points) => fromCore(setScore(toCore(state), points)),
     setLevel: (state, level) => fromCore(setLevel(toCore(state), level)),
     setLevelScore: (state, points) =>

@@ -24,7 +24,7 @@ import { quietRowsWith } from "./core/fixtures";
 /** A round in progress, with a board, a chain, a selection, and a refusal. */
 function busy(): CoreState {
   const posed = loadBoard(
-    startRound(createInitialState(5)),
+    startRound(createInitialState()),
     quietRowsWith({ "1,1": "R0", "2,1": "R0", "3,1": "C0", "3,2": "R0" }),
   );
   return poseSwap(posed, 3, 1, 3, 2);
@@ -92,7 +92,7 @@ describe("the board", () => {
 
 describe("the whole state", () => {
   it("round-trips a title screen unchanged", () => {
-    const core = createInitialState(42);
+    const core = createInitialState();
     expect(toCore(fromCore(core))).toEqual(core);
   });
 
@@ -132,7 +132,7 @@ describe("the whole state", () => {
   });
 
   it("carries the rows a gem fell, which is what times the fall", () => {
-    const dealt = startRound(createInitialState(5));
+    const dealt = startRound(createInitialState());
     const declared = fromCore(dealt);
     // Every gem of an opening board came in from above its own row.
     declared.board.cells.forEach((cell) => {

@@ -8,8 +8,8 @@
 // canvas player issues a radial gradient per particle per frame, and a discharge
 // over a full stage is on the order of ten thousand particles.
 //
-// Each burst is SEEDED FROM THE GAME'S OWN GENERATOR, so successive bursts in a
-// run scatter differently while a replay from one seed reproduces them exactly.
+// Each burst SCATTERS AT RANDOM, so successive bursts in a run scatter differently
+// while the flash, the ring and the two-band sparks read the same.
 
 import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import { art } from "./assets";
@@ -59,7 +59,7 @@ export function startBurst(
   y: number,
   size: number,
 ): void {
-  const seed = Math.floor(random(state) * 0x7fffffff);
+  const seed = Math.floor(random() * 0x7fffffff);
   const burst: BurstState = {
     id: takeId(state),
     x,

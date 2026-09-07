@@ -28,14 +28,7 @@
 
 import type { Game, UpdateApi } from "@clockwyrks/simple-2d";
 import type { DeepReadonly } from "ts-essentials";
-import {
-  ACTIONS,
-  BINDINGS,
-  CUES,
-  DEFAULT_SEED,
-  LOOPING_CUES,
-  TICK_DT,
-} from "./constants";
+import { ACTIONS, BINDINGS, CUES, LOOPING_CUES, TICK_DT } from "./constants";
 import type { ChargeId, MachineryKind, Point, ScreenName } from "./constants";
 import { emptyAssets, loadAssets, type Assets } from "./assets";
 import { bindCues } from "./audio";
@@ -147,10 +140,14 @@ export interface VoluteState {
   readonly emission: boolean;
   /** Whether the train advances. `true` in play; the debug surface's gate sets it. */
   readonly feed: boolean;
+  /**
+   * The charge posed for the next core the inlet emits, and `null` while none
+   * is posed. `setNextEmitted` sets it, the emission that takes it returns it
+   * to `null`, and a `reset` returns it to `null`.
+   */
+  readonly nextEmitted: ChargeId | null;
   /** The game's readable copy of the engine's mute bit. */
   readonly muted: boolean;
-  /** The state of the game's one seeded generator. */
-  readonly rngState: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -171,11 +168,8 @@ export interface VoluteDebugApi {
   /** `VOLUTE_DEBUG_VERSION`. */
   readonly version: number;
 
-  /** Restore every declared field to its title value and reseed the generator. */
-  reset(
-    state: DeepReadonly<VoluteState>,
-    options?: { seed?: number },
-  ): VoluteState;
+  /** Restore every declared field to its title value. */
+  reset(state: DeepReadonly<VoluteState>): VoluteState;
 
   /** A pure reading of the running game. */
   snapshot(state: DeepReadonly<VoluteState>): VoluteSnapshot;
@@ -212,6 +206,12 @@ export interface VoluteDebugApi {
 
   /** Set the charge the injector holds queued. */
   setQueued(state: DeepReadonly<VoluteState>, charge: string): VoluteState;
+
+  /** Pose the charge of the next core the inlet emits, or clear it with `null`. */
+  setNextEmitted(
+    state: DeepReadonly<VoluteState>,
+    charge: string | null,
+  ): VoluteState;
 
   /** Set the aim, normalized into `[0, 360)`, and nothing else. */
   setAim(state: DeepReadonly<VoluteState>, angleDegrees: number): VoluteState;
@@ -341,7 +341,7 @@ export const game: Game<VoluteState, VoluteDebugApi> = {
     registerDiagnostics(api);
 
     return [
-      freeze(createDraft(DEFAULT_SEED)),
+      freeze(createDraft()),
       createDebugApi(() => {
         effects.clear();
       }),

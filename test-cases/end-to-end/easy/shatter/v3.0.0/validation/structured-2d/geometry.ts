@@ -324,7 +324,7 @@ export function coreGap(p: Vec, radius: number): number {
  * samples far more often than on one — and for a check hunting a build that
  * came too close, that error runs in exactly the wrong direction. Measuring the
  * star's distance to the segment each pair of samples spans reads the whole of
- * the path the body took, at a stride a 54-crossing sweep can afford.
+ * the path the body took, at a stride a 36-crossing sweep can afford.
  *
  * A degenerate segment — two samples at the same point, which is a body that did
  * not move — answers the distance to that point.

@@ -23,6 +23,7 @@ import {
   type Rect,
 } from "./constants";
 import type { BallState, ObstacleState, PaddleState, Side } from "./game";
+import { drawServeSign } from "./random";
 
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
@@ -102,6 +103,7 @@ export function homeBall(): BallState {
     spin: 0,
     held: true,
     holdTimer: HOLD_TIME,
+    serveSign: drawServeSign(),
     trail: [],
   };
 }

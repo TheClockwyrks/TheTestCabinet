@@ -69,7 +69,6 @@ import {
   ANGLE_TOL,
   CELLS,
   CHARGE_IDS,
-  DEFAULT_SEED,
   HANDLE,
   INJECTOR_FIELDS,
   MACHINERY_KINDS,
@@ -98,24 +97,6 @@ import {
   type Harness,
   type VoluteSnapshot,
 } from "../harness";
-
-/**
- * Real time allowed to pass with no frame advanced.
- *
- * Long enough that a build carrying a clock of its own would have run tens of
- * ticks in it, and short enough to cost the suite nothing.
- */
-const FROZEN_MS = 500;
-
-/**
- * Real time the game runs under the engine's own loop for.
- *
- * The only reading of "the engine advances the game frame by frame" is time
- * passing while nothing steps it. A third of a second is many frames at any rate
- * the host schedules them at, so the check turns on whether the game advanced
- * rather than on how fast it did.
- */
-const RUNNING_MS = 300;
 
 /** Ticks stepped where a check only needs the drive to have really moved. */
 const DRIVE_TICKS = 30;
@@ -176,43 +157,29 @@ it("carries the documented version and every operation, as functions", async () 
 
 /* ---- The clock the engine owns --------------------------------------------- */
 
-it("advances from its ticks alone, and rides the engine's own loop", async () => {
-  // Nothing has advanced the engine, so a hall posed here is a hall nothing can
-  // move. Real time is simply allowed to pass: a build carrying a clock of its
-  // own — a `setInterval`, a `requestAnimationFrame` it started in `initialize`,
-  // a `Date.now()` read inside `update` — accumulates ticks while this waits, and
-  // one whose state "advances from ticks and input alone" accumulates none.
+it("advances exactly one tick per advanced frame", async () => {
+  // An advanced frame is exactly one tick: the harness's `ConstantClock` of
+  // `1000 / 60` ms is the step specs/instrumentation.md names, so the game's own
+  // accumulated simulation time moves by exactly the time those ticks cover, and
+  // the train it carries moves with it. Nothing here waits on real time: a
+  // stretch of the wall clock decides nothing about the build, and the rule that
+  // the state "advances from ticks and input alone" is read through what the
+  // counted frames did.
   await startRun(h);
   await poseHall(h, { cores: spacedBlock(1000, 3, "halide") });
-  const frozen = await h.snapshot();
-  await new Promise((done) => setTimeout(done, FROZEN_MS));
-  const still = await h.snapshot();
+  const posed = await h.snapshot();
 
-  // Exact rather than tolerant: no frame ran, so nothing may have moved at all.
-  assertEqual(still.simTime, frozen.simTime, "simTime while no frame ran");
-  assertEqual(head(still).s, head(frozen).s, "the head while no frame ran");
-
-  // And an advanced frame is exactly one tick: the harness's `ConstantClock` of
-  // `1000 / 60` ms is the step specs/instrumentation.md names, so the game's own
-  // accumulated simulation time moves by exactly the time those ticks cover.
   const driven = await h.step(DRIVE_TICKS);
   assertNear(
-    driven.simTime - frozen.simTime,
+    driven.simTime - posed.simTime,
     seconds(DRIVE_TICKS),
     SIM_TIME_TOL,
     `the simulated seconds ${DRIVE_TICKS} ticks covered`,
   );
-
-  // And the same game runs under the engine's own loop, which is how it is
-  // played: the harness hands it a wall clock and lets it run for a stretch of
-  // real time, and the hall advances with nothing stepping it. HOW FAST it runs
-  // is `channel/self-advancing`; that it runs at all is this point's half.
-  await h.runFor(RUNNING_MS);
-  const ran = await h.snapshot();
   assertGreaterThan(
-    ran.simTime,
-    driven.simTime,
-    "simTime after the game ran under the engine's own loop",
+    head(driven).s,
+    head(posed).s,
+    `the head's arc position after ${DRIVE_TICKS} advanced frames`,
   );
 });
 
@@ -232,7 +199,8 @@ it("restores every declared field to its title value on reset", async () => {
   await fireAt(h, 90);
   await h.step(DRIVE_TICKS);
 
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.setNextEmitted("sulfur");
+  await h.debug.reset();
   const title = await h.snapshot();
 
   // Read without stepping: `reset` "Restores every declared field of the game's
@@ -249,6 +217,7 @@ it("restores every declared field to its title value on reset", async () => {
   assertEqual(title.interlude, 0, "the interlude a reset leaves");
   assertNull(title.injector.loaded, "the loaded core a reset leaves");
   assertNull(title.injector.queued, "the queued core a reset leaves");
+  assertNull(title.nextEmitted, "the posed emission charge a reset leaves");
   assertEqual(title.injector.cooldown, 0, "the cooldown a reset leaves");
   assertAngleNear(
     title.injector.aim,
@@ -270,7 +239,7 @@ it("restores every declared field to its title value on reset", async () => {
 });
 
 it("poses the screen, the level, the score, the cells and the chain one at a time", async () => {
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
 
   // Each of these "changes nothing else", so each is read back on its own and
   // the fields the others own are read back unchanged beside it.
@@ -309,7 +278,7 @@ it("poses the screen, the level, the score, the cells and the chain one at a tim
 
 it("holds the inlet and the train with the driver's two gates", async () => {
   // Both gates are read back the way every other field is: set a value, read it.
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
   await h.debug.setEmission(false);
   await h.debug.setFeed(false);
   const held = await h.snapshot();
@@ -351,7 +320,7 @@ it("holds the inlet and the train with the driver's two gates", async () => {
 });
 
 it("opens a named level with startLevel", async () => {
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
 
   // "Opens `level`, a whole number clamped to `1` through `LEVEL_COUNT` (`5`)".
   // Level 3 rather than 1, so a build that ignores the argument fails.
@@ -421,6 +390,21 @@ it("holds the charges it is given and releases the loaded one on fire", async ()
   const held = await h.snapshot();
   assertEqual(held.injector.loaded, "cobalt", "the charge setLoaded set");
   assertEqual(held.injector.queued, "garnet", "the charge setQueued set");
+
+  // "The snapshot reports the pose as `nextEmitted`, and `null` while none
+  // stands": the read-back of the pose alone. What the inlet then emits under it
+  // is `instrumentation/set-next-emitted-poses-the-charge`.
+  await h.debug.setNextEmitted("sulfur");
+  assertEqual(
+    (await h.snapshot()).nextEmitted,
+    "sulfur",
+    "the charge setNextEmitted posed",
+  );
+  await h.debug.setNextEmitted(null);
+  assertNull(
+    (await h.snapshot()).nextEmitted,
+    "the pose setNextEmitted(null) cleared",
+  );
 
   // "Sets the aim to `angleDegrees`, normalized into `[0, 360)`, and does nothing
   // else": -90 is 270 once normalized, which is what makes this a reading of the
@@ -576,7 +560,6 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
     "chainTimer",
     "interlude",
     "simTime",
-    "rngState",
   ] as const) {
     assertEqual(typeof s[field], "number", `snapshot().${field}`);
   }
@@ -584,6 +567,12 @@ it("reports the whole documented snapshot shape, from a live hall", async () => 
   assertEqual(typeof s.emission, "boolean", "snapshot().emission");
   assertEqual(typeof s.feed, "boolean", "snapshot().feed");
   assertEqual(typeof s.muted, "boolean", "snapshot().muted");
+  // A charge id while a pose stands, and `null` otherwise.
+  assertContains(
+    [...CHARGE_IDS, null],
+    s.nextEmitted,
+    "snapshot().nextEmitted",
+  );
 
   // The train, head first, with every documented field on every entry.
   assertGreaterThan(s.train.length, 0, "the cores snapshot() reports");

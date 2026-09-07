@@ -12,13 +12,13 @@
 // parsed particle system, and the undecoded bytes of a sound. Nothing else in
 // the build spells an asset path.
 //
-// LOADING IS ASYNCHRONOUS AND THE GAME DOES NOT WAIT FOR IT. The frame loop and
-// `window.__facet` are up from the first tick, and each lookup answers `null`
-// until its file has arrived, so a frame drawn before the stones are cut draws
-// the fallback in `src/render.gems.ts` and the next one draws the sprite. The
-// alternative — holding the first frame until 108 files land — would leave the
-// debug surface unreachable for as long as the network takes, which is exactly
-// what `specs/instrumentation.md` asks the build not to do.
+// LOADING IS ASYNCHRONOUS AND THE FRAME LOOP DOES NOT WAIT FOR IT. The loop is
+// up from the first tick, and each lookup answers `null` until its file has
+// arrived, so a frame drawn before the stones are cut draws the fallback in
+// `src/render.gems.ts` and the next one draws the sprite. What does wait is
+// `window.__facet`: `specs/assets.md` makes the load part of initialization and
+// `specs/instrumentation.md` puts the surface up once the game has initialized,
+// so `src/main.ts` installs it once every load has settled.
 
 import { GEM_KINDS, MAX_STRAIN } from "./constants";
 import type { ParticleSystem } from "@clockwyrks/particle-runtime";

@@ -1,13 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { BREAD_CHANCE, TICK_DT, type CueName } from "../constants";
+import {
+  BREAD_CHANCE,
+  DRAFT_CHANCE,
+  TICK_DT,
+  type CueName,
+} from "../constants";
 import { Rng } from "../rng";
 import { NOTHING_HELD, freshRun, initialState, type WickState } from "../state";
+import { drawDrop } from "./effects";
 import { spawnEnemy } from "./enemies";
 import { tick } from "./tick";
 import { makeProjectile, makePuddle } from "./weapons";
 
-function playing(): { state: WickState; rng: Rng; cues: Set<CueName> } {
-  const state = initialState(1);
+/** A `playing` run drawing from `source`, `Math.random` unless given. */
+function playing(source?: () => number): {
+  state: WickState;
+  rng: Rng;
+  cues: Set<CueName>;
+} {
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   state.enemyMotion = false;
@@ -15,7 +26,17 @@ function playing(): { state: WickState; rng: Rng; cues: Set<CueName> } {
   state.weaponFire = false;
   // The director would put a moth on the ring and draw its angle.
   state.spawning = false;
-  return { state, rng: new Rng(() => state), cues: new Set() };
+  return { state, rng: new Rng(source), cues: new Set() };
+}
+
+/** A source handing out `values` in order, then the last one for ever. */
+function draws(...values: number[]): () => number {
+  let at = 0;
+  return () => {
+    const value = values[Math.min(at, values.length - 1)];
+    at += 1;
+    return value;
+  };
 }
 
 function step(world: ReturnType<typeof playing>, ticks = 1): void {
@@ -112,28 +133,68 @@ describe("deaths", () => {
     const { run } = world.state;
     spawnEnemy(run, "owl", 400, 0).hp = 0;
     spawnEnemy(run, "dark", -400, 0).hp = 0;
-    const rngBefore = world.state.rngState;
+    run.nextDrop = "bread";
     step(world);
     expect(run.kills).toBe(2);
     expect(run.pickups).toEqual([{ id: 2, kind: "chest", x: 400, y: 0 }]);
     expect(run.gems).toEqual([]);
-    expect(world.state.rngState).toBe(rngBefore);
+    // Neither death rolls, so the posed drop stands for the next common kill.
+    expect(run.nextDrop).toBe("bread");
   });
 
-  it("rolls bread, then a draft, at most one per common kill", () => {
-    const counts = { bread: 0, draft: 0, none: 0 };
-    for (let seed = 1; seed <= 400; seed += 1) {
-      const world = playing();
-      world.state.rngState = seed;
-      const { run } = world.state;
-      spawnEnemy(run, "rat", 500, 0).hp = 0;
-      step(world);
-      expect(run.pickups.length).toBeLessThanOrEqual(1);
-      const kind = run.pickups[0]?.kind ?? "none";
-      counts[kind as keyof typeof counts] += 1;
-    }
-    expect(counts.bread).toBeGreaterThan(0);
-    expect(counts.bread).toBeLessThan(400 * BREAD_CHANCE * 4);
-    expect(counts.none).toBeGreaterThan(350);
+  it("leaves a posed drop standing while drops is off", () => {
+    const world = playing();
+    world.state.drops = false;
+    const { run } = world.state;
+    run.nextDrop = "draft";
+    spawnEnemy(run, "rat", 500, 0).hp = 0;
+    step(world);
+    expect(run.kills).toBe(1);
+    expect(run.gems).toEqual([]);
+    expect(run.pickups).toEqual([]);
+    expect(run.nextDrop).toBe("draft");
+  });
+
+  /** What one rat kill drops under `source`, and the pose it leaves. */
+  function killDrops(
+    source: () => number,
+    posed: "bread" | "draft" | "none" | null = null,
+  ): { kind: string; posed: string | null } {
+    const world = playing(source);
+    const { run } = world.state;
+    run.nextDrop = posed;
+    spawnEnemy(run, "rat", 500, 0).hp = 0;
+    step(world);
+    expect(run.pickups.length).toBeLessThanOrEqual(1);
+    expect(run.gems).toHaveLength(1);
+    return { kind: run.pickups[0]?.kind ?? "none", posed: run.nextDrop };
+  }
+
+  it("rolls bread below BREAD_CHANCE, then a draft below DRAFT_CHANCE", () => {
+    expect(killDrops(draws(BREAD_CHANCE - 1e-9, 0)).kind).toBe("bread");
+    expect(killDrops(draws(BREAD_CHANCE, DRAFT_CHANCE - 1e-9)).kind).toBe(
+      "draft",
+    );
+    expect(killDrops(draws(BREAD_CHANCE, DRAFT_CHANCE)).kind).toBe("none");
+    expect(killDrops(draws(0.5, 0.5)).kind).toBe("none");
+  });
+
+  it("makes one roll alone through drawDrop", () => {
+    expect(drawDrop(new Rng(draws(BREAD_CHANCE - 1e-9, 0)))).toBe("bread");
+    expect(drawDrop(new Rng(draws(BREAD_CHANCE, DRAFT_CHANCE - 1e-9)))).toBe(
+      "draft",
+    );
+    expect(drawDrop(new Rng(draws(BREAD_CHANCE, DRAFT_CHANCE)))).toBe("none");
+  });
+
+  it("drops what nextDrop posed, in place of the roll, and consumes it", () => {
+    // A source that would drop bread on its own; the pose overrides it.
+    const bread = draws(0);
+    expect(killDrops(bread, "draft")).toEqual({ kind: "draft", posed: null });
+    expect(killDrops(bread, "none")).toEqual({ kind: "none", posed: null });
+    expect(killDrops(draws(0.5), "bread")).toEqual({
+      kind: "bread",
+      posed: null,
+    });
   });
 });

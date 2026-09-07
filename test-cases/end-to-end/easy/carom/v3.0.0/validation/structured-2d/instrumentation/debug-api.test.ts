@@ -53,8 +53,10 @@ import {
   assertDoesNotThrow,
   assertEqual,
   assertGreaterThan,
+  assertGreaterThanOrEqual,
   assertHasProperty,
   assertLength,
+  assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
   assertNull,
@@ -68,14 +70,15 @@ import {
   openPlaying,
   type Harness,
 } from "../harness";
-import { CAROM_DEBUG_VERSION, DEFAULT_SEED, REQUIRED_OPS } from "../surface";
+import { CAROM_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
 
 /** Where the two paddles are put, to be read back off the snapshot. */
 const LEFT_CY = 200;
 const RIGHT_CY = 500;
 
-/** A seed that is not the title screen's, so reseeding is visible. */
-const PROBE_SEED = 20260903;
+/** The draw posed on the ball: a serve sign under `base` and `gyre`, a launch angle under `multi`. */
+const POSED_SIGN = -1;
+const POSED_ANGLE = 2.5;
 
 let h: Harness;
 
@@ -111,6 +114,15 @@ it("carries a version and every required operation, as functions", () => {
   assertEqual(typeof api.version, "number");
   assertEqual(api.version, CAROM_DEBUG_VERSION);
   for (const op of REQUIRED_OPS) {
+    assertEqual(typeof api[op], "function");
+  }
+  // The draw operations differ by variant: the serve sign under `base` and
+  // `gyre`, the launch angle under `multi` (specs/instrumentation.md).
+  const drawOps =
+    h.snapshot().balls !== undefined
+      ? ["setBallLaunchAngle", "drawBallLaunchAngle"]
+      : ["setBallServeSign", "drawBallServeSign"];
+  for (const op of drawOps) {
     assertEqual(typeof api[op], "function");
   }
 });
@@ -162,8 +174,6 @@ it("reports the whole documented snapshot shape, from a live match", async () =>
   assertEqual(typeof snapshot.score.p2, "number");
   assertHasProperty(snapshot, "winner");
   assertEqual(typeof snapshot.muted, "boolean");
-  assertEqual(typeof snapshot.seed, "number");
-  assertEqual(typeof snapshot.rngState, "number");
 
   for (const side of ["left", "right"] as const) {
     assertEqual(typeof snapshot.paddles[side].cy, "number");
@@ -270,7 +280,22 @@ it("poses the running game through the same systems play uses", async () => {
   h.debug.setWinner("right");
   h.debug.setAiTracking(false);
   h.debug.setAiMovement(false);
-  h.debug.setSeed(PROBE_SEED);
+  // The draw a serve or a launch rests on is posed as the ball's own field and
+  // drawn afresh on its own: the posed value reads back, and a fresh draw lands
+  // inside the range specs/balls.md fixes.
+  if (h.snapshot().balls !== undefined) {
+    h.debugMulti.setBallLaunchAngle(0, POSED_ANGLE);
+    assertEqual(ball0(h.snapshot()).launchAngle, POSED_ANGLE);
+    h.debugMulti.drawBallLaunchAngle(0);
+    const drawn = ball0(h.snapshot()).launchAngle as number;
+    assertGreaterThanOrEqual(drawn, 0);
+    assertLessThan(drawn, 2 * Math.PI);
+  } else {
+    h.debug.setBallServeSign(POSED_SIGN);
+    assertEqual(ball0(h.snapshot()).serveSign, POSED_SIGN);
+    h.debug.drawBallServeSign();
+    assertContains([1, -1], ball0(h.snapshot()).serveSign);
+  }
   const posed = h.snapshot();
   assertEqual(posed.mode, "solo");
   assertEqual(posed.menuIndex, 2);
@@ -279,12 +304,11 @@ it("poses the running game through the same systems play uses", async () => {
   assertDeepEqual(posed.score, { p1: 3, p2: 4 });
   assertEqual(posed.winner, "right");
   assertDeepEqual(posed.ai, { tracking: false, movement: false });
-  assertEqual(posed.seed, PROBE_SEED);
 
   // And a reset returns the whole of it to the title-screen state specs/state.md
   // fixes, in one call: the screen, the score, the winner, both paddles — handed
-  // back to the player, at rest, at the field's centre height — the AI's two
-  // faculties, and the seed.
+  // back to the player, at rest, at the field's centre height — and the AI's
+  // two faculties.
   h.debug.reset();
   await h.advance(1);
   const title = h.snapshot();
@@ -301,7 +325,6 @@ it("poses the running game through the same systems play uses", async () => {
   assertEqual(title.paddles.left.drivenVy, 0);
   assertEqual(title.paddles.right.drivenVy, 0);
   assertDeepEqual(title.ai, { tracking: true, movement: true });
-  assertEqual(title.seed, DEFAULT_SEED);
   assertEqual(ball0(title).held, true);
   assertLength(title.obstacles, OBSTACLE_CENTERS.length);
   // `simTime` is restored to `0` with the rest, so what stands in it is the one

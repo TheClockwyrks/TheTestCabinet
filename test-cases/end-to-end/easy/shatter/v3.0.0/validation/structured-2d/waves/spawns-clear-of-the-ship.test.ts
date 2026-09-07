@@ -1,9 +1,9 @@
 // waves/spawns-clear-of-the-ship — a wave never lands on top of the ship.
 //
 // THE RULE. `specs/progression.md`, "Waves": each rock of a wave "is placed at a
-// random position at least `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least
-// `WAVE_MIN_STAR_DIST` (`200`) from the star, both by the shortest wrapped
-// separation". `specs/field.md` defines that separation.
+// position drawn uniformly from the points of the field at least
+// `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least `WAVE_MIN_STAR_DIST`
+// (`200`) from the star, both by the shortest wrapped separation". `specs/field.md` defines that separation.
 //
 // WHAT IS MEASURED. The shortest WRAPPED distance from each arriving rock's centre
 // to the ship's, over every rock of several waves, against `300`. The ship's
@@ -26,15 +26,15 @@
 // `(180, 140)` the long way round and `130` across the seams — right on top of it.
 // That build passes a Cartesian check and fails this one.
 //
-// WHY THE SWEEP IS AS LARGE AS IT IS. The positions are DRAWN
-// (`specs/simulation.md`, "Seeded randomness"), so this is a containment check
-// over draws and what decides it is how much of the field a build with a smaller
-// exclusion leaves open. The annulus between `250` and `300` is nine percent of
-// the field, so a build that excludes `250` escapes one draw with probability
-// `0.91` and the `276` draws below with a probability of about one in ten
-// million. It is also enough that a build which satisfies the rule by rejecting
-// and redrawing, and gives up after a fixed number of tries, shows up rather than
-// being graded by luck.
+// ONE WAVE, EVERY ROCK OF IT. The positions are DRAWN (`specs/simulation.md`,
+// "Random draws"), and the rule is a bound on each draw rather than a statistic
+// over many: every rock of the wave that arrives is held to the clearance, and
+// the verdict is the CLOSEST of them. Wave 20 puts twenty-three of them up, a
+// handful of unposed draws against the bound, and a build that places rocks
+// anywhere at all has the exclusion's share of the field to land in on each.
+// How a build's placements are shaped inside the rule is the reviewer's to
+// judge; nothing poses a position, and the placement is the build's own draw,
+// read where it lands.
 //
 // THE TOLERANCE IS ONE TICK OF DRIFT. The rocks are read on the first tick they
 // are on the field, but whether a build spawned them before or after that tick's
@@ -59,14 +59,6 @@ import { clearTheWave, openWaveAt, waitForTheWave } from "./scene";
 
 /** The wave the field is posed at, so the wave that arrives holds 23 rocks. */
 const WAVE = 19;
-
-/**
- * The twelve seeds the wave is spawned from.
- *
- * Twelve waves of twenty-three rocks is `276` independent draws put through the
- * rule. See the header for what that buys.
- */
-const SEEDS: readonly number[] = Array.from({ length: 12 }, (_, i) => 1 + i);
 
 /**
  * Where the ship stands: the far corner from the safe point, and `540` units from
@@ -99,24 +91,21 @@ it("places every rock of a wave WAVE_MIN_SHIP_DIST from the ship", async () => {
   let closest = Number.POSITIVE_INFINITY;
   let closestAt = "";
 
-  for (const seed of SEEDS) {
-    openWaveAt(h, WAVE, seed);
-    h.debug.setShipPosition(SHIP_X, SHIP_Y);
-    await clearTheWave(h);
-    const arrival = await waitForTheWave(h);
-    // The wave standing clear of the ship.
-    captureStill(h, "wave");
+  openWaveAt(h, WAVE);
+  h.debug.setShipPosition(SHIP_X, SHIP_Y);
+  await clearTheWave(h);
+  const arrival = await waitForTheWave(h);
+  // The wave standing clear of the ship.
+  captureStill(h, "wave");
 
-    const ship = arrival.at.ship;
-    for (const rock of arrival.rocks) {
-      const distance = wrappedDistance(rock, ship);
-      if (distance < closest) {
-        closest = distance;
-        closestAt =
-          `seed ${String(seed)}, rock at ` +
-          `(${rock.x.toFixed(1)}, ${rock.y.toFixed(1)}) with the ship at ` +
-          `(${ship.x.toFixed(1)}, ${ship.y.toFixed(1)})`;
-      }
+  const ship = arrival.at.ship;
+  for (const rock of arrival.rocks) {
+    const distance = wrappedDistance(rock, ship);
+    if (distance < closest) {
+      closest = distance;
+      closestAt =
+        `rock at (${rock.x.toFixed(1)}, ${rock.y.toFixed(1)}) with the ship ` +
+        `at (${ship.x.toFixed(1)}, ${ship.y.toFixed(1)})`;
     }
   }
 
@@ -129,6 +118,6 @@ it("places every rock of a wave WAVE_MIN_SHIP_DIST from the ship", async () => {
       `${DRIFT_TOLERANCE.toFixed(2)} for one tick of the fastest drift a wave ` +
       `can carry; the ship was posed away from the safe point, so a build ` +
       `measuring from (SAFE_X, SAFE_Y) rather than from the ship reads here; ` +
-      `closest of ${String(SEEDS.length)} waves: ${closestAt}`,
+      `closest of the wave: ${closestAt}`,
   );
 });

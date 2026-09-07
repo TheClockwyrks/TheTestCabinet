@@ -13,7 +13,6 @@
 // than read from wherever the caller stood.
 
 import {
-  DEFAULT_SEED,
   DIFFICULTIES,
   DIFFICULTY_ITEMS,
   ENDING_ITEMS,
@@ -95,12 +94,11 @@ export function startRun(
 }
 
 /**
- * Every declared field back at its title-screen value, with the generator
- * seeded. `muted` and `pointer` are left exactly as they stand: both mirror
- * something the runtime owns, and a reset restores the game rather than the
- * runtime beneath it.
+ * Every declared field back at its title-screen value. `muted` and `pointer`
+ * are left exactly as they stand: both mirror something the runtime owns, and a
+ * reset restores the game rather than the runtime beneath it.
  */
-export function resetState(state: MeltdownState, seed: number): void {
+export function resetState(state: MeltdownState): void {
   state.mode = "containment";
   state.difficulty = "medium";
   const figures = figuresOf(state);
@@ -121,15 +119,10 @@ export function resetState(state: MeltdownState, seed: number): void {
   state.hoverShop = null;
   state.build = null;
   state.waveSpawning = true;
+  state.spawnVent = null;
   state.nextId = 1;
   state.simTime = 0;
-  state.rngState = seed;
   refreshRoutes(state);
-}
-
-/** A reset with the seed the caller named, or `DEFAULT_SEED`. */
-export function resetWith(state: MeltdownState, seed?: number): void {
-  resetState(state, seed ?? DEFAULT_SEED);
 }
 
 /**

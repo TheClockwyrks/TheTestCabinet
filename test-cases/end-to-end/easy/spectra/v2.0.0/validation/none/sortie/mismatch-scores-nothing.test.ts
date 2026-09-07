@@ -13,7 +13,7 @@
 // score on a wasted shot reads `0`. Against a starting score of `0` all three of
 // those wrong models are two different readings and one silent pass.
 //
-// The seed is far below `EXTRA_LIFE_AT` (20000, specs/progression.md), so no
+// The posed score is far below `EXTRA_LIFE_AT` (20000, specs/progression.md), so no
 // extra life is in play and nothing but this shot can touch the score.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -65,7 +65,7 @@ const SETTLE_FRAMES = 10;
  * Any number will do; this one is not a sum of the figures in specs/scoring.md,
  * is not a multiple of any of them, and is two orders of magnitude below
  * `EXTRA_LIFE_AT` (20000) — so every wrong payment reads as its own number and
- * none of them lands back on the seed by coincidence.
+ * none of them lands back on the posed score by coincidence.
  */
 const SEEDED_SCORE = 1234;
 

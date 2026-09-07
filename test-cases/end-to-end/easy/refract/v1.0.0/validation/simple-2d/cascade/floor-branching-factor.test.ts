@@ -8,12 +8,12 @@
 // R1 to R5 allow from the beam's current end with everything drawn so far
 // in place, at least the figure the tier's row states.
 //
-// The sweep really solves twenty-five consecutive boards from a fixed seed —
-// five per rung, so every tier's floor is exercised — and re-measures each
-// board, as it arrives, with the oracle's own enumeration over the notation
-// read off the snapshot; the tier a board is held to comes from the ladder
-// formula over the solves that preceded it, not from the build's readout. The
-// still is the first MAX_TIER board, the tier with the tallest floor.
+// The generator is asked for five boards at every tier through `generateBoard`
+// (specs/instrumentation.md) — so every tier's floor is exercised — and each
+// board is re-measured, as it arrives, with the oracle's own enumeration over
+// the notation read off the snapshot, held to the row of the tier it was asked
+// for at. The still is the last MAX_TIER board, the tier with the tallest
+// floor.
 //
 // A BOARD THE ORACLE CANNOT MEASURE IS NOT JUDGED. The enumeration carries an
 // expansion budget (DIFFICULTY_MAX_EXPANSIONS, a generous runaway stop) so a
@@ -28,14 +28,14 @@ import { assertGreaterThanOrEqual, assertLessThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  oracleBoard,
+  generateAtTiers,
   resetTo,
-  startCascade,
   type Harness,
 } from "../harness";
 import { measuresUpToTier } from "../metrics";
-import { TIERS, tierForSolvedCount } from "../notation";
-import { sweepGenerated } from "./sweep";
+import { MAX_TIER, TIERS } from "../notation";
+
+const PER_TIER = 5;
 
 let h: Harness;
 
@@ -48,35 +48,31 @@ afterEach(() => {
 });
 
 it("emits only boards meeting their tier's branching floor", async () => {
-  await resetTo(h, 1);
-  await startCascade(h);
+  await resetTo(h);
 
   let unmeasured = 0;
-  await sweepGenerated(h, 25, {
-    onBoard: (snapshot, round) => {
-      if (round === 21) captureStill(h, "board");
-      const tier = tierForSolvedCount(snapshot.solvedCount);
-      const row = TIERS[tier - 1];
-      const context = `board ${round}, generated at tier ${tier}`;
-      const { measured } = measuresUpToTier(oracleBoard(snapshot), tier);
-      if (measured === null || measured.budget) {
-        unmeasured += 1;
-        return;
-      }
-      assertGreaterThanOrEqual(
-        measured.branching,
-        row.minBranching - 1e-9,
-        `${context}: branching ${measured.branching.toFixed(3)} ` +
-          '(specs/modes/cascade.md "The floor, by tier")',
-      );
-    },
+  await generateAtTiers(h, PER_TIER, ({ tier, round, board }) => {
+    if (tier === MAX_TIER && round === PER_TIER) captureStill(h, "board");
+    const row = TIERS[tier - 1];
+    const context = `tier ${tier}, board ${round}`;
+    const { measured } = measuresUpToTier(board, tier);
+    if (measured === null || measured.budget) {
+      unmeasured += 1;
+      return;
+    }
+    assertGreaterThanOrEqual(
+      measured.branching,
+      row.minBranching - 1e-9,
+      `${context}: branching ${measured.branching.toFixed(3)} ` +
+        '(specs/modes/cascade.md "The floor, by tier")',
+    );
   });
 
   // The verdict is never vacuous: enough of the sweep was really measured.
   assertLessThan(
     unmeasured,
     6,
-    "at least twenty of the sweep's twenty-five boards measured inside the " +
+    "at least twenty of the twenty-five generated boards measured inside the " +
       "oracle's expansion budget",
   );
 });

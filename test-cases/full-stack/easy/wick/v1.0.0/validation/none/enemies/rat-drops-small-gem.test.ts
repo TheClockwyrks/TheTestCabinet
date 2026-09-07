@@ -20,7 +20,7 @@
 // the whole of what the tick does. `150` is beyond the `48` pickup radius, so
 // the drop is neither attracted nor collected on the tick it lands.
 //
-// The kill also "draws for bread and for a draft, as that file states", so a
+// The kill also "rolls for a pickup, as that file states", so a
 // pickup may land beside the gem; the point reads the gems the tick created
 // and asks separately that no chest is among the pickups, which is what a
 // `common` never drops.

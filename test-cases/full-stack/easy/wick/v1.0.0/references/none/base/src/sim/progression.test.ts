@@ -20,15 +20,10 @@ import {
 } from "./progression";
 
 function world(): { state: WickState; ctx: TickContext } {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
-  const ctx = makeTickContext(
-    state,
-    new Rng(() => state),
-    NOTHING_HELD,
-    new Set<Cue>(),
-  );
+  const ctx = makeTickContext(state, new Rng(), NOTHING_HELD, new Set<Cue>());
   return { state, ctx };
 }
 

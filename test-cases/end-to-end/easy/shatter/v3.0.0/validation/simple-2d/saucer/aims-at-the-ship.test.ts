@@ -3,45 +3,58 @@
 // THE RULE. `specs/saucer.md`: "the saucer fires one saucer bullet AIMED AT THE
 // SHIP'S CURRENT POSITION", and "The shot's bearing is the bearing from the
 // saucer to the ship, offset by an angle drawn afresh for every shot, uniformly
-// from `-SAUCER_AIM_ERROR` to `+SAUCER_AIM_ERROR`". The offset is a zero-mean
-// draw, so what the aim itself is can only be read off the AVERAGE of many shots:
-// one shot says almost nothing, and sixty say it to within a degree.
+// from `-SAUCER_AIM_ERROR` to `+SAUCER_AIM_ERROR`".
 //
-// WHY THREE DEGREES, AND WHY IT IS DERIVED RATHER THAN OBSERVED. A uniform draw
-// over `+/-E` has standard deviation `E / sqrt(3)` = `5.77` degrees, so the mean
-// of `n` of them has a standard error of `E / sqrt(3n)` — `0.745` degrees at
-// sixty. Three degrees is four standard errors, which a conformant build clears
-// about nineteen times in twenty thousand runs, and it is arithmetic on the
-// specification's own figure rather than a spread read off a reference build.
-// What it catches is a build with a systematic lead: one that aims at where the
-// ship WILL be, or at the field's centre, or at the last position it cached,
-// reads a mean that does not move as the sample grows.
+// THE ERROR IS POSED AT ZERO, SO THE AIM IS READ DIRECTLY. The draw is what
+// stands between a shot and the bearing to the ship, and
+// `specs/instrumentation.md` gives the surface `setNextSaucerAim`, which sets the
+// outcome of that draw for the next shot. With it posed at `0` the round has to
+// leave along the bearing to the ship exactly, and the reading is one shot rather
+// than the mean of a sample. The draw's own range and scatter are
+// `aim-error-within-10-degrees`'s and `aim-error-varies-per-shot`'s items, read
+// off unposed shots.
 //
-// ONE DIRECTION ONLY. That the per-shot error stays inside its bound is
-// `aim-error-within-10-degrees`'s, and that it is redrawn at all is
-// `aim-error-varies-per-shot`'s. A build that aims dead-on with no error
-// whatsoever passes this one and fails that one, which is exactly right: it has
-// the aim and not the scatter.
+// TWO SAUCER POSITIONS, ON OPPOSITE SIDES OF THE SHIP, so a build that fires
+// along a fixed bearing, or at the ship's safe point rather than at the ship,
+// reads wrong on at least one of them. The saucer is held still with its mind
+// off, so its own velocity is zero and the round's velocity is the aim; the ship
+// stands four hundred units away, well inside a straight shot.
 //
-// THE SCENARIO IS IN `aim.ts`: a saucer standing still with its mind and its
-// travel off, four hundred units from a ship standing still, both far enough from
-// the star that the well cannot turn a round between the gun and the reading.
+// THE TOLERANCE is half a degree: a bearing read off a velocity, and nothing
+// else. A build that aims a whole degree off is twice the bound out.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertLength, assertLessThanOrEqual } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { SAUCER_AIM_ERROR_DEG, SHOT_COUNT, readAimErrors } from "./aim";
+import { assertLength, assertLessThanOrEqual, fail } from "../assert";
+import { SAUCER_FIRE_INTERVAL } from "../constants";
+import {
+  angleGap,
+  degrees,
+  headingOf,
+  separation,
+  type Point,
+} from "../geometry";
+import {
+  captureStill,
+  createHarness,
+  startPlaying,
+  ticksFor,
+  type Harness,
+} from "../harness";
+import { SAUCER_STAND, SHIP_STAND } from "./aim";
+import { nextVolley } from "./cadence";
+import { poseVisit } from "./visit";
 
-/**
- * The standard error of the mean of `SHOT_COUNT` draws, in degrees: `0.745`.
- *
- * `SAUCER_AIM_ERROR / sqrt(3 * n)` — the standard deviation of one uniform draw
- * over `+/-E` divided by the root of the sample size.
- */
-const STANDARD_ERROR = SAUCER_AIM_ERROR_DEG / Math.sqrt(3 * SHOT_COUNT);
+/** The two stands: `aim.ts`'s, and its mirror on the far side of the ship. */
+const STANDS: readonly Point[] = [
+  SAUCER_STAND,
+  { x: SHIP_STAND.x + (SHIP_STAND.x - SAUCER_STAND.x), y: SAUCER_STAND.y },
+];
 
-/** The item's three degrees, which is four of those. See the header. */
-const MEAN_TOLERANCE = 4 * STANDARD_ERROR;
+/** How far the shot's aim may stand from the bearing to the ship, in degrees. */
+const AIM_TOLERANCE_DEG = 0.5;
+
+/** How long a wait for a shot runs: a little over one fire interval. */
+const SHOT_CEILING = ticksFor(SAUCER_FIRE_INTERVAL + 0.5);
 
 let h: Harness;
 
@@ -53,21 +66,43 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("centres sixty shots on the bearing to the ship", async () => {
-  const errors = await readAimErrors(h);
-  captureStill(h, "aim");
+it("fires a shot with no aim error straight along the bearing to the ship", async () => {
+  startPlaying(h);
+  h.debug.setShipPosition(SHIP_STAND.x, SHIP_STAND.y);
 
-  assertLength(
-    errors,
-    SHOT_COUNT,
-    "the shots the sixty-shot sweep read (specs/saucer.md)",
-  );
+  for (const [index, stand] of STANDS.entries()) {
+    h.debug.clearEnemyBullets();
+    poseVisit(h, stand.x, stand.y, {
+      vx: 0,
+      vy: 0,
+      mind: false,
+      travel: false,
+    });
+    h.debug.setNextSaucerAim(0);
 
-  const mean = errors.reduce((sum, error) => sum + error, 0) / errors.length;
-  assertLessThanOrEqual(
-    Math.abs(mean),
-    MEAN_TOLERANCE,
-    `the degrees the mean of ${SHOT_COUNT} shots stood off the bearing to ` +
-      "the ship (specs/saucer.md)",
-  );
+    const volley = await nextVolley(h, { maxTicks: SHOT_CEILING });
+    if (index === 0) captureStill(h, "aim");
+
+    assertLength(volley.fired, 1, "the rounds the shot put on the field");
+    const carried = volley.saucer ?? { vx: 0, vy: 0 };
+    const round = volley.fired[0];
+    const aim = headingOf({
+      vx: round.vx - carried.vx,
+      vy: round.vy - carried.vy,
+    });
+    if (aim === null) {
+      fail(
+        "a round leaving at SAUCER_BULLET_SPEED along a bearing (specs/saucer.md)",
+        "a saucer bullet with no velocity of its own",
+      );
+    }
+    const toShip = separation(stand, SHIP_STAND);
+    const wanted = Math.atan2(toShip.y, toShip.x);
+    assertLessThanOrEqual(
+      degrees(angleGap(wanted, aim)),
+      AIM_TOLERANCE_DEG,
+      `degrees between the shot's aim and the bearing from (${stand.x}, ` +
+        `${stand.y}) to the ship, with the aim error posed at 0 (specs/saucer.md)`,
+    );
+  }
 });

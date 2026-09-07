@@ -28,6 +28,7 @@ import {
 } from "./constants";
 import type { BallState, ObstacleState, PaddleState, Side } from "./game";
 import type { DeepReadonly } from "ts-essentials";
+import { drawLaunchAngle } from "./random";
 
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
@@ -109,6 +110,7 @@ export function parkBall(index: number, hold: number): BallState {
     spin: 0,
     held: hold > 0,
     holdTimer: hold,
+    launchAngle: drawLaunchAngle(),
     trail: [],
   };
 }

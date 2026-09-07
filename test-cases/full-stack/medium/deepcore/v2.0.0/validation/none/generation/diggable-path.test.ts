@@ -1,7 +1,7 @@
 // generation/diggable-path — a route down that needs no lava and no explosives.
 //
 // `specs/world.md` states it as a property of every generated mine, at every size
-// and every seed: "From the cave mouth there is a path to each material node and
+// in every generated mine: "From the cave mouth there is a path to each material node and
 // to the Core that crosses only minable cells that are neither lava nor
 // unbreakable stone, so a route down is always diggable without drilling lava or
 // blasting a boulder."
@@ -29,8 +29,6 @@ import {
 import { captureStill, createHarness, type Harness } from "../harness";
 import { cellKey, generatedMine, look, reachableFrom } from "./mine-scan";
 
-const SEEDS = [1, 2, 3, 7, 19] as const;
-
 /** The cells a dug route may cross: minable, and neither lava nor boulder. */
 function diggable(kind: TileKind): boolean {
   return (
@@ -54,29 +52,27 @@ afterEach(async () => {
 
 it("runs a diggable route from the cave mouth to both nodes and the Core", async () => {
   for (const size of WORLD_SIZES) {
-    for (const seed of SEEDS) {
-      const at = `the ${size} mine on seed ${seed}`;
-      const scan = await generatedMine(h, seed, size as WorldSize);
-      const reached = reachableFrom(
-        scan,
-        { col: CAVE_MOUTH_COL, row: 1 },
-        diggable,
-      );
+    const at = `the ${size} mine`;
+    const scan = await generatedMine(h, size as WorldSize);
+    const reached = reachableFrom(
+      scan,
+      { col: CAVE_MOUTH_COL, row: 1 },
+      diggable,
+    );
 
-      assertLength(scan.materials, 2, `material nodes in ${at}`);
-      for (const node of scan.materials) {
-        assertTrue(
-          reached.has(cellKey(node.col, node.row)),
-          `a diggable route from the cave mouth to the ${node.material} node at (${node.col}, ${node.row}) in ${at}`,
-        );
-      }
-      // The Core is drilled downward onto from the cell above it, and that cell
-      // is what a route has to reach; the Core tile itself is not minable.
+    assertLength(scan.materials, 2, `material nodes in ${at}`);
+    for (const node of scan.materials) {
       assertTrue(
-        reached.has(cellKey(CORE_COL, scan.coreRow - 1)),
-        `a diggable route from the cave mouth to the cell above the Core in ${at}`,
+        reached.has(cellKey(node.col, node.row)),
+        `a diggable route from the cave mouth to the ${node.material} node at (${node.col}, ${node.row}) in ${at}`,
       );
     }
+    // The Core is drilled downward onto from the cell above it, and that cell
+    // is what a route has to reach; the Core tile itself is not minable.
+    assertTrue(
+      reached.has(cellKey(CORE_COL, scan.coreRow - 1)),
+      `a diggable route from the cave mouth to the cell above the Core in ${at}`,
+    );
   }
 
   // The picture: the route's start, at the edge of the camp.

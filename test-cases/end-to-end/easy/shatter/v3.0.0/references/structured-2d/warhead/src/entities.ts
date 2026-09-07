@@ -41,8 +41,7 @@ export function takeId(state: ShatterState): number {
 /**
  * A rock of `size`, at rest, at full health for its size.
  *
- * The drawn spin it carries is one of the draws `specs/simulation.md` lists, so
- * it comes off the seeded generator like every other.
+ * The spin it is drawn with is the build's own, drawn from its own source.
  */
 export function addRockTo(
   state: ShatterState,
@@ -57,7 +56,7 @@ export function addRockTo(
     vx: 0,
     vy: 0,
     size,
-    spin: nextAngle(state),
+    spin: nextAngle(),
     health: ROCK_HEALTH[size],
     flash: 0,
   };
@@ -146,6 +145,8 @@ export function addSaucerTo(
     mind: true,
     gun: true,
     travel: true,
+    // Down, for a saucer posed onto the field; an arrival draws its own.
+    weave: 1,
     fireClock: SAUCER_FIRE_INTERVAL,
     weaveClock: SAUCER_WEAVE_INTERVAL,
     age: 0,

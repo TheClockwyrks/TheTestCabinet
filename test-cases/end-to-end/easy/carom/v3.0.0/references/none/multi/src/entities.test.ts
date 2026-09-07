@@ -131,6 +131,7 @@ describe("the balls", () => {
         spin: 0,
         held: true,
         holdTimer: HOLD_TIME,
+        launchAngle: expect.any(Number),
         trail: [],
       });
     });
@@ -153,6 +154,7 @@ describe("the balls", () => {
       spin: 0,
       held: true,
       holdTimer: 1.0,
+      launchAngle: expect.any(Number),
       trail: [],
     });
   });
@@ -190,6 +192,7 @@ describe("spawning a ball", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      launchAngle: expect.any(Number),
       trail: [],
     });
   });

@@ -47,6 +47,16 @@ import { defineEngineValidationConfig } from "./case-harness/engine/vitest-confi
 
 export default defineEngineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
+  // ONE FILE IN FLIGHT PER TWO CORES, rather than the one per core vitest picks
+  // when no ceiling is named. A file here holds a core for as long as it runs, and
+  // one of them starts work of its own beside it: the point about the build
+  // interface runs the build in a scratch copy, and with a suite on every core
+  // that build takes about twice what it takes beside half of them. What the
+  // ceiling buys is that every FILE lands near what it costs alone, which is what
+  // a per-check allowance is read against; what it costs is a little of the whole
+  // run's wall clock, which is the runner's to spend. On the two-core host a run
+  // is graded on, this is the one worker vitest would have chosen anyway.
+  maxWorkers: "50%",
   // A Gantry scenario is real structural simulation: a reference tape is a
   // thousand ticks of two linear solves per tick, and a crane is posed one edit
   // at a time before any of it starts. Those drives run in this process rather

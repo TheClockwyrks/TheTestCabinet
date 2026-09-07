@@ -84,6 +84,8 @@ export const REQUIRED_OPS = [
   "setPellet",
   "clearPellet",
   "setPelletRespawn",
+  "setNextPellet",
+  "drawPelletCell",
 ] as const;
 
 /** The operations a mode that lays obstacle cells adds, and no other mode has. */
@@ -101,12 +103,7 @@ export type OperationName =
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot", "menuItemRect"] as const;
-
-/** `reset`'s options: the seed the pellet generator is laid with. */
-export interface ResetOptions {
-  seed?: number;
-}
+export const READINGS = ["snapshot", "menuItemRect", "drawPelletCell"] as const;
 
 /**
  * The hit region a menu item occupies, in the logical units of
@@ -164,6 +161,8 @@ export interface CoilSnapshot {
   travel: boolean;
   /** Whether an eaten pellet is replaced. */
   pelletRespawn: boolean;
+  /** The cell `setNextPellet` posed for the next spawn; `null` once consumed. */
+  nextPellet: Cell | null;
 }
 
 /**
@@ -184,7 +183,7 @@ export interface CoilDebugApi<S = unknown> {
   /** `COIL_DEBUG_VERSION`, a plain number rather than an operation. */
   version: number;
 
-  reset(state: DeepReadonly<S>, options?: ResetOptions): S;
+  reset(state: DeepReadonly<S>): S;
   snapshot(state: DeepReadonly<S>): CoilSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows, or
@@ -209,6 +208,13 @@ export interface CoilDebugApi<S = unknown> {
   setPellet(state: DeepReadonly<S>, col: number, row: number): S;
   clearPellet(state: DeepReadonly<S>): S;
   setPelletRespawn(state: DeepReadonly<S>, enabled: boolean): S;
+  /** Poses the cell the next spawn places the pellet on. */
+  setNextPellet(state: DeepReadonly<S>, col: number, row: number): S;
+  /**
+   * The pellet draw alone: a cell drawn uniformly from the valid set as the
+   * board stands, or `null` when that set is empty. It changes nothing.
+   */
+  drawPelletCell(state: DeepReadonly<S>): Cell | null;
 
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(state: DeepReadonly<S>): S;

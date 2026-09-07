@@ -270,15 +270,15 @@ describe("the launch clock", () => {
     expect(bare.cascadeDone).toBe(false);
   });
 
-  it("replays a seed exactly", () => {
+  it("draws each cascade's launch velocities afresh", () => {
     const other = newSim();
     fillFoundations(other);
     other.screen = "won";
     other.launchClock = LAUNCH_INTERVAL;
     run(sim, 4);
     run(other, 4);
-    expect(other.flyers.map((f) => [f.x, f.y, f.vx, f.vy])).toEqual(
-      sim.flyers.map((f) => [f.x, f.y, f.vx, f.vy]),
+    expect(other.flyers.map((f) => f.vx)).not.toEqual(
+      sim.flyers.map((f) => f.vx),
     );
   });
 });

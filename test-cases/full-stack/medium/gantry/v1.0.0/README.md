@@ -35,10 +35,7 @@ simulation carried across a large surface rather than of any single hard idea.
   against textbook values.
 - **The one dynamic element is specified to the tick.** The hanging load is a
   constraint-projected pendulum with an exact per-tick update
-  (`specs/rigging.md`), so anti-sway is real gameplay and runs replay
-  identically.
-- **No randomness anywhere.** The same structure and the same tape give the same
-  run, tick for tick.
+  (`specs/rigging.md`), so anti-sway is real gameplay.
 - **Speed is bought with steel.** Faster slew means centrifugal load and wider
   swing, and a score is a cost and a time — cost first, time the tie-break — so
   a build that gets the statics right and the choreography wrong is visibly
@@ -153,9 +150,9 @@ specification itself (where the debug surface is reached, and that nothing is
 installed on the page under an engine). Six further points carry
 `engines = ["none"]` and live under `validation/none/` alone: the debug
 overlay's visibility, its toggle key and its reading the game without changing
-it, the clock going off real time, and the stage's fit to the window are all the
-engine's under the two 3D runtimes, and a check on them there would grade the
-engine rather than the build.
+it, the frame loop going off real time, and the stage's fit to the window are
+all the engine's under the two 3D runtimes, and a check on them there would
+grade the engine rather than the build.
 
 The two engine projects run **in process**, not in vitest browser mode. The
 engine takes a `webgl2` context from its canvas the moment it is created, and

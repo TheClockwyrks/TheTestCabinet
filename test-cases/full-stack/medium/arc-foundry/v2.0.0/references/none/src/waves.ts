@@ -7,7 +7,7 @@
 // (specs/enemies.md). Milestone waves (round(N/2) and N) fold in a Dynamo boss
 // (specs/campaign.md). HP scaling is applied per-unit at spawn from the difficulty
 // (specs/enemies.md), NOT here — this module only picks the type sequence and timing,
-// seeded per wave so a given wave plays the same each time it is reached.
+// keyed per wave so a given wave plays the same each time it is reached.
 
 import {
   LOAD,
@@ -25,7 +25,7 @@ interface Weighted {
   unlock: number;
 }
 
-// Compose wave `wave` of `diff.waves` for the chosen difficulty. Deterministic in
+// Compose wave `wave` of `diff.waves` for the chosen difficulty. A function of
 // (wave, diff): the type mix, counts, spawn cadence, and whether a Dynamo anchors it.
 // The base health a set of spawns carries, before the per-wave scaling multiplies it. Since
 // every type scales by the same factor of the wave, comparing base pools compares the scaled

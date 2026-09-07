@@ -233,7 +233,7 @@ export function createRig(sprites: Sprites): Rig {
  */
 export function startPlaying(rig: Rig, level = 1): void {
   const { debug } = rig;
-  debug.reset({ seed: 1 });
+  debug.reset();
   debug.setFoeSpawning(false);
   debug.setWormEntry(false);
   debug.setCursorContact(false);

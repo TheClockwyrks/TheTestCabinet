@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 it("begins no trace on a node more than one beam passes through, leaving the board unchanged", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, SHARED_MID);
 
   // Triangle through the crystal, then square through it: (1,0) is now a mid

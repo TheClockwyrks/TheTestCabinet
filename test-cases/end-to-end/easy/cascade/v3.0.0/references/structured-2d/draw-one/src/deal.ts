@@ -1,8 +1,7 @@
 // Cascade — the deck and the deal (specs/deal.md).
 //
-// Every new game deals from a full deck shuffled uniformly at random, drawn off
-// the state's own seeded generator so the same seed deals the same board
-// (specs/instrumentation.md). The shuffled deck is held with its TOP at the end
+// Every new game deals from a full deck shuffled uniformly at random
+// (specs/deal.md). The shuffled deck is held with its TOP at the end
 // of the array, so dealing is a run of pops and the twenty-four cards left over
 // are the stock exactly as they lie, bottom card first.
 //
@@ -24,8 +23,7 @@ import { newCard } from "./piles";
  * other field, the screen included (specs/instrumentation.md).
  */
 export function dealGame(state: CascadeState, cues: FrameCues): void {
-  const [deck, rngState] = shuffledDeck(state.rngState);
-  state.rngState = rngState;
+  const deck = shuffledDeck();
 
   const tableau: CardState[][] = [];
   for (let col = 0; col < TABLEAU_COLUMNS; col += 1) {

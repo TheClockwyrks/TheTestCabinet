@@ -29,7 +29,7 @@ import {
   openYard,
   type Harness,
 } from "../harness";
-import { leakOne } from "./runs";
+import { EVENT_HZ, leakOne } from "./runs";
 
 /** Comfortably above the eleven Grid Integrity the six leaks below cost. */
 const INTEGRITY = 200;
@@ -37,7 +37,7 @@ const INTEGRITY = 200;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: EVENT_HZ });
 });
 
 afterEach(() => {

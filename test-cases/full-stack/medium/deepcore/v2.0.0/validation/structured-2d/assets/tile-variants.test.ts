@@ -11,16 +11,21 @@
 //   2. THE WALL USES THEM. A block of one band's rock is laid and the picture
 //      drawn over each of its cells is read back, and more than one of the band's
 //      variants must appear across it. A build that ships three files and stamps
-//      one of them everywhere has the files and not the requirement.
+//      one of them everywhere has the files and not the requirement. The cells
+//      read span rows as well as columns, so a build that varies its stamp along
+//      one axis and repeats it along the other is read the same way as one that
+//      varies it by cell: which cells get which stamp is the build's, and what is
+//      asserted is that more than one stamp appears.
 //
 // The picture is read as the `drawImage` over each cell rather than as its pixels,
 // because a variant is a FILE: each produced PNG is decoded into an image of its
 // own, so two cells drawn from one stamp name one image and two cells drawn from
 // different stamps name two, whatever the grain looks like.
 //
-// The cells read are interior ones, so none of them carries the tunnel lip
-// `specs/assets.md` has the build draw around a carved cell, and the miner is held
-// away from the block so its sprite covers none of them. The numbering's starting
+// The cells read are the thirty interior ones of a wider block, so none of them
+// carries the tunnel lip `specs/assets.md` has the build draw around a carved
+// cell, and the miner is held away from the block so its sprite covers none of
+// them. The numbering's starting
 // point is not fixed, so the directory is read for every name of a band's shape.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -47,9 +52,13 @@ import { allDistinct, producedNames, readPictures } from "./produced";
 /** The band the drawn wall is laid in. */
 const BAND = "rockbed" as const;
 
-/** The block of that band's rock the wall is read across. */
+/** The block of that band's rock the wall is laid as: twelve columns by five rows. */
 const FROM_COL = PLAYABLE_COL_MIN + 3;
-const TO_COL = FROM_COL + 9;
+const TO_COL = FROM_COL + 11;
+const BLOCK_ROWS = 5;
+
+/** The floor under the block, which the miner stands on, clear of the block. */
+const FLOOR_BELOW = BLOCK_ROWS;
 
 let h: Harness;
 
@@ -81,12 +90,17 @@ it("produces three variants per band and draws more than one in a wall", async (
   openScene(h);
   pinDrill(h);
   const row = rowInBand(BAND, h.snapshot().coreRow);
-  layFloor(h, row + 3);
-  standOn(h, PLAYABLE_COL_MIN, row + 3);
+  layFloor(h, row + FLOOR_BELOW);
+  standOn(h, PLAYABLE_COL_MIN, row + FLOOR_BELOW);
   pinMiner(h);
   fillBlock(
     h,
-    { fromCol: FROM_COL, toCol: TO_COL, fromRow: row, toRow: row + 2 },
+    {
+      fromCol: FROM_COL,
+      toCol: TO_COL,
+      fromRow: row,
+      toRow: row + BLOCK_ROWS - 1,
+    },
     "rock",
   );
 
@@ -97,11 +111,13 @@ it("produces three variants per band and draws more than one in a wall", async (
   const snapshot = h.snapshot();
   const images = await frameImages(h);
   const seen = new Set<string>();
-  for (let col = FROM_COL + 1; col < TO_COL; col += 1) {
-    const centre = cellCenter(col, row + 1);
-    const at = worldToStage(snapshot, centre.x, centre.y);
-    const drawn = imageAt(images, at);
-    if (drawn !== null) seen.add(drawn.key);
+  for (let cellRow = row + 1; cellRow < row + BLOCK_ROWS - 1; cellRow += 1) {
+    for (let col = FROM_COL + 1; col < TO_COL; col += 1) {
+      const centre = cellCenter(col, cellRow);
+      const at = worldToStage(snapshot, centre.x, centre.y);
+      const drawn = imageAt(images, at);
+      if (drawn !== null) seen.add(drawn.key);
+    }
   }
   captureStill(h, "wall");
 

@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 it("draws TIER with the current tier's digit beside it, clear of the board", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCascade(h);
   const tier = h.snapshot().tier;
   assertEqual(tier, 1, "a fresh cascade plays at tier 1 (precondition)");

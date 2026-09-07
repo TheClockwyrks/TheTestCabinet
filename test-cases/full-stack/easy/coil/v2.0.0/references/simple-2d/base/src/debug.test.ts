@@ -6,11 +6,15 @@
 import { describe, expect, it } from "vitest";
 import { NO_SPRITES } from "./assets";
 import { createDebugApi, type CoilDebugApi } from "./debug";
+import { isInterior } from "./board";
 import {
   COIL_DEBUG_VERSION,
   COMBO_MAX,
   COMBO_WINDOW,
-  DEFAULT_SEED,
+  INTERIOR_MAX_COL,
+  INTERIOR_MAX_ROW,
+  INTERIOR_MIN_COL,
+  INTERIOR_MIN_ROW,
   MODE,
   OBSTACLE_CELLS,
   SCREENS,
@@ -20,12 +24,12 @@ import {
 } from "./constants";
 import { createInitialState, startRound, type CoilState } from "./game";
 import { HAS_OBSTACLES } from "./mode";
-import { spawnPellet, tick } from "./sim";
+import { tick } from "./sim";
 
 const debug: CoilDebugApi = createDebugApi();
 
-function opening(seed = DEFAULT_SEED): CoilState {
-  return createInitialState(NO_SPRITES, false, seed);
+function opening(): CoilState {
+  return createInitialState(NO_SPRITES, false);
 }
 
 /** A chain of `length` cells laid to the left from `(col, row)`. */
@@ -45,6 +49,7 @@ describe("the snapshot", () => {
         "menuIndex",
         "mode",
         "muted",
+        "nextPellet",
         "obstacles",
         "pellet",
         "pelletRespawn",
@@ -145,18 +150,133 @@ describe("reset", () => {
     expect(debug.snapshot(debug.reset(muted)).muted).toBe(true);
   });
 
-  it("draws the same pellet sequence from the same seed", () => {
-    const sequence = (seed: number): string[] => {
-      let state = startRound(debug.reset(opening(), { seed }));
-      const cells: string[] = [];
-      for (let i = 0; i < 6; i++) {
-        cells.push(`${state.pellet!.col},${state.pellet!.row}`);
-        state = spawnPellet(state).state;
+  it("clears a posed next pellet", () => {
+    const posed = debug.setNextPellet(opening(), 20, 4);
+    expect(debug.snapshot(debug.reset(posed)).nextPellet).toBeNull();
+  });
+});
+
+describe("the posed spawn", () => {
+  /** A round with a chain along row 8 and its meal one cell ahead of the head. */
+  function arrangedEat(): CoilState {
+    let state = startRound(opening());
+    state = { ...state, obstacles: [] };
+    state = debug.setSnake(state, chain(10, 8, 3));
+    state = debug.setDirection(state, "right");
+    return debug.setPellet(state, 11, 8);
+  }
+
+  it("reports the posed cell until a spawn takes it", () => {
+    let state = debug.setNextPellet(arrangedEat(), 20, 4);
+    expect(debug.snapshot(state).nextPellet).toEqual({ col: 20, row: 4 });
+    state = debug.setNextPellet(state, 21, 5);
+    expect(debug.snapshot(state).nextPellet).toEqual({ col: 21, row: 5 });
+  });
+
+  it("places the next pellet on the posed cell and consumes the pose", () => {
+    const state = debug.setNextPellet(arrangedEat(), 20, 4);
+    const shot = debug.snapshot(tick(state).state);
+    expect(shot.snake[0]).toEqual({ col: 11, row: 8 });
+    expect(shot.pellet).toEqual({ col: 20, row: 4 });
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("discards a posed cell the chain holds at the spawn", () => {
+    const state = debug.setNextPellet(arrangedEat(), 9, 8);
+    const shot = debug.snapshot(tick(state).state);
+    expect(shot.pellet).not.toBeNull();
+    expect(shot.pellet).not.toEqual({ col: 9, row: 8 });
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("keeps the pose through an eat with respawn off", () => {
+    let state = debug.setPelletRespawn(arrangedEat(), false);
+    state = debug.setNextPellet(state, 20, 4);
+    const shot = debug.snapshot(tick(state).state);
+    expect(shot.pellet).toBeNull();
+    expect(shot.nextPellet).toEqual({ col: 20, row: 4 });
+  });
+
+  it("keeps the pose when a pellet is placed by hand", () => {
+    let state = debug.setNextPellet(arrangedEat(), 20, 4);
+    state = debug.setPellet(state, 12, 8);
+    expect(debug.snapshot(state).nextPellet).toEqual({ col: 20, row: 4 });
+  });
+
+  it("discards a posed wall cell and draws an interior cell instead", () => {
+    const state = debug.setNextPellet(arrangedEat(), 0, 8);
+    const shot = debug.snapshot(tick(state).state);
+    expect(shot.pellet).not.toBeNull();
+    expect(shot.pellet).not.toEqual({ col: 0, row: 8 });
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("refuses a cell off the grid", () => {
+    expect(() => debug.setNextPellet(opening(), -1, 8)).toThrow();
+    expect(() => debug.setNextPellet(opening(), 30, 8)).toThrow();
+    expect(() => debug.setNextPellet(opening(), 5, 18)).toThrow();
+    expect(() => debug.setNextPellet(opening(), 1.5, 8)).toThrow();
+  });
+});
+
+describe("the draw alone", () => {
+  /** A round with a chain along row 8 and a live pellet elsewhere. */
+  function arrangedBoard(): CoilState {
+    let state = startRound(opening());
+    state = { ...state, obstacles: [] };
+    state = debug.setSnake(state, chain(10, 8, 3));
+    return debug.setPellet(state, 20, 6);
+  }
+
+  /** Every interior cell as one chain, row by row and back the next. */
+  function fullChain(): Cell[] {
+    const path: Cell[] = [];
+    for (let row = INTERIOR_MIN_ROW; row <= INTERIOR_MAX_ROW; row++) {
+      for (let i = INTERIOR_MIN_COL; i <= INTERIOR_MAX_COL; i++) {
+        const col =
+          row % 2 === 1 ? i : INTERIOR_MAX_COL - (i - INTERIOR_MIN_COL);
+        path.push({ col, row });
       }
-      return cells;
+    }
+    return path;
+  }
+
+  it("answers a cell of the valid set", () => {
+    const state = arrangedBoard();
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = debug.drawPelletCell(state);
+      expect(cell).not.toBeNull();
+      expect(isInterior(cell!.col, cell!.row)).toBe(true);
+      expect(state.snake).not.toContainEqual(cell);
+      expect(cell).not.toEqual(state.pellet);
+    }
+  });
+
+  it("answers more than one cell over repeated draws", () => {
+    const state = arrangedBoard();
+    const seen = new Set<string>();
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = debug.drawPelletCell(state)!;
+      seen.add(`${cell.col},${cell.row}`);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("leaves the state and a standing pose as they were", () => {
+    const state = debug.setNextPellet(arrangedBoard(), 20, 4);
+    const before = debug.snapshot(state);
+    debug.drawPelletCell(state);
+    expect(debug.snapshot(state)).toEqual(before);
+  });
+
+  it("answers null when the valid set is empty", () => {
+    const state: CoilState = {
+      ...startRound(opening()),
+      obstacles: [],
+      snake: fullChain(),
+      pellet: null,
     };
-    expect(sequence(11)).toEqual(sequence(11));
-    expect(sequence(11)).not.toEqual(sequence(12));
+    expect(debug.drawPelletCell(state)).toBeNull();
   });
 });
 
@@ -180,12 +300,6 @@ describe("the poses", () => {
     expect(debug.snapshot(state).pellet).toEqual({ col: 20, row: 4 });
     state = debug.clearPellet(state);
     expect(debug.snapshot(state).pellet).toBeNull();
-  });
-
-  it("places a pellet without drawing from the generator", () => {
-    const state = startRound(opening());
-    const posed = debug.setPellet(state, 20, 4);
-    expect(posed.rngState).toBe(state.rngState);
   });
 
   it("empties the turn buffer, turning nothing", () => {

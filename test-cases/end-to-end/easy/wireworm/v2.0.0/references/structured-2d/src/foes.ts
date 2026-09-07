@@ -28,7 +28,6 @@ import {
   DROPPER_FROM_LEVEL,
   DROPPER_SPARSE_THRESHOLD,
   DROPPER_SPEED,
-  FOE_HALF,
   GLITCH_DART_INTERVAL,
   GLITCH_FROM_LEVEL,
   GLITCH_H_SPEED,
@@ -45,7 +44,7 @@ import {
   tileCY,
 } from "./constants";
 import type { FrameCues } from "./audio";
-import type { FoeKind, FoeState, WirewormState } from "./game";
+import type { FoeKind, FoeState, Tile, WirewormState } from "./game";
 import { dropNode, nodeAt, putNode, tileColumn, tileRow } from "./grid";
 import { randomInt, randomRange, randomSign } from "./rng";
 
@@ -167,21 +166,6 @@ function think(
   cues.critical = true;
 }
 
-/** Start the clocks the level's own spawners keep, as its play becomes active. */
-export function resetSpawnClocks(state: WirewormState): void {
-  state.glitchTimer = randomRange(
-    state,
-    GLITCH_MIN_INTERVAL,
-    GLITCH_MAX_INTERVAL,
-  );
-  state.corruptorTimer = randomRange(
-    state,
-    CORRUPTOR_MIN_INTERVAL,
-    CORRUPTOR_MAX_INTERVAL,
-  );
-  state.dropperTimer = DROPPER_CHECK_INTERVAL;
-}
-
 /**
  * The level's own spawning of foes: the glitch's paced arrival, the corruptor's,
  * and the dropper's sparse-field check. This is the whole of what
@@ -195,28 +179,19 @@ export function resetSpawnClocks(state: WirewormState): void {
 export function runSpawners(state: WirewormState, dt: number): void {
   if (state.level >= GLITCH_FROM_LEVEL) {
     if (state.glitchTimer <= 0) {
-      state.glitchTimer = randomRange(
-        state,
-        GLITCH_MIN_INTERVAL,
-        GLITCH_MAX_INTERVAL,
-      );
+      state.glitchTimer = randomRange(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
     }
     state.glitchTimer -= dt;
     if (state.glitchTimer <= 0) {
       const onBoard = state.foes.filter((foe) => foe.kind === "glitch").length;
       if (onBoard < GLITCH_MAX_ON_BOARD) enterGlitch(state);
-      state.glitchTimer = randomRange(
-        state,
-        GLITCH_MIN_INTERVAL,
-        GLITCH_MAX_INTERVAL,
-      );
+      state.glitchTimer = randomRange(GLITCH_MIN_INTERVAL, GLITCH_MAX_INTERVAL);
     }
   }
 
   if (state.level >= CORRUPTOR_FROM_LEVEL) {
     if (state.corruptorTimer <= 0) {
       state.corruptorTimer = randomRange(
-        state,
         CORRUPTOR_MIN_INTERVAL,
         CORRUPTOR_MAX_INTERVAL,
       );
@@ -225,7 +200,6 @@ export function runSpawners(state: WirewormState, dt: number): void {
     if (state.corruptorTimer <= 0) {
       enterCorruptor(state);
       state.corruptorTimer = randomRange(
-        state,
         CORRUPTOR_MIN_INTERVAL,
         CORRUPTOR_MAX_INTERVAL,
       );
@@ -249,24 +223,58 @@ export function lowerFieldCount(state: WirewormState): number {
   return state.nodes.filter((node) => node.r >= 10).length;
 }
 
+/**
+ * The tile an edge-entering foe comes in on: the posed one where the debug
+ * surface posed it, and otherwise a side edge by coin flip and a row drawn
+ * uniformly from `topRow..bottomRow`. A posed tile decides that one entry.
+ */
+function edgeEntry(
+  posed: Tile | null,
+  topRow: number,
+  bottomRow: number,
+): Tile {
+  if (posed !== null) return posed;
+  return {
+    c: randomSign() < 0 ? 0 : COLS - 1,
+    r: randomInt(topRow, bottomRow),
+  };
+}
+
+/** An edge-entering foe of `kind`, heading inward from the edge it stands against. */
+function enterFromEdge(
+  state: WirewormState,
+  kind: FoeKind,
+  tile: Tile,
+): FoeState {
+  const fromLeft = tile.c === 0;
+  return addFoeTo(
+    state,
+    kind,
+    tileCX(tile.c),
+    tileCY(tile.r),
+    fromLeft ? 1 : -1,
+  );
+}
+
 /** A glitch entering at a side edge, on a row from 8 to 15, heading inward. */
 function enterGlitch(state: WirewormState): FoeState {
-  const edge = randomSign(state);
-  const row = randomInt(state, 8, 15);
-  const x = edge < 0 ? FOE_HALF : STAGE_W - FOE_HALF;
-  return addFoeTo(state, "glitch", x, tileCY(row), edge < 0 ? 1 : -1);
+  const tile = edgeEntry(state.nextGlitchEntry, 8, 15);
+  state.nextGlitchEntry = null;
+  return enterFromEdge(state, "glitch", tile);
 }
 
 /** A corruptor entering at a side edge, on a row from 1 to 6, heading inward. */
 function enterCorruptor(state: WirewormState): FoeState {
-  const edge = randomSign(state);
-  const row = randomInt(state, 1, 6);
-  const x = edge < 0 ? FOE_HALF : STAGE_W - FOE_HALF;
-  return addFoeTo(state, "corruptor", x, tileCY(row), edge < 0 ? 1 : -1);
+  const tile = edgeEntry(state.nextCorruptorEntry, 1, 6);
+  state.nextCorruptorEntry = null;
+  return enterFromEdge(state, "corruptor", tile);
 }
 
-/** A dropper entering at row 0, on the center of a column, falling. */
+/** A dropper entering at row 0, on the center of a column drawn uniformly, falling. */
 function enterDropper(state: WirewormState): FoeState {
-  const column = randomInt(state, 0, COLS - 1);
-  return addFoeTo(state, "dropper", tileCX(column), tileCY(0));
+  const posed = state.nextDropperEntry;
+  state.nextDropperEntry = null;
+  const column = posed === null ? randomInt(0, COLS - 1) : posed.c;
+  const row = posed === null ? 0 : posed.r;
+  return addFoeTo(state, "dropper", tileCX(column), tileCY(row));
 }

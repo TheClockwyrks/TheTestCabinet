@@ -42,7 +42,6 @@ import type { CueSink } from "./build";
 import { OPENING_TILES, idx } from "./grid";
 import { resolveHeat } from "./heat";
 import { modeFigures } from "./modes";
-import { nextInt } from "./rng";
 import type { MeltdownState, Unit } from "./state";
 import {
   atExhaust,
@@ -92,13 +91,22 @@ export function clearSurge(state: MeltdownState): void {
   state.surge = [];
 }
 
+/** One vent draw, the two equally likely: the game's only randomness. */
+export function drawVent(): Vent {
+  return Math.random() < 0.5 ? "left" : "top";
+}
+
+/** The vent a released unit enters at: the posed one, else a draw. */
+function ventFor(state: MeltdownState): Vent {
+  return state.spawnVent ?? drawVent();
+}
+
 /**
  * Release one unit of the current wave, if the run's own release is running.
  *
- * The vent is drawn from the seeded generator, the two equally likely, and that
- * draw is the only randomness in the game. It is taken before the gate is
- * consulted for nothing — the gate is checked first — so a gated run leaves the
- * generator exactly where it was.
+ * The vent is the posed one while `spawnVent` holds a vent, and otherwise a
+ * draw with the two equally likely; that draw is the only randomness in the
+ * game (specs/waves.md).
  */
 function releaseOne(state: MeltdownState): void {
   if (!state.waveSpawning || state.wavePending <= 0) return;
@@ -106,7 +114,7 @@ function releaseOne(state: MeltdownState): void {
   const total = releaseCount(state.mode, state.wave, figures.waveCount);
   const index = total - state.wavePending;
   const type = releaseTypeAt(state.mode, state.wave, figures.waveCount, index);
-  const vent: Vent = nextInt(state.rng, 2) === 0 ? "left" : "top";
+  const vent = ventFor(state);
   state.wavePending -= 1;
   addUnit(state, type, vent, state.wavePending);
 }

@@ -524,6 +524,3 @@ export const HANDLE = "__floe";
 
 /** The version the surface reports as `version`. */
 export const FLOE_DEBUG_VERSION = 1;
-
-/** The seed a run uses when `reset()` is called without one. */
-export const DEFAULT_SEED = 1;

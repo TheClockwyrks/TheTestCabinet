@@ -24,8 +24,8 @@
 // derives its branches from V8's block counters remapped through source maps;
 // those numbers do not correspond to logical branches in TypeScript, and they can
 // shift with a V8 or vitest upgrade through the remap alone, with no change to
-// this code. Istanbul's instrumentation is deterministic given the source and the
-// plugin version, and it emits the JSON summary format that is stored natively
+// this code. Istanbul's instrumentation follows from the source and the plugin
+// version alone, and it emits the JSON summary format that is stored natively
 // rather than through a remap.
 
 import { defineConfig } from "vitest/config";

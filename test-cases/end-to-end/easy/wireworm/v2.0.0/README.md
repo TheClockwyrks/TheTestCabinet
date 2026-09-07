@@ -100,7 +100,7 @@ for every run. Each rule lives in exactly one file.
 | `ui.md`              | The six screens and their menus, the HUD readouts, the ten audio cues, and the mute requirement.                                                                                   |
 | `assets.md`          | The six sprite folders, their frame counts, which frame is drawn for which state, the animation rates, the mirroring rule, and what is drawn in code.                              |
 | `state.md`           | What the game's state carries, in the shape the selected engine holds it in.                                                                                                       |
-| `instrumentation.md` | The deterministic core, every operation of the debug and automation surface, the snapshot shape, and the debug overlay.                                                            |
+| `instrumentation.md` | The render-free core, every operation of the debug and automation surface, the snapshot shape, and the debug overlay.                                                              |
 | `showcase.md`        | The player-facing description and captured carousel the finished game ships beside its source.                                                                                     |
 
 `board.md`, `nodes.md`, `discharge.md`, `worm.md`, `foes.md`, `cursor.md`,
@@ -138,7 +138,7 @@ reference build to produce the baseline it is shown beside.
 
 ## Validation
 
-This case is validator-rated: every one of the `223` items on the checklist
+This case is validator-rated: every one of the `225` items on the checklist
 carries a Vitest suite, and the validators decide the functional rating through
 each item's failure cap. A reviewer rates the run's aesthetics through the four
 domains and may override a verdict. One item — `audio.mute-silences` — names
@@ -173,7 +173,7 @@ reference's side by side.
 A run is rated on four domains — `charge` (the node field and the discharge),
 `worm` (the data-worm itself), `arcade` (the cursor, the foes and the run) and
 `presentation` (the screens, the HUD, the art and the audio) — and its overall
-rating is the worst of the four. The `223` checklist items are grouped into
+rating is the worst of the four. The `225` checklist items are grouped into
 sixteen categories, and each names the domains its failure lowers and how far it
 lowers them. All but one are worth a point apiece; `showcase.exists` is worth
 three, because it grades a deliverable of its own rather than a behavior of the

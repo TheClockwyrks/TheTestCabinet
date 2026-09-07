@@ -15,7 +15,7 @@
 //   `moveSpeed`, and each tick the position advances by the velocity times
 //   `TICK_DT`", with `MOVE_SPEED` 180 and `TICK_DT` 1/60: 3 units a tick, so
 //   three ticks are 9.
-//   specs/instrumentation.md ("A deterministic core"): "each frame's delta
+//   specs/instrumentation.md ("A render-free core"): "each frame's delta
 //   time joins the accumulator, every whole `TICK_DT` in it is consumed as a
 //   tick", and "a clock of any other length poses a partial frame".
 //

@@ -75,16 +75,6 @@ const CELL_HALF = CELL_PITCH / 2 - 1;
 /** The board every reading is taken over: the run-free filler, with its escape. */
 const BOARD = quietRowsWithEscape([]);
 
-/**
- * Real milliseconds the produced art is given before the first reading.
- *
- * specs/assets.md has a build ship its gems as produced files, and a file is
- * decoded off the frame loop rather than inside it, so a reading taken before
- * they arrive could hold a placeholder. This spends REAL time only: the
- * simulation stands still through it.
- */
-const ART_SETTLE_MS = 250;
-
 /** One cell read through both boxes at once: the gem's own, and the whole cell's. */
 interface CellReading {
   gem: Patch;
@@ -123,7 +113,6 @@ afterEach(() => {
 
 it("draws the selected cell apart from that same cell unselected", async () => {
   loadBoard(h, BOARD);
-  await h.settle(ART_SETTLE_MS);
 
   // The cell with nothing selected and nothing offered.
   h.debug.clearSelection();

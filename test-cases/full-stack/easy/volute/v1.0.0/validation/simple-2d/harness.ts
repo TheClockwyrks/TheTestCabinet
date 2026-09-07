@@ -48,9 +48,9 @@
 // simulation tick of `TICK_DT`. That clock is what every harness below is built
 // with, so a duration written as a tick count means the same thing here as it
 // does in the engineless project, and the tolerances the case states in ticks
-// carry across unchanged. The one check that is ABOUT the game running itself
-// (`channel/self-advancing`) hands the loop back with {@link Harness.runFor},
-// which is the only place real time enters this project.
+// carry across unchanged. Nothing in this project hands the loop back to a real
+// clock: the frames a check drives are the whole of what it measures, so a
+// check lands the same ticks on any host.
 //
 // EVERY OPERATION IS STILL ASYNC. `engine.advance` and `engine.initialize` really
 // are, and the rest are written the same way so one vocabulary — `await
@@ -79,7 +79,6 @@ import {
 } from "@napi-rs/canvas";
 import {
   ConstantClock,
-  WallClock,
   createEngine,
   type Clock,
   type Engine,
@@ -129,7 +128,6 @@ import {
   CELLS,
   CHANNEL,
   CHANNEL_ARC,
-  DEFAULT_SEED,
   FIELD_H,
   FIELD_W,
   HANDLE,
@@ -253,7 +251,8 @@ export interface VoluteSnapshot {
   muted: boolean;
   /** Accumulated simulation time, in seconds. */
   simTime: number;
-  rngState: number;
+  /** The charge posed for the next emission, `null` while none stands. */
+  nextEmitted: ChargeId | null;
 }
 
 /**
@@ -287,8 +286,8 @@ export type PosedCore = [
 export interface VoluteSurface<S = unknown> {
   /** `VOLUTE_DEBUG_VERSION`, a plain number. */
   version: number;
-  /** Restore every declared field to its title value and reseed the generator. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  /** Restore every declared field to its title value. */
+  reset(state: DeepReadonly<S>): S;
   /** A pure reading of the running game. */
   snapshot(state: DeepReadonly<S>): VoluteSnapshot;
   /** Set the screen, and nothing else. */
@@ -307,10 +306,12 @@ export interface VoluteSurface<S = unknown> {
   poseTrain(state: DeepReadonly<S>, cores: readonly PosedCore[]): S;
   /** Remove every core from the channel and every projectile. */
   clearTrain(state: DeepReadonly<S>): S;
-  /** Set the charge the injector holds loaded. The generator is untouched. */
+  /** Set the charge the injector holds loaded, and nothing else. */
   setLoaded(state: DeepReadonly<S>, charge: ChargeId): S;
-  /** Set the charge the injector holds queued. The generator is untouched. */
+  /** Set the charge the injector holds queued, and nothing else. */
   setQueued(state: DeepReadonly<S>, charge: ChargeId): S;
+  /** Pose the charge of the next core the inlet emits, or clear it with `null`. */
+  setNextEmitted(state: DeepReadonly<S>, charge: ChargeId | null): S;
   /** Set the aim, normalized into [0, 360), and nothing else. */
   setAim(state: DeepReadonly<S>, angleDegrees: number): S;
   /** Release the loaded core along the current aim. Always launches. */
@@ -362,8 +363,8 @@ export type VoluteSyncDriver = PureDriver<
  * counterpart in the engineless project.
  */
 export interface VoluteDebugApi {
-  /** Restore every declared field to its title value and reseed the generator. */
-  reset(options?: { seed?: number }): Promise<void>;
+  /** Restore every declared field to its title value. */
+  reset(): Promise<void>;
   /** A pure read of the running game. */
   snapshot(): Promise<VoluteSnapshot>;
   /** Set the screen, and nothing else. */
@@ -382,10 +383,12 @@ export interface VoluteDebugApi {
   poseTrain(cores: readonly PosedCore[]): Promise<void>;
   /** Remove every core from the channel and every projectile. */
   clearTrain(): Promise<void>;
-  /** Set the charge the injector holds loaded. The generator is untouched. */
+  /** Set the charge the injector holds loaded, and nothing else. */
   setLoaded(charge: ChargeId): Promise<void>;
-  /** Set the charge the injector holds queued. The generator is untouched. */
+  /** Set the charge the injector holds queued, and nothing else. */
   setQueued(charge: ChargeId): Promise<void>;
+  /** Pose the charge of the next core the inlet emits, or clear it with `null`. */
+  setNextEmitted(charge: ChargeId | null): Promise<void>;
   /** Set the aim, normalized into [0, 360), and nothing else. */
   setAim(angleDegrees: number): Promise<void>;
   /** Release the loaded core along the current aim. Always launches. */
@@ -982,8 +985,6 @@ function unusableSurface<D extends object>(reason: string): D {
 export type Viewport = EngineViewport;
 
 export interface HarnessOptions extends EngineHarnessOptions {
-  /** The seed the opening `reset` is given. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
   /** The clock each frame takes its delta from. Defaults to one tick a frame. */
   clock?: Clock;
 }
@@ -1054,9 +1055,6 @@ export interface Harness {
     ticks: number,
     watch?: (snapshot: VoluteSnapshot, tick: number) => boolean,
   ): Promise<VoluteSnapshot[]>;
-  /** Hand the game to the engine's own frame loop for `ms` of real time. */
-  runFor(ms: number): Promise<void>;
-
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): Promise<void>;
   /** Release a key held by {@link hold}. */
@@ -1232,8 +1230,7 @@ const kit = createEngineCaseHarness<
 
 /**
  * Stand the engine up over a canvas of the harness's own, initialize the build's
- * game, reset it to the title on a known seed, and hand back everything a check
- * reads.
+ * game, reset it to the title, and hand back everything a check reads.
  *
  * The default shape is the field's own size at one device pixel per CSS pixel, so
  * a logical coordinate, a CSS pixel and a canvas pixel are all the same thing and
@@ -1254,7 +1251,6 @@ export async function createHarness(
   const base = await kit.createHarness(options);
   const engine = base.engine;
   const calls = base.calls;
-  const seed = options.seed ?? DEFAULT_SEED;
 
   const surfaceFault = surfaceFaultOf(engine);
   const debug: VoluteDebugApi =
@@ -1267,10 +1263,9 @@ export async function createHarness(
   const openingScreen =
     surfaceFault === null ? (await debug.snapshot()).screen : null;
 
-  // Back to the title on a known seed before a check touches anything: `reset` is
-  // what seeds the generator, so a scenario driven from a known seed is
-  // reproducible from this line on.
-  if (surfaceFault === null) await debug.reset({ seed });
+  // Back to the title before a check touches anything, so every scenario is
+  // posed from the same title values.
+  if (surfaceFault === null) await debug.reset();
 
   // Every driven tick opens a fresh operation log, so `lastCalls` is the last
   // tick's render and nothing before it, and a drive of ten thousand ticks costs
@@ -1367,11 +1362,12 @@ export async function createHarness(
       }
 
       let ticks = 0;
-      let since = Date.now();
+      let sinceYield = 0;
       while (ticks < maxTicks) {
         const stride = Math.min(poll, maxTicks - ticks);
         await drive(stride);
         ticks += stride;
+        sinceYield += stride;
         snapshot = await debug.snapshot();
         if (predicate(snapshot)) {
           return { hit: true, frames: ticks, ticks, snapshot };
@@ -1379,7 +1375,7 @@ export async function createHarness(
         // A sweep of several hundred ticks runs inside one `await`, and the
         // reporter, the timers and every socket read live on the loop it is
         // holding. Nothing observable changes; the host stops looking hung.
-        since = await breathe(since);
+        sinceYield = await breathe(sinceYield);
       }
       return { hit: false, frames: ticks, ticks, snapshot };
     },
@@ -1393,29 +1389,6 @@ export async function createHarness(
         if (watch?.(snapshot, i + 1) === true) break;
       }
       return seen;
-    },
-
-    async runFor(ms) {
-      // The one thing in this project that depends on real elapsed time: the
-      // engine's own loop, pumped off the host's frame callback, with a clock
-      // that reads the host timestamp. The scripted clock goes back afterwards,
-      // so everything after this call is exact again.
-      //
-      // The operation log is put back exactly as the last DRIVEN tick left it.
-      // The loop below runs frames this harness did not bracket, and letting
-      // them pile into the log would make {@link Harness.lastCalls} answer "the
-      // last driven tick plus however many frames the wall clock happened to fit"
-      // — a reading of the host's speed rather than of the build's render.
-      const kept = [...calls];
-      const controller = new AbortController();
-      engine.setClock(new WallClock());
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((done) => setTimeout(done, ms));
-      controller.abort();
-      await running;
-      engine.setClock(options.clock ?? new ConstantClock(TICK_MS));
-      calls.length = 0;
-      calls.push(...kept);
     },
 
     hold: (code) => {

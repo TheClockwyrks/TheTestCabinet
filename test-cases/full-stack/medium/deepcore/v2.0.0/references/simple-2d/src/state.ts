@@ -82,7 +82,8 @@ export interface Draft {
   simTime: number;
   muted: boolean;
   hasSave: boolean;
-  rngState: number;
+  nextTeleportHeight: number | null;
+  nextTeleportSpeed: number | null;
   input: Writable<MoveInput>;
   pointer: Writable<PointerState>;
   notes: Writable<Note>[];
@@ -152,7 +153,8 @@ export function draft(state: DeepReadonly<DeepcoreState>): Draft {
     simTime: state.simTime,
     muted: state.muted,
     hasSave: state.hasSave,
-    rngState: state.rngState,
+    nextTeleportHeight: state.nextTeleportHeight,
+    nextTeleportSpeed: state.nextTeleportSpeed,
     input: { ...state.input },
     pointer: { ...state.pointer },
     notes: state.notes.map((note) => ({ ...note })),
@@ -216,7 +218,8 @@ export function commit(d: Draft): DeepcoreState {
     simTime: d.simTime,
     muted: d.muted,
     hasSave: d.hasSave,
-    rngState: d.rngState,
+    nextTeleportHeight: d.nextTeleportHeight,
+    nextTeleportSpeed: d.nextTeleportSpeed,
     input: d.input,
     pointer: d.pointer,
     notes: d.notes,

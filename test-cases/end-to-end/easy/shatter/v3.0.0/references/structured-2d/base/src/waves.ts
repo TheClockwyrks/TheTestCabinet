@@ -66,8 +66,8 @@ function isClear(state: ShatterState, x: number, y: number): boolean {
  */
 function pickSpawnPoint(state: ShatterState): { x: number; y: number } {
   for (let attempt = 0; attempt < PLACEMENT_TRIES; attempt += 1) {
-    const x = randomRange(state, 0, FIELD_W);
-    const y = randomRange(state, 0, FIELD_H);
+    const x = randomRange(0, FIELD_W);
+    const y = randomRange(0, FIELD_H);
     if (isClear(state, x, y)) return { x, y };
   }
 
@@ -90,12 +90,16 @@ function pickSpawnPoint(state: ShatterState): { x: number; y: number } {
 export function spawnWave(state: ShatterState): void {
   const count = waveRockCount(state.wave);
   const scale = waveSpeedScale(state.wave);
+  // A posed `nextRockSpeed` is the base speed of every rock of this placement,
+  // and the placement consumes it (`specs/instrumentation.md`).
+  const posed = state.nextRockSpeed;
+  state.nextRockSpeed = null;
 
   for (let index = 0; index < count; index += 1) {
     const at = pickSpawnPoint(state);
     const rock = addRockTo(state, "large", at.x, at.y);
-    const heading = random(state) * Math.PI * 2;
-    const speed = baseDriftSpeed(state, "large") * scale;
+    const heading = random() * Math.PI * 2;
+    const speed = (posed ?? baseDriftSpeed(state, "large")) * scale;
     rock.vx = Math.cos(heading) * speed;
     rock.vy = Math.sin(heading) * speed;
   }

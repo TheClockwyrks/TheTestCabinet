@@ -13,13 +13,14 @@
 // the first gap that lands outside it while a build drawing honestly from the right
 // window passes wherever its draws fall.
 //
-// THE CLOCK IS POSED AT `0` AND THE GATE OPENED, exactly as
-// `swarm/dive-first-delay` poses it and for the same reason, and the complete
+// THE CLOCK IS POSED JUST SHORT OF THE FIRST DELAY AND THE GATE OPENED, so the
+// first dive, which is `swarm/dive-first-delay`'s to grade, goes inside a handful
+// of frames and the gaps that follow it are the wave's own. The complete
 // formation is posed with every faculty off: the launched drones stay where they
-// are and take no part, so the wave always has drones standing to choose from and
-// nothing but the launcher's own clock decides when the next one goes. The gaps are
-// read between LAUNCHES — the frames on which one more drone is in phase `diving` —
-// so the first delay is not counted as a gap.
+// are and take no part, so the wave always has drones standing to choose from
+// and nothing but the launcher's own clock decides when the next one goes. The
+// gaps are read between LAUNCHES — the frames on which one more drone is in
+// phase `diving` — so the first delay is not counted as a gap.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
@@ -27,7 +28,6 @@ import {
   DIVE_GAP_MAX,
   DIVE_GAP_MIN,
   FORM_COLS,
-  FORM_ROWS,
   diveGapScale,
 } from "../constants";
 import { assertBetween, assertTrue } from "../assert";
@@ -52,8 +52,29 @@ const GAP_TOLERANCE = 0.2;
 const GAP_MIN = DIVE_GAP_MIN * diveGapScale(STAGE) * (1 - GAP_TOLERANCE);
 const GAP_MAX = DIVE_GAP_MAX * diveGapScale(STAGE) * (1 + GAP_TOLERANCE);
 
-/** The successive gaps read: enough that one wrong draw cannot hide. */
-const GAPS = 3;
+/**
+ * The successive gaps read.
+ *
+ * Two, each a draw the build made and each held to the window on its own, so a
+ * build agreeing with it by accident on one gap does not agree on the next. More
+ * would buy nothing but game time: a gap is up to `DIVE_GAP_MAX` of a full
+ * formation, and the point costs the same on every build rather than growing
+ * with a long real play.
+ */
+const GAPS = 2;
+
+/**
+ * Where the wave's dive clock is posed when the gate opens, in seconds.
+ *
+ * A tenth of a second short of `DIVE_FIRST_DELAY`, so the first launch — which
+ * `swarm/dive-first-delay` grades and which is not counted as a gap here — comes
+ * inside a handful of frames rather than after two seconds of a full formation.
+ * Every gap read after it is one the wave drew and ran out on its own clock, and
+ * the point costs the same on every build rather than growing with the play it
+ * would otherwise sit through.
+ */
+const FIRST_LEAD = 0.1;
+const FIRST_CLOCK = DIVE_FIRST_DELAY - FIRST_LEAD;
 
 /** How long the first launch is waited for: twice DIVE_FIRST_DELAY. */
 const FIRST_FRAMES = ticksFor(2 * DIVE_FIRST_DELAY);
@@ -67,19 +88,22 @@ const FIRST_FRAMES = ticksFor(2 * DIVE_FIRST_DELAY);
 const GAP_FRAMES = ticksFor(2 * DIVE_GAP_MAX * diveGapScale(STAGE));
 
 /**
- * Every slot of the grid specs/field.md fixes, filled with an inert Shard.
+ * The block the launcher chooses from: two full rows of the grid, every drone an
+ * inert Shard.
  *
- * The whole grid rather than a handful, so a build that launches from a chosen
- * subset of the block still has something to launch on every cadence the reading
- * counts, and so nothing about which slots are filled can stretch a gap.
+ * A block of drones resting in their slots is the situation specs/swarm.md
+ * launches a dive out of, and eighteen is several times the launches this point
+ * counts, so the wave always has drones standing to choose from and nothing about
+ * which slots are filled can move a launch. The rest of the grid would add
+ * nothing to the reading and a drawn drone to every frame of the drive.
  */
-const FULL_FORMATION: FormationEntry[] = Array.from(
-  { length: FORM_ROWS * FORM_COLS },
-  (_, index) => ({
+const BLOCK_ROWS = [0, 1] as const;
+const BLOCK: FormationEntry[] = BLOCK_ROWS.flatMap((row) =>
+  Array.from({ length: FORM_COLS }, (_, col) => ({
     kind: "shard" as const,
-    col: index % FORM_COLS,
-    row: Math.floor(index / FORM_COLS),
-  }),
+    col,
+    row,
+  })),
 );
 
 let h: Harness;
@@ -94,8 +118,8 @@ afterEach(() => {
 
 it("keeps every gap between successive dive launches inside the drawn window", async () => {
   startPosed(h);
-  poseFormation(h, FULL_FORMATION);
-  h.debug.setDiveClock(0);
+  poseFormation(h, BLOCK);
+  h.debug.setDiveClock(FIRST_CLOCK);
   h.debug.setDiveLaunching(true);
 
   const launches: { frames: number; hit: boolean }[] = [];

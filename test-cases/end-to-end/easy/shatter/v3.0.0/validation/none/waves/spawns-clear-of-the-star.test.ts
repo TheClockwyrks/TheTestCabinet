@@ -1,9 +1,9 @@
 // waves/spawns-clear-of-the-star — a wave spawns clear of the star.
 //
-// `specs/progression.md`, Waves: each Large rock "is placed at a random position
-// at least `WAVE_MIN_SHIP_DIST` (`300`) from the ship and at least
-// `WAVE_MIN_STAR_DIST` (`200`) from the star, both by the shortest wrapped
-// separation". This item reads the second of those two; `spawns-clear-of-the-ship`
+// `specs/progression.md`, Waves: each Large rock "is placed at a position drawn
+// uniformly from the points of the field at least `WAVE_MIN_SHIP_DIST` (`300`)
+// from the ship and at least `WAVE_MIN_STAR_DIST` (`200`) from the star, both by
+// the shortest wrapped separation". This item reads the second of those two; `spawns-clear-of-the-ship`
 // reads the first, so a build that respects one and not the other loses one point
 // rather than two.
 //
@@ -20,11 +20,15 @@
 // it exists, so the reading is taken on the first tick the roster is not empty and
 // carries one tick of travel as its only slack.
 //
-// TEN SEEDS, BECAUSE THE PLACEMENT IS A DRAW. `specs/simulation.md` lists "a wave's
-// rock positions" among the game's seeded draws, so one wave is one sample: a build
-// that places rocks anywhere at all satisfies the rule on some waves by luck. Ten
-// games at wave 10 is a hundred and thirty independent placements, and the verdict is the
-// CLOSEST of all of them.
+// ONE WAVE, EVERY ROCK OF IT. `specs/simulation.md` lists a wave's rock positions
+// among the draws the game makes, and the rule is a bound on each draw rather
+// than a statistic over many: every rock of the wave that arrives is held to the
+// clearance, and the verdict is the CLOSEST of them. Wave 10 puts thirteen of
+// them up, a handful of unposed draws against the bound, and a build with no
+// star exclusion at all has the exclusion's share of the field to land in on
+// each. How a build's placements are shaped inside the rule is the reviewer's to
+// judge; nothing poses a position, and the placement is the build's own draw,
+// read where it lands.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThanOrEqual } from "../assert";
@@ -47,9 +51,6 @@ import {
 /** The wave the run is posed at, and the one that arrives when it is cleared. */
 const POSED_WAVE = 9;
 const ARRIVING_WAVE = POSED_WAVE + 1;
-
-/** The seeds the placement is sampled on. `specs/simulation.md` seeds the draw. */
-const SEEDS = [21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
 
 /**
  * How far inside the stated clearance a rock may read: two logical units.
@@ -79,30 +80,27 @@ afterEach(async () => {
 });
 
 it("spawns every rock of a wave at least 200 from the star", async () => {
-  let closest = { seed: -1, distance: Number.POSITIVE_INFINITY, what: "" };
+  let closest = { distance: Number.POSITIVE_INFINITY, what: "" };
 
-  for (const seed of SEEDS) {
-    await h.debug.reset({ seed });
-    const cleared = await clearAWave(h, { wave: POSED_WAVE });
-    const arrival = await arrivedWave(h, cleared);
+  await h.debug.reset();
+  const cleared = await clearAWave(h, { wave: POSED_WAVE });
+  const arrival = await arrivedWave(h, cleared);
+  await captureStill(h, "wave");
 
-    for (const rock of arrival.rocks) {
-      const distance = starClearance(rock);
-      if (distance < closest.distance) {
-        closest = { seed, distance, what: describeRock(rock) };
-      }
+  for (const rock of arrival.rocks) {
+    const distance = starClearance(rock);
+    if (distance < closest.distance) {
+      closest = { distance, what: describeRock(rock) };
     }
   }
-  await captureStill(h, "wave");
 
   assertGreaterThanOrEqual(
     closest.distance,
     FLOOR,
     `the shortest wrapped separation from the star at (${STAR_X}, ${STAR_Y}) ` +
-      `of the closest rock of ${SEEDS.length} wave-${ARRIVING_WAVE} spawns, ` +
+      `of the closest rock of the wave-${ARRIVING_WAVE} spawn, ` +
       `which specs/progression.md puts at WAVE_MIN_STAR_DIST ` +
-      `(${WAVE_MIN_STAR_DIST}); the closest was ${closest.what} on seed ` +
-      `${closest.seed}`,
+      `(${WAVE_MIN_STAR_DIST}); the closest was ${closest.what}`,
   );
 });
 

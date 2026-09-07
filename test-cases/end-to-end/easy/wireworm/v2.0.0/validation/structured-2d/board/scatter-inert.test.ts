@@ -12,10 +12,11 @@
 // entered, nothing has spawned, and no bolt has flown, so nothing that raises or
 // lowers a charge has had a chance to run.
 //
-// Several seeds, because the tiles are drawn from the generator. The count is
-// read only far enough to know a scatter happened at all, since a run that laid
-// nothing would satisfy a rule about every node it laid; how many are laid is
-// board/scatter-density's requirement.
+// Several runs, because the tiles are a draw and each run opened afresh is one
+// draw of the same rule. The count is read only far enough to know a scatter
+// happened at all, since a run that laid nothing would satisfy a rule about
+// every node it laid; how many are laid is a share of a generated world, which
+// no point counts.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -29,8 +30,8 @@ import {
 /** The charge specs/nodes.md lays every scattered node at: inert. */
 const INERT = 0;
 
-/** The seeds the scatter is read over. Each is one draw of the same rule. */
-const SEEDS = [1, 2, 3, 7, 11];
+/** The runs the scatter is read over. Each is one draw of the same rule. */
+const RUNS = [1, 2, 3];
 
 let h: Harness;
 
@@ -42,8 +43,8 @@ afterEach(() => {
   h?.dispose();
 });
 
-it.each(SEEDS)("lays every scattered node inert from seed %i", async (seed) => {
-  await startRun(h, seed);
+it.each(RUNS)("lays every scattered node inert on run %i", async (run) => {
+  await startRun(h);
   await h.advance(1);
   captureStill(h, "scatter");
 
@@ -51,14 +52,14 @@ it.each(SEEDS)("lays every scattered node inert from seed %i", async (seed) => {
   assertGreaterThan(
     nodes.length,
     0,
-    `a starting scatter to read, from seed ${seed} (specs/nodes.md)`,
+    `a starting scatter to read, on run ${run} (specs/nodes.md)`,
   );
 
   const charged = nodes.filter((node) => node.charge !== INERT);
   assertEqual(
     charged.length,
     0,
-    `scattered nodes carrying a charge other than ${INERT}, from seed ` +
-      `${seed} — the first is ${JSON.stringify(charged[0] ?? null)}`,
+    `scattered nodes carrying a charge other than ${INERT}, on run ` +
+      `${run} — the first is ${JSON.stringify(charged[0] ?? null)}`,
   );
 });

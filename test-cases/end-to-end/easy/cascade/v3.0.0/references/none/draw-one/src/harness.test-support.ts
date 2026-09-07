@@ -62,8 +62,8 @@ export class RecordingAudio implements AudioPort {
 }
 
 /** A fresh state with a real painted layer behind it. */
-export function testState(seed = 1): CascadeState {
-  return createState({ seed, trail: nodeTrail });
+export function testState(): CascadeState {
+  return createState({ trail: nodeTrail });
 }
 
 /** Add one card to the top of a pile and hand it back. */

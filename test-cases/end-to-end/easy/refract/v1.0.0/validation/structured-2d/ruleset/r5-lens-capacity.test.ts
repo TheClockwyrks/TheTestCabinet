@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 it("a third segment of the channel onto a full lens is refused", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R5_LENS);
 
   // T(0,0)-t(1,1)-t(0,1)-t(1,2): the lens t(1,1) now carries two segments.

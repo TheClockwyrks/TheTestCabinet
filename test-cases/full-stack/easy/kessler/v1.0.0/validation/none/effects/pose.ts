@@ -115,11 +115,8 @@ export async function close(h: Harness): Promise<void> {
 }
 
 /** The isolated posed world: playing, emptied, both driver switches off. */
-export async function world(
-  h: Harness,
-  seed?: number,
-): Promise<KesslerSnapshot> {
-  return isolate(h, seed);
+export async function world(h: Harness): Promise<KesslerSnapshot> {
+  return isolate(h);
 }
 
 export async function snap(h: Harness): Promise<KesslerSnapshot> {

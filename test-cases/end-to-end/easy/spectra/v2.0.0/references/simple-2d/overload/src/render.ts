@@ -41,15 +41,15 @@ import {
 } from "./bands";
 import { accent, drawSprite, fallbackBody, glow } from "./draw";
 import { drawHud, drawMuteIndicator, drawStrips } from "./hud";
-import { nextRandom } from "./rng";
+import { scatter } from "./random";
 import { drawScreen, showsField } from "./screens";
 import { BAND_COLOR, BAND_LIGHT, COLOR, GLOW, TINT } from "./theme";
 import type { BurstState, DroneState, SpectraState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
 
-/** How many marks the starfield carries, and the seed its layout is drawn from. */
+/** How many marks the starfield carries, and the word its layout is hashed from. */
 const STAR_COUNT = 130;
-const STAR_SEED = 0x5eed;
+const STAR_SALT = 0x5eed;
 
 /** The colour each charge level of the Overload telegraph burns at. */
 const CHARGE_COLORS = ["#ffb43c", "#fff6d0"] as const;
@@ -62,15 +62,15 @@ interface Star {
   readonly color: string;
 }
 
-/** The starfield's layout, drawn once from a fixed seed and never again. */
+/** The starfield's layout, laid out once from a fixed sequence and never again. */
 const STARS: readonly Star[] = buildStars();
 
 function buildStars(): Star[] {
   const stars: Star[] = [];
-  let rng = STAR_SEED;
+  let word = STAR_SALT;
   const draw = (): number => {
-    const [value, next] = nextRandom(rng);
-    rng = next;
+    const [value, next] = scatter(word);
+    word = next;
     return value;
   };
   const palette = [COLOR.starFar, COLOR.starMid, COLOR.starNear];

@@ -64,8 +64,8 @@ const SAMPLE_ROWS = 4;
 /*
  * A MARKED table only has to read DIFFERENTLY over that rectangle from the same
  * points read bare, and how far apart the two sit is not measured:
- * `specs/overview.md` fixes no palette, so that is the reviewer's. Rendering is
- * deterministic and each point is compared against itself, so any difference at
+ * `specs/overview.md` fixes no palette, so that is the reviewer's. Each
+ * point is compared against itself, so any difference at
  * all is the stamp.
  */
 

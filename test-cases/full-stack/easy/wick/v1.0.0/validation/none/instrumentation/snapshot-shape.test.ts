@@ -132,11 +132,29 @@ it("reports the whole documented shape, with the posed values", async () => {
   assertEqual(typeof s.muted, "boolean", "snapshot().muted");
   assertEqual(typeof s.accumulator, "number", "snapshot().accumulator");
   assertEqual(typeof s.simTime, "number", "snapshot().simTime");
-  assertEqual(typeof s.rngState, "number", "snapshot().rngState");
 
   // The run.
   const run = s.run;
   requireFields(run, RUN_FIELDS, "snapshot().run");
+  assertNull(
+    run.nextSpawnAngle,
+    "snapshot().run.nextSpawnAngle, nothing posed",
+  );
+  assertNull(
+    run.nextSwarmAngle,
+    "snapshot().run.nextSwarmAngle, nothing posed",
+  );
+  assertNull(run.nextSpawnType, "snapshot().run.nextSpawnType, nothing posed");
+  assertNull(
+    run.nextPuddleOffset,
+    "snapshot().run.nextPuddleOffset, nothing posed",
+  );
+  assertNull(
+    run.nextStrikeTarget,
+    "snapshot().run.nextStrikeTarget, nothing posed",
+  );
+  assertNull(run.nextChestItem, "snapshot().run.nextChestItem, nothing posed");
+  assertNull(run.nextDrop, "snapshot().run.nextDrop, nothing posed");
   for (const field of [
     "tick",
     "time",

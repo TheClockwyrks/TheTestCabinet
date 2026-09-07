@@ -25,8 +25,20 @@
 // the same canvas, at the same simulation time, without the thing being looked
 // for. {@link bulletLane} reads the lane, removes the one bullet through
 // `removeBullet`, and reads the same lane again with nothing advanced, so the
-// star, the ship and the HUD stand exactly where they stood and the only thing
-// that can have changed is what the bullet and its tail drew.
+// star, the ship and the HUD stand exactly where they stood and what changed is
+// what the bullet and its tail drew, plus whatever the build's own drawing does
+// to the lane from one presented frame to the next.
+//
+// WHY THE SPREAD OF IDLE FRAMES IS MEASURED. That last term is the build's to
+// choose: a twinkling starfield, a dithered vignette, a pulsing readout are all
+// legal appearance, and each of them moves a few pixels of the lane between two
+// presented frames of the same simulation time with no bullet on the field at
+// all. A claim that NOTHING was drawn somewhere therefore takes its bound from a
+// measurement rather than a figure: the lane is read over several more frames
+// after the bullet is gone, and the most any column moved between one and the
+// next is what the build's own drawing does to the lane by itself
+// ({@link LanePair.spread}). A claim that SOMETHING was drawn keeps its floor —
+// noise can only ever add to a presence reading, never take from it.
 //
 // NO THRESHOLD LIVES HERE. What counts as "changed" is each check's own figure,
 // stated in the check beside the specification rule it serves.
@@ -118,15 +130,32 @@ export interface LanePair {
   drawn: Lane;
   /** The same lane, at the same simulation time, with that bullet removed. */
   bare: Lane;
+  /**
+   * The most any column of the lane moved between two presented frames of the
+   * same simulation time with no bullet on the field, in channel-mean
+   * brightness out of 255.
+   *
+   * What the build's own drawing does to the lane by itself, frame to frame.
+   * `0` for a build that presents an unchanged state the same way every frame.
+   */
+  spread: number;
 }
 
 /**
- * Read the lane through `y` twice: once as it stands, and once with the bullet
- * `id` taken off the field.
+ * How many idle frames the lane is read over after the bullet is gone, so the
+ * spread is taken from several frames rather than from one pair.
+ */
+const IDLE_FRAMES = 4;
+
+/**
+ * Read the lane through `y` as it stands, then with the bullet `id` taken off
+ * the field, then over {@link IDLE_FRAMES} further presented frames for the
+ * lane's own spread.
  *
- * Nothing advances between the two, so every other body, readout and backdrop is
- * painted identically in both and the difference is the bullet's own drawing —
- * its disc and the tail `specs/weapons.md` requires behind it.
+ * Nothing advances between any two readings, so every other body, readout and
+ * backdrop stands where it stood, and the difference between the first two is
+ * the bullet's own drawing — its disc and the tail `specs/weapons.md` requires
+ * behind it — plus what the build's presenter changes on its own.
  */
 export async function bulletLane(
   h: Harness,
@@ -136,5 +165,37 @@ export async function bulletLane(
   const drawn = await readLane(h, y);
   await h.debug.removeBullet(id);
   const bare = await readLane(h, y);
-  return { drawn, bare };
+
+  let spread = 0;
+  let previous = bare;
+  for (let frame = 0; frame < IDLE_FRAMES; frame += 1) {
+    const idle = await readLane(h, y);
+    spread = Math.max(spread, laneUnrest(previous, idle));
+    previous = idle;
+  }
+  return { drawn, bare, spread };
+}
+
+/** The most any column of the lane moved between two readings. */
+function laneUnrest(before: Lane, after: Lane): number {
+  const width = Math.min(before[0]?.length ?? 0, after[0]?.length ?? 0);
+  let most = 0;
+  for (let column = 0; column < width; column += 1) {
+    most = Math.max(most, laneChange(before, after, column));
+  }
+  return most;
+}
+
+/**
+ * The bound a claim that nothing was drawn holds a column to: `floor`, or twice
+ * the lane's measured {@link LanePair.spread} where that is more.
+ *
+ * Twice, because the spread is the largest move a handful of idle frames showed
+ * and the frame under test is one more draw from the same unrest: a bound set at
+ * the spread itself would be crossed by chance about as often as any one of the
+ * idle frames set it. Doubling it puts a conformant build's noise well inside,
+ * and a tail drawn where none should be still reads far above it.
+ */
+export function absenceBound(lane: LanePair, floor: number): number {
+  return Math.max(floor, 2 * lane.spread);
 }

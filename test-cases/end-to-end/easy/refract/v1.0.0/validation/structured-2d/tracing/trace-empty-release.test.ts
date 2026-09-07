@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 it("a press released without extending leaves the beam carrying no cells, and either emitter then starts it afresh", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_3X3);
 
   // Press an emitter and release without extending.

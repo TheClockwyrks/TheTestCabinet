@@ -1,5 +1,5 @@
-// Meltdown — surge/single-type-waves: every unit a Containment wave releases is
-// the same type.
+// Meltdown — surge/single-type-waves: the units a Containment wave releases are
+// all one type.
 //
 // THE RULE. `specs/waves.md`: "Each wave fields a single type, given by the wave
 // number `w` and the run's wave count `n`." The one exception the specification
@@ -10,46 +10,51 @@
 // WHY THIS IS A SEPARATE ITEM FROM THE TYPE TABLE. `surge/wave-type-opening`,
 // `surge/wave-type-cycle` and `surge/milestone-wave-carries-a-core` each read ONE
 // unit per wave, so between them they decide which type a wave is and say nothing
-// at all about the other thirty-nine units behind it. A build that opened each
-// wave with the right type and then drew the rest from the whole roster — a very
-// natural way to write "the waves get more varied" and a completely different
-// game to defend against — passes all three of them and is caught only here.
-// That division is deliberate: this item reads a whole wave, and those three read
-// a whole progression.
+// at all about the units behind it. A build that opened each wave with the right
+// type and then drew the rest from the whole roster — a very natural way to write
+// "the waves get more varied" and a completely different game to defend against —
+// passes all three of them and is caught only here. That division is deliberate:
+// this item reads several units of a wave, and those three read a whole
+// progression.
 //
-// WAVE 4 IS THE ONE READ. `specs/waves.md` makes it a Swarm wave of
-// `ceil(24 * 1.66)` — forty units, the largest release in the opening eight and
-// the largest sample of one type the game offers before the milestone. Forty
-// readings is what makes "every unit" a real claim rather than a coincidence, and
-// the Swarm is not the type a wave-1 build would default to, so a build that
-// released the run's opening type throughout is named here as well.
+// TWO WAVES, THE FRONT OF EACH. Wave 1 is a Mote wave and Wave 4 a Swarm wave
+// (`specs/waves.md`), one from either end of the opening list, and the first
+// eight units of each are read. A build that cycles the types one unit at a time
+// shows a second type by its second unit, and eight units cover the five-type
+// roster with room over; the Swarm is not the type a wave-1 build would default
+// to, so a build that released the run's opening type throughout is named here
+// as well. The watch stops as soon as it has its eight, so the reading costs the
+// same whatever size the build gives the wave and never waits on a forty-unit
+// release.
 //
-// EVERY UNIT IS COUNTED, INCLUDING THE ONES ALREADY GONE. The wave takes
-// `39 * 0.6` seconds to release and a Swarm crosses an undefended floor in some
-// fourteen, so the earliest are leaking while the last are still arriving. The
-// sweep records each unit the first time it is seen and never forgets it
-// (`surge/roster.ts`), so a wave that slipped one unit of another type in at the
-// end is read exactly as one that opened with it.
-//
-// THE PICTURE IS TAKEN WHEN THE RELEASE HAS RUN, with the wave's later units
-// still crossing the floor and the earliest already gone: one wave, one type.
+// EVERY UNIT READ IS COUNTED, INCLUDING ONE ALREADY GONE. The sweep records each
+// unit the first time it is seen and never forgets it (`surge/roster.ts`), so a
+// unit of another type that leaked before the reading closed is read exactly as
+// one still on the floor.
 //
 // THE LIVES ARE POSED PAST EVERY LEAK, so the run cannot end half way through the
-// wave being read; and how MANY units arrived is `surge/wave-size`'s, so the only
-// count asserted here is the one that makes the claim non-vacuous.
+// wave being read; and how MANY units a wave releases is `surge/wave-size`'s, so
+// the only count asserted here is the one that makes the claim non-vacuous.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { waveSize, waveType } from "../constants";
+import { waveType } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { openWave, releaseSeconds, watchRelease } from "./roster";
 
-/** The run and the wave read: a forty-unit Swarm wave of a twenty-wave run. */
+/** The run and the waves read: a Mote wave and a Swarm wave of a twenty-wave run. */
 const WAVE_COUNT = 20;
-const WAVE = 4;
+const WAVES = [1, 4] as const;
 
-/** The single type `specs/waves.md` gives that wave. */
-const EXPECTED_TYPE = waveType(WAVE, WAVE_COUNT);
+/**
+ * How many units of each wave are read: eight.
+ *
+ * More than the five types the roster holds, so a build that cycled the roster
+ * per unit shows every type inside the reading, and fewer than either wave
+ * releases (`specs/waves.md` gives Wave 1 twelve units and Wave 4 forty), so the
+ * reading never runs a wave out.
+ */
+const UNITS_READ = 8;
 
 /**
  * The fewest units that make "every unit is the same type" mean anything: two.
@@ -71,29 +76,39 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it("fields one type for the whole of a forty-unit Swarm wave", async () => {
-  await openWave(h, WAVE);
-
-  const arrivals = await watchRelease(
-    h,
-    releaseSeconds(waveSize(WAVE, WAVE_COUNT)),
-  );
+it("fields one type across the front of a Mote wave and of a Swarm wave", async () => {
+  const read: {
+    wave: number;
+    expected: string;
+    arrivals: { type: string }[];
+  }[] = [];
+  for (const wave of WAVES) {
+    await openWave(h, wave);
+    const arrivals = await watchRelease(
+      h,
+      releaseSeconds(UNITS_READ),
+      UNITS_READ,
+    );
+    read.push({ wave, expected: waveType(wave, WAVE_COUNT), arrivals });
+  }
   await captureStill(h, "single");
 
-  assertGreaterThan(
-    arrivals.length,
-    MIN_UNITS_READ - 1,
-    `precondition: units wave ${WAVE} released, over which the single type is ` +
-      "read",
-  );
-  for (const [index, arrival] of arrivals.entries()) {
-    assertEqual(
-      arrival.type,
-      EXPECTED_TYPE,
-      `unit ${index + 1} of ${arrivals.length} on wave ${WAVE}, which fields ` +
-        `the single type ${EXPECTED_TYPE} (specs/waves.md); the types the ` +
-        `build released were ` +
-        `${JSON.stringify([...new Set(arrivals.map((a) => a.type))])}`,
+  for (const { wave, expected, arrivals } of read) {
+    assertGreaterThan(
+      arrivals.length,
+      MIN_UNITS_READ - 1,
+      `precondition: units wave ${wave} released, over which the single type ` +
+        "is read",
     );
+    const types = [...new Set(arrivals.map((arrival) => arrival.type))];
+    for (const [index, arrival] of arrivals.entries()) {
+      assertEqual(
+        arrival.type,
+        expected,
+        `unit ${index + 1} of ${arrivals.length} read on wave ${wave}, which ` +
+          `fields the single type ${expected} (specs/waves.md); the types the ` +
+          `build released were ${JSON.stringify(types)}`,
+      );
+    }
   }
 });

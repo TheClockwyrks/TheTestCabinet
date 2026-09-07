@@ -43,7 +43,7 @@ const ACE = card("AS");
 /**
  * One frame, so the still shows the board the move left.
  *
- * The harness runs the game off the wall clock, so nothing is drawn until a
+ * The harness opens with the game off the clock, so nothing is drawn until a
  * frame is asked for. It decides nothing: Klondike moves only when it is moved,
  * and this frame changes no field the assertions read.
  */

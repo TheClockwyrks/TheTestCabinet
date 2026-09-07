@@ -132,9 +132,9 @@ diamond or a magenta ring. A Prism's core is the same derivation with the shell'
 pixels dropped.
 
 `assets/drone-burst.json` is played, not hand-coded: each destroyed drone gets its
-own `ParticleSimulator` from `@clockwyrks/particle-runtime`, seeded from the
-game's own generator so successive pops scatter differently while the flash, the
-ring and the two-band sparks read the same. `src/bursts.ts` steps it inside the
+own `ParticleSimulator` from `@clockwyrks/particle-runtime`, scattered at random
+so successive pops differ while the flash, the ring and the two-band sparks read
+the same. `src/bursts.ts` steps it inside the
 sub-step loop and composites the particles additively over the field.
 
 ## Debugging and automation
@@ -150,9 +150,8 @@ code:
   loop runs, then a render — covering that much game time. Drawing is unaffected
   either way. Because a frame divides into whole sub-steps of at most `1/120`,
   `advance(1, 1)` and `advance(1, 60)` reach exactly the same state.
-- `reset(options?)` and `snapshot()` — restore every declared field to its
-  title-screen value (seeding the game's randomness), and read a
-  JSON-serializable view of the whole state.
+- `reset()` and `snapshot()` — restore every declared field to its title-screen
+  value, and read a JSON-serializable view of the whole state.
 - The screen and the run: `setScreen`, `setPhase`, `setPhaseTimer`,
   `setMenuIndex`, `setScore`, `setLives`, `setStage`, `setExtraLifeAwarded`.
 - The three **world gates** and the wave's clock: `setWaveEntry`,
@@ -259,7 +258,7 @@ src/
   constants.ts        Every figure the specs fix (logical 1280x720)
   theme.ts            This build's own look: the palette and the type
   types.ts            The whole of the game's state, in one value
-  rng.ts              The one seeded generator, over SpectraState.rngState
+  random.ts           The game's random draws, over the host's own generator
   paths.ts            Arc-length curves: entrances, dives and returns
   bands.ts            Effective band, contact half-extents, the overlap test
   waves.ts            What a wave is made of, and how its drones fly in

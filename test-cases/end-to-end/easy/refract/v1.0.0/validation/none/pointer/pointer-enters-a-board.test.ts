@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 it("enters the first board from a press and release on its grid cell", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
   await startCampaign(h);
   assertEqual(

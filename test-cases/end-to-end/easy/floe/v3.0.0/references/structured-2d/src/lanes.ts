@@ -123,20 +123,19 @@ interface Placement {
  * Lay one band out for a level: its eight lanes, their rings, and the items that
  * fill them.
  *
- * Where each lane's pattern sits along its row is drawn from the game's own
- * generator. The draw is then checked against the staggering rule and one lane's
- * phase is redrawn until it holds, so the band never lays down a wall the critter
- * cannot pass — which is a rule of the specification rather than a lucky seed.
+ * Where each lane's pattern sits along its row is drawn uniformly over one
+ * period of its spacing. The draw is then checked against the staggering rule
+ * and one lane's phase is redrawn until it holds, so the band never lays down a
+ * wall the critter cannot pass — which is a rule of the specification.
  */
 function layoutBand(
-  state: FloeState,
   specs: readonly LaneSpec[],
   level: number,
 ): { lanes: LaneState[]; rings: LaneRing[]; items: Placement[] } {
   const rings = specs.map((spec) =>
     ringFor(itemKind(spec.kind), laneGap(spec.row, level)),
   );
-  const phases = rings.map((ring) => random(state) * ring.period);
+  const phases = rings.map((ring) => random() * ring.period);
 
   for (
     let attempt = 0;
@@ -144,7 +143,7 @@ function layoutBand(
     attempt += 1
   ) {
     const lane = attempt % specs.length;
-    phases[lane] = random(state) * rings[lane].period;
+    phases[lane] = random() * rings[lane].period;
   }
 
   const lanes: LaneState[] = [];
@@ -186,8 +185,8 @@ export function layoutLevel(
   state: FloeState,
   level: number,
 ): void {
-  const ice = layoutBand(state, ICE_LANES, level);
-  const water = layoutBand(state, WATER_LANES, level);
+  const ice = layoutBand(ICE_LANES, level);
+  const water = layoutBand(WATER_LANES, level);
 
   for (const body of vehiclesOf(world)) body.destroy();
   for (const body of floesOf(world)) body.destroy();
@@ -201,6 +200,36 @@ export function layoutLevel(
   }
   for (const item of water.items) {
     addFloe(world, state, item.row, item.kind as FloeKind, item.x);
+  }
+}
+
+/**
+ * Lay one lane out afresh at a posed phase (`specs/instrumentation.md`'s
+ * `setLanePhase`): every item of the row is replaced by the lane's own kind at
+ * the current level's spacing, one left edge at `x` and the rest one period
+ * apart around the ring, each with a fresh id. The lane's motion, its ring, and
+ * every other lane are left exactly as they stand.
+ */
+export function layoutLane(
+  world: World,
+  state: FloeState,
+  row: number,
+  x: number,
+): void {
+  const spec =
+    ICE_LANES.find((entry) => entry.row === row) ??
+    WATER_LANES.find((entry) => entry.row === row);
+  if (spec === undefined || laneAt(state, row) === null) return;
+  const ring = ringFor(itemKind(spec.kind), laneGap(spec.row, state.level));
+  const phase = mod(x - ring.wrapMin, ring.period);
+  const onIce = ICE_LANES.some((entry) => entry.row === row);
+  for (const body of onIce ? vehiclesOf(world) : floesOf(world)) {
+    if (body.row === row) body.destroy();
+  }
+  for (let i = 0; i < ring.count; i += 1) {
+    const left = ring.wrapMin + phase + i * ring.period;
+    if (onIce) addVehicle(world, state, row, spec.kind as VehicleKind, left);
+    else addFloe(world, state, row, spec.kind as FloeKind, left);
   }
 }
 

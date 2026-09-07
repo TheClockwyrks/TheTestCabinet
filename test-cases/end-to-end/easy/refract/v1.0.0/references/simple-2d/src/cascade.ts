@@ -17,9 +17,9 @@
 // board is verified by replaying those paths through the real ruleset, then
 // measured against the floor, and only a board that passes both is emitted.
 //
-// All randomness runs off the one integer `RefractState.rngState`, threaded
-// through a cursor and handed back advanced, so the sequence is a function of
-// the seed alone (specs/modes/cascade.md, Determinism). An attempt can fail —
+// Every draw comes from the build's private random source in `src/rng.ts`,
+// so each board is drawn afresh (specs/modes/cascade.md, Drawing a board). An
+// attempt can fail —
 // a walk can box itself in, and most carved boards land under the floor — and
 // a failed attempt simply draws again. The per-tier reserve boards at the
 // bottom exist so the generator cannot fail outright: each is fixed, verified
@@ -36,7 +36,7 @@ import {
 } from "./constants";
 import { measureDifficulty, meetsFloor } from "./difficulty";
 import { boardSolved, canExtend, segmentKey } from "./rules";
-import { cursor, type RngCursor } from "./rng";
+import { randomSource, type RandomSource } from "./rng";
 import type { BeamState, BoardState, Cell, NodeState } from "./game";
 
 /** The tier the ladder puts a run at (specs/modes/cascade.md). */
@@ -48,8 +48,6 @@ export interface GeneratedBoard {
   readonly board: BoardState;
   /** A known solution: one route per channel present, in CHANNELS order. */
   readonly solution: readonly (readonly Cell[])[];
-  /** The generator state after this board, to store back in `rngState`. */
-  readonly rngState: number;
 }
 
 /** Attempts before the tier's reserve board is used. Acceptance against the
@@ -67,37 +65,32 @@ const STOP_CHANCE = 0.22;
 const WALK_SHARE_LO = 0.62;
 const WALK_SHARE_HI = 0.95;
 
-/** One board at a tier, and the advanced generator state. */
-export function generateBoard(
-  rngState: number,
-  tier: number,
-): { board: BoardState; rngState: number } {
-  const { board, rngState: next } = generateBoardWithSolution(rngState, tier);
-  return { board, rngState: next };
+/** One board at a tier, drawn from the build's random source. */
+export function generateBoard(tier: number): BoardState {
+  return generateBoardWithSolution(tier).board;
 }
 
 /**
  * One board at a tier, together with the solution it was carved from. The
  * solution is what the emitted guarantee rests on, and what this build's own
- * tests replay through the pointer path.
+ * tests replay through the pointer path. `random` is the source the draws come
+ * from, the build's own unless a caller hands in another.
  */
 export function generateBoardWithSolution(
-  rngState: number,
   tier: number,
+  random: RandomSource = randomSource(),
 ): GeneratedBoard {
   const spec = TIERS[Math.min(Math.max(tier, 1), MAX_TIER) - 1];
-  const rng = cursor(rngState);
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const built = tryBuild(spec, rng);
+    const built = tryBuild(spec, random);
     if (!built) continue;
     const cells = built.board.cols * built.board.rows;
     if (cells - built.board.nodes.length > spec.maxEmptyCells) continue;
     if (!solutionSolves(built.board, built.solution)) continue;
     if (!clearsFloor(built.board, spec)) continue;
-    return { ...built, rngState: rng.state };
+    return built;
   }
-  const reserve = reserveBoard(tier);
-  return { ...reserve, rngState: rng.state };
+  return reserveBoard(tier);
 }
 
 /**
@@ -171,7 +164,7 @@ function key(cell: Cell): string {
 
 function tryBuild(
   spec: Tier,
-  rng: RngCursor,
+  rng: RandomSource,
 ): { board: BoardState; solution: Cell[][] } | null {
   const cols = rng.int(spec.minCols, spec.maxCols);
   const rows = rng.int(spec.minRows, spec.maxRows);
@@ -220,7 +213,7 @@ function walkPath(
   channel: number,
   minLen: number,
   maxLen: number,
-  rng: RngCursor,
+  rng: RandomSource,
 ): Cell[] | null {
   for (let restart = 0; restart < WALK_RESTARTS; restart++) {
     const snapshot = {
@@ -259,7 +252,7 @@ function tryWalk(
   channel: number,
   minLen: number,
   maxLen: number,
-  rng: RngCursor,
+  rng: RandomSource,
 ): Cell[] | null {
   const free: Cell[] = [];
   for (let row = 0; row < carving.rows; row++) {
@@ -348,7 +341,7 @@ function validSteps(carving: Carving, from: Cell): Cell[] {
  */
 function chooseCrystals(
   carving: Carving,
-  rng: RngCursor,
+  rng: RandomSource,
 ): Map<string, number> | null {
   const crystals = new Map<string, number>();
   carving.merged.forEach((k) => {

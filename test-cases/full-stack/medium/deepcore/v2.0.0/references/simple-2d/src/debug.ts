@@ -26,7 +26,6 @@ import {
   CAM_LEAD_MAX,
   CORE_TIMER,
   DEEPCORE_DEBUG_VERSION,
-  DEFAULT_SEED,
   GEMSTONE_IDS,
   ITEM_IDS,
   MATERIALS,
@@ -37,6 +36,10 @@ import {
   PANELS,
   ROCKET_COMPONENTS,
   SCREENS,
+  TELEPORT_HEIGHT_TILES_MAX,
+  TELEPORT_HEIGHT_TILES_MIN,
+  TELEPORT_SPEED_MAX,
+  TELEPORT_SPEED_MIN,
   TILE_KINDS,
   TRACKS,
   WORLD_COLS,
@@ -241,6 +244,8 @@ export interface DeepcoreSnapshot {
   };
   notice: null | { hazard: NoticeHazard; shown: boolean };
   noticesFired: { gas: boolean; lava: boolean };
+  nextTeleportHeight: number | null;
+  nextTeleportSpeed: number | null;
   elapsedSeconds: number;
   summary: null | {
     deepestDepthMeters: number;
@@ -339,7 +344,7 @@ export interface DeepcoreDebugApi {
   ): HitRect | null;
 
   // Restoring the world
-  reset(state: Read, options?: { seed?: number }): DeepcoreState;
+  reset(state: Read): DeepcoreState;
   generateMine(state: Read): DeepcoreState;
   clearMine(state: Read): DeepcoreState;
   clearCargo(state: Read): DeepcoreState;
@@ -392,6 +397,8 @@ export interface DeepcoreDebugApi {
   ): DeepcoreState;
   setCameraLead(state: Read, lead: number): DeepcoreState;
   setElapsed(state: Read, seconds: number): DeepcoreState;
+  setNextTeleportHeight(state: Read, tiles: number | null): DeepcoreState;
+  setNextTeleportSpeed(state: Read, speed: number | null): DeepcoreState;
   clearSave(state: Read): DeepcoreState;
 
   // The controls
@@ -597,6 +604,8 @@ export function readSnapshot(state: Read): DeepcoreSnapshot {
       ? { hazard: state.notice.hazard, shown: state.notice.shown }
       : null,
     noticesFired: { ...state.noticesFired },
+    nextTeleportHeight: state.nextTeleportHeight,
+    nextTeleportSpeed: state.nextTeleportSpeed,
     summary: state.summary ? { ...state.summary } : null,
   };
 }
@@ -707,15 +716,10 @@ export function createDebugApi(): DeepcoreDebugApi {
 
     // ---- Restoring the world ----
 
-    reset(state, options) {
-      const seed =
-        options?.seed === undefined
-          ? DEFAULT_SEED
-          : requireInteger("reset", "seed", options.seed, 0, 0xffffffff);
+    reset(state) {
       // `muted` is a player preference the engine owns, and the save slot
       // outlives the session, so neither is touched (specs/instrumentation.md).
       return createInitialState(state.assets, {
-        seed,
         muted: state.muted,
         hasSave: hasSave(),
       });
@@ -1116,6 +1120,40 @@ export function createDebugApi(): DeepcoreDebugApi {
         clearSaveSlot();
         d.hasSave = hasSave();
       }),
+
+    // ---- Posing the Quantum Teleporter ----
+
+    setNextTeleportHeight(state, tiles) {
+      const value =
+        tiles === null
+          ? null
+          : requireRange(
+              "setNextTeleportHeight",
+              "tiles",
+              tiles,
+              TELEPORT_HEIGHT_TILES_MIN,
+              TELEPORT_HEIGHT_TILES_MAX,
+            );
+      return pose(state, (d) => {
+        d.nextTeleportHeight = value;
+      });
+    },
+
+    setNextTeleportSpeed(state, speed) {
+      const value =
+        speed === null
+          ? null
+          : requireRange(
+              "setNextTeleportSpeed",
+              "speed",
+              speed,
+              TELEPORT_SPEED_MIN,
+              TELEPORT_SPEED_MAX,
+            );
+      return pose(state, (d) => {
+        d.nextTeleportSpeed = value;
+      });
+    },
 
     // ---- The controls ----
 

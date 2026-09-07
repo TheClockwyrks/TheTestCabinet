@@ -44,16 +44,18 @@
 // comes from. What is fixed here is arrangement: which gates are shut, where a
 // kill happens, and that a kill really happened.
 
+import { PLAYER_BULLET_SPEED } from "../constants";
 import { assertEqual, assertTrue, fail } from "../assert";
 import {
   droneById,
+  fireAt,
   startStage,
+  ticksFor,
   type DroneKind,
   type DroneSnapshot,
   type Harness,
   type SpectraSnapshot,
 } from "../harness";
-import { shootDrone } from "./scene";
 
 /**
  * The one spot every kill in these four checks happens at.
@@ -64,6 +66,36 @@ import { shootDrone } from "./scene";
  * that misses climbs a column no formation slot stands in.
  */
 export const KILL_AT = { x: 900, y: 500 } as const;
+
+/**
+ * How far below the target each shot in {@link destroyDrone} starts, in logical
+ * units.
+ *
+ * Geometry, not a tolerance: clear of the largest footprint any drone is drawn
+ * at — `PRISM_HALF` (`28`) plus the bullet's `PLAYER_BULLET_HALF` (`6`) is `34`
+ * — so the bullet is in flight rather than already in contact whatever kind it
+ * is aimed at, and short enough to climb into a drone that is holding still.
+ *
+ * KEPT AS SHORT AS THAT CLEARANCE ALLOWS, because these four checks empty a whole
+ * flyover one drone at a time and every unit of climb is frames of a forty-drone
+ * field. The flight a shot needs is most of what these checks cost, and none of
+ * it decides anything: where the bullet started is not what any of the four
+ * reads. The per-kill points next door shoot from `scene.ts`'s own, longer,
+ * distance, and a single shot's flight is nothing to them.
+ */
+const KILL_SHOT_GAP = 45;
+
+/**
+ * The frames each such shot is given to reach its target's centre.
+ *
+ * Derived, not chosen: the bullet climbs at `PLAYER_BULLET_SPEED` (`760`,
+ * `specs/ship.md`), so the whole gap is covered in `ticksFor(KILL_SHOT_GAP /
+ * PLAYER_BULLET_SPEED)` frames, and one more is room for a build that resolves
+ * the contact a sub-step later than another would. {@link destroyDrone} fails
+ * outright if the drone still stands afterwards, so a shot that somehow missed
+ * is reported rather than flown on.
+ */
+const KILL_SHOT_FRAMES = ticksFor(KILL_SHOT_GAP / PLAYER_BULLET_SPEED) + 1;
 
 /**
  * Open the wave the game builds for `stage`, and hold everything on it still.
@@ -150,7 +182,21 @@ export async function destroyDrone(
   for (let shot = 0; shot < 2; shot += 1) {
     const standing = droneById(h.snapshot(), id);
     if (standing === undefined) break;
-    await shootDrone(h, id, standing.effectiveBand);
+    // The bursts earlier kills left are cleared first. A destroyed drone pops a
+    // burst that plays for `BURST_DURATION`, and these four checks empty a whole
+    // wave far faster than that, so without this every later shot is flown over
+    // `MAX_BURSTS` live particle systems that are simulated and drawn on every
+    // frame of it. None of the four reads a burst — `bursts/` is where that is
+    // graded — so what the pile-up decides is how long the check takes.
+    h.debug.clearBursts();
+    await fireAt(
+      h,
+      KILL_AT.x,
+      KILL_AT.y,
+      standing.effectiveBand,
+      KILL_SHOT_GAP,
+      KILL_SHOT_FRAMES,
+    );
   }
 
   const after = h.snapshot();

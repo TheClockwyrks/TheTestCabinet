@@ -33,11 +33,10 @@
 // (`specs/instrumentation.md`: "`setWave(n)` sets the current wave number. It
 // spawns no rocks and clears none").
 //
-// THREE SEEDS, for the reason `wave-one-spawns-four` gives: a wave's positions are
-// drawn, and a build that satisfies `specs/progression.md`'s placement rules by
-// rejecting and redrawing can give up on one draw and not on another. A ten-rock
-// wave crowds those constraints harder than a four-rock one, so this is where such
-// a build shows.
+// ONE GAME, for the reason `wave-one-spawns-four` gives: the count is exact and
+// the world is generated once. A ten-rock wave crowds `specs/progression.md`'s
+// placement rules harder than a four-rock one, which is why the later wave is
+// the one this item poses.
 //
 // THE CLEAR IS A REAL KILL, through `./scene.ts`, never `clearRocks`.
 //
@@ -55,9 +54,6 @@ import { clearTheWave, openWaveAt, rocksInWave, waitForTheWave } from "./scene";
 /** The wave the field is posed at, so a conformant build then spawns wave 7. */
 const WAVE = 6;
 
-/** The three seeds the wave is spawned from. See the header. */
-const SEEDS: readonly number[] = [1, 2, 3];
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -69,38 +65,36 @@ afterEach(() => {
 });
 
 it("puts up WAVE_BASE_ROCKS + N Large rocks for a later wave", async () => {
-  for (const seed of SEEDS) {
-    openWaveAt(h, WAVE, seed);
-    await clearTheWave(h);
-    const arrival = await waitForTheWave(h);
-    // The wave as it arrived, kept before the assertions so a failing build
-    // leaves the picture that shows why.
-    captureStill(h, "wave");
+  openWaveAt(h, WAVE);
+  await clearTheWave(h);
+  const arrival = await waitForTheWave(h);
+  // The wave as it arrived, kept before the assertions so a failing build
+  // leaves the picture that shows why.
+  captureStill(h, "wave");
 
-    // Read against the wave the BUILD says it spawned, so this item decides the
-    // count rule alone. A build whose wave number advances by two is wrong about
-    // a different rule, and waves/wave-number-increments is the item for it.
-    const spawned = arrival.at.wave;
-    assertLength(
-      arrival.rocks,
-      rocksInWave(spawned),
-      `seed ${String(seed)}: wave ${String(spawned)} putting up ` +
-        `WAVE_BASE_ROCKS (${String(WAVE_BASE_ROCKS)}) + ${String(spawned)} = ` +
-        `${String(rocksInWave(spawned))} rocks — wave N spawns ` +
-        `WAVE_BASE_ROCKS + N Large rocks (specs/progression.md); the field was ` +
-        `posed at wave ${String(WAVE)} and cleared, and the count is read ` +
-        `against the wave the build reported spawning, so a build whose wave ` +
-        `number does not advance by one loses ` +
-        `waves/wave-number-increments rather than this point`,
-    );
+  // Read against the wave the BUILD says it spawned, so this item decides the
+  // count rule alone. A build whose wave number advances by two is wrong about
+  // a different rule, and waves/wave-number-increments is the item for it.
+  const spawned = arrival.at.wave;
+  assertLength(
+    arrival.rocks,
+    rocksInWave(spawned),
+    `wave ${String(spawned)} putting up ` +
+      `WAVE_BASE_ROCKS (${String(WAVE_BASE_ROCKS)}) + ${String(spawned)} = ` +
+      `${String(rocksInWave(spawned))} rocks — wave N spawns ` +
+      `WAVE_BASE_ROCKS + N Large rocks (specs/progression.md); the field was ` +
+      `posed at wave ${String(WAVE)} and cleared, and the count is read ` +
+      `against the wave the build reported spawning, so a build whose wave ` +
+      `number does not advance by one loses ` +
+      `waves/wave-number-increments rather than this point`,
+  );
 
-    const wrongSize = arrival.rocks.filter((rock) => rock.size !== "large");
-    assertLength(
-      wrongSize,
-      0,
-      `seed ${String(seed)}: every rock of wave ${String(spawned)} a Large — ` +
-        `a wave spawns Large rocks (specs/progression.md); found ` +
-        `${wrongSize.map((rock) => rock.size).join(", ")}`,
-    );
-  }
+  const wrongSize = arrival.rocks.filter((rock) => rock.size !== "large");
+  assertLength(
+    wrongSize,
+    0,
+    `every rock of wave ${String(spawned)} a Large — a wave spawns Large ` +
+      `rocks (specs/progression.md); found ` +
+      `${wrongSize.map((rock) => rock.size).join(", ")}`,
+  );
 });

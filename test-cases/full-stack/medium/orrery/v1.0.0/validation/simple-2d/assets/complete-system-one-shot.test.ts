@@ -16,7 +16,7 @@
 // WHAT IT READS, AND IN BOTH HALVES OF THE SENTENCE. The timeline's own
 // declaration — `loop`, which is what `set-timeline --loop false` writes and
 // what the runtime's own types carry — and the consequence the sentence draws
-// from it: a seeded play run past the system's own duration emits particles,
+// from it: a play run past the system's own duration emits particles,
 // falls to nothing, and never re-fires. A LOOPING timeline recovers from nothing
 // at its duration, which is exactly what "settling into a steady state" is, so
 // the reading tells the two apart on behaviour as well as on the flag.
@@ -31,7 +31,7 @@
 // `complete-system-produced`; radial symmetry is the art bar and is a reviewer's
 // judgement; where and when the build fires it is the presentation category's.
 //
-// THE EVIDENCE is the play itself as a filmstrip — six moments of one seeded
+// THE EVIDENCE is the play itself as a filmstrip — six moments of one
 // instance, each captioned with how many particles were live — so the decay is
 // read beside the verdict. Nothing drawn there is read by an assertion.
 
@@ -59,7 +59,7 @@ it("authors assets/particles/complete.json as a one-shot that decays to empty", 
   assertGreaterThan(
     play.peakLive,
     0,
-    "the seeded play emitted particles, so the decay below is a decay rather than a system that never fired",
+    "the play emitted particles, so the decay below is a decay rather than a system that never fired",
   );
   assertEqual(
     play.liveAtEnd,

@@ -57,7 +57,7 @@ describe("segmentsOf", () => {
 
 describe("resegment", () => {
   it("writes each segment's head hold over the rest of that segment", () => {
-    const draft: Draft = { ...createDraft(1), cores: coresAt([300, 272, 100]) };
+    const draft: Draft = { ...createDraft(), cores: coresAt([300, 272, 100]) };
     draft.cores[0].hold = 0.25;
     draft.cores[2].hold = 0.4;
     resegment(draft);
@@ -68,7 +68,7 @@ describe("resegment", () => {
 describe("thaw and freeze", () => {
   it("round-trip a state, spreading and re-reading the segment holds", () => {
     const draft: Draft = {
-      ...createDraft(3),
+      ...createDraft(),
       screen: "playing",
       cores: coresAt([300, 272, 100]),
       projectiles: [{ charge: "cobalt", x: 1, y: 2, angle: 90 }],
@@ -94,7 +94,7 @@ describe("thaw and freeze", () => {
 
   it("normalizes a state whose segments disagree with its arc positions", () => {
     const state = {
-      ...freeze(createDraft(1)),
+      ...freeze(createDraft()),
       cores: [
         { charge: "halide" as const, s: 300, mark: null },
         { charge: "halide" as const, s: 272, mark: null },
@@ -112,7 +112,7 @@ describe("thaw and freeze", () => {
 
   it("leaves the state it was handed alone", () => {
     const state = freeze({
-      ...createDraft(1),
+      ...createDraft(),
       cores: coresAt([300, 272]),
     });
     const before = JSON.stringify(state);

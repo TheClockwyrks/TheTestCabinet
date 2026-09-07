@@ -356,8 +356,6 @@ export const BAND_LABELS: Record<Band, string> = {
 
 /** The version `window.__spectra` reports. */
 export const SPECTRA_DEBUG_VERSION = 1;
-/** The seed a bare `reset()` re-arms. */
-export const DEFAULT_SEED = 1;
 /** The `KeyboardEvent.code` that shows and hides the debug overlay. */
 export const OVERLAY_KEY = "Backquote";
 

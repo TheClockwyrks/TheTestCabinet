@@ -16,6 +16,8 @@ import {
   FUEL_BUY_INCREMENT,
   MINER_H,
   MINER_W,
+  QUANTUM_DROP_MAX_TILES,
+  QUANTUM_VEL_MIN,
   ROCKET_COMPONENTS,
   SURFACE_Y,
   TILE,
@@ -441,6 +443,43 @@ describe("posing the expedition", () => {
     api.setMuted(true);
     api.reset();
     expect(api.snapshot().muted).toBe(true);
+  });
+});
+
+describe("posing the Quantum Teleporter", () => {
+  it("poses each draw on its own, within its bounds, and clears it with null", () => {
+    const { api } = surface();
+    expect(api.snapshot().nextTeleportHeight).toBeNull();
+    expect(api.snapshot().nextTeleportSpeed).toBeNull();
+    api.setNextTeleportHeight(QUANTUM_DROP_MAX_TILES);
+    expect(api.snapshot().nextTeleportHeight).toBe(QUANTUM_DROP_MAX_TILES);
+    expect(api.snapshot().nextTeleportSpeed).toBeNull();
+    api.setNextTeleportSpeed(QUANTUM_VEL_MIN);
+    expect(api.snapshot().nextTeleportSpeed).toBe(QUANTUM_VEL_MIN);
+    api.setNextTeleportHeight(null);
+    expect(api.snapshot().nextTeleportHeight).toBeNull();
+    expect(api.snapshot().nextTeleportSpeed).toBe(QUANTUM_VEL_MIN);
+    expect(() =>
+      api.setNextTeleportHeight(QUANTUM_DROP_MAX_TILES + 1),
+    ).toThrow();
+    expect(() => api.setNextTeleportSpeed(QUANTUM_VEL_MIN - 1)).toThrow();
+  });
+
+  it("is consumed by the use that places the miner with it, and cleared by a reset", () => {
+    const { api } = surface();
+    api.setItemCount("quantum-teleporter", 1);
+    api.setNextTeleportHeight(2);
+    api.setNextTeleportSpeed(300);
+    api.useItem("quantum-teleporter");
+    const placed = api.snapshot();
+    expect((SURFACE_Y - (placed.miner.y + MINER_H)) / TILE).toBeCloseTo(2, 9);
+    expect(placed.miner.vy).toBe(300);
+    expect(placed.nextTeleportHeight).toBeNull();
+    expect(placed.nextTeleportSpeed).toBeNull();
+
+    api.setNextTeleportHeight(5);
+    api.reset();
+    expect(api.snapshot().nextTeleportHeight).toBeNull();
   });
 });
 

@@ -42,9 +42,6 @@ import type { DeepReadonly } from "ts-essentials";
 /** The surface's version, reported as `version` (`WIREWORM_DEBUG_VERSION`). */
 export const WIREWORM_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none (`DEFAULT_SEED`). */
-export const DEFAULT_SEED = 1;
-
 /** The six screens the game moves between. */
 export type Screen =
   | "title"
@@ -59,6 +56,9 @@ export type Phase = "banner" | "active" | "respawn";
 
 /** The three support foes. */
 export type FoeKind = "glitch" | "dropper" | "corruptor";
+
+/** The two side edges the level's worm and its edge-entering foes come in at. */
+export type Edge = "left" | "right";
 
 /**
  * A menu item's hit region, in the stage's logical units, as `menuItemRect`
@@ -167,6 +167,15 @@ export interface WirewormSnapshot {
   foeSpawning: boolean;
   /** The level's and the respawn's worm entry is running. */
   wormEntry: boolean;
+  /** The level's spawner clocks, in seconds left (specs/foes.md). */
+  glitchTimer: number;
+  dropperTimer: number;
+  corruptorTimer: number;
+  /** The posed draws, each `null` until posed and again once consumed. */
+  nextWormEntry: Edge | null;
+  nextGlitchEntry: TileSnapshot | null;
+  nextDropperEntry: TileSnapshot | null;
+  nextCorruptorEntry: TileSnapshot | null;
   /** Seconds per tile step at this level, derived from `level`. */
   wormStepInterval: number;
   /** Segments this level's worm enters with, derived from `level`. */
@@ -208,7 +217,7 @@ export interface WirewormDebugApi<S = unknown> {
   // ---- The core ----------------------------------------------------------
 
   /** Restore every declared field to its title-screen value. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): WirewormSnapshot;
 
@@ -239,6 +248,20 @@ export interface WirewormDebugApi<S = unknown> {
   setWormEntry(state: DeepReadonly<S>, enabled: boolean): S;
   /** Gates the cursor's contact test, and nothing else. */
   setCursorContact(state: DeepReadonly<S>, enabled: boolean): S;
+
+  // ---- The level's draws -------------------------------------------------
+
+  /** Sets the seconds left on the level's clock for `kind` (specs/foes.md). */
+  setSpawnTimer(state: DeepReadonly<S>, kind: FoeKind, seconds: number): S;
+  /** Poses the tile the next foe of `kind` the level brings in enters on. */
+  setNextFoeEntry(
+    state: DeepReadonly<S>,
+    kind: FoeKind,
+    c: number,
+    r: number,
+  ): S;
+  /** Poses the edge the next worm the level or the respawn brings in enters at. */
+  setNextWormEntry(state: DeepReadonly<S>, edge: Edge): S;
 
   // ---- The cursor and its bolts ------------------------------------------
 
@@ -317,6 +340,10 @@ export const REQUIRED_OPS = [
   "setFoeSpawning",
   "setWormEntry",
   "setCursorContact",
+
+  "setSpawnTimer",
+  "setNextFoeEntry",
+  "setNextWormEntry",
 
   "setCursor",
   "setCursorInvulnerable",

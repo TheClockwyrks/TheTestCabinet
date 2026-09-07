@@ -79,7 +79,7 @@ function differs(
 }
 
 function playingState(): Draft {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   return state;
@@ -310,7 +310,7 @@ describe("the produced sprites in the frame", () => {
   });
 
   it("draws the almanac's pictures from the produced files", () => {
-    const state = initialState(1);
+    const state = initialState();
     state.screen = "almanac";
     // The detail pane's picture box, where every tab draws its picture.
     const box = [782, 282, 132, 132] as const;
@@ -324,7 +324,7 @@ describe("the produced sprites in the frame", () => {
   });
 
   it("animates the almanac's enemy over its walk sheet", () => {
-    const state = initialState(1);
+    const state = initialState();
     state.screen = "almanac";
     state.almanacTab = 2;
     const box = [782, 282, 132, 132] as const;

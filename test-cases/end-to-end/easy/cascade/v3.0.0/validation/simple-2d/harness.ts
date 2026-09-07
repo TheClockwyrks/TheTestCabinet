@@ -35,7 +35,7 @@
 // its operations, so they mean the same thing in every build: `addCard` appends one
 // card to a pile's top with a fresh id, `clearTable` empties all thirteen piles,
 // `move` applies the game's own rules and reports what they decided, and `reset`
-// gives everything back. Posing through it is how a scenario is reproducible, and
+// gives everything back. Posing through it is how a scenario is arranged, and
 // it is the seam the case's specification documents. `surface.ts` is that
 // specification as types, and it is the only description of the surface this
 // harness reads: the build's own module for it is never imported.
@@ -204,12 +204,13 @@ const game = build as unknown as Game<CascadeState, CascadeSurface>;
 /**
  * A member of a pure surface, as a check calls it.
  *
- * A reading `(state) => CascadeSnapshot` becomes `() => CascadeSnapshot` and a
+ * A reading `(state) => CascadeSnapshot` becomes `() => CascadeSnapshot`, a
  * reading `(state, index) => MenuRect | null` becomes `(index) => MenuRect |
- * null`: the driver hands each `engine.state` and passes the rest of the call
- * through. A verdict-returning operation
- * `(state, ...args) => [S, V]` becomes `(...args) => V`: the driver splits the pair
- * inside the transition, stores the state half and hands back the verdict. A pose
+ * null`, and a reading `(state) => number` becomes `() => number`: the driver
+ * hands each `engine.state` and passes the rest of the call through. A
+ * verdict-returning operation `(state, ...args) => [S, V]` becomes
+ * `(...args) => V`: the driver splits the pair inside the transition, stores the
+ * state half and hands back the verdict. A pose
  * `(state, ...args) => S` becomes `(...args) => void`: the driver runs it through
  * `engine.apply`, so the state it returns is the state the next frame receives.
  * Anything else (`version`) is carried as it is.
@@ -221,13 +222,15 @@ const game = build as unknown as Game<CascadeState, CascadeSurface>;
  */
 type Driven<S, M> = M extends (state: DeepReadonly<S>) => CascadeSnapshot
   ? () => CascadeSnapshot
-  : M extends (state: DeepReadonly<S>, ...args: infer A) => MenuRect | null
-    ? (...args: A) => MenuRect | null
-    : M extends (state: DeepReadonly<S>, ...args: infer A) => [S, infer V]
-      ? (...args: A) => V
-      : M extends (state: DeepReadonly<S>, ...args: infer A) => S
-        ? (...args: A) => void
-        : M;
+  : M extends (state: DeepReadonly<S>) => number
+    ? () => number
+    : M extends (state: DeepReadonly<S>, ...args: infer A) => MenuRect | null
+      ? (...args: A) => MenuRect | null
+      : M extends (state: DeepReadonly<S>, ...args: infer A) => [S, infer V]
+        ? (...args: A) => V
+        : M extends (state: DeepReadonly<S>, ...args: infer A) => S
+          ? (...args: A) => void
+          : M;
 
 /**
  * The imperative reading of a pure surface: every member of `D`, minus its state
@@ -256,7 +259,9 @@ export type CascadeDriver = Driver<CascadeState, CascadeSurface>;
  * interval (`0.18` s) is `43.2` frames, the double-click window (`0.30` s) is `72`,
  * and the half-second the flight items integrate over is `120`. It is also the step
  * the cascade group's timing items are written against, so a figure quantized to a
- * frame boundary still meets the tolerances those items state.
+ * frame boundary still meets the tolerances those items state; the two clocks below
+ * are where a check reading something other than an accelerated figure steps
+ * instead.
  */
 export const TICK_HZ = 240;
 export const TICK_MS = 1000 / TICK_HZ;
@@ -280,30 +285,33 @@ export function framesFor(duration: number): number {
 /**
  * The frame a RUN-OUT is stepped in.
  *
- * Three checks have to sit through the whole victory cascade before they can read
- * anything: `cascade/cascade-completes`, `screens/won-shows-message` and
- * `cascade/trail-survives-completion`. Twelve and a half seconds of game time at
- * {@link TICK_HZ} is three thousand frames, and every one of them renders up to
- * fifty-two card faces into a real canvas — so the wait, and not the reading, is
- * what those checks cost, and what they cost is what a busy host turns into a
- * timeout against a build that did nothing wrong.
+ * Four checks have to sit through the whole victory cascade before they can read
+ * anything: `cascade/cascade-completes`, `cascade/launch-takes-top-card`,
+ * `cascade/trail-survives-completion` and `screens/won-shows-message`. Twelve and
+ * a half seconds of game time at {@link TICK_HZ} is three thousand frames, and
+ * every one of them renders up to fifty-two card faces into a real canvas — so the
+ * wait, and not the reading, is what those checks cost, and what they cost is what
+ * a busy host turns into a timeout against a build that did nothing wrong.
  *
- * NONE OF THE THREE READS AN ACCELERATED QUANTITY. They read the cascade's own end
- * flag, the launched count, the flight being empty, the text the frame after it
- * drew, and how much of the table is still painted — facts about where the cascade
- * ENDED, none of them quantised to a frame. `TICK_HZ`'s own note says the fine step
- * is for the checks whose tolerances are stated in frames, and these state none;
- * `specs/instrumentation.md` has the game integrate whatever delta a frame supplies,
- * and `instrumentation/advances-in-frames` is the point that grades exactly that. So
- * a run-out stepped at sixty reaches the same end as one stepped at two hundred and
- * forty and costs a quarter as much, which was measured on the references: at 240,
- * 120, 60 and 30 Hz alike the cascade ends `cascadeDone` with all fifty-two launched
- * and nothing in flight, at the same `12.57` s of game time.
+ * NONE OF THE FOUR READS AN ACCELERATED QUANTITY. They read the cascade's own end
+ * flag, the launched count, the flight being empty, which card left which
+ * foundation, the text the frame after it drew, and how much of the table is still
+ * painted — facts about where the cascade ended and what it carried there, none of
+ * them quantised to a frame. `TICK_HZ`'s own note says the fine step is for the
+ * checks whose tolerances are stated in frames, and these state none.
  *
- * Sixty is also what a browser gives a game on an ordinary display, so it is the
- * rate the ending a player sees really runs at.
+ * AND WHERE A CASCADE ENDS IS NOT A FRAME-RATE QUANTITY EITHER. Two things decide
+ * it, and specs/victory.md integrates both exactly however an interval is divided
+ * into frames: the launch clock adds each frame's delta, so the fifty-second launch
+ * falls at the same game time whatever the frames were, and a card retires on `x`
+ * alone, which advances by `vx * dt` at a `vx` the flight never changes. What
+ * gravity and the floor do to `y` in between is the one part a coarser frame moves,
+ * and it is exactly what the checks stepped at {@link TICK_HZ} are for.
+ *
+ * Thirty is a frame length an ordinary machine really delivers, so the ending these
+ * four watch is an ending a player could sit through.
  */
-export const RUNOUT_HZ = 60;
+export const RUNOUT_HZ = 30;
 
 /** Whole frames of the run-out clock covering at least `duration` seconds. */
 export function runoutFrames(duration: number): number {
@@ -313,6 +321,45 @@ export function runoutFrames(duration: number): number {
 /** A harness whose clock steps the frames a run-out is waited out in. */
 export function createRunoutHarness(): Promise<Harness> {
   return createHarness({ clock: new ConstantClock(1000 / RUNOUT_HZ) });
+}
+
+/**
+ * The frame the LAUNCH CADENCE is watched in.
+ *
+ * `cascade/launch-cadence` reads two facts about the launch clock over three
+ * seconds of a running cascade: how many cards left, and the mean gap between them.
+ * Neither is a frame-rate quantity. specs/victory.md's clock adds each frame's
+ * delta and carries what it does not spend, so the k-th card leaves at
+ * `k * LAUNCH_INTERVAL` however the interval was divided into frames, and what a
+ * frame decides is only which frame a launch is OBSERVED on. Stepped at
+ * {@link TICK_HZ} that check spends seven hundred and twenty rendered frames
+ * reading seventeen launches.
+ *
+ * A COARSER FRAME ALSO READS THE CARRY, which is half of what the rule states. At
+ * `1 / 240` s the interval is `43.2` frames, so a build that ZEROED its clock where
+ * the specification subtracts the interval launches every forty-fourth frame: a
+ * cadence `1.9` percent wide and a count those three seconds cannot tell from the
+ * requirement. At `1 / 40` s the interval is `7.2` frames, so the same build
+ * launches every eighth — a `0.2` s cadence, and fifteen cards over the hold rather
+ * than seventeen.
+ *
+ * FORTY RATHER THAN {@link RUNOUT_HZ} because of what the observation rounds. A
+ * launch is read at the end of the frame it happened in, so the mean over the hold's
+ * gaps carries that rounding: at `1 / 40` s the seventeenth card's `2.88` s is read
+ * at `2.9`, and the mean lands `0.31` ms under the interval, a twelfth of the two
+ * percent that check allows. The run-out's thirty would spend a quarter of the same
+ * allowance on the same rounding.
+ */
+export const CADENCE_HZ = 40;
+
+/** Whole frames of the cadence clock covering at least `duration` seconds. */
+export function cadenceFrames(duration: number): number {
+  return Math.ceil(duration * CADENCE_HZ);
+}
+
+/** A harness whose clock steps the frames a launch cadence is watched in. */
+export function createCadenceHarness(): Promise<Harness> {
+  return createHarness({ clock: new ConstantClock(1000 / CADENCE_HZ) });
 }
 
 /* -------------------------------------------------------------------------- */

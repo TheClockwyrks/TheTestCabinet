@@ -5,8 +5,8 @@
 // check cannot take a cell at a time.
 //
 // WHY IT EXISTS. `specs/world.md` states every generation rule as a property of a
-// WHOLE BAND — the share of its cells that hold ore, the share that are gas, that
-// no band is sealed across its width, that exactly one node sits in it — and a
+// WHOLE BAND — where each kind may and may not appear, that no band is sealed
+// across its width, that exactly one node sits in it — and a
 // band at the Standard size is 125 rows of 30 columns. Reading that a cell at a
 // time through the harness's surface proxy is a round trip into Chromium per
 // cell, so a single band costs 3750 of them and a whole mine near fifteen
@@ -224,24 +224,6 @@ export function tallyBand(scan: MineScan, band: Band): BandTally {
   return { band, from, to, cells, kinds };
 }
 
-/** Sum two tallies of the same band, so several mines can be pooled into one share. */
-export function poolTallies(tallies: readonly BandTally[]): BandTally {
-  const first = tallies[0];
-  const kinds = Object.fromEntries(
-    (Object.keys(KIND_CHAR) as TileKind[]).map((kind) => [
-      kind,
-      tallies.reduce((sum, t) => sum + t.kinds[kind], 0),
-    ]),
-  ) as Record<TileKind, number>;
-  return {
-    band: first.band,
-    from: first.from,
-    to: first.to,
-    cells: tallies.reduce((sum, t) => sum + t.cells, 0),
-    kinds,
-  };
-}
-
 /**
  * Whether a route runs from any cell of `fromRow` to any cell of `toRow` across
  * cells `passable` admits, moving orthogonally and staying within the rows given.
@@ -317,17 +299,16 @@ export function cellKey(col: number, row: number): number {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Generate a mine from `seed` at `size` and read the whole grid back.
+ * Generate a fresh mine at `size` and read the whole grid back.
  *
  * The expedition is opened through the surface rather than through the menus, so
  * a build with a broken title screen still has its generation graded.
  */
 export async function generatedMine(
   h: Harness,
-  seed: number,
   size?: WorldSize,
 ): Promise<MineScan> {
-  await openExpedition(h, { seed, size });
+  await openExpedition(h, { size });
   return scanMine(h);
 }
 

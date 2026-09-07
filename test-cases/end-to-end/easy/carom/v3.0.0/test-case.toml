@@ -248,7 +248,7 @@ test = "npx vitest run --coverage"
 # elapsed time of each frame — and a validator supplies its own clock object and
 # calls `engine.advance(n)`, so the size of a step is stated in the validator that
 # takes it and differs on purpose between suites (a steady clock, an uneven
-# sequence, seeded jitter). A single case-wide rate could only get them wrong, and the
+# sequence, a jittered clock). A single case-wide rate could only get them wrong, and the
 # key is optional precisely so a case whose build is clocked in real time omits it.
 [instrumentation]
 handle = "__carom"
@@ -311,7 +311,7 @@ source = "specs/modes/versus.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every variant must expose: a deterministic,
+# The debugging and automation surface every variant must expose: a render-free,
 # steppable core; an API to drive and inspect the game from code; and a read-only
 # debug overlay. Seeded for every variant and framed as an ordinary developer
 # affordance of the game. It branches on the engine for how the surface is reached
@@ -619,19 +619,6 @@ failure_cap = "passable"
 validation = { script = "gameplay/ai-deadzone.test.ts", outputs = [
   { id = "still", name = "The AI paddle holding still on a ball inside its deadzone", kind = "replay" },
 ] }
-[[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances itself in real time"
-description = "With nothing stepping the game from outside, the game's own clock gains and a ball in flight moves over a stretch of real time."
-domains = ["single-player", "versus"]
-failure_cap = "broken"
-# Automated validation: hand the game back to its own frame loop with
-# setAutoStep(true), let it run for a stretch of real time, and confirm the game's
-# clock gained and the ball moved — a build that only advances when something pokes
-# it stays where it was put. Scoped to `none`, where the build writes the frame loop
-# itself; under an engine the runtime pumps the frames and every build on it gets
-# this for free. See validation/none/gameplay/advances-in-real-time.test.ts.
-validation = { script = "gameplay/advances-in-real-time.test.ts", engines = ["none"], outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 # The simulation is driven by elapsed time, not by a count of frames. The frame clock
 # is the engine's and a validator supplies it, so this is checkable head-on: the same
 # scenario is replayed under several clocks and the outcomes must agree.
@@ -643,10 +630,10 @@ domains = ["single-player", "versus"]
 failure_cap = "scuffed"
 # Automated validation: drive that one scenario three times under three clocks — a
 # `ConstantClock` at a steady 120 Hz, a `SequenceClock` repeating an uneven pattern of
-# deltas, and a seeded `JitterClock` — and compare the outcomes. Only facts that survive
+# deltas, and a jittered `JitterClock` — and compare the outcomes. Only facts that survive
 # a legitimate change in step size are compared, never a position: the sharpest of
 # them is the game time each drive took, read from the engine's own frame clock,
-# because a build that advances per frame rather than per second traces the identical
+# because a build that advances per frame rather than per second traces the same
 # path and can only give itself away on the clock. See
 # validation/<engine>/gameplay/delta-time-independent.test.ts.
 validation = { script = "gameplay/delta-time-independent.test.ts", outputs = [

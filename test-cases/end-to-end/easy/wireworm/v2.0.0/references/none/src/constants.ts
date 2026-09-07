@@ -85,8 +85,8 @@ export function inBounds(c: number, r: number): boolean {
 /**
  * A new run scatters inert nodes across rows `SCATTER_TOP_ROW..SCATTER_BOTTOM_ROW`
  * inclusive — never row 0, which the worm enters along, and never the band. The
- * count is a fraction of the tiles those rows hold, drawn from the run's seeded
- * generator.
+ * count is a fraction of the tiles those rows hold, drawn at random, and each
+ * tile is drawn at random, so two runs lay different fields.
  */
 export const SCATTER_TOP_ROW = 1;
 export const SCATTER_BOTTOM_ROW = 17;
@@ -330,6 +330,3 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 
 /** The version the debug surface reports as `version`. */
 export const WIREWORM_DEBUG_VERSION = 1;
-
-/** The seed a run uses when `reset()` is called without one. */
-export const DEFAULT_SEED = 1;

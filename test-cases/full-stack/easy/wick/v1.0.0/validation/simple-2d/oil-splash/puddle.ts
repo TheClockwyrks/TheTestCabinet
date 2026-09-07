@@ -19,11 +19,10 @@
 // gave it.
 //
 // WHY A LATTICE. A puddle lands at "an independent uniformly random point of
-// the disk of radius OIL_SCATTER (400) about the player's center", and the
-// order the build draws from its generator is its own ("The order in which the
-// systems draw from it is yours", specs/instrumentation.md), so no point can
-// know the landing point before the firing tick. A point about the pulse on
-// the tick a puddle APPEARS therefore stands a moth on every point of a square
+// the disk of radius OIL_SCATTER (400) about the player's center", so a point
+// that poses nothing for the landing cannot know it before the firing tick. A
+// point about the pulse on the tick a puddle APPEARS that reads the build's
+// own draw therefore stands a moth on every point of a square
 // lattice of pitch `LATTICE_PITCH` (80) covering the disk. The farthest a point
 // of the plane can be from its nearest lattice point is half the pitch's
 // diagonal, 80 / √2 ≈ 56.6, and a level-1 puddle (radius 50) overlaps a moth
@@ -62,11 +61,6 @@ export interface Loadout {
   posed: WickSnapshot;
 }
 
-export interface ArmOptions {
-  /** The seed `reset` lays the generator with. Defaults to `DEFAULT_SEED`. */
-  seed?: number;
-}
-
 /**
  * Reset to an isolated night holding Oil Splash alone at `level`, with its
  * timer at 0 and `weaponFire` on, so the next `playing` tick is the firing
@@ -76,12 +70,8 @@ export interface ArmOptions {
  * `effectMotion` holds. No passive is held, so every figure is the table's
  * own (specs/passives.md: every multiplier `1`, `amountBonus` `0`).
  */
-export function armOilSplash(
-  h: Harness,
-  level: number,
-  options: ArmOptions = {},
-): Loadout {
-  isolate(h, options.seed === undefined ? {} : { seed: options.seed });
+export function armOilSplash(h: Harness, level: number): Loadout {
+  isolate(h);
   const slot = holdWeapon(h, "oil-splash", level);
   armWeapon(h, slot);
   const posed = h.snapshot();

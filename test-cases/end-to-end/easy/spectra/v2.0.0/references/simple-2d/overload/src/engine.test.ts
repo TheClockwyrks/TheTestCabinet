@@ -6,7 +6,6 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_SEED,
   DIVE_FIRST_DELAY,
   FIELD_TOP,
   FORM_CENTER_X,
@@ -367,45 +366,21 @@ describe("reset", () => {
     await h.frames(1);
     expect(h.snapshot().muted).toBe(true);
   });
-
-  it("seeds the game's randomness", async () => {
-    const wave = async (seed: number): Promise<string[]> => {
-      h.pose((s, d) => d.reset(s, { seed }));
-      h.tap("Enter");
-      await h.advance(2.2);
-      return h
-        .snapshot()
-        .drones.map(
-          (drone) =>
-            `${drone.kind}:${drone.band}:${drone.slotX}:${drone.slotY}`,
-        );
-    };
-    const first = await wave(7);
-    const again = await wave(7);
-    const other = await wave(8);
-    expect(first.length).toBeGreaterThan(0);
-    expect(first).toEqual(again);
-    expect(first).not.toEqual(other);
-  });
-
-  it("defaults its seed", async () => {
-    h.pose((s, d) => d.reset(s, { seed: DEFAULT_SEED }));
-    h.tap("Enter");
-    await h.advance(2.2);
-    const pinned = h.snapshot().drones.map((drone) => drone.kind);
-    h.pose((s, d) => d.reset(s));
-    h.tap("Enter");
-    await h.advance(2.2);
-    expect(h.snapshot().drones.map((drone) => drone.kind)).toEqual(pinned);
-  });
 });
 
-describe("the deterministic core", () => {
+describe("the render-free core", () => {
   it("reaches the same state whichever way a second is divided", async () => {
+    // Nothing on this field is drawn at random: a Flux runs its clock, a Shard
+    // rides the sway, and two bullets fly clear of everything.
     const run = async (frames: number): Promise<string> => {
       const harness = await createHarness();
-      harness.pose((s, d) => d.reset(s, { seed: 5 }));
-      harness.tap("Enter");
+      startPosed(harness);
+      harness.pose((s, d) => d.addDrone(s, "flux", 500, 180));
+      const flux = harness.snapshot().drones.slice(-1)[0].id;
+      harness.pose((s, d) => d.setDroneBandClock(s, flux, 1.5));
+      harness.pose((s, d) => d.addDrone(s, "shard", 700, 260));
+      harness.pose((s, d) => d.addPlayerBullet(s, 300, 640, "cyan"));
+      harness.pose((s, d) => d.addEnemyBullet(s, 900, 100, "magenta"));
       harness.setStep(1 / frames);
       await harness.frames(frames * 3);
       const snap = harness.snapshot();

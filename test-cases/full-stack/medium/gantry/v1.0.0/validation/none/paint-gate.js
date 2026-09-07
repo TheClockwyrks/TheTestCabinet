@@ -32,13 +32,19 @@
 // LOOP callback, so anything a build refreshes there and nowhere else — this
 // case's reference draws its diagnostics overlay that way — stands still until a
 // frame is pumped. Two things pump one:
-//   * `capture` — every still, so what is composited is the page as it stands.
-//   * `paintFrame()` — for the handful of checks that read what the build draws
-//     around the canvas rather than on it.
-//   * `release()` — hands the page back its own loop, permanently. The one check
-//     whose subject IS the free-running loop asks for this; nothing else may,
-//     because a build that keeps stepping through a `setAutoStep(false)` is only
-//     visible to a page that is still painting.
+//   * `capture` — one before every still, so what is composited is the page as
+//     it stands. Nothing else a check reads off the canvas needs one: that is
+//     drawn by `advance`'s own render.
+//   * `paint()` — one for a check whose evidence is a state it posed rather than
+//     one the simulation ran into, so the frame the still is of is drawn over the
+//     pose rather than over the tick after it.
+//   * `paintFrames(count)` — the check about the clock, which runs the frames the
+//     BUILD asked for rather than the ones a check asked for.
+//
+// A PUMPED FRAME IS THE FRAME THE PAGE WOULD HAVE HAD. The callback is handed a
+// timestamp `1000 / 60` of a second past the last one, which is what a page
+// painting freely would have handed it, so a build that steps from its frame
+// loop steps exactly as far in a pumped frame as in a real one.
 //
 // A build that never calls `requestAnimationFrame` is unaffected in every part.
 (() => {
@@ -99,27 +105,9 @@
   }
 
   var api = {
-    /** Whether the page is currently off its own paint clock. */
-    held: function () {
-      return held;
-    },
     /** Run `count` (default one) of the frames the page has asked for. */
     pump: function (count) {
       runQueued(count === undefined ? 1 : count);
-    },
-    /**
-     * Hand the page back its own loop. There is no way back on purpose: a check
-     * that needs the free-running loop needs it for the rest of its life.
-     */
-    release: function () {
-      held = false;
-      var ids = order;
-      order = [];
-      for (var i = 0; i < ids.length; i += 1) {
-        var callback = queued.get(ids[i]);
-        queued.delete(ids[i]);
-        if (callback !== undefined) realRequest(passThrough(callback));
-      }
     },
   };
 

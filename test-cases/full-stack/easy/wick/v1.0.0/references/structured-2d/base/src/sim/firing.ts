@@ -169,19 +169,33 @@ const pulse: Fire = (firing) => {
   firing.ctx.auraPulse = true;
 };
 
+/**
+ * Where the next puddle lands, about the lamplighter's center: the posed
+ * `nextPuddleOffset` when one stands, consumed here, and otherwise a uniform
+ * point of the scatter disk.
+ */
+function puddleOffset(ctx: TickContext): Vec {
+  const posed = ctx.run.nextPuddleOffset;
+  if (posed !== null) {
+    ctx.run.nextPuddleOffset = null;
+    return { x: posed.x, y: posed.y };
+  }
+  const dir = fromDegrees(ctx.rng.next() * 360);
+  const reach = OIL_SCATTER * Math.sqrt(ctx.rng.next());
+  return { x: dir.x * reach, y: dir.y * reach };
+}
+
 /** Oil Splash and Blaze: puddles at random points of the scatter disk. */
 const puddles: Fire = (firing) => {
   const { run, ctx } = firing;
   for (let i = 0; i < firing.amount; i += 1) {
-    const angle = ctx.rng.next() * 360;
-    const reach = OIL_SCATTER * Math.sqrt(ctx.rng.next());
-    const dir = fromDegrees(angle);
+    const offset = puddleOffset(ctx);
     run.zones.push(
       makePuddle(
         run,
         firing.id,
-        run.player.x + dir.x * reach,
-        run.player.y + dir.y * reach,
+        run.player.x + offset.x,
+        run.player.y + offset.y,
       ),
     );
   }
@@ -194,10 +208,29 @@ function sparkTargets(run: RunState): EnemyState[] {
   );
 }
 
+/**
+ * The enemies a Spark firing strikes: the posed `nextStrikeTarget` first when
+ * it is among the eligible targets, then a uniform sample of the rest. The
+ * firing consumes the pose whether or not it was eligible.
+ */
+function strikeTargets(firing: Firing): EnemyState[] {
+  const { run, ctx } = firing;
+  const eligible = sparkTargets(run);
+  // With nothing in range Spark does not fire, and no firing consumes the pose.
+  if (eligible.length === 0) return [];
+  const posed = ctx.run.nextStrikeTarget;
+  ctx.run.nextStrikeTarget = null;
+  const first =
+    posed === null ? undefined : eligible.find((enemy) => enemy.id === posed);
+  if (first === undefined) return ctx.rng.sample(eligible, firing.amount);
+  const rest = eligible.filter((enemy) => enemy !== first);
+  return [first, ...ctx.rng.sample(rest, firing.amount - 1)];
+}
+
 /** Spark: strikes on distinct random enemies within range. */
 const strikes: Fire = (firing) => {
-  const { run, ctx, row, area } = firing;
-  for (const target of ctx.rng.sample(sparkTargets(run), firing.amount)) {
+  const { row, area } = firing;
+  for (const target of strikeTargets(firing)) {
     flashZone(
       firing,
       "strike",

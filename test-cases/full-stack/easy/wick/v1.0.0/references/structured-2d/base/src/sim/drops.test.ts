@@ -17,10 +17,10 @@ import { NOTHING_HELD, freshRun, initialState, type WickState } from "../state";
 import { tick } from "./tick";
 
 function playing(): { state: WickState; rng: Rng; cues: Set<CueName> } {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
-  return { state, rng: new Rng(() => state), cues: new Set() };
+  return { state, rng: new Rng(), cues: new Set() };
 }
 
 function step(world: ReturnType<typeof playing>, ticks = 1): void {

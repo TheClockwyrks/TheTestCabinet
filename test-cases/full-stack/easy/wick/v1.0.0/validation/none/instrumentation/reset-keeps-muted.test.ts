@@ -1,7 +1,7 @@
 // Wick — instrumentation/reset-keeps-muted: `muted` holds the same value after
 // `reset()` as before it, whether it was `true` or `false`.
 //
-// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `reset(options)`):
+// WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — `reset()`):
 // "`muted` stays as it is." The snapshot's `muted` "mirrors the runtime's mute
 // bit, refreshed in every frame", and the one way to set that bit is the
 // `mute` action, bound to `KeyM` and "toggles sound, on every screen"

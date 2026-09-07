@@ -14,7 +14,7 @@
 // one's, so a board that pierced several still fails there and is judged here
 // only on the frame outside them.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -77,7 +77,7 @@ it("lays out a maze whose only opening on the frame is the wrap tunnel", async (
       one.breaches,
       0,
       "border tiles that are neither rock nor a mouth of the wrap tunnel in " +
-        `the maze laid out from seed ${one.board.seed}` +
+        `maze ${one.board.ordinal} the game laid out` +
         (one.breaches.length === 0
           ? ""
           : `, at ${one.breaches.map(tileKey).join(" ")}`),

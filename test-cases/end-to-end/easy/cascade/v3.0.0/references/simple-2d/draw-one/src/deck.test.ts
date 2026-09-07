@@ -19,10 +19,9 @@ describe("the deck", () => {
     expect(keys.size).toBe(DECK_SIZE);
   });
 
-  it("shuffles a full deck and moves the generator on", () => {
-    const [deck, state] = shuffledDeck(1);
+  it("shuffles a full deck", () => {
+    const deck = shuffledDeck();
     expect(deck).toHaveLength(DECK_SIZE);
-    expect(state).not.toBe(1);
     const keys = new Set(deck.map((card) => `${card.suit}-${card.rank}`));
     expect(keys.size).toBe(DECK_SIZE);
   });

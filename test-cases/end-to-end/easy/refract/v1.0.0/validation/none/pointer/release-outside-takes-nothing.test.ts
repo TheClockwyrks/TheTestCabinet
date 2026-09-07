@@ -55,7 +55,7 @@ function pointOutsideEveryTarget(targets: readonly TargetSnapshot[]): {
 }
 
 it("leaves the title untouched when the release lands off the target", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
 
   const item = targetCenter(targetById(await h.snapshot(), "menu-2"));

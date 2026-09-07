@@ -25,19 +25,22 @@
 // play any of them, which is work a page does asynchronously and off the game's
 // clock — so arming waits for the first sound to come out rather than assuming
 // the build is ready. That first sound is the music bed `specs/assets.md` runs
-// under the whole game.
+// under the whole game. The wait is on the probe itself, a paint at a time, and
+// the count of paints is its only cap: nothing here reads a clock.
 //
-// ARM BEFORE POSING THE SCENE. Waiting drives frames and burns real time, and a
-// scene opened afterwards resets the clock and the world, so nothing a check
+// ARM BEFORE POSING THE SCENE. Waiting drives frames and lets the page paint, and
+// a scene opened afterwards resets the clock and the world, so nothing a check
 // measures includes the arming.
 
-import type { Harness } from "../harness";
+import { nextPaint, type Harness } from "../harness";
 
-/** How long a build is given to open its audio and decode what it produced. */
-export const AUDIO_READY_MS = 15_000;
-
-/** How long each poll of that wait leaves the page to get on with it. */
-const POLL_MS = 50;
+/**
+ * How many paints a build is given to open its audio and decode what it produced.
+ *
+ * A failure cap rather than a measurement: a build that has not made a sound by
+ * the last of them has not armed, and every check that reads audio fails on that.
+ */
+export const AUDIO_READY_PAINTS = 400;
 
 /**
  * How many sounds the build has emitted since the page loaded.
@@ -57,13 +60,13 @@ export function soundsStarted(h: Harness): Promise<number> {
  */
 export async function armAudio(h: Harness): Promise<boolean> {
   await h.armAudio();
-  const deadline = Date.now() + AUDIO_READY_MS;
-  while (Date.now() < deadline) {
+  for (let paint = 0; paint < AUDIO_READY_PAINTS; paint += 1) {
     if ((await soundsStarted(h)) > 0) return true;
-    // A frame of no length: the page gets a render and a turn of its own event
-    // loop, and nothing on the game's clock moves.
+    // A frame of no length, then a paint: the page gets a render and a turn of
+    // its own event loop to get on with decoding, and nothing on the game's
+    // clock moves.
     await h.advanceSeconds(0, 1);
-    await h.page.waitForTimeout(POLL_MS);
+    await nextPaint(h);
   }
   return false;
 }
@@ -85,70 +88,4 @@ export function soundsOver(
   frames: number,
 ): Promise<number> {
   return countSounds(h, () => h.advanceSeconds(seconds, frames));
-}
-
-/**
- * Watch not just how many sounds start but how many are STILL RUNNING.
- *
- * `specs/assets.md` asks the music bed to loop under the whole game "rather than
- * starting once and stopping", and a count of starts cannot tell those two apart:
- * a bed held as one looping source starts once and so does a bed that plays
- * through and stops. What separates them is whether anything is still sounding a
- * while later, so this counts a source up when it is started and back down when it
- * announces it has ended.
- *
- * Installed on the same two doors `audio-init.js` watches, over the top of it, and
- * before the build has been given the gesture that lets it make any sound — so
- * nothing it has already started is missed. It observes and changes nothing.
- */
-export function watchLiveSounds(h: Harness): Promise<void> {
-  return h.page.evaluate(() => {
-    const state = { live: 0, started: 0 };
-    (window as unknown as Record<string, unknown>).__deepcoreLive = state;
-    const opened = (node: EventTarget): void => {
-      state.started += 1;
-      state.live += 1;
-      node.addEventListener("ended", () => {
-        state.live -= 1;
-      });
-    };
-    const wrap = (proto: object | undefined, name: string): void => {
-      const at =
-        proto === undefined
-          ? undefined
-          : Object.getOwnPropertyDescriptor(proto, name);
-      if (at === undefined || typeof at.value !== "function") return;
-      const original = at.value as (...args: unknown[]) => unknown;
-      (proto as Record<string, unknown>)[name] = function (
-        this: EventTarget,
-        ...args: unknown[]
-      ) {
-        opened(this);
-        return original.apply(this, args);
-      };
-    };
-    const window_ = window as unknown as Record<
-      string,
-      { prototype: object } | undefined
-    >;
-    wrap(window_.AudioScheduledSourceNode?.prototype, "start");
-    wrap(window_.OscillatorNode?.prototype, "start");
-    wrap(window_.AudioBufferSourceNode?.prototype, "start");
-    wrap(window_.ConstantSourceNode?.prototype, "start");
-    wrap(window_.HTMLMediaElement?.prototype, "play");
-  });
-}
-
-/** How many sounds are running right now, and how many ever started. */
-export function liveSounds(
-  h: Harness,
-): Promise<{ live: number; started: number }> {
-  return h.page.evaluate(
-    () =>
-      (
-        window as unknown as {
-          __deepcoreLive: { live: number; started: number };
-        }
-      ).__deepcoreLive,
-  );
 }

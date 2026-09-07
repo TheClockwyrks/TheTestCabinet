@@ -26,8 +26,9 @@ import {
   COIL_DEBUG_VERSION,
   COMBO_MAX,
   COMBO_WINDOW,
-  DEFAULT_SEED,
   DIRECTIONS,
+  GRID_COLS,
+  GRID_ROWS,
   MODE,
   SCREENS,
   type Cell,
@@ -38,6 +39,7 @@ import { resetSession } from "./flow";
 import { coilState, type CoilState } from "./game";
 import { menuItemRect, menuItems, type MenuRect } from "./menus";
 import { HAS_OBSTACLES } from "./mode";
+import { drawPelletCell } from "./sim";
 import type { World } from "@clockwyrks/structured-2d";
 
 // ---- The snapshot shape (specs/instrumentation.md) ------------------------
@@ -64,13 +66,14 @@ export interface CoilSnapshot {
   steering: boolean;
   travel: boolean;
   pelletRespawn: boolean;
+  nextPellet: Cell | null;
 }
 
 // ---- The surface ---------------------------------------------------------
 
 export interface CoilDebugApi {
   version: number;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): CoilSnapshot;
   menuItemRect(index: number): MenuRect | null;
   setScreen(screen: Screen): void;
@@ -87,6 +90,8 @@ export interface CoilDebugApi {
   setPellet(col: number, row: number): void;
   clearPellet(): void;
   setPelletRespawn(enabled: boolean): void;
+  setNextPellet(col: number, row: number): void;
+  drawPelletCell(): Cell | null;
   /** Laid only by a mode that places obstacle cells. */
   clearObstacles?(): void;
   addObstacle?(col: number, row: number): void;
@@ -137,6 +142,15 @@ function requireInterior(name: string, col: unknown, row: unknown): Cell {
   return { col: c, row: r };
 }
 
+function requireCell(name: string, col: unknown, row: unknown): Cell {
+  const c = requireInteger(`${name} col`, col);
+  const r = requireInteger(`${name} row`, row);
+  if (c < 0 || c >= GRID_COLS || r < 0 || r >= GRID_ROWS) {
+    fail(`${name} takes a cell of the grid; (${c}, ${r}) is not one`);
+  }
+  return { col: c, row: r };
+}
+
 /** A plain, caller-owned copy of a cell, so no reading shares the state's. */
 function copyCell(cell: Cell): Cell {
   return { col: cell.col, row: cell.row };
@@ -156,14 +170,12 @@ export function createDebugApi(world: () => World): CoilDebugApi {
     version: COIL_DEBUG_VERSION,
 
     /**
-     * Every field the snapshot reports back to its opening value, with the pellet
-     * generator reseeded. `muted` is untouched: muting is a player preference the
-     * engine owns, and a reset is not a reason to start making noise again.
+     * Every field the snapshot reports back to its opening value. `muted` is
+     * untouched: muting is a player preference the engine owns, and a reset is
+     * not a reason to start making noise again.
      */
-    reset(options) {
-      const seed = options?.seed ?? DEFAULT_SEED;
-      requireInteger("reset(seed)", seed);
-      resetSession(state(), seed);
+    reset() {
+      resetSession(state());
     },
 
     /** A pure read of the state. It changes nothing. */
@@ -190,6 +202,7 @@ export function createDebugApi(world: () => World): CoilDebugApi {
         steering: live.steering,
         travel: live.travel,
         pelletRespawn: live.pelletRespawn,
+        nextPellet: live.nextPellet === null ? null : copyCell(live.nextPellet),
       };
     },
 
@@ -335,7 +348,7 @@ export function createDebugApi(world: () => World): CoilDebugApi {
 
     /**
      * Place the live pellet, replacing whatever pellet was on the board. Placing
-     * a pellet is not spawning one, so the generator is left where it stands.
+     * a pellet is not spawning one, so a posed next pellet stays posed.
      */
     setPellet(col, row) {
       const live = state();
@@ -364,6 +377,25 @@ export function createDebugApi(world: () => World): CoilDebugApi {
         "setPelletRespawn(enabled)",
         enabled,
       );
+    },
+
+    /**
+     * Pose the cell the next spawn places the pellet on. Whether the cell is
+     * valid is decided at the spawn rather than here, so the cell may be a wall
+     * cell, or hold a snake segment or an obstacle, at the call.
+     */
+    setNextPellet(col, row) {
+      const cell = requireCell("setNextPellet(col, row)", col, row);
+      state().nextPellet = cell;
+    },
+
+    /**
+     * The pellet draw alone: a cell drawn uniformly from the valid set as the
+     * board stands, or `null` when that set is empty. A reading, so nothing is
+     * placed and a posed next cell is left standing.
+     */
+    drawPelletCell() {
+      return drawPelletCell(state());
     },
   };
 

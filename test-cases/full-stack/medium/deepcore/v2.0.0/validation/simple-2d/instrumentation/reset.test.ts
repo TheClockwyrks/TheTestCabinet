@@ -7,8 +7,8 @@
 // tier `1` on every upgrade track, a full fuel tank and a full hull, `0` Credits,
 // an empty cargo bay, an empty satchel, no field supplies, no rocket component
 // installed, no live Core Sample, no ground item, neither hazard notice fired,
-// the camera lead at `0`, both faculties running, and `simTime` and
-// `elapsedSeconds` at `0`."
+// the camera lead at `0`, both faculties running, no Quantum Teleporter outcome
+// posed, and `simTime` and `elapsedSeconds` at `0`."
 //
 // And one exception, for a stated reason: "`muted` is untouched, because muting is
 // a player preference rather than a value an expedition opens with." Muting is the
@@ -59,9 +59,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed the restored state is opened on. */
-const SEED = 7;
-
 /** A cell of the mine well clear of the camp and the Core chamber. */
 const COL = 8;
 const ROW = 220;
@@ -103,6 +100,8 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
   h.debug.setCoreCarried(true);
   h.debug.setNoticeFired("gas", true);
   h.debug.setNoticeFired("lava", true);
+  h.debug.setNextTeleportHeight(4);
+  h.debug.setNextTeleportSpeed(300);
   h.debug.setCameraLead(120);
   h.debug.setElapsed(90);
   h.debug.setPanel("upgrade-shop");
@@ -126,7 +125,7 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
     "the game time a reset is asked to clear",
   );
 
-  h.debug.reset({ seed: SEED });
+  h.debug.reset();
   const s = h.snapshot();
 
   // The screen and the expedition.
@@ -189,6 +188,8 @@ it("restores the whole title-screen state, and leaves muted alone", async () => 
   assertEqual(s.noticesFired.gas, false, "the gas notice");
   assertEqual(s.noticesFired.lava, false, "the lava notice");
   assertNull(s.notice, "notice");
+  assertNull(s.nextTeleportHeight, "nextTeleportHeight");
+  assertNull(s.nextTeleportSpeed, "nextTeleportSpeed");
   assertEqual(s.camera.lead, 0, "the camera lead");
 
   // And the one preference a reset does not touch.

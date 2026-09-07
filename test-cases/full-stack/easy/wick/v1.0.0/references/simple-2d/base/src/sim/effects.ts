@@ -13,6 +13,7 @@ import {
   TICK_DT,
 } from "../constants";
 import type { DraftRun, Enemy, Projectile, Zone } from "../state";
+import type { Rng } from "../rng";
 import type { TickContext } from "./context";
 import { countDown, isDue } from "./timers";
 import { placeLantern } from "./weapons";
@@ -106,10 +107,34 @@ export function forgetHits(run: DraftRun, dead: ReadonlySet<number>): void {
 }
 
 /**
+ * One drop roll of specs/world.md, drawn from `rng`: bread with probability
+ * `BREAD_CHANCE`, and only when no bread dropped a draft with probability
+ * `DRAFT_CHANCE`. The surface's `rollDrop` makes this roll alone.
+ */
+export function drawDrop(rng: Rng): "bread" | "draft" | "none" {
+  if (rng.next() < BREAD_CHANCE) return "bread";
+  if (rng.next() < DRAFT_CHANCE) return "draft";
+  return "none";
+}
+
+/**
+ * What a common kill drops: the posed `nextDrop` when one stands, consumed
+ * here; otherwise the drop roll.
+ */
+function rollDrop(ctx: TickContext): "bread" | "draft" | "none" {
+  const posed = ctx.run.nextDrop;
+  if (posed !== null) {
+    ctx.run.nextDrop = null;
+    return posed;
+  }
+  return drawDrop(ctx.rng);
+}
+
+/**
  * The last part of phase 6: an enemy whose `hp` is at or below `0` dies. The
  * kill count rises and a puff is left to draw. While `drops` is on its drop
- * lands at its center and a common kill draws for bread and a draft; while it
- * is off the death leaves nothing on the field and draws nothing.
+ * lands at its center and a common kill rolls for a pickup; while it is off
+ * the death leaves nothing on the field and makes no roll.
  */
 export function resolveDeaths(ctx: TickContext): void {
   const { run } = ctx;
@@ -144,18 +169,11 @@ export function resolveDeaths(ctx: TickContext): void {
         bornTick: run.tick,
       });
       run.nextId += 1;
-      if (ctx.rng.next() < BREAD_CHANCE) {
+      const dropped = rollDrop(ctx);
+      if (dropped !== "none") {
         run.pickups.push({
           id: run.nextId,
-          kind: "bread",
-          x: enemy.x,
-          y: enemy.y,
-        });
-        run.nextId += 1;
-      } else if (ctx.rng.next() < DRAFT_CHANCE) {
-        run.pickups.push({
-          id: run.nextId,
-          kind: "draft",
+          kind: dropped,
           x: enemy.x,
           y: enemy.y,
         });

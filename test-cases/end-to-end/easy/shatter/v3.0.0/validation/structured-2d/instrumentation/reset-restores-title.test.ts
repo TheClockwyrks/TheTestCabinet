@@ -79,6 +79,11 @@ const DIRTY = {
   shipAngle: 2,
   invuln: 2,
   fireCooldown: 11,
+  /** The posed draws: none of them a value a fresh run holds. */
+  saucerDue: 7.5,
+  entryRow: 333,
+  aim: 0.05,
+  rockSpeed: 95,
 } as const;
 
 /**
@@ -123,6 +128,14 @@ it("restores every declared field to its title value and leaves muted alone", as
   h.debug.setShipCollision(false);
   h.debug.setWaveSpawning(false);
   h.debug.setSaucerSpawning(false);
+  // And every posed draw, which `reset` returns to `null`
+  // (specs/instrumentation.md), beside the due it returns to the cadence's start.
+  h.debug.setSaucerDue(DIRTY.saucerDue);
+  h.debug.setNextSaucerEdge("right");
+  h.debug.setNextSaucerRow(DIRTY.entryRow);
+  h.debug.setNextSaucerAim(DIRTY.aim);
+  h.debug.setNextRockSpeed(DIRTY.rockSpeed);
+  h.debug.setNextRecycleEdge("top");
 
   const before = h.snapshot();
   assertGreaterThan(before.simTime, 0, "simTime accumulated before the reset");
@@ -171,6 +184,13 @@ it("restores every declared field to its title value and leaves muted alone", as
   // The two world gates, back on.
   assertEqual(after.waveSpawning, true, "waveSpawning back on");
   assertEqual(after.saucerSpawning, true, "saucerSpawning back on");
+
+  // The posed draws, cleared.
+  assertNull(after.nextSaucerEdge, "reset clears the posed entry edge");
+  assertNull(after.nextSaucerRow, "reset clears the posed entry row");
+  assertNull(after.nextSaucerAim, "reset clears the posed aim error");
+  assertNull(after.nextRockSpeed, "reset clears the posed rock speed");
+  assertNull(after.nextRecycleEdge, "reset clears the posed re-entry edge");
 
   // The clock, back to zero.
   assertEqual(after.simTime, 0, "simTime restored to 0");

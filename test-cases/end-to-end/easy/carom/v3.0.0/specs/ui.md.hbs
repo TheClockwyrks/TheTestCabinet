@@ -117,11 +117,13 @@ on the match-over screen all start a match the same way:
   `titleIndex` keeps its value.
 - Both scores are `0` and `winner` is `null`.
 {{#if (eq variant.slug "multi")}}
-- Every ball is held at its own home point with `holdTimer = HOLD_TIME`, zero
-  velocity, zero spin, and an empty trail.
+- Every ball is parked at its own home point, as `specs/balls.md` states: held,
+  with `holdTimer = HOLD_TIME`, zero velocity, zero spin, an empty trail, and a
+  fresh `launchAngle`.
 {{else}}
-- `receiver = left`, and the ball is held at its home point with
-  `holdTimer = HOLD_TIME`, zero velocity, zero spin, and an empty trail.
+- `receiver = left`, and the ball is parked at its home point, as
+  `specs/balls.md` states: held, with `holdTimer = HOLD_TIME`, zero velocity,
+  zero spin, an empty trail, and a fresh `serveSign`.
 {{/if}}
 - Both paddles have `cy = FIELD_CY` and `vy = 0`.
 {{#if (eq variant.slug "gyre")}}
@@ -133,8 +135,8 @@ on the match-over screen all start a match the same way:
 `QUIT TO MENU` on the pause menu, `MENU` on the match-over screen, leaving the
 how-to screen, and `back` on the match-over screen all return to the title. Each
 restores every declared field of the state to its title-screen value, except
-`titleIndex`, `simTime`, `muted`, `seed`, and `rngState`, which keep their
-values, and `menuIndex`, which becomes `titleIndex`.
+`titleIndex`, `simTime`, and `muted`, which keep their values, and `menuIndex`,
+which becomes `titleIndex`.
 
 ## Menu navigation
 

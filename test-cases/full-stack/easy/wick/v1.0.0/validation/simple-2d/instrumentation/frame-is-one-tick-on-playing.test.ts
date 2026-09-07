@@ -3,7 +3,7 @@
 // run.tick by 30 and simTime by 30 × TICK_DT and leave the accumulator as it
 // stood.
 //
-// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "A deterministic
+// WHAT THE SPECIFICATION FIXES. specs/instrumentation.md, "A render-free
 // core": "On `playing`, each frame's delta time joins the accumulator, every
 // whole `TICK_DT` in it is consumed as a tick, and the remainder waits for the
 // next frame. A tick is consumed while the accumulator is at least

@@ -28,6 +28,7 @@ import {
   type Rect,
 } from "./constants";
 import type { BallState, ObstacleState, PaddleState, Side } from "./game";
+import { drawLaunchAngle } from "./random";
 
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
@@ -101,6 +102,7 @@ export function parkBall(ball: BallState, hold: number): void {
   ball.held = hold > 0;
   ball.holdTimer = hold;
   ball.trail.length = 0;
+  ball.launchAngle = drawLaunchAngle();
 }
 
 /** Whether `index` names one of this variant's balls. */
@@ -134,6 +136,7 @@ function newBall(index: number, hold: number): BallState {
     spin: 0,
     held: false,
     holdTimer: 0,
+    launchAngle: 0,
     trail: [],
   };
   parkBall(ball, hold);

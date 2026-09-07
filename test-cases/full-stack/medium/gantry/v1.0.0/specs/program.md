@@ -77,8 +77,7 @@ reports `0`, whether it braked or drove on the way in. Otherwise a braking
 tick reports `-s * a`, a driving tick that changed `v` reports `+s * a`, and a
 cruising tick, one whose clamp left `v` as it was, reports `0`. An axis with
 no live command reports `0` and holds its value with zero rate. The controller
-is exact and deterministic: the same tape over the same structure produces the
-same motion tick for tick.
+is exact: the steps above are the whole of an axis's motion.
 
 ## The tick pipeline
 
@@ -143,4 +142,4 @@ clock at the tick it ended on, and moves to the results screen. A failed run
 stays on the run screen with its cause read out and the scene as it stood, so
 the player reads what went wrong before going back to edit. Either way the
 structure, the tape, and the loads' starting poses are untouched: every run
-begins from the same authored state, and running is always repeatable.
+begins from the same authored state.

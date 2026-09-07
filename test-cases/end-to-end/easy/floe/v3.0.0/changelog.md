@@ -54,7 +54,7 @@ build knows what it is held to.
 
 ## Every review point is decided by a validator
 
-The checklist grew from `83` points to `216`, and every one of them now names a
+The checklist grew from `83` points to `256`, and every one of them now names a
 Vitest suite under `validation/<engine>/`, the domains its failure lowers, and
 how far it lowers them. In `v2.0.0` twelve of the eighty-three points carried no
 script at all: the feel of a hop, the look of the strait and every audio cue were
@@ -223,7 +223,7 @@ before.
 | A completed crossing scores its last row, `10 + 50 + 2 * T`                                                       | `scoring.last-hop-total`, with `scoring.row-advance`, `scoring.bay-award` and `scoring.time-bonus` deciding the three parts separately             |
 | The HUD's LIVES readout counts the run's lives, so a fresh run reads three                                        | `presentation.hud-lives`                                                                                                                           |
 | Every death pauses before the respawn and the critter is out of play for its duration                             | `progression.death-pause`, `progression.critter-out-of-play` and `progression.strait-runs-during-death`                                            |
-| The render-decoupling requirement states the one-way dependency and nothing about how the renderer presents state | The wording of `specs/instrumentation.md`, asserted by `instrumentation.deterministic-core`                                                        |
+| The render-decoupling requirement states the one-way dependency and nothing about how the renderer presents state | The wording of `specs/instrumentation.md`, asserted by `instrumentation.tick-length`                                                               |
 | The reference draws between simulation steps rather than on the tick boundary                                     | A requirement on all three reference implementations: the interpolation state is written by the step and read only by the renderer                 |
 | Mute is toggled during a live crossing, where the game is making the sound                                        | `controls.mute-m` and `audio.mute-silences`                                                                                                        |
 | A critter left on the near shore is not hunted at all                                                             | `hunter.no-emergence-on-near-shore`, beside `hunter.emerges-after-advance`                                                                         |

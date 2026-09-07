@@ -338,9 +338,9 @@ function drawHull(ctx: CanvasRenderingContext2D, protectedNow: boolean): void {
 /**
  * The thrust flame, trailing from the tail.
  *
- * Its flicker is drawn from the simulation clock rather than from a random draw,
- * so nothing the renderer does can move the seeded generator the field is built
- * from.
+ * Its flicker is taken from the simulation clock rather than from a random draw,
+ * so the renderer makes no draw of its own and the simulation reads nothing from
+ * it.
  */
 function drawFlame(ctx: CanvasRenderingContext2D, simTime: number): void {
   const flicker = 0.7 + 0.3 * Math.abs(Math.sin(simTime * 47));

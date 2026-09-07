@@ -5,7 +5,7 @@
 // gives `dark` the drop "Nothing." The roster names the same in the Dark's own
 // row, whose Drops column reads `nothing` ("Elites and the Dark").
 // `specs/world.md` ("The drop roll") closes the other two doors: "Elites and
-// the Dark make no draw; an elite drops its chest, and the Dark drops
+// the Dark make no roll; an elite drops its chest, and the Dark drops
 // nothing", so no bread and no draft either. The tick the Dark dies therefore
 // leaves the field with no gem and no pickup at all, and the reading is those
 // two counts at `0`.

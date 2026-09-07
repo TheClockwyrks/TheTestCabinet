@@ -4,18 +4,17 @@
 // WHERE THE THRESHOLD COMES FROM. `specs/evolutions.md` ("Opening a chest"),
 // rule 2: "One held item below its max level, a base weapon below
 // `MAX_WEAPON_LEVEL` or a passive below its own max, is chosen uniformly at
-// random from the game's seeded generator and rises by `1`, exactly as
-// accepting a `+1 level` offer does. The result is
-// `{ kind: "level", item, level }`, with `level` the level it became." With
-// Taper at 3 and Brass at 1 held, rule 1 finds nothing (Taper is below
-// `MAX_WEAPON_LEVEL` and Brass is no weapon), both held items are below their
-// maxes — Taper's 8 and Brass's 3 (`specs/passives.md`) — and exactly one of
-// them rises by one.
+// random and rises by `1`, exactly as accepting a `+1 level` offer does. The
+// result is `{ kind: "level", item, level }`, with `level` the level it
+// became." With Taper at 3 and Brass at 1 held, rule 1 finds nothing (Taper
+// is below `MAX_WEAPON_LEVEL` and Brass is no weapon), both held items are
+// below their maxes — Taper's 8 and Brass's 3 (`specs/passives.md`) — and
+// exactly one of them rises by one.
 //
 // WHAT IS ASSERTED. That the chest levelled ONE of the two by exactly one
 // level, and that the result names that item and the level it became. WHICH of
-// the two is a uniform draw from the seeded generator, so it is read from the
-// result rather than predicted, and the item the result did NOT name is
+// the two is a uniform draw, so it is read from the result rather than
+// predicted, and the item the result did NOT name is
 // asserted to stand exactly where it was posed — so a chest that raised both,
 // or raised one by two, fails.
 //

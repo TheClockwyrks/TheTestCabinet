@@ -147,9 +147,6 @@ export const WIN_LEAD = 2;
 /** The surface's version, reported as `version` and bumped when it changes. */
 export const CAROM_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 // ---- Screen copy (specs/ui.md) -------------------------------------------
 
 export const TITLE_TEXT = "CAROM";

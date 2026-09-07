@@ -79,7 +79,7 @@ afterEach(() => {
 
 /** Every formula center on `notation`'s board reads as a node. */
 async function assertNodesOnCenters(notation: string): Promise<void> {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, notation);
   const board = parseBoard(notation);
   const ground = groundSample(h, board);

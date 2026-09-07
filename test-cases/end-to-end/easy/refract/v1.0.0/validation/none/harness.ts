@@ -66,21 +66,23 @@ import {
 } from "./case-harness/index";
 import { fail } from "./assert";
 import { ACTION_KEYS, OVERLAY_KEY, type ActionName } from "./constants";
+import { MINIMAL_2X1 } from "./fixtures";
 import {
   BOARD_CX,
   BOARD_CY,
   CELL_PITCH,
   CHANNELS,
+  MAX_TIER,
   STAGE_H,
   STAGE_W,
   cellCenter,
   parseBoard,
   boardToNotation,
+  tierForSolvedCount,
   type Board,
   type Channel,
 } from "./notation";
 import type { Beams, Cell } from "./rules";
-import { solve, type SolveResult } from "./solver";
 import { CAMPAIGN_BOARDS } from "./routes";
 
 /* -------------------------------------------------------------------------- */
@@ -107,6 +109,9 @@ export const REQUIRED_OPS = [
   "setMode",
   "setScreen",
   "setMenuIndex",
+  "setSolvedCount",
+  "setTier",
+  "generateBoard",
   "loadBoard",
   "pointerDown",
   "pointerMove",
@@ -177,8 +182,6 @@ export interface RefractSnapshot {
   targets: TargetSnapshot[];
   muted: boolean;
   simTime: number;
-  /** The seeded generator's current state. */
-  rngState: number;
 }
 
 /** Which device drove the pointer, as `specs/controls.md` names them. */
@@ -200,11 +203,14 @@ export interface TargetSnapshot {
 export interface RefractDebugApi {
   setAutoStep(enabled: boolean): Promise<void>;
   advance(seconds: number, frames?: number): Promise<void>;
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<RefractSnapshot>;
   setMode(mode: Mode): Promise<void>;
   setScreen(screen: Screen): Promise<void>;
   setMenuIndex(index: number): Promise<void>;
+  setSolvedCount(count: number): Promise<void>;
+  setTier(tier: number): Promise<void>;
+  generateBoard(tier: number): Promise<void>;
   loadBoard(board: readonly string[]): Promise<void>;
   pointerDown(x: number, y: number, device?: PointerDevice): Promise<void>;
   pointerMove(x: number, y: number, device?: PointerDevice): Promise<void>;
@@ -524,8 +530,8 @@ export async function startCampaign(h: Harness): Promise<void> {
  *
  * Cascade's entry is not a pose: specs/modes/cascade.md makes starting it set
  * the mode, zero `solvedCount`, set `tier` to 1, GENERATE the first board, and
- * move to `playing`, and the surface carries no operation that generates a
- * board. So the sequence is begun the way the game itself begins it. The route
+ * move to `playing`, and no operation on the surface does all of that. So the
+ * sequence is begun the way the game itself begins it. The route
  * is the pointer rather than a key: specs/controls.md fixes the title's target
  * ids (`menu-0`, `menu-1`, `menu-2`, one per entry of `TITLE_ITEMS`) and what
  * taking one does, and the snapshot reports the rectangle the build actually
@@ -868,72 +874,100 @@ export function boardFromSnapshot(snapshot: RefractSnapshot): Board {
   };
 }
 
-/** What a cascade sweep saw, board by board. */
-export interface CascadeSweep {
-  /** Each generated board, as the snapshot reported it on arrival. */
-  boards: Board[];
-  /** The solver's verdict on each board, in order. */
-  verdicts: SolveResult[];
-  /** The snapshot after each board's solution was traced. */
-  afterSolve: RefractSnapshot[];
+/**
+ * Pose a cascade run in progress: the mode, the boards-solved count, and the
+ * tier the ladder puts that count at, through the three single-field poses
+ * specs/instrumentation.md carries for them.
+ *
+ * The tier is the spec's own formula over the count (`tierForSolvedCount`, from
+ * specs/modes/cascade.md), so the posed run is one a player could have reached.
+ * No board is chosen and none is generated: a caller poses one through
+ * `loadBoard`, asks the generator for one through `generateBoard`, or takes
+ * NEXT BOARD, whichever its requirement is about.
+ */
+export async function poseCascadeRun(
+  h: Harness,
+  solvedCount: number,
+): Promise<void> {
+  await h.debug.setMode("cascade");
+  await h.debug.setSolvedCount(solvedCount);
+  await h.debug.setTier(tierForSolvedCount(solvedCount));
 }
 
 /**
- * Play `count` boards of a cascade run seeded with `seed`: reset, start the
- * sequence, and for each board read it back, solve it with the case's own
- * spec-derived solver, trace the solution, and cross the solved screen through
- * NEXT BOARD (`SOLVED_ITEMS[0]`, highlighted on arrival).
+ * Pose the minimal board (`MINIMAL_2X1`, two adjacent emitters of one channel)
+ * through `loadBoard` and solve it with its one segment, handing back the state
+ * the solve left.
  *
- * Solvability is proven BY SOLVING: the solver is derived from `specs/beams.md`
- * alone, so a board it cracks is solvable under the specification, whatever the
- * build believes. Nothing here asserts — the sweep's record is handed back, and
- * the caller holds it against its own point: a board the solver called
- * unsolvable, a trace the build refused, a screen that never advanced all
- * surface in `verdicts` and `afterSolve`.
- *
- * `onBoard` runs after each board's arrival snapshot is read and before its
- * solution is traced.
+ * On a cascade run this is one solve of the run: R9 holds on the move, the
+ * count rises, the tier is recomputed, and the game moves to `solved`
+ * (specs/modes/cascade.md, The sequence), exactly as it does for a generated
+ * board, because "a board posed this way is a board like any other"
+ * (specs/instrumentation.md). It is how a suite about the run's progression
+ * solves a board without dragging the generator or the solver onto its point.
  */
-export async function solveGenerated(
-  h: Harness,
-  count: number,
-  seed: number,
-  onBoard?: (snapshot: RefractSnapshot, index: number) => void | Promise<void>,
-): Promise<CascadeSweep> {
-  await h.debug.reset({ seed });
-  await h.advance(1);
-  await startCascade(h);
+export async function solvePosedBoard(h: Harness): Promise<RefractSnapshot> {
+  await h.debug.loadBoard(boardToNotation(parseBoard(MINIMAL_2X1)).split("\n"));
+  return traces(h, [
+    [
+      { col: 0, row: 0 },
+      { col: 1, row: 0 },
+    ],
+  ]);
+}
 
-  const boards: Board[] = [];
-  const verdicts: SolveResult[] = [];
-  const afterSolve: RefractSnapshot[] = [];
-  for (let index = 0; index < count; index += 1) {
-    let snapshot = await h.snapshot();
-    requireScreen(
-      snapshot,
-      "playing",
-      `board ${index + 1} of the cascade sweep should be in play`,
-    );
-    const board = boardFromSnapshot(snapshot);
-    boards.push(board);
-    await onBoard?.(snapshot, index);
-    const verdict = solve(board);
-    verdicts.push(verdict);
-    // The solution's own read-back IS the state after the solve: every pointer
-    // operation resolves between frames, so nothing has run since. A board the
-    // solver could not crack is read back as it stands, unsolved, for the
-    // caller's own verdict.
-    snapshot =
-      verdict.status === "solved"
-        ? await drawBeams(h, verdict.beams)
-        : await h.snapshot();
-    afterSolve.push(snapshot);
-    if (index < count - 1 && snapshot.screen === "solved") {
-      // First choice, highlighted on arrival: NEXT BOARD.
-      await fireAction(h, "confirm");
+/** One board the generator was asked for, as it arrived. */
+export interface GeneratedBoard {
+  /** The tier it was generated at, the argument `generateBoard` was given. */
+  tier: number;
+  /** Which board of that tier's rounds it is, counted from 1. */
+  round: number;
+  /** The snapshot on arrival, `playing` with every beam empty. */
+  snapshot: RefractSnapshot;
+  /** The board itself, restated as the scenario library's Board. */
+  board: Board;
+}
+
+/**
+ * Ask the generator for `perTier` boards at every tier of the ladder, through
+ * `generateBoard`, and hand each back as it arrived: tier 1's boards first,
+ * then tier 2's, up to `MAX_TIER`.
+ *
+ * The run is posed into cascade first, so the boards arrive as a player would
+ * meet them, and each one is rendered by the frame after its pose so a caller
+ * can read pixels or capture a still. `onBoard` runs on each board while it is
+ * in play, before the next is asked for, and may solve it: the next pose
+ * replaces whatever the previous board was left as. Nothing here asserts; the
+ * record is handed back for the caller to hold against its own point.
+ */
+export async function generateAtTiers(
+  h: Harness,
+  perTier: number,
+  onBoard?: (generated: GeneratedBoard) => void | Promise<void>,
+): Promise<GeneratedBoard[]> {
+  await h.debug.setMode("cascade");
+  const generated: GeneratedBoard[] = [];
+  for (let tier = 1; tier <= MAX_TIER; tier += 1) {
+    for (let round = 1; round <= perTier; round += 1) {
+      await h.debug.generateBoard(tier);
+      await h.advance(1);
+      const snapshot = await h.snapshot();
+      requireScreen(
+        snapshot,
+        "playing",
+        `generateBoard(${tier}) puts a board in play`,
+      );
+      const entry: GeneratedBoard = {
+        tier,
+        round,
+        snapshot,
+        board: boardFromSnapshot(snapshot),
+      };
+      generated.push(entry);
+      await onBoard?.(entry);
     }
   }
-  return { boards, verdicts, afterSolve };
+  return generated;
 }
 
 /* -------------------------------------------------------------------------- */

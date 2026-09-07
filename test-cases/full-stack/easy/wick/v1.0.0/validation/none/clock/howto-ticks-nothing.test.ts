@@ -25,7 +25,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertTrue } from "../assert";
-import { DEFAULT_SEED } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -49,7 +48,7 @@ afterEach(async () => {
 });
 
 it("advances nothing across 60 frames on howto", async () => {
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
   await enable(h, "spawning");
   const before = await poseScreen(h, "howto");
   assertEqual(before.screen, "howto", "the screen the frames run on");

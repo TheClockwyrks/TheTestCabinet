@@ -14,9 +14,11 @@
 // the requirement is that it is positive — the rock is going in, not out and not
 // sliding along.
 //
-// FOUR RECYCLES ARE READ, NOT ONE. `specs/simulation.md` draws the edge from the
-// game's seeded generator, so a single pass grades one edge and a build that is
-// right about the left edge and wrong about the top passes it three times in four.
+// FOUR RECYCLES ARE READ, NOT ONE. `specs/rocks.md` draws the edge with probability
+// a quarter each, so a single pass grades one edge and a build that is right about
+// the left edge and wrong about the top passes it three times in four. Nothing is
+// posed for the edge: `setNextRecycleEdge` is how a check that wants a particular
+// one gets it, and this check wants the build's own draws.
 // Each pass is a real trip through the core: the rock is aimed back at the star and
 // followed in again, so the draws are the ones the build would make in play.
 //
@@ -33,7 +35,6 @@ import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
-  resetTo,
   startPlaying,
   ticksFor,
   type Harness,
@@ -50,9 +51,6 @@ import {
 /** How many trips through the core are read, so more than one edge is graded. */
 const PASSES = 4;
 
-/** The seed the run is put on, so the edges the star draws are reproducible. */
-const SEED = 1;
-
 /** Ticks of the last recycled rock coming in, run after the readings are taken. */
 const AFTERMATH_TICKS = ticksFor(0.5);
 
@@ -67,7 +65,6 @@ afterEach(() => {
 });
 
 it("gives every recycled rock a velocity that carries it off its edge", async () => {
-  resetTo(h, SEED);
   startPlaying(h);
   dropOntoTheStar(h, "medium");
 

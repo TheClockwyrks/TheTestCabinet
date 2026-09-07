@@ -7,13 +7,13 @@
 // begins cycle `0`. Stopping one discards the motes and every runtime pose and
 // hands the machine back to the editor exactly as it was placed.
 //
-// THE CLOCK IS THE DETERMINISTIC CORE. A run advances by `SPEEDS[sim.speed]`
+// THE CLOCK IS THE RENDER-FREE CORE. A run advances by `SPEEDS[sim.speed]`
 // cycles per second of game time, and each cycle is resolved in full at the
 // moment it begins, so an interval of game time reaches the same state however
 // it was divided into frames: `advance(1, 1)` and `advance(1, 60)` are the same
-// run (specs/instrumentation.md "A deterministic core"). Nothing here reads the
-// canvas, the wall clock, or a random number; `sim.fraction` exists so a frame
-// can DRAW the motion, never so the simulation can decide with it.
+// run (specs/instrumentation.md "A render-free core"). Nothing here reads the
+// canvas or the wall clock; `sim.fraction` exists so a frame can DRAW the
+// motion, never so the simulation can decide with it.
 //
 // A faulting cycle is a cycle whose plan names a sample fraction. The clock
 // carries the run up to exactly that fraction and freezes it there, so the run

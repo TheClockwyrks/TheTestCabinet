@@ -24,6 +24,15 @@
 // that smears paints more than a thousand, most of them hundreds of units outside
 // it.
 //
+// TWO THRESHOLDS, ONE FOR EACH HALF. The far-side reading is a claim that
+// something was drawn, and a column counts once it moved by `DISTINCT_MIN`, a
+// floor any legible tail clears. The ceiling is a claim that nothing was drawn
+// anywhere else on the row, and a build's empty field may twinkle or dither on
+// its own between two presented frames, which is legal appearance that would
+// otherwise read as a smear. So a column counts against the ceiling only past
+// the lane's own measured unrest (lane.ts, `absenceBound`), or past
+// `DISTINCT_MIN` where the lane is still; a smear reads far above either.
+//
 // AND THE OTHER HALF: SOMETHING MUST BE PAINTED PAST THE SEAM. A build that draws
 // no tail at all, or that drops it on the frame the round wraps, satisfies "no
 // drawn part is further than ..." by drawing nothing, so the check also requires a
@@ -56,7 +65,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { bulletLane, changedColumns, laneX } from "./lane";
+import { absenceBound, bulletLane, changedColumns, laneX } from "./lane";
 
 /** The lane the round is flown along, and where on it the flight begins. */
 const LANE_Y = STAR_Y;
@@ -132,9 +141,11 @@ it("draws the tail behind the round across the seam and nowhere else", async () 
   const lane = await bulletLane(h, LANE_Y, id);
   const painted = changedColumns(lane.bare, lane.drawn, DISTINCT_MIN);
 
-  // Every painted column, by the shortest wrapped separation from the round.
+  // Every column painted past the lane's own unrest, by the shortest wrapped
+  // separation from the round.
+  const still = absenceBound(lane, DISTINCT_MIN);
   let furthest = { at: flying.x, away: 0 };
-  for (const column of painted) {
+  for (const column of changedColumns(lane.bare, lane.drawn, still)) {
     const away = Math.abs(shortestAxis(flying.x, laneX(h, column), FIELD_W));
     if (away > furthest.away) furthest = { at: laneX(h, column), away };
   }
@@ -166,7 +177,9 @@ it("draws the tail behind the round across the seam and nowhere else", async () 
     `every painted part of the round's tail within TRAIL_TICKS ` +
       `(${TRAIL_TICKS}) of its travel — ${TRAIL_LENGTH.toFixed(0)} units — of ` +
       `the round at x=${flying.x.toFixed(1)}, by the shortest wrapped ` +
-      `separation (specs/weapons.md, specs/field.md); the furthest was at ` +
+      `separation (specs/weapons.md, specs/field.md); a column counts as ` +
+      `painted past ${still.toFixed(1)} of 255, the lane's own idle unrest ` +
+      `read ${lane.spread.toFixed(1)}, the furthest was at ` +
       `x=${furthest.at.toFixed(0)}, and ${painted.length} columns of the row ` +
       `were painted`,
   );

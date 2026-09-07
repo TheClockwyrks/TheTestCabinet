@@ -1,42 +1,37 @@
-// director/spawn-angle-varies — the angle a window spawn lands at is drawn from
-// the seeded generator, so it varies within a run and follows the seed between
-// runs.
+// director/spawn-angle-varies — the angle a window spawn lands at is drawn,
+// so it varies within a run.
 //
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/enemies.md` ("The spawn ring"): "A spawn point is
 //     `SPAWN_DISTANCE` (`760`) units from the lamplighter's center at an angle
-//     drawn uniformly from the seeded generator".
-//   - `specs/enemies.md` ("The spawn director"): "Its randomness, the spawn
-//     angle and the type choice, is drawn from the game's seeded generator."
-//   - `specs/instrumentation.md` ("A deterministic core"): "The game holds one
-//     pseudo-random generator, seeded by `reset` ... every random draw comes
-//     from it: a spawn's angle and type"; `reset`: "`options.seed` seeds the
-//     generator".
+//     drawn uniformly over the full circle".
+//   - `specs/enemies.md` ("The spawn director"): "The spawn angle and the type
+//     choice are drawn at random as the rules below state".
 //
-// WHAT IS READ. Two readings of the one draw. Across thirty spawns from one
-// seed the angles about the lamplighter must not be all equal, which a build
-// that spawns at a fixed angle fails. Then two runs from two different seeds
-// must place their first spawn at different angles, which a build that draws
-// its angles from something other than the seeded generator fails.
+// WHAT IS READ. Across thirty spawns of one run the angles about the
+// lamplighter must not be all equal, which a build that spawns at a fixed
+// angle fails. Nothing is posed for the angle, so every draw is the build's
+// own; a posed angle is `instrumentation/set-next-spawn-angle`.
 //
-// WHY THE NIGHT IS POSED AS IT IS. `spawning` alone is on and the field is
-// emptied after each spawn, so every angle read belongs to a spawn the timer
-// placed on the tick it was read and the cap never intervenes. The lamplighter
-// stands still, so the angle is measured about one fixed center.
+// WHY THE NIGHT IS POSED AS IT IS. `spawning` alone is on, and each spawn is
+// drawn on a tick of its own by `drawSpawns`: the field is emptied and the
+// timer set to `0`, so the next tick spawns whatever the window's interval,
+// the cap never intervenes, and every angle read belongs to a spawn the timer
+// placed on the tick it was read. The lamplighter stands still, so the angle
+// is measured about one fixed center.
 //
 // THE PICTURE. What the director spawns lands 760 units out, past the edge of
-// the view, so the still is taken after a closing drift that lets it travel in.
-// Every reading the assertions use is taken before that drift, and the drift
-// cannot fail the item.
+// the view, so one last spawn is left standing and the still is taken after a
+// closing drift that lets it travel in. Every reading the assertions use is
+// taken before that drift, and the drift cannot fail the item.
 //
 // TOLERANCE. `ANGLE_SEPARATION` (1e-6 degrees) separates two angles that were
 // drawn from two that are the same figure: a build that fixes its angle repeats
-// it exactly, and two independent uniform draws land within a millionth of a
-// degree of each other about five times in a thousand million.
+// it exactly, and thirty independent uniform draws all land within a millionth
+// of a degree of the first with probability nil.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLength } from "../assert";
-import { DEFAULT_SEED, SPAWN_WINDOWS, ticksFor } from "../constants";
 import {
   angleAbout,
   angularOffset,
@@ -46,21 +41,13 @@ import {
   isolate,
   type Harness,
 } from "../harness";
-import { closeIn, collectSpawns, poseWindow, type Spawn } from "./stage";
+import { closeIn, drawSpawns, poseWindow, type Spawn } from "./stage";
 
-/** How many spawns the within-a-run reading is taken over. */
+/** How many spawns the reading is taken over. */
 const SPAWNS = 30;
-
-/** The second seed: far from `DEFAULT_SEED` (1), and a whole number in range. */
-const OTHER_SEED = 987654321;
 
 /** How far apart two angles must be, in degrees, to have been drawn apart. */
 const ANGLE_SEPARATION = 1e-6;
-
-/** How far past the last expected spawn a sweep runs before giving up. */
-const SWEEP_MARGIN = 4;
-
-const INTERVAL_TICKS = ticksFor(SPAWN_WINDOWS[0].interval);
 
 let h: Harness;
 
@@ -77,19 +64,17 @@ function anglesOf(spawns: readonly Spawn[]): number[] {
   return spawns.map((spawn) => angleAbout(spawn.player, spawn));
 }
 
-/** Collect `want` window-0 spawns from a run laid with `seed`. */
-async function spawnsFromSeed(seed: number, want: number): Promise<Spawn[]> {
-  isolate(h, { seed });
+it("draws a spawn's angle at random rather than fixing it", async () => {
+  isolate(h);
   enable(h, "spawning");
   poseWindow(h, 0);
-  return collectSpawns(h, want, want * INTERVAL_TICKS + SWEEP_MARGIN);
-}
-
-it("draws a spawn's angle at random, and from the seed", async () => {
-  const within = await spawnsFromSeed(DEFAULT_SEED, SPAWNS);
+  const within = await drawSpawns(h, SPAWNS);
+  // One more spawn, left standing for the picture alone.
+  h.debug.setSpawnTimer(0);
+  await h.tick(1);
   await closeIn(h);
   captureStill(h, "angles");
-  assertLength(within, SPAWNS, "spawns read from the first seed");
+  assertLength(within, SPAWNS, "spawns read from the run");
 
   const angles = anglesOf(within);
   const spread = angles.filter(
@@ -98,15 +83,6 @@ it("draws a spawn's angle at random, and from the seed", async () => {
   assertGreaterThan(
     spread.length,
     0,
-    "spawn angles differing from the first, across thirty spawns of one seed",
-  );
-
-  const other = await spawnsFromSeed(OTHER_SEED, 1);
-  assertLength(other, 1, "the first spawn of a run from the other seed");
-  const between = Math.abs(angularOffset(angles[0], anglesOf(other)[0]));
-  assertGreaterThan(
-    between,
-    ANGLE_SEPARATION,
-    "degrees between the first spawn angles of two seeds",
+    "spawn angles differing from the first, across thirty spawns",
   );
 });

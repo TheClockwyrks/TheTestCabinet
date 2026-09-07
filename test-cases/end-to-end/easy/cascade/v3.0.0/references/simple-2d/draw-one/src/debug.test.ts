@@ -4,6 +4,8 @@ import {
   DEAL_MODE,
   DEAL_MODE_LABEL,
   DECK_SIZE,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   RANK_MAX,
   SUITS,
   TURN_COUNT,
@@ -50,6 +52,7 @@ describe("the surface", () => {
       "clearFlyers",
       "setLaunchClock",
       "clearTrail",
+      "drawLaunchVx",
     ]) {
       expect(typeof (debug as unknown as Record<string, unknown>)[name]).toBe(
         "function",
@@ -84,6 +87,12 @@ describe("the surface", () => {
 
     state = debug.setLaunchClock(state, 0.12);
     expect(debug.snapshot(state).launchClock).toBe(0.12);
+
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = debug.drawLaunchVx(state);
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
 
     state = debug.addFlyer(state, "hearts", 5, 10, 20, 30, 40);
     const flyerId = debug.snapshot(state).flyers[0].id;
@@ -283,17 +292,16 @@ describe("reset", () => {
     expect(snap.muted).toBe(true);
   });
 
-  it("seeds the deal, so the same seed deals the same board", () => {
+  it("deals afresh, so two deals lay out different boards", () => {
     const key = (state: CascadeState) =>
       debug
         .snapshot(state)
         .tableau.flat()
         .map((c) => `${c.suit}${c.rank}`)
         .join(",");
-    const dealt = (seed: number) =>
-      debug.deal(debug.reset(openingState(), { seed }));
-    expect(key(dealt(4))).toBe(key(dealt(4)));
-    expect(key(dealt(4))).not.toBe(key(dealt(5)));
+    const dealt = () => debug.deal(debug.reset(openingState()));
+    expect(key(dealt()).split(",")).toHaveLength(28);
+    expect(key(dealt())).not.toBe(key(dealt()));
   });
 });
 

@@ -1473,8 +1473,17 @@ export const PUFF_TIME = 0.4;
 /** `version` on the surface. */
 export const WICK_DEBUG_VERSION = 1;
 
-/** The seed `reset` uses when none is named. */
-export const DEFAULT_SEED = 1;
+/**
+ * A posed angle, `setNextSpawnAngle` and `setNextSwarmAngle`, is "a real number
+ * of at least `0` and below `360`, measured from `+x` toward `+y`"
+ * (specs/instrumentation.md, Drawn outcomes).
+ */
+export const POSED_ANGLE_MIN = 0;
+export const POSED_ANGLE_LIMIT = 360;
+
+/** What `setNextDrop(kind)` takes: "one of `bread`, `draft`, and `none`". */
+export const NEXT_DROPS = ["bread", "draft", "none"] as const;
+export type NextDrop = (typeof NEXT_DROPS)[number];
 
 /* ---- The suite's own figures -------------------------------------------- */
 
@@ -1504,16 +1513,13 @@ export const MOTION_EPS = 1e-6;
 export const ANGLE_EPS = 1e-6;
 
 /**
- * How many seeded common kills the drop-roll checks make, and the bounds the
- * bread and draft counts must fall in, as the checklist states them: the
- * expected counts are `80` at `BREAD_CHANCE` and `19.6` at `DRAFT_CHANCE`
- * after a failed bread draw, and both tails of each bound are below one in a
- * hundred thousand, so a conformant build fails by chance about never while
- * a build that skipped a draw, or drew both, fails outright.
+ * A position the simulation integrates over a span of ticks, read against the
+ * figure the rules give it: thirty steps of `speed × TICK_DT` summed in floats
+ * stray by far less than a tenth of a unit, and a build that integrated with
+ * the frame's delta rather than the tick's strays by whole steps. A tenth of a
+ * unit is below every figure the specification states in units.
  */
-export const DROP_TRIALS = 4000;
-export const BREAD_COUNT_BOUNDS: readonly [number, number] = [40, 125];
-export const DRAFT_COUNT_BOUNDS: readonly [number, number] = [3, 45];
+export const INTEGRATION_TOLERANCE = 0.1;
 
 /**
  * How close a HUD bar's measured fill ratio must be to `hp / maxHp` or

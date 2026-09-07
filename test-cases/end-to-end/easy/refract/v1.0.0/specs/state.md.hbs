@@ -51,7 +51,6 @@ Whatever its shape, the state carries the following:
   have been solved, and the tier the generator emits at.
 - The simulation time, in seconds, which every update adds its `dt` to whatever
   the screen, the menus included. The snapshot reports it as `simTime`.
-- The state of the seeded random generator, which Cascade draws its boards from.
 
 Both modes' progress is carried whatever the mode being played, so the state has
 one shape. The two progressions are independent and neither is cleared by the
@@ -137,7 +136,6 @@ export interface RefractState {
   readonly armedTarget: string | null;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 }
 ```
 
@@ -269,10 +267,6 @@ the fields posed and read back by reading them.
 - `muted` — the game's readable copy of the engine's mute bit, which every
   `update` carries into the state it returns. The engine owns muting, and this
   field is what the debug surface reports.
-- `rngState` — the state of the game's seeded random generator. A `reset` sets it
-  to the seed it was given, so reseeding and replaying the same calls reproduces
-  the same result. Cascade draws its boards from it, and Campaign never reads it.
-  `specs/instrumentation.md` reports it on the snapshot.
 
 The four course fields and the two run fields are declared whatever `mode`
 holds, so the state has one shape. The two progressions are independent and
@@ -318,7 +312,7 @@ a single level, the game never opens another, and every screen is a value of
 framework's states are live objects: a tick writes the fields it advances in
 place, and each field initializer below is that field's title-screen value, the
 same value the debug surface's `reset` restores. `GameState` comes from the
-engine's package and `DEFAULT_SEED` from `src/constants.ts`.
+engine's package.
 
 ```ts
 export type Screen =
@@ -388,7 +382,6 @@ export class RefractState extends GameState {
   armedTarget: string | null = null;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 }
 ```
 
@@ -522,10 +515,6 @@ reading them.
 - `muted` — the game's readable copy of the engine's mute bit, refreshed every
   frame. The engine owns muting, and this field is what the debug surface
   reports.
-- `rngState` — the state of the game's seeded random generator. A `reset` sets it
-  to the seed it was given, so reseeding and replaying the same calls reproduces
-  the same result. Cascade draws its boards from it, and Campaign never reads it.
-  `specs/instrumentation.md` reports it on the snapshot.
 
 `RefractState` extends the engine's `GameState`, so an instance also carries the
 framework's own `world`, `players`, `phase`, and `elapsed`. Refract's screens

@@ -96,16 +96,6 @@ const CELLS: readonly PlacedToken[] = [
  */
 const MID_FRAMES = Math.round(SWAP_SECONDS / (2 * TICK_S));
 
-/**
- * Real milliseconds the produced art is given before the first reading.
- *
- * specs/assets.md has a build ship its gems as produced files, and a file is
- * decoded off the frame loop rather than inside it, so a reading taken before
- * they arrive could hold a placeholder. This spends REAL time only: the
- * simulation stands still through it.
- */
-const ART_SETTLE_MS = 250;
-
 /** One render, read at both of the swapped cells. */
 interface Reading {
   from: Patch;
@@ -142,7 +132,6 @@ it("draws the two swapped cells apart from both the board before the swap and th
 
   // The arrangement before the swap, posed outright and at rest.
   await loadBoard(h, rows);
-  await h.settle(ART_SETTLE_MS);
   await h.advance(1);
   const before = await readBoth();
 

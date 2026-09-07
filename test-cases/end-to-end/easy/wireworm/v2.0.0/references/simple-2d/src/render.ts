@@ -50,7 +50,6 @@ import {
   itemBaseline,
   type MenuLayout,
 } from "./menus";
-import { nextRandom } from "./rng";
 import { COLOR, font } from "./theme";
 import type { WirewormState } from "./game";
 import type { DeepReadonly } from "ts-essentials";
@@ -234,9 +233,9 @@ function drawBolts(
  *
  * Its shape is fixed when the arc is created and holds for the arc's life,
  * which is what makes a discharge read as one bolt fading rather than as
- * static. The jitter that shapes it is drawn from the game's own generator,
- * seeded from the pair of tiles the link joins, so the shape is a pure function
- * of the arc and is the same on every frame the arc is drawn on.
+ * static. The jitter that shapes it is mixed from the pair of tiles the link
+ * joins, so the shape is a pure function of the arc and is the same on every
+ * frame the arc is drawn on.
  */
 function drawArcs(
   ctx: CanvasRenderingContext2D,
@@ -254,13 +253,13 @@ function drawArcs(
     const nx = -dy / length;
     const ny = dx / length;
 
-    let seed =
+    let salt =
       (arc.from.r * 40 + arc.from.c) * 1601 + (arc.to.r * 40 + arc.to.c) * 8017;
     const points: [number, number][] = [[x0, y0]];
     for (let i = 1; i < steps; i++) {
       const t = i / steps;
-      const [draw, next] = nextRandom(seed);
-      seed = next;
+      const [draw, next] = hashStep(salt);
+      salt = next;
       const offset = (draw - 0.5) * 12;
       points.push([x0 + dx * t + nx * offset, y0 + dy * t + ny * offset]);
     }
@@ -538,4 +537,18 @@ export function renderGame(
       if (state.phase === "banner") drawBanner(ctx, state, width, height);
       return;
   }
+}
+
+/**
+ * One step of a small integer mixer, used for the arc's jitter alone: the
+ * draw in `[0, 1)` for `salt`, and the salt the next step takes. An arc's shape
+ * is a function of the two tiles it joins, so it holds for the arc's whole life
+ * without being stored (`specs/discharge.md`).
+ */
+function hashStep(salt: number): readonly [number, number] {
+  const next = (salt + 0x6d2b79f5) | 0;
+  let t = next;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return [((t ^ (t >>> 14)) >>> 0) / 4294967296, next];
 }

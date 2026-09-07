@@ -89,14 +89,15 @@ A new run lays a scattering of nodes across the scatter rows, rows
 `SCATTER_TOP_ROW` (`1`) through `SCATTER_BOTTOM_ROW` (`17`) inclusive, which
 hold `680` tiles between them.
 
-- The number of nodes laid is between `SCATTER_MIN_FRACTION` (`0.10`) and
-  `SCATTER_MAX_FRACTION` (`0.15`) of those `680` tiles.
+- The number of nodes laid is drawn uniformly from the whole numbers between
+  `SCATTER_MIN_FRACTION` (`0.10`) and `SCATTER_MAX_FRACTION` (`0.15`) of those
+  `680` tiles, which is `68` to `102`, both ends included.
 - Every node of the scatter is laid at charge `0`.
 - No node is laid in row `0`, which the worm enters along, and none in the player
   band, rows `18` and `19`.
-- The tiles are drawn from the run's seeded random generator, so a run's starting
-  field is a fresh scatter rather than one fixed layout, and two runs from
-  different seeds lay different fields.
+- Each node is laid on a tile drawn uniformly from the scatter rows' tiles not yet
+  holding one, so a run's starting field is a fresh scatter rather than one fixed
+  layout, and two runs lay different fields.
 
 ## The field persists
 

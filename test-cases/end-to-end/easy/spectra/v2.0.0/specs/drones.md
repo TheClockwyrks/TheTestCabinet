@@ -48,6 +48,10 @@ cycle back to the same stored band is therefore
 `fluxCycle(stage) = 2 * fluxWindow(stage)`. Nothing else changes the stored band,
 and nothing else moves the band clock.
 
+A Flux the wave brings in holds the stored band the wave's layout gives it, and its
+band clock starts at a value drawn uniformly at random from `[0, fluxWindow(stage))`,
+so the Fluxes of one wave run their windows out of step.
+
 While it shimmers, the Flux reads as the band it is moving toward, which is the
 opposite of the one it stores.
 

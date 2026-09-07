@@ -90,6 +90,13 @@ function requireInteger(name: string, value: unknown): number {
   return n;
 }
 
+/** A count: an integer at or above zero, with no upper bound of its own. */
+function requireWholeNumber(name: string, value: unknown): number {
+  const n = requireInteger(name, value);
+  if (n < 0) invalid(`${name} must be at or above 0`);
+  return n;
+}
+
 function requireIndex(name: string, value: unknown, count: number): number {
   const n = requireInteger(name, value);
   if (n < 0 || n >= count) invalid(`${name} ${n} is outside 0..${count - 1}`);
@@ -657,6 +664,12 @@ export function createDebugSurface(access: GameAccess): GantryDebugApi {
       const what = requireOneOf("phase", phase, LOAD_PHASES);
       if (!running()) return;
       st.setLoadPhase(state, load, what);
+    },
+
+    setRunTick(tick) {
+      const at = requireWholeNumber("tick", tick);
+      if (!running()) return;
+      st.setRunTick(now(), at);
     },
 
     setSpeedIndex(index) {

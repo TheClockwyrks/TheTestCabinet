@@ -29,9 +29,9 @@
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build:
 // `loadBoard(rows)` poses the exact board a check wrote, `requestSwap` goes
-// through the same acceptance path a player's swap takes, and `reset({ seed })`
-// gives everything back. Posing through it is how a scenario is reproducible,
-// and it is the seam the case's specification documents. `surface.ts` is that
+// through the same acceptance path a player's swap takes, and `reset()` gives
+// everything back. Posing through it is how a scenario is arranged, and it is
+// the seam the case's specification documents. `surface.ts` is that
 // specification as types, and it is the ONLY description of the surface this
 // harness reads: the build's own module for it is never imported.
 //
@@ -161,7 +161,6 @@ import {
   type TargetRect,
 } from "./board";
 import {
-  DEFAULT_SEED,
   READINGS,
   type FacetDebugApi,
   type FacetSnapshot,
@@ -588,8 +587,6 @@ export interface HarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so a unit is a device pixel. */
   dpr?: number;
-  /** The seed `reset` is posed with. Defaults to DEFAULT_SEED. */
-  seed?: number;
   /**
    * The sub-path the build is served from. Defaults to `"/"`, the site root.
    *
@@ -759,30 +756,22 @@ interface FacetHarness {
    */
   armAudio(): Promise<void>;
   /**
-   * Open the audio and wait until a sound has actually gone out, answering
-   * whether anything was ever heard.
+   * Open the audio and drive frames until a sound has actually gone out,
+   * answering whether anything was ever heard.
    *
    * specs/assets.md has the build DECODE its produced `.wav`s asynchronously, so
    * a build is conformant when its first frames are silent and a cue check that
    * observed the very first event would be reading the decoder. This gives the
-   * gesture and then waits — a frame, then real time for a decode that frame
-   * kicked off — until something sounds, which under specs/ui.md it must, since
-   * one of the two music beds plays on every screen.
+   * gesture and then drives one frame at a time, yielding between frames so a
+   * decode that frame kicked off can land, until something sounds, which under
+   * specs/ui.md it must, since one of the two music beds plays on every screen.
+   * The frames are counted, never timed.
    *
    * It answers rather than hanging, so a check can say "the build made no sound
    * at all". It DRIVES FRAMES, so call it while arranging and read
    * `h.frame()` after.
    */
   warmAudio(): Promise<boolean>;
-  /**
-   * Let `ms` of REAL time pass while the game stands still.
-   *
-   * The game is off the wall clock, so nothing here advances it. What this is for
-   * is work a build does OFF the frame loop: decoding a sound, resolving a fetch,
-   * decoding an image. Never for something the simulation does — that is
-   * `h.advance`.
-   */
-  settle(ms: number): Promise<void>;
 }
 
 /**
@@ -868,9 +857,15 @@ function toClient(
   };
 }
 
-/** Real milliseconds a warm-up waits between attempts, and how many it makes. */
-const AUDIO_WARM_POLL_MS = 50;
-const AUDIO_WARM_ATTEMPTS = 40;
+/**
+ * How many frames {@link Harness.warmAudio} drives before it gives up.
+ *
+ * NOT a specification figure. specs/assets.md fixes only that a produced sound is
+ * decoded asynchronously, never how many frames that takes, so this is the
+ * suite's own patience: a failure cap counted in frames rather than measured in
+ * real time.
+ */
+const AUDIO_WARM_FRAMES = 240;
 
 /**
  * Every live harness's fault log, and the one `console.error` that feeds them.
@@ -1037,7 +1032,7 @@ export async function createHarness(
   // Only where there is a surface to pose it on: a fault belongs on the checks
   // that reach through the surface, never on this function.
   if (surfaceFault === null) {
-    base.debug.reset({ seed: options.seed ?? DEFAULT_SEED });
+    base.debug.reset();
   }
 
   /** Where the last real pointer event was, so a release needs no position. */
@@ -1053,9 +1048,6 @@ export async function createHarness(
     await drive(1);
     return base.calls.slice();
   };
-
-  const wait = (ms: number): Promise<void> =>
-    new Promise((resolve_) => setTimeout(resolve_, ms));
 
   let harness: Harness;
 
@@ -1125,18 +1117,15 @@ export async function createHarness(
 
     async warmAudio() {
       await own.armAudio();
-      for (let attempt = 0; attempt < AUDIO_WARM_ATTEMPTS; attempt += 1) {
+      for (let frame = 0; frame < AUDIO_WARM_FRAMES; frame += 1) {
         // A frame, so the build asks for the screen's bed and for anything else
-        // it plays from `update`; then real time, so a decode that frame kicked
-        // off can finish.
+        // it plays from `update`. The drive is awaited, so a decode that frame
+        // kicked off lands before the next one.
         await drive(1);
         if (firings.length > 0) return true;
-        await wait(AUDIO_WARM_POLL_MS);
       }
       return firings.length > 0;
     },
-
-    settle: (ms) => wait(ms),
 
     // The transport and the audio context are NOT taken down here. They are the
     // worker's, installed once at module scope and reference counted by the
@@ -1277,13 +1266,27 @@ export function loadBoard(h: Harness, rows: BoardRows): FacetSnapshot {
 }
 
 /**
+ * Pose what R9's refill deals into each named column, one `setRefillKinds`
+ * per column, so a scenario whose outcome a draw would otherwise decide is the
+ * rules' alone. Every column not named keeps whatever pose it had, and a
+ * `reset` returns every column to drawing.
+ */
+export function poseRefill(
+  h: Harness,
+  poses: readonly (readonly [col: number, kinds: string])[],
+): FacetSnapshot {
+  for (const [col, kinds] of poses) h.debug.setRefillKinds(col, kinds);
+  return h.snapshot();
+}
+
+/**
  * Begin a fresh round, exactly as choosing `PLAY` from the title does.
  *
  * Every figure specs/rules.md returns to its opening value when a round starts,
  * written one at a time, and then the opening board dealt through the game's own
- * code from `rngState` — which is the one part of it that cannot be decomposed,
- * since what makes a dealt board an opening board is R4 and the generator rather
- * than any cell a check could write.
+ * code — which is the one part of it that cannot be decomposed, since what makes
+ * a dealt board an opening board is R4 and the draw rather than any cell a check
+ * could write.
  *
  * `PLAY AGAIN` on the game-over menu opens the same round; specs/ui.md gives the
  * two menu items the same effect.

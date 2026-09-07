@@ -96,7 +96,7 @@ export function diagnosticSources(
               drone.charge > 0 ? `+${drone.charge}` : "",
             ].filter(Boolean);
             const tail = marks.length > 0 ? ` ${marks.join(" ")}` : "";
-            return `#${drone.id} ${drone.kind} ${bands(drone.band, droneEffectiveBand(drone, state))} ${drone.phase} ${drone.x.toFixed(0)},${drone.y.toFixed(0)}${tail}`;
+            return `#${drone.id} ${drone.kind} ${bands(drone.band, droneEffectiveBand(drone, state))} ${drone.phase} (${drone.x.toFixed(0)}, ${drone.y.toFixed(0)})${tail}`;
           })
           .join(" | ");
       },

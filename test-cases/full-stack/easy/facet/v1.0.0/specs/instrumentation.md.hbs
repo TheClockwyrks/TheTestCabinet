@@ -7,7 +7,8 @@ waiting on real time.
 
 You implement it. Every operation this file specifies is a deliverable, and the
 build installs the finished surface on `window.__facet` as soon as the game has
-initialized. Every scenario driven from code reaches the game through it, so it
+initialized, which is once every load of a produced file `specs/assets.md` names
+has settled. Every scenario driven from code reaches the game through it, so it
 is present and exactly as specified here.
 
 Each operation is a read or a pose of the game's state. It arranges the board,
@@ -22,7 +23,8 @@ and inspected from code without moving a real pointer or waiting on real time.
 
 You implement it. Every operation this file specifies is a deliverable, and the
 build's `initialize` returns the finished surface beside the state it built, as
-the pair `[state, debug]`. The engine returns that same value from
+the pair `[state, debug]`, resolving once every load of a produced file
+`specs/assets.md` names has settled. The engine returns that same value from
 `engine.debug`, and it is reached that way alone: nothing is installed on the
 page. Every scenario driven from code reaches the game through it, so it is
 present and exactly as specified here.
@@ -47,8 +49,10 @@ and inspected from code without moving a real pointer or waiting on real time.
 You implement it. Every operation this file specifies is a deliverable, and the
 game instance's `initialize` returns the finished surface. The engine holds it
 and returns it from `engine.debug`, and it is reached that way alone: nothing is
-installed on the page. Every scenario driven from code reaches the game through
-it, so it is present and exactly as specified here.
+installed on the page. The engine's own `initialize` resolves once every load
+of a produced file `specs/assets.md` names has settled, so the surface is
+reached once the game has initialized. Every scenario driven from code reaches
+the game through it, so it is present and exactly as specified here.
 
 Each operation acts on the live game at the moment it is called. A pose takes
 only the parameters its heading names, arranges the running game through the
@@ -62,25 +66,16 @@ one played by hand. `src/game.ts` declares and exports its type,
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic: every rate integrated
-against the delta time the game is given, so an interval of game time reaches
-the same state however it was divided into frames. Two more properties make it
-driveable from code:
-
-- Render-free core. Game state advances from the elapsed time the game is
-  handed, independent of a canvas, of the frame loop that measured it, and of
-  wall-clock time. The dependency runs one way: the simulation reads nothing
-  from the renderer. Whether a swap makes a match, and what a chain step clears,
-  is decided from the board alone, never from anything the renderer holds.
-- Seeded randomness. Any randomness the game uses runs off a generator seeded
-  from `state.rngState`, and it keeps its whole generator state in that field,
-  so reseeding and replaying the same calls reproduces the same result exactly.
-  The deal of an opening board and the refill in R9 draw from it.
-
-Given the same seed and the same sequence of calls and elapsed game time, the
-game reaches the same state every time.
+Game state advances from the elapsed game time the game is handed: every rate
+is integrated against the delta time of each update, so an interval of game
+time carries the game to the same place however it was divided into frames.
+The simulation is independent of a canvas, of the frame loop that measured the
+delta, and of wall-clock time, and the dependency runs one way: the simulation
+reads nothing from the renderer. Whether a swap makes a match, and what a chain
+step clears, is decided from the board alone, never from anything the renderer
+holds.
 
 ## What the runtime provides instead
 
@@ -164,11 +159,11 @@ clock is already doing.
 
 {{/if}}
 {{#if (eq engine.slug "none")}}
-### `reset(options)`
+### `reset()`
 {{else if (eq engine.slug "simple-2d")}}
-### `reset(state, options)`
+### `reset(state)`
 {{else}}
-### `reset(options)`
+### `reset()`
 {{/if}}
 
 Restores every declared field of the game's state to its title-screen value: the
@@ -176,9 +171,8 @@ title screen with its first menu item highlighted, no board in play, `phase`
 `idle` with `chainStep`, `swapTimer` and `stepTimer` at `0`, `score` at `0`,
 `level` at `1`, `levelScore` at `0`, `lastCleared`, `lastPoints` and `lastWaves`
 at `0`, `moveScore`, `bestMove` and `bestChain` at `0`, no selection, no offer,
-no refusal and no armed target, the pointer reported as up and driven by
-`mouse`, and `simTime` at `0`. `options.seed` seeds `rngState`, defaulting to
-`DEFAULT_SEED` (`1`).
+no refusal and no armed target, no refill posed on any column, the pointer
+reported as up and driven by `mouse`, and `simTime` at `0`.
 
 `muted` is untouched; the runtime owns muting.
 
@@ -254,11 +248,11 @@ board rests exactly as it was written until a swap is accepted on it.
 ### `dealBoard()`
 {{/if}}
 
-Deals a fresh opening board through the game's own code, drawing from
-`rngState`, so it holds no run under R4, carries at least one legal swap, and
-comes in from above the board as `specs/rules.md` requires. The board is the
-whole of what it writes: the screen, `menuIndex`, the phase, the selection and
-every figure of the round stand where they were.
+Deals a fresh opening board through the game's own code, so it holds no run
+under R4, carries at least one legal swap, and comes in from above the board as
+`specs/rules.md` requires. The board is the whole of what it writes: the
+screen, `menuIndex`, the phase, the selection and every figure of the round
+stand where they were.
 
 {{#if (eq engine.slug "none")}}
 ### `clearBoard()`
@@ -283,6 +277,35 @@ Writes one cell of the board. The gem at `(col, row)` takes the kind, the
 strain, and the cut the token names, and a `fell` of `0`, `token` being a single
 cell token of the notation `specs/board.md` defines. Every other cell, the
 screen, the phase, and the selection stand where they were.
+
+{{#if (eq engine.slug "none")}}
+### `setRefillKinds(col, kinds)`
+{{else if (eq engine.slug "simple-2d")}}
+### `setRefillKinds(state, col, kinds)`
+{{else}}
+### `setRefillKinds(col, kinds)`
+{{/if}}
+
+Poses what R9's refill deals into column `col`. `kinds` is a string of kind
+letters from the notation `specs/board.md` defines, and the gem the refill deals
+into row `r` of that column takes the kind `kinds[r]` names, `plain` at strain
+`0` and with the `fell` R9 gives it, in place of the draw R9 states. A row past
+the end of `kinds` draws as R9 states. The pose stands until `clearRefillKinds`
+or `reset` and governs every refill of that column while it stands. It governs
+R9's refill alone: an opening board, whether a round deals it or `dealBoard`
+does, draws as `specs/rules.md` states while a pose stands. The board and every
+other column's pose stand where they were, and nothing else changes.
+
+{{#if (eq engine.slug "none")}}
+### `clearRefillKinds()`
+{{else if (eq engine.slug "simple-2d")}}
+### `clearRefillKinds(state)`
+{{else}}
+### `clearRefillKinds()`
+{{/if}}
+
+Leaves no refill posed on any column, so every refill draws as R9 states.
+Nothing else changes.
 
 {{#if (eq engine.slug "none")}}
 ### `setScore(points)`
@@ -542,7 +565,7 @@ every target leaves the board as it stands and clears the selection, as
   bestMove: <number>,         // the level's best move
   bestChain: <number>,        // the level's deepest chain step
   legalSwap: <boolean>,       // whether any legal swap exists, derived
-  rngState: <number>,
+  refillKinds: [<string>, ...], // GRID_COLS entries, one per column
   pointer: { x: <number>, y: <number>, down: <boolean>,
              device: "mouse" | "pen" | "touch" },
   armedTarget: <string | null>,
@@ -559,7 +582,9 @@ nothing to report holds its resting value rather than going missing: `board` is
 `{ cols: 0, rows: 0, cells: [] }` while no board is in play, `selection`,
 `offer`, `refusal` and `armedTarget` are `null` while none stands, `chainStep`
 and `stepTimer` are `0` while `phase` is not `resolving`, `swapTimer` is `0`
-while `phase` is not `swapping`, and `menuIndex` is live on every screen
+while `phase` is not `swapping`, `refillKinds` holds `GRID_COLS` (`8`) entries
+whatever the board, each the string `setRefillKinds` posed for that column and
+`""` for a column that draws, and `menuIndex` is live on every screen
 carrying a menu and rests at `0` on `playing`. `cells` lists every cell of the
 board in reading order from the top-left cell to the bottom-right, and a cell's
 `kind` is `null` for a `prism`.

@@ -23,7 +23,7 @@
 // not in doubt. A build that clamped its own delta would reach a different place
 // over one frame than over a hundred and twenty, which the same page forbids —
 // `advance(1, 1)` and `advance(1, 120)` "cover the same second and reach the
-// same outcome" — and which `instrumentation/deterministic-core` decides.
+// same outcome" — and which `instrumentation/render-free-core` decides.
 //
 // THE ARRANGEMENT. A Stutter posed at heat `2` between two level-III Sinks, whose
 // `SINK_OUTPUT` of `36` per shared edge-tile drains `36 * 2 * (H / 100)` from each

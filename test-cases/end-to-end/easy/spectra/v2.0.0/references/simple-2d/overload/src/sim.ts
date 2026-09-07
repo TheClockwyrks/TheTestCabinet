@@ -14,7 +14,6 @@
 // simulation is a live object the burst owns for its whole life, and the art is
 // loaded once and never written.
 
-import { nextInt, nextRange, nextSeed } from "./rng";
 import type { CueName } from "./constants";
 import type {
   Art,
@@ -136,7 +135,6 @@ export interface Sim {
   nextId: number;
   simTime: number;
   muted: boolean;
-  rngState: number;
 
   art: Art;
 }
@@ -225,7 +223,6 @@ export function toSim(state: DeepReadonly<SpectraState>): Sim {
     nextId: state.nextId,
     simTime: state.simTime,
     muted: state.muted,
-    rngState: state.rngState,
 
     // Loaded once and never written, so the sprites themselves are shared.
     art: state.art as Art,
@@ -253,25 +250,4 @@ export function droneById(sim: Sim, id: number): MutDrone | undefined {
 /** The bullet with that id, or `undefined`. */
 export function bulletById(sim: Sim, id: number): MutBullet | undefined {
   return sim.bullets.find((bullet) => bullet.id === id);
-}
-
-/** A whole draw in `[lo, hi]` from the game's own generator. */
-export function drawInt(sim: Sim, lo: number, hi: number): number {
-  const [value, next] = nextInt(sim.rngState, lo, hi);
-  sim.rngState = next;
-  return value;
-}
-
-/** A draw in `[lo, hi)` from the game's own generator. */
-export function drawRange(sim: Sim, lo: number, hi: number): number {
-  const [value, next] = nextRange(sim.rngState, lo, hi);
-  sim.rngState = next;
-  return value;
-}
-
-/** A seed for a burst's own scatter, drawn from the game's own generator. */
-export function drawSeed(sim: Sim): number {
-  const [value, next] = nextSeed(sim.rngState);
-  sim.rngState = next;
-  return value;
 }

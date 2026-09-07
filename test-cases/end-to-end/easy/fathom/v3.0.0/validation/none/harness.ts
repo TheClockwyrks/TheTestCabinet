@@ -45,9 +45,9 @@
 // the size of a tick itself — `TICK_HZ` is `120` and `advance` counts in whole
 // `TICK_DT`s — so unlike a case that leaves the step to its caller, this harness
 // chooses no schedule: a check asks for a number of ticks and gets exactly that
-// number. Every harness opens by taking the game off the clock. The one check that
-// is ABOUT the loop running itself (`controls/advances-in-real-time`) hands it back
-// with `Harness.runFor`.
+// number. Every harness opens by taking the game off the clock and no check hands
+// it back: a build's own loop runs on real time, which no check reads, so what the
+// clock operations do is what `instrumentation/manual-clock` decides.
 //
 // ADVANCE VERSUS SKIP. Both run real ticks and neither fabricates anything; they
 // differ in what they leave behind for a reviewer. `advance` brackets each tick as
@@ -356,7 +356,7 @@ export function windowRadius(snapshot: FathomSnapshot): number {
 export interface FathomDebugApi extends FixtureOps {
   setAutoStep(enabled: boolean): Promise<void>;
   advance(ticks: number): Promise<void>;
-  reset(seed?: number): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<FathomSnapshot>;
   /**
    * The hit region of item `index` on the menu the current screen shows, and
@@ -586,7 +586,7 @@ export {
 /* ---- Reaching live play --------------------------------------------------- */
 
 /**
- * Reset on a seed and enter live play, through the debug surface alone.
+ * Reset and enter live play, through the debug surface alone.
  *
  * `reset` restores every field to its title-screen value and `setScreen` puts
  * the game straight into live play (`specs/instrumentation.md`), so this reaches
@@ -599,16 +599,9 @@ export {
  * on every corridor tile, and the depth's roster in the den. A check poses the
  * world it is about on top of that, and {@link poseMaze} is what strips this one
  * away.
- *
- * An omitted `seed` takes `DEFAULT_SEED` (`1`), which
- * `specs/instrumentation.md` fixes, so a scenario that turns on the board a
- * build laid out replays exactly either way.
  */
-export async function startPlaying(
-  h: Harness,
-  seed?: number,
-): Promise<FathomSnapshot> {
-  await h.debug.reset(seed);
+export async function startPlaying(h: Harness): Promise<FathomSnapshot> {
+  await h.debug.reset();
   await h.debug.setScreen("playing");
   return h.snapshot();
 }
@@ -621,8 +614,8 @@ export async function startPlaying(
  * `0`, so a menu check that opens here knows the selection it starts from
  * without posing one.
  */
-export async function openTitle(h: Harness, seed?: number): Promise<void> {
-  await h.debug.reset(seed);
+export async function openTitle(h: Harness): Promise<void> {
+  await h.debug.reset();
 }
 
 /* ---- Menus, driven by a real mouse and a real finger ---------------------- */

@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 it("resumes the released beam from its live end, and an extension succeeds", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
 
   traceRoute(h, [

@@ -401,7 +401,7 @@ describe("reset", () => {
     game.sim.score = 300;
     game.update(0.5);
     game.goTo("paused");
-    game.reset(1);
+    game.reset();
     expect(game.screen).toBe("title");
     expect(game.menuIndex).toBe(0);
     expect(game.best).toBe(0);
@@ -412,7 +412,7 @@ describe("reset", () => {
 
   it("leaves the mute bit as it stands", () => {
     game.handleAction("mute");
-    game.reset(1);
+    game.reset();
     expect(game.muted).toBe(true);
   });
 });

@@ -23,7 +23,7 @@
 // at or past the target advances the level as the next chain settles."
 //
 // WHY THE BOARD IS REWRITTEN UNDER THE RUNNING STEP. R9 refills from the game's
-// own seeded generator, so what drops in behind the clear is the build's
+// own random draw, so what drops in behind the clear is the build's
 // business and could seed a second chain step — which would put another
 // clearing frame between the swap and the settle and make "no frame before it"
 // unreadable. So while step 1 is still holding, every cell is rewritten to the

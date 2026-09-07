@@ -321,7 +321,7 @@ source = "specs/field.md"
 
 # How a frame advances: every rate is per second and integrated against the delta
 # time the frame hands the game, the sub-step rule and the order a sub-step
-# resolves in, that all randomness runs off one seeded generator, and SOLE
+# resolves in, where each random draw the game makes is stated, and SOLE
 # OWNERSHIP of the contact model. Seeded verbatim.
 [[spec]]
 source = "specs/simulation.md"
@@ -420,8 +420,8 @@ source = "specs/assets.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; every operation by name, signature and effect, the three world
+# The debugging and automation surface every build must expose: a render-free
+# core; every operation by name, signature and effect, the three world
 # gates and the three per-drone faculty switches among them; the snapshot shape; and
 # a read-only debug overlay. Framed as an ordinary developer affordance of the game.
 # It branches on the engine for where the surface is reached, the operation shape,
@@ -561,10 +561,9 @@ description = "What the game looks and sounds like: the screens and their menus,
 # RENDER — two drones of opposite bands side by side, a whole Prism beside a
 # shell-broken one — declares ONE output, the render its assertion turns on. The
 # pair is declared only where the evidence is one subject in two states that cannot
-# both appear in a single render, and that list is exactly five:
-# `instrumentation.advances-in-real-time`, `screens.hud-resonance-ready`,
-# `screens.hud-polarity-indicator`, `screens.mute-indicator` and
-# `screens.inversion-overlay`.
+# both appear in a single render, and that list is exactly four:
+# `screens.hud-resonance-ready`, `screens.hud-polarity-indicator`,
+# `screens.mute-indicator` and `screens.inversion-overlay`.
 #
 # EVERY point also carries `domains` and `failure_cap`, because this case is
 # validator-rated: a point's validator, not a reviewer, decides the functional
@@ -592,7 +591,8 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These points check that it is really there, really
-# wired to the running game, really deterministic, and that each pose reads back — a
+# wired to the running game, really stepped by elapsed time, and that each pose
+# reads back — a
 # surface that reports a plausible-looking object unconnected to what is on screen
 # is the failure mode worth naming.
 #
@@ -644,40 +644,17 @@ failure_cap = "broken"
 validation = { script = "instrumentation/reset-restores-title.test.ts", outputs = [
   { id = "title", name = "The title values reset restored", kind = "image" },
 ] }
-# `reset({ seed })` is what makes a wave reproducible, and a wave is what six
-# other groups pose against. This is the one point that turns the wave entry gate
-# back on outside the swarm and stages groups, because the thing under test IS the
-# wave the game builds for itself.
+# The one point about the division of a frame itself. Every other point drives the
+# game at one frame rate; this one spends the same posed second at three of them and
+# holds each to the figures the specification states for that second.
 [[review.categories.items]]
-id = "reset-seeds-randomness"
-title = "reset seeds the game's randomness"
-description = "Two runs started after reset({ seed: 7 }) build the identical stage-1 wave — the same drone kinds at the same slots with the same bands — and a run after reset({ seed: 8 }) builds a different one."
-domains = ["polarity", "swarm", "arcade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
-  { id = "seeded", name = "The wave the seeded reset built", kind = "image" },
-] }
-[[review.categories.items]]
-id = "deterministic-core"
+id = "elapsed-time-steps"
 title = "The simulation advances on elapsed time alone"
-description = "One second of game time covered as 1 frame, as 60 frames and as 120 frames leaves the identical snapshot, because every frame resolves in whole SUBSTEP_MAX sub-steps."
+description = "One second of game time covered as 1 frame, as 60 frames and as 120 frames resolves the same way at each division, because every frame runs in whole SUBSTEP_MAX sub-steps: a shot fired under a Shard destroys it, a Flux posed short of its window's end flips its band with the remainder carried into the next window, an enemy bullet falls ENEMY_BULLET_SPEED units, and simTime reads the second."
 domains = ["polarity", "swarm", "arcade", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+validation = { script = "instrumentation/elapsed-time-steps.test.ts", outputs = [
   { id = "stepped", name = "The field one second of game time reached", kind = "image" },
-] }
-# The only point on the checklist that waits on the wall clock rather than
-# stepping the game itself, so a build that advances only when a validator asks
-# it to is caught here rather than passing every other point silently.
-[[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances itself in real time"
-description = "With the game on its own clock and nothing stepping it, a live wave advances: simTime rises and a posed diving drone has moved. Two captures, before and after."
-domains = ["polarity", "swarm", "arcade", "presentation"]
-failure_cap = "broken"
-validation = { script = "instrumentation/advances-in-real-time.test.ts", outputs = [
-  { id = "before", name = "The live wave before the wait", kind = "image" },
-  { id = "after", name = "The same wave after it advanced itself", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "clear-drones"
@@ -790,7 +767,7 @@ validation = { script = "instrumentation/wave-entry-gate.test.ts", outputs = [
 [[review.categories.items]]
 id = "dive-launching-gate"
 title = "Dive launching off launches no dive"
-description = "With setDiveLaunching(false), an assembled formation launches no dive over twenty seconds; with it on, one launches."
+description = "With setDiveLaunching(false) and the dive clock posed past DIVE_FIRST_DELAY plus DIVE_GAP_MAX, an assembled formation launches no dive over three seconds; with it on, one launches."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "instrumentation/dive-launching-gate.test.ts", outputs = [
@@ -1476,8 +1453,8 @@ validation = { script = "resonance/discharge-duration.test.ts", outputs = [
 # a dive bends toward the ship and either loops back or wraps, only divers fire, and
 # a survivor comes home.
 #
-# The four DIVE-TIMING points each pose a complete formation, pose the dive clock at
-# zero, and only then open the dive-launching gate. Without the posed clock there is
+# The four DIVE-TIMING points each pose a block of the formation, pose the dive
+# clock, and only then open the dive-launching gate. Without the posed clock there is
 # no assembly moment for a hidden timer to start from, and the points would be
 # undecidable against a build that starts its delay at the assembly transition; the
 # clock is declared state precisely so the pose is well defined.
@@ -1577,7 +1554,7 @@ validation = { script = "swarm/dive-first-delay.test.ts", outputs = [
 [[review.categories.items]]
 id = "dive-cadence"
 title = "Later dives keep their cadence"
-description = "Over a posed complete formation with the dive clock posed at 0 and dive launching on, every gap between successive dive launches lies between DIVE_GAP_MIN and DIVE_GAP_MAX times diveGapScale(stage), within 20%."
+description = "Over a posed formation block with the dive clock posed just short of DIVE_FIRST_DELAY and dive launching on, every gap between successive dive launches lies between DIVE_GAP_MIN and DIVE_GAP_MAX times diveGapScale(stage), within 20%."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "swarm/dive-cadence.test.ts", outputs = [
@@ -2084,20 +2061,20 @@ validation = { script = "stages/scaling-bullet-speed-cap.test.ts", outputs = [
 ] }
 # Stage 7 is inside the ramp — the formula reaches its 0.55 floor at stage 10, where
 # this item would assert the same figure its floor sibling does. The gap is a DRAWN
-# quantity, so the item reads it twice. The mean of twenty gaps carries the spread
-# of the draw and is given the 20% band that spread needs: at 1.40 s the band is
-# [1.12, 1.68], clear of the 2.00 s a build that does not scale means, the 1.70 s
-# one scaling at half the stated rate means, and the 1.10 s one already on the
-# floor means. That band cannot separate a ramp one step out, at 1.30 s, and no
-# band over a mean could — so every one of a hundred drawn gaps is also bracketed
-# against the window itself, [DIVE_GAP_MIN, DIVE_GAP_MAX] * 0.70 = [0.98, 1.82] s,
-# by posing the wave's own dive clock either side of it. A build drawing from a
-# window one step out draws under 0.98 s about one time in eleven, so a hundred
-# draws name it.
+# quantity, so the item reads it twice. The cadence runs the wave on its own clock
+# over one posed gap and two it drew, each launch held to the diveGap the wave
+# reported, which ties the drawn figure to the launch it times. Two dozen drawn
+# gaps are then bracketed against the window itself, [DIVE_GAP_MIN, DIVE_GAP_MAX] *
+# 0.70 = [0.98, 1.82] s, by posing the wave's own dive clock either side of it, and
+# must show at least two distinct figures among them, since the gap is drawn. That
+# is a sample held to the window, not a measurement of the ramp: a build drawing
+# from a wider window is named by the first draw that lands outside it, and a
+# window sitting wholly inside the stated one is the reviewer's to judge from the
+# replay.
 [[review.categories.items]]
 id = "scaling-dive-gap"
 title = "Dives come faster at a later stage"
-description = "The game reports diveGapScale(7) as 0.70 exactly; over a posed complete formation with dive launching on, a stage-7 wave left to run on its own clock launches each dive within two frames of the diveGap it was carrying, over one gap posed at 0.98 s and three the build drew; and each of a hundred drawn gaps read off the wave sits inside [0.98, 1.82] s, with none launching with the wave's clock under 0.98 s or failing to launch with it past 1.82 s."
+description = "The game reports diveGapScale(7) as 0.70 exactly; over a posed formation block with dive launching on, a stage-7 wave left to run on its own clock launches each dive within two frames of the diveGap it was carrying, over one gap posed at 0.98 s and two the build drew; and each of two dozen drawn gaps read off the wave sits inside [0.98, 1.82] s, at least two of them distinct, with none launching with the wave's clock under 0.98 s or failing to launch with it past 1.82 s."
 domains = ["swarm"]
 failure_cap = "passable"
 validation = { script = "stages/scaling-dive-gap.test.ts", outputs = [

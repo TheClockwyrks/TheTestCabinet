@@ -28,7 +28,7 @@
 // rather than passing on an empty sweep. That is this point's to say: it is the
 // one that asks whether a released hunter can get to the player at all.
 //
-// THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
+// THE BOARD IS THE BUILD'S OWN, over several freshly laid-out layouts, because
 // finding the property in a board a build invented IS the check.
 
 import { afterEach, beforeEach, it } from "vitest";
@@ -83,11 +83,11 @@ it("joins the den to the forager's start over the tiles a predator may enter", a
   await captureBoard(h, witness(measured).board);
 
   for (const one of measured) {
-    const seed = `the maze laid out from seed ${one.board.seed}`;
+    const board = `maze ${one.board.ordinal} the game laid out`;
     assertGreaterThanOrEqual(
       one.den.length,
       MIN_DEN_TILES,
-      `den-interior ('d') tiles in ${seed}, the chamber a released predator ` +
+      `den-interior ('d') tiles in ${board}, the chamber a released predator ` +
         `comes out of`,
     );
     const named = one.unreached
@@ -99,7 +99,7 @@ it("joins the den to the forager's start over the tiles a predator may enter", a
       MAX_UNREACHED,
       `den-interior tiles the forager's start tile (${one.start.tx}, ` +
         `${one.start.ty}) cannot be reached from over corridor, den and gate ` +
-        `tiles, of the ${one.den.length} in ${seed}` +
+        `tiles, of the ${one.den.length} in ${board}` +
         (named === "" ? "" : `, at ${named}`),
     );
   }

@@ -31,7 +31,6 @@ import {
   parkUnit,
   releaseWaveHold,
   standComponent,
-  ticks,
 } from "../harness";
 
 /** The wave the hold is read at, so the bonus is a figure worth telling apart. */
@@ -40,13 +39,23 @@ const WAVE = 4;
 /** Where the Mote is held and killed: clear of the chain, and of nothing else. */
 const KILL_AT = tileCenter(20, 20);
 
-/** Frames the wave is left running under the hold: two seconds of real advance. */
-const HELD_FRAMES = ticks(2);
+/**
+ * The rate the whole check is driven at.
+ *
+ * The frames are a kill and then an empty yard being sat out, and
+ * specs/instrumentation.md guarantees that "an interval of simulation time
+ * reaches the same state however it was divided into frames". A shot still steps
+ * well inside the `2 * PROJECTILE_HIT_R` window it has to be caught in.
+ */
+const WATCH_HZ = 60;
+
+/** How long the wave is left running under the hold, in seconds. */
+const HELD_SECONDS = 2;
 
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: WATCH_HZ });
 });
 
 afterEach(() => {
@@ -64,7 +73,7 @@ it("holds the wave's resolution, pays the bounty, and clears once released", asy
     // One Mote, held where the Capacitor can reach it, on one point of health.
     parkUnit(h, "mote", KILL_AT, { hp: 1, burn: { dps: 500, seconds: 3 } });
     const gone = await h.until((s) => s.units.length === 0, {
-      maxFrames: ticks(5),
+      maxFrames: h.ticks(5),
     });
     assertEqual(
       gone.hit,
@@ -73,7 +82,7 @@ it("holds the wave's resolution, pays the bounty, and clears once released", asy
         "(specs/enemies.md)",
     );
     // And then the wave is left running, with nothing on the yard at all.
-    await h.advance(HELD_FRAMES);
+    await h.advanceSeconds(HELD_SECONDS);
     return gone.snapshot;
   });
 
@@ -90,7 +99,7 @@ it("holds the wave's resolution, pays the bounty, and clears once released", asy
   assertEqual(
     held.waveActive,
     true,
-    `the wave still running ${HELD_FRAMES} frames after its last unit died, ` +
+    `the wave still running ${HELD_SECONDS}s after its last unit died, ` +
       "because its clear-and-pay resolution is held " +
       "(specs/instrumentation.md)",
   );

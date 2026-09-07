@@ -47,8 +47,10 @@
 // the frames the further piece is read on. A `confirm` on the title menu would
 // additionally raise whatever a build plays for a menu choice.
 //
-// THE WAIT IS REAL TIME AS WELL AS FRAMES. The poll below drives frames and lets
-// real time pass between them, and gives up rather than hanging.
+// THE WAIT IS COUNTED IN FRAMES. The rounds below drive frames, each a crossing
+// into the page that lets a decode land between one frame and the next, and
+// give up after a counted number of rounds rather than hanging or measuring the
+// host.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -62,26 +64,24 @@ import {
 } from "../harness";
 
 /**
- * How the further piece is waited for: rounds of frames, and the real time each
- * round allows a decode.
+ * How the further piece is waited for: rounds of frames.
  *
  * NOT specification figures. specs/assets.md fixes only that a produced sound is
- * decoded asynchronously, never how long that takes, so these are the suite's own
- * patience — long enough that a decode kicked off by the screen change lands, and
- * bounded so a build that never starts a second piece fails instead of hanging.
+ * decoded asynchronously, never how many frames that takes, so these are the
+ * suite's own patience — a failure cap counted in frames rather than measured in
+ * real time, and bounded so a build that never starts a second piece fails
+ * instead of hanging.
  */
 const MUSIC_ROUNDS = 20;
 const MUSIC_FRAMES = 4;
-const MUSIC_POLL_MS = 50;
 
 let h: Harness;
 
-/** Drive frames in short rounds, with real time between them, until `sink` fills. */
+/** Drive frames in short rounds until `sink` fills, or the rounds run out. */
 async function waitForLoop(sink: TimedCue[]): Promise<void> {
   for (let round = 0; round < MUSIC_ROUNDS; round += 1) {
     await h.advance(MUSIC_FRAMES);
     if (sink.length > 0) return;
-    await h.settle(MUSIC_POLL_MS);
   }
 }
 
@@ -101,10 +101,10 @@ it("starts a further piece once the round has begun", async () => {
     "the screen the game opens on",
   );
 
-  // Open the build's audio and wait, in real time, until it has actually made a
-  // sound. This is the ROUTE, not the point — that the title carries a piece is
-  // `audio/music-title`'s — and it is what gives the build its gesture and real
-  // time to decode before the boundary is crossed.
+  // Open the build's audio and drive frames until it has actually made a sound.
+  // This is the ROUTE, not the point — that the title carries a piece is
+  // `audio/music-title`'s — and it is what gives the build its gesture and the
+  // frames to decode over before the boundary is crossed.
   assertEqual(
     await h.warmAudio(),
     true,

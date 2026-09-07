@@ -21,10 +21,11 @@
 // is a build that ends a playable round. The specification requires both to be
 // true of an opening board, so both are read.
 //
-// WHY SEVERAL SEEDS. A build that never checks its deal still passes on a seed
-// that happens to draw a playable board. specs/instrumentation.md makes a round
-// from a known deal `reset` carrying a seed followed by a `dealBoard`, which is
-// what the harness's `startRound` runs, so a dozen seeds are dealt and the property must hold of every one of them.
+// WHY SEVERAL DEALS. A build that never checks its deal still passes when the
+// draw happens to come out playable. A round from the title is a `reset`
+// followed by the harness's `startRound`, which deals through the build's own
+// `dealBoard`, so several rounds are dealt and the property must hold of every
+// one of them.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { legalSwaps } from "../board";
@@ -39,18 +40,20 @@ import {
 import type { FacetSnapshot } from "../surface";
 
 /**
- * The seeds a round is dealt from.
+ * How many rounds are dealt.
  *
- * Twelve arbitrary positive numbers, each a different draw off the build's own
- * seeded source. Nothing is asserted about any particular one.
+ * One deal proves nothing: a build that never checks its deal still passes when
+ * the draw happens to come out right. Each deal here is a fresh draw off the
+ * build's own random source, nothing is asserted about any particular one, and
+ * the property under test has to hold of all of them.
  */
-const SEEDS = [1, 2, 3, 5, 8, 13, 21, 42, 99, 1234, 7777, 99991] as const;
+const DEALS = 8;
 
 let h: Harness;
 
-/** Seed the game's random source and open a fresh round on it. */
-function deal(seed: number): FacetSnapshot {
-  h.debug.reset({ seed });
+/** Open a fresh round from the title, which deals a fresh opening board. */
+function deal(): FacetSnapshot {
+  h.debug.reset();
   return startRound(h);
 }
 
@@ -62,17 +65,17 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("deals an opening board a move can be played on, from every seed", async () => {
-  for (const seed of SEEDS) {
-    const opened = deal(seed);
+it("deals an opening board a move can be played on, deal after deal", async () => {
+  for (let deal_ = 1; deal_ <= DEALS; deal_ += 1) {
+    const opened = deal();
 
     // A whole board first: R1 and R3 read over a board reported short would find
     // fewer pairs than the deal actually offers.
-    assertEqual(opened.screen, "playing", `screen dealt from seed ${seed}`);
+    assertEqual(opened.screen, "playing", `screen of deal ${deal_}`);
     assertLength(
       opened.board.cells,
       GRID_COLS * GRID_ROWS,
-      `cells dealt from seed ${seed}`,
+      `cells of deal ${deal_}`,
     );
 
     const rows = h.board();
@@ -81,7 +84,7 @@ it("deals an opening board a move can be played on, from every seed", async () =
       // The whole board is shown, because "no move exists" is a statement about
       // all 112 adjacent pairs at once and a reviewer has to be able to see it.
       fail(
-        `at least one legal swap on the board dealt from seed ${seed}`,
+        `at least one legal swap on the board of deal ${deal_}`,
         `none, on ${rows.map((row) => row.trim()).join(" | ")}`,
       );
     }
@@ -92,11 +95,11 @@ it("deals an opening board a move can be played on, from every seed", async () =
     assertEqual(
       opened.legalSwap,
       true,
-      `legalSwap on the board dealt from seed ${seed}, which carries ` +
+      `legalSwap on the board of deal ${deal_}, which carries ` +
         `${swaps.length} legal swap(s)`,
     );
 
-    if (seed === SEEDS[0]) {
+    if (deal_ === 1) {
       await h.advance(1);
       captureStill(h, "deal");
     }

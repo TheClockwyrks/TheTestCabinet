@@ -216,7 +216,7 @@ export interface CascadeDebugApi<S = unknown> {
   // ---- The core ----------------------------------------------------------
 
   /** Restores every declared field to its title-screen value. */
-  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  reset(state: DeepReadonly<S>): S;
   /** A pure read of the state. It changes nothing. */
   snapshot(state: DeepReadonly<S>): CascadeSnapshot;
   /**
@@ -265,7 +265,7 @@ export interface CascadeDebugApi<S = unknown> {
 
   // ---- The game's own events ---------------------------------------------
 
-  /** Deals a fresh game from the seeded generator, as specs/deal.md states. */
+  /** Deals a fresh game from a freshly shuffled deck, as specs/deal.md states. */
   deal(state: DeepReadonly<S>): S;
   /** Turns the stock, or recycles the waste, as specs/stock.md states. */
   turnStock(state: DeepReadonly<S>): S;
@@ -324,6 +324,12 @@ export interface CascadeDebugApi<S = unknown> {
   setLaunchClock(state: DeepReadonly<S>, seconds: number): S;
   /** Clears the painted layer and `trailStamps`, leaving the flyers standing. */
   clearTrail(state: DeepReadonly<S>): S;
+  /**
+   * Performs one launch's `vx` draw alone and returns the signed value drawn.
+   *
+   * A reading like `snapshot`: it takes the state and changes nothing of it.
+   */
+  drawLaunchVx(state: DeepReadonly<S>): number;
 }
 
 /**
@@ -333,7 +339,7 @@ export interface CascadeDebugApi<S = unknown> {
  * state and hand back, and which to run through `engine.apply`; the surface's
  * shape alone cannot say at runtime, so the specification names them.
  */
-export const READINGS = ["snapshot", "menuItemRect"] as const;
+export const READINGS = ["snapshot", "menuItemRect", "drawLaunchVx"] as const;
 
 /**
  * The operations that both pose and report, returning `[nextState, verdict]`.
@@ -391,4 +397,5 @@ export const REQUIRED_OPS = [
   "clearFlyers",
   "setLaunchClock",
   "clearTrail",
+  "drawLaunchVx",
 ] as const;

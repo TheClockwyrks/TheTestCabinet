@@ -1,4 +1,4 @@
-// The expedition, the camera, and the deterministic core the debug surface rests on
+// The expedition, the camera, and the render-free core the debug surface rests on
 // (specs/expedition.md, specs/world.md, specs/instrumentation.md).
 
 import { describe, expect, it } from "vitest";
@@ -179,7 +179,7 @@ describe("world size", () => {
   });
 });
 
-describe("the deterministic core", () => {
+describe("the render-free core", () => {
   it("reaches the same rate-driven state however the interval was divided", () => {
     const build = (): Game => {
       const game = emptyGame();
@@ -215,20 +215,9 @@ describe("the deterministic core", () => {
     expect(coarse.tileAt(5, 20).health).toBe(fine.tileAt(5, 20).health);
   });
 
-  it("rebuilds the same mine from the same seed through reset", () => {
-    const a = new Game();
-    a.reset(4242);
-    a.newExpedition("standard", "quick");
-    const b = new Game();
-    b.reset(4242);
-    b.newExpedition("standard", "quick");
-    expect(JSON.stringify(a.grid)).toBe(JSON.stringify(b.grid));
-    expect(a.nodes).toEqual(b.nodes);
-  });
-
   it("accumulates simTime on every screen", () => {
     const game = new Game();
-    game.reset(1);
+    game.reset();
     expect(game.screen).toBe("title");
     run(game, 2, 20);
     expect(game.simTime).toBeCloseTo(2, 9);
@@ -245,7 +234,7 @@ describe("reset", () => {
     game.miner.travel = false;
     game.miner.drill = false;
     game.muted = true;
-    game.reset(1);
+    game.reset();
     const s = game.snapshot();
     expect(s.screen).toBe("title");
     expect(s.menuIndex).toBe(0);
@@ -278,7 +267,7 @@ describe("reset", () => {
 
   it("leaves an empty mine, with the border, the camp, and the Core standing", () => {
     const game = new Game();
-    game.reset(1);
+    game.reset();
     expect(game.tileAt(0, 10).kind).toBe("bedrock");
     expect(game.tileAt(5, 10).kind).toBe("tunnel");
     expect(game.tileAt(16, game.coreRow).kind).toBe("core");

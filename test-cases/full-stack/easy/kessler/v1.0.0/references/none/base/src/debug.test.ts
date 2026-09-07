@@ -38,9 +38,49 @@ describe("reset", () => {
     expect(snap.waveAdvance).toBe(true);
   });
 
-  it("rejects a malformed seed", () => {
+  it("clears a posed pod outcome", () => {
     const { ops } = makeOps();
-    expect(() => ops.reset(Number.NaN)).toThrow();
+    ops.setNextPod("multiball");
+    ops.reset();
+    expect(ops.snapshot().nextPod).toBeNull();
+  });
+});
+
+describe("setNextPod and drawPod", () => {
+  it("poses a kind, or none, that the snapshot reads back", () => {
+    const { ops } = makeOps();
+    ops.setNextPod("shield");
+    expect(ops.snapshot().nextPod).toBe("shield");
+    ops.setNextPod("none");
+    expect(ops.snapshot().nextPod).toBe("none");
+  });
+
+  it("rejects an unknown kind", () => {
+    const { ops } = makeOps();
+    expect(() => ops.setNextPod("laser" as never)).toThrow(/unknown kind/);
+    expect(() => ops.setNextPod(undefined as never)).toThrow(/unknown kind/);
+  });
+
+  it("drawPod returns a kind or null and changes nothing", () => {
+    const { ops, cues } = makeOps();
+    ops.setScreen("playing");
+    ops.setNextPod("narrow");
+    const before = ops.snapshot();
+    const seen = new Set<string | null>();
+    for (let i = 0; i < 400; i += 1) seen.add(ops.drawPod());
+    for (const outcome of seen) {
+      expect([
+        null,
+        "widen",
+        "multiball",
+        "shield",
+        "pierce",
+        "narrow",
+      ]).toContain(outcome);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+    expect(ops.snapshot()).toEqual(before);
+    expect(cues).toEqual([]);
   });
 });
 

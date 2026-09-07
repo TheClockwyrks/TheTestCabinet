@@ -15,7 +15,7 @@
 // So a bob of mass `m` hanging at rest from the trolley point and a static mass
 // `m` sitting on the trolley point's node are, to the solve, THE SAME APPLIED
 // FORCE — and the whole structure must answer with the same member forces, member
-// for member, to the last bit the arithmetic carries.
+// for member, within the `TOLERANCE` a solve's rounding is allowed.
 //
 // THAT IS THE COMPARISON. The trolley starts at the track origin, `(0, 4, 0)` on
 // the harness's minimal crane, and "at a shared node it belongs wholly to that

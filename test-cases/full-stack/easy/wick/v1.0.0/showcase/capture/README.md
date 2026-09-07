@@ -20,7 +20,7 @@ first elite due at `2:00`, which is the game the case is about.
 
 The lead-in is where a take is lost. A night this player does not survive to
 `LEAD_SECONDS` records nothing worth keeping, and the judge scores it far below
-any take that did, so several seeds are auditioned and the survivors compete.
+any take that did, so several takes are auditioned and the survivors compete.
 
 ## Running it
 
@@ -72,20 +72,19 @@ files into `showcase/base/`:
 
 ## Why every take is recorded
 
-A seed fixes the whole night, so a take could be played silently, judged, and
-replayed identically under the recorder. Every take is recorded as it is played
-anyway, because that makes the take that was judged provably the take that was
-committed — and replaying the winner is the expensive half of doing it the
-other way. Each take also gets its own engine: a night replayed over a world
-that has already run inherits its frame counter, the input edges the last take
-left armed, and whatever the last render left on the canvas.
+Every night the game draws is its own, so a take is recorded as it is played,
+judged from what it recorded, and the winner is the one committed: the take
+that was judged is the take that ships. Each take also gets its own engine: a
+night played over a world that has already run inherits its frame counter, the
+input edges the last take left armed, and whatever the last render left on the
+canvas.
 
 ## What the driver may touch
 
 Two debug operations, and no others:
 
-- `reset({ seed })`, which lays the generator every spawn, offer, and drop is
-  drawn from. Choosing the seed is what lets a take be auditioned at all.
+- `reset()`, which puts the game back on the title, so each take is a fresh
+  night.
 - `snapshot()`, a reading that changes nothing.
 
 Everything on screen is the game's own: the lamplighter walks because an arrow
@@ -116,8 +115,7 @@ should carry a `$opaque` argument.
 | Variable                          | Default | What it does                                                                                                                    |
 | --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `TCAB_SHOWCASE_MAX_REPLAY_FRAMES` | `300`   | The harness's replay cap, patched above to read it. At `2500` a take of this length is kept whole, at 60 fps, with no thinning. |
-| `TCAB_SHOWCASE_TAKES`             | `8`     | How many seeds to play and judge.                                                                                               |
-| `TCAB_SHOWCASE_FIRST_SEED`        | `1`     | The first seed of that run of takes.                                                                                            |
+| `TCAB_SHOWCASE_TAKES`             | `8`     | How many nights to play and judge.                                                                                              |
 | `TCAB_SHOWCASE_LEAD_SECONDS`      | `105`   | Run-clock seconds played before the recorder starts.                                                                            |
 | `TCAB_SHOWCASE_MIN_SECONDS`       | `24`    | The clip ends at the first kill past this.                                                                                      |
 | `TCAB_SHOWCASE_MAX_SECONDS`       | `30`    | The take is abandoned here, wherever it had got to.                                                                             |
@@ -129,14 +127,13 @@ ending on the beat a kill gives.
 
 ## What shipped
 
-The take ran at `TCAB_SHOWCASE_TAKES=10` from seed `1`, at the default bounds
-and a `2500`-frame cap, so the replay is whole and unthinned: 1538 frames at
-60 fps.
+The take ran at `TCAB_SHOWCASE_TAKES=10`, at the default bounds and a
+`2500`-frame cap, so the replay is whole and unthinned: 1538 frames at 60 fps.
 
-| Winning seed | What it plays                                                                                                                                                     |
+| Winning take | What it plays                                                                                                                                                     |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1            | 25.6 s from `1:45`, 45 killed, two level-ups taken to level 7 and a sixth tool on the HUD, 19 enemies on screen at the peak, and 92 of 100 health left at the end |
 
-Seven of the ten seeds survived the lead-in; the three that did not fell
+Seven of the ten takes survived the lead-in; the three that did not fell
 between `0:47` and `1:21` and scored far below every take that reached the
 recorder.

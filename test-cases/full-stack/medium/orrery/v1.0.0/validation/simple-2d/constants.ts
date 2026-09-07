@@ -799,8 +799,74 @@ export const TICK_HZ = 60;
 /** The collision threshold, in logical units: two motes closer than this collide. */
 export const COLLIDE_DISTANCE = 2 * MOTE_COLLIDE_R;
 
+/**
+ * The separation worked example A of specs/simulation.md "Collision" freezes at:
+ * "`36.10` at `t = 3/8`", the first sample within `38`.
+ */
+export const EXAMPLE_A_FROZEN_SEPARATION = 36.1;
+
+/**
+ * How near a separation must land on a figure the worked examples print. The
+ * table's "distances are in logical units rounded to two decimals", so half a
+ * hundredth either side of the printed figure is the rule's own precision.
+ */
+export const EXAMPLE_DISTANCE_TOLERANCE = 0.005;
+
 /** The sample fractions collision is evaluated at, `k / 8` for `k` of `1..8`. */
 export const COLLISION_FRACTIONS: readonly number[] = Array.from(
   { length: COLLISION_SAMPLES },
   (_unused, k) => (k + 1) / COLLISION_SAMPLES,
 );
+
+// ---- What the rules fix for the fixture runs ------------------------------
+//
+// Each figure below is one rule of the specification applied to a machine the
+// suites pose, so a suite that reads a run against the state the rules fix
+// compares against a named figure. Every derivation names the rule it applies.
+
+/**
+ * What a clockwise turn adds to a direction index: "Rotating a direction index
+ * clockwise adds `1` modulo `6`" (`specs/field.md`), so an arm at rotation `0`
+ * stands at rotation `1` after one `rotate-cw`.
+ */
+export const CW_ROTATION_STEP = 1;
+
+/**
+ * Every set's tally when a run starts: `startRun()` leaves "every set's tally at
+ * `0`" (`specs/instrumentation.md`), where it stays until a set consumes.
+ */
+export const TALLY_AT_START = 0;
+
+/**
+ * The smallest `target` a challenge may state: "`target` is the tally every set
+ * must reach, at least `1`" (`specs/formats.md`). The one-delivery fixture poses
+ * it, so its set's tally stands at this figure when the run completes.
+ */
+export const TARGET_MIN = 1;
+
+/**
+ * The area bank after one second of the carrying machine at `DEFAULT_SPEED_INDEX`
+ * (`specs/simulation.md`, Completion and metrics): at the start of the run the
+ * bank "takes every hex of every placed part ... and every gripper hex at rest",
+ * the lone arm's anchor and its gripper hex, and "after every boundary ... the
+ * hex of every mote and of every gripper", which over `grab`, `rotate-cw` and
+ * `drop` adds the one hex the gripper and the carried mote both moved to.
+ */
+export const CARRY_SECOND_AREA = 3;
+
+/**
+ * The cycles the one-delivery machine runs before the boundary that completes
+ * it. Its tape is `grab`, `rotate-cw`, `drop`, and a cycle runs "Fetch ... Drops
+ * ... Grabs ... Motion ... Boundary" (`specs/simulation.md`), so the grab, the
+ * carried turn and the drop each take one cycle and the drop's boundary is the
+ * one at which "every set's tally has reached the challenge's `target`".
+ */
+export const ONE_DELIVERY_CYCLES = 3;
+
+/**
+ * The area bank the one-delivery machine completes with (`specs/simulation.md`,
+ * Completion and metrics): the set's one footprint hex, the arm's anchor and its
+ * gripper hex at rest at the start of the run, and after every boundary the hex
+ * of the mote and of the gripper, which are those same three hexes.
+ */
+export const ONE_DELIVERY_AREA = 3;

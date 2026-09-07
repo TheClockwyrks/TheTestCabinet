@@ -77,8 +77,11 @@ export interface EngineValidationConfigOptions {
    * worker is CPU-bound — it is running the build's simulation — where an
    * engineless project's is waiting on a browser, so the two want opposite
    * settings and this one wants the pool's own reading of the machine.
+   *
+   * A count, or vitest's own percentage-of-cores form (`"50%"`), for a case whose
+   * ceiling is a share of the host rather than a figure.
    */
-  readonly maxWorkers?: number;
+  readonly maxWorkers?: number | string;
 }
 
 /**

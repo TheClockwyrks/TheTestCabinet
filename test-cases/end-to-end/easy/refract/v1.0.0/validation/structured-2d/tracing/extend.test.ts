@@ -51,7 +51,7 @@ afterEach(() => {
 });
 
 it("while the trace is held, a move within NODE_HIT_R of an adjacent node adds the segment and moves the live end", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_3X3);
 
   await playerPress(h, EMITTER);

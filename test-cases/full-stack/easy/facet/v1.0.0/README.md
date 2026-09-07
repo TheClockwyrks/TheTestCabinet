@@ -31,7 +31,7 @@ during a chain step and refuse nothing. A chain step resolves them in one fixed
 order — seed the clear set from the runs, grow it to a fixed point through the
 cuts and the flawed gems, score it, spread strain to the survivors, remove the
 set, create the cuts, then settle and refill — and a build that reorders any two
-of those scores a different board. Around that sit a seeded deal that owes the
+of those scores a different board. Around that sit a deal that owes the
 player an opening board with a legal swap and no run on it, a legal-swap search
 that decides when the round is over, a move offered and withdrawn under the hand
 until a release commits it, a swap, a shattering set and a falling board the

@@ -38,7 +38,7 @@
 // THE CHAIN HAS A SECOND STEP TO RESOLVE INTO. The jade posed at (4,2) falls
 // three rows into (4,5), between the jades already standing at (3,5) and (5,5),
 // so the board step 1 settles into carries a maximal run of three across row 5 —
-// made of survivors alone rather than of anything R9's seeded refill dealt. The
+// made of survivors alone rather than of anything R9's drawn refill dealt. The
 // check reads the settled board back and asserts it seeds a clear set before it
 // waits for anything, so a scenario that stopped cascading is reported as that
 // rather than as a build holding too long.
@@ -57,7 +57,7 @@ import {
   clearSetFromRuns,
   maximalRuns,
   quietRowsWithEscape,
-  settle,
+  settleBoard,
   stepHold,
   swapIsLegal,
   swapped,
@@ -100,7 +100,7 @@ const SWAP_B: CellRef = { col: 5, row: 6 };
  *
  * Column 4 loses its bottom three cells, so every survivor above them falls
  * three rows and the three cells R9 refills come in from above row 0, 1 and 2 —
- * a `fell` of at least `1`, `2` and `3`. `board.ts`'s `settle` is what says so,
+ * a `fell` of at least `1`, `2` and `3`. `board.ts`'s `settleBoard` is what says so,
  * and the check reads it rather than taking this comment's word.
  */
 const FALL_ROWS = 3;
@@ -131,7 +131,7 @@ it("holds past STEP_SECONDS and resolves step 2 only at its own hold", async () 
   // And the arithmetic this point turns on, read off R9 rather than asserted by
   // hand: the step's fall is at least FALL_ROWS, so a conforming hold is longer
   // than the flat STEP_SECONDS a wrong build would use.
-  const settlement = settle(exchanged, cleared);
+  const settlement = settleBoard(exchanged, cleared);
   const fell =
     "exactly" in settlement.fall
       ? settlement.fall.exactly

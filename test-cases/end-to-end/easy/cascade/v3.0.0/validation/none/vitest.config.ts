@@ -24,8 +24,8 @@
 // Imported from its own module rather than through the package's barrel, for the
 // reason `globalSetup.ts` gives.
 //
-// WHAT THE TWO DIALS BOUND, AND WHAT THEY MUST NOT DECIDE. Every suite here is
-// deterministic: it poses a board, drives a counted number of frames through the
+// WHAT THE TWO DIALS BOUND, AND WHAT THEY MUST NOT DECIDE. Every suite here
+// poses a board, drives a counted number of frames through the
 // build's own `advance`, and reads what they left. Not one assertion in the
 // project reads a wall clock. So what a timeout can measure is how much of this
 // machine the suite was given — and a figure a correct build can cross on a busy

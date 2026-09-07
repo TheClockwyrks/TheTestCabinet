@@ -3,9 +3,9 @@
 //
 // Everything here is DECORATION, and it is deliberately kept out of the game's
 // state. `specs/state.md` fixes what the state carries and
-// `specs/instrumentation.md` rests on that state being reproducible from a seed
-// and a delta time; a shatter still flying when a scenario reads the board
-// would be neither. So the simulation reports what each chain step did
+// `specs/instrumentation.md` rests on that state advancing from the delta time
+// alone; a shatter still flying when a scenario reads the board would be
+// neither. So the simulation reports what each chain step did
 // (`src/frame.ts` derives it from the core's own rules), this module turns those
 // reports into things that move, and nothing here is ever read back.
 //
@@ -32,10 +32,15 @@
 //     and given back as cuts arrive and clear.
 //   * THE POUR. Every gem carries `fell`, the rows it traveled to reach its
 //     cell (R9), and a chain step times its fall off `stepTimer`. A board that
-//     arrives with no step to explain it — a fresh deal, the next level, a
-//     posed board — has no such timer, so this module holds the one figure that
-//     board needs: how long it has been standing. That is the whole of the
-//     bookkeeping, and the renderer reads it exactly as it reads `stepTimer`.
+//     arrives with no step to explain it — a fresh deal, the next level — has
+//     no such timer, so this module holds the one figure that board needs: how
+//     long it has been standing. That is the whole of the bookkeeping, and the
+//     renderer reads it exactly as it reads `stepTimer`. Only a board every gem
+//     of which came in from above pours: a posed board stands where it is put,
+//     and an accepted swap, which exchanges two cells and then waits out
+//     `SWAP_SECONDS` before its first step, is not a new board at all — the
+//     stones on it are the stones that were on it, so nothing pours and nothing
+//     flying is dropped.
 //
 // The player composites into a canvas the size of the system's own field, which
 // this module then composites, additively, centered on the cell. The scratch
@@ -56,7 +61,13 @@ import {
   type AssetStore,
 } from "./assets";
 import { FALL_SECONDS_PER_ROW, WAVE_SECONDS } from "./constants";
-import { cellCenter, lastFall, type BoardState, type Cell } from "./core";
+import {
+  cellCenter,
+  lastFall,
+  type BoardState,
+  type Cell,
+  type FacetState,
+} from "./core";
 import { SPRITE_SIZE } from "./theme";
 import type { ScratchCanvas } from "./scratch";
 
@@ -138,6 +149,37 @@ export function sameBoard(a: BoardState, b: BoardState): boolean {
       gem.fell === other.fell
     );
   });
+}
+
+/**
+ * Whether every gem on a board came in from above it, which is exactly what a
+ * fresh deal leaves (specs/rules.md, The opening board). It is what tells a
+ * board that was dealt from one that was posed or one a chain settled, so the
+ * pour runs for the first and not for the other two.
+ */
+export function isDealtBoard(board: BoardState): boolean {
+  if (board.gems.length === 0) return false;
+  return board.gems.every(
+    (gem, index) =>
+      gem !== null && gem.fell >= Math.floor(index / board.cols) + 1,
+  );
+}
+
+/**
+ * Whether a transition put a DIFFERENT BOARD in play rather than changing the
+ * one that was.
+ *
+ * A chain step is not one, because the board it leaves is the board it was
+ * handed, settled — and a step is reported on its own, so this is only asked
+ * of a frame that resolved none. Neither is an accepted swap, which exchanges
+ * two cells and sets `phase` to `"swapping"`: the stones on it are the stones
+ * that were on it. A fresh deal, a posed board, and a `reset` are, and each
+ * one makes whatever is still flying belong to a board nobody can see any
+ * more. The boards are compared by value, because this build's state crosses
+ * `src/bridge.ts` twice a frame.
+ */
+export function boardReplaced(before: FacetState, after: FacetState): boolean {
+  return after.phase !== "swapping" && !sameBoard(before.board, after.board);
 }
 
 /** The frame of the prism's idle turn showing at `simTime`, which every prism
@@ -251,28 +293,31 @@ export class Presentation {
 
   /**
    * Take the chain steps that ran since the presentation was last handed the
-   * board, notice a board that changed with no step to explain it, and hold one
-   * aura per cut gem standing on the board it was handed.
+   * game, notice a board that was replaced with no step to explain it, and hold
+   * one aura per cut gem standing on the board it was handed.
    *
    * A board that arrives unexplained is a different board entirely — a fresh
    * deal, the next level, a posed `loadBoard`, a `reset` — so whatever is still
-   * flying belongs to the one that is gone, and the new one starts its pour.
+   * flying belongs to the one that is gone. A board every gem of which came in
+   * from above it is a DEAL, and that one starts the pour; a posed board stands
+   * where it was put. An accepted swap replaces nothing (`boardReplaced`), so
+   * the frame that plays one leaves the presentation exactly as it stood.
    */
   observe(
-    boardBefore: BoardState,
-    boardAfter: BoardState,
+    previous: FacetState,
+    current: FacetState,
     steps: readonly StepReport[],
     assets: AssetStore,
   ): void {
     if (steps.length === 0) {
-      if (!sameBoard(boardBefore, boardAfter)) {
+      if (boardReplaced(previous, current)) {
         this.clear();
-        this.beginPour(boardAfter);
+        if (isDealtBoard(current.board)) this.beginPour(current.board);
       }
     } else {
       for (const step of steps) this.spawn(step, assets);
     }
-    this.holdAuras(boardAfter, assets);
+    this.holdAuras(current.board, assets);
   }
 
   /** Age every sheet, burst, and aura by `dt`, retiring the ones that have run. */

@@ -34,6 +34,7 @@ import { recycleRock } from "./entities";
 import { shortestDelta, sweptOverlap } from "./geometry";
 import type { Moving } from "./motion";
 import { destroyRock, hitRockWithBullet } from "./rocks";
+import { departSaucer } from "./saucer";
 import type { Bullet, EnemyBullet, ShatterState, Torpedo } from "./types";
 import { addScore, killShip } from "./world";
 
@@ -84,7 +85,7 @@ function firstRockReached(
 /** The saucer is destroyed: it pays, and it leaves the field. */
 function destroySaucer(state: ShatterState): void {
   addScore(state, SCORE_SAUCER);
-  state.saucer = null;
+  departSaucer(state);
 }
 
 /**

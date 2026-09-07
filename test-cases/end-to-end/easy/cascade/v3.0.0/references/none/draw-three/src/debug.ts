@@ -23,11 +23,11 @@
 // verifiable by setting a value and reading it back.
 
 import { cardColor, isRank, isSuit, type Card, type CardColor } from "./cards";
+import { drawLaunchVx } from "./cascade";
 import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
-  DEFAULT_SEED,
   TURN_COUNT,
   type Rect,
   type Suit,
@@ -157,7 +157,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): CascadeSnapshot;
 
   menuItemRect(index: number): Rect | null;
@@ -220,6 +220,8 @@ export interface CascadeDebugApi {
   clearFlyers(): void;
   setLaunchClock(seconds: number): void;
   clearTrail(): void;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(): number;
 }
 
 /** One card, as the snapshot reports it. */
@@ -271,16 +273,15 @@ export function createDebugApi(
     version: CASCADE_DEBUG_VERSION,
 
     /**
-     * Restore every declared field of the state to its title-screen value and
-     * reseed the game's randomness.
+     * Restore every declared field of the state to its title-screen value.
      *
      * `muted` is deliberately untouched: muting is a player preference the
      * runtime owns, and a reset is not a reason to start making noise again. The
      * clock is untouched too, because whether the game steps itself is
      * `setAutoStep`'s to say.
      */
-    reset(options) {
-      resetState(state, options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(state);
     },
 
     /** A pure read. It changes nothing. */
@@ -595,6 +596,11 @@ export function createDebugApi(
     /** Clear the painted layer, leaving the flyers standing. */
     clearTrail() {
       wipeTrail(state);
+    },
+
+    /** The launch's own draw, taken without a launch. It touches no field. */
+    drawLaunchVx() {
+      return drawLaunchVx();
     },
   };
 }

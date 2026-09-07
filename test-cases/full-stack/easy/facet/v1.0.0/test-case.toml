@@ -61,7 +61,7 @@ prompt = "prompt.hbs"
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
 # stopped. It exists so a stuck or runaway session cannot run unbounded, not to
 # make the job tight. Facet asks for a rules engine that resolves a chain step in
-# one fixed order, a seeded deal that owes the player an opening board with a
+# one fixed order, a deal that owes the player an opening board with a
 # legal swap on it, a legal-swap search, a board played with the pointer alone —
 # a gem taken hold of, offered onto its neighbor, and let go — a set of pointer
 # targets on every screen with a keyboard driving the menus beside them, a swap
@@ -350,8 +350,8 @@ source = "specs/controls.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; an API to pose a board, drive the game through its own real
+# The debugging and automation surface every build must expose: a render-free
+# core; an API to pose a board, drive the game through its own real
 # input path, and read it back; and a read-only debug overlay. Framed as an
 # ordinary developer affordance of the game. It branches on the engine for how the
 # surface is reached and for the clock operations only an engineless build owns.
@@ -472,13 +472,12 @@ format = 2
 # is the `moves` items, `setScreen` and `dealBoard` are the `screens` and
 # `levels` items, and so on).
 #
-# The clock is checked here too, as two separate points, because the two claims
-# come apart. `delta-time-independent` asks that one interval of game time reach
-# one outcome however it is divided, which is the build's integration under every
-# engine; `advances-in-real-time` asks that the game carry itself forward when
-# nothing outside it is stepping, which is the build's work only under `none`,
-# where specs/overview.md hands it the frame loop. Under an engine that loop and
-# its scheduling are the engine's, so the point carries `engines = ["none"]`.
+# The clock is checked here too. `delta-time-independent` asks that one interval
+# of game time reach one outcome however it is divided, which is the build's
+# integration under every engine. That the game carries itself forward on a real
+# wall clock is not a point: under an engine the loop and its scheduling are the
+# engine's, and under `none` it can only be decided by real time elapsing on the
+# host that ran the check, which no validator measures.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -494,8 +493,8 @@ description = "Every operation specs/instrumentation.md names is present as a fu
 domains = ["gameplay"]
 failure_cap = "broken"
 # Automated validation: reflect over the surface for every operation
-# specs/instrumentation.md names — twenty-six under `none`, which owns the clock
-# through `setAutoStep` and `advance`, and twenty-four under an engine, which
+# specs/instrumentation.md names — twenty-eight under `none`, which owns the clock
+# through `setAutoStep` and `advance`, and twenty-six under an engine, which
 # does not — and assert each reflects as a function. Reflected rather than
 # called, so a build is held to having the operation rather than to what one
 # call of it happened to do. See
@@ -536,7 +535,7 @@ validation = { script = "instrumentation/debug-api-snapshot-shape.test.ts", outp
 [[review.categories.items]]
 id = "snapshot-resting-values"
 title = "Snapshot resting values with no board in play"
-description = "With no board in play the snapshot reports board {cols: 0, rows: 0, cells: []}, selection, offer, refusal and armedTarget null, phase idle with chainStep, swapTimer and stepTimer 0, lastWaves, moveScore, bestMove and bestChain 0, and menuIndex 0."
+description = "With no board in play the snapshot reports board {cols: 0, rows: 0, cells: []}, selection, offer, refusal and armedTarget null, phase idle with chainStep, swapTimer and stepTimer 0, lastWaves, moveScore, bestMove and bestChain 0, refillKinds as GRID_COLS empty strings, and menuIndex 0."
 domains = ["gameplay"]
 failure_cap = "scuffed"
 # Automated validation: reset and read a snapshot on the title screen, asserting
@@ -561,19 +560,17 @@ failure_cap = "scuffed"
 validation = { script = "instrumentation/cell-geometry.test.ts", outputs = [
   { id = "board", name = "The posed board whose geometry was read", kind = "image" },
 ] }
-# TWO ITEMS. What `reset` PUTS BACK and what `options.seed` DOES are two claims,
-# and a build whose reset restores every field while ignoring the seed holds the
-# first and not the second.
 [[review.categories.items]]
 id = "reset-restores-every-field"
 title = "reset restores the title-screen state"
-description = "reset() puts the game on title with menuIndex 0, no board in play, phase idle, chainStep, swapTimer, stepTimer, score, levelScore, lastCleared, lastPoints, lastWaves, moveScore, bestMove, bestChain and simTime 0, level 1, no selection, no offer, no refusal and no armed target, and the pointer up and driven by mouse."
+description = "reset() puts the game on title with menuIndex 0, no board in play, phase idle, chainStep, swapTimer, stepTimer, score, levelScore, lastCleared, lastPoints, lastWaves, moveScore, bestMove, bestChain and simTime 0, level 1, no selection, no offer, no refusal and no armed target, no refill posed on any column, and the pointer up and driven by mouse."
 domains = ["gameplay"]
 failure_cap = "scuffed"
 # Automated validation: drive a round dirty — a posed board, an accepted swap
 # carried past its own animation into a scoring chain, a posed score and level, a
-# standing selection and offer, a touch press holding a target armed — then reset
-# and assert every field the operation lists is back at its stated value. No
+# standing selection and offer, a refill posed on one column, a touch press
+# holding a target armed — then reset and assert every field the operation lists
+# is back at its stated value. No
 # figure is required of `lastCleared`, `lastPoints` or `lastWaves` before the
 # reset: what they report of a step is `scoring/last-step-reported`'s and
 # `expansion`'s point. See
@@ -581,94 +578,74 @@ failure_cap = "scuffed"
 validation = { script = "instrumentation/reset-restores-every-field.test.ts", outputs = [
   { id = "reset", name = "The title screen after reset", kind = "image" },
 ] }
+# THREE ITEMS for the refill pose, because it makes three claims a build can hold
+# apart: what a pose DEALS, how the snapshot REPORTS it, and that the clear
+# UNDOES it. The pose is what takes R9's draw out of a scenario's way, so every
+# point that states a settled board exactly rests on the first of the three.
 [[review.categories.items]]
-id = "reset-seeds-the-rng"
-title = "options.seed is what seeds rngState"
-description = "reset({ seed }) seeds rngState from the seed it was given, and a bare reset seeds it from DEFAULT_SEED (1), so two different seeds reach two different generator states."
+id = "set-refill-kinds-deals-the-pose"
+title = "A posed refill deals the posed kinds"
+description = "After setRefillKinds(col, kinds), the gem R9 deals into row r of that column is the kind kinds[r] names, plain at strain 0, so a column refilled three rows deep under a three-letter pose holds those three kinds top down."
 domains = ["gameplay"]
 failure_cap = "scuffed"
-# Automated validation: assert a bare reset and reset({ seed: 1 }) reach the
-# same rngState, and that a second seed reaches a different one. The second half
-# is what makes the first mean anything: a build that hard-coded one generator
-# state would answer the first perfectly. See
-# validation/<engine>/instrumentation/reset-seeds-the-rng.test.ts.
-validation = { script = "instrumentation/reset-seeds-the-rng.test.ts", outputs = [
-  { id = "seeded", name = "The title screen the seeds were read on", kind = "image" },
-] }
-# TWO ITEMS, because reproducible and seeded are two properties. A build that
-# deals ONE fixed board, ignoring `rngState` altogether, is perfectly
-# reproducible and passes the first of these on every seed; what it has lost is
-# the thing that makes a seed useful. The compared cells are the kind, the cut
-# and the strain of each, in both: a dealt gem's `fell` is the build's own
-# choice of how far it came in from, so two deals from one seed are entitled to
-# agree on it and nothing requires them to.
-[[review.categories.items]]
-id = "seeded-determinism-same-seed"
-title = "The same seed reproduces the same deal"
-description = "reset({seed}) followed by a deal reaches the identical opening board and the identical rngState every time, in a freshly loaded instance as well as in the one that dealt first."
-domains = ["gameplay"]
-failure_cap = "scuffed"
-# Automated validation: deal from one seed twice, from a fresh instance each
-# time, and assert the 64 cells and rngState match exactly. The second deal is
-# driven in an independently loaded instance, because replaying a seed inside
-# one page proves only that the deal is a function of something that was reset:
-# a build holding a counter in a module-level variable, or seeding itself off
-# the clock and then merely reporting `rngState`, passes that and still deals
-# differently on a fresh load. See
-# validation/<engine>/instrumentation/seeded-determinism-same-seed.test.ts.
-validation = { script = "instrumentation/seeded-determinism-same-seed.test.ts", outputs = [
-  { id = "deal", name = "The board dealt from the recorded seed", kind = "image" },
+# Automated validation: pose a vertical run of three at the foot of column 4,
+# pose three different kinds for that column, complete the run and carry the
+# swap into step 1, and read the three refilled cells against the three letters
+# in order. Three DIFFERENT kinds, so a pose dealt bottom up or a first letter
+# dealt into every cell lands the wrong kind rather than an indistinguishable
+# one. See validation/<engine>/instrumentation/set-refill-kinds-deals-the-pose.test.ts.
+validation = { script = "instrumentation/set-refill-kinds-deals-the-pose.test.ts", outputs = [
+  { id = "refilled", name = "The column refilled from the pose", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "seeded-determinism-different-seed"
-title = "A different seed deals a different board"
-description = "reset({seed}) followed by a deal reaches a different opening board from a different seed, so the seed is what the deal is a function of."
+id = "set-refill-kinds-reported"
+title = "A posed refill is reported as refillKinds"
+description = "After setRefillKinds on two columns, snapshot().refillKinds holds GRID_COLS entries carrying each column's posed string under its own index and an empty string elsewhere, and the board, the screen and the phase stand where they were."
 domains = ["gameplay"]
 failure_cap = "scuffed"
-# Automated validation: deal from two ADJACENT seeds and assert the boards
-# differ. Adjacent on purpose — a build that quantized its seed, or read only
-# its high bits, reproduces its own deal perfectly and would answer a widely
-# separated pair. Sixty-four cells drawn from seven kinds: two seeds that agreed
-# here would be one seed. See
-# validation/<engine>/instrumentation/seeded-determinism-different-seed.test.ts.
-validation = { script = "instrumentation/seeded-determinism-different-seed.test.ts", outputs = [
-  { id = "deal", name = "The board one of the two seeds dealt", kind = "image" },
+# Automated validation: pose two columns with two different strings on a posed
+# board, read `refillKinds` back against the eight entries the specification
+# fixes, and assert the board, the screen, the phase and the round's figures are
+# unchanged. Two columns, so a build keeping one pose for the whole board or
+# keying it off the wrong index is caught. See
+# validation/<engine>/instrumentation/set-refill-kinds-reported.test.ts.
+validation = { script = "instrumentation/set-refill-kinds-reported.test.ts", outputs = [
+  { id = "posed", name = "The board the poses were read on", kind = "image" },
+] }
+[[review.categories.items]]
+id = "clear-refill-kinds-clears-every-column"
+title = "clearRefillKinds leaves no refill posed"
+description = "After setRefillKinds on two columns, clearRefillKinds() leaves snapshot().refillKinds holding GRID_COLS empty strings, and the board, the screen and the phase stand where they were."
+domains = ["gameplay"]
+failure_cap = "scuffed"
+# Automated validation: pose two columns, prove both poses stand, call the
+# clear, and read `refillKinds` back against its resting value, with the board,
+# the screen and the phase unchanged. Two columns, so a build that clears only
+# the column most recently posed is caught. Whether a column really draws again
+# is not decidable from one deal, so the reading is the pose's absence. See
+# validation/<engine>/instrumentation/clear-refill-kinds-clears-every-column.test.ts.
+validation = { script = "instrumentation/clear-refill-kinds-clears-every-column.test.ts", outputs = [
+  { id = "cleared", name = "The board the clear was read on", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "delta-time-independent"
 title = "The simulation advances on elapsed time, not on frames"
-description = "One accepted swap and the chain it opens, driven over the same interval of game time in one frame and in sixty frames, reach the same board, the same chainStep, the same phase, the same score and the same simTime."
+description = "One accepted swap and the chain it opens, driven over one interval of game time as a single frame and again as sixty frames, reach the board, the chainStep, the phase, the score and the simTime the rules give for that interval either way."
 domains = ["gameplay"]
 failure_cap = "scuffed"
-# Automated validation: from the same seed and the same posed board, request one
-# swap and then cover one interval of game time as a single frame in one drive
-# and as sixty in the other, and compare the board, the chain step, the phase and
-# the score. The interval is chosen to carry the SWAP_SECONDS boundary AND the
-# first step's own hold however it is divided, so both of the game's two timers
-# are crossed by both schedules. `swapTimer` and `stepTimer` are deliberately not
+# Automated validation: from one posed board whose refill is posed on every
+# column the chain empties, request one swap and cover one interval of game time
+# as a single frame, then again as sixty frames, and hold each drive to the
+# board's kinds, the chain step, the phase and the score specs/rules.md gives at
+# the end of that interval. The interval is chosen to carry the SWAP_SECONDS
+# boundary AND the first step's own hold however it is divided, so both of the
+# game's two timers are crossed by both schedules. `swapTimer` and `stepTimer` are deliberately not
 # compared: specs/rules.md says each returns to 0 when it reaches its span and
 # does not say what becomes of the overrun, so two compliant builds legitimately
 # hold different remainders after a boundary. See
 # validation/<engine>/instrumentation/delta-time-independent.test.ts.
 validation = { script = "instrumentation/delta-time-independent.test.ts", outputs = [
   { id = "drive", name = "The chain driven under a coarse clock", kind = "replay" },
-] }
-[[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances itself in real time"
-description = "Under `none`, on a real wall clock and with nothing stepping the game from outside, a resolving chain's simTime and stepTimer advance over a stretch of real time."
-domains = ["gameplay"]
-failure_cap = "broken"
-# Automated validation: pose a board, accept a swap and let its animation run so
-# a chain is resolving, then let real time pass with nothing advancing the game
-# and assert simTime grew and the chain moved on. Scoped to `none`, where
-# specs/overview.md gives the build "the frame loop and its delta time": under an
-# engine the loop, its scheduling and the delta time it hands each update belong
-# to the engine, so the same check would return one verdict for every build. See
-# validation/none/instrumentation/advances-in-real-time.test.ts.
-validation = { script = "instrumentation/advances-in-real-time.test.ts", engines = ["none"], outputs = [
-  { id = "before", name = "The instant the chain begins", kind = "image" },
-  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
 ] }
 
 # --- The Board ----------------------------------------------------------------
@@ -679,11 +656,10 @@ validation = { script = "instrumentation/advances-in-real-time.test.ts", engines
 # the fixture out from under the check that posed it.
 #
 # The opening board's four stated properties are four points, not one, so a deal
-# that carries a run fails exactly that and not the three beside it. Each sweeps
-# twelve seeds and asserts nothing about any particular one; every seed swept is
-# positive, because specs/instrumentation.md fixes what `options.seed` DOES and
-# not what values it may take, and a build over a shift-register generator is
-# entitled to be stuck at zero.
+# that carries a run fails exactly that and not the three beside it. Each deals
+# several rounds and asserts nothing about any particular one: the deal is a
+# draw, and the property has to hold of every board the build deals rather than
+# of a lucky one.
 #
 # `opening-falls-in` reads the fourth of those properties, that the whole board
 # is dealt in from above. It asserts the FLOOR specs/rules.md states and no more:
@@ -748,7 +724,7 @@ title = "The opening board holds no run"
 description = "The board start() deals holds no maximal run under R4."
 domains = ["gameplay"]
 failure_cap = "broken"
-# Automated validation: deal over twelve seeds and scan every row and column for
+# Automated validation: deal several rounds and scan every row and column for
 # three or more consecutive cells of one kind. See
 # validation/<engine>/board/opening-no-runs.test.ts.
 validation = { script = "board/opening-no-runs.test.ts", outputs = [
@@ -760,7 +736,7 @@ title = "The opening board carries a legal swap"
 description = "The board start() deals carries at least one legal swap, and the snapshot reports legalSwap true."
 domains = ["gameplay"]
 failure_cap = "broken"
-# Automated validation: deal over twelve seeds, search every orthogonally
+# Automated validation: deal several rounds, search every orthogonally
 # adjacent pair for an exchange R1 and R3 both accept, and read `legalSwap`
 # back. The search is the half that discriminates; the reported flag is weak on
 # an opening board, where a compliant deal carries many legal swaps, and its own
@@ -776,7 +752,7 @@ title = "The opening board is all plain gems at strain 0"
 description = "Every gem on the board start() deals carries cut plain and strain 0, with a kind drawn from GEM_KINDS."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: deal over twelve seeds and assert every cell reports cut
+# Automated validation: deal several rounds and assert every cell reports cut
 # `plain`, strain 0 and a kind among the seven. See
 # validation/<engine>/board/opening-plain-and-clean.test.ts.
 validation = { script = "board/opening-plain-and-clean.test.ts", outputs = [
@@ -788,7 +764,7 @@ title = "The opening board is dealt in from above"
 description = "Every gem of the board start() deals reports a fell of at least row + 1, so the whole board comes in from above the top row rather than appearing in place."
 domains = ["gameplay"]
 failure_cap = "scuffed"
-# Automated validation: deal over twelve seeds and assert every one of the 64
+# Automated validation: deal several rounds and assert every one of the 64
 # cells reports `fell >= row + 1`. Only the floor is asserted, and no ceiling:
 # specs/rules.md hands the figure at or above that floor to the build, because it
 # is what decides the shape a column fills in, and a build that deals the whole
@@ -1539,9 +1515,8 @@ validation = { script = "cuts/r8-prism-swap-creates-nothing.test.ts", outputs = 
 #
 # What the refill's kind is drawn FROM is asserted (one of GEM_KINDS, plain, at
 # strain 0); that the draw is UNIFORM is not, because deciding a distribution
-# off a settled board would take either the build's own generator or a
-# statistical test, and this case ships neither an opinionated validator nor one
-# tuned to a reference.
+# off a settled board would take a statistical test over many refills, and this
+# case ships neither an opinionated validator nor one tuned to a reference.
 [[review.categories]]
 id = "settling"
 title = "Settling and Refill (R9)"
@@ -1598,7 +1573,7 @@ failure_cap = "passable"
 # Automated validation: after each step of a driven multi-step chain, assert all
 # 64 cells are present and occupied, one per (col, row). The chain's second step
 # is guaranteed by the survivors of the first rather than by the refill, so the
-# scenario does not depend on what a build's seeded generator dealt. See
+# scenario does not depend on what a build's draw dealt. See
 # validation/<engine>/settling/r9-board-full.test.ts.
 validation = { script = "settling/r9-board-full.test.ts", outputs = [
   { id = "settled", name = "The board full again after a chain", kind = "image" },
@@ -1698,7 +1673,7 @@ validation = { script = "settling/r9-posed-board-fell-zero.test.ts", outputs = [
 # the board the first step actually settled, read back out of the snapshot,
 # rather than from a prediction. That is what keeps R9's random refill out of
 # the assertion: the check derives the clear set the spec gives for exactly the
-# board in front of it, whatever the build's generator dealt into it.
+# board in front of it, whatever R9's draw dealt into it.
 [[review.categories]]
 id = "chain"
 title = "The Chain Step"
@@ -1865,9 +1840,9 @@ validation = { script = "chain/step-waits-for-the-fall.test.ts", outputs = [
 #
 # MAX_MULTIPLIER's clamp is NOT covered here, and deliberately: M only stops
 # rising at chain step 9, `chainStep` is not writable, and every step past the
-# first depends on R9's refill, so a nine-step chain can only be reached by
-# hunting a seed that works on one particular build — which would be a validator
-# derived from a reference. `score-multiplier` stays inside the unclamped range
+# first depends on R9's refill, so a nine-step chain would have to be posed
+# refill by refill through eight settlings, a fixture no reader could check by
+# eye. `score-multiplier` stays inside the unclamped range
 # and says so. `bestChain` is writable through `setBestChain`, but that operation
 # poses the figure rather than the chain, so it opens no route to the clamp
 # either.
@@ -3818,16 +3793,16 @@ validation = { script = "audio/cue-gameover.test.ts", outputs = [
 [[review.categories.items]]
 id = "mute-preserves-play"
 title = "Muting does not change play"
-description = "With the mute bit set from the mute key, a drive reaches the same board, the same score, the same phase and the same elapsed game time as the same drive unmuted, and the events on the way still land."
+description = "With the mute bit set from the mute key, a swap and the one-step chain it opens reach the board, the score, the phase and the figures the rules give for that step, with the mute bit still set."
 domains = ["gameplay"]
 failure_cap = "passable"
-# Automated validation: drive one scenario twice from one seed, once muted from
-# the bound key and once not, and assert the two agree on the board written back
-# in the board notation, the screen, the phase, the chain step, both scores, the
-# level, the last step's figures, the level's best move and longest chain, the
-# legal-swap flag, the selection and the offer, and on the frames taken and the
-# game time covered since the board was posed — with the mute flag the one field
-# that differs. Silence itself is not read: the specification puts muting on the
+# Automated validation: mute from the bound key, pose a board carrying one
+# planted run with its refill posed on the three columns the step empties,
+# request the swap and carry the chain to its end, and assert the board's kinds,
+# the screen, the phase, the chain step, both scores, the level, the last step's
+# figures, the level's best move and longest chain, the legal-swap flag, the
+# selection and the offer are what specs/rules.md gives for one step of three
+# plain gems, with the mute flag still set. Silence itself is not read: the specification puts muting on the
 # runtime, so a muted frame is entitled to raise its cue and let the runtime zero
 # it. See validation/<engine>/audio/mute-preserves-play.test.ts.
 validation = { script = "audio/mute-preserves-play.test.ts", outputs = [

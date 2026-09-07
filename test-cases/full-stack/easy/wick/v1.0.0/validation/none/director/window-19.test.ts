@@ -27,9 +27,10 @@
 //
 // THE DRIVE. `director/windows.ts` states it in full: the clock posed to the
 // window's first tick with `spawning` alone, the cadence read over two whole
-// intervals, thirty spawns drawn one per tick with the field cleared between so
-// the cap never binds, and then the cap posed full with 200 commons for two
-// more intervals.
+// intervals, each of the row's types posed through `setNextSpawnType` and read
+// off the spawn the next due tick lands, six unposed spawns drawn one per tick
+// with the field cleared between, and then the cap posed full with 200
+// commons for two more intervals.
 //
 // THE TOLERANCE. The cadence and the counts are whole ticks and whole enemies,
 // read exactly. The resting timer is `TIMER_TOL`, the `1e-6` a timer's reading

@@ -276,19 +276,19 @@ describe("the end of the cascade", () => {
     expect(shot.cascadeDone).toBe(false);
   });
 
-  it("replays exactly from one seed", async () => {
+  it("draws each cascade's launch velocities afresh", async () => {
     const run = async (): Promise<string> => {
       openTable(h);
-      h.debug.reset({ seed: 9 });
+      h.debug.reset();
       h.debug.setScreen("playing");
       h.debug.clearTable();
       h.debug.setTrailPainting(false);
       startCascade(h);
       await h.advance(120);
-      return JSON.stringify(h.debug.snapshot().flyers);
+      return JSON.stringify(h.debug.snapshot().flyers.map((f) => f.vx));
     };
     const first = await run();
     const second = await run();
-    expect(second).toBe(first);
+    expect(second).not.toBe(first);
   });
 });

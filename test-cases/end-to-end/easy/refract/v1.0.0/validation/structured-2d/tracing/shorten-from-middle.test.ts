@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 it("a press on a mid node drops every cell after it, leaves the rest drawn, and resumes the trace there", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_7X6);
 
   // Draw A -> B -> C -> D and release. B is a mid cell of exactly one beam.

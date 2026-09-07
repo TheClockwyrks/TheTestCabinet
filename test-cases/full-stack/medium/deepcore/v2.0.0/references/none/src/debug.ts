@@ -18,9 +18,12 @@ import {
   CAM_LEAD_MAX,
   CORE_TIMER,
   DEEPCORE_DEBUG_VERSION,
-  DEFAULT_SEED,
   ITEM_IDS,
   ORE_IDS,
+  QUANTUM_DROP_MAX_TILES,
+  QUANTUM_DROP_MIN_TILES,
+  QUANTUM_VEL_MAX,
+  QUANTUM_VEL_MIN,
   ROCKET_COMPONENTS,
   UPGRADE_TRACKS,
   WORLD_COLS,
@@ -204,7 +207,7 @@ export interface DeepcoreDebugApi {
   keyUp(code: string): void;
 
   // Restoring the world
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   generateMine(): void;
   clearMine(): void;
   clearCargo(): void;
@@ -249,6 +252,10 @@ export interface DeepcoreDebugApi {
   setElapsed(seconds: number): void;
   clearSave(): void;
   setMuted(muted: boolean): void;
+
+  // Posing the Quantum Teleporter
+  setNextTeleportHeight(tiles: number | null): void;
+  setNextTeleportSpeed(speed: number | null): void;
 
   // The controls
   dropOre(ore: Ore): void;
@@ -472,13 +479,9 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
 
     // ---- Restoring the world ----
 
-    reset(options) {
-      const seed =
-        options?.seed === undefined
-          ? DEFAULT_SEED
-          : requireInteger("reset", "seed", options.seed, 0, 0xffffffff);
+    reset() {
       input.releaseAll();
-      game.reset(seed);
+      game.reset();
     },
 
     generateMine() {
@@ -787,6 +790,34 @@ export function installDebugApi(ctx: DebugContext): DeepcoreDebugApi {
 
     setMuted(muted) {
       game.muted = requireBoolean("setMuted", "muted", muted);
+    },
+
+    // ---- Posing the Quantum Teleporter ----
+
+    setNextTeleportHeight(tiles) {
+      game.nextTeleportHeight =
+        tiles === null
+          ? null
+          : requireRange(
+              "setNextTeleportHeight",
+              "tiles",
+              tiles,
+              QUANTUM_DROP_MIN_TILES,
+              QUANTUM_DROP_MAX_TILES,
+            );
+    },
+
+    setNextTeleportSpeed(speed) {
+      game.nextTeleportSpeed =
+        speed === null
+          ? null
+          : requireRange(
+              "setNextTeleportSpeed",
+              "speed",
+              speed,
+              QUANTUM_VEL_MIN,
+              QUANTUM_VEL_MAX,
+            );
     },
 
     // ---- The controls ----

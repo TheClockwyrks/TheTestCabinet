@@ -209,65 +209,8 @@ export const DEEPSTONE_TOP_FRACTION = 0.5;
 /* Generation (specs/world.md)                                                */
 /* -------------------------------------------------------------------------- */
 
-/** The share of minable cells that are ore veins, the same at every depth. */
-export const ORE_DENSITY = 0.14;
-
 /** The first row an ore vein may appear on: the first three rows are plain rock. */
 export const ORE_MIN_ROW = 4;
-
-/** Unbreakable stone's share, rising linearly across the rockbed and below. */
-export const STONE_DENSITY_MIN = 0.02;
-export const STONE_DENSITY_MAX = 0.08;
-
-/** Gas pockets' share, rising linearly across the rockbed and below. */
-export const GAS_DENSITY_MIN = 0.004;
-export const GAS_DENSITY_MAX = 0.012;
-
-/** Lava's share, rising linearly across the deepstone and below. */
-export const LAVA_DENSITY_MIN = 0.03;
-export const LAVA_DENSITY_MAX = 0.1;
-
-/**
- * How far a measured share may sit from the stated one, relative to it, measured
- * over a whole band.
- */
-export const DENSITY_TOLERANCE = 0.25;
-
-/** A share rising linearly from `min` at fraction `from` to `max` at `1`. */
-function rampedDensity(f: number, from: number, min: number, max: number) {
-  if (f < from) return 0;
-  return min + ((max - min) * (f - from)) / (1 - from);
-}
-
-/** Unbreakable stone's share at depth fraction `f`; `0` in the topsoil. */
-export function stoneDensityAt(f: number): number {
-  return rampedDensity(
-    f,
-    ROCKBED_TOP_FRACTION,
-    STONE_DENSITY_MIN,
-    STONE_DENSITY_MAX,
-  );
-}
-
-/** Gas's share at depth fraction `f`; `0` in the topsoil. */
-export function gasDensityAt(f: number): number {
-  return rampedDensity(
-    f,
-    ROCKBED_TOP_FRACTION,
-    GAS_DENSITY_MIN,
-    GAS_DENSITY_MAX,
-  );
-}
-
-/** Lava's share at depth fraction `f`; `0` above the deepstone. */
-export function lavaDensityAt(f: number): number {
-  return rampedDensity(
-    f,
-    DEEPSTONE_TOP_FRACTION,
-    LAVA_DENSITY_MIN,
-    LAVA_DENSITY_MAX,
-  );
-}
 
 /* -------------------------------------------------------------------------- */
 /* The surface camp (specs/world.md)                                          */
@@ -1094,6 +1037,3 @@ export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 
 /** The version the surface reports. */
 export const DEEPCORE_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;

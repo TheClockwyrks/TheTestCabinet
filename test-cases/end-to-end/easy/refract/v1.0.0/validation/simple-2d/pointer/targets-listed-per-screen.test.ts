@@ -46,7 +46,7 @@ function ids(targets: readonly { id: string }[]): string[] {
 }
 
 it("reports the fixed target ids on every screen that carries them", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
 
   const title = h.snapshot();
   assertEqual(title.screen, "title");

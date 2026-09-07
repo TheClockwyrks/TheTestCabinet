@@ -1,8 +1,8 @@
 // Meltdown — the wave progression, as closed forms (specs/waves.md).
 //
 // A wave's type and its size are functions of the wave number and the run's wave
-// count, so nothing about a run's composition is stored or drawn from the
-// generator: the only randomness in the game is the vent each unit enters at.
+// count, so nothing about a run's composition is stored or drawn: the only
+// randomness in the game is the vent each unit enters at.
 // The Hundred replaces the progression outright, and `specs/modes.md` states that
 // override, so it lives here beside the rule it overrides.
 

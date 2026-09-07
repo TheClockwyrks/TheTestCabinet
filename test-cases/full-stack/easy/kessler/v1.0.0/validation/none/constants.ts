@@ -259,7 +259,7 @@ export function ringMidRadius(ring: number): number {
 
 // ---- Pods and effects (specs/pods.md) ---------------------------------------
 
-/** The five pod kinds, in the order the draw table states them. */
+/** The five pod kinds, in the order the kind table states them. */
 export const POD_KINDS = [
   "widen",
   "multiball",
@@ -269,52 +269,17 @@ export const POD_KINDS = [
 ] as const;
 export type PodKind = (typeof POD_KINDS)[number];
 
-/** A destruction sheds a pod at `u1 < 0.25`. */
+/** A destruction sheds a pod with probability `0.25`. */
 export const POD_DROP_CHANCE = 0.25;
 
-/** The kind a second draw value `u2` selects, per the specification's table. */
-export function podKindFor(u2: number): PodKind {
-  if (u2 < 0.25) return "widen";
-  if (u2 < 0.45) return "multiball";
-  if (u2 < 0.65) return "shield";
-  if (u2 < 0.8) return "pierce";
-  return "narrow";
-}
-
-/** The seed a fresh session lays the pod generator with. */
-export const DEFAULT_SEED = 1;
-
-/**
- * The mulberry32 generator `specs/pods.md` fixes as the session's one random
- * stream: seeded once, each call the stream's next value in `[0, 1)`. Stated
- * here so a check can PREDICT the seeded pod sequence a scenario should shed,
- * rather than reading it off the build under test.
- */
-export function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/**
- * The pod each of the first `draws` destructions sheds under `seed`, in order:
- * `null` for a destruction that sheds nothing. Each destruction consumes `u1`,
- * and a shedding one consumes `u2` as well, exactly as the draw states.
- */
-export function podSequence(seed: number, draws: number): (PodKind | null)[] {
-  const next = mulberry32(seed);
-  const shed: (PodKind | null)[] = [];
-  for (let i = 0; i < draws; i += 1) {
-    const u1 = next();
-    shed.push(u1 < POD_DROP_CHANCE ? podKindFor(next()) : null);
-  }
-  return shed;
-}
+/** The probability a shed pod is each kind, per the specification's table. */
+export const POD_KIND_CHANCES: Readonly<Record<PodKind, number>> = {
+  widen: 0.25,
+  multiball: 0.2,
+  shield: 0.2,
+  pierce: 0.15,
+  narrow: 0.2,
+};
 
 /** A pod falls radially inward at this speed, its center angle constant. */
 export const POD_FALL_SPEED = 120;

@@ -66,17 +66,19 @@ export function nextFoundation(
   return -1;
 }
 
+/**
+ * One launch's `vx`: a magnitude drawn uniformly from its range and a sign
+ * chosen with equal probability, each afresh at the call.
+ */
+export function drawLaunchVx(): number {
+  return nextSign() * nextRange(LAUNCH_VX_MIN, LAUNCH_VX_MAX);
+}
+
 /** One card leaving its foundation for the flight. */
 function launch(state: CascadeState, index: number): CascadeState {
   const pile = state.foundations[index];
   const card = pile[pile.length - 1];
   const anchor = pileAnchor("foundation", index);
-  const [magnitude, afterMagnitude] = nextRange(
-    state.rngState,
-    LAUNCH_VX_MIN,
-    LAUNCH_VX_MAX,
-  );
-  const [sign, rngState] = nextSign(afterMagnitude);
 
   return {
     ...state,
@@ -91,12 +93,11 @@ function launch(state: CascadeState, index: number): CascadeState {
         rank: card.rank,
         x: anchor.x,
         y: anchor.y,
-        vx: sign * magnitude,
+        vx: drawLaunchVx(),
         vy: LAUNCH_VY,
       },
     ],
     launched: state.launched + 1,
-    rngState,
   };
 }
 

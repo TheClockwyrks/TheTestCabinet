@@ -3,8 +3,14 @@ import {
   COIL_DEBUG_VERSION,
   COMBO_MAX,
   COMBO_WINDOW,
+  INTERIOR_COL_MAX,
+  INTERIOR_COL_MIN,
+  INTERIOR_ROW_MAX,
+  INTERIOR_ROW_MIN,
+  isInterior,
   START_CELLS,
   TICK_SECONDS,
+  type Cell,
   type Cue,
 } from "./constants";
 import { createDebugApi, type CoilDebugApi, type DebugClock } from "./debug";
@@ -33,6 +39,11 @@ class TestClock implements DebugClock {
 let game: Game;
 let debug: CoilDebugApi;
 
+/** A straight chain of `length` cells running left from `(col, row)`. */
+function chain(col: number, row: number, length: number): Cell[] {
+  return Array.from({ length }, (_, i) => ({ col: col - i, row }));
+}
+
 beforeEach(() => {
   game = new Game(new SilentBus());
   debug = createDebugApi(game, new TestClock(game));
@@ -50,6 +61,7 @@ describe("the snapshot", () => {
         "menuIndex",
         "mode",
         "muted",
+        "nextPellet",
         "obstacles",
         "pellet",
         "pelletRespawn",
@@ -129,22 +141,149 @@ describe("reset", () => {
     );
   });
 
-  it("draws the same pellet sequence from the same seed", () => {
-    const run = (): string[] => {
-      debug.reset({ seed: 5 });
-      debug.setScreen("playing");
-      const cells: string[] = [];
-      for (let i = 0; i < 4; i++) {
-        const pellet = debug.snapshot().pellet;
-        if (pellet) cells.push(`${pellet.col},${pellet.row}`);
-        debug.advance(TICK_SECONDS);
+  it("clears a posed next pellet", () => {
+    debug.setNextPellet(20, 4);
+    debug.reset();
+    expect(debug.snapshot().nextPellet).toBeNull();
+  });
+});
+
+describe("the posed spawn", () => {
+  /** A chain along row 8 with its meal one cell ahead, facing right. */
+  function arrangeEat(): void {
+    debug.reset();
+    debug.clearObstacles?.();
+    debug.setSnake(chain(10, 8, 3));
+    debug.setDirection("right");
+    debug.setPellet(11, 8);
+    debug.setScreen("playing");
+  }
+
+  it("reports the posed cell until a spawn takes it", () => {
+    arrangeEat();
+    debug.setNextPellet(20, 4);
+    expect(debug.snapshot().nextPellet).toEqual({ col: 20, row: 4 });
+    debug.setNextPellet(21, 5);
+    expect(debug.snapshot().nextPellet).toEqual({ col: 21, row: 5 });
+  });
+
+  it("places the next pellet on the posed cell and consumes the pose", () => {
+    arrangeEat();
+    debug.setNextPellet(20, 4);
+    debug.advance(TICK_SECONDS);
+    const shot = debug.snapshot();
+    expect(shot.snake[0]).toEqual({ col: 11, row: 8 });
+    expect(shot.pellet).toEqual({ col: 20, row: 4 });
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("discards a posed cell the chain holds at the spawn", () => {
+    arrangeEat();
+    debug.setNextPellet(9, 8);
+    debug.advance(TICK_SECONDS);
+    const shot = debug.snapshot();
+    expect(shot.pellet).not.toEqual({ col: 9, row: 8 });
+    expect(shot.pellet).not.toBeNull();
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("keeps the pose through an eat with respawn off", () => {
+    arrangeEat();
+    debug.setPelletRespawn(false);
+    debug.setNextPellet(20, 4);
+    debug.advance(TICK_SECONDS);
+    const shot = debug.snapshot();
+    expect(shot.pellet).toBeNull();
+    expect(shot.nextPellet).toEqual({ col: 20, row: 4 });
+  });
+
+  it("keeps the pose when a pellet is placed by hand", () => {
+    arrangeEat();
+    debug.setNextPellet(20, 4);
+    debug.setPellet(12, 8);
+    expect(debug.snapshot().nextPellet).toEqual({ col: 20, row: 4 });
+  });
+
+  it("discards a posed wall cell and draws an interior cell instead", () => {
+    arrangeEat();
+    debug.setNextPellet(0, 8);
+    debug.advance(TICK_SECONDS);
+    const shot = debug.snapshot();
+    expect(shot.pellet).not.toBeNull();
+    expect(shot.pellet).not.toEqual({ col: 0, row: 8 });
+    expect(shot.nextPellet).toBeNull();
+  });
+
+  it("refuses a cell off the grid", () => {
+    debug.reset();
+    expect(() => debug.setNextPellet(-1, 8)).toThrow();
+    expect(() => debug.setNextPellet(30, 8)).toThrow();
+    expect(() => debug.setNextPellet(5, 18)).toThrow();
+    expect(() => debug.setNextPellet(1.5, 8)).toThrow();
+  });
+});
+
+describe("the draw alone", () => {
+  /** A round with a chain along row 8 and a live pellet elsewhere. */
+  function arrangeBoard(): void {
+    debug.reset();
+    debug.clearObstacles?.();
+    debug.setSnake(chain(10, 8, 3));
+    debug.setDirection("right");
+    debug.setPellet(20, 6);
+    debug.setScreen("playing");
+  }
+
+  /** Every interior cell as one chain, row by row and back the next. */
+  function fullChain(): Cell[] {
+    const path: Cell[] = [];
+    for (let row = INTERIOR_ROW_MIN; row <= INTERIOR_ROW_MAX; row++) {
+      for (let i = INTERIOR_COL_MIN; i <= INTERIOR_COL_MAX; i++) {
+        const col =
+          row % 2 === 1 ? i : INTERIOR_COL_MAX - (i - INTERIOR_COL_MIN);
+        path.push({ col, row });
       }
-      return cells;
-    };
-    const first = run();
-    game = new Game(new SilentBus());
-    debug = createDebugApi(game, new TestClock(game));
-    expect(run()).toEqual(first);
+    }
+    return path;
+  }
+
+  it("answers a cell of the valid set", () => {
+    arrangeBoard();
+    const body = chain(10, 8, 3);
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = debug.drawPelletCell();
+      expect(cell).not.toBeNull();
+      expect(isInterior(cell!.col, cell!.row)).toBe(true);
+      expect(body).not.toContainEqual(cell);
+      expect(cell).not.toEqual({ col: 20, row: 6 });
+    }
+  });
+
+  it("answers more than one cell over repeated draws", () => {
+    arrangeBoard();
+    const seen = new Set<string>();
+    for (let draw = 0; draw < 20; draw++) {
+      const cell = debug.drawPelletCell()!;
+      seen.add(`${cell.col},${cell.row}`);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
+  it("leaves the board and a standing pose as they were", () => {
+    arrangeBoard();
+    debug.setNextPellet(20, 4);
+    const before = debug.snapshot();
+    debug.drawPelletCell();
+    expect(debug.snapshot()).toEqual(before);
+  });
+
+  it("answers null when the valid set is empty", () => {
+    debug.reset();
+    debug.clearObstacles?.();
+    debug.clearPellet();
+    debug.setSnake(fullChain());
+    debug.setScreen("playing");
+    expect(debug.drawPelletCell()).toBeNull();
   });
 });
 

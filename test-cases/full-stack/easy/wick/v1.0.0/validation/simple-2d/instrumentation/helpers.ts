@@ -55,7 +55,6 @@ export const SNAPSHOT_FIELDS = [
   "muted",
   "accumulator",
   "simTime",
-  "rngState",
 ] as const;
 
 /** The fields of `run`, in the block's order. */
@@ -89,6 +88,13 @@ export const RUN_FIELDS = [
   "firedEvents",
   "aliveCommons",
   "nextId",
+  "nextSpawnAngle",
+  "nextSwarmAngle",
+  "nextSpawnType",
+  "nextPuddleOffset",
+  "nextStrikeTarget",
+  "nextChestItem",
+  "nextDrop",
 ] as const;
 
 export const PLAYER_FIELDS = ["x", "y", "facing", "hp"] as const;
@@ -257,6 +263,13 @@ export const IDLE_RUN: RunSnapshot = {
   firedEvents: [],
   aliveCommons: 0,
   nextId: 0,
+  nextSpawnAngle: null,
+  nextSwarmAngle: null,
+  nextSpawnType: null,
+  nextPuddleOffset: null,
+  nextStrikeTarget: null,
+  nextChestItem: null,
+  nextDrop: null,
 };
 
 /**

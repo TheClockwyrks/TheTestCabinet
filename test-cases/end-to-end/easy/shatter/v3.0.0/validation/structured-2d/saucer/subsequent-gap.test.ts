@@ -9,11 +9,16 @@
 //
 // WHAT IS READ. The game time of the first sample reporting the slot clear after
 // the first visit, and the game time of the first sample reporting the second
-// visit. Three seeds, because the wait is a uniform draw: one seed reads one draw,
+// visit. Three games, because the wait is a uniform draw: one game reads one draw,
 // and a build that always waits a fixed time inside the band would be indis-
-// tinguishable from a conformant one on a single reading anyway — what three seeds
+// tinguishable from a conformant one on a single reading anyway — what three games
 // buy is that a build whose draw runs outside the band on part of its range is
-// caught rather than sampled around.
+// caught rather than sampled around. Nothing is posed for the gap: `setSaucerDue`
+// is how a check that wants a particular due gets one, and this check wants the
+// build's own draw. What IS posed is the FIRST due of each game, so the visit
+// the gap follows is up a quarter of a second in rather than at `18` s: the first
+// delay is `saucer/first-arrives-at-18s`'s item, and the draw this item reads is
+// the one the game makes when that visit leaves.
 //
 // BOTH ENDS ARE ASSERTED, because both are the rule: a build that comes straight
 // back fails the low end and a build that makes the player wait a minute fails the
@@ -36,22 +41,23 @@ import {
   MARCH_STEP,
   marchFrames,
   openQuietGame,
+  SHORT_DUE,
   watchVisits,
 } from "./visits";
 
-/** The three seeds the gap is drawn under. */
-const SEEDS = [1, 2, 3] as const;
+/** The three games the gap is drawn in. */
+const GAMES = [1, 2, 3] as const;
 
 /**
- * How long each seed's game is watched for, in seconds of game time.
+ * How long each game is watched for, in seconds of game time.
  *
  * The longest a conformant build can take to reach the second arrival is the
- * `18` s first delay, the `12` s visit, and the `35` s upper gap — `65` s. Five
- * more is margin for a build whose clocks run a shade slow, so a run that never
- * reaches a second visit is reported as exactly that rather than as a gap out of
- * range.
+ * posed quarter-second first due, the `12` s visit, and the `35` s upper gap —
+ * `47.25` s. Five more is margin for a build whose clocks run a shade slow, so a
+ * run that never reaches a second visit is reported as exactly that rather than
+ * as a gap out of range.
  */
-const WATCH_SECONDS = 70;
+const WATCH_SECONDS = 53;
 
 /**
  * How far outside the stated band a reading may fall, in seconds.
@@ -70,11 +76,12 @@ afterEach(() => {
   h?.dispose();
 });
 
-it.each(SEEDS)(
-  "waits 25 to 35 seconds after a saucer leaves before the next arrives (seed %i)",
-  async (seed) => {
+it.each(GAMES)(
+  "waits 25 to 35 seconds after a saucer leaves before the next arrives (game %i)",
+  async (game) => {
     h = await createMarchHarness();
-    const opened = await openQuietGame(h, seed);
+    const opened = await openQuietGame(h);
+    h.debug.setSaucerDue(SHORT_DUE);
 
     const watch = await watchVisits(h, marchFrames(WATCH_SECONDS) - opened, {
       done: (visits) => visits.length >= 2,
@@ -87,15 +94,15 @@ it.each(SEEDS)(
     assertEqual(
       watch.visits.length,
       2,
-      `saucer visits inside ${WATCH_SECONDS} s of game time on seed ${seed} — ` +
-        `the first is due at 18 s and the second at most 12 + ${SAUCER_GAP_MAX} s ` +
-        "after it (specs/saucer.md)",
+      `saucer visits inside ${WATCH_SECONDS} s of game time in game ${game} — ` +
+        `the first is due at the posed ${SHORT_DUE} s and the second at most ` +
+        `12 + ${SAUCER_GAP_MAX} s after it (specs/saucer.md)`,
     );
     const left = watch.visits[0].goneAt;
     assertTrue(
       left !== null,
-      `the first saucer to have left the field before the second arrived on ` +
-        `seed ${seed} — the gap is measured from the departure (specs/saucer.md)`,
+      `the first saucer to have left the field before the second arrived in ` +
+        `game ${game} — the gap is measured from the departure (specs/saucer.md)`,
     );
 
     assertBetween(
@@ -103,7 +110,7 @@ it.each(SEEDS)(
       SAUCER_GAP_MIN - READING_SLACK,
       SAUCER_GAP_MAX + READING_SLACK,
       `seconds of game time between the first saucer leaving and the second ` +
-        `arriving on seed ${seed}, against the SAUCER_GAP_MIN..SAUCER_GAP_MAX ` +
+        `arriving in game ${game}, against the SAUCER_GAP_MIN..SAUCER_GAP_MAX ` +
         `(${SAUCER_GAP_MIN}..${SAUCER_GAP_MAX} s) specs/saucer.md draws it from`,
     );
   },

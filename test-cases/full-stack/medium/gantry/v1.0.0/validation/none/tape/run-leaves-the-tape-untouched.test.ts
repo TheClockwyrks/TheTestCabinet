@@ -3,7 +3,7 @@
 //
 // `specs/program.md` § Starting and ending a run: "Either way the structure, the
 // tape, and the loads' starting poses are untouched: every run begins from the
-// same authored state, and running is always repeatable." The run walks the tape
+// same authored state." The run walks the tape
 // with `run.stepIndex` (`specs/state.md`), and the tape itself is the player's
 // document: every step stands as authored once the run has ended.
 //

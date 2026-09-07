@@ -54,6 +54,7 @@ import { menuItemRect as rectOf, type MenuRect } from "./menus";
 import { withObstacle } from "./obstacles";
 import { resetToTitle, withObstacleClock } from "./screens";
 import type { DeepReadonly } from "ts-essentials";
+import { drawServeSign } from "./random";
 
 /** The current state as every operation below reads it. */
 type State = DeepReadonly<CaromState>;
@@ -76,6 +77,8 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** The vertical sign the serve takes. */
+  serveSign: 1 | -1;
   /** The ball's trail samples, oldest first. */
   trail: TrailSample[];
 }
@@ -121,8 +124,6 @@ export interface CaromSnapshot {
   score: { p1: number; p2: number };
   winner: Side | null;
   muted: boolean;
-  seed: number;
-  rngState: number;
   paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
   ai: { tracking: boolean; movement: boolean };
   receiver: Side;
@@ -152,7 +153,6 @@ export interface CaromDebugApi {
   spawnBall(state: State): CaromState;
   spawnObstacle(state: State, index: number): CaromState;
   reset(state: State): CaromState;
-  setSeed(state: State, seed: number): CaromState;
 
   /* Screens and menus. */
 
@@ -181,6 +181,8 @@ export interface CaromDebugApi {
   setBallSpin(state: State, spin: number): CaromState;
   setBallHeld(state: State, held: boolean): CaromState;
   setBallHoldTimer(state: State, seconds: number): CaromState;
+  setBallServeSign(state: State, sign: 1 | -1): CaromState;
+  drawBallServeSign(state: State): CaromState;
 
   /* The AI opponent: one operation per faculty. */
 
@@ -249,18 +251,6 @@ export function spawnObstacle(state: State, index: number): CaromState {
  */
 export function reset(state: State): CaromState {
   return resetToTitle(state);
-}
-
-/**
- * The game's random generator seeded: `seed` becomes the value given, and
- * `rngState` becomes that generator's starting state.
- *
- * mulberry32 is seeded by its state word, so the two are the same number here —
- * they are reported separately because `rngState` moves with every draw and
- * `seed` does not.
- */
-export function setSeed(state: State, seed: number): CaromState {
-  return { ...state, seed, rngState: seed };
 }
 
 // ---- Screens and menus --------------------------------------------------
@@ -405,6 +395,16 @@ export function setBallHoldTimer(state: State, seconds: number): CaromState {
   return withBall(state, { holdTimer: seconds });
 }
 
+/** The vertical sign the ball's serve takes, `1` or `-1`. */
+export function setBallServeSign(state: State, sign: 1 | -1): CaromState {
+  return withBall(state, { serveSign: sign < 0 ? -1 : 1 });
+}
+
+/** The one draw parking makes, made again on its own (specs/balls.md). */
+export function drawBallServeSign(state: State): CaromState {
+  return withBall(state, { serveSign: drawServeSign() });
+}
+
 // ---- The AI opponent ----------------------------------------------------
 
 /** Whether the AI senses the ball and chooses a target. */
@@ -463,6 +463,7 @@ function ballView(ball: DeepReadonly<BallState>): BallSnapshot {
     spin: ball.spin,
     held: ball.held,
     holdTimer: ball.holdTimer,
+    serveSign: ball.serveSign,
     trail: ball.trail.map((sample) => ({
       x: sample.x,
       y: sample.y,
@@ -501,8 +502,6 @@ export function snapshot(state: State): CaromSnapshot {
     score: { p1: state.score.p1, p2: state.score.p2 },
     winner: state.winner,
     muted: state.muted,
-    seed: state.seed,
-    rngState: state.rngState,
     paddles: {
       left: paddleView(state.paddles.left),
       right: paddleView(state.paddles.right),
@@ -538,7 +537,6 @@ export function createDebugApi(): CaromDebugApi {
     spawnBall,
     spawnObstacle,
     reset,
-    setSeed,
     setScreen,
     setMode,
     setMenuIndex,
@@ -555,6 +553,8 @@ export function createDebugApi(): CaromDebugApi {
     setBallSpin,
     setBallHeld,
     setBallHoldTimer,
+    setBallServeSign,
+    drawBallServeSign,
     setAiTracking,
     setAiMovement,
     setMuted,

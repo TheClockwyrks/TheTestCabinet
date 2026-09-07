@@ -18,7 +18,7 @@
 // draw never repeats a target, passes every firing. Every firing asserts the
 // same one requirement.
 //
-// WHY THE WORLD IS POSED AS IT IS. An isolated run seeded once by `isolate`,
+// WHY THE WORLD IS POSED AS IT IS. An isolated run posed once by `isolate`,
 // Spark at level 2 with `weaponFire` on and every other switch off. Each
 // firing stands three fresh moths at the first three of `TARGET_POSTS`, 300
 // units out in three directions ninety degrees apart, so a zone names its

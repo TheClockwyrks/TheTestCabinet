@@ -7,7 +7,6 @@
 
 import type { FrameCues } from "./audio";
 import {
-  DEFAULT_SEED,
   EXTRA_LIFE_STEP,
   SAUCER_FIRST_DELAY,
   START_LIVES,
@@ -37,10 +36,10 @@ function clearIntent(state: ShatterState): void {
 }
 
 /**
- * Restore every declared field to its title-screen value, and seed the game's
- * randomness. `muted` is left exactly as it stands: muting is the runtime's.
+ * Restore every declared field to its title-screen value, every posed draw
+ * cleared. `muted` is left exactly as it stands: muting is the runtime's.
  */
-export function resetState(state: ShatterState, seed = DEFAULT_SEED): void {
+export function resetState(state: ShatterState): void {
   state.screen = "title";
   state.menuIndex = 0;
 
@@ -60,10 +59,15 @@ export function resetState(state: ShatterState, seed = DEFAULT_SEED): void {
   state.saucerClock = 0;
   state.saucerDue = SAUCER_FIRST_DELAY;
 
+  state.nextSaucerEdge = null;
+  state.nextSaucerRow = null;
+  state.nextSaucerAim = null;
+  state.nextRockSpeed = null;
+  state.nextRecycleEdge = null;
+
   state.tickClock = 0;
   state.nextId = 1;
   state.simTime = 0;
-  state.rngState = seed >>> 0;
 
   clearIntent(state);
   state.extraFlash = 0;

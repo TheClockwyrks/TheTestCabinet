@@ -17,8 +17,8 @@
 //     and which cells it created, from the core's own R5, R6, and R8 over the
 //     board that step actually read. The core reports THAT a step cleared
 //     something; a shatter sheet needs the cells and the wave that times it,
-//     and `specs/instrumentation.md` rests on the state being reproducible from
-//     a seed and a delta, so a decorative detail does not belong in it. It is
+//     and `specs/instrumentation.md` rests on the state advancing from the
+//     delta alone, so a decorative detail does not belong in it. It is
 //     always given the two states either side of ONE transition, so the board it
 //     reads is the board that step read — an accepted swap exchanges its two
 //     cells the moment it is accepted, one transition before the step that

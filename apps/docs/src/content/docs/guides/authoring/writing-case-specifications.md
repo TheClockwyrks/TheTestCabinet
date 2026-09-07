@@ -49,7 +49,7 @@ covers.
 
 Requirements that exist for validation are written as ordinary product
 requirements. The [instrumentation](/testing/end-to-end/instrumentation/)
-contract is the standing example: the debug API, deterministic core, and debug
+contract is the standing example: the debug API, render-free core, and debug
 overlay are specified as debugging features the game needs.
 
 Mentioning reviewers is acceptable. Work gets reviewed whether or not it is part
@@ -366,4 +366,4 @@ output rather than the sources. The seeded tree is what the model receives.
 - [Authoring a full-stack case](/guides/authoring/authoring-a-full-stack-test-case/)
   does the same for a case that also produces its own assets.
 - [Instrumentation](/testing/end-to-end/instrumentation/) covers the debug API
-  and deterministic core that validation scripts drive.
+  and render-free core that validation scripts drive.

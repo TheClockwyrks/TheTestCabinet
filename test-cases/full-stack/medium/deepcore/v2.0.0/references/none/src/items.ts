@@ -100,18 +100,25 @@ function blast(game: Game, radius: number): boolean {
 
 /**
  * Place the miner above the camp at a random height and downward speed, and let the
- * ordinary physics carry it down. These two draws are a live player action, so they
- * are taken off the page's own randomness rather than the seeded generator.
+ * ordinary physics carry it down. Each draw is uniform over its stated bounds, and a
+ * value the debug surface posed for it stands in for the draw and is consumed by it
+ * (specs/instrumentation.md).
  */
 function quantumWarp(game: Game): boolean {
   const m = game.miner;
   const tiles =
+    game.nextTeleportHeight ??
     QUANTUM_DROP_MIN_TILES +
-    Math.random() * (QUANTUM_DROP_MAX_TILES - QUANTUM_DROP_MIN_TILES);
+      Math.random() * (QUANTUM_DROP_MAX_TILES - QUANTUM_DROP_MIN_TILES);
+  const speed =
+    game.nextTeleportSpeed ??
+    QUANTUM_VEL_MIN + Math.random() * (QUANTUM_VEL_MAX - QUANTUM_VEL_MIN);
+  game.nextTeleportHeight = null;
+  game.nextTeleportSpeed = null;
   m.x = colCenterX(SPAWN_COL, MINER_W);
   m.y = SURFACE_Y - MINER_H - tiles * TILE;
   m.vx = 0;
-  m.vy = QUANTUM_VEL_MIN + Math.random() * (QUANTUM_VEL_MAX - QUANTUM_VEL_MIN);
+  m.vy = speed;
   m.facing = "east";
   m.state = "fall";
   m.drilling = null;

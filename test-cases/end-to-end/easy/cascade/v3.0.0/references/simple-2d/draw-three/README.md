@@ -246,7 +246,7 @@ src/
   trail.ts            The persistent surface the cascade paints onto
   flow.ts             The opening state and what `reset` restores
   simulate.ts         One frame: the samples, then the clock, then the cascade
-  rng.ts              The seeded generator: a draw beside the next state
+  rng.ts              The random source the deal and the launches draw from
   audio.ts            The ten engine cues, played once per event per frame
   debug.ts            The debug surface: poses and readings over CascadeState
   diagnostics.ts      The values the engine's overlay shows

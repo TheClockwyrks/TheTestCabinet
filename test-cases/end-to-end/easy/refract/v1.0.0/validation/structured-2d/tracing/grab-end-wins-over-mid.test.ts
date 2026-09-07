@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 it("a press on a node that is one beam's end and another's mid cell resumes the beam whose end it is", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, SHARED_CRYSTAL);
 
   // The square beam THROUGH the crystal — S(0,1) in by one diagonal, out to

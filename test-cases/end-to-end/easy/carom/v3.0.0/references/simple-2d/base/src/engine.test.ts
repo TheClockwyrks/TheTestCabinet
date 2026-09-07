@@ -37,7 +37,6 @@ import {
   AI_HOME_Y,
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -56,7 +55,6 @@ import {
 import type { CaromDebugApi, CaromSnapshot } from "./debug";
 import { BACKGROUND, game, type CaromState } from "./game";
 import { itemCenterY, menuFor } from "./menus";
-import { seedState } from "./rng";
 import type { DeepReadonly } from "ts-essentials";
 
 // ---- The harness --------------------------------------------------------
@@ -357,8 +355,7 @@ describe("initialization", () => {
     expect(snapshot.winner).toBeNull();
     expect(snapshot.receiver).toBe("left");
     expect(snapshot.ai).toEqual({ tracking: true, movement: true });
-    expect(snapshot.seed).toBe(DEFAULT_SEED);
-    expect(snapshot.rngState).toBe(seedState(DEFAULT_SEED));
+    expect(Math.abs(snapshot.ball?.serveSign ?? 0)).toBe(1);
     expect(snapshot.paddles.left).toEqual({
       cy: FIELD_CY,
       vy: 0,
@@ -375,6 +372,7 @@ describe("initialization", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
     expect(snapshot.obstacles).toEqual([
@@ -832,20 +830,24 @@ describe("serving", () => {
     );
   });
 
-  it("replays the same serve from the same seed", async () => {
-    const other = await createHarness();
-    try {
-      for (const h of [harness, other]) {
-        h.pose((s) => h.debug.setSeed(s, 4242));
-        openMatch(h, "versus");
-        h.pose((s) => h.debug.setBallHoldTimer(s, 0));
-        await h.engine.advance(1);
-      }
-      expect(ball(other).vy).toBe(ball(harness).vy);
-      expect(other.snapshot().seed).toBe(4242);
-    } finally {
-      other.dispose();
+  it("serves with the sign the ball holds, and leaves it as it is", async () => {
+    for (const sign of [-1, 1] as const) {
+      openMatch(harness, "versus");
+      harness.pose((s) => harness.debug.setBallServeSign(s, sign));
+      harness.pose((s) => harness.debug.setBallHoldTimer(s, 0));
+      await harness.engine.advance(1);
+      expect(Math.sign(ball(harness).vy)).toBe(sign);
+      expect(ball(harness).serveSign).toBe(sign);
     }
+  });
+
+  it("draws the serve sign afresh whenever the ball is parked", () => {
+    const signs = new Set<number>();
+    for (let i = 0; i < 200 && signs.size < 2; i++) {
+      harness.pose((s) => harness.debug.spawnBall(s));
+      signs.add(ball(harness).serveSign);
+    }
+    expect(signs).toEqual(new Set([-1, 1]));
   });
 });
 
@@ -1156,7 +1158,6 @@ describe("the debug surface", () => {
     "spawnBall",
     "spawnObstacle",
     "reset",
-    "setSeed",
     "setScreen",
     "setMode",
     "setMenuIndex",
@@ -1173,6 +1174,8 @@ describe("the debug surface", () => {
     "setBallSpin",
     "setBallHeld",
     "setBallHoldTimer",
+    "setBallServeSign",
+    "drawBallServeSign",
     "setAiTracking",
     "setAiMovement",
     "setMuted",
@@ -1356,12 +1359,12 @@ describe("the debug surface", () => {
     harness.pose((s) => harness.debug.setWinner(s, "right"));
     harness.pose((s) => harness.debug.setReceiver(s, "right"));
     harness.pose((s) => harness.debug.setPaddleCy(s, "right", 200));
-    harness.pose((s) => harness.debug.setSeed(s, 99));
     harness.pose((s) => harness.debug.setBallPosition(s, 400, 300));
     harness.pose((s) => harness.debug.setBallVelocity(s, 120, -80));
     harness.pose((s) => harness.debug.setBallSpin(s, 42));
     harness.pose((s) => harness.debug.setBallHeld(s, false));
     harness.pose((s) => harness.debug.setBallHoldTimer(s, 0.25));
+    harness.pose((s) => harness.debug.setBallServeSign(s, -1));
 
     const snapshot = harness.snapshot();
     expect(snapshot.screen).toBe("paused");
@@ -1373,8 +1376,6 @@ describe("the debug surface", () => {
     expect(snapshot.winner).toBe("right");
     expect(snapshot.receiver).toBe("right");
     expect(snapshot.paddles.right.cy).toBe(200);
-    expect(snapshot.seed).toBe(99);
-    expect(snapshot.rngState).toBe(seedState(99));
     expect(snapshot.ball).toMatchObject({
       x: 400,
       y: 300,
@@ -1443,8 +1444,6 @@ describe("the debug surface", () => {
     expect(title.ball?.held).toBe(true);
     expect(title.obstacles).toHaveLength(2);
     expect(title.simTime).toBe(0);
-    expect(title.seed).toBe(DEFAULT_SEED);
-    expect(title.rngState).toBe(seedState(DEFAULT_SEED));
   });
 });
 

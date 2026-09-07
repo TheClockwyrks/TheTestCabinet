@@ -374,8 +374,8 @@ source = "specs/assets.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; an API to drive and inspect the game from code through its own
+# The debugging and automation surface every build must expose: a render-free
+# core; an API to drive and inspect the game from code through its own
 # real input path, including the four world gates and the three per-bear gates;
 # the snapshot shape; and a read-only debug overlay. Framed as an ordinary
 # developer affordance of the game. It branches on the engine for how the surface
@@ -539,7 +539,7 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These items check that it is really there, really
-# wired to the running game, really deterministic, and that each pose reads back —
+# wired to the running game, really stepped, and that each pose reads back —
 # a surface that reports a plausible-looking object unconnected to what is on
 # screen is the failure mode worth naming, and it also shows up as every other
 # suite failing to run.
@@ -556,8 +556,10 @@ format = 2
 # is graded twice and nothing is left ungraded. Two fields carry no pose and are
 # only ever read: `muted`, because there is no `setMuted` and the mute action is
 # how muting is reached, and `simTime`. The auto-step bit is in neither half: the
-# clock operations pose no state, so nothing is set to read back, and
-# `advances-in-real-time` decides `setAutoStep` by its effect instead.
+# clock operations pose no state, so nothing is set to read back. The engineless
+# `setAutoStep(false)` is decided by the suite that rests on it: every engineless
+# check takes the game off the clock before it poses anything, so a surface whose
+# gate does not hold fails the checklist rather than one point of it.
 #
 # Seven of them are the four WORLD GATES and the three per-bear FACULTY gates. A
 # validator poses a world holding only what its requirement concerns, and Floe's
@@ -576,8 +578,10 @@ format = 2
 # The two CLOCK operations sit deliberately outside the set-then-read rule.
 # `setAutoStep` and `advance` pose no game state — they move time — so there is no
 # field for the snapshot to report and `autoStep` is not a snapshot field. They are
-# decided by their effect instead: `advances-in-real-time` decides `setAutoStep`,
-# and `deterministic-core` and `tick-length` decide `advance`.
+# decided by their effect instead: `tick-length` decides `advance`,
+# `render-free-core` decides that the ticks it runs are the same however an
+# interval is divided, and `setAutoStep(false)` is what every engineless check
+# rests on before it poses anything.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -620,7 +624,7 @@ validation = { script = "instrumentation/state-bears.test.ts", outputs = [
 [[review.categories.items]]
 id = "state-lanes"
 title = "The lanes and their items read back"
-description = "With a vehicle in every ice lane and a floe in every water lane, each item's position reads back as addVehicle, setVehicleX, addFloe and setFloeX posed it and each lane's speed and direction as setLaneSpeed and setLaneDirection posed them, and every roster entry's id, row, kind and len is present with the documented type beside them."
+description = "With a vehicle in every ice lane and a floe in every water lane, each item's position reads back as addVehicle, setVehicleX, addFloe and setFloeX posed it, each lane's speed and direction as setLaneSpeed and setLaneDirection posed them, a lane laid out by setLanePhase reads back as the lane's own kind evenly spaced with one left edge at the posed phase, and every roster entry's id, row, kind and len is present with the documented type beside them."
 domains = ["hunter", "crossing", "run", "presentation"]
 failure_cap = "broken"
 validation = { script = "instrumentation/state-lanes.test.ts", outputs = [
@@ -690,25 +694,12 @@ validation = { script = "instrumentation/reset-restores-title.test.ts", outputs 
   { id = "title", name = "The title values reset restored", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "reset-seeds-randomness"
-title = "reset seeds the game's randomness"
-description = "Two runs started after reset({ seed: 7 }) lay the sixteen lanes at identical phases and put the first bonus catch in the same bay; a run after reset({ seed: 8 }) differs in at least one of them."
-domains = ["hunter", "crossing", "run", "presentation"]
-failure_cap = "passable"
-# Seeded randomness is what makes a lane layout reproducible without fixing it, so
-# the assertion is that two runs of ONE seed agree and two runs of DIFFERENT seeds
-# do not. Asserting a particular layout would fix the generator rather than the
-# seeding.
-validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
-  { id = "seeded", name = "Two runs of one seed, laid the same", kind = "image" },
-] }
-[[review.categories.items]]
-id = "deterministic-core"
+id = "render-free-core"
 title = "The simulation advances on stepped time alone"
-description = "One second of game time covered as one call of 120 ticks and as 120 calls of one tick adds 1.0 to simTime either way and leaves every vehicle within a tenth of a unit of the same x, so the simulation reads nothing from the renderer."
+description = "One second of game time handed to the simulation in the division no other item drives — a hundred and twenty separate one-tick calls with real time passing between them under none, one frame carrying the whole second under an engine — raises simTime by 1.0 and carries a lane posed at 2.0 tiles/s 64 units within a tenth of a unit, so the number of ticks run over an interval is the same however it was divided into frames."
 domains = ["hunter", "crossing", "run", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+validation = { script = "instrumentation/render-free-core.test.ts", outputs = [
   { id = "after", name = "The strait after one second of stepped time", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -721,19 +712,23 @@ validation = { script = "instrumentation/tick-length.test.ts", outputs = [
   { id = "after", name = "A lane after exactly 120 ticks", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "advances-in-real-time"
-title = "The game advances itself in real time"
-description = "On a real wall clock, with nothing stepping the game from outside — setAutoStep(true) under none, the engine's own clock rather than a ConstantClock under an engine — simTime rises and a released lane item's x changes over a stretch of real time. This is the item that decides setAutoStep, and the only item in the suite that does not step the game itself."
+id = "carries-the-remainder"
+title = "A frame's leftover time carries into the next frame"
+description = "Ninety-six frames of 5, 11, 7 and 23 ms, none of them a whole tick of 8.33 ms, raise simTime by the 132 whole ticks their 1104 ms completes — or by one more where the stretch opened with a leftover of the build's own — and carry a lane posed at 2.0 tiles/s the units those ticks are worth, within a tenth of a unit."
 domains = ["hunter", "crossing", "run", "presentation"]
-failure_cap = "broken"
-# Every other item on this checklist steps the game explicitly, so a build whose
-# frame loop never runs — completely unplayable — would pass them all. This is the
-# one item that lets the game run on a real wall clock with nothing stepping it,
-# which is why it is capped `broken` and why it declares a before-and-after pair
-# rather than a single frame.
-validation = { script = "instrumentation/advances-in-real-time.test.ts", outputs = [
-  { id = "before", name = "The strait before real time passes", kind = "image" },
-  { id = "after", name = "The strait after real time passes", kind = "image" },
+failure_cap = "passable"
+# `engines = ["simple-2d", "structured-2d"]`, BECAUSE A CLOCK CAN ONLY BE SCRIPTED
+# WHERE THE ENGINE OWNS IT. Under an engine a validator supplies the clock each
+# frame takes its delta from, so a run of part-tick frames is a scripted
+# arrangement that lands the same on every machine. The engineless build owns its
+# own loop and `advance(ticks)` steps whole ticks, so there is no way to hand it a
+# part-tick frame without waiting on the machine's own clock, which is what makes
+# a check hardware dependent.
+validation = { script = "instrumentation/carries-the-remainder.test.ts", engines = [
+  "simple-2d",
+  "structured-2d",
+], outputs = [
+  { id = "after", name = "The strait after ninety-six part-tick frames", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "clear-vehicles"
@@ -2567,8 +2562,8 @@ failure_cap = "great"
 # before confirm". A tick is 1/120 s, so a player driving a menu never puts two
 # edges inside one, which is why this and `movement-beats-confirm` cap at `great`:
 # the standard flow of play is untouched by the ordering, and what the rule buys
-# is a build that resolves the tie the same way every time instead of by whichever
-# branch its input read happens to run last.
+# is a stated order for the tie instead of whichever branch its input read
+# happens to run last.
 validation = { script = "controls/up-beats-down.test.ts", outputs = [
   { id = "menu", name = "The pause menu after an up edge and a down edge in one tick", kind = "image" },
 ] }

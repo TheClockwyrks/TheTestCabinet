@@ -39,6 +39,8 @@
 //     npx vitest run --config validation/vitest.config.ts \
 //     validation/showcase-capture.test.ts
 
+import { readdirSync, renameSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, it } from "vitest";
 import {
   ENEMY_BULLET_HALF,
@@ -249,8 +251,8 @@ class Pilot {
   intent: Intent = "hunt";
 
   /**
-   * `phase` varies a take beyond what the seed does: how patient the aim is and
-   * how readily the pilot re-tunes to hunt the other band.
+   * `phase` varies a take beyond what the game's own draws do: how patient the
+   * aim is and how readily the pilot re-tunes to hunt the other band.
    */
   constructor(
     private readonly h: Harness,
@@ -501,6 +503,33 @@ interface Take {
   endedOnBeat: boolean;
 }
 
+/**
+ * Keep the winning take's files under the committed names, and drop the rest.
+ *
+ * The harness writes each output under `$TCAB_VALIDATION_MEDIA_DIR`, in a
+ * directory named for this test file, so the take files are found by name under
+ * that root. Outside a run nothing was written and there is nothing to keep.
+ */
+function keepTake(winner: number): void {
+  const root = process.env.TCAB_VALIDATION_MEDIA_DIR;
+  if (root === undefined || root === "") return;
+  for (const entry of readdirSync(root, {
+    recursive: true,
+    withFileTypes: true,
+  })) {
+    if (!entry.isFile()) continue;
+    const match = /^take-(\d+)(-.+)?\.(json\.gz|png)$/.exec(entry.name);
+    if (match === null) continue;
+    const path = join(entry.parentPath, entry.name);
+    if (Number(match[1]) !== winner) {
+      rmSync(path);
+      continue;
+    }
+    const kept = match[2] === undefined ? "gameplay" : match[2].slice(1);
+    renameSync(path, join(entry.parentPath, `${kept}.${match[3]}`));
+  }
+}
+
 let harness: Harness;
 
 beforeEach(async () => {
@@ -515,20 +544,16 @@ it("records a gameplay clip", async () => {
   const h = harness;
 
   /**
-   * One take: reset to `seed`, open a run from the title, and fly it.
+   * One take: reset, open a run from the title, and fly it.
    *
-   * The same seed replays the identical run — the surface's own contract — so a
-   * take can be auditioned with the recorder off and then re-run under it
-   * exactly.
+   * The game draws its own dives and lays out its own wave, so no two takes play
+   * the same run and none can be played again: every take is recorded as it is
+   * auditioned, and the winner's files are the ones kept.
    */
-  const runTake = async (
-    seed: number,
-    phase: number,
-    record: boolean,
-  ): Promise<Take> => {
+  const runTake = async (slot: number, phase: number): Promise<Take> => {
     const pilot = new Pilot(h, phase);
     await pilot.releaseAll();
-    await startRunFromTitle(h, { seed });
+    await startRunFromTitle(h);
 
     const minFrames = Math.round(
       Number(process.env.TCAB_SHOWCASE_MIN_SECONDS ?? "26") * CLIP_HZ,
@@ -689,7 +714,6 @@ it("records a gameplay clip", async () => {
         (drone) => drone.phase === "formation",
       );
       if (
-        record &&
         slotted.length > stillAt &&
         after.screen === "inWave" &&
         after.phase === "live" &&
@@ -697,16 +721,18 @@ it("records a gameplay clip", async () => {
         slotted.some((drone) => drone.effectiveBand === "magenta") &&
         after.drones.some((drone) => drone.phase === "diving")
       ) {
-        await captureStill(h, "mid-wave");
+        await captureStill(h, `take-${String(slot)}-mid-wave`);
         stillAt = slotted.length;
       }
       if (
-        record &&
         process.env.TCAB_SHOWCASE_QA_STILLS === "1" &&
         frames % (CLIP_HZ * 3) < PLAN_EVERY
       ) {
         const at = Math.round(frames / (CLIP_HZ * 3));
-        await captureStill(h, `qa-${String(at).padStart(2, "0")}`);
+        await captureStill(
+          h,
+          `take-${String(slot)}-qa-${String(at).padStart(2, "0")}`,
+        );
       }
 
       // End on a settled beat: the field standing again after the shooting,
@@ -781,61 +807,59 @@ it("records a gameplay clip", async () => {
     t.maxLull * 8 +
     (t.endedOnBeat ? 14 : -14);
 
-  // Naming a take skips the audition and records that one, which is how the
-  // committed clip is reproduced and how a candidate is eyeballed with
-  // `TCAB_SHOWCASE_QA_STILLS=1` before it is chosen.
-  const pinned = process.env.TCAB_SHOWCASE_SEED;
-  let best: { seed: number; phase: number; rating: number } | null = null;
-
-  if (pinned !== undefined && pinned !== "") {
-    best = {
-      seed: Number(pinned),
-      phase: Number(process.env.TCAB_SHOWCASE_PHASE ?? "0"),
-      rating: 0,
-    };
-  } else {
-    const seeds = (process.env.TCAB_SHOWCASE_SEEDS ?? "1,2,3,5,7,11,13,17")
-      .split(",")
-      .map(Number);
-    const phases = (process.env.TCAB_SHOWCASE_PHASES ?? "0,1,2")
-      .split(",")
-      .map(Number);
-    for (const seed of seeds) {
-      for (const phase of phases) {
-        const take = await runTake(seed, phase, false);
-        const rating = judge(take);
-        console.log(
-          `take seed=${seed} phase=${phase}: ${take.seconds.toFixed(1)}s, ` +
-            `${take.kills} kill(s), ${take.absorbs} absorb(s), ` +
-            `${take.flips} flip(s), ${take.dives} dive(s), ` +
-            `${take.shells} shell(s)/${take.cores} core(s), ` +
-            `${take.inversions} inversion(s), ` +
-            `${take.discharges} discharge(s) taking up to ${take.swept}, ` +
-            `meter peaked ${take.peakResonance}, ` +
-            `${take.stagesCleared} stage(s), ${take.deaths} death(s), ` +
-            `${take.score} pts, lull ${take.maxLull.toFixed(1)}s, ` +
-            `${take.endedOnBeat ? "clean end" : "ran out"} ` +
-            `-> ${rating.toFixed(0)}`,
-        );
-        if (best === null || rating > best.rating)
-          best = { seed, phase, rating };
-      }
+  // Every take is recorded as it is played, because no take can be played
+  // again: the game draws its own dives and lays out its own wave, so a take
+  // auditioned with the recorder off would be a different run from the one the
+  // recorder then saw. Each take is written under its own name, the winner's
+  // files are then kept under the committed names, and the rest are removed.
+  const takesPerPhase = Number(process.env.TCAB_SHOWCASE_TAKES ?? "8");
+  const phases = (process.env.TCAB_SHOWCASE_PHASES ?? "0,1,2")
+    .split(",")
+    .map(Number);
+  let best: { slot: number; phase: number; rating: number; take: Take } | null =
+    null;
+  let slot = 0;
+  for (const phase of phases) {
+    for (let n = 0; n < takesPerPhase; n += 1) {
+      slot += 1;
+      const played = slot;
+      const take = await captureReplay(h, `take-${String(played)}`, () =>
+        runTake(played, phase),
+      );
+      const rating = judge(take);
+      console.log(
+        `take ${String(played)} phase=${String(phase)}: ${take.seconds.toFixed(1)}s, ` +
+          `${take.kills} kill(s), ${take.absorbs} absorb(s), ` +
+          `${take.flips} flip(s), ${take.dives} dive(s), ` +
+          `${take.shells} shell(s)/${take.cores} core(s), ` +
+          `${take.inversions} inversion(s), ` +
+          `${take.discharges} discharge(s) taking up to ${take.swept}, ` +
+          `meter peaked ${take.peakResonance}, ` +
+          `${take.stagesCleared} stage(s), ${take.deaths} death(s), ` +
+          `${take.score} pts, lull ${take.maxLull.toFixed(1)}s, ` +
+          `${take.endedOnBeat ? "clean end" : "ran out"} ` +
+          `-> ${rating.toFixed(0)}`,
+      );
+      if (best === null || rating > best.rating)
+        best = { slot: played, phase, rating, take };
     }
   }
+  if (best === null) throw new Error("no take was played");
 
-  // The winning take again, this time under the recorder.
-  console.log(`recording take seed=${best!.seed} phase=${best!.phase}`);
-  const final = await captureReplay(h, "gameplay", () =>
-    runTake(best!.seed, best!.phase, true),
-  );
-  // The title the winning take opened on, as its own still: the same seed reset
-  // to the same title screen, one frame drawn. It is taken AFTER the recorder
-  // has closed, so the clip itself is play from its first frame to its last.
-  await h.debug.reset({ seed: best!.seed });
+  console.log(`keeping take ${String(best.slot)} phase=${String(best.phase)}`);
+  keepTake(best.slot);
+  // The title screen every take opened on, as its own still: the game reset to
+  // its title, one frame drawn. It is taken AFTER the recorder has closed on the
+  // last take, so no clip carries it.
+  await h.debug.reset();
   await h.advance(1);
   await captureStill(h, "title");
 
   console.log(
-    JSON.stringify({ seed: best!.seed, phase: best!.phase, ...final }, null, 2),
+    JSON.stringify(
+      { take: best.slot, phase: best.phase, ...best.take },
+      null,
+      2,
+    ),
   );
 }, 3_600_000);

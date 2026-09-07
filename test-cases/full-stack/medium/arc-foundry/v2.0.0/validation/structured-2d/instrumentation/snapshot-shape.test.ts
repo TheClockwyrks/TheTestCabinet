@@ -154,6 +154,7 @@ const STRUCTURE_FIELDS = [
   "auraRadius",
   "auraBonus",
   "abilities",
+  "nextCrit",
 ] as const;
 
 /** Every field a `projectiles` entry carries. */
@@ -322,6 +323,10 @@ it("reports the whole documented shape off a fully posed yard", async () => {
     assertTrue(
       Array.isArray(structure.abilities),
       `${where}.abilities to be an array of names`,
+    );
+    assertTrue(
+      structure.nextCrit === null || typeof structure.nextCrit === "boolean",
+      `${where}.nextCrit to be a boolean or null`,
     );
     // The center is derived from the anchor, as `specs/yard.md` fixes it.
     const center = structureCenter(structure.col, structure.row);

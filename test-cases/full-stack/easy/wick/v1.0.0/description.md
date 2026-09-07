@@ -27,9 +27,10 @@ sprite and sheet with the asset tools, from the lamplighter's walk cycle to
 twenty-seven icons and a ground tile, produces fourteen cues and a looping
 music bed, and wires them into the game it renders.
 
-The simulation advances on a fixed tick, and every random draw comes from one
-seeded generator. A debug surface poses the night directly: spawn an enemy
-here, put this weapon in that slot at that level, move the clock to nine
-minutes. No pose decides an outcome: the hits, kills, gems, and evolutions a
-build is measured on come from stepping the real systems, so any part of the
-roster can be reached without playing a night through to it.
+The simulation advances on a fixed tick, free of the renderer and the wall
+clock. A debug surface poses the night directly: spawn an enemy here, put this
+weapon in that slot at that level, move the clock to nine minutes, land the
+next puddle there. A pose fixes only what the game would have drawn: the hits,
+kills, gems, and evolutions a build is measured on come from stepping the real
+systems, so any part of the roster can be reached without playing a night
+through to it.

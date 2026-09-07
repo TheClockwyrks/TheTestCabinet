@@ -25,14 +25,8 @@ export default defineEngineValidationConfig({
   // works from anywhere.
   root: new URL("..", import.meta.url).pathname,
   // A posed floor is advanced with `engine.advance`, so even a scenario that
-  // spends a minute of game time costs milliseconds. The ceiling is for the
-  // sweeps that release a whole wave against a maze, and for the handful of
-  // checks that spend REAL time: a question about whether time passes is measured
-  // on the build's own clock, so those hand the frame loop back and wait for the
-  // build's own clock to gain the seconds the leg names (`harness.ts`, Windows on
-  // the build's own clock). A starved loop makes such a leg take longer, never
-  // cover less, which is the other half of why the ceiling here is a ceiling on
-  // the host.
+  // spends a minute of game time costs milliseconds; the ceiling is for the
+  // sweeps that release a whole wave against a maze.
   //
   // WHAT THE WHOLE CHECKLIST COSTS HERE, MEASURED AGAINST THE CONFORMANT
   // REFERENCE. `guides/authoring/writing-debug-apis-and-validators.md` asks a

@@ -475,17 +475,27 @@ describe("a chain runs as the frames advance", () => {
   });
 
   it("reaches the same state from one long frame as from sixty short ones", async () => {
+    // The refill is posed on the columns the cascade empties, with kinds that
+    // complete no run, so the two drives are compared over a board the rules
+    // alone decide.
     const run = async (frames: number, stepMs: number): Promise<unknown> => {
       const harness = await createHarness();
       try {
-        harness.debug.reset({ seed: 7 });
-        startRound(harness);
-        harness.debug.requestSwap(0, 0, 1, 0);
+        harness.debug.setScreen("playing");
+        harness.debug.loadBoard(CASCADE);
+        harness.debug.setRefillKinds(2, "B");
+        harness.debug.setRefillKinds(3, "SMC");
+        harness.debug.setRefillKinds(4, "A");
+        harness.debug.requestSwap(
+          CASCADE_SWAP.a.col,
+          CASCADE_SWAP.a.row,
+          CASCADE_SWAP.b.col,
+          CASCADE_SWAP.b.row,
+        );
         harness.engine.setClock({ delta: () => stepMs });
         await harness.advance(frames);
         const shot = harness.debug.snapshot();
         return {
-          rngState: shot.rngState,
           score: shot.score,
           phase: shot.phase,
           board: shot.board.cells.map((cell) => `${cell.kind}${cell.strain}`),
@@ -494,7 +504,9 @@ describe("a chain runs as the frames advance", () => {
         harness.dispose();
       }
     };
-    expect(await run(1, 1000)).toEqual(await run(60, 1000 / 60));
+    const one = await run(1, 1000);
+    expect(one).toMatchObject({ phase: "idle", score: 90 });
+    expect(one).toEqual(await run(60, 1000 / 60));
   });
 
   it("ends the round when the board settles with no legal swap", async () => {
@@ -502,14 +514,14 @@ describe("a chain runs as the frames advance", () => {
     try {
       // The quiet board carries no productive swap at all, so the round ends
       // as soon as a chain settles on a refill that plants none either. The
-      // seed is the one this scenario is written against: the deal is a pure
-      // function of `rngState`, so the outcome is exact rather than likely.
-      harness.debug.reset({ seed: 1 });
-      // The screen alone, not `startRound`: opening a round deals a board, and
-      // that deal would draw `rngState` off the seed this scenario is written
-      // against before the refill below ever reads it.
+      // refill is posed on the three cells the run empties with kinds that
+      // leave the settled board barren too, so the outcome is exact rather
+      // than likely.
       harness.debug.setScreen("playing");
       harness.debug.loadBoard(ONE_RUN);
+      harness.debug.setRefillKinds(0, "R");
+      harness.debug.setRefillKinds(1, "C");
+      harness.debug.setRefillKinds(2, "J");
       harness.debug.requestSwap(
         ONE_RUN_SWAP.a.col,
         ONE_RUN_SWAP.a.row,

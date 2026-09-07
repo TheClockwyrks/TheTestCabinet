@@ -37,7 +37,7 @@
 // its operations, so they mean the same thing in every build: `addTower` costs
 // nothing and runs no placement check, `removeTower` pays no refund, a faculty
 // gate stays off until something turns it back on, and `reset` gives everything
-// back. Posing through it is how a scenario is reproducible, and it is the seam
+// back. Posing through it is how a scenario is arranged, and it is the seam
 // the case's specification documents. `surface.ts` is that specification as types,
 // and it is the only description of the surface this harness reads: the build's
 // own module for it is never imported.
@@ -82,18 +82,16 @@
 // check that is specifically about the step size — `heat.two-phase-resolution`
 // takes one frame of `1/30` s — builds its own harness with a clock of its own.
 //
-// AND IT CAN HAND THE CLOCK BACK. `createRealtimeHarness` builds one over a
-// `WallClock`, and {@link Harness.runFor} then runs the engine's own frame loop
-// for a stretch of REAL time. That is what a check about whether time passes at
-// all needs — see THE CLOCK RULE below.
+// AND NOTHING HERE READS THE WALL CLOCK. Every frame a check spends is a frame
+// it asked for, worth the milliseconds its clock answers, so the same frames land
+// on any machine and a check measures the build rather than the host it ran on
+// — see THE CLOCK RULE below.
 
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ConstantClock,
-  WallClock,
   createEngine,
-  type Clock,
   type Engine,
   type Game,
   type SurfaceMetrics,
@@ -281,7 +279,7 @@ export const TICK_MS = 1000 / TICK_HZ;
 // SAYS SO. `specs/waves.md`: every rate is per second and integrated against the
 // game time a frame advances by, so "an interval of game time reaches the same
 // state however it was divided into frames"; no fixed timestep is mandated
-// anywhere, and `instrumentation.deterministic-core` is the point that grades
+// anywhere, and `instrumentation.render-free-core` is the point that grades
 // that claim on its own. The suite's {@link TICK_HZ} is a convenience for
 // stating tolerances in ticks, not a figure any specification fixes.
 //
@@ -314,30 +312,6 @@ export function driveFrames(duration: number): number {
 /** Seconds of game time in `frames` frames of {@link DRIVE_HZ}. */
 export function driveSeconds(frames: number): number {
   return frames / DRIVE_HZ;
-}
-
-/**
- * How often {@link Harness.runUntilGain} asks whether the build's clock has got
- * there yet: ten times a second.
- *
- * Coarse enough that the poll is not competing for the same starved event loop as
- * the frame callback it is watching, and fine enough that a window closes within a
- * frame or two of the game time it asked for.
- */
-const GAIN_POLL_MS = 100;
-
-/** What a window spent on the build's own clock cost, and whether it closed. */
-export interface GainResult {
-  /** Whether the build's clock gained the seconds asked for before the deadline. */
-  reached: boolean;
-  /**
-   * The real time the window took.
-   *
-   * NOT a reading about the build — it is how busy the machine was — so no check
-   * asserts on it. It is there so a window that must be spent in real time can be
-   * given the same stretch of it a window closed on a gain needed.
-   */
-  elapsedMs: number;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -402,23 +376,11 @@ const SURFACE_REQUIREMENT =
 const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 /**
- * The clock each harness was built on, by the runtime it was handed to.
- *
- * The kit builds the runtime and the harness for the case, so the case never sees
- * the clock a caller passed — but {@link Harness.realtime} is exactly the question
- * "which clock is this". Keyed on the runtime rather than kept in a variable
- * because two harnesses may be under construction at once and a variable would
- * answer for the wrong one.
- */
-const clockOf = new WeakMap<object, Clock>();
-
-/**
  * Everything a check reads off one runtime running one build, over and above the
  * package's neutral contract.
  *
- * The three that reach PAST it are this engine's own: the state the runtime holds
- * by value, the pointer path spelled the way this project's suites spell it, and
- * the two real-time handovers THE CLOCK RULE below is measured with.
+ * The two that reach PAST it are this engine's own: the state the runtime holds
+ * by value, and the pointer path spelled the way this project's suites spell it.
  */
 interface StateModel {
   /**
@@ -426,15 +388,6 @@ interface StateModel {
    * through `debug`; nothing here can write to it.
    */
   readonly state: DeepReadonly<MeltdownState>;
-  /**
-   * Whether this harness's frames are worth the REAL time they took.
-   *
-   * False for the default `ConstantClock` harness, true for one built by
-   * {@link createRealtimeHarness}. {@link overRealWindow} reads it, so a check
-   * that measures a real window on a harness that has no real clock is told so
-   * rather than quietly measuring nothing.
-   */
-  readonly realtime: boolean;
   /**
    * Report a pointer event to the RUNTIME's own pointer input, at a logical stage
    * position.
@@ -446,38 +399,6 @@ interface StateModel {
    * event and no operation of the surface can play one.
    */
   point(type: "down" | "move" | "up", x: number, y: number): void;
-  /**
-   * HAND THE CLOCK BACK TO THE BUILD: drive the runtime's own frame loop for `ms`
-   * of REAL time, then halt it.
-   *
-   * Nothing steps the game while this runs. The loop schedules its own frames and
-   * the clock measures them, exactly as it does in a browser, so what the floor
-   * did over the window is what the floor does when a player is watching it. See
-   * THE CLOCK RULE below for when a check must use this and when `advance` is the
-   * same thing.
-   */
-  runFor(ms: number): Promise<void>;
-  /**
-   * Hand the frame loop back to the build until ITS OWN clock has gained
-   * `seconds`, and report whether it got there before `deadlineMs` of wall clock
-   * ran out.
-   *
-   * THE FORM A REAL WINDOW HAS TO TAKE TO BE REPEATABLE. {@link StateModel.runFor}
-   * spends a fixed stretch of the HOST'S clock, so what a window covers is however
-   * many frames this machine handed the loop, each worth at most the `WallClock`'s
-   * clamp; on a runner with a hundred other things on it that is a fraction of the
-   * game time the same build produces idle, and a bound read off such a window
-   * fails a conformant build for the load on the machine that scored it. Closing
-   * on `simTime` — which `specs/waves.md` says accumulates the game time every
-   * frame advances by — covers the stretch of the game it names on any machine,
-   * and takes longer on a slow one instead of covering less.
-   *
-   * Nothing steps the game: the loop is the build's own and the clock is real.
-   * What still fails is the whole of what such a window ever asked — a build
-   * whose simulation does not advance unless something steps it never gains the
-   * seconds and comes back with `reached` false.
-   */
-  runUntilGain(seconds: number, deadlineMs: number): Promise<GainResult>;
 }
 
 /**
@@ -525,7 +446,6 @@ const kit = createEngineCaseHarness<
       clock,
       surface: surface as SurfaceMetrics,
     });
-    clockOf.set(engine, clock as Clock);
     return engine;
   },
   driver: (engine, raw) =>
@@ -540,47 +460,9 @@ const kit = createEngineCaseHarness<
     get state() {
       return engine.state;
     },
-    realtime: clockOf.get(engine) instanceof WallClock,
 
     point: (type, x, y) => {
       base.pointer(`pointer${type}`, x, y);
-    },
-
-    async runFor(ms: number) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
-    },
-
-    async runUntilGain(seconds: number, deadlineMs: number) {
-      const from = base.snapshot().simTime;
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      const startedMs = Date.now();
-      let reached = false;
-      try {
-        await new Promise<void>((resolve) => {
-          const check = (): void => {
-            if (base.snapshot().simTime - from >= seconds) {
-              reached = true;
-              resolve();
-              return;
-            }
-            if (Date.now() - startedMs >= deadlineMs) {
-              resolve();
-              return;
-            }
-            setTimeout(check, GAIN_POLL_MS);
-          };
-          setTimeout(check, GAIN_POLL_MS);
-        });
-      } finally {
-        controller.abort();
-        await running;
-      }
-      return { reached, elapsedMs: Date.now() - startedMs };
     },
   }),
 });
@@ -655,31 +537,20 @@ export async function createHarness(
 
 /**
  * A harness on the {@link DRIVE_HZ} clock, for a check that needs minutes of game
- * time. Everything else about it is {@link createHarness}'s default.
+ * time. Everything else about it is {@link createHarness}'s default, except that
+ * the draw-call log is off: what these checks read is the game's state and the
+ * picture on the canvas, and recording every operation of thousands of frames
+ * costs about a third of the drive for a log none of them opens. A drive that
+ * does read the log asks for it back.
  */
 export function createDriveHarness(
   options: Omit<HarnessOptions, "clock"> = {},
 ): Promise<Harness> {
   return createHarness({
+    recordDrawCalls: false,
     ...options,
     clock: new ConstantClock(1000 / DRIVE_HZ),
   });
-}
-
-/**
- * A harness whose frames are worth the REAL time they took: the same runtime over
- * a `WallClock`, which is the clock a shipped game runs under.
- *
- * Build one for a check governed by THE CLOCK RULE below, and spend its windows
- * with {@link StateModel.runFor} or {@link overRealWindow}. `advance` still works
- * on it and still runs whole frames, but each is worth however long the call took,
- * so a check that wants an exact quantity of game time uses the default harness
- * instead.
- */
-export function createRealtimeHarness(
-  options: Omit<HarnessOptions, "clock"> = {},
-): Promise<Harness> {
-  return createHarness({ ...options, clock: new WallClock() });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1103,6 +974,18 @@ export function poseWalker(
 }
 
 /**
+ * A run of `count` vent draws through `drawVent`, in order.
+ *
+ * Each is one independent draw and poses nothing (specs/instrumentation.md), so
+ * a sampling check makes thousands of them in well under a second.
+ */
+export function drawVents(h: Harness, count: number): VentName[] {
+  const out: VentName[] = [];
+  for (let i = 0; i < count; i += 1) out.push(h.debug.drawVent());
+  return out;
+}
+
+/**
  * Box a tower in: one tower of the named type against each face named, and their
  * ids by face.
  *
@@ -1300,10 +1183,12 @@ export async function drawFrame(h: Harness): Promise<DrawCall[]> {
 //     than inside the call.
 //
 // And one item is not about pausing at all but about the clock itself —
-// `waves.game-runs-on-its-own-clock`, "with nothing stepping it, the floor
-// advances". Nothing stepping it means exactly that: {@link createRealtimeHarness}
-// and {@link overRealWindow}, which hand the clock to the build and let its own
-// loop run for a stretch of real time.
+// `waves.game-runs-on-its-own-clock`, "the game advances by the elapsed time of
+// every frame". It spends the same {@link overWindow}: the frames are the engine's
+// own, each handed to the build worth the milliseconds the suite's clock answers,
+// and the item reads whether that elapsed time reached the simulation. No window
+// in this project is spent against the wall clock, so what a check reads is the
+// same on any machine.
 //
 // The tolerances themselves are NOT here. They belong to the checks that assert
 // them, derived from the figures the specs fix — a Mote covers 60 logical units a
@@ -1318,8 +1203,6 @@ export interface Window {
   after: MeltdownSnapshot;
   /** Frames the window ran. */
   frames: number;
-  /** Real milliseconds the window spanned, for a window spent in real time. */
-  elapsedMs: number;
   /** The game time the simulation says it advanced by across the window. */
   clockGain: number;
   /** How far the unit with that id moved, in logical units. */
@@ -1333,13 +1216,11 @@ function windowOf(
   before: MeltdownSnapshot,
   after: MeltdownSnapshot,
   frames: number,
-  elapsedMs: number,
 ): Window {
   return {
     before,
     after,
     frames,
-    elapsedMs,
     clockGain: after.simTime - before.simTime,
     travel(id) {
       const from = unitOf(before, id);
@@ -1362,100 +1243,8 @@ function windowOf(
  */
 export async function overWindow(h: Harness, frames: number): Promise<Window> {
   const before = h.snapshot();
-  const startedMs = Date.now();
   await h.advance(frames);
-  return windowOf(before, h.snapshot(), frames, Date.now() - startedMs);
-}
-
-/**
- * HAND THE CLOCK BACK TO THE BUILD until ITS OWN clock has gained `seconds`,
- * bracketed the same way, and report whether it got there inside `deadlineMs`.
- *
- * THE FORM A REAL WINDOW HAS TO TAKE TO BE REPEATABLE, and what every check that
- * asserts a floor over a real window should use instead of
- * {@link overRealWindow}. Nothing steps the game either way — the engine's own
- * frame loop schedules its frames and its `WallClock` measures them — but a
- * window closed by a STOPWATCH covers however much game time this machine's
- * scheduler let the loop produce, each frame worth at most the `WallClock`'s
- * hundred-millisecond clamp. On a loaded runner that is a fraction of what the
- * same build produces idle, and a floor read off it fails a conformant build for
- * the load on the machine that scored it. Closed on `simTime` the window covers
- * the game time it names on any machine, and takes longer on a slow one instead
- * of covering less.
- *
- * `elapsedMs` and `frames` report what it cost the host, which is the host's
- * business rather than the build's; a check asserts on `reached`, on the travel
- * and on the clock gain, never on either of those.
- *
- * It needs a harness built by {@link createRealtimeHarness}, for the same reason
- * {@link overRealWindow} does, and throws where it is given one that is not.
- */
-export async function overRealGain(
-  h: Harness,
-  seconds: number,
-  deadlineMs: number,
-): Promise<Window & { reached: boolean }> {
-  if (!h.realtime) {
-    throw new Error(
-      "meltdown harness.ts: overRealGain needs a harness built by " +
-        "createRealtimeHarness, whose frames are worth the real time they " +
-        "took; on the default ConstantClock harness a real window measures " +
-        "nothing",
-    );
-  }
-  const before = h.snapshot();
-  const openedAt = h.engine.frame().count;
-  const gained = await h.runUntilGain(seconds, deadlineMs);
-  return {
-    ...windowOf(
-      before,
-      h.snapshot(),
-      h.engine.frame().count - openedAt,
-      gained.elapsedMs,
-    ),
-    reached: gained.reached,
-  };
-}
-
-/**
- * HAND THE CLOCK BACK TO THE BUILD and spend `ms` of REAL time, bracketed the same
- * way.
- *
- * Nothing steps the game: the engine's own frame loop schedules its frames and its
- * `WallClock` measures them, so what the floor did is what the floor does when a
- * player is watching. `frames` reports how many frames the loop actually got
- * through, which is the host's business rather than the build's.
- *
- * A WINDOW OF THIS SHAPE IS ONLY SAFE WHERE WHAT IS ASSERTED IS THAT SOMETHING DID
- * NOT HAPPEN — a paused floor holding still, a muted game staying silent — because
- * a host that starves the loop can only make such a window quieter. Where a check
- * asserts a FLOOR over a real window, use {@link overRealGain}, which closes on the
- * build's own clock instead of on the runner's.
- *
- * It needs a harness built by {@link createRealtimeHarness}. On a `ConstantClock`
- * harness the loop would still run, but each frame would be worth a fixed tick
- * rather than the time it took, so the window would measure nothing. That is a
- * fault in the check rather than a verdict about the build, so it throws.
- */
-export async function overRealWindow(h: Harness, ms: number): Promise<Window> {
-  if (!h.realtime) {
-    throw new Error(
-      "meltdown harness.ts: overRealWindow needs a harness built by " +
-        "createRealtimeHarness, whose frames are worth the real time they " +
-        "took; on the default ConstantClock harness a real window measures " +
-        "nothing",
-    );
-  }
-  const before = h.snapshot();
-  const openedAt = h.engine.frame().count;
-  const startedMs = Date.now();
-  await h.runFor(ms);
-  return windowOf(
-    before,
-    h.snapshot(),
-    h.engine.frame().count - openedAt,
-    Date.now() - startedMs,
-  );
+  return windowOf(before, h.snapshot(), frames);
 }
 
 /* ========================================================================== */

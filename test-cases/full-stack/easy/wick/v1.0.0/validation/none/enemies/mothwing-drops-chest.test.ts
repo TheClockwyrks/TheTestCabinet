@@ -7,7 +7,7 @@
 // `chest`. `specs/world.md` ("Pickups") states the same from the other side: a
 // `chest` is dropped by "An elite, at its position, on the tick it dies". Only
 // a common drops a gem there ("Every common enemy drops one gem"), and "Elites
-// and the Dark make no draw" for bread or a draft ("The drop roll"), so the
+// and the Dark make no roll" for bread or a draft ("The drop roll"), so the
 // tick's whole yield is the one chest.
 //
 // THE POSE. An isolated night holding nothing but the lamplighter, one

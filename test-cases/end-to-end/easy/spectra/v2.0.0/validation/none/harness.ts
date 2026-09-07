@@ -54,9 +54,9 @@
 // takes the game off real time and `advance(seconds, frames)` runs whole frames
 // of a chosen length. Every harness opens by taking the game off the clock, so a
 // check asks for a number of frames and gets exactly that number — no polling, no
-// waiting, and no measurement of the machine it ran on. The one check that is
-// ABOUT the loop running itself (`instrumentation/advances-in-real-time`) hands it
-// back with {@link Harness.runUntil}.
+// waiting, and no measurement of the machine it ran on. Nothing in this project
+// hands the loop back: what the build does with a second of real time is a fact
+// about the host it ran on rather than about the build.
 //
 // EVERYTHING CROSSING INTO THE PAGE IS ASYNC. That is the whole of the difference
 // between a suite here and its counterpart under an engine: `await h.snapshot()`
@@ -416,7 +416,7 @@ export interface MenuRect {
 
 /** The operations a check poses the game through. Every one crosses into the page. */
 export interface SpectraDebugApi {
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<SpectraSnapshot>;
   menuItemRect(index: number): Promise<MenuRect | null>;
 
@@ -508,9 +508,9 @@ export type SurfaceCall = PackageSurfaceCall<
 // fixes none: `specs/simulation.md` mandates no fixed timestep, every rate is per
 // second and integrated against the elapsed time of the frame, and a frame
 // divides into whole sub-steps of at most `SUBSTEP_MAX` itself. So a build must
-// reach the same place however that time was divided, and the check that is ABOUT
-// the division (`instrumentation/deterministic-core`) drives the same second as
-// one frame, as sixty and as a hundred and twenty.
+// resolve the same rules however that time was divided, and the check that is
+// ABOUT the division (`instrumentation/elapsed-time-steps`) drives the same second
+// as one frame, as sixty and as a hundred and twenty.
 //
 // The default is a steady 100 Hz, for one reason: every duration `specs/` fixes
 // is then a whole number of frames. `FIRE_INTERVAL` 0.16 s is 16, `FLIP_LOCKOUT`
@@ -706,16 +706,13 @@ type PackageHarness = BaseHarness<
  *  - `skipUntil` is the coarse sweep that goes with it — bounded in seconds,
  *    polled in seconds, and answering the seconds it covered — where the
  *    package's is the frame-denominated sweep over `skip`.
- *  - `runUntil` answers the STATE that ended the wait, which is what every call
- *    site here reads; the package's answers a record carrying it beside how long
- *    the loop ran.
  *
  * `holdFor` takes one key or several, because a check about two controls held
  * together is a check about a build that reads its keyboard once per frame.
  */
 export interface Harness extends Omit<
   PackageHarness,
-  "holdFor" | "runUntil" | "skip" | "skipUntil"
+  "holdFor" | "skip" | "skipUntil"
 > {
   /**
    * Run several of the build's surface operations, in order, in ONE crossing,
@@ -749,22 +746,6 @@ export interface Harness extends Omit<
     predicate: (snapshot: SpectraSnapshot) => boolean,
     options?: SkipOptions,
   ): Promise<SkipResult>;
-  /**
-   * Hand the game back to its own frame loop until `predicate` holds of what the
-   * build reports, then take it back, and hand over the state that ended it.
-   *
-   * The wait a point about the build's own clock runs. Real time passes and
-   * nothing steps the game, but what ends the wait is the build's own reading
-   * rather than a stretch of the wall clock: how many frames a browser delivers
-   * in a given second is a fact about the machine, so a host running a hundred
-   * other jobs makes this wait longer instead of making the build look stopped.
-   * `deadlineMs` bounds it, and a build whose loop never runs reaches that bound
-   * with the predicate still false.
-   */
-  runUntil(
-    predicate: (snapshot: SpectraSnapshot) => boolean,
-    options?: { deadlineMs?: number; pollMs?: number },
-  ): Promise<SpectraSnapshot>;
   /** Hold one or more keys down for `frames` frames, then release them all. */
   holdFor(codes: string | readonly string[], frames: number): Promise<void>;
 }
@@ -790,17 +771,16 @@ export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
   const base = await kit.createHarness(options);
-  // TAKEN BEFORE THE OVERRIDES GO ON, because they go on THIS object: `runUntil`
-  // below is laid over the member it is built out of, and reading it back
-  // through `base` afterwards would reach the override rather than the package's
-  // own watch. The others are held the same way so no later edit can introduce
-  // the same loop by adding one more override.
+  // TAKEN BEFORE THE OVERRIDES GO ON, because they go on THIS object: `skip`
+  // and `skipUntil` below are laid over the members they are built out of, and
+  // reading one back through `base` afterwards would reach the override rather
+  // than the package's own. The others are held the same way so no later edit
+  // can introduce the same loop by adding one more override.
   const driven = {
     advance: base.advance.bind(base),
     arrange: base.arrange.bind(base),
     hold: base.hold.bind(base),
     release: base.release.bind(base),
-    runUntil: base.runUntil.bind(base),
     skipSeconds: base.skipSeconds.bind(base),
     snapshot: base.snapshot.bind(base),
   };
@@ -835,17 +815,6 @@ export async function createHarness(
       }
       return { hit: false, elapsed, snapshot };
     },
-
-    runUntil: async (
-      predicate: (snapshot: SpectraSnapshot) => boolean,
-      runOptions: { deadlineMs?: number; pollMs?: number } = {},
-    ): Promise<SpectraSnapshot> =>
-      (
-        await driven.runUntil(predicate, {
-          timeoutMs: runOptions.deadlineMs,
-          pollMs: runOptions.pollMs,
-        })
-      ).snapshot,
 
     holdFor: async (
       codes: string | readonly string[],
@@ -2048,6 +2017,35 @@ export async function startStage(h: Harness, n: number): Promise<void> {
 }
 
 /**
+ * Stand the wave the game built where its entrance ends: every drone at its own
+ * slot, in phase `formation`, with the entry gate shut behind it.
+ *
+ * For the items whose requirement is the ASSEMBLED block the build laid out — its
+ * composition, its symmetry, the bands it holds — and not the entrance that
+ * assembles it. Every drone reports the slot it is bound for from the moment the
+ * wave is built (specs/swarm.md, specs/instrumentation.md), and a drone in phase
+ * `formation` sits at that slot plus the sway, so posing each drone there is the
+ * state its entrance would leave it in, reached without flying the twelve seconds
+ * `swarm/assembles` grades. Nothing about the roster is touched: which drones the
+ * wave holds, their kinds, their stored bands and their slots are all still the
+ * build's. The entry gate is shut so the wave's own release schedule cannot send a
+ * drone back out on its way in.
+ *
+ * Call it after {@link startStage}. It poses, in one crossing, and returns; it
+ * runs no frame.
+ */
+export async function settleWave(h: Harness): Promise<void> {
+  const built = await h.snapshot();
+  await h.pose([
+    ["setWaveEntry", false],
+    ...built.drones.flatMap((drone): SurfaceCall[] => [
+      ["setDronePhase", drone.id, "formation"],
+      ["setDronePosition", drone.id, drone.slotX, drone.slotY],
+    ]),
+  ]);
+}
+
+/**
  * Open a run the way a player does: from a reset title, confirm the highlighted
  * first item, the mode entry.
  *
@@ -2057,11 +2055,8 @@ export async function startStage(h: Harness, n: number): Promise<void> {
  * `reset` is the surface's own, and the rest is a real key through Chromium's
  * input pipeline.
  */
-export async function startRunFromTitle(
-  h: Harness,
-  options: { seed?: number } = {},
-): Promise<void> {
-  await h.debug.reset(options.seed === undefined ? undefined : options);
+export async function startRunFromTitle(h: Harness): Promise<void> {
+  await h.debug.reset();
   await h.debug.setMenuIndex(0);
   await h.tap("Enter");
   await h.advance(1);

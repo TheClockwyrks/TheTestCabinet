@@ -50,17 +50,17 @@ export const LIVE_FACULTIES: readonly SwitchName[] = [
 ];
 
 /** The moth's spawn point: 300 units right of the lamplighter, walking in. */
-const MOTH_X = 300;
-const MOTH_Y = 0;
+export const MOTH_X = 300;
+export const MOTH_Y = 0;
 
 /** The moth's contact cooldown, posed mid-count so a tick would lower it. */
 const MOTH_CONTACT_COOLDOWN = 0.4;
 
 /** The bolt: left and below the lamplighter, flying straight up. */
-const BOLT_X = -100;
-const BOLT_Y = 100;
-const BOLT_VX = 0;
-const BOLT_VY = -200;
+export const BOLT_X = -100;
+export const BOLT_Y = 100;
+export const BOLT_VX = 0;
+export const BOLT_VY = -200;
 const BOLT_PIERCE = 0;
 
 /** The puddle, off to the upper right where nothing touches it. */
@@ -79,8 +79,6 @@ const TAPER_TIMER = 1.0;
 
 /** What {@link poseLiveNight} arranges. */
 export interface LiveNightOptions {
-  /** The seed the isolated night's reset is given. Defaults to the harness's. */
-  seed?: number;
   /** The faculties to run under. Defaults to {@link LIVE_FACULTIES}. */
   on?: readonly SwitchName[];
 }
@@ -98,10 +96,7 @@ export async function poseLiveNight(
   h: Harness,
   options: LiveNightOptions = {},
 ): Promise<WickSnapshot> {
-  await isolate(h, {
-    seed: options.seed,
-    on: options.on ?? LIVE_FACULTIES,
-  });
+  await isolate(h, { on: options.on ?? LIVE_FACULTIES });
   const slot = await holdWeapon(h, "taper");
   await h.debug.setWeaponCooldown(slot, TAPER_TIMER);
   const moth = await placeEnemy(h, "moth", MOTH_X, MOTH_Y);

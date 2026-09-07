@@ -252,17 +252,14 @@ export function autoMove(
 }
 
 /**
- * Deal a fresh game from a full deck shuffled from the seeded generator.
+ * Deal a fresh game from a full deck shuffled uniformly at random.
  *
  * It replaces the contents of all thirteen piles, empties the waste's set memory,
  * sets `launched` to `0`, and clears the painted table, which is what a new deal
  * does (specs/deal.md). It changes no other field, the screen included.
  */
 export function deal(state: CascadeState): void {
-  const deck = shuffle(
-    makeDeck(() => takeId(state)),
-    state,
-  );
+  const deck = shuffle(makeDeck(() => takeId(state)));
   clearTable(state);
 
   let cursor = 0;

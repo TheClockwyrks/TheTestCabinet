@@ -25,7 +25,6 @@ import {
   CELLS,
   CHAIN_RESET,
   CHARGE_IDS,
-  DEFAULT_SEED,
   LEVEL_COUNT,
   MACHINERY_KINDS,
   PATH_LENGTH,
@@ -132,7 +131,8 @@ export interface VoluteSnapshot {
   autoStep: boolean;
   muted: boolean;
   simTime: number;
-  rngState: number;
+  /** The charge posed for the next emission, and `null` while none stands. */
+  nextEmitted: ChargeId | null;
 }
 
 /** The surface `window.__volute` carries. */
@@ -140,7 +140,7 @@ export interface VoluteDebugApi {
   version: number;
   setAutoStep(enabled: boolean): void;
   step(ticks?: number): void;
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): VoluteSnapshot;
   setScreen(name: string): void;
   setLevel(level: number): void;
@@ -152,6 +152,7 @@ export interface VoluteDebugApi {
   clearTrain(): void;
   setLoaded(charge: string): void;
   setQueued(charge: string): void;
+  setNextEmitted(charge: string | null): void;
   setAim(angleDegrees: number): void;
   fire(): void;
   setPressure(value: number): void;
@@ -168,6 +169,11 @@ function asCharge(value: unknown): ChargeId {
   return CHARGE_IDS.includes(value as ChargeId)
     ? (value as ChargeId)
     : CHARGE_IDS[0];
+}
+
+/** A charge id, or `null` when the argument names none. */
+function asChargeOrNull(value: unknown): ChargeId | null {
+  return CHARGE_IDS.includes(value as ChargeId) ? (value as ChargeId) : null;
 }
 
 /** A machinery kind, or `null` when the argument names none. */
@@ -227,7 +233,7 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      * tick followed by a render.
      *
      * Stepping while the game is still stepping automatically ADDS to what the wall
-     * clock is already doing, so a scenario that must be reproducible calls
+     * clock is already doing, so a scenario driven from code calls
      * `setAutoStep(false)` first.
      */
     step(ticks = 1) {
@@ -235,8 +241,7 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
     },
 
     /**
-     * Restore every declared field to its title-screen value and reseed the
-     * generator.
+     * Restore every declared field to its title-screen value.
      *
      * `muted` is deliberately untouched: muting is a player preference the runtime
      * owns, and a reset is not a reason to start making noise again. Whether the
@@ -244,9 +249,8 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
      * said, and a driver resetting mid-scenario means to re-pose the hall, not to
      * hand it back to real time.
      */
-    reset(options) {
+    reset() {
       toTitle(state);
-      state.rngState = asNumber(options?.seed, DEFAULT_SEED) >>> 0;
       host.clearEffects();
     },
 
@@ -346,14 +350,26 @@ export function createDebugApi(host: DebugHost): VoluteDebugApi {
       state.projectiles = [];
     },
 
-    /** Set the charge the injector holds loaded. The generator is untouched. */
+    /** Set the charge the injector holds loaded, and nothing else. */
     setLoaded(charge) {
       state.loaded = asCharge(charge);
     },
 
-    /** Set the charge the injector holds queued. The generator is untouched. */
+    /** Set the charge the injector holds queued, and nothing else. */
     setQueued(charge) {
       state.queued = asCharge(charge);
+    },
+
+    /**
+     * Pose the charge of the next core the inlet emits, or clear the pose with
+     * `null`.
+     *
+     * The next emission carries it in place of the draw, whatever the channel
+     * holds, and consumes it; the inlet's gate, the quota and the mark cadence
+     * are untouched, so a posed charge waits behind a held inlet.
+     */
+    setNextEmitted(charge) {
+      state.nextEmitted = asChargeOrNull(charge);
     },
 
     /** Set the aim, normalized into `[0, 360)`, and do nothing else. */
@@ -511,7 +527,7 @@ export function snapshot(state: VoluteState): VoluteSnapshot {
     autoStep: state.autoStep,
     muted: state.muted,
     simTime: state.simTime,
-    rngState: state.rngState >>> 0,
+    nextEmitted: state.nextEmitted,
   };
 }
 

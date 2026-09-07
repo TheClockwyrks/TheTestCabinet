@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 it("returns to the grid from a press and release on the back control", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await startCampaign(h);
 
   const cell = targetCenter(targetById(h.snapshot(), "board-1"));

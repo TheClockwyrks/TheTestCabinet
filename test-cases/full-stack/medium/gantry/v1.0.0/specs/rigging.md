@@ -112,9 +112,3 @@ If any test fails, the load is dropped and `lost`, and the run ends as
 `release-misplaced`. `release` with nothing attached ends the run the same
 way. What a dropped load does on screen is presentation; the verdict is
 already decided.
-
-## Determinism
-
-The rigging has no randomness and reads nothing but the pivot, the hoist
-length, and its own state, so a tape replayed over the same structure produces
-the same swing, the same tensions, and the same verdicts, tick for tick.

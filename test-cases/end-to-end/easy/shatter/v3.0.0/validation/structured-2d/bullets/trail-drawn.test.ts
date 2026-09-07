@@ -10,11 +10,10 @@
 //
 // WHAT IS READ. A round is flown along an empty lane at `MUZZLE_SPEED` for long
 // enough to have a full `TRAIL_TICKS` of history behind it, and the band of
-// device rows along that lane is compared against the same band of the same
-// seeded game flown without the round (lane.ts sets out why the control is a
-// second flight rather than a second reading). Two numbers come out: how far the
-// changed columns run BACK from the round along its travel, and how far they run
-// FORWARD.
+// device rows along that lane is compared against the same band with that round
+// taken off the field (lane.ts sets out why the control is the round's removal
+// rather than a second reading). Two numbers come out: how far the changed
+// columns run BACK from the round along its travel, and how far they run FORWARD.
 //
 // THE TWO BOUNDS, AND WHAT EACH RULES OUT.
 //
@@ -31,6 +30,14 @@
 //   comfortably inside it and a build that draws its streak symmetrically about
 //   the round, or on the wrong side, reads the whole span and fails.
 //
+// TWO THRESHOLDS, ONE FOR EACH DIRECTION. The reading behind is a claim that
+// something was drawn, and a column counts once it moved by `LIT`, a floor any
+// drawing at all clears. The reading ahead is a claim that nothing was drawn,
+// and what the build paints on its empty field by itself — a twinkling backdrop,
+// a dithered vignette — is legal appearance that could otherwise read as ink
+// ahead of the round. So that claim is held to the band's own measured unrest
+// (lane.ts, `absenceBound`), or to `LIT` where the band is still.
+//
 // THE LANE IS THE BOTTOM OF THE FIELD, `330` units below the star. Nothing of the
 // star is drawn beyond `1.5 x HALO_R` (`180`) (specs/field.md), so no part of it
 // reaches the band; the ship stands at the safe point `130` units above it and
@@ -41,8 +48,8 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { BULLET_R, MUZZLE_SPEED, TICK_DT, TRAIL_TICKS } from "../constants";
 import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
-import { captureStill, createHarness, type Harness } from "../harness";
-import { reachAlong, trailLane, type ReachOptions } from "./lane";
+import { createHarness, type Harness } from "../harness";
+import { absenceBound, reachAlong, trailLane, type ReachOptions } from "./lane";
 
 /** The lane the round is flown along, and how deep the band read along it is. */
 const LANE_Y = 690;
@@ -100,16 +107,21 @@ afterEach(() => {
 });
 
 it("draws a streak behind a moving round and not ahead of it", async () => {
-  const { pair, round, map } = await trailLane(
+  // The tail drawn behind a moving round.
+  const reading = await trailLane(
     h,
     { y: LANE_Y, halfHeight: LANE_HALF },
     { x: START_X, speed: SPEED, ticks: FLIGHT_TICKS },
+    "trail",
   );
-  // The tail drawn behind a moving round.
-  captureStill(h, "trail");
+  const { pair, round, map } = reading;
+  const still = absenceBound(reading, LIT);
 
   const behind = reachAlong(map, pair, round.x, -1, WALK);
-  const ahead = reachAlong(map, pair, round.x, 1, WALK);
+  const ahead = reachAlong(map, pair, round.x, 1, {
+    ...WALK,
+    threshold: still,
+  });
 
   assertGreaterThanOrEqual(
     behind,
@@ -118,7 +130,8 @@ it("draws a streak behind a moving round and not ahead of it", async () => {
       `units behind a round travelling at ${SPEED} units per second — a third ` +
       `of the ${SPAN.toFixed(1)} units of travel TRAIL_TICKS (${TRAIL_TICKS}) ` +
       `ticks cover at that speed (specs/weapons.md); measured as the run of ` +
-      `columns this flight changed against the same flight without the round`,
+      `columns the round's drawing changed against the same band with the ` +
+      `round taken off the field`,
   );
   assertLessThanOrEqual(
     ahead,
@@ -126,7 +139,9 @@ it("draws a streak behind a moving round and not ahead of it", async () => {
     `nothing drawn more than ${HEAD_ALLOWANCE} units AHEAD of the round along ` +
       `its travel — over six times BULLET_R (${BULLET_R}), which is room for ` +
       `the round's own disc and the stroke that meets it (specs/weapons.md: the ` +
-      `tail is BEHIND the bullet); the streak behind it read ` +
+      `tail is BEHIND the bullet); a column counts as drawn past ` +
+      `${still.toFixed(1)} of 441, the band's own idle unrest read ` +
+      `${reading.spread.toFixed(1)}, and the streak behind the round read ` +
       `${behind.toFixed(1)} units`,
   );
 });

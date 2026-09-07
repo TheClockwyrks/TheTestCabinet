@@ -222,22 +222,21 @@ export const POD_KINDS = [
 export type PodKind = (typeof POD_KINDS)[number];
 
 /**
- * The pod draw. Each destruction takes the stream's next value `u1`; at
- * `u1 < POD_DROP_CHANCE` it sheds a pod and takes a second value `u2` for the
- * kind: the first row whose `upTo` exceeds `u2` wins, so the rows are the
- * cumulative table of `specs/pods.md` in its order.
+ * The pod draw. Each destruction sheds one pod with probability
+ * `POD_DROP_CHANCE` and nothing otherwise; a shed pod's kind is drawn with the
+ * probabilities of `POD_KIND_TABLE`, the table of `specs/pods.md` in its order.
  */
 export const POD_DROP_CHANCE = 0.25;
 
 export const POD_KIND_TABLE: readonly {
   readonly kind: PodKind;
-  readonly upTo: number;
+  readonly probability: number;
 }[] = [
-  { kind: "widen", upTo: 0.25 },
-  { kind: "multiball", upTo: 0.45 },
-  { kind: "shield", upTo: 0.65 },
-  { kind: "pierce", upTo: 0.8 },
-  { kind: "narrow", upTo: 1 },
+  { kind: "widen", probability: 0.25 },
+  { kind: "multiball", probability: 0.2 },
+  { kind: "shield", probability: 0.2 },
+  { kind: "pierce", probability: 0.15 },
+  { kind: "narrow", probability: 0.2 },
 ];
 
 /** How fast a pod falls radially inward, in units/second. */
@@ -441,11 +440,6 @@ export const BED_PATHS = {
 
 /** The least each bed runs before looping seamlessly, in seconds. */
 export const MUSIC_MIN_SECONDS = 12;
-
-// ---- Debug surface (specs/instrumentation.md) ----------------------------
-
-/** The seed `reset` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
 
 // ---- The level and the actor tags (specs/overview.md) --------------------
 

@@ -94,6 +94,17 @@ export function advanceFlyers(state: CascadeState, dt: number): void {
 }
 
 /**
+ * One launch's `vx`: a magnitude drawn uniformly from its range and a sign
+ * chosen with equal probability, each afresh at the call.
+ */
+export function drawLaunchVx(): number {
+  const magnitude =
+    LAUNCH_VX_MIN + nextFloat() * (LAUNCH_VX_MAX - LAUNCH_VX_MIN);
+  const sign = nextFloat() < 0.5 ? -1 : 1;
+  return sign * magnitude;
+}
+
+/**
  * Launch the next card: the current top card of the foundation whose turn it
  * is, skipping a foundation that has been emptied.
  *
@@ -105,11 +116,6 @@ export function launchNext(state: CascadeState): boolean {
     const foundation = state.foundations[index];
     const card = foundation.pop();
     if (card === undefined) continue;
-    // The magnitude is drawn uniformly from its range and the sign with equal
-    // probability, both from the game's seeded generator.
-    const magnitude =
-      LAUNCH_VX_MIN + nextFloat(state) * (LAUNCH_VX_MAX - LAUNCH_VX_MIN);
-    const sign = nextFloat(state) < 0.5 ? -1 : 1;
     const flyer: Flyer = {
       // A card that launches keeps the id it carried on the table.
       id: card.id,
@@ -117,7 +123,7 @@ export function launchNext(state: CascadeState): boolean {
       rank: card.rank,
       x: FOUNDATION_X[index],
       y: TOP_ROW_Y,
-      vx: sign * magnitude,
+      vx: drawLaunchVx(),
       vy: LAUNCH_VY,
     };
     state.flyers.push(flyer);

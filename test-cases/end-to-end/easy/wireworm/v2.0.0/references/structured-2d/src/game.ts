@@ -30,7 +30,7 @@
 import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { defineCues, noCues, playCues } from "./audio";
-import { DEFAULT_SEED, LEVELS, START_LIVES } from "./constants";
+import { LEVELS, START_LIVES } from "./constants";
 import { WirewormController } from "./controller";
 import { createDebugApi, type WirewormDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -63,6 +63,8 @@ export type Screen =
 export type Phase = "banner" | "active" | "respawn";
 
 export type FoeKind = "glitch" | "dropper" | "corruptor";
+
+export type Edge = "left" | "right";
 
 export interface Tile {
   c: number;
@@ -170,11 +172,14 @@ export class WirewormState extends BoardStateBase {
   glitchTimer = 0;
   corruptorTimer = 0;
   dropperTimer = 0;
+  nextWormEntry: Edge | null = null;
+  nextGlitchEntry: Tile | null = null;
+  nextDropperEntry: Tile | null = null;
+  nextCorruptorEntry: Tile | null = null;
 
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 
   /**
    * Where each pointer's current press began.

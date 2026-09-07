@@ -3,7 +3,7 @@
 //
 // THE RULE. "Audio belongs to the frames. A pose changes the state alone and
 // SOUNDS NOTHING, the pointer operations included; the cues a scenario hears come
-// from the frames advanced after it" (`specs/instrumentation.md`, A deterministic
+// from the frames advanced after it" (`specs/instrumentation.md`, A render-free
 // core). `startRun()` is a row of that surface's run group — "Runs the game's
 // run-start sequence of `specs/simulation.md`: every arm and wheel at its rest
 // pose holding nothing, every wheel's six fixtures placed, the settle, `sim.cycle`

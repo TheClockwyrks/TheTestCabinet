@@ -7,20 +7,23 @@
 // cascade/cascade-back-to-title's point; here the subject is what the NEXT run
 // starts from.
 //
-// To make the freshness observable, one board is really solved first, so the
-// count being abandoned is 1 rather than the 0 a fresh sequence would show
-// anyway. Every step is the player's own: the solve is the spec-derived
-// solver's beams drawn through the pointer operations, NEXT BOARD and the re-
-// entry go through the registered actions, and `back` is the real Escape edge.
+// To make the freshness observable, the run being abandoned is posed at five
+// solves through `setSolvedCount` and `setTier` (specs/instrumentation.md), so
+// it stands at solvedCount 5 and tier 2 rather than the 0 and 1 a fresh
+// sequence would show anyway. The board it is left on is posed through
+// `loadBoard`, a board like any other; the re-entry goes through the
+// registered actions, and `back` is the real Escape edge.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
+import { GEO_3X3 } from "../fixtures";
+import { TIER_ADVANCE, tierForSolvedCount } from "../notation";
 import {
   captureStill,
   createHarness,
+  loadBoard,
+  poseCascadeRun,
   resetTo,
-  solveGenerated,
-  startCascade,
   tapAction,
   type Harness,
 } from "../harness";
@@ -36,17 +39,20 @@ afterEach(() => {
 });
 
 it("re-entering after a back starts from solvedCount 0 and tier 1", async () => {
-  await resetTo(h, 1);
-  await startCascade(h);
-
-  // One real solve, then NEXT BOARD, so the sequence being abandoned holds
-  // progress a fresh one cannot.
-  await solveGenerated(h, 1);
-  await tapAction(h, "confirm"); // NEXT BOARD (specs/modes/cascade.md)
+  await resetTo(h);
+  poseCascadeRun(h, TIER_ADVANCE);
+  await loadBoard(h, GEO_3X3);
+  const abandoned = h.snapshot();
+  assertEqual(abandoned.screen, "playing", "precondition: a board in play");
   assertEqual(
-    h.snapshot().solvedCount,
-    1,
-    "one board is recorded solved before backing out (precondition)",
+    abandoned.solvedCount,
+    TIER_ADVANCE,
+    "five boards are recorded solved before backing out (precondition)",
+  );
+  assertEqual(
+    abandoned.tier,
+    tierForSolvedCount(TIER_ADVANCE),
+    "the run being abandoned has climbed past tier 1 (precondition)",
   );
 
   await tapAction(h, "back");

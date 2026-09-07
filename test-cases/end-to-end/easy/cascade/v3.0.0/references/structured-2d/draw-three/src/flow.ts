@@ -6,7 +6,7 @@
 // place.
 
 import type { FrameEvents } from "./audio";
-import { DEFAULT_SEED, TABLEAU_COLUMNS } from "./constants";
+import { TABLEAU_COLUMNS } from "./constants";
 import { clearTrail, dealGame } from "./deal";
 import type { CascadeState } from "./game";
 import { wrapMenuIndex } from "./menus";
@@ -16,7 +16,7 @@ import { wrapMenuIndex } from "./menus";
  * `specs/instrumentation.md`). `muted` is left exactly as it stands, because
  * muting is a player preference the runtime owns.
  */
-export function resetState(state: CascadeState, seed: number): void {
+export function resetState(state: CascadeState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.titleIndex = 0;
@@ -45,7 +45,6 @@ export function resetState(state: CascadeState, seed: number): void {
 
   state.nextId = 1;
   state.simTime = 0;
-  state.rngState = Number.isFinite(seed) ? seed : DEFAULT_SEED;
 }
 
 /** Put the cascade away: nothing in flight, nothing accumulated, nothing finished. */

@@ -1,5 +1,5 @@
 /**
- * solver.ts — a bounded, deterministic solver for Refract boards.
+ * solver.ts — a bounded solver for Refract boards, fixed in its search order.
  *
  * Given a Board, finds one beam per channel present such that every rule in
  * specs/beams.md holds: each beam is built move-by-move under the limits
@@ -27,7 +27,7 @@
  *     charges (R8 requires all charges spent).
  *
  * The search is capped by an explicit node-expansion budget; iteration orders
- * are fixed (row-major), so the result is deterministic.
+ * are fixed (row-major), so the same board always gets the same answer.
  */
 
 import type { Board, BoardNode, Channel } from "./notation";
@@ -101,7 +101,7 @@ export function solve(board: Board, opts: SolveOptions = {}): SolveResult {
 
   // Per-channel adjacency over the nodes that channel's beam may meet (its own
   // emitters and lenses, and any crystal — R2 excludes the rest). Neighbor
-  // lists are row-major sorted for determinism.
+  // lists are row-major sorted, so the search order is fixed.
   const usableBy = (ch: Channel, n: BoardNode): boolean =>
     n.kind === "crystal" || n.channel === ch;
   const adjByChannel = new Map<Channel, Map<string, BoardNode[]>>();
@@ -141,7 +141,7 @@ export function solve(board: Board, opts: SolveOptions = {}): SolveResult {
   }
 
   // Most-constrained-first: channels with more lenses first; CHANNELS order
-  // breaks ties. Deterministic.
+  // breaks ties, so the order is fixed.
   const order = [...present].sort(
     (a, b) =>
       (lensesByChannel.get(b)?.length ?? 0) -
@@ -343,8 +343,8 @@ export function solve(board: Board, opts: SolveOptions = {}): SolveResult {
     // A channel with no lenses and directly adjacent emitters still runs
     // through dfs (the single segment e1->e2). A path exists from e1 to e2 iff
     // it exists reversed, and every constraint is symmetric, so one direction
-    // suffices; starting from the row-major-first emitter keeps it
-    // deterministic.
+    // suffices; starting from the row-major-first emitter keeps the order
+    // fixed.
     if (!feasible(e1)) return false;
     return dfs(e1);
   };

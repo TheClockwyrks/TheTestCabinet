@@ -13,7 +13,6 @@
 import {
   BITE_SECONDS,
   CUES,
-  DEFAULT_SEED,
   TICK_SECONDS,
   type Cue,
   type Dir,
@@ -117,9 +116,9 @@ export class Game {
    */
   private pressedItem: number | null = null;
 
-  constructor(audio: AudioBus, seed: number = DEFAULT_SEED) {
+  constructor(audio: AudioBus) {
     this.audio = audio;
-    this.sim = new Sim(seed);
+    this.sim = new Sim();
     this.muted = audio.muted;
   }
 
@@ -172,10 +171,10 @@ export class Game {
     return 1 + Math.min(2, Math.floor((spent / BITE_SECONDS) * 3));
   }
 
-  /** Return the whole session to its opening values, and reseed the generator. */
-  reset(seed: number): void {
+  /** Return the whole session to its opening values. */
+  reset(): void {
     this.audio.stopLoop(CUES.music);
-    this.sim.restore(seed);
+    this.sim.restore();
     this.screen = "title";
     this.menuIndex = 0;
     this.titleIndex = 0;

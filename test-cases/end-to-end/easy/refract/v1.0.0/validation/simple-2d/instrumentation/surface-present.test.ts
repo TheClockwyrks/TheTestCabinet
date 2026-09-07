@@ -12,8 +12,8 @@
 // TWO HALVES, AND BOTH ARE THE BUILD'S. The first is presence: `version`
 // reports REFRACT_DEBUG_VERSION (2), and every operation the rendered
 // specification names for an engine build — reset, snapshot, setMode,
-// setScreen, setMenuIndex, loadBoard, the three pointer operations, and clear
-// — is a function on the surface. `setAutoStep` and `advance` are NOT demanded: the clock is
+// setScreen, setMenuIndex, setSolvedCount, setTier, generateBoard, loadBoard,
+// the three pointer operations, and clear — is a function on the surface. `setAutoStep` and `advance` are NOT demanded: the clock is
 // the engine's under this engine, and the specification gives those two
 // operations to the engineless build alone.
 //
@@ -80,7 +80,7 @@ it("carries the version and every specified operation, as functions", () => {
 });
 
 it("is live: loadBoard poses a board, trace draws on it, and both the snapshot and the canvas change", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_3X3);
 
   // The posed board is the one the snapshot reports: the same cells, kinds,

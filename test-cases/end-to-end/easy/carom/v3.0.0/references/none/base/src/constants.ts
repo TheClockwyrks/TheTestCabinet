@@ -187,6 +187,3 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 
 /** The surface's version, reported as `version` and bumped when it changes. */
 export const CAROM_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;

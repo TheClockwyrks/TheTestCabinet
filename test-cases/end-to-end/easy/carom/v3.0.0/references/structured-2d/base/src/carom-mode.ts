@@ -360,10 +360,9 @@ export class CaromMode extends GameMode {
   private serve(ball: Ball): void {
     const state = this.state;
     const dir = state.receiver === "left" ? -1 : 1;
-    // The SIGN of the serve's vertical component is the one draw this game
-    // makes from its seeded generator, kept on the instance so a reseeded
-    // replay crosses the level transition a match opens with.
-    const sign = state.game.drawServeSign();
+    // The SIGN of the serve's vertical component is the ball's own, drawn when
+    // it was parked or posed since, and the serve leaves it as it is.
+    const sign = ball.serveSign;
     ball.holdTimer = 0;
     ball.held = false;
     ball.trail = [];
@@ -489,7 +488,7 @@ export class TitleLevelMode extends CaromMode {
   override arrive(): void {
     const game = this.state.game;
     // Every declared field returns to its title-screen value except
-    // `titleIndex`, `simTime`, `muted`, `seed` and `rngState` — and `menuIndex`,
+    // `titleIndex`, `simTime` and `muted` — and `menuIndex`,
     // which becomes `titleIndex`, so the entry that led away from the title is
     // the entry the player lands back on.
     game.ai.tracking = true;

@@ -127,15 +127,15 @@ is composed from the ones in `src/flow.ts` and `src/simulate.ts`. The
 slice-level arithmetic follows the same shape — `moveBody(body, request)` returns
 the body after one step of travel, `stepPredator(...)` the predator after one
 step of its own mind beside the wavefronts and cues it raised, `advancePulse(...)`
-the wavefront beside the tiles its front swept over, and `nextRandom(state)` the
-draw beside the generator's next state.
+and the wavefront beside the tiles its front swept over. A transition that draws
+at random opens a `Draws` cursor (`src/rng.ts`) for its own length and holds
+nothing of it afterward.
 
 There is no module-level game state in this build and no closure over mutable
-data, which is what makes `reset` enough to replay a scenario exactly: the
-generator's whole state is the single `rngState` field, and the loaded art is the
-only thing a reset carries across. `render` and every diagnostic source are reads
-of the state they are given, and the compiler — not a convention — is what says
-they cannot change it.
+data, which is what makes `reset` enough to put a scenario back where it began:
+the loaded art is the only thing a reset carries across. `render` and every
+diagnostic source are reads of the state they are given, and the compiler — not a
+convention — is what says they cannot change it.
 
 ## Debugging and automation
 
@@ -280,7 +280,7 @@ src/
   debug.ts            The debug surface: poses and readings over FathomState,
                       returned beside the state by game.ts's initialize
   snapshot.ts         The plain, JSON-serializable projection the surface reads
-  rng.ts              The seeded generator: a draw beside the next state
+  rng.ts              The draws cursor every random choice is taken through
   grid.ts             The tile grid: directions, centers, indices, distances
   maze.ts             A layout loaded, the tile queries, the flood, the pathfinding
   maze-rules.ts       Every rule of specs/maze.md, as measurements

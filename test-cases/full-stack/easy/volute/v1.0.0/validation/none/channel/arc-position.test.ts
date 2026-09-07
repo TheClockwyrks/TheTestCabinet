@@ -54,9 +54,6 @@ import {
  */
 const WALKED = [880, 1340, 3240, 4360, 4990] as const;
 
-/** Long enough for the build's own render loop to have drawn the posed hall. */
-const RENDER_MS = 120;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -68,9 +65,11 @@ afterEach(async () => {
 });
 
 it("puts a core at the point its arc distance walks to", async () => {
-  // An isolated hall: the level open, the inlet stopped, and nothing on the
-  // channel but the one core each reading is about.
-  await poseHall(h);
+  // An isolated hall: the level open, the inlet stopped, the train held, and
+  // nothing on the channel but the one core each reading is about. The train is
+  // held so the tick that draws the evidence below leaves the five where they
+  // were posed.
+  await poseHall(h, { feed: false });
 
   const readings: { s: number; x: number; y: number }[] = [];
   for (const s of WALKED) {
@@ -79,13 +78,15 @@ it("puts a core at the point its arc distance walks to", async () => {
     readings.push({ s, x: posed.x, y: posed.y });
   }
 
-  // The evidence: all five standing on the channel at once, drawn by the
-  // build's own loop. Taken before the assertions, so a failing check still
-  // leaves the picture that shows why.
+  // The evidence: all five standing on the channel at once. One tick is what
+  // puts them on the canvas, since `step` runs "the full tick followed by a
+  // render" (`specs/instrumentation.md`), and the readings above were taken
+  // before it. Taken before the assertions, so a failing check still leaves the
+  // picture that shows why.
   await h.debug.poseTrain(
     WALKED.map((s) => [s, CHARGE_IDS[0], null] as PosedCore),
   );
-  await h.page.waitForTimeout(RENDER_MS);
+  await h.step(1);
   await captureStill(h, "walk");
 
   for (const reading of readings) {

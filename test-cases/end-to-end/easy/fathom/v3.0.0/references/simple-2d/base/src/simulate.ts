@@ -157,7 +157,6 @@ interface CreatureStep {
   readonly pulses: readonly PulseState[];
   readonly blooms: readonly Bloom[];
   readonly cues: readonly CueName[];
-  readonly rngState: number;
 }
 
 /**
@@ -171,7 +170,7 @@ interface CreatureStep {
  * so every other creature carries on untouched.
  */
 function stepCreatures(state: FathomState, dt: number): CreatureStep {
-  const draws = createDraws(state.rngState);
+  const draws = createDraws();
   const forager = bodyTile(state.forager);
   const world: PredatorWorld = {
     maze: state.maze,
@@ -207,7 +206,7 @@ function stepCreatures(state: FathomState, dt: number): CreatureStep {
     return { ...d, ...driftBody(d, state.maze, DRIFTER_SPEED, dt, draws) };
   });
 
-  return { predators, drifters, pulses, blooms, cues, rngState: draws.state };
+  return { predators, drifters, pulses, blooms, cues };
 }
 
 /**
@@ -465,7 +464,6 @@ function playTick(state: FathomState, dt: number): TickResult {
     ...next,
     predators: creatures.predators,
     drifters: creatures.drifters,
-    rngState: creatures.rngState,
     // A ping cast this tick joins the wavefronts before they travel, so it
     // leaves the Gloamfin's tile on the tick it was cast.
     pulses: [...next.pulses, ...creatures.pulses],

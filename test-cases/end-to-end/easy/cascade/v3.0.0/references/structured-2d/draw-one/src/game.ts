@@ -34,7 +34,7 @@ import { GameInstance, GameMode, GameState } from "@clockwyrks/structured-2d";
 import type { GameDefinition, InitApi, World } from "@clockwyrks/structured-2d";
 import { applyAudio, defineCues, noCues } from "./audio";
 import { advanceCascade } from "./cascade";
-import { DEFAULT_SEED, LEVELS, MENU_BINDINGS, TAGS } from "./constants";
+import { LEVELS, MENU_BINDINGS, TAGS } from "./constants";
 import { CascadeController } from "./controller";
 import { createDebugApi, type CascadeDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
@@ -134,7 +134,6 @@ export class CascadeState extends GameState {
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 
   /**
    * The painted layer's drawing surface: a resource rather than a value, the

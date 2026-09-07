@@ -31,7 +31,6 @@ import {
   ventTiles,
   type Tile,
 } from "./geometry";
-import { nextState, unitValue } from "./rng";
 import { nextStep, remainingFrom } from "./routes";
 import { hpFactor, speedOf } from "./stats";
 import { releaseTypeFor } from "./waves";
@@ -122,10 +121,12 @@ export function spawnUnit(
   return unit;
 }
 
-/** Draw a vent from the seeded generator, the two equally likely. */
-export function drawVent(state: MeltdownState): VentName {
-  state.rngState = nextState(state.rngState);
-  return unitValue(state.rngState) < 0.5 ? "left" : "top";
+/**
+ * One vent draw, the two equally likely: the only randomness in the game
+ * (specs/waves.md, The release).
+ */
+export function drawVent(): VentName {
+  return Math.random() < 0.5 ? "left" : "top";
 }
 
 /** Count every live slow down against the game time this frame advanced by. */
@@ -251,7 +252,8 @@ export function advanceSpawner(state: MeltdownState, dt: number): void {
     guard += 1
   ) {
     state.spawnClock -= WAVE_SPAWN_INTERVAL;
-    spawnUnit(state, releaseTypeFor(state), drawVent(state));
+    // The posed vent while one is posed, else the draw (specs/waves.md).
+    spawnUnit(state, releaseTypeFor(state), state.spawnVent ?? drawVent());
     state.wavePending -= 1;
   }
 }

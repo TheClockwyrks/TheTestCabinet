@@ -29,9 +29,6 @@
 /** The surface's version, reported as `version`. */
 export const WIREWORM_DEBUG_VERSION = 1;
 
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 /** The six screens the game moves between. */
 export type Screen =
   | "title"
@@ -46,6 +43,9 @@ export type Phase = "banner" | "active" | "respawn";
 
 /** The three support foes. */
 export type FoeKind = "glitch" | "dropper" | "corruptor";
+
+/** The two side edges the level's worm and its edge-entering foes come in at. */
+export type Edge = "left" | "right";
 
 /**
  * A menu item's hit region, in the stage's logical units, as `menuItemRect`
@@ -158,6 +158,15 @@ export interface WirewormSnapshot {
   /** The level's and the respawn's worm entry is running. */
   wormEntry: boolean;
   /** Seconds per tile step at this level. */
+  /** The level's spawner clocks, in seconds left (specs/foes.md). */
+  glitchTimer: number;
+  dropperTimer: number;
+  corruptorTimer: number;
+  /** The posed draws, each `null` until posed and again once consumed. */
+  nextWormEntry: Edge | null;
+  nextGlitchEntry: Tile | null;
+  nextDropperEntry: Tile | null;
+  nextCorruptorEntry: Tile | null;
   wormStepInterval: number;
   /** Segments this level's worm enters with. */
   wormLength: number;
@@ -192,7 +201,7 @@ export interface WirewormSnapshot {
 export interface WirewormDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): WirewormSnapshot;
 
   setScreen(screen: Screen): void;
@@ -213,6 +222,13 @@ export interface WirewormDebugApi {
   setFoeSpawning(enabled: boolean): void;
   setWormEntry(enabled: boolean): void;
   setCursorContact(enabled: boolean): void;
+
+  /** Sets the seconds left on the level's clock for `kind` (specs/foes.md). */
+  setSpawnTimer(kind: FoeKind, seconds: number): void;
+  /** Poses the tile the next foe of `kind` the level brings in enters on. */
+  setNextFoeEntry(kind: FoeKind, c: number, r: number): void;
+  /** Poses the edge the next worm the level or the respawn brings in enters at. */
+  setNextWormEntry(edge: Edge): void;
 
   setCursor(x: number, y: number): void;
   setCursorInvulnerable(seconds: number): void;
@@ -276,6 +292,10 @@ export const REQUIRED_OPS = [
   "setFoeSpawning",
   "setWormEntry",
   "setCursorContact",
+
+  "setSpawnTimer",
+  "setNextFoeEntry",
+  "setNextWormEntry",
 
   "setCursor",
   "setCursorInvulnerable",

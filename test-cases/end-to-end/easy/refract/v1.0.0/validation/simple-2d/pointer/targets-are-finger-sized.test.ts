@@ -37,7 +37,7 @@ type Target = TargetSnapshot;
 
 /** Every screen this check walks, and how it gets there. */
 async function screens(): Promise<{ name: string; targets: Target[] }[]> {
-  await resetTo(h, 1);
+  await resetTo(h);
   const walked: { name: string; targets: Target[] }[] = [
     { name: "title", targets: h.snapshot().targets },
   ];

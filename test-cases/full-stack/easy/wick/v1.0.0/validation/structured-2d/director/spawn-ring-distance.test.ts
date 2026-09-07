@@ -2,8 +2,9 @@
 //
 // THE SPEC LINE. `specs/enemies.md`, "The spawn ring": "A spawn point is
 // `SPAWN_DISTANCE` (`760`) units from the lamplighter's center at an angle
-// drawn uniformly from the seeded generator: `x = player.x + cos(angle) *
-// SPAWN_DISTANCE`, `y = player.y + sin(angle) * SPAWN_DISTANCE`." The angle is
+// drawn uniformly over the full circle, measured from `+x` toward `+y`: `x =
+// player.x + cos(angle) * SPAWN_DISTANCE`, `y = player.y + sin(angle) *
+// SPAWN_DISTANCE`." The angle is
 // random and the distance is not, so the distance is what a check can hold a
 // build to.
 //

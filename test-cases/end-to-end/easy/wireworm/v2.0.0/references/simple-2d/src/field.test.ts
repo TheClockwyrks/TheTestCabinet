@@ -104,9 +104,8 @@ describe("the field", () => {
 
 describe("the starting scatter", () => {
   it("covers between a tenth and a seventh of the scatter rows, all inert", () => {
-    for (const seed of [1, 2, 17, 5000]) {
+    for (let draw = 0; draw < 4; draw += 1) {
       const s = sim();
-      s.rngState = seed;
       scatterField(s);
       expect(s.nodes.length).toBeGreaterThanOrEqual(
         Math.floor(SCATTER_MIN_FRACTION * SCATTER_TILES),
@@ -127,20 +126,17 @@ describe("the starting scatter", () => {
     }
   });
 
-  it("lays the same field twice from one seed and a different one from another", () => {
-    const lay = (seed: number): string => {
+  it("lays a different field each time", () => {
+    const lay = (): string => {
       const s = sim();
-      s.rngState = seed;
       scatterField(s);
       return s.nodes.map((node) => `${node.c},${node.r}`).join(" ");
     };
-    expect(lay(4)).toBe(lay(4));
-    expect(lay(4)).not.toBe(lay(5));
+    expect(lay()).not.toBe(lay());
   });
 
   it("lays at most one node per tile", () => {
     const s = sim();
-    s.rngState = 99;
     scatterField(s);
     const keys = new Set(s.nodes.map((node) => `${node.c},${node.r}`));
     expect(keys.size).toBe(s.nodes.length);

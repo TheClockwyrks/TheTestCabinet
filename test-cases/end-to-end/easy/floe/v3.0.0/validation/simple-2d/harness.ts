@@ -30,7 +30,7 @@
 // settled bear with its three faculties on, `setLevel` lays the sixteen lanes out
 // for the level, a world gate stays off until something turns it back on, and
 // `reset` gives everything back. Posing through it is how a scenario is
-// reproducible, and it is the seam the case's specification documents.
+// arranged, and it is the seam the case's specification documents.
 // `surface.ts` is that specification as types, and it is the only description of
 // the surface this harness reads: the build's own module for it is never imported.
 //
@@ -432,8 +432,8 @@ export interface FloeModel {
    *
    * The same ticks run — the simulation advances by the whole `TICK_DT` ticks a
    * frame's delta completes, which is what specs/overview.md fixes and what
-   * `instrumentation/deterministic-core` decides — and only the pictures between
-   * them are skipped. It leaves the clock at one tick a frame, so what follows
+   * `instrumentation/tick-length` decides — and only the pictures between them
+   * are skipped. It leaves the clock at one tick a frame, so what follows
    * steps tick by tick again.
    *
    * Not for a measurement stated per frame or per picture: use
@@ -447,8 +447,6 @@ export interface FloeModel {
   ): Promise<SkipResult>;
   /** Put `ticksPerFrame` whole ticks in each frame from here on. */
   pace(ticksPerFrame: number): void;
-  /** Drive the runtime's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 
   /**
    * Where a logical point lands in CSS pixels: the device point the fit puts it
@@ -664,14 +662,6 @@ const kit = createEngineCaseHarness<
         return { hit: false, elapsed, snapshot };
       },
 
-      async runFor(ms: number) {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((resolve) => setTimeout(resolve, ms));
-        controller.abort();
-        await running;
-      },
-
       css: (x: number, y: number) => {
         const at = base.device(x, y);
         return { x: at.x / base.shape.dpr, y: at.y / base.shape.dpr };
@@ -701,9 +691,9 @@ const kit = createEngineCaseHarness<
  * Installed and released per harness rather than once for the process, because
  * that is what this project has always done: the shim is what the HOST lacks
  * while a harness is alive, and `dispose` puts it back. The package's host counts
- * references, so two harnesses alive at once — a check that compares two seeds
- * builds a second — share one installation and the globals go back when the last
- * one goes.
+ * references, so two harnesses alive at once — a check that builds a second while
+ * the first is still standing — share one installation and the globals go back
+ * when the last one goes.
  */
 function serveSeededAssets(): AssetHost {
   return installAssetHost({

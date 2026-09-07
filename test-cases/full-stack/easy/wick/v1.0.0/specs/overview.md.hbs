@@ -391,9 +391,9 @@ states what becomes of the remainder when the screen leaves `playing`. The run
 clock is `time = tick / TICK_HZ`, starting at `0` when a run starts, and dawn
 arrives on the tick `time` reaches `DAWN_TIME`.
 
-The game holds one seeded pseudo-random generator, and every random choice
-this specification names draws from it. `specs/instrumentation.md` states how
-it is seeded.
+Where a rule of this specification names a random choice, the file that
+states the rule states what the choice is drawn from, and
+`specs/instrumentation.md` states how a scenario poses its outcome.
 
 ## Visual design
 

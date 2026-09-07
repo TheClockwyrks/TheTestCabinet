@@ -53,11 +53,12 @@ the forager's own light and through the sonar pulse.
 | `"gameover"` | `PLAY AGAIN` confirmed | `"countdown"`, at the start of a fresh dive |
 | `"gameover"` | `MENU` confirmed, or `back` | `"title"` |
 
-The dive countdown holds for at least `1 s` and at most `3 s` before play
-begins. The cleared interstitial holds for at least `1 s` and at most `3 s`
-before the descent. Both are timed on the simulation's own accumulated time
-rather than on the wall clock, so each gives way after that much game time
-however the frames that carried it were drawn.
+The dive countdown holds for one fixed length, at least `1 s` and at most `3 s`,
+before play begins, and every countdown holds for that same length. The cleared
+interstitial holds for at least `1 s` and at most `3 s` before the descent. Both
+are timed on the simulation's own accumulated time rather than on the wall
+clock, so each gives way after that much game time however the frames that
+carried it were drawn.
 
 `Escape` raises `back` and `pause` together on one frame, so `"paused"` reads
 `pause` and `back` before the menu's own edges, and a frame carrying either

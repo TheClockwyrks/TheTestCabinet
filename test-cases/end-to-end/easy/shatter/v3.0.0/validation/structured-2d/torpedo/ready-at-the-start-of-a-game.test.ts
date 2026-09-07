@@ -37,9 +37,6 @@ import {
 } from "../harness";
 import { requireCharge, requireReady } from "./scenario";
 
-/** The seed the run is opened on. Any would do; a fixed one makes the picture stable. */
-const SEED = 1;
-
 /**
  * How far below `1` the charge may read on the frame the game opened on, as a
  * fraction of the bar.
@@ -64,7 +61,7 @@ afterEach(() => {
 });
 
 it("opens a game with torpedoCharge 1 and torpedoReady true", async () => {
-  await startRun(h, SEED);
+  await startRun(h);
   const opened = h.snapshot();
   // The fresh game with its torpedo charged.
   captureStill(h, "charged");

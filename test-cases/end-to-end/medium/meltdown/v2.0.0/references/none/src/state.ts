@@ -9,11 +9,9 @@
 // what is here rather than stored as authority, so there is exactly one place a
 // figure can disagree with itself: none.
 
-import { DEFAULT_SEED } from "./constants";
 import { TOWER_DEFS } from "./defs";
 import { Floor, type Footprint } from "./grid";
 import { modeFigures } from "./modes";
-import { createRng, type Rng } from "./rng";
 import type {
   DifficultyId,
   Level,
@@ -131,11 +129,12 @@ export interface MeltdownState {
   build: BuildPreview | null;
   /** The world gate: whether the run releases surge of its own accord. */
   waveSpawning: boolean;
+  /** The vent posed for the run's own release, or `null` while it draws. */
+  spawnVent: Vent | null;
   pointer: { x: number; y: number; down: boolean };
   /** The game's copy of the runtime's mute bit, refreshed in every update. */
   muted: boolean;
   simTime: number;
-  rng: Rng;
   /** The next id, shared by both rosters so no two live entities collide. */
   nextId: number;
   /** The blocked set and the routes over it, rebuilt whenever a tower moves. */
@@ -161,7 +160,7 @@ export function rebuildFloor(state: MeltdownState): void {
 }
 
 /** A state at its title-screen values, on Containment at Medium. */
-export function createState(seed: number = DEFAULT_SEED): MeltdownState {
+export function createState(): MeltdownState {
   const figures = modeFigures("containment", "medium");
   return {
     screen: "title",
@@ -183,10 +182,10 @@ export function createState(seed: number = DEFAULT_SEED): MeltdownState {
     hoverShop: null,
     build: null,
     waveSpawning: true,
+    spawnVent: null,
     pointer: { x: 0, y: 0, down: false },
     muted: false,
     simTime: 0,
-    rng: createRng(seed),
     nextId: 1,
     floor: new Floor(),
     shots: [],
@@ -201,7 +200,7 @@ export function createState(seed: number = DEFAULT_SEED): MeltdownState {
  * something the runtime owns, and a reset restores the game rather than the
  * runtime beneath it.
  */
-export function resetState(state: MeltdownState, seed?: number): void {
+export function resetState(state: MeltdownState): void {
   const figures = modeFigures("containment", "medium");
   state.screen = "title";
   state.phase = "opening";
@@ -222,8 +221,8 @@ export function resetState(state: MeltdownState, seed?: number): void {
   state.hoverShop = null;
   state.build = null;
   state.waveSpawning = true;
+  state.spawnVent = null;
   state.simTime = 0;
-  state.rng = createRng(seed ?? DEFAULT_SEED);
   state.nextId = 1;
   state.shots = [];
   state.press = null;

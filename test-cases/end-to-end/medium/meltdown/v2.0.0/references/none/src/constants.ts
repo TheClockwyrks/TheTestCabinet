@@ -380,5 +380,3 @@ export type CueName = (typeof CUES)[keyof typeof CUES];
 
 /** The version the surface reports. */
 export const MELTDOWN_DEBUG_VERSION = 1;
-/** The seed `reset` uses when none is named. */
-export const DEFAULT_SEED = 1;

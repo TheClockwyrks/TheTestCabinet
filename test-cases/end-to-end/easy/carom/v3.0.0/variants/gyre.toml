@@ -191,30 +191,42 @@ validation = { script = "gameplay/serve-angle.test.ts", outputs = [
   { id = "serve", name = "A ball leaving at the serve angle", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "serve-sign-p1"
-title = "Serve sign is drawn (toward player one)"
-description = "Over sixteen consecutive serves toward player one, every serve leaves with vx < 0 at SERVE_ANGLE (12 degrees) from horizontal within 2 degrees, and the ball leaves upward (vy < 0) on at least one serve and downward (vy > 0) on at least one."
+id = "serve-sign-down"
+title = "Serve sign: a posed 1 serves downward"
+description = "With the ball's serveSign posed to 1, the serve leaves downward (vy > 0)."
 domains = ["single-player", "versus"]
 failure_cap = "passable"
-# Automated validation: open a fresh match (first serve toward player one), then
-# serve sixteen times in a row, re-serving from the live rally each time, reading
-# every launch's direction, angle and vertical sign. See
-# validation/<engine>/gameplay/serve-sign-p1.test.ts.
-validation = { script = "gameplay/serve-sign-p1.test.ts", outputs = [
-  { id = "serves", name = "A run of serves toward player one, some up and some down", kind = "replay" },
+# Automated validation: open a fresh match on an empty field, pose the ball's
+# serve sign to `1` through `setBallServeSign`, cut the hold, and read the launch
+# frame's vertical direction. See validation/<engine>/gameplay/serve-sign-down.test.ts.
+validation = { script = "gameplay/serve-sign-down.test.ts", outputs = [
+  { id = "serve", name = "A serve leaving downward on a posed sign", kind = "replay" },
 ] }
 [[review.categories.items]]
-id = "serve-sign-p2"
-title = "Serve sign is drawn (toward player two)"
-description = "After player one scores, over sixteen consecutive serves toward player two, every serve leaves with vx > 0 at SERVE_ANGLE (12 degrees) from horizontal within 2 degrees, and the ball leaves upward (vy < 0) on at least one serve and downward (vy > 0) on at least one."
+id = "serve-sign-up"
+title = "Serve sign: a posed -1 serves upward"
+description = "With the ball's serveSign posed to -1, the serve leaves upward (vy < 0)."
 domains = ["single-player", "versus"]
 failure_cap = "passable"
-# Automated validation: drive a real point out the right goal so player two
-# receives, then serve sixteen times in a row, re-serving from the live rally each
-# time, reading every launch's direction, angle and vertical sign. See
-# validation/<engine>/gameplay/serve-sign-p2.test.ts.
-validation = { script = "gameplay/serve-sign-p2.test.ts", outputs = [
-  { id = "serves", name = "A run of serves toward player two, some up and some down", kind = "replay" },
+# Automated validation: the same scenario with the sign posed to `-1`. See
+# validation/<engine>/gameplay/serve-sign-up.test.ts.
+validation = { script = "gameplay/serve-sign-up.test.ts", outputs = [
+  { id = "serve", name = "A serve leaving upward on a posed sign", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-sign-drawn"
+title = "Serve sign is drawn"
+description = "Over thirty-two draws of drawBallServeSign, the ball's serveSign reads back as 1 or -1 every time, and the draws are not all the same sign."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: draw the sign thirty-two times through the operation that
+# performs parking's one draw and nothing else, reading the sign back off the
+# snapshot each time. Thirty-two draws all of one sign come up one time in 2^31
+# from a fair draw, so a fixed sign fails and a fair one passes; how the two signs
+# share the sample is the reviewer's to judge. See
+# validation/<engine>/gameplay/serve-sign-drawn.test.ts.
+validation = { script = "gameplay/serve-sign-drawn.test.ts", outputs = [
+  { id = "serve", name = "A serve leaving on the last sign drawn", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "countdown-length"

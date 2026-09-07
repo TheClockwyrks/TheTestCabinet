@@ -20,8 +20,7 @@
 // no catch can precede the burn-up.
 //
 // THE WORLD IS ONE POD AND THE PLANET: isolate() empties the field and holds
-// both driver switches, and spawnPod leaves the seeded generator where it
-// stands.
+// both driver switches, and spawnPod makes no draw.
 //
 // AUDIO IS ARMED WITH A REAL KEY FIRST. A browser opens no audio context
 // without a user gesture, so armAudio presses a key through Chromium's own

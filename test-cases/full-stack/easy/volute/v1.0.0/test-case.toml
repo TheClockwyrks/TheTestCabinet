@@ -359,7 +359,7 @@ source = "specs/ui.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build exposes: a deterministic,
+# The debugging and automation surface every build exposes: a render-free,
 # steppable core, the operations that pose and read the running game, the snapshot
 # shape, and the read-only debug overlay. Framed as an ordinary developer
 # affordance of the game. It branches on the engine for how the surface is reached
@@ -423,8 +423,8 @@ description = "The produced art, motion, effects, and audio, and how the hall re
 # point (the default weight), so a category is worth the number of items it holds
 # and there is no fractional scoring. A category carries no prose of its own; each
 # item states in `description` the claim its validator checks. One hundred and
-# twenty-six items across eleven categories, all common: the case has one
-# variant, so no point lives in a variant file. Three of them are scoped to the
+# twenty-eight items across eleven categories, all common: the case has one
+# variant, so no point lives in a variant file. Two of them are scoped to the
 # engineless configuration and twelve to the two engines, since the behavior
 # each decides is the build's own work there and the runtime's elsewhere; every
 # other point covers all three.
@@ -529,6 +529,48 @@ failure_cap = "scuffed"
 # validation/<engine>/instrumentation/pose-decides-nothing.test.ts.
 validation = { script = "instrumentation/pose-decides-nothing.test.ts", outputs = [
   { id = "posed", name = "Three matching cores posed and left alone", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-next-emitted-poses-the-charge"
+title = "setNextEmitted poses the charge the inlet emits next"
+description = "setNextEmitted(charge) with one of the five charge ids reads back as nextEmitted, and the next core the inlet places at the inlet carries exactly that charge whatever charges stand on the channel."
+domains = ["channel"]
+failure_cap = "passable"
+# Automated validation: startLevel(5), clearTrain(), pose three halide cores at
+# s = 300, 328 and 356 with the inlet open and five cores in the quota,
+# setNextEmitted("garnet"), confirm the snapshot reports it, step one tick, and
+# confirm the core placed at the inlet is garnet: a build drawing from the
+# channel's charges instead could only have placed halide. See
+# validation/<engine>/instrumentation/set-next-emitted-poses-the-charge.test.ts.
+validation = { script = "instrumentation/set-next-emitted-poses-the-charge.test.ts", outputs = [
+  { id = "posed-emitted", name = "The posed charge standing at the inlet", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-next-emitted-null-clears-the-pose"
+title = "setNextEmitted(null) clears the posed charge"
+description = "After setNextEmitted(charge) followed by setNextEmitted(null), nextEmitted reads null and the next core the inlet places carries a charge drawn from the charges standing on the channel."
+domains = ["channel"]
+failure_cap = "passable"
+# Automated validation: the same halide channel on level 5, setNextEmitted("garnet")
+# then setNextEmitted(null), confirm nextEmitted is null, step one tick, and
+# confirm the core placed at the inlet is halide, the one charge the channel's
+# set holds. See
+# validation/<engine>/instrumentation/set-next-emitted-null-clears-the-pose.test.ts.
+validation = { script = "instrumentation/set-next-emitted-null-clears-the-pose.test.ts", outputs = [
+  { id = "cleared", name = "The inlet drawing again after the pose was cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-next-emitted-consumed-by-the-emission"
+title = "An emission consumes the posed charge"
+description = "The emission that places the posed charge consumes it, so nextEmitted reads null afterwards and a following setNextEmitted poses the emission after."
+domains = ["channel"]
+failure_cap = "passable"
+# Automated validation: the same halide channel on level 5, setNextEmitted("garnet"),
+# step one tick, confirm nextEmitted is null, setNextEmitted("cobalt"), step until
+# the inlet places a second core, and confirm it is cobalt. See
+# validation/<engine>/instrumentation/set-next-emitted-consumed-by-the-emission.test.ts.
+validation = { script = "instrumentation/set-next-emitted-consumed-by-the-emission.test.ts", outputs = [
+  { id = "consumed", name = "The pose consumed by its emission", kind = "image" },
 ] }
 
 # --- The channel --------------------------------------------------------------
@@ -656,35 +698,13 @@ title = "An emitted core carries a charge already on the channel"
 description = "A core placed at the inlet carries a charge drawn from the set of charges already standing on the channel."
 domains = ["channel"]
 failure_cap = "scuffed"
-# Automated validation: startLevel(5), clearTrain(), pose a train of halide cores
-# alone, setQuotaRemaining(20), step until ten further cores have been placed, and
-# confirm every one of them is halide. See
-# validation/<engine>/channel/emission-charge-present.test.ts.
+# Automated validation: six times over — setLevel(5), setEmission(true),
+# setQuotaRemaining(12), pose a run of three halide cores whose tail is clear of
+# SPACING, step one tick, and confirm the core the inlet placed at the inlet is
+# halide, which is the whole of the set standing on the channel when it was
+# drawn. See validation/<engine>/channel/emission-charge-present.test.ts.
 validation = { script = "channel/emission-charge-present.test.ts", outputs = [
   { id = "emitted", name = "Cores emitted onto a single-charge channel", kind = "image" },
-] }
-[[review.categories.items]]
-id = "self-advancing"
-title = "The hall runs on its own clock"
-description = "With nothing stepping the game from outside, the train rides the channel on the build's own clock."
-domains = ["channel"]
-failure_cap = "broken"
-# Automated validation: start a level, hand the build a real wall clock, let a
-# stretch of real time pass without stepping, and confirm the head's arc position
-# increased — a build that only advances when something pokes it stays where it
-# was put. See validation/none/channel/self-advancing.test.ts.
-#
-# ENGINELESS ONLY. Under `none` the frame loop is a deliverable: the build writes
-# the requestAnimationFrame loop, the accumulator, and the fixed tick under them,
-# and a build that wrote none of it stands still. Under either engine the loop is
-# the ENGINE's — the seeded `src/main.ts`, which a build does not edit, stands the
-# engine up and runs it — so the point would grade the engine rather than the
-# build, and the build's own residue (that its `update` integrates against the dt
-# it is handed) is `channel/feed-advance`'s point, measured there against counted
-# ticks where it can be measured exactly.
-validation = { script = "channel/self-advancing.test.ts", engines = ["none"], outputs = [
-  { id = "before", name = "The instant play begins", kind = "image" },
-  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
 ] }
 
 # --- Pressure -----------------------------------------------------------------
@@ -1479,9 +1499,10 @@ title = "Each level uses only its own charges"
 description = "No core in a level carries a charge outside that level's set: level 1 uses halide, sulfur and cobalt; levels 2 and 3 add garnet; levels 4 and 5 add olivine."
 domains = ["progression"]
 failure_cap = "scuffed"
-# Automated validation: for each n — startLevel(n), read the opening twelve, step
-# through twenty further emissions, and confirm every charge seen is a member of
-# that level's set. See validation/<engine>/progression/charge-set-table.test.ts.
+# Automated validation: for each n — startLevel(n), read the opening twelve, then
+# empty the channel and step one tick eight times over, and confirm every charge
+# seen is a member of that level's set. See
+# validation/<engine>/progression/charge-set-table.test.ts.
 validation = { script = "progression/charge-set-table.test.ts", outputs = [
   { id = "charges", name = "The charges a level opens with", kind = "image" },
 ] }

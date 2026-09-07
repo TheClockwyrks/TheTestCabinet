@@ -17,14 +17,15 @@
 // distance is enormous either way, because the seeded system's four emitters
 // burst `5 + 120 + 55 + 55` particles at time zero.
 //
-// WHY A TENTH OF A SECOND, AND WHY THE SEED DOES NOT MATTER THERE. Every emitter
-// of the seeded system fires its whole burst at `atMs` `0`, and the shortest
-// lifetime any of them draws is the flash's `120 ms` with a `20 ms` spread. A
-// tenth of a second in, therefore, every particle the system will ever hold has
-// been emitted and none has yet reached the floor of that spread, so the
-// population is the sum of the four bursts whatever seed the game drew for this
-// burst out of its own generator (`specs/assets.md`). The check does not know
-// that seed and does not need it.
+// WHY A TENTH OF A SECOND, AND WHY THE SCATTER DOES NOT MATTER THERE. Every
+// emitter of the seeded system fires its whole burst at `atMs` `0`, and the
+// shortest lifetime any of them draws is the flash's `120 ms` with a `20 ms`
+// spread. A tenth of a second in, therefore, every particle the system will ever
+// hold has been emitted and none has yet reached the floor of that spread, so the
+// population is the sum of the four bursts however the build's burst scattered
+// (`specs/assets.md`). The check does not know the scatter and does not need it,
+// and the simulator it runs beside the build is started on a fixed value of the
+// suite's own for the same reason: the count it reads is the same at any.
 //
 // WHY THE AGE IS THE FRAMES THIS SUITE DROVE. `advance` runs whole frames of
 // game time (`specs/instrumentation.md`), so the burst's age is the time those
@@ -39,7 +40,6 @@
 import { afterEach, beforeEach, it } from "vitest";
 import { ParticleSimulator } from "@clockwyrks/particle-runtime";
 import { assertBetween, assertGreaterThan, assertLength } from "../assert";
-import { DEFAULT_SEED } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -54,6 +54,15 @@ import { requireBurst } from "./reading";
 
 /** The age the burst is read at, in seconds: the tenth of a second above. */
 const READ_AGE = 0.1;
+
+/**
+ * The value the suite's own simulator of the system is started on.
+ *
+ * Any whole number: at `READ_AGE` the population it reads is the same at every
+ * value, as the note above says, so this is the runtime's required argument and
+ * nothing the check compares.
+ */
+const REFERENCE_SCATTER = 1;
 
 /**
  * How far the build's live count may stand from the seeded system's own, as a
@@ -113,7 +122,7 @@ it("holds the live population the seeded system's own emitters give", async () =
   // The same span of the same authored file, run through the package's own pure
   // simulator: what `assets/drone-burst.json` holds at this age.
   const reference = new ParticleSimulator(seededBurstSystem(), {
-    seed: DEFAULT_SEED,
+    seed: REFERENCE_SCATTER,
   });
   reference.step(READ_AGE * 1000);
   const expected = reference.liveCount;

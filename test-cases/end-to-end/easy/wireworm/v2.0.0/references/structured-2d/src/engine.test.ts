@@ -12,6 +12,7 @@ import {
   BANNER_TIME,
   BAND_TOP_Y,
   BINDINGS,
+  COLS,
   CURSOR_SPEED,
   CURSOR_X_MAX,
   CUES,
@@ -208,19 +209,59 @@ describe("the surface the engine hands back", () => {
     expect(shot.muted).toBe(true);
   });
 
-  it("seeds the run's randomness", async () => {
-    const scatter = async (seed: number) => {
-      h.debug.reset({ seed });
-      // DESCEND, which is where the run's starting field is laid.
-      await h.tap(BINDINGS.confirm[0]);
-      return h.debug.snapshot().nodes;
-    };
-    const first = await scatter(7);
-    const again = await scatter(7);
-    const other = await scatter(8);
-    expect(first.length).toBeGreaterThan(0);
-    expect(again).toEqual(first);
-    expect(other).not.toEqual(first);
+  it("poses the level's spawner clocks and reads them back", async () => {
+    startPlaying(h.debug);
+    h.debug.setLevel(2);
+    h.debug.setSpawnTimer("glitch", 1.5);
+    h.debug.setSpawnTimer("dropper", 2);
+    h.debug.setSpawnTimer("corruptor", 3.5);
+    const shot = h.debug.snapshot();
+    expect(shot.glitchTimer).toBe(1.5);
+    expect(shot.dropperTimer).toBe(2);
+    expect(shot.corruptorTimer).toBe(3.5);
+    // The posed clock runs, and the glitch enters when it runs out.
+    h.debug.setFoeSpawning(true);
+    await h.seconds(1.4);
+    expect(h.debug.snapshot().foes).toHaveLength(0);
+    await h.seconds(0.2);
+    expect(h.debug.snapshot().foes.map((foe) => foe.kind)).toEqual(["glitch"]);
+  });
+
+  it("poses where the next foe of a kind enters, for that entry alone", async () => {
+    startPlaying(h.debug);
+    h.debug.setLevel(2);
+    h.debug.setNextFoeEntry("glitch", COLS - 1, 12);
+    expect(h.debug.snapshot().nextGlitchEntry).toEqual({ c: COLS - 1, r: 12 });
+    h.debug.setSpawnTimer("glitch", 0.5);
+    h.debug.setFoeSpawning(true);
+    // Read on the frame it enters, before its travel carries it off the tile.
+    for (let frame = 0; frame < 60; frame += 1) {
+      await h.advance(1);
+      if (h.debug.snapshot().foes.length > 0) break;
+    }
+    const [glitch] = h.debug.snapshot().foes;
+    expect(glitch.kind).toBe("glitch");
+    expect(glitch.x).toBe(tileCX(COLS - 1));
+    expect(glitch.y).toBe(tileCY(12));
+    expect(glitch.vx).toBeLessThan(0);
+    expect(h.debug.snapshot().nextGlitchEntry).toBeNull();
+  });
+
+  it("poses the edge the next worm enters at, for that entry alone", async () => {
+    startPlaying(h.debug);
+    h.debug.setNextWormEntry("right");
+    expect(h.debug.snapshot().nextWormEntry).toBe("right");
+    h.debug.setWormEntry(true);
+    h.debug.setPhase("banner");
+    h.debug.setPhaseTimer(0.02);
+    await h.advance(3);
+    const [entered] = h.debug.snapshot().worms;
+    expect(entered.dh).toBe(-1);
+    expect(entered.segments[entered.segments.length - 1]).toEqual({
+      c: COLS - 1,
+      r: 0,
+    });
+    expect(h.debug.snapshot().nextWormEntry).toBeNull();
   });
 });
 

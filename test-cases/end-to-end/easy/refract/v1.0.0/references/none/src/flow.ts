@@ -16,7 +16,7 @@
 import { emptyBeams } from "./board";
 import { campaignBoard } from "./campaign";
 import { generateBoard, tierFor } from "./cascade";
-import { CAMPAIGN_LENGTH, DEFAULT_SEED, TITLE_ITEMS } from "./constants";
+import { CAMPAIGN_LENGTH, TITLE_ITEMS } from "./constants";
 import type { BoardState, Mode, RefractState } from "./game";
 
 /**
@@ -28,8 +28,8 @@ export const EMPTY_BOARD: BoardState = { cols: 1, rows: 1, nodes: [] };
 
 /**
  * Every declared field at its title-screen value (specs/state.md). The debug
- * surface's `reset` restores exactly this, seed and mute aside, so these
- * fields are the whole of the authoritative state.
+ * surface's `reset` restores exactly this, mute aside, so these fields are the
+ * whole of the authoritative state.
  */
 export function createInitialState(): RefractState {
   return {
@@ -53,7 +53,6 @@ export function createInitialState(): RefractState {
     armedTarget: null,
     simTime: 0,
     muted: false,
-    rngState: DEFAULT_SEED,
   };
 }
 
@@ -111,14 +110,12 @@ export function enterCampaignBoard(
 
 /** The next cascade board, generated at the current tier. */
 export function nextCascadeBoard(state: RefractState): RefractState {
-  const { board, rngState } = generateBoard(state.rngState, state.tier);
-  return { ...enterBoard(state, board), rngState };
+  return enterBoard(state, generateBoard(state.tier));
 }
 
 /**
- * Cascade's `RESTART`: back to tier 1 with the count at zero, WITHOUT
- * reseeding — the generator carries on from the state it holds, so a restart
- * drops the player onto boards they have not seen (specs/modes/cascade.md).
+ * Cascade's `RESTART`: back to tier 1 with the count at zero, on a freshly
+ * generated board like any other (specs/modes/cascade.md).
  */
 export function restartCascade(state: RefractState): RefractState {
   return nextCascadeBoard({ ...state, solvedCount: 0, tier: 1 });

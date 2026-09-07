@@ -1,33 +1,37 @@
-// Wick — pickups/bread-drops: bread drop over a seeded sweep of common kills.
+// Wick — pickups/bread-drops: a common kill whose roll drops bread leaves one
+// bread at its center, beside its gem, and nothing else.
 //
-// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll") gives both
-// branches a probability above zero, `BREAD_CHANCE` (0.02) and `DRAFT_CHANCE`
-// (0.005), and specs/world.md ("Pickups") lists bread and draft as kinds "A
-// common enemy" drops "by the roll below". Over `DROP_SAMPLE` (4000) kills the
-// expected counts are 80 bread and 19.6 drafts, so a build that has wired
-// either branch up at all leaves at least one of each: the chance a conformant
-// build drops no bread is 0.98^4000, and no draft 0.99510^4000, each below
-// 1e-9. This is the point that catches a build implementing one branch and not
-// the other, which the two count points cannot separate from a rate that is
-// merely low.
+// WHERE THE THRESHOLD COMES FROM. specs/world.md ("The drop roll"): "The roll
+// drops bread with probability `BREAD_CHANCE` ... so a kill drops one pickup
+// or none. The pickup lands at the enemy's position beside its gem." Which
+// way the roll falls is posed: specs/instrumentation.md ("Drawn
+// outcomes"), `setNextDrop(kind)`: "The next common enemy killed by a weapon
+// while `drops` is on drops that pickup beside its gem ... in place of its
+// roll". So a moth killed under a posed `bread` leaves exactly one gem and
+// exactly one pickup, the pickup is bread, and both stand at the moth's center.
 //
-// THE WORLD. The seeded sample of `pickups/sample.ts`: 4000 moths killed by
-// posed Ember bolts, each on a point no other kill uses, with every driver
-// switch off and no weapon held, so the drop roll is the only thing that can
-// leave a pickup anywhere.
+// THE WORLD. An isolated night with `drops` alone turned back on, the moth
+// `KILL_DX` (500) units out, far outside every collection distance, so what the
+// kill leaves lies where it fell. The kill is the real one, `pickups/night`'s
+// posed Ember bolt on the moth's center, resolved by the next tick.
 //
-// WHAT IS READ. The number of bread and the number of drafts the sample left,
-// each at least one.
-//
-// TOLERANCE. None on a count. The bound is the weakest one the sample admits,
-// so no conformant build fails it for a reason of luck.
-//
-// The other kind is `pickups/drafts-drop`'s.
+// TOLERANCE. None on the counts and the kind; `FIGURE_TOLERANCE` on the
+// centers, copies of the posed point.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertGreaterThanOrEqual } from "../assert";
-import { createHarness, type Harness } from "../harness";
-import { drawDrops } from "./sample";
+import { assertEqual, assertLength, assertWithin } from "../assert";
+import { FIGURE_TOLERANCE } from "../constants";
+import {
+  captureStill,
+  createHarness,
+  enable,
+  isolate,
+  type Harness,
+} from "../harness";
+import { killOne } from "./sample";
+
+/** Where the moth stands: far outside every collection distance. */
+const KILL_DX = 500;
 
 let h: Harness;
 
@@ -39,12 +43,39 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("drops at least one bread across 4000 seeded kills", async () => {
-  const sample = await drawDrops(h, "bread");
+it("leaves one bread beside the gem of a kill posed to drop bread", async () => {
+  isolate(h);
+  enable(h, "drops");
+  h.debug.setNextDrop("bread");
+  const kill = await killOne(h, "moth", KILL_DX, 0);
+  captureStill(h, "bread");
 
-  assertGreaterThanOrEqual(
-    sample.counts.bread,
-    1,
-    `bread dropped over ${sample.kills} seeded common kills`,
+  assertLength(kill.gems, 1, "the gems the kill dropped");
+  assertLength(kill.pickups, 1, "the pickups the kill dropped");
+  const [bread] = kill.pickups;
+  assertEqual(bread.kind, "bread", "the kind of the pickup the kill dropped");
+  assertWithin(
+    bread.x,
+    kill.at.x,
+    FIGURE_TOLERANCE,
+    "the bread's x, the moth's own",
+  );
+  assertWithin(
+    bread.y,
+    kill.at.y,
+    FIGURE_TOLERANCE,
+    "the bread's y, the moth's own",
+  );
+  assertWithin(
+    kill.gems[0].x,
+    kill.at.x,
+    FIGURE_TOLERANCE,
+    "the gem's x beside it",
+  );
+  assertWithin(
+    kill.gems[0].y,
+    kill.at.y,
+    FIGURE_TOLERANCE,
+    "the gem's y beside it",
   );
 });

@@ -390,6 +390,14 @@ export const FIRING_TYPES: readonly ComponentType[] = COMPONENT_TYPES.filter(
 /** A press rolls a type uniformly over the eight (specs/scrap-press.md). */
 export const TYPE_ROLL_ODDS = 1 / COMPONENT_TYPES.length; // 0.125
 
+/**
+ * How many standard deviations either side of its expected count a sampled rate
+ * is held to, for a requirement that is itself a probability. Six, so a build
+ * honouring the stated rate never fails on chance (the authoring rule for a
+ * bounded sample of one draw).
+ */
+export const SAMPLE_BAND_SIGMAS = 6;
+
 export type Tier = 1 | 2 | 3 | 4 | 5;
 
 export const QUALITY_TIERS = [
@@ -1039,6 +1047,3 @@ export const SPEEDS: readonly number[] = [1, 2, 4, 8];
 /* -------------------------------------------------------------------------- */
 /* The surface itself (specs/instrumentation.md)                              */
 /* -------------------------------------------------------------------------- */
-
-/** The seed `reset` uses when it is given none. */
-export const DEFAULT_SEED = 1;

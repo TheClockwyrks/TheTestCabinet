@@ -49,7 +49,7 @@ let h: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
-  await resetTo(h, 1);
+  await resetTo(h);
 });
 
 afterEach(() => {

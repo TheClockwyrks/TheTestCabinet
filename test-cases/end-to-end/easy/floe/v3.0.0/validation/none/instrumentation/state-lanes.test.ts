@@ -50,15 +50,34 @@
 // are the arguments `addVehicle` and `addFloe` were given, and a kind's length in
 // tiles is fixed by `specs/ice.md` and `specs/water.md`, which `ice/lane-lengths`
 // and `water/lane-lengths` grade.
+//
+// THE RELAID LANE IS READ AS AN ARRANGEMENT, ON EACH BAND. `setLanePhase`
+// replaces a lane's items rather than setting one field, so what reads back is
+// what specs/instrumentation.md says it lays: the lane's own kind at the level's
+// spacing, one left edge at the posed phase, and a pattern reaching both edges
+// of the strait. Every other roster entry is left where it stood. The operation
+// is specified for every lane, so one ice lane and one water lane are each
+// relaid and read.
 
 import { afterEach, beforeEach, it } from "vitest";
 import {
   assertContains,
+  assertDeepEqual,
   assertEqual,
   assertGreaterThan,
+  assertGreaterThanOrEqual,
   assertLength,
+  assertLessThanOrEqual,
+  fail,
 } from "../assert";
-import { ICE_LANES, WATER_LANES } from "../constants";
+import {
+  ICE_LANES,
+  ITEM_LEN,
+  STRAIT_W,
+  TILE,
+  WATER_LANES,
+  laneGap,
+} from "../constants";
 import {
   captureStill,
   createHarness,
@@ -87,6 +106,30 @@ const DIRECTIONS: readonly number[] = [1, -1];
 /** The column each band's posed item is laid at, one item per lane. */
 const ITEM_COL = 8;
 
+/**
+ * The ice lane `setLanePhase` relays, and the phase it is relayed at: a plow
+ * lane, so the kind read back differs from the car the per-entity poses act on,
+ * and a left edge no tile boundary lands on.
+ */
+const PHASED_ROW = 14;
+const PHASE_X = 401.5;
+
+/**
+ * How far a relaid item's left edge may sit from where the spacing puts it, in
+ * stage units. The lane is posed rather than integrated, so this is arithmetic
+ * room and nothing more: a build that lays the lane a whole tile out misses it
+ * by `32`.
+ */
+const PHASE_TOLERANCE = 1e-6;
+
+/**
+ * The water lane `setLanePhase` relays, and the phase it is relayed at: a raft4
+ * lane, so the relay is read on the water band as well as the ice, and a left
+ * edge no tile boundary lands on.
+ */
+const PHASED_WATER_ROW = 3;
+const PHASE_WATER_X = 137.5;
+
 /** Every field of one reported lane is of its documented kind. */
 function assertLane(
   lane: FloeSnapshot["iceLanes"][number],
@@ -108,6 +151,91 @@ function assertItem(
   assertContains(kinds, item.kind, `${what}.kind`);
   assertEqual(typeof item.x, "number", `${what}.x, which is its LEFT EDGE`);
   assertEqual(typeof item.len, "number", `${what}.len, in tiles`);
+}
+
+/** What the relay is read off: one band's roster after `setLanePhase`. */
+interface RelaidItem {
+  readonly id: number;
+  readonly row: number;
+  readonly kind: string;
+  readonly x: number;
+}
+
+/**
+ * The arrangement `setLanePhase(row, x)` leaves on `row`, read off `roster`,
+ * that band's items after the relay, against `lanes`, the band's table: the
+ * lane's own kind at the level's spacing, one left edge at `x`, a pattern
+ * reaching both edges of the strait, and every other row of the band still
+ * carrying the one `noun` posed on it.
+ */
+function assertRelaid(
+  roster: readonly RelaidItem[],
+  lanes: readonly {
+    readonly row: number;
+    readonly kind: keyof typeof ITEM_LEN;
+  }[],
+  row: number,
+  x: number,
+  noun: string,
+  spec: string,
+): void {
+  const relaid = roster
+    .filter((item) => item.row === row)
+    .sort((a, b) => a.x - b.x);
+  const lane = lanes.find((entry) => entry.row === row);
+  if (lane === undefined) {
+    fail(`a lane of the band's table on row ${row} (${spec})`, lanes);
+  }
+  const gap = laneGap(row, 1) * TILE;
+  const period = ITEM_LEN[lane.kind] * TILE + gap;
+
+  assertGreaterThan(
+    relaid.length,
+    1,
+    `the ${noun}s snapshot() reports on row ${row} after setLanePhase(${row}, ` +
+      `${x}), which lays the lane's own pattern along the whole row ` +
+      `(specs/instrumentation.md)`,
+  );
+  for (const item of relaid) {
+    assertEqual(
+      item.kind,
+      lane.kind,
+      `the kind of ${noun} ${item.id} on row ${row} after setLanePhase, which ` +
+        `lays the lane's own kind (${spec})`,
+    );
+  }
+  assertLessThanOrEqual(
+    Math.min(...relaid.map((item) => Math.abs(item.x - x))),
+    PHASE_TOLERANCE,
+    `the nearest LEFT EDGE on row ${row} to the phase setLanePhase(${row}, ` +
+      `${x}) posed`,
+  );
+  for (let i = 1; i < relaid.length; i += 1) {
+    assertLessThanOrEqual(
+      Math.abs(relaid[i].x - relaid[i - 1].x - period),
+      PHASE_TOLERANCE,
+      `the spacing between ${noun}s ${i - 1} and ${i} on the relaid row ` +
+        `${row}, away from one period of ${period} units`,
+    );
+  }
+  assertLessThanOrEqual(
+    relaid[0].x,
+    gap + PHASE_TOLERANCE,
+    `the leftmost left edge on the relaid row ${row}, which one gap of ${gap} ` +
+      `units bounds so the pattern reaches the left edge`,
+  );
+  assertGreaterThanOrEqual(
+    relaid[relaid.length - 1].x + ITEM_LEN[lane.kind] * TILE,
+    STRAIT_W - gap - PHASE_TOLERANCE,
+    `the rightmost right edge on the relaid row ${row}, which is at most one ` +
+      `gap of ${gap} units short of the strait's right edge`,
+  );
+  assertEqual(
+    roster.filter((item) => item.row !== row).length,
+    lanes.length - 1,
+    `the ${noun}s on every other row of the band after setLanePhase(${row}, ` +
+      `${x}), which relays that row alone`,
+  );
 }
 
 let h: Harness;
@@ -233,5 +361,36 @@ it("reports the sixteen lanes and their items and reads every pose of them back"
     WATER_DIR,
     `the direction snapshot() reports for the lane on row ${FLOE_ROW} after ` +
       `setLaneDirection(${FLOE_ROW}, ${WATER_DIR})`,
+  );
+
+  // ---- A lane of each band relaid at a posed phase ----------------------
+
+  await h.debug.setLanePhase(PHASED_ROW, PHASE_X);
+  const relaidIce = await h.snapshot();
+  assertRelaid(
+    relaidIce.vehicles,
+    ICE_LANES,
+    PHASED_ROW,
+    PHASE_X,
+    "vehicle",
+    "specs/ice.md",
+  );
+
+  await h.debug.setLanePhase(PHASED_WATER_ROW, PHASE_WATER_X);
+  const relaidWater = await h.snapshot();
+  assertRelaid(
+    relaidWater.floes,
+    WATER_LANES,
+    PHASED_WATER_ROW,
+    PHASE_WATER_X,
+    "floe",
+    "specs/water.md",
+  );
+  // The water relay left the ice band exactly as the ice relay laid it.
+  assertDeepEqual(
+    relaidWater.vehicles,
+    relaidIce.vehicles,
+    `the vehicles after setLanePhase(${PHASED_WATER_ROW}, ${PHASE_WATER_X}), ` +
+      `which relays a water lane and leaves every other lane untouched`,
   );
 });

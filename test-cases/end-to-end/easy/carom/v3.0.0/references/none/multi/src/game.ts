@@ -25,13 +25,12 @@
 //   * Nothing authoritative lives anywhere else. There is no module-level game
 //     state in this build and no closure over mutable data — every module beside
 //     this one is arithmetic over the record below. `reset()` on the debug
-//     surface restores exactly these fields, so a scenario replays identically.
+//     surface restores exactly these fields, so nothing survives a reset.
 
 import {
   BALL_COUNT,
   BALL_R,
   CUES,
-  DEFAULT_SEED,
   FIELD_CY,
   FIELD_W,
   HOLD_TIME,
@@ -67,7 +66,6 @@ import { menuItemAt, menuItemCount } from "./menu";
 import { step } from "./physics";
 import type { PointerSample } from "./pointing";
 import { renderGame } from "./render";
-import { nextAngle, seedRandom } from "./rng";
 import { recordTrail } from "./trail";
 import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
 
@@ -159,6 +157,11 @@ export interface BallState {
    * counting down to 0, at which point it launches.
    */
   holdTimer: number;
+  /**
+   * The angle, in radians, the next launch leaves along: drawn afresh whenever
+   * the ball is parked and posed by the debug surface (specs/balls.md).
+   */
+  launchAngle: number;
   /** This ball's recent positions, oldest first, for its own motion trail. */
   trail: TrailSample[];
 }
@@ -219,10 +222,6 @@ export interface CaromState {
    * copy of it, and it is what `snapshot()` reports.
    */
   muted: boolean;
-  /** The seed the game's random generator was last seeded from. */
-  seed: number;
-  /** The whole state of that generator, as a single number. */
-  rngState: number;
 }
 
 // ---- Building and posing the state --------------------------------------
@@ -263,8 +262,6 @@ export function createInitialState(): CaromState {
     obstacles: createObstacles(),
     simTime: 0,
     muted: false,
-    seed: DEFAULT_SEED,
-    rngState: DEFAULT_SEED,
   };
 }
 
@@ -287,7 +284,7 @@ function respawnBalls(state: CaromState, hold: number): void {
  * Return to the title screen (specs/ui.md).
  *
  * Every declared field takes its title-screen value except `titleIndex`,
- * `simTime`, `muted`, `seed` and `rngState`, which keep theirs — and `menuIndex`,
+ * `simTime` and `muted`, which keep theirs — and `menuIndex`,
  * which becomes `titleIndex`, so the entry that led away from the title is the
  * entry highlighted on the way back to it.
  */
@@ -324,7 +321,6 @@ export function resetGame(state: CaromState): void {
   state.titleIndex = 0;
   toTitle(state);
   state.simTime = 0;
-  seedRandom(state, DEFAULT_SEED);
 }
 
 /**
@@ -350,12 +346,11 @@ export function startMatch(state: CaromState, mode: Mode): void {
 /**
  * Launch one ball from its home point at SERVE_SPEED.
  *
- * The direction is a fresh uniform draw over the full circle from the seeded
- * generator, the one piece of randomness this game has, and it is the same draw
- * for the first launch of a match and for every relaunch (specs/balls.md).
+ * The direction is the ball's own `launchAngle`, drawn when it was parked or
+ * posed since, and the launch leaves it as it is (specs/balls.md).
  */
-function launch(state: CaromState, ball: BallState): void {
-  const angle = nextAngle(state);
+function launch(ball: BallState): void {
+  const angle = ball.launchAngle;
   ball.vx = SERVE_SPEED * Math.cos(angle);
   ball.vy = SERVE_SPEED * Math.sin(angle);
   ball.spin = 0;
@@ -372,7 +367,7 @@ function tickHolds(state: CaromState, dt: number): void {
   for (const ball of state.balls) {
     if (!ball.held) continue;
     ball.holdTimer -= dt;
-    if (ball.holdTimer <= 0) launch(state, ball);
+    if (ball.holdTimer <= 0) launch(ball);
   }
 }
 

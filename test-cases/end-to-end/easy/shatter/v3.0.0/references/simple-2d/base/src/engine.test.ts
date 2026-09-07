@@ -287,15 +287,19 @@ describe("the surface", () => {
     expect(s.saucer).toBeNull();
   });
 
-  it("reset restores the title screen and reseeds the randomness", async () => {
+  it("reset restores the title screen and clears every posed draw", async () => {
     const h = await harness();
     await playing(h);
     h.pose((d, s) => d.addRock(s, "large", 100, 100));
     h.pose((d, s) => d.setScore(s, 900));
-    h.pose((d, s) => d.reset(s, { seed: 5 }));
+    h.pose((d, s) => d.setNextSaucerEdge(s, "right"));
+    h.pose((d, s) => d.setNextRockSpeed(s, 90));
+    h.pose((d, s) => d.reset(s));
 
     const s = h.snap();
     expect(s.screen).toBe("title");
+    expect(s.nextSaucerEdge).toBeNull();
+    expect(s.nextRockSpeed).toBeNull();
     expect(s.score).toBe(0);
     expect(s.lives).toBe(START_LIVES);
     expect(s.wave).toBe(0);
@@ -1090,5 +1094,91 @@ describe("what the frame draws", () => {
     expect(ink(20, 24, 220, 44)).toBeGreaterThan(50);
     expect(ink(20, 62, 120, 34)).toBeGreaterThan(20);
     expect(ink(480, 320, 320, 90)).toBeGreaterThan(80);
+  });
+});
+
+describe("the posed draws", () => {
+  it("brings the next arrival in at the posed edge and row", async () => {
+    const h = await harness();
+    await playing(h);
+    h.pose((d, s) => d.setSaucerSpawning(s, true));
+    h.pose((d, s) => d.setNextSaucerEdge(s, "right"));
+    h.pose((d, s) => d.setNextSaucerRow(s, 333));
+    h.pose((d, s) => d.setSaucerDue(s, 0.5));
+    expect(h.snap().nextSaucerEdge).toBe("right");
+    expect(h.snap().nextSaucerRow).toBe(333);
+    await h.step(Math.round(0.5 * TICK_HZ) + 1);
+    const saucer = h.snap().saucer;
+    expect(saucer).not.toBeNull();
+    expect(saucer?.x).toBeCloseTo(FIELD_W - SAUCER_R, -1);
+    expect(saucer?.y).toBe(333);
+    expect(saucer?.vx).toBe(-SAUCER_SPEED);
+    expect(h.snap().nextSaucerEdge).toBeNull();
+    expect(h.snap().nextSaucerRow).toBeNull();
+  });
+
+  it("fires the next shot with the posed aim error", async () => {
+    const h = await harness();
+    await playing(h);
+    h.pose((d, s) => d.setShipPosition(s, 200, 360));
+    h.pose((d, s) => d.addSaucer(s, 600, 360));
+    h.pose((d, s) => d.setSaucerTravel(s, false));
+    h.pose((d, s) => d.setSaucerMind(s, false));
+    h.pose((d, s) => d.setNextSaucerAim(s, 0));
+    await h.step(Math.round(SAUCER_FIRE_INTERVAL * TICK_HZ) + 1);
+    const rounds = h.snap().enemyBullets;
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0].vy).toBeCloseTo(0, 6);
+    expect(rounds[0].vx).toBeLessThan(0);
+    expect(h.snap().nextSaucerAim).toBeNull();
+  });
+
+  it("gives every rock of the next wave the posed base speed", async () => {
+    const h = await harness();
+    await playing(h);
+    h.pose((d, s) => d.setWaveSpawning(s, true));
+    h.pose((d, s) => d.setWave(s, 6));
+    h.pose((d, s) => d.setNextRockSpeed(s, 100));
+    h.pose((d, s) => d.setWaveBanner(s, 0.1));
+    // Read on the tick the wave arrives, so at most one tick of the well is in
+    // the reading: under a unit per second at the closest a wave may spawn.
+    for (let tick = 0; tick <= Math.round(0.1 * TICK_HZ) + 1; tick += 1) {
+      if (h.snap().rocks.length > 0) break;
+      await h.step(1);
+    }
+    const rocks = h.snap().rocks;
+    expect(rocks.length).toBeGreaterThan(0);
+    for (const rock of rocks) {
+      expect(Math.abs(Math.hypot(rock.vx, rock.vy) - 120)).toBeLessThanOrEqual(
+        2,
+      );
+    }
+    expect(h.snap().nextRockSpeed).toBeNull();
+  });
+
+  it("recycles the next rock the star takes at the posed edge and speed", async () => {
+    const h = await harness();
+    await playing(h);
+    h.pose((d, s) => d.addRock(s, "large", STAR_X, STAR_Y));
+    h.pose((d, s) => d.setNextRecycleEdge(s, "bottom"));
+    h.pose((d, s) => d.setNextRockSpeed(s, 80));
+    await h.step(1);
+    const rock = h.snap().rocks[0];
+    expect(rock.y).toBeGreaterThan(FIELD_H - 20);
+    expect(rock.vy).toBeLessThan(0);
+    expect(Math.hypot(rock.vx, rock.vy)).toBeCloseTo(80, 0);
+    expect(h.snap().nextRecycleEdge).toBeNull();
+    expect(h.snap().nextRockSpeed).toBeNull();
+  });
+
+  it("poses the saucer's weave direction and the cadence's due", async () => {
+    const h = await harness();
+    await playing(h);
+    h.pose((d, s) => d.addSaucer(s, 300, 300));
+    expect(h.snap().saucer?.weave).toBe(1);
+    h.pose((d, s) => d.setSaucerWeave(s, -1));
+    expect(h.snap().saucer?.weave).toBe(-1);
+    h.pose((d, s) => d.setSaucerDue(s, 27.5));
+    expect(h.snap().saucerDue).toBe(27.5);
   });
 });

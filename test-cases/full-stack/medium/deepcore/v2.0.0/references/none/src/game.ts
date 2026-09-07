@@ -20,7 +20,6 @@ import {
   CAM_UNWIND_MULT,
   CARGO_CAPACITY,
   CLIMB_CAP_FLOOR,
-  DEFAULT_SEED,
   DEFAULT_WORLD_SIZE,
   DEEPCORE_DEBUG_VERSION,
   DRILL_DAMAGE,
@@ -199,6 +198,8 @@ export interface DeepcoreSnapshot {
   };
   notice: null | { hazard: Hazard; shown: boolean };
   noticesFired: { gas: boolean; lava: boolean };
+  nextTeleportHeight: number | null;
+  nextTeleportSpeed: number | null;
   summary: null | {
     deepestDepthMeters: number;
     creditsEarned: number;
@@ -288,8 +289,12 @@ export class Game {
   autoStep = true;
   /** Whether the read-only diagnostics overlay is drawn. */
   overlayVisible = false;
-  /** The generator every draw the game makes runs off. */
-  rng = new Rng(DEFAULT_SEED);
+  /** The game's private random source. */
+  rng = new Rng();
+  /** The height, in tiles, posed for the next Quantum Teleporter use, else null. */
+  nextTeleportHeight: number | null = null;
+  /** The downward speed posed for the next Quantum Teleporter use, else null. */
+  nextTeleportSpeed: number | null = null;
 
   // --- Transient ---
   input: MoveInput = { left: false, right: false, down: false, thrust: false };
@@ -1213,6 +1218,8 @@ export class Game {
         ? { hazard: this.notice.hazard, shown: this.notice.shown }
         : null,
       noticesFired: { ...this.noticesFired },
+      nextTeleportHeight: this.nextTeleportHeight,
+      nextTeleportSpeed: this.nextTeleportSpeed,
       summary: this.summary ? { ...this.summary } : null,
     };
   }
@@ -1222,8 +1229,9 @@ export class Game {
   // -------------------------------------------------------------------------
 
   /** Restore the whole observable state to its title-screen value. */
-  reset(seed: number): void {
-    this.rng = new Rng(seed);
+  reset(): void {
+    this.nextTeleportHeight = null;
+    this.nextTeleportSpeed = null;
     this.mode = "standard";
     this.pendingMode = "standard";
     this.worldSize = DEFAULT_WORLD_SIZE;

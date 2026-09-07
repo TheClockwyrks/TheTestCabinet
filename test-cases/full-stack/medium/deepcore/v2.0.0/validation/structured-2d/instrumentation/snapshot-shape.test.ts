@@ -205,6 +205,10 @@ it("reports every documented field, with its documented type", async () => {
   }
   assertEqual(typeof s.noticesFired.gas, "boolean", "noticesFired.gas");
   assertEqual(typeof s.noticesFired.lava, "boolean", "noticesFired.lava");
+  if (s.nextTeleportHeight !== null)
+    assertNumber(s.nextTeleportHeight, "nextTeleportHeight");
+  if (s.nextTeleportSpeed !== null)
+    assertNumber(s.nextTeleportSpeed, "nextTeleportSpeed");
 
   // Present whatever it holds: the expedition is still running, so it is `null`,
   // and the field is there rather than missing.

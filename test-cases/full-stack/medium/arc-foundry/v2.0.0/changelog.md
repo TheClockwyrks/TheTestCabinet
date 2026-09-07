@@ -16,8 +16,8 @@ vendored in as a package and the project seeds the modules around the game,
 `src/constants.ts` and `src/main.ts`, leaving the build `src/game.ts` — the state,
 the game itself, and the debug surface its `initialize` returns.
 
-Neither engine supplies pathfinding, collision response, or a seeded random
-source, so the maze router that walks the ordered waypoint chain, the never-seal
+Neither engine supplies pathfinding, collision response, or a random source,
+so the maze router that walks the ordered waypoint chain, the never-seal
 test, the projectile flight, and the scrap-press roll are the build's own work
 under all three. What an engine takes off the build is the layer beneath the
 foundry, not the foundry.

@@ -9,14 +9,15 @@
 // So a lone core whose center the aim passes through stops the ray 14 units
 // short of that center — the review item's "the core's near edge".
 //
-// HOW THE RAY IS ISOLATED. Two frames of one hall, each opened by a `reset` on
-// the same seed, posed identically, and stepped the same single tick, one of them
-// granted sightline. `specs/instrumentation.md` has `reset` restore "every
-// declared field of the game's state to its title-screen value" and reseed the
-// generator, and it puts `simTime` back to `0` with them, so the two frames are
-// drawn from states that differ in the granted machinery and in nothing else —
-// not in the charges the injector drew, and not in how long the hall has been
-// running. Everything the two draw is therefore the same picture except the ray,
+// HOW THE RAY IS ISOLATED. Two frames of one hall, each opened by a `reset`,
+// posed identically through the surface, and stepped the same single tick, one
+// of them granted sightline. `specs/instrumentation.md` has `reset` restore
+// "every declared field of the game's state to its title-screen value" and put
+// `simTime` back to `0` with them, and `poseHall` sets every field a draw could
+// otherwise decide, the loaded and queued charges included, so the two frames
+// are drawn from states that differ in the granted machinery and in nothing
+// else — not in the charges the injector holds, and not in how long the hall
+// has been running. Everything the two draw is therefore the same picture except the ray,
 // so the pixels they differ in ARE the ray. `specs/ui.md` fixes no palette and no
 // styling, and the HUD it specifies carries no machinery readout, so nothing here
 // reads a colour: only whether a pixel changed when the machinery was granted.
@@ -59,7 +60,6 @@ import { assertAngleNear, assertNear, assertTrue } from "../assert";
 import {
   ANGLE_TOL,
   CORE_RADIUS,
-  DEFAULT_SEED,
   INJECTOR,
   INJECTOR_RADIUS,
   OPENING_AIM,
@@ -89,7 +89,7 @@ const CORE_S = 2820;
  * The charge the injector holds through both frames.
  *
  * Posed rather than drawn, so the HUD's loaded and queued cores are the same
- * picture in both frames whatever the generator would have handed each of them.
+ * picture in both frames whatever each draw would have handed them.
  * Immaterial otherwise: no rule here turns on which of the five is held.
  */
 const HELD = "halide" as const;
@@ -123,17 +123,16 @@ afterEach(async () => {
 });
 
 /**
- * Open the hall from the title on the fixed seed, pose it, and run the one tick
- * that draws it — with or without the sightline granted.
+ * Open the hall from the title, pose it, and run the one tick that draws it —
+ * with or without the sightline granted.
  *
  * The `reset` is what makes the two frames comparable: it restores every declared
- * field to its title value, reseeds the generator, and puts `simTime` back to
- * `0`, so the second frame is drawn from the same hall at the same age as the
- * first. The loaded and queued charges are posed rather than drawn, so the two
+ * field to its title value and puts `simTime` back to `0`, so the second frame
+ * is drawn from the same hall at the same age as the first. The loaded and queued charges are posed rather than drawn, so the two
  * frames cannot differ over the cores the injector happens to be holding either.
  */
 async function poseSameHall(sightline: boolean): Promise<void> {
-  await h.debug.reset({ seed: DEFAULT_SEED });
+  await h.debug.reset();
   await poseHall(h, {
     level: LEVEL,
     pressure: 0,

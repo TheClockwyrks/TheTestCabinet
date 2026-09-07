@@ -36,6 +36,8 @@
 //     npx vitest run --config validation/vitest.config.ts \
 //     validation/showcase-capture.test.ts
 
+import { readdirSync, renameSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, it } from "vitest";
 import {
   BOARD_Y,
@@ -320,7 +322,7 @@ class Cutter {
   /** How long an aim is kept before the board is read for a better one. */
   private readonly commit: number;
 
-  /** `phase` varies the take beyond what the seed does: how patient the aim is. */
+  /** `phase` varies the take beyond the game's own draws: how patient the aim is. */
   constructor(
     private readonly h: Harness,
     phase = 0,
@@ -456,20 +458,16 @@ it("records a gameplay clip", async () => {
   const h = harness;
 
   /**
-   * One take: reset to `seed`, open a run from the title, and play it out.
+   * One take: reset, open a run from the title, and play it out.
    *
-   * The same seed replays the identical run — the surface's own contract — so a
-   * take can be auditioned with the recorder off and then re-run under it
-   * exactly.
+   * Every take is a fresh run — the scatter, the entries and the arrivals are
+   * the game's own draws — so no take can be played twice. Each is therefore
+   * recorded as it is played, under `id`, and judged afterwards.
    */
-  const runTake = async (
-    seed: number,
-    phase: number,
-    record: boolean,
-  ): Promise<Take> => {
+  const runTake = async (id: string, phase: number): Promise<Take> => {
     const player = new Cutter(h, phase);
     await player.releaseAll();
-    await startRunFromTitle(h, { seed });
+    await startRunFromTitle(h);
 
     const minFrames = Math.round(
       Number(process.env.TCAB_SHOWCASE_MIN_SECONDS ?? "24") * CLIP_HZ,
@@ -550,22 +548,20 @@ it("records a gameplay clip", async () => {
       // over the field the last one left behind. A take that clears no level
       // gives up its still three quarters of the way through instead.
       if (
-        record &&
         !stillTaken &&
         after.phase === "active" &&
         after.worms.length > 0 &&
         (levelsCleared > 0 || frames > minFrames * 0.75)
       ) {
-        await captureStill(h, "mid-level");
+        await captureStill(h, `${id}-mid-level`);
         stillTaken = true;
       }
       if (
-        record &&
         process.env.TCAB_SHOWCASE_QA_STILLS === "1" &&
         frames % (CLIP_HZ * 3) < PLAN_EVERY
       ) {
         const at = Math.round(frames / (CLIP_HZ * 3));
-        await captureStill(h, `qa-${String(at).padStart(2, "0")}`);
+        await captureStill(h, `${id}-qa-${String(at).padStart(2, "0")}`);
       }
 
       // End on a settled beat: the hold after a discharge has spent its arcs
@@ -614,55 +610,86 @@ it("records a gameplay clip", async () => {
     t.maxLull * 4 +
     (t.endedOnBeat ? 12 : -12);
 
-  // Naming a take skips the audition and records that one, which is how the
-  // committed clip is reproduced and how a candidate is eyeballed with
-  // `TCAB_SHOWCASE_QA_STILLS=1` before it is chosen.
-  const pinned = process.env.TCAB_SHOWCASE_SEED;
-  let best: { seed: number; phase: number; rating: number } | null = null;
+  // Every take is recorded, because a take cannot be replayed: each is a fresh
+  // run of the game's own draws. The audition plays TCAB_SHOWCASE_TAKES takes at
+  // each aim phase (or at the one phase TCAB_SHOWCASE_PHASE names), each under
+  // its own output id, judges them all, and then keeps the winner's files under
+  // the committed names and removes the rest.
+  const pinnedPhase = process.env.TCAB_SHOWCASE_PHASE;
+  const phases =
+    pinnedPhase === undefined || pinnedPhase === ""
+      ? [0, 1, 2]
+      : [Number(pinnedPhase)];
+  const takesPerPhase = Number(process.env.TCAB_SHOWCASE_TAKES ?? "4");
 
-  if (pinned !== undefined && pinned !== "") {
-    best = {
-      seed: Number(pinned),
-      phase: Number(process.env.TCAB_SHOWCASE_PHASE ?? "0"),
-      rating: 0,
-    };
-  } else {
-    const seeds = (process.env.TCAB_SHOWCASE_SEEDS ?? "1,2,3,5,7,11,13,17")
-      .split(",")
-      .map(Number);
-    for (const seed of seeds) {
-      for (const phase of [0, 1, 2]) {
-        const take = await runTake(seed, phase, false);
-        const rating = judge(take);
-        console.log(
-          `take seed=${seed} phase=${phase}: ${take.seconds.toFixed(1)}s, ` +
-            `${take.discharges} discharge(s) widest ${take.widest}, ` +
-            `${take.fried} fried, ${take.cut} cut, ` +
-            `peak charge ${take.peakCharge} (${take.peakCriticals} critical), ` +
-            `${take.levelsCleared} level(s), ${take.deaths} death(s), ` +
-            `lull ${take.maxLull.toFixed(1)}s, ` +
-            `${take.endedOnBeat ? "clean end" : "ran out"} ` +
-            `-> ${rating.toFixed(0)}`,
-        );
-        if (best === null || rating > best.rating)
-          best = { seed, phase, rating };
-      }
+  const recorded: string[] = [];
+  let best: { id: string; phase: number; rating: number } | null = null;
+  for (const phase of phases) {
+    for (let n = 0; n < takesPerPhase; n += 1) {
+      const id = `take-${String(recorded.length + 1).padStart(2, "0")}`;
+      recorded.push(id);
+      const take = await captureReplay(h, id, () => runTake(id, phase));
+      const rating = judge(take);
+      console.log(
+        `${id} phase=${phase}: ${take.seconds.toFixed(1)}s, ` +
+          `${take.discharges} discharge(s) widest ${take.widest}, ` +
+          `${take.fried} fried, ${take.cut} cut, ` +
+          `peak charge ${take.peakCharge} (${take.peakCriticals} critical), ` +
+          `${take.levelsCleared} level(s), ${take.deaths} death(s), ` +
+          `lull ${take.maxLull.toFixed(1)}s, ` +
+          `${take.endedOnBeat ? "clean end" : "ran out"} ` +
+          `-> ${rating.toFixed(0)}`,
+      );
+      if (best === null || rating > best.rating) best = { id, phase, rating };
     }
   }
 
-  // The winning take again, this time under the recorder.
-  console.log(`recording take seed=${best!.seed} phase=${best!.phase}`);
-  const final = await captureReplay(h, "gameplay", () =>
-    runTake(best!.seed, best!.phase, true),
-  );
-  // The title the winning take opened on, as its own still: the same seed reset
-  // to the same title screen, one frame drawn. It is taken AFTER the recorder
-  // has closed, so the clip itself is play from its first frame to its last.
-  await h.debug.reset({ seed: best!.seed });
+  // The title screen, as its own still: reset to the title, one frame drawn. It
+  // is taken AFTER every recorder has closed, so no clip carries it.
+  await h.debug.reset();
   await h.advance(1);
   await captureStill(h, "title");
 
-  console.log(
-    JSON.stringify({ seed: best!.seed, phase: best!.phase, ...final }, null, 2),
-  );
+  console.log(`keeping ${best!.id} (phase ${best!.phase})`);
+  keepWinner(recorded, best!.id);
 }, 3_600_000);
+
+/* -------------------------------------------------------------------------- */
+/* Keeping the winning take                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where this driver's outputs land: the runner's media directory, under the
+ * staged path of this suite. Unset, the driver wrote nothing and there is
+ * nothing to keep.
+ */
+function mediaDir(): string | null {
+  const root = process.env.TCAB_VALIDATION_MEDIA_DIR;
+  if (root === undefined || root === "") return null;
+  return join(root, "validation", "showcase-capture.test.ts");
+}
+
+/**
+ * Rename the winner's recording and still to the committed names, and remove
+ * every other take's files, so what is left is exactly what `showcase/base/`
+ * ships: `gameplay.json.gz`, `mid-level.png`, and `title.png`.
+ */
+function keepWinner(recorded: readonly string[], winner: string): void {
+  const dir = mediaDir();
+  if (dir === null) return;
+  for (const id of recorded) {
+    for (const entry of readdirSync(dir)) {
+      if (!entry.startsWith(id)) continue;
+      const from = join(dir, entry);
+      if (id !== winner) {
+        rmSync(from);
+      } else if (entry === `${id}.json.gz`) {
+        renameSync(from, join(dir, "gameplay.json.gz"));
+      } else if (entry === `${id}-mid-level.png`) {
+        renameSync(from, join(dir, "mid-level.png"));
+      } else {
+        renameSync(from, join(dir, entry.slice(id.length + 1)));
+      }
+    }
+  }
+}

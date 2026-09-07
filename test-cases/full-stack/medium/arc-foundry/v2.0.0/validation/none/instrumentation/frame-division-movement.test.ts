@@ -1,7 +1,7 @@
 // instrumentation/frame-division-movement — a unit walks the same second however
 // it was divided into frames.
 //
-// `specs/instrumentation.md` states determinism as a property of the interval
+// `specs/instrumentation.md` states the step as a property of the interval
 // rather than of the frame: "an interval of simulation time reaches the same
 // state however it was divided into frames and whatever frame rate produced it".
 // So the same second is covered twice, once as a single frame and once as sixty,
@@ -28,9 +28,6 @@ import {
   openYard,
   type Harness,
 } from "../harness";
-
-/** The seed both halves of every comparison run under. */
-const SEED = 3;
 
 /** The interval this comparison covers, and its two divisions. */
 const SECOND_MS = 1000;
@@ -60,7 +57,7 @@ it("covers a second in one frame and in sixty, and reaches the same place", asyn
   // One walking unit on an otherwise empty yard: nothing fires at it, nothing
   // stands in its way, and its travel is the only thing moving.
   for (const h of [coarse, fine]) {
-    await openYard(h, { seed: SEED, wave: 1 });
+    await openYard(h, { wave: 1 });
     await h.debug.spawnUnit("mote");
   }
 

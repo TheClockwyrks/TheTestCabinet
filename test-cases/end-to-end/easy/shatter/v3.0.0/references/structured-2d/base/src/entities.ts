@@ -48,7 +48,7 @@ export function addRockTo(
     vx: 0,
     vy: 0,
     size,
-    spin: random(state) * Math.PI * 2,
+    spin: random() * Math.PI * 2,
   };
   state.rocks.push(rock);
   return rock;
@@ -117,6 +117,8 @@ export function addSaucerTo(
     mind: true,
     gun: true,
     travel: true,
+    // Down, for a saucer posed onto the field; an arrival draws its own.
+    weave: 1,
     fireClock: SAUCER_FIRE_INTERVAL,
     weaveClock: SAUCER_WEAVE_INTERVAL,
     age: 0,

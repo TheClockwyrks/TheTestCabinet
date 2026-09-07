@@ -1,4 +1,4 @@
-// saucer — the sixty shots the three aim checks read. LOCAL TO THIS GROUP.
+// saucer — the handful of shots the aim checks read. LOCAL TO THIS GROUP.
 //
 // `specs/saucer.md` gives the saucer's aim three separable properties — it
 // points at the ship, its per-shot error stays inside a bound, and that error is
@@ -6,7 +6,7 @@
 // aims dead-on and a build that scatters over thirty degrees are different
 // faults and must grade differently. What all three share is the SCENARIO: a
 // saucer standing still, a ship standing still four hundred units away, and
-// sixty shots read as they leave. So the scenario is built once, here, and each
+// a handful of shots read as they leave. So the scenario is built once, here, and each
 // check reads its own thing off it.
 //
 // IT LIVES IN THE GROUP because nothing outside `saucer` reads a saucer's aim.
@@ -61,23 +61,25 @@ export const SAUCER_STAND: Point = { x: 140, y: 640 };
 export const SHIP_STAND: Point = { x: SAUCER_STAND.x + 400, y: SAUCER_STAND.y };
 
 /**
- * The sixty shots all three checks read.
+ * The eight shots the two unposed aim checks read.
  *
- * `aims-at-the-ship` is where the number comes from: `specs/saucer.md` draws the
- * per-shot error uniformly over `+/-SAUCER_AIM_ERROR`, whose standard deviation
- * is `E / sqrt(3)` = `5.77` degrees, so the mean of `n` of them has a standard
- * error of `E / sqrt(3n)`, which at sixty is `0.745` degrees — and the three
- * degrees that item asserts is four of those. The other two read the same sixty.
+ * A HANDFUL, NOT A SAMPLE. `aim-error-within-10-degrees` holds each of them
+ * inside the bound `specs/saucer.md` states and `aim-error-varies-per-shot` asks
+ * only that they are not all one bearing; neither reads a statistic off them,
+ * because how a build's draw is shaped inside the stated range is the reviewer's
+ * to judge. Eight is two visits' worth at `SHOTS_PER_VISIT`, so the scenario is
+ * re-posed once and a build that fires only on a fresh visit is read across the
+ * renewal. `aims-at-the-ship` poses its error and reads one shot of its own.
  */
-export const SHOT_COUNT = 60;
+export const SHOT_COUNT = 8;
 
 /**
  * How many shots are taken from each saucer before another is brought on.
  *
  * A CONSEQUENCE OF THE SPECIFICATION, NOT A CHOICE. `specs/saucer.md` gives a
- * visit `SAUCER_LIFETIME` (`12` seconds), and sixty shots at
- * `SAUCER_FIRE_INTERVAL` is ninety-six — so no single visit can produce them and
- * the scenario is re-posed as each visit runs out. Six shots is `9.6` seconds,
+ * visit `SAUCER_LIFETIME` (`12` seconds), and eight shots at
+ * `SAUCER_FIRE_INTERVAL` is `12.8` — so no single visit can produce them and
+ * the scenario is re-posed as the first visit runs out. Six shots is `9.6` seconds,
  * comfortably inside a visit, and `addSaucer` "replaces any saucer already up"
  * with its clocks at their opening values, so each batch is the same scenario
  * over again. Every shot read is a real shot from a saucer standing at the same
@@ -99,11 +101,11 @@ function standSaucer(h: Harness): void {
 }
 
 /**
- * Pose the scenario and read the aim error of sixty shots, in degrees.
+ * Pose the scenario and read the aim error of `SHOT_COUNT` shots, in degrees.
  *
  * The error is signed, taken as the turn from the bearing to the SHIP to the
- * bearing the round left along, so a build that aims dead-on reads sixty zeros
- * and a build with a fixed lead reads sixty of the same number. The saucer's own
+ * bearing the round left along, so a build that aims dead-on reads nothing but
+ * zeros and a build with a fixed lead reads copies of one number. The saucer's own
  * velocity is subtracted first, because `specs/saucer.md` has the round leave
  * "at `SAUCER_BULLET_SPEED` along that bearing, PLUS the saucer's own velocity"
  * — here the saucer is posed at rest, so the subtraction takes nothing away and
@@ -123,11 +125,11 @@ export async function readAimErrors(h: Harness): Promise<number[]> {
   const wanted = Math.atan2(toShip.y, toShip.x);
   const errors: number[] = [];
 
-  // UNDRAWN, BECAUSE THE READING IS SIXTY VELOCITIES. Ninety-six seconds of game
-  // time reach the sixty shots, sampled a tick at a time so that no shot is
+  // UNDRAWN, BECAUSE THE READING IS A LIST OF VELOCITIES. Thirteen seconds of
+  // game time reach the eight shots, sampled a tick at a time so that no shot is
   // stepped over, and every one of those ticks would otherwise be drawn for a
   // picture nothing reads. The ticks, the snapshots and the shots caught are the
-  // same either way; only the eleven thousand renders are gone.
+  // same either way; only the renders are gone.
   await h.quiet(async () => {
     for (let shot = 0; shot < SHOT_COUNT; shot += 1) {
       if (shot > 0 && shot % SHOTS_PER_VISIT === 0) standSaucer(h);

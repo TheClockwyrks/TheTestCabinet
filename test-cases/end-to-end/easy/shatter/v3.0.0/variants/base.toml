@@ -45,4 +45,4 @@ none = "references/none/base"
 
 # Base declares no `[workspaces]`: the case manifest's table is base's own. It
 # declares no `[[review.categories]]` either — every point a base run is rated on
-# is a common one, and a base run is rated on all 236 of them.
+# is a common one, and a base run is rated on all 240 of them.

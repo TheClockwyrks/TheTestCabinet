@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 it("returns to the title from a press and release on the back control", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
 
   h.debug.setScreen("howto");
   await h.advance(1);

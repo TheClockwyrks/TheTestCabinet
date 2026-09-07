@@ -19,14 +19,10 @@
 //     `GRIP_ACCEL` accelerates for half a second, cruises, and brakes for half a
 //     second.
 //
-// ONE RUN RATHER THAN TWO, DELIBERATELY. A control driven as a second run would
-// only be comparable if the same tape over the same structure repeated itself
-// tick for tick — which is a requirement of its own
-// (specs/instrumentation.md § A deterministic core) with a validator of its own.
-// Borrowing it here would fail this point for a build whose runs do not repeat,
-// against a specification sentence about the grip. The control tick and the
-// turning ticks belong to the same run, so nothing but the grip stands between
-// them.
+// ONE RUN RATHER THAN TWO, DELIBERATELY. The control tick and the turning ticks
+// belong to the same run over the same posed crane, so nothing but the grip
+// stands between them, and the point reads the grip alone rather than whatever
+// separates two runs.
 //
 // Every turning tick — accelerating, cruising, braking, and stopped at the target
 // — must report the control tick's member forces exactly. A force the grip

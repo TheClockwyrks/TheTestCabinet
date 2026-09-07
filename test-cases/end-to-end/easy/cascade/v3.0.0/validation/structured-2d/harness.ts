@@ -37,7 +37,7 @@
 // records a turn's set the way a turn records one, `move` runs the game's own
 // move rules and reports what they decided, `pointerDown` feeds the same input
 // path the player's pointer feeds, and `reset` gives everything back. Posing
-// through it is how a scenario is reproducible, and it is the seam the case's
+// through it is how a scenario is arranged, and it is the seam the case's
 // specification documents. `surface.ts` is that specification as types, and it
 // is the only description of the surface this harness reads: the build's own
 // module for it is never imported.
@@ -525,8 +525,6 @@ interface WorldModel {
    * the frame the pose produced and by nothing before it.
    */
   drawFrame(): Promise<DrawCall[]>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
 }
 
 /**
@@ -624,13 +622,6 @@ const kit = createEngineCaseHarness<
       base.calls.length = 0;
       await base.advance(1);
       return [...base.calls];
-    },
-    async runFor(ms: number) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((resolve) => setTimeout(resolve, ms));
-      controller.abort();
-      await running;
     },
   }),
 });
@@ -760,8 +751,8 @@ export const captureStill = kit.captureStill;
 // about a foundation poses no stock.
 
 /**
- * `reset({seed})`: the title screen, a seeded generator, every declared field at
- * its title-screen value. Every suite's opening move.
+ * `reset()`: the title screen, every declared field at its title-screen value.
+ * Every suite's opening move.
  *
  * No frame is advanced. A pose acts on the live game at the call under this
  * engine (specs/instrumentation.md), so the state is restored when this returns,
@@ -769,8 +760,8 @@ export const captureStill = kit.captureStill;
  * that has run no frame since. `muted` is left exactly as it stands, because
  * muting is a player preference the runtime owns.
  */
-export function resetTo(h: Harness, seed?: number): void {
-  h.debug.reset(seed === undefined ? undefined : { seed });
+export function resetTo(h: Harness): void {
+  h.debug.reset();
 }
 
 /**
@@ -791,11 +782,10 @@ export function resetTo(h: Harness, seed?: number): void {
  * without the game ending, `setLaunching` to hold a cascade at the cards already
  * in flight, `setTrailPainting` to keep a full-screen blit out of a recording.
  *
- * The generator is seeded, so a check that wants a particular deal passes its
- * own seed. No frame is advanced: every pose here lands at the call.
+ * No frame is advanced: every pose here lands at the call.
  */
-export function openTable(h: Harness, seed?: number): void {
-  resetTo(h, seed);
+export function openTable(h: Harness): void {
+  resetTo(h);
   h.debug.setScreen("playing");
   h.debug.clearTable();
 }
@@ -846,10 +836,10 @@ export function openWon(h: Harness): void {
  *
  * The deal is the build's, run through the same path a new game runs through
  * (specs/deal.md), so what stands on the table when this returns is whatever the
- * build's own shuffle and deal produced from the seed.
+ * build's own shuffle and deal produced.
  */
-export function dealInPlay(h: Harness, seed?: number): void {
-  resetTo(h, seed);
+export function dealInPlay(h: Harness): void {
+  resetTo(h);
   h.debug.setScreen("playing");
   h.debug.deal();
 }
@@ -1002,15 +992,15 @@ export interface NearlyWon {
  * The table is otherwise EMPTY: the stock, the waste, the other six columns and
  * the waste's set memory are all cleared first, so the fifty-second card is the
  * only card outside the foundations and nothing else on the table can move.
- * `openTable` is called for you, so a check that wants a seed passes one.
+ * `openTable` is called for you.
  */
 export function poseNearlyWon(
   h: Harness,
-  options: { suit?: Suit; column?: number; seed?: number } = {},
+  options: { suit?: Suit; column?: number } = {},
 ): NearlyWon {
   const suit = options.suit ?? "clubs";
   const column = options.column ?? 0;
-  openTable(h, options.seed);
+  openTable(h);
 
   // One foundation per suit, in the order a deck is built. Which suit sits on
   // which foundation is arbitrary — any suit may start any foundation
@@ -1040,7 +1030,7 @@ export function poseNearlyWon(
  */
 export function startCascade(
   h: Harness,
-  options: { suit?: Suit; column?: number; seed?: number } = {},
+  options: { suit?: Suit; column?: number } = {},
 ): NearlyWon {
   const posed = poseNearlyWon(h, options);
   const accepted = h.debug.move(

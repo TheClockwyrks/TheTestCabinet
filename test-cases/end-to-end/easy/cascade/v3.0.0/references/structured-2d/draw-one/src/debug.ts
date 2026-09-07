@@ -37,12 +37,11 @@
 
 import type { World } from "@clockwyrks/structured-2d";
 import { applyAudio, noCues, type FrameCues } from "./audio";
-import { addFlyerTo } from "./cascade";
+import { addFlyerTo, drawLaunchVx } from "./cascade";
 import {
   CASCADE_DEBUG_VERSION,
   DEAL_MODE,
   DEAL_MODE_LABEL,
-  DEFAULT_SEED,
   TURN_COUNT,
 } from "./constants";
 import { dealGame } from "./deal";
@@ -151,7 +150,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): CascadeSnapshot;
 
   /**
@@ -217,6 +216,8 @@ export interface CascadeDebugApi {
   clearFlyers(): void;
   setLaunchClock(seconds: number): void;
   clearTrail(): void;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(): number;
 }
 
 function snapshotCard(card: CardState): SnapshotCard {
@@ -252,8 +253,8 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
   return {
     version: CASCADE_DEBUG_VERSION,
 
-    reset(options) {
-      resetState(read(), options?.seed ?? DEFAULT_SEED);
+    reset() {
+      resetState(read());
     },
 
     snapshot() {
@@ -524,6 +525,11 @@ export function createDebugApi(world: () => World): CascadeDebugApi {
       const state = read();
       state.trail.clear();
       state.trailStamps = 0;
+    },
+
+    /** The launch's own draw, taken without a launch. It touches no field. */
+    drawLaunchVx() {
+      return drawLaunchVx();
     },
   };
 }

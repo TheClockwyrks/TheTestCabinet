@@ -1,5 +1,5 @@
-// The opening board: no run under R4, at least one legal swap, and the same
-// board every time from the same seed.
+// The opening board: no run under R4, at least one legal swap, every gem plain
+// at strain 0 and dealt in from above.
 
 import { describe, expect, it } from "vitest";
 import { GRID_COLS, GRID_ROWS } from "../constants";
@@ -11,14 +11,14 @@ import {
   reserveBoard,
 } from "./deal";
 import { quietRows } from "./fixtures";
-import { cursor } from "./rng";
+import { randomPicker } from "./random";
 import { legalSwapExists, maximalRuns } from "./rules";
 
-const deal = (seed: number) => dealOpeningBoard(seed);
+const deal = () => ({ board: dealOpeningBoard() });
 
 describe("dealing an opening board", () => {
   it("deals a full board of plain gems at strain 0", () => {
-    const { board } = deal(1);
+    const { board } = deal();
     expect(board.cols).toBe(GRID_COLS);
     expect(board.rows).toBe(GRID_ROWS);
     expect(board.gems).toHaveLength(GRID_COLS * GRID_ROWS);
@@ -31,7 +31,7 @@ describe("dealing an opening board", () => {
   });
 
   it("deals the whole board in from above, a row of travel per row", () => {
-    const { board } = deal(1);
+    const { board } = deal();
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         expect(board.gems[row * GRID_COLS + col]?.fell).toBe(row + 1);
@@ -42,26 +42,19 @@ describe("dealing an opening board", () => {
     expect(reserveBoard().gems[0]?.fell).toBe(1);
   });
 
-  it("holds no run under R4, and carries a legal swap, from any seed", () => {
-    for (let seed = 1; seed <= 200; seed++) {
-      const { board } = deal(seed);
+  it("holds no run under R4, and carries a legal swap, deal after deal", () => {
+    for (let attempt = 1; attempt <= 200; attempt++) {
+      const { board } = deal();
       expect(maximalRuns(board)).toEqual([]);
       expect(legalSwapExists(board)).toBe(true);
       expect(isOpeningBoard(board)).toBe(true);
     }
   });
 
-  it("deals the same board from the same seed, and another from another", () => {
-    expect(formatBoard(deal(7).board)).toEqual(formatBoard(deal(7).board));
-    expect(formatBoard(deal(7).board)).not.toEqual(formatBoard(deal(8).board));
-  });
-
-  it("hands back the generator state the deal left", () => {
-    const dealt = deal(7);
-    expect(dealt.rngState).not.toBe(7);
-    // Dealing again from that state gives the board a second deal would.
-    const again = dealOpeningBoard(dealt.rngState);
-    expect(formatBoard(again.board)).not.toEqual(formatBoard(dealt.board));
+  it("deals a different board from one deal to the next", () => {
+    // Sixty-four cells drawn from seven kinds: two deals that agreed would be
+    // a source that is not drawing at all.
+    expect(formatBoard(deal().board)).not.toEqual(formatBoard(deal().board));
   });
 
   it("never bars more than two kinds, so the draw is never stuck", () => {
@@ -74,7 +67,7 @@ describe("dealing an opening board", () => {
   });
 
   it("draws the run-free half without needing a legal swap", () => {
-    const board = dealBoardWithoutRuns(cursor(5));
+    const board = dealBoardWithoutRuns(randomPicker);
     expect(maximalRuns(board)).toEqual([]);
   });
 });
@@ -88,9 +81,8 @@ describe("the reserve board", () => {
   });
 
   it("is what a deal falls back to when its budget runs out", () => {
-    const dealt = dealOpeningBoard(7, 0);
-    expect(formatBoard(dealt.board)).toEqual(formatBoard(reserveBoard()));
-    expect(dealt.rngState).toBe(7);
+    const dealt = dealOpeningBoard(randomPicker, 0);
+    expect(formatBoard(dealt)).toEqual(formatBoard(reserveBoard()));
   });
 
   it("is handed out fresh, so no caller can hold the one instance", () => {
@@ -101,11 +93,11 @@ describe("the reserve board", () => {
 
 describe("recognizing an opening board", () => {
   it("accepts a board the deal produced", () => {
-    expect(isOpeningBoard(deal(1).board)).toBe(true);
+    expect(isOpeningBoard(deal().board)).toBe(true);
   });
 
   it("refuses a board carrying a run", () => {
-    const rows = formatBoard(deal(1).board);
+    const rows = formatBoard(deal().board);
     const cells = rows[4].split(" ");
     const withRun = [...rows];
     withRun[4] = ["R0", "R0", "R0", ...cells.slice(3)].join(" ");
@@ -113,7 +105,7 @@ describe("recognizing an opening board", () => {
   });
 
   it("refuses a board whose gems did not arrive clean", () => {
-    const rows = formatBoard(deal(1).board);
+    const rows = formatBoard(deal().board);
     const strained = [...rows];
     strained[0] = rows[0].replace(/^(\w)0/, "$13");
     expect(isOpeningBoard(parseBoard(strained))).toBe(false);
@@ -126,6 +118,6 @@ describe("recognizing an opening board", () => {
   it("refuses a board whose gems did not come in from above", () => {
     // The notation writes every gem standing still, so a board read back out
     // of it has traveled nowhere and is not a board that was just dealt.
-    expect(isOpeningBoard(parseBoard(formatBoard(deal(1).board)))).toBe(false);
+    expect(isOpeningBoard(parseBoard(formatBoard(deal().board)))).toBe(false);
   });
 });

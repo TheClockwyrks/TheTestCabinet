@@ -55,6 +55,7 @@ import {
 } from "../harness";
 import {
   REQUIRED_SHIP_FIELDS,
+  POSED_DRAW_FIELDS,
   REQUIRED_SNAPSHOT_FIELDS,
   SHATTER_DEBUG_VERSION,
   type ShatterSnapshot,
@@ -121,6 +122,14 @@ it("reports every documented field, with its documented type", async () => {
   }
   for (const field of ["muted", "waveSpawning", "saucerSpawning"] as const) {
     assertEqual(typeof snapshot[field], "boolean", `${field} is a boolean`);
+  }
+  // The five posed draws, present and `null` while no pose stands.
+  for (const field of POSED_DRAW_FIELDS) {
+    assertEqual(
+      snapshot[field],
+      null,
+      `${field} is null with no pose standing`,
+    );
   }
   assertGreaterThanOrEqual(snapshot.simTime, 0, "simTime accumulates from 0");
 
@@ -200,6 +209,7 @@ it("reports every documented field, with its documented type", async () => {
     "fireClock",
     "weaveClock",
     "age",
+    "weave",
   ] as const) {
     assertEqual(typeof saucer[field], "number", `saucer.${field} is a number`);
   }

@@ -116,14 +116,13 @@ describe("reset", () => {
     sim.saucerSpawning = false;
     sim.ship.collision = false;
 
-    resetToTitle(sim, 9);
+    resetToTitle(sim);
 
     expect(sim.screen).toBe("title");
     expect(sim.score).toBe(0);
     expect(sim.wave).toBe(0);
     expect(sim.rocks).toHaveLength(0);
     expect(sim.simTime).toBe(0);
-    expect(sim.rngState).toBe(9);
     expect(sim.waveSpawning).toBe(true);
     expect(sim.saucerSpawning).toBe(true);
     expect(sim.ship.collision).toBe(true);

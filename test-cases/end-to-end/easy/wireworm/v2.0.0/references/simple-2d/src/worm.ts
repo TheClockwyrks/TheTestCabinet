@@ -21,7 +21,7 @@ import {
   wormStepInterval,
 } from "./constants";
 import { bumpNode, nodeAt } from "./field";
-import { nextSign } from "./rng";
+import { randomSign } from "./rng";
 import {
   takeId,
   type FrameEvents,
@@ -56,14 +56,15 @@ export function addWorm(sim: Sim, c: number, r: number): MutWorm {
 /**
  * Bring in the level's worm (`specs/worm.md`): `wormLength(level)` segments laid
  * along row `0` from one edge, the head furthest from that edge and the tail
- * nearest it, heading inward and descending. Which edge is a draw from the run's
- * own generator.
+ * nearest it, heading inward and descending. Which edge is a coin flip, unless
+ * the debug surface posed it, in which case the pose decides this one entry and
+ * is consumed by it.
  */
 export function enterWorm(sim: Sim): MutWorm {
   const length = wormLength(sim.level);
-  const [sign, next] = nextSign(sim.rngState);
-  sim.rngState = next;
-  const fromLeft = sign > 0;
+  const posed = sim.nextWormEntry;
+  sim.nextWormEntry = null;
+  const fromLeft = posed === null ? randomSign() > 0 : posed === "left";
 
   const segments: MutTile[] = [];
   for (let i = 0; i < length; i++) {

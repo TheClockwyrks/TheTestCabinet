@@ -32,7 +32,7 @@ import type {
 
 /**
  * Pose a quiet, live field with the game's OWN saucer arrival running, from a
- * `reset` at `seed`.
+ * `reset`.
  *
  * `reset` is what returns the arrival clock to the start of a game's cadence
  * (`specs/instrumentation.md`), which is the whole precondition of
@@ -47,11 +47,22 @@ import type {
  * The field it leaves holds no rock, no bullet and no saucer, so the only thing
  * that can put a saucer on it is the build's own spawner.
  */
-export function openSaucerGame(h: Harness, seed?: number): void {
-  h.debug.reset(seed === undefined ? undefined : { seed });
+export function openSaucerGame(h: Harness): void {
+  h.debug.reset();
   startPlaying(h);
   h.debug.setSaucerSpawning(true);
 }
+
+/**
+ * The due a check poses to bring an arrival on at once, in seconds.
+ *
+ * `setSaucerDue` sets the figure the gap draw decides
+ * (`specs/instrumentation.md`), so a check that wants an arrival without waiting
+ * out the cadence poses a short one. A quarter of a second, which is thirty
+ * ticks: long enough that a build's clock has whole ticks to reach it, short
+ * enough that a tick-by-tick sweep to the arrival costs nothing.
+ */
+export const SHORT_DUE = 0.25;
 
 /* -------------------------------------------------------------------------- */
 /* Catching an arrival                                                         */
@@ -110,42 +121,29 @@ export async function nextArrival(
 }
 
 /**
- * Catch a game's FIRST arrival on the tick it is first reported, whenever it
- * comes.
+ * Bring the next arrival on with a short due and catch it on the tick it is
+ * first reported, whenever it comes.
  *
- * TWO PASSES, AND THE REASON IS A READING THAT MOVES. A saucer crosses at
- * `SAUCER_SPEED` from the moment it enters, so a sweep that samples every
- * `stride` ticks reports an entry column up to `stride / TICK_HZ` seconds of
- * travel inside the edge it entered at — 14 units at a tenth of a second — and
- * `enters-at-an-edge` is a check on exactly that column.
+ * A saucer crosses at `SAUCER_SPEED` from the moment it enters, so a sweep that
+ * samples every `stride` ticks reports an entry column up to `stride / TICK_HZ`
+ * seconds of travel inside the edge it entered at, and `enters-at-an-edge` is a
+ * check on exactly that column. So the due is posed short and every tick from
+ * there is sampled: the arrival is caught on the tick it happens, and the whole
+ * sweep is a handful of ticks rather than eighteen seconds of them.
  *
- * So the wait is run twice. The first pass strides coarsely and learns WHEN the
- * arrival happened; the second re-opens the same game at the same seed, skips in
- * one call to a stride short of that moment, and then samples every tick.
- * `specs/instrumentation.md` fixes that the same seed and the same elapsed game
- * time reach the same state every time, so the second pass replays the first,
- * and `snapshot` is a pure read that no number of extra calls can move.
- *
- * Nothing here assumes WHEN the arrival comes: the coarse pass finds it wherever
- * it is, and a build whose first saucer is late is caught just as exactly as one
- * whose first saucer is on time. That is `first-arrives-at-18s`'s requirement,
- * not this route's.
+ * `afterId` is the saucer the field held before, or `null` for the first wait
+ * of a game, as {@link nextArrival} takes it. The field must be clear of a
+ * saucer when this is called: the cadence only runs while it is.
  */
-export async function closeUpFirstArrival(
+export async function closeUpArrival(
   h: Harness,
-  seed: number,
-  options: { stride?: number } = {},
+  afterId: number | null,
 ): Promise<Arrival> {
-  const stride = options.stride ?? 30;
-
-  openSaucerGame(h, seed);
-  const coarse = await nextArrival(h, null, { stride });
-
-  openSaucerGame(h, seed);
-  const lead = Math.max(0, coarse.ticks - stride);
-  await h.advance(lead);
-  const fine = await nextArrival(h, null, { stride: 1, maxTicks: stride * 2 });
-  return { ...fine, ticks: lead + fine.ticks };
+  h.debug.setSaucerDue(SHORT_DUE);
+  return nextArrival(h, afterId, {
+    stride: 1,
+    maxTicks: ticksFor(SHORT_DUE) * 4,
+  });
 }
 
 /** How near an edge a centre stands, across the seam, in logical units. */
@@ -181,17 +179,16 @@ export interface Volley {
  * fresh round the id of one that has just expired, and a cumulative set of ids
  * would then never see it arrive.
  *
- * THE COMPARISON IS SEEDED FROM THE STATE THE SWEEP STARTS ON, read before a
+ * THE COMPARISON STARTS FROM THE STATE THE SWEEP STARTS ON, read before a
  * single tick has run, so a round left in flight by an earlier sweep — or by the
  * visit before this one — is never mistaken for a shot this sweep saw fired.
  *
  * NO TICK IS EVER SKIPPED, so no check in this group can pass over a shot. The
  * whole sweep is one tick at a time: in-process stepping runs a tick of this
- * game in a fifth of a millisecond, so the sixty shots the three aim items read
- * — ninety-six seconds of game time — cost a couple of seconds sampled
- * exhaustively, and a lead-in that skipped most of each interval would buy
- * nothing while letting a build that fires faster than the lead-in have its
- * extra rounds passed over.
+ * game in a fifth of a millisecond, so the handful of shots the aim items read
+ * cost a fraction of a second sampled exhaustively, and a lead-in that skipped
+ * most of each interval would buy nothing while letting a build that fires
+ * faster than the lead-in have its extra rounds passed over.
  */
 export async function nextVolley(
   h: Harness,

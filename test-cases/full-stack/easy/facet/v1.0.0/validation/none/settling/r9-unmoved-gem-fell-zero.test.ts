@@ -32,7 +32,7 @@
 // fall carried down and whose figure is
 // `settling/r9-fell-reports-the-drop`'s; and its rows 0 to 2, which the refill
 // dealt and whose figure R9 fixes only as a floor, decided by
-// `settling/r9-refill-falls-from-above`. `board.ts`'s `settle` is the oracle for
+// `settling/r9-refill-falls-from-above`. `board.ts`'s `settleBoard` is the oracle for
 // which cells are which, so the split is the rules' rather than the fixture's,
 // and every cell this check reads carries an `exactly` of `0`.
 //
@@ -57,7 +57,7 @@ import {
   fellAt,
   maximalRuns,
   quietRowsWith,
-  settle,
+  settleBoard,
   showFell,
   swapped,
   type CellRef,
@@ -146,7 +146,7 @@ it("reports 0 for every gem the fall left where it stood", async () => {
   // R9 as `board.ts` restates it, over the board the swap produced and the cells
   // the removal emptied. Every cell it fixes at exactly 0 is a cell the fall left
   // standing, and those are the cells this point reads.
-  const settlement = settle(resolved, CLEAR_SET);
+  const settlement = settleBoard(resolved, CLEAR_SET);
   const standing = settlement.cells.filter(
     (cell) => showFell(cell.fell) === "0",
   );

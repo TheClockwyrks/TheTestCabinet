@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 it("leaves no trace live after a press on the clear control", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
   await loadBoard(h, R9_UNIQUE);
   assertEqual(

@@ -10,25 +10,25 @@
 // reported as up and driven by `mouse`, and `simTime` at `0`" — and
 // specs/state.md says the same thing from the other side: "A `reset` restores
 // the declared fields to their title-screen values, so those fields are the
-// whole of the authoritative state." It is the operation every reproducible
+// whole of the authoritative state." It is the operation every posed
 // scenario in this project begins from: a `reset` that leaves one field of a
 // spent round behind makes the next scenario start somewhere nobody wrote down,
 // and the failure surfaces as a wrong number in an unrelated check rather than
 // here.
 //
-// WHAT IT DOES NOT DECIDE. That `options.seed` is what seeds `rngState` is
-// `instrumentation/reset-seeds-the-rng`. A build whose reset restores every
-// field and ignores the seed passes this point and fails that one, which is the
-// separation two points buy.
+// WHAT IT DOES NOT DECIDE. What a posed refill deals and how it is reported are
+// `instrumentation/set-refill-kinds-deals-the-pose` and
+// `instrumentation/set-refill-kinds-reported`; here a pose is one more field the
+// reset has to put back.
 //
 // SO IT IS DRIVEN DIRTY FIRST. A reset read off a game that was already at rest
 // asserts nothing: every field would be at its resting value whether `reset` ran
 // or not. Every field the specification lists is therefore moved off that value
 // first — a board posed, a swap accepted and carried past its own animation into
 // a scoring chain, a score, a level, a level score, a best move, a selection and
-// an offer standing, a refusal raised, a touch press holding a target armed, and
-// a simulation clock that has ticked — and the arrangement is asserted to BE
-// dirty before the reset is asked to undo it.
+// an offer standing, a refusal raised, a refill posed on one column, a touch
+// press holding a target armed, and a simulation clock that has ticked — and the
+// arrangement is asserted to BE dirty before the reset is asked to undo it.
 //
 // WHY THE SWAP IS CARRIED PAST ITS ANIMATION. specs/rules.md has an accepted
 // swap enter `swapping` and clear nothing for `SWAP_SECONDS` (`0.18`) of game
@@ -58,7 +58,7 @@ import {
   assertNull,
 } from "../assert";
 import { quietRowsWithEscape } from "../board";
-import { GRID_COLS, GRID_ROWS } from "../constants";
+import { GRID_COLS, GRID_ROWS, RESTING_REFILL_KINDS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -96,6 +96,9 @@ const DIRTY = {
   levelScore: 567,
   bestMove: 890,
 };
+
+/** The column a refill is posed on, and what is posed for it. */
+const POSED_REFILL = { col: 2, kinds: "RA" };
 
 /**
  * The one target the `playing` screen carries, from specs/controls.md.
@@ -147,13 +150,14 @@ it("restores every declared field to its title-screen value", async () => {
   h.debug.setLevel(DIRTY.level);
   h.debug.setLevelScore(DIRTY.levelScore);
   h.debug.setBestMove(DIRTY.bestMove);
+  h.debug.setRefillKinds(POSED_REFILL.col, POSED_REFILL.kinds);
   h.debug.setSelection(HELD.col, HELD.row);
   h.debug.setOffer(OFFERED.col, OFFERED.row);
   // Last, and with no frame after it: specs/controls.md says a press within a
   // target "is armed" and takes nothing until the release, and a press inside the
   // `pause` target is not a press on the board, so the selection and the offer
   // posed above stand through it.
-  pressTarget(h, targetById(h.snapshot(), PLAYING_TARGET), PRESS_DEVICE);
+  await pressTarget(h, targetById(h.snapshot(), PLAYING_TARGET), PRESS_DEVICE);
 
   // The arrangement really is dirty. Without this the reset below could be
   // asserted against a game that had never left the title screen.
@@ -170,6 +174,11 @@ it("restores every declared field to its title-screen value", async () => {
   assertEqual(dirty.level, DIRTY.level, "the posed level");
   assertEqual(dirty.levelScore, DIRTY.levelScore, "the posed level score");
   assertEqual(dirty.bestMove, DIRTY.bestMove, "the posed best move");
+  assertEqual(
+    dirty.refillKinds[POSED_REFILL.col],
+    POSED_REFILL.kinds,
+    "the posed refill",
+  );
   assertNotNull(dirty.selection, "the posed selection");
   assertNotNull(dirty.offer, "the posed offer");
   assertNotNull(dirty.refusal, "the standing refusal");
@@ -206,6 +215,13 @@ it("restores every declared field to its title-screen value", async () => {
   assertEqual(s.bestMove, 0, "bestMove after reset");
   assertEqual(s.bestChain, 0, "bestChain after reset");
   assertEqual(s.simTime, 0, "simTime after reset");
+
+  // No refill posed on any column.
+  assertDeepEqual(
+    s.refillKinds,
+    RESTING_REFILL_KINDS,
+    "refillKinds after reset",
+  );
 
   // What the player had hold of, and what the pointer was doing.
   assertNull(s.selection, "selection after reset");

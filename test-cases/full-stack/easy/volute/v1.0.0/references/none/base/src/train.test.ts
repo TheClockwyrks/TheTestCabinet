@@ -19,7 +19,7 @@ import { poseRun } from "./harness.test";
 
 /** A state carrying the cores given, at the arc positions given. */
 function hall(cores: [number, ChargeId][]): VoluteState {
-  const state = createState(1);
+  const state = createState();
   state.screen = "playing";
   state.cores = cores.map(([s, charge]) => ({
     charge,
@@ -434,7 +434,7 @@ describe("clamp", () => {
 
 describe("poseRun", () => {
   it("lays a run of cores out head first", () => {
-    const state = createState(1);
+    const state = createState();
     poseRun(state, 200, ["halide", "cobalt"]);
     expect(state.cores.map((core) => core.s)).toEqual([200, 172]);
   });

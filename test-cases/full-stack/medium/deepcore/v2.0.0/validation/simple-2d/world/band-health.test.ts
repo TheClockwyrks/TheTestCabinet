@@ -84,7 +84,7 @@ it("starts every minable cell at 4, 8, 12 and 16 health by band", async () => {
   }
 
   // And a cell generation laid, at each band.
-  const scan = generatedMine(h, 1);
+  const scan = generatedMine(h);
   for (const band of BAND_ORDER) {
     const cell = minableCellIn(scan, band);
     if (cell === null) {

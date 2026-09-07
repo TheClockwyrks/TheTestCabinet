@@ -4,7 +4,7 @@
 // WHAT THE SPECIFICATION FIXES, AND WHERE.
 //   - `specs/enemies.md` ("The spawn ring"): "A spawn point is
 //     `SPAWN_DISTANCE` (`760`) units from the lamplighter's center at an angle
-//     drawn uniformly from the seeded generator: x = player.x + cos(angle) *
+//     drawn uniformly over the full circle: x = player.x + cos(angle) *
 //     SPAWN_DISTANCE; y = player.y + sin(angle) * SPAWN_DISTANCE".
 //   - `specs/enemies.md` ("The life of an enemy"): "an enemy spawned on a tick
 //     sits at its spawn point for that tick and first moves on the next", so

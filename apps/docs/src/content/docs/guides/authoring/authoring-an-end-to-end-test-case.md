@@ -261,7 +261,7 @@ an edited case before running it. See
 - [Specs and prompts](/guides/authoring/writing-case-specifications/) gives the
   editorial rules and the revision checklist for the seeded set.
 - [Instrumentation](/testing/end-to-end/instrumentation/) covers the debug API,
-  deterministic core, and overlay your case must mandate.
+  render-free core, and overlay your case must mandate.
 - [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/)
   gives the design rules for that API and the validators that drive it.
 - [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/)

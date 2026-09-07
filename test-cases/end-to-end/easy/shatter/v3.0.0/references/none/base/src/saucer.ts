@@ -35,7 +35,7 @@ import {
 import { enterSaucer, makeEnemyBullet } from "./entities";
 import { shortestDelta } from "./geometry";
 import { slideOffCore, travel } from "./motion";
-import { range, sign } from "./rng";
+import { range } from "./rng";
 import type { ShatterState } from "./types";
 import { raise } from "./world";
 
@@ -46,10 +46,10 @@ import { raise } from "./world";
  * Two decisions, in this order. The weave rerolls every
  * `SAUCER_WEAVE_INTERVAL`, setting the vertical velocity to
  * `SAUCER_WEAVE_SPEED` directed OPPOSITE the way it is currently travelling, so
- * its vertical direction reverses at every reroll; a saucer that entered with no
- * vertical component has no direction to reverse, so its first reroll is drawn at
- * random. Then, inside `SAUCER_AVOID_DIST` of the star, the avoidance overrides
- * the weave and drives it away from the core.
+ * its vertical direction reverses at every reroll; a saucer with no vertical
+ * velocity has no direction to reverse, so it takes the weave direction it
+ * carries, drawn when it entered or posed. Then, inside `SAUCER_AVOID_DIST` of
+ * the star, the avoidance overrides the weave and drives it away from the core.
  */
 export function saucerControl(state: ShatterState): void {
   const saucer = state.saucer;
@@ -61,7 +61,7 @@ export function saucerControl(state: ShatterState): void {
   if (!saucer.mind) return;
 
   if (rerolling) {
-    const away = saucer.vy > 0 ? -1 : saucer.vy < 0 ? 1 : sign(state);
+    const away = saucer.vy > 0 ? -1 : saucer.vy < 0 ? 1 : saucer.weave;
     saucer.vy = away * SAUCER_WEAVE_SPEED;
   }
 
@@ -99,7 +99,8 @@ export function integrateSaucer(state: ShatterState): void {
  *
  * One shot every `SAUCER_FIRE_INTERVAL`, aimed at the ship's current position
  * across the shortest wrapped path, offset by an error drawn AFRESH FOR EVERY
- * SHOT, and leaving at `SAUCER_BULLET_SPEED` plus the saucer's own velocity.
+ * SHOT, and leaving at `SAUCER_BULLET_SPEED` plus the saucer's own velocity. A
+ * posed `nextSaucerAim` is the error of this shot, and the shot consumes it.
  */
 export function saucerGun(state: ShatterState): void {
   const saucer = state.saucer;
@@ -110,9 +111,10 @@ export function saucerGun(state: ShatterState): void {
   if (!saucer.gun) return;
 
   const toShip = shortestDelta(saucer.x, saucer.y, state.ship.x, state.ship.y);
-  const aim =
-    Math.atan2(toShip.y, toShip.x) +
-    range(state, -SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+  const error =
+    state.nextSaucerAim ?? range(-SAUCER_AIM_ERROR, SAUCER_AIM_ERROR);
+  state.nextSaucerAim = null;
+  const aim = Math.atan2(toShip.y, toShip.x) + error;
   state.enemyBullets.push(
     makeEnemyBullet(
       state,
@@ -124,12 +126,26 @@ export function saucerGun(state: ShatterState): void {
   );
 }
 
+/**
+ * The saucer leaves the field, and the cadence to the next one starts over.
+ *
+ * Every departure comes through here, the visit running out and a bullet
+ * destroying it alike, because `specs/saucer.md` measures the gap to the next
+ * arrival from the previous saucer LEAVING: the clock starts over and the gap is
+ * drawn afresh, replacing whatever `saucerDue` held.
+ */
+export function departSaucer(state: ShatterState): void {
+  state.saucer = null;
+  state.saucerClock = 0;
+  state.saucerDue = range(SAUCER_GAP_MIN, SAUCER_GAP_MAX);
+}
+
 /** A visit is finite: twelve seconds after it entered, the saucer leaves. */
 export function tickSaucerLifetime(state: ShatterState): void {
   const saucer = state.saucer;
   if (saucer === null) return;
   saucer.age += TICK_DT;
-  if (saucer.age >= SAUCER_LIFETIME) state.saucer = null;
+  if (saucer.age >= SAUCER_LIFETIME) departSaucer(state);
 }
 
 /**
@@ -145,7 +161,5 @@ export function saucerArrival(state: ShatterState): void {
   state.saucerClock += TICK_DT;
   if (state.saucerClock < state.saucerDue) return;
   state.saucer = enterSaucer(state);
-  state.saucerClock = 0;
-  state.saucerDue = range(state, SAUCER_GAP_MIN, SAUCER_GAP_MAX);
   raise(state, CUES.saucer);
 }

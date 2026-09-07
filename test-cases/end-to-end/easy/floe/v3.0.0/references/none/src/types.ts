@@ -212,10 +212,6 @@ export interface FloeState {
   /** The runtime's mute bit, refreshed from the runtime in every update. */
   muted: boolean;
 
-  // ---- The generator (specs/instrumentation.md) ----
-  /** The whole state of the seeded generator the phases and the bays are drawn from. */
-  rngState: number;
-
   // ---- Bookkeeping ----
   /** The id the next entity added to the strait takes. */
   nextId: number;

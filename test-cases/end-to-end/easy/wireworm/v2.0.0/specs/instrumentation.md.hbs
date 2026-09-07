@@ -61,28 +61,21 @@ in play, so a scenario driven from code behaves exactly like one played by hand.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic: every rate integrated
-against the delta time the game is given, so an interval of game time reaches the
-same state however it was divided into frames. The one clocked quantity is the
-worm's tile step, which accumulates that same delta and carries its remainder, as
-`specs/worm.md` states. Two more properties make the game driveable from code:
+The surface rests on the simulation being steppable apart from drawing: every
+rate integrated against the delta time the game is given, so an interval of game
+time reaches the same state however it was divided into frames. The one clocked
+quantity is the worm's tile step, which accumulates that same delta and carries
+its remainder, as `specs/worm.md` states. Game state advances from the elapsed
+time the game is handed, with no canvas, no frame loop of its own, and no wall
+clock: the simulation reads nothing from the renderer, and whether a step is
+blocked, whether a bolt resolves, and how far a discharge chains are all decided
+from the board alone.
 
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer. Whether a step is blocked, whether a bolt resolves, and how far a
-  discharge chains are all decided from the board alone.
-- Seeded randomness. Any randomness the game uses runs off a generator seeded
-  from the state's generator field, and it keeps its whole generator state in
-  that field, so reseeding and replaying the same calls reproduces the same
-  result exactly. The starting scatter, the foes' arrival intervals and entry
-  positions, the edge of the board a worm enters at, and an arc's drawn shape are
-  all drawn from it.
-
-Given the same seed and the same sequence of calls and elapsed game time, the
-game reaches the same state every time.
+Where the game draws at random, `specs/nodes.md`, `specs/worm.md`, and
+`specs/foes.md` state the draw as a distribution, and the operations under The
+level's draws below pose the outcome of each draw a scenario needs.
 
 ## What the runtime provides instead
 
@@ -152,20 +145,20 @@ read and changes nothing.
 
 | Operation | Effect |
 | --- | --- |
-| `reset(options)` | Restores every declared field of the state to its title-screen value, listed below. |
+| `reset()` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `phase` to `"banner"`, `phaseTimer` to
 `0`, `menuIndex` to `0`, `score` to `0`, `lives` to `START_LIVES` (`3`), `level`
 to `1`, and `reachedLevel` to `1`; it empties the node field and the worm, foe,
 bolt, and arc rosters; and it places the cursor at the band's center, `(640,
-688)`, with `0` seconds of invulnerability, sets `fireCooldown` to `0`, clears
-the level's spawner clocks, and sets `simTime` to `0`. It turns all three world
-gates back on: the cursor's contact test, `foeSpawning`, and `wormEntry`.
+688)`, with `0` seconds of invulnerability, sets `fireCooldown` to `0`, sets the
+level's three spawner clocks to `0`, clears every posed draw, and sets `simTime`
+to `0`. It turns all three world gates back on: the cursor's contact test,
+`foeSpawning`, and `wormEntry`.
 
-`options.seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the
-game's randomness. `muted` is left exactly as it stands, because muting is a
-player preference the runtime owns.
+`muted` is left exactly as it stands, because muting is a player preference the
+runtime owns.
 
 {{#if (eq engine.slug "none")}}
 ### The clock
@@ -228,6 +221,26 @@ and restored to on by `reset`, and each is reported by `snapshot`.
 | `setFoeSpawning(enabled)` | The level's own spawning of foes: the glitch's paced arrival, the corruptor's, and the dropper's sparse-field check. Off, no foe appears unless one is added. A foe already on the board still thinks, travels, and acts. |
 | `setWormEntry(enabled)` | The level's and the respawn's entry of a worm. Off, no worm appears unless one is added. A worm already on the board steps as usual. |
 | `setCursorContact(enabled)` | The cursor's contact test, which is whether a worm segment or a foe reaching the cursor costs a life. Off, the cursor still draws, still moves under input, and still fires, and no contact costs anything. It is reported as `cursor.contact`. |
+
+### The level's draws
+
+The level draws four things at random: when its next glitch and its next
+corruptor enter, where each foe enters, and which edge its worm enters at. Each
+operation below poses the outcome of one of those draws. A posed outcome is
+reported by `snapshot`, is consumed by the entry it decides, and stands in place
+of the random outcome for that one entry; every entry after it is drawn at
+random again until the next pose. `reset` clears every posed outcome.
+
+| Operation | Effect |
+| --- | --- |
+| `setSpawnTimer(kind, seconds)` | Sets the seconds left on the level's clock for `kind` (`"glitch"`, `"dropper"`, or `"corruptor"`): until the next glitch enters, until the next corruptor enters, or until the dropper's next sparse-field check. The clock then runs, holds, and is redrawn exactly as `specs/foes.md` states, so a clock posed at `0` is drawn afresh on the next update of active play, and a clock posed during the banner or a respawn stands until play is active and counts down from there. |
+| `setNextFoeEntry(kind, c, r)` | Poses the tile the next foe of `kind` the level brings in enters on, with its center on that tile's center. For a glitch or a corruptor, `c` is `0`, entering from the left, or `39`, entering from the right, and `r` is a row of that kind's entry rows; for a dropper, `r` is `0` and `c` is any column. It is reported as `nextGlitchEntry`, `nextDropperEntry`, or `nextCorruptorEntry`, and reads `null` once that entry has consumed it. |
+| `setNextWormEntry(edge)` | Poses the edge, `"left"` or `"right"`, the next worm the level or the respawn brings in enters at. It is reported as `nextWormEntry`, and reads `null` once that entry has consumed it. |
+
+A foe the level brings in on a posed tile enters exactly as one on a drawn tile
+does: heading inward from the edge it stands against, at its kind's own resting
+speed, with both faculties on. A worm the level brings in at a posed edge is laid
+exactly as `specs/worm.md` lays one entering from that edge.
 
 ### The cursor and its bolts
 
@@ -299,6 +312,13 @@ present, so every operation is verifiable by setting a value and reading it back
   muted: <boolean>,
   foeSpawning: <boolean>,                   // the level's own foe spawning runs
   wormEntry: <boolean>,                     // the level's and the respawn's worm entry runs
+  glitchTimer: <number>,                    // seconds left until the level's next glitch enters
+  dropperTimer: <number>,                   // seconds left until the dropper's next sparse-field check
+  corruptorTimer: <number>,                 // seconds left until the level's next corruptor enters
+  nextWormEntry: "left" | "right" | null,   // the edge posed for the next worm entry
+  nextGlitchEntry: { c: <number>, r: <number> } | null,     // the tile posed for the next glitch entry
+  nextDropperEntry: { c: <number>, r: <number> } | null,    // the tile posed for the next dropper entry
+  nextCorruptorEntry: { c: <number>, r: <number> } | null,  // the tile posed for the next corruptor entry
   wormStepInterval: <number>,               // seconds per tile step at this level
   wormLength: <number>,                     // segments this level's worm enters with
   cursor: {
@@ -356,7 +376,7 @@ a field of their own:
 | `wormLength` | `wormLength(level)` in `specs/worm.md` |
 | `arcs` | The live arcs, with each one's remaining life left out |
 
-Four more need a note:
+Five more need a note:
 
 - `muted` is the game's copy of the runtime's mute bit, refreshed in every
   update, so the snapshot reports the bit the runtime holds. No operation sets
@@ -368,6 +388,10 @@ Four more need a note:
   detonation, and each entry names the two tiles the link joined rather than any
   drawn geometry.
 - `simTime` accumulates every update's delta, whatever the screen.
+- The three spawner clocks are the clocks `specs/foes.md` describes, read as they
+  stand: `0` for a clock that has not been drawn, and otherwise the seconds it
+  has left. Each posed draw reads back the value the last pose set, and `null`
+  once the entry it posed has consumed it or when nothing has been posed.
 
 ## Diagnostics
 

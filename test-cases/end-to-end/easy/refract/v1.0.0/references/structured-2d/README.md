@@ -48,10 +48,10 @@ to play is in the built bundle.
   boards can be replayed; solving all 24 reaches the campaign's complete
   screen. Progress lasts the session.
 - **Cascade** — one unbroken sequence of generated boards, climbing a
-  five-tier ladder (wider grids, more channels, more crystals) one tier every 4
+  five-tier ladder (wider grids, more channels, more crystals) one tier every 5
   boards solved. Every board the generator emits is **provably solvable**: the
   board is carved out of its own solution and then verified against the real
-  ruleset before it is shown. The sequence is a pure function of the seed.
+  ruleset before it is shown. Each board is drawn afresh.
 
 ## Controls
 
@@ -136,9 +136,10 @@ engine.debug.pointerUp();
 const { beams, solved } = engine.debug.snapshot();
 ```
 
-The operations are `reset` (seedable), `snapshot`, the single-field poses
-`setMode` / `setScreen` / `setMenuIndex`, `loadBoard` (any board in the case's
-notation), the immediate-effect pointer trio
+The operations are `reset`, `snapshot`, the single-field poses
+`setMode` / `setScreen` / `setMenuIndex` / `setSolvedCount` / `setTier`,
+`loadBoard` (any board in the case's notation), `generateBoard` (a board the
+generator emits at a tier), the immediate-effect pointer trio
 `pointerDown` / `pointerMove` / `pointerUp`, and `clear`. The pointer
 operations do not stand in for the engine's pointer — they feed the **same
 per-sample resolution path** the player controller feeds
@@ -212,7 +213,7 @@ through the debug surface at `engine.debug`, and reads results back from the
 world's state, the surface's snapshot, the engine's cue events, and the pixels
 the render produced. No browser is involved. Among the suite: **all 24 campaign
 boards are solved end-to-end** by tracing a known solution through the real
-pointer path, and the cascade generator is swept across seeds and tiers with
+pointer path, and the cascade generator is swept across draws and tiers with
 every emitted board checked for structure and solved from its carved solution.
 
 ## Project layout
@@ -239,7 +240,7 @@ src/
   campaign.ts         The 24 hand-built boards, transcribed from the case
   cascade.ts          The tier ladder and the solvable-by-construction
                       board generator
-  rng.ts              The seeded generator: a draw beside the next state
+  rng.ts              The build's private random source
   input.ts            The registered actions and the layout check
   audio.ts            The five engine cues, played once per event per batch
   debug.ts            The debug surface: poses and readings over the live world

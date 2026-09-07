@@ -22,7 +22,7 @@
 // THE CLOCK CAN BE TAKEN AWAY. `setAutoStep(false)` stops the loop advancing the
 // simulation from the wall clock and `advance(ticks)` runs an exact number of
 // whole ticks, which is what `specs/instrumentation.md` exposes on
-// `window.__floe` and what makes a driven scenario reproducible on any machine.
+// `window.__floe` and what takes a driven scenario off the wall clock.
 // Drawing is unaffected either way: the loop keeps presenting, so the canvas
 // always shows the state the most recent tick left.
 

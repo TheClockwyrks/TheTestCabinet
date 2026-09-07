@@ -188,29 +188,8 @@ export function drillHitsFor(health: number, damagePerHit: number): number {
 /* What generation places (specs/world.md)                                    */
 /* -------------------------------------------------------------------------- */
 
-/** The share of minable cells that hold an ore vein, the same at every depth. */
-export const ORE_DENSITY = 0.14;
-
 /** The shallowest row an ore vein appears in: the first three rows are plain rock. */
 export const ORE_MIN_ROW = 4;
-
-/** Unbreakable stone's share, from the top of the rockbed to the bottom. */
-export const STONE_DENSITY_MIN = 0.02;
-export const STONE_DENSITY_MAX = 0.08;
-
-/** A gas pocket's share, over the same span. */
-export const GAS_DENSITY_MIN = 0.004;
-export const GAS_DENSITY_MAX = 0.012;
-
-/** Lava's share, from the top of the deepstone to the bottom of the coreshell. */
-export const LAVA_DENSITY_MIN = 0.03;
-export const LAVA_DENSITY_MAX = 0.1;
-
-/**
- * How far a measured share may sit from its stated value, relative to it,
- * measured over a whole band.
- */
-export const DENSITY_TOLERANCE = 0.25;
 
 /* -------------------------------------------------------------------------- */
 /* Tile kinds (specs/world.md)                                                */
@@ -810,7 +789,7 @@ export const EMERGENCY_FUEL = 30;
 /**
  * The Quantum Teleporter's two draws: a height above the camp ground in tiles
  * and a downward speed in units per second, both uniform over these inclusive
- * bounds. They are a live player action and are not reproducible from the seed.
+ * bounds.
  */
 export const TELEPORT_HEIGHT_TILES_MIN = 1;
 export const TELEPORT_HEIGHT_TILES_MAX = 8;
@@ -1142,9 +1121,6 @@ export const SHOWCASE_MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 
 /** The version the debug surface reports as `version`. */
 export const DEEPCORE_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
 
 /* ---- What the specification leaves to the build -------------------------- */
 //

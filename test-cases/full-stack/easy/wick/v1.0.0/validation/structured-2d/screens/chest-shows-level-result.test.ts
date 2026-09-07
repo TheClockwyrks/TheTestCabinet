@@ -6,14 +6,14 @@
 // name, and `LEVEL_LABEL` with the level it became."
 // `specs/evolutions.md`, "Opening a chest", reaches that result when nothing
 // can evolve: "One held item below its max level ... is chosen uniformly at
-// random from the game's seeded generator and rises by `1` ... The result is
+// random and rises by `1` ... The result is
 // `{ kind: "level", item, level }`, with `level` the level it became."
 //
 // THE DRIVE. An isolated `playing` run with every driver switch off, holding
 // Ember at level `HELD_LEVEL` (`3`) and nothing else. Ember is below
 // `MAX_WEAPON_LEVEL` so no evolution is possible, and it is the ONLY item
 // below a maximum, so the random choice has one candidate and the result is
-// Ember at level `4` whatever the generator draws. A chest posed at the
+// Ember at level `4` whatever the build draws. A chest posed at the
 // lamplighter's own centre and the one tick that collects it open the overlay.
 //
 // WHY THE RUN'S OWN LEVEL CANNOT BE MISTAKEN FOR THE RESULT'S. The HUD draws

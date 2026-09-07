@@ -5,7 +5,7 @@
 //     in seconds. Every frame adds its delta time, whatever the screen, the
 //     menus and the overlays included." And of `accumulator`: "It grows on
 //     `playing` alone ... so it holds `0` on every other screen."
-//   - `specs/instrumentation.md` ("A deterministic core"): "On `playing`, each
+//   - `specs/instrumentation.md` ("A render-free core"): "On `playing`, each
 //     frame's delta time joins the accumulator, every whole `TICK_DT` in it is
 //     consumed as a tick, and the remainder waits for the next frame ... On
 //     every other screen a frame ticks nothing and the accumulator holds `0`."

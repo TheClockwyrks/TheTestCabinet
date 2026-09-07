@@ -133,14 +133,14 @@ export function takeFromWasteSets(state: CascadeState): void {
 /* ---- The deal ------------------------------------------------------------ */
 
 /**
- * Deal a fresh game from the seeded generator, as `specs/deal.md` states.
+ * Deal a fresh game from a freshly shuffled deck, as `specs/deal.md` states.
  *
  * It replaces the contents of all thirteen piles, empties the waste's set
  * memory, sets `launched` to `0`, and clears the painted layer, which is what a
  * new deal does. It changes no other field, the screen included.
  */
 export function dealCards(state: CascadeState): void {
-  const deck = shuffle(orderedDeck(), state);
+  const deck = shuffle(orderedDeck());
   clearTable(state);
   let next = 0;
   for (let column = 0; column < TABLEAU_COLUMNS; column += 1) {

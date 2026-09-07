@@ -1,24 +1,24 @@
 // instrumentation/run-poses-do-nothing-with-no-run — a run pose with no run in
 // progress does nothing.
 //
-// `specs/instrumentation.md` § The run in progress lists seven operations and then
-// says which of them need a run: "The first six pose the run while one is in
-// progress." So `setAxis`, `setAxisRate`, `setBob`, `setBobVelocity`, `setLoadPose`
-// and `setLoadPhase` change nothing against an idle run, exactly as the general rule
-// requires — "Each pose applies on the screens its section names and does nothing on
-// any other".
+// `specs/instrumentation.md` § The run in progress lists eight operations and then
+// says which of them need a run: "The first seven pose the run while one is in
+// progress." So `setAxis`, `setAxisRate`, `setBob`, `setBobVelocity`, `setLoadPose`,
+// `setLoadPhase` and `setRunTick` change nothing against an idle run, exactly as the
+// general rule requires — "Each pose applies on the screens its section names and
+// does nothing on any other".
 //
 // THE IDLE PLACEHOLDER IS THE WHOLE READING. `specs/state.md` fixes what it is —
 // "phase `idle`, no cause, a zero tick, step index, and speed index, no live step,
 // the four axes at the run-start posture ... a zero pivot, a bob at the origin with
 // zero velocity, no attachment, and an empty load, force, and broken list" — so the
-// run is read whole after each of the six, and any field one of them wrote shows up.
+// run is read whole after each of the seven, and any field one of them wrote shows up.
 // A build that wrote an axis value, or a bob position, onto the placeholder would
 // hand the next run a posture it was not started with.
 //
 // EACH POSE ASKS FOR SOMETHING THE PLACEHOLDER DOES NOT ALREADY HOLD, so a call that
 // landed would be visible: an axis value away from the run-start posture, a rate away
-// from zero, a bob away from the origin.
+// from zero, a bob away from the origin, a tick count away from zero.
 //
 // THE TWO POSES THAT NAME A LOAD INDEX MAY REFUSE LOUDLY INSTEAD, and that is not
 // this point's business. The same file makes "an index no site, load, or tape step
@@ -93,6 +93,11 @@ it("leaves the idle run untouched by every pose that needs a run in progress", a
       indexed: true,
       run: () => h.debug.setLoadPhase(0, "attached"),
     },
+    {
+      name: "setRunTick",
+      indexed: false,
+      run: () => h.debug.setRunTick(600),
+    },
   ];
 
   try {
@@ -114,6 +119,6 @@ it("leaves the idle run untouched by every pose that needs a run in progress", a
   } finally {
     // In a `finally`, so a check that fails inside the sweep still leaves
     // the picture that shows why.
-    await h.capture("state", "the idle run six run poses could not touch");
+    await h.capture("state", "the idle run seven run poses could not touch");
   }
 });

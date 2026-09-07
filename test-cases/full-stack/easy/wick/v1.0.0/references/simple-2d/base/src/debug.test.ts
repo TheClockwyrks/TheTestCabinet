@@ -119,11 +119,17 @@ describe("the snapshot", () => {
       firedEvents: [],
       aliveCommons: 0,
       nextId: 0,
+      nextSpawnAngle: null,
+      nextSwarmAngle: null,
+      nextSpawnType: null,
+      nextPuddleOffset: null,
+      nextStrikeTarget: null,
+      nextChestItem: null,
+      nextDrop: null,
     });
     expect(snap.muted).toBe(false);
     expect(snap.accumulator).toBe(0);
     expect(snap.simTime).toBe(0);
-    expect(snap.rngState).toBe(1);
   });
 
   it("is a copy of the declared fields alone, with the pool on levelup", () => {
@@ -165,22 +171,21 @@ describe("the snapshot", () => {
 });
 
 describe("reset", () => {
-  it("restores the title state, the switches, and the seed, keeping muted", () => {
+  it("restores the title state and the switches, keeping muted", () => {
     const d = playing();
     d.pose((s) => d.api.setSpawning(s, false));
+    d.pose((s) => d.api.setNextDrop(s, "bread"));
     d.step(5);
     d.state = { ...d.state, muted: true };
-    d.pose((s) => d.api.reset(s, { seed: 7 }));
+    d.pose((s) => d.api.reset(s));
     const snap = d.snap();
     expect(snap.screen).toBe("title");
     expect(snap.spawning).toBe(true);
-    expect(snap.rngState).toBe(7);
+    expect(snap.run.nextDrop).toBeNull();
     expect(snap.simTime).toBe(0);
     expect(snap.run.tick).toBe(0);
     expect(snap.muted).toBe(true);
-    expect(d.state).toEqual({ ...initialState(7), muted: true });
-    d.pose((s) => d.api.reset(s));
-    expect(d.snap().rngState).toBe(1);
+    expect(d.state).toEqual({ ...initialState(), muted: true });
   });
 
   it("restores the highlight, the tab, and the window to zero", () => {
@@ -268,7 +273,11 @@ describe("setScreen", () => {
   it("sets the screen and the cursors alone, leaving the run as it stands", () => {
     const d = build();
     d.pose((s) => d.api.setWeaponFire(s, false));
-    d.state = { ...d.state, simTime: 3, rngState: 12345 };
+    d.state = {
+      ...d.state,
+      simTime: 3,
+      run: { ...d.state.run, nextSwarmAngle: 45 },
+    };
     d.pose((s) => d.api.setScreen(s, "playing"));
     const snap = d.snap();
     expect(snap.screen).toBe("playing");
@@ -276,7 +285,7 @@ describe("setScreen", () => {
     // No run is begun: the idle run's empty loadout stands.
     expect(snap.run.weapons).toEqual([]);
     expect(snap.simTime).toBe(3);
-    expect(snap.rngState).toBe(12345);
+    expect(snap.run.nextSwarmAngle).toBe(45);
     expect(snap.weaponFire).toBe(false);
   });
 
@@ -324,12 +333,11 @@ describe("setScreen", () => {
 
   it("opens no overlay of its own: the pose draws nothing", () => {
     const d = playing();
-    const before = d.snap().rngState;
     d.pose((s) => d.api.setScreen(s, "levelup"));
     const snap = d.snap();
     expect(snap.screen).toBe("levelup");
     expect(snap.run.offers).toEqual([]);
-    expect(snap.rngState).toBe(before);
+    expect(snap.run.pendingLevelUps).toBe(0);
   });
 
   it("discards the accumulator on the way to paused", () => {
@@ -458,17 +466,6 @@ describe("the lamplighter and progression poses", () => {
     expect(d.snap().run.level).toBe(1);
     expect(d.snap().run.enemies).toEqual([]);
     expect(d.snap().run.gems).toEqual([]);
-  });
-
-  it("takes a whole seed from 0 to 2^32 - 1 and nothing else", () => {
-    const d = build();
-    d.pose((s) => d.api.reset(s, { seed: 0 }));
-    expect(d.snap().rngState).toBe(0);
-    d.pose((s) => d.api.reset(s, { seed: 2 ** 32 - 1 }));
-    expect(d.snap().rngState).toBe(2 ** 32 - 1);
-    for (const seed of [-1, 1.5, 2 ** 32, Number.NaN]) {
-      expect(() => d.api.reset(d.state, { seed })).toThrow();
-    }
   });
 
   it("takes an evolved id in nextOffers and discards the list at the open", () => {
@@ -725,5 +722,98 @@ describe("the switches", () => {
     expect(snap.spawning).toBe(true);
     expect(snap.weaponFire).toBe(true);
     expect(() => d.api.setSpawning(d.state, "no" as never)).toThrow();
+  });
+});
+
+describe("the drop roll reading", () => {
+  const KINDS: readonly string[] = ["bread", "draft", "none"];
+
+  it("returns one of the three kinds and leaves the state as it was", () => {
+    const d = playing();
+    d.pose((s) => d.api.setNextDrop(s, "bread"));
+    const before = JSON.stringify(d.state);
+    for (let i = 0; i < 500; i += 1) {
+      expect(KINDS).toContain(d.api.rollDrop(d.state));
+    }
+    expect(JSON.stringify(d.state)).toBe(before);
+    expect(d.snap().run.nextDrop).toBe("bread");
+    d.pose((s) => d.api.setScreen(s, "title"));
+    expect(KINDS).toContain(d.api.rollDrop(d.state));
+  });
+});
+
+describe("the drawn outcome poses", () => {
+  it("set each field, read back by the snapshot, on a run screen alone", () => {
+    const d = playing();
+    d.pose((s) => d.api.spawnEnemy(s, "moth", 100, 0));
+    const [moth] = d.snap().run.enemies;
+    d.pose((s) => d.api.setNextSpawnAngle(s, 0));
+    d.pose((s) => d.api.setNextSwarmAngle(s, 359.5));
+    d.pose((s) => d.api.setNextSpawnType(s, "bat"));
+    d.pose((s) => d.api.setNextPuddleOffset(s, -240, 320));
+    d.pose((s) => d.api.setNextStrikeTarget(s, moth.id));
+    d.pose((s) => d.api.setNextChestItem(s, "brass"));
+    d.pose((s) => d.api.setNextDrop(s, "draft"));
+    expect(d.snap().run).toMatchObject({
+      nextSpawnAngle: 0,
+      nextSwarmAngle: 359.5,
+      nextSpawnType: "bat",
+      nextPuddleOffset: { x: -240, y: 320 },
+      nextStrikeTarget: moth.id,
+      nextChestItem: "brass",
+      nextDrop: "draft",
+    });
+    d.pose((s) => d.api.setScreen(s, "paused"));
+    d.pose((s) => d.api.setNextDrop(s, "bread"));
+    expect(d.snap().run.nextDrop).toBe("bread");
+    d.pose((s) => d.api.setScreen(s, "title"));
+    d.pose((s) => d.api.setNextDrop(s, "none"));
+    expect(d.snap().run.nextDrop).toBe("bread");
+  });
+
+  it("refuse an argument outside its domain", () => {
+    const d = playing();
+    d.pose((s) => d.api.spawnEnemy(s, "moth", 100, 0));
+    for (const bad of [-1, 360, 400, Number.NaN]) {
+      expect(() => d.api.setNextSpawnAngle(d.state, bad)).toThrow();
+      expect(() => d.api.setNextSwarmAngle(d.state, bad)).toThrow();
+    }
+    expect(() => d.api.setNextPuddleOffset(d.state, 400, 1)).toThrow();
+    expect(() => d.api.setNextPuddleOffset(d.state, Number.NaN, 0)).toThrow();
+    d.pose((s) => d.api.setNextPuddleOffset(s, 400, 0));
+    expect(() => d.api.setNextStrikeTarget(d.state, 7)).toThrow();
+    expect(() => d.api.setNextStrikeTarget(d.state, -1)).toThrow();
+    expect(() => d.api.setNextChestItem(d.state, "pyre" as never)).toThrow();
+    expect(() =>
+      d.api.setNextChestItem(d.state, "lamp-oil" as never),
+    ).toThrow();
+    expect(() => d.api.setNextSpawnType(d.state, "taper" as never)).toThrow();
+    expect(() => d.api.setNextSpawnType(d.state, 3 as never)).toThrow();
+    expect(() => d.api.setNextDrop(d.state, "chest" as never)).toThrow();
+    expect(d.snap().run).toMatchObject({
+      nextSpawnAngle: null,
+      nextSwarmAngle: null,
+      nextSpawnType: null,
+      nextPuddleOffset: { x: 400, y: 0 },
+      nextStrikeTarget: null,
+      nextChestItem: null,
+      nextDrop: null,
+    });
+  });
+
+  it("decide the next draw through the real systems", () => {
+    const d = playing();
+    d.pose((s) => d.api.setSpawning(s, false));
+    d.pose((s) => d.api.setEvents(s, false));
+    d.pose((s) => d.api.setWeaponFire(s, false));
+    d.pose((s) => d.api.spawnEnemy(s, "moth", 500, 0));
+    const [moth] = d.snap().run.enemies;
+    d.pose((s) => d.api.setEnemyHp(s, moth.id, 1));
+    d.pose((s) => d.api.spawnProjectile(s, "ember", 500, 0, 0, 0, 0));
+    d.pose((s) => d.api.setNextDrop(s, "draft"));
+    d.step();
+    const after = d.snap().run;
+    expect(after.pickups.map((pickup) => pickup.kind)).toEqual(["draft"]);
+    expect(after.nextDrop).toBeNull();
   });
 });

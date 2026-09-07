@@ -200,8 +200,8 @@ export function maxDistance(
 /**
  * The cells at which two grids of the same footprint were painted differently.
  *
- * Rendering is deterministic here — the same drawing operations produce the same
- * buffer — so two frames posed to differ in one thing differ at exactly the cells
+ * The same drawing operations produce the same
+ * buffer here, so two frames posed to differ in one thing differ at exactly the cells
  * that thing touched, and "differently" is any difference at all. There is no
  * noise to hold off and so no threshold to state: how far apart the two paintings
  * sit is appearance, which the reviewer judges.

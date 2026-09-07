@@ -164,7 +164,7 @@ describe("what a burst plays", () => {
     expect(h.debug.snapshot().bursts).toHaveLength(0);
   });
 
-  it("scatters two bursts differently while replaying one seed exactly", async () => {
+  it("scatters each burst on its own", async () => {
     await loadArt(stubAssets());
     const pop = async (): Promise<number> => {
       h.debug.addDrone("shard", 900, 200);
@@ -175,7 +175,7 @@ describe("what a burst plays", () => {
       return burst?.particles ?? 0;
     };
 
-    h.debug.reset({ seed: 3 });
+    h.debug.reset();
     startPosed(h.debug);
     h.debug.addDrone("shard", 200, 200);
     h.debug.setDroneTravel(lastDroneId(h.debug), false);

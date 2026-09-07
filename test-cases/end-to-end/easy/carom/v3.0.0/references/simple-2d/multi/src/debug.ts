@@ -57,6 +57,7 @@ import type {
   Side,
 } from "./game";
 import type { DeepReadonly } from "ts-essentials";
+import { drawLaunchAngle } from "./random";
 
 /** The read-only view of the state every operation is handed. */
 type State = DeepReadonly<CaromState>;
@@ -84,6 +85,8 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** The angle, in radians, this ball's next launch leaves along. */
+  launchAngle: number;
   /** This ball's trail samples, oldest first. */
   trail: TrailSampleSnapshot[];
 }
@@ -127,8 +130,6 @@ export interface CaromSnapshot {
   score: { p1: number; p2: number };
   winner: Side | null;
   muted: boolean;
-  seed: number;
-  rngState: number;
   paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
   ai: { tracking: boolean; movement: boolean };
   /** Every ball present, in play order. */
@@ -155,7 +156,6 @@ export interface CaromDebugApi {
   spawnBall(state: State, index: number): CaromState;
   spawnObstacle(state: State, index: number): CaromState;
   reset(state: State): CaromState;
-  setSeed(state: State, seed: number): CaromState;
 
   /* Screens and menus. */
   setScreen(state: State, screen: Screen): CaromState;
@@ -189,6 +189,8 @@ export interface CaromDebugApi {
   setBallSpin(state: State, index: number, spin: number): CaromState;
   setBallHeld(state: State, index: number, held: boolean): CaromState;
   setBallHoldTimer(state: State, index: number, seconds: number): CaromState;
+  setBallLaunchAngle(state: State, index: number, angle: number): CaromState;
+  drawBallLaunchAngle(state: State, index: number): CaromState;
 
   /* The AI opponent: one operation per faculty. */
   setAiTracking(state: State, enabled: boolean): CaromState;
@@ -294,19 +296,13 @@ export function createDebugApi(): CaromDebugApi {
     /**
      * The game back at its title screen: every declared field at the value
      * specs/state.md gives it, with the world placed exactly as `spawnBall` and
-     * `spawnObstacle` place it, the clock at zero, and the generator seeded from
-     * DEFAULT_SEED.
+     * `spawnObstacle` place it, and the clock at zero.
      *
      * `muted` is deliberately untouched: muting is a player preference the
      * runtime owns, and a reset is not a reason to start making noise again.
      */
     reset(state) {
       return { ...createInitialState(), muted: state.muted };
-    },
-
-    /** The generator reseeded: `seed` and `rngState` together, and nothing else. */
-    setSeed(state, seed) {
-      return { ...state, seed, rngState: seed };
     },
 
     // ---- Screens and menus ----------------------------------------------
@@ -399,6 +395,22 @@ export function createDebugApi(): CaromDebugApi {
       }));
     },
 
+    /** The angle ball `index`'s next launch leaves along, in radians. */
+    setBallLaunchAngle(state, index, angle) {
+      return withBall(state, index, (ball) => ({
+        ...ball,
+        launchAngle: angle,
+      }));
+    },
+
+    /** The one draw parking makes, made again on its own (specs/balls.md). */
+    drawBallLaunchAngle(state, index) {
+      return withBall(state, index, (ball) => ({
+        ...ball,
+        launchAngle: drawLaunchAngle(),
+      }));
+    },
+
     // ---- The AI opponent ------------------------------------------------
 
     /**
@@ -441,8 +453,6 @@ export function createDebugApi(): CaromDebugApi {
         score: { p1: state.score.p1, p2: state.score.p2 },
         winner: state.winner,
         muted: state.muted,
-        seed: state.seed,
-        rngState: state.rngState,
         paddles: {
           left: snapshotPaddle(state.paddles.left),
           right: snapshotPaddle(state.paddles.right),
@@ -458,6 +468,7 @@ export function createDebugApi(): CaromDebugApi {
           spin: ball.spin,
           held: ball.held,
           holdTimer: ball.holdTimer,
+          launchAngle: ball.launchAngle,
           trail: ball.trail.map((sample) => ({
             x: sample.x,
             y: sample.y,

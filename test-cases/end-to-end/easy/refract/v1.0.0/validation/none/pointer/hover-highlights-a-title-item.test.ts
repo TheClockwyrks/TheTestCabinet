@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 it("moves the highlight to the item the pointer is over", async () => {
-  await h.debug.reset({ seed: 1 });
+  await h.debug.reset();
   await h.advance(1);
   assertEqual(
     (await h.snapshot()).menuIndex,

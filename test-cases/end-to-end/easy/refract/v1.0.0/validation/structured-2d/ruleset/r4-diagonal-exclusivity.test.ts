@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 it("the square diagonal drawn first refuses the triangle diagonal", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R4_CROSS_2X2);
 
   // Square draws its diagonal, S(1,0)-S(0,1).
@@ -69,7 +69,7 @@ it("the square diagonal drawn first refuses the triangle diagonal", async () => 
 });
 
 it("the triangle diagonal drawn first refuses the square diagonal", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R4_CROSS_2X2);
 
   // The other order: triangle draws its diagonal first.

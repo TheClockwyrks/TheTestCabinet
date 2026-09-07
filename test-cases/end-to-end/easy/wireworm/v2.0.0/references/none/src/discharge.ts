@@ -28,7 +28,7 @@ import {
   tileCY,
 } from "./constants";
 import { chargeAt, index, removeNode } from "./field";
-import { nextFloat } from "./rng";
+import { randomFloat } from "./rng";
 import { addScore } from "./scoring";
 import type { CueSink, Point, Tile, WirewormState } from "./types";
 import { removeSegments } from "./worm";
@@ -99,7 +99,7 @@ export function detonate(
       from: { c: link.from.c, r: link.from.r },
       to: { c: link.to.c, r: link.to.r },
       life: ARC_LIFE,
-      shape: lightning(state, link.from, link.to),
+      shape: lightning(link.from, link.to),
     });
   }
 
@@ -151,11 +151,10 @@ function nearDetonated(detonated: ReadonlySet<number>, segment: Tile): boolean {
  * The polyline one arc is drawn as: the straight line between two tile centers,
  * with its interior points thrown sideways.
  *
- * Every offset comes off the run's seeded generator and is fixed here, once, so
- * the arc holds its shape for the whole of its life and a replayed run draws the
- * same lightning.
+ * Every offset is drawn here, once, so the arc holds its shape for the whole of
+ * its life.
  */
-function lightning(state: WirewormState, from: Tile, to: Tile): Point[] {
+function lightning(from: Tile, to: Tile): Point[] {
   const x1 = tileCX(from.c);
   const y1 = tileCY(from.r);
   const x2 = tileCX(to.c);
@@ -169,7 +168,7 @@ function lightning(state: WirewormState, from: Tile, to: Tile): Point[] {
     const stray =
       i === 0 || i === ARC_SEGMENTS
         ? 0
-        : (nextFloat(state) - 0.5) * 2 * ARC_JITTER;
+        : (randomFloat() - 0.5) * 2 * ARC_JITTER;
     points.push({
       x: x1 + (x2 - x1) * u + (nx / length) * stray,
       y: y1 + (y2 - y1) * u + (ny / length) * stray,

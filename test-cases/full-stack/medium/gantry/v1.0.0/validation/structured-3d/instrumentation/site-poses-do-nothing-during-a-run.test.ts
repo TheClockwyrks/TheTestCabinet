@@ -4,8 +4,8 @@
 // `specs/instrumentation.md` § The site: "The site poses apply on the build and
 // program screens, with no run in progress." The second half of that precondition is
 // what this decides: `clearLoads`, `addLoad`, `setLoadTarget`, `clearObstacles` and
-// `addObstacle` change nothing once a run has begun. The rule is what makes a run
-// repeatable — "The loads a run carries are the ones standing when it starts" — so a
+// `addObstacle` change nothing once a run has begun. The rule is what keeps a run
+// on its authored yard — "The loads a run carries are the ones standing when it starts" — so a
 // build that let the yard be edited mid-run would let a scenario change the world out
 // from under the simulation it is measuring.
 //

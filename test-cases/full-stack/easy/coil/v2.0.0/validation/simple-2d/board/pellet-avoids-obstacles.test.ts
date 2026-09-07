@@ -7,23 +7,15 @@
 // a valid pellet cell, so a pellet never spawns on the course. It counts against
 // the valid set that decides the board-cleared win."
 //
-// WHY IT IS READ OVER A LONG RUN. There is no way to ask a build what its valid
-// set is; the only honest reading is to make it draw a great many times and look
-// at where the pellets went. The course is eighteen cells of an interior of four
-// hundred and forty-eight, so a build that draws without testing the course lands
-// on it about once in twenty-five draws: over the run below the chance it never
-// does is under one in a hundred.
-//
-// SO THE RUN MAXIMIZES DRAWS RATHER THAN LENGTH. Every eat is real — the head
-// enters the pellet's cell and step 5 spawns the replacement — but the chain is
-// posed back to three cells before each one, so the run never fills the board and
-// never has to thread the course. That keeps the valid set at almost the whole
-// interior for every draw, which is the condition the claim is worded in: a build
-// that excludes the course excludes it from a wide-open board too. The meal each
-// tick is placed by hand with `setPellet`, which specs/instrumentation.md states
-// "is not spawning one, so the generator is not drawn from and the seeded
-// sequence is left where it stands" — so what is read is the build's own spawn
-// and nothing else.
+// THE DRAW IS POSED RATHER THAN SAMPLED. There is no way to ask a build what its
+// valid set is, and a run of draws long enough to catch a build that ignores the
+// course only ever makes the miss unlikely. So a cell of the course is posed as
+// the next spawn with `setNextPellet`, which specs/instrumentation.md honors
+// "when the cell is in the valid set specs/board.md defines at that moment" and
+// discards otherwise. A build that keeps the course out of its valid set drops
+// the pose and draws elsewhere; a build that does not puts the pellet on the
+// obstacle it was handed. The meal is placed by hand with `setPellet`, which "is
+// not spawning one", so what is read is the build's own spawn and nothing else.
 //
 // THE COURSE IS THE BUILD'S OWN, read back off the board, because whether the
 // laid course is the right eighteen cells is `board/obstacles-layout`. What this
@@ -34,28 +26,26 @@
 // that lays a course.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
-import { START_CELLS } from "../constants";
 import {
-  ahead,
+  assertEqual,
+  assertGreaterThan,
+  assertNotNull,
+  assertNull,
+} from "../assert";
+import type { Cell } from "../constants";
+import {
+  arrangeEat,
   captureReplay,
-  chainFrom,
   createHarness,
   holdsCell,
-  poseScene,
-  type Cell,
-  type CoilSnapshot,
   type Harness,
 } from "../harness";
 
-/** Eats driven, each one tick, each drawing one replacement pellet. */
-const EATS = 150;
+/** Ticks of clear travel before the head reaches the pellet. */
+const RUN_UP = 3;
 
-/** The chain posed before every eat. Row 8 is the row the course keeps clear. */
-const HEAD: Cell = { col: 10, row: START_CELLS[0].row };
-
-/** Cells the posed chain holds. */
-const LENGTH = 3;
+/** Ticks run after the eat, with the chain held, so the board is seen settled. */
+const SETTLE = 3;
 
 let h: Harness;
 
@@ -67,52 +57,41 @@ afterEach(() => {
   h?.dispose();
 });
 
-/** Drive `EATS` real eats and keep the cell the game spawned each pellet on. */
-async function drawnPellets(): Promise<Cell[]> {
-  const chain = chainFrom(HEAD, "right", LENGTH);
-  const meal = ahead(HEAD, "right");
-  const drawn: Cell[] = [];
-  for (let eat = 0; eat < EATS; eat += 1) {
-    h.debug.setSnake(chain);
-    h.debug.setPellet(meal.col, meal.row);
-    const after: CoilSnapshot = await h.tick();
-    assertEqual(
-      after.screen,
-      "playing",
-      `the round on eat ${eat + 1} of ${EATS}`,
-    );
-    assertEqual(
-      after.pellet === null,
-      false,
-      `a replacement pellet after eat ${eat + 1} of ${EATS}`,
-    );
-    drawn.push(after.pellet as Cell);
-  }
-  return drawn;
-}
-
 it("never spawns a pellet on a cell of the course", async () => {
-  const laid = poseScene(h, {
+  // The course as the build lays it, so the cell posed is one it really holds.
+  // The chain runs along the starting row, which specs/mode.md keeps clear.
+  const scene = arrangeEat(h, {
     obstacles: "course",
-    snake: chainFrom(HEAD, "right", LENGTH),
-    dir: "right",
-    pellet: null,
     pelletRespawn: true,
+    runUp: RUN_UP + 1,
   });
+  const course = scene.snapshot.obstacles;
   assertGreaterThan(
-    laid.obstacles.length,
+    course.length,
     0,
     "obstacle cells on the board of a mode that lays a course",
   );
-  const course = laid.obstacles;
+  const target: Cell = course[0];
+  h.debug.setNextPellet(target.col, target.row);
 
-  const drawn = await captureReplay(h, "avoid", drawnPellets);
+  const after = await captureReplay(h, "avoid", async () => {
+    await h.tick(RUN_UP);
+    const eaten = await h.tick();
+    h.debug.setSnakeTravel(false);
+    await h.tick(SETTLE);
+    return eaten;
+  });
 
-  for (const [index, pellet] of drawn.entries()) {
-    assertEqual(
-      holdsCell(course, pellet),
-      false,
-      `pellet ${index + 1} of ${EATS}, drawn at (${pellet.col}, ${pellet.row})`,
-    );
-  }
+  assertEqual(after.screen, "playing", "the round after the eat");
+  assertNotNull(after.pellet, "a replacement pellet after the eat");
+  const pellet = after.pellet as Cell;
+  assertEqual(
+    holdsCell(course, pellet),
+    false,
+    `the pellet drawn at (${pellet.col}, ${pellet.row}) with (${target.col}, ${target.row}) of the course posed`,
+  );
+  assertNull(
+    after.nextPellet,
+    "nextPellet once the discarded pose is consumed",
+  );
 });

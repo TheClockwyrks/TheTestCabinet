@@ -40,7 +40,7 @@ export const FIELD_W = 960;
 export const FIELD_H = 540;
 
 /* -------------------------------------------------------------------------- */
-/* The clock (specs/instrumentation.md — "A deterministic core")              */
+/* The clock (specs/instrumentation.md — "A render-free core")                */
 /* -------------------------------------------------------------------------- */
 
 /** "The hall advances on a fixed tick of `TICK_HZ` (`60`) ticks per second". */
@@ -514,9 +514,6 @@ export const HANDLE = "engine.debug";
 /** "The surface carries `version` (`VOLUTE_DEBUG_VERSION`, `1`)". */
 export const VOLUTE_DEBUG_VERSION = 1;
 
-/** "`options.seed` ... defaulting to `DEFAULT_SEED` (`1`)". */
-export const DEFAULT_SEED = 1;
-
 /**
  * Every operation `specs/instrumentation.md` requires on the surface under this
  * engine.
@@ -540,6 +537,7 @@ export const REQUIRED_OPS = [
   "clearTrain",
   "setLoaded",
   "setQueued",
+  "setNextEmitted",
   "setAim",
   "fire",
   "setPressure",
@@ -586,7 +584,7 @@ export const SNAPSHOT_FIELDS = [
   "feed",
   "muted",
   "simTime",
-  "rngState",
+  "nextEmitted",
 ] as const;
 
 /** The fields of one entry of `snapshot().train`. */

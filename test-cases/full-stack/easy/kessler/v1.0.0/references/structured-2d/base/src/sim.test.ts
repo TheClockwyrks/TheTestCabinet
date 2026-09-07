@@ -1,7 +1,7 @@
 // The tick pipeline of specs/field.md over the session: crossing-event
 // contacts in both directions, the deflector bounce, the reflections, the
-// pods and their effects, the seeded draw order, lives, and the clearing
-// event. No engine is needed: `tickPlaying` is arithmetic over the live
+// pods and their effects, the pod draw and its posed outcome, lives, and the
+// clearing event. No engine is needed: `tickPlaying` is arithmetic over the live
 // state and the io hooks, so every check here builds a state, poses the
 // field it is about onto it, and reads the same object back.
 
@@ -16,19 +16,42 @@ import {
   signedAngleDeg,
   tangentialOf,
 } from "./polar";
-import { nextFloat, seedRng } from "./rng";
 import {
   launchParkedBall,
+  rollPod,
   tickPlaying,
   type ParticleSystemName,
+  type PodPose,
+  type Rng,
   type TickIo,
 } from "./sim";
 import { parkFreshBall, spanOf, type Session } from "./session";
 
-/** A standalone seeded stream, the shape `TickIo.rng` asks for. */
-function streamOf(seed: number): () => number {
-  const box = { rngState: seedRng(seed) };
-  return () => nextFloat(box);
+/** A random source scripted to hand out `values` in order, counting draws. */
+function scripted(values: number[]): Rng & { draws: number } {
+  let at = 0;
+  const rng = (): number => {
+    rng.draws += 1;
+    const value = values[at];
+    if (value === undefined) throw new Error("the scripted draws ran out");
+    at += 1;
+    return value;
+  };
+  rng.draws = 0;
+  return rng;
+}
+
+/** A posed outcome that `takePosedPod` hands out once, counting the takes. */
+function posed(pose: PodPose): (() => PodPose) & { takes: number } {
+  let standing = pose;
+  const take = (): PodPose => {
+    take.takes += 1;
+    const out = standing;
+    standing = null;
+    return out;
+  };
+  take.takes = 0;
+  return take;
 }
 
 interface Recorded extends TickIo {
@@ -42,7 +65,8 @@ function makeIo(overrides: Partial<TickIo> = {}): Recorded {
   const particles: { system: ParticleSystemName; x: number; y: number }[] = [];
   return {
     held: { left: false, right: false },
-    rng: streamOf(1),
+    rng: () => 0.99,
+    takePosedPod: () => null,
     podSpawn: false,
     waveAdvance: true,
     tickIndex: 0,
@@ -561,40 +585,87 @@ describe("the shield", () => {
   });
 });
 
-describe("the seeded pod draw", () => {
-  it("draws once per destruction, in resolution order, on the pinned stream", () => {
+describe("the pod draw", () => {
+  it("draws once per destruction, in resolution order", () => {
     const session = opening();
-    const io = makeIo({ podSpawn: true, rng: streamOf(1) });
-    // Two destructions resolve in spawn order on the same tick. Seed 1
-    // draws u1 = 0.627 (no pod), then u1 = 0.0027 and u2 = 0.527 (shield).
+    // Two destructions resolve in spawn order on the same tick: the first
+    // draws 0.9 (no pod), the second 0.1 (a pod) and 0.5 (shield).
+    const rng = scripted([0.9, 0.1, 0.5]);
+    const io = makeIo({ podSpawn: true, rng });
     addBall(session, 332, 15, -240);
     addBall(session, 332, 45, -240);
     ticks(session, io, 3);
     expect(session.rings[0].targets[0]).toBeNull();
     expect(session.rings[0].targets[1]).toBeNull();
+    expect(rng.draws).toBe(3);
     expect(session.pods).toHaveLength(1);
     expect(session.pods[0].kind).toBe("shield");
     expect(session.pods[0].r).toBe(302);
     expect(session.pods[0].angleDeg).toBeCloseTo(45, 6);
   });
 
-  it("consumes nothing while podSpawn is off", () => {
+  it("sheds the posed outcome in place of the random one, once", () => {
     const session = opening();
-    const io = makeIo({ podSpawn: false, rng: streamOf(1) });
+    const rng = scripted([0.9]);
+    const take = posed("narrow");
+    const io = makeIo({ podSpawn: true, rng, takePosedPod: take });
+    addBall(session, 332, 15, -240);
+    ticks(session, io, 3);
+    expect(session.pods).toHaveLength(1);
+    expect(session.pods[0].kind).toBe("narrow");
+    expect(rng.draws).toBe(0);
+
+    // The pose was consumed: the next destruction draws at random.
+    addBall(session, 332, 45, -240);
+    ticks(session, io, 3);
+    expect(take.takes).toBe(2);
+    expect(rng.draws).toBe(1);
+    expect(session.pods).toHaveLength(1);
+  });
+
+  it("sheds nothing for a posed none", () => {
+    const session = opening();
+    const rng = scripted([0.1, 0.5]);
+    const io = makeIo({ podSpawn: true, rng, takePosedPod: posed("none") });
     addBall(session, 332, 15, -240);
     ticks(session, io, 3);
     expect(session.rings[0].targets[0]).toBeNull();
     expect(session.pods).toEqual([]);
+    expect(rng.draws).toBe(0);
+  });
 
-    // Back on: the next destruction takes the stream's first value.
+  it("makes no draw while podSpawn is off, leaving a pose standing", () => {
+    const session = opening();
+    const rng = scripted([0.9]);
+    const take = posed("widen");
+    const io = makeIo({ podSpawn: false, rng, takePosedPod: take });
+    addBall(session, 332, 15, -240);
+    ticks(session, io, 3);
+    expect(session.rings[0].targets[0]).toBeNull();
+    expect(session.pods).toEqual([]);
+    expect(rng.draws).toBe(0);
+    expect(take.takes).toBe(0);
+
+    // Back on: the next destruction takes the standing pose.
     io.podSpawn = true;
     addBall(session, 332, 45, -240);
     ticks(session, io, 3);
-    expect(session.pods).toEqual([]);
-    addBall(session, 332, 75, -240);
-    ticks(session, io, 3);
     expect(session.pods).toHaveLength(1);
-    expect(session.pods[0].kind).toBe("shield");
+    expect(session.pods[0].kind).toBe("widen");
+  });
+
+  it("rolls a pod below the drop chance and lands each kind on its share", () => {
+    expect(rollPod(scripted([0.25]))).toBeNull();
+    expect(rollPod(scripted([0.24, 0.0]))).toBe("widen");
+    expect(rollPod(scripted([0.0, 0.249]))).toBe("widen");
+    expect(rollPod(scripted([0.0, 0.25]))).toBe("multiball");
+    expect(rollPod(scripted([0.0, 0.449]))).toBe("multiball");
+    expect(rollPod(scripted([0.0, 0.45]))).toBe("shield");
+    expect(rollPod(scripted([0.0, 0.649]))).toBe("shield");
+    expect(rollPod(scripted([0.0, 0.65]))).toBe("pierce");
+    expect(rollPod(scripted([0.0, 0.799]))).toBe("pierce");
+    expect(rollPod(scripted([0.0, 0.8]))).toBe("narrow");
+    expect(rollPod(scripted([0.0, 0.999]))).toBe("narrow");
   });
 });
 
@@ -639,21 +710,14 @@ describe("the clearing event", () => {
     const session = opening();
     emptyRings(session);
     session.rings[0].targets[0] = 1;
-    // A stream whose first destruction sheds: seed 7 opens under 0.25.
-    expect(streamOf(7)()).toBeLessThan(0.25);
-    const io = makeIo({ podSpawn: true, rng: streamOf(7) });
+    // A draw that sheds: 0.1 is under the drop chance, 0.5 lands on shield.
+    const rng = scripted([0.1, 0.5]);
+    const io = makeIo({ podSpawn: true, rng });
     addBall(session, 332, 15, -240);
     ticks(session, io, 3);
-    // The draw ran (the shed pod was then removed with the field), so the
-    // stream stands two values in.
+    // The draw ran (the shed pod was then removed with the field), so both
+    // of its values were taken.
     expect(session.pods).toEqual([]);
-    expect(io.rng()).toBe(streamAtOffset(7, 2));
+    expect(rng.draws).toBe(2);
   });
 });
-
-/** The stream's value at `offset` draws in, for asserting consumption. */
-function streamAtOffset(seed: number, offset: number): number {
-  const rng = streamOf(seed);
-  for (let i = 0; i < offset; i += 1) rng();
-  return rng();
-}

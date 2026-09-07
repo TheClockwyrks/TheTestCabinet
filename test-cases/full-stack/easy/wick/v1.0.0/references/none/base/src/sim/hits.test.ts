@@ -20,7 +20,7 @@ interface World {
 
 /** A `playing` run holding `weapons`, every autonomous faculty held. */
 function playing(...weapons: [WeaponId, number][]): World {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.run.weapons = weapons.map(([id, level]) => ({
     id,
@@ -34,7 +34,7 @@ function playing(...weapons: [WeaponId, number][]): World {
   state.switches.despawning = false;
   state.switches.enemyMotion = false;
   state.switches.enemyContact = false;
-  return { state, rng: new Rng(() => state), cues: new Set() };
+  return { state, rng: new Rng(), cues: new Set() };
 }
 
 function step(world: World, ticks = 1): void {
@@ -266,6 +266,10 @@ describe("the evolved heals", () => {
 
   it("Corona heals one per enemy a pulse kills", () => {
     const world = playing(["corona", 1]);
+    // The moths die within collection distance, so the drop roll is held
+    // off: a bread they rolled would be collected on the same tick and heal
+    // BREAD_HEAL on top of the pulse's heal.
+    world.state.switches.drops = false;
     world.state.run.player.hp = 50;
     spawnEnemy(world.state.run, "moth", 20, 0);
     spawnEnemy(world.state.run, "moth", -20, 0);

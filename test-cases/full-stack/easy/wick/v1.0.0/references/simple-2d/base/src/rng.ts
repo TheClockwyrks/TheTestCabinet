@@ -1,45 +1,20 @@
-// Wick — the seeded random generator (specs/instrumentation.md "Seeded
-// randomness").
+// Wick — the game's private random source.
 //
-// One generator, whose whole state is a single 32-bit number the snapshot
-// reports as `rngState`, so a scenario that reads the state back can replay
-// it. Every random choice the game makes draws from it. The generator works
-// over a cell that holds the number, so the state lives in the game's state
-// and the generator carries nothing of its own.
+// Every random choice the game makes, where the debug surface has posed no
+// outcome for it, draws from here. Nothing about the source is declared
+// state: a scenario that needs a particular outcome poses it through the
+// surface's Drawn outcomes operations rather than steering the draws.
 
-/** Where the generator's state lives. */
-export interface RngCell {
-  rngState: number;
-}
+/** A source of draws uniform on `[0, 1)`; `Math.random` unless one is given. */
+export type Source = () => number;
 
-/** Reduce any seed to the 32-bit state space. */
-export function seedState(seed: number): number {
-  return Math.floor(seed) >>> 0 || 0;
-}
-
-/**
- * Advance `state` once. Returns the new state and a draw uniform on
- * `[0, 1)`.
- */
-export function nextRandom(state: number): { state: number; value: number } {
-  const advanced = (state + 0x6d2b79f5) >>> 0;
-  let t = advanced;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  const value = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  return { state: advanced, value };
-}
-
-/** A generator over the state the cell `where` names holds. */
+/** The draws the game makes over a source. */
 export class Rng {
-  constructor(private readonly where: () => RngCell) {}
+  constructor(private readonly source: Source = Math.random) {}
 
   /** A draw uniform on `[0, 1)`. */
   next(): number {
-    const cell = this.where();
-    const { state, value } = nextRandom(cell.rngState);
-    cell.rngState = state;
-    return value;
+    return this.source();
   }
 
   /** A whole number uniform on `[0, n)`. */

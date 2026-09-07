@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 it("solved flips true on the final permitted move, which leaves playing", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R9_UNIQUE);
 
   // Everything but the final move of the known solution.

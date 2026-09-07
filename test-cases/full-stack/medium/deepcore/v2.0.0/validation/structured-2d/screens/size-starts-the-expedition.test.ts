@@ -5,7 +5,7 @@
 // at `mode-select`". specs/expedition.md: "Starting it is a two-step choice: the
 // mode, then the world size. Choosing a size begins the expedition at once", with
 // the miner "standing on the camp ground at `SPAWN_COL`" and "the mine generated
-// fresh from the current seed at the chosen size".
+// at the chosen size".
 //
 // SO ALL THREE SIZES ARE WALKED, from the mode choice through the size choice,
 // and each arrival is read four ways: the screen is `in-mine`, the mode is the

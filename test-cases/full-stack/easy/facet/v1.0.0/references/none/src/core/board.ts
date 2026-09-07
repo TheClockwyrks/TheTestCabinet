@@ -151,6 +151,15 @@ const CUT_LETTERS: Readonly<Record<string, Cut>> = {
 const TOKEN = /^([RACJBSMX])([0-3])([bs]?)$/;
 
 /**
+ * The kind a kind letter of the notation names, and `null` for a letter that
+ * names none. `X` names the prism, which is no kind, so it reads as `null` too.
+ */
+export function kindForLetter(letter: string): GemKind | null {
+  const index = (KIND_LETTERS as readonly string[]).indexOf(letter);
+  return index === -1 ? null : GEM_KINDS[index];
+}
+
+/**
  * One cell token — a kind letter, a strain digit, and an optional cut letter —
  * read into a gem. A token that is not the notation's throws an `Error` naming
  * it, so a bad pose fails loudly instead of producing a gem the rules cannot
@@ -175,7 +184,7 @@ export function parseToken(token: string): Gem {
     return { kind: null, cut: "prism", strain, fell: 0 };
   }
   return {
-    kind: GEM_KINDS[KIND_LETTERS.indexOf(letter as (typeof KIND_LETTERS)[0])],
+    kind: kindForLetter(letter),
     cut: cutLetter === "" ? "plain" : CUT_LETTERS[cutLetter],
     strain,
     fell: 0,

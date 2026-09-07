@@ -15,7 +15,7 @@
 // `sim.fraction` IS NEVER READ FOR EQUALITY, `0` included. It is one of "the three
 // figures carried as running sums of the frames' own delta times", which "agree to
 // within the rounding of that sum rather than bit for bit"
-// (`specs/instrumentation.md`, A deterministic core), so every read of it goes
+// (`specs/instrumentation.md`, A render-free core), so every read of it goes
 // through the case's own `FRACTION_TOLERANCE`.
 //
 // THE WORLD IS POSED, NOT SEARCHED. A posed challenge with two products, an empty

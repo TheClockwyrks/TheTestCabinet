@@ -32,7 +32,7 @@
 // key).
 
 import type { World } from "@clockwyrks/structured-2d";
-import { CAROM_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
+import { CAROM_DEBUG_VERSION } from "./constants";
 import {
   ballAt,
   ballsOf,
@@ -55,6 +55,7 @@ import {
   type Screen,
 } from "./state";
 import type { TrailSample } from "./trail";
+import { drawLaunchAngle } from "./random";
 
 /** One paddle, as a snapshot reports it. */
 export interface PaddleSnapshot {
@@ -83,6 +84,8 @@ export interface BallSnapshot {
   held: boolean;
   /** Seconds remaining of that wait. */
   holdTimer: number;
+  /** The angle, in radians, this ball's next launch leaves along. */
+  launchAngle: number;
   /** That ball's trail samples, oldest first. */
   trail: TrailSample[];
 }
@@ -111,10 +114,6 @@ export interface CaromSnapshot {
   winner: Side | null;
   /** The engine's own mute bit, read live from the audio bus. */
   muted: boolean;
-  /** The seed the generator was last seeded from. */
-  seed: number;
-  /** That generator's current state, as a single number. */
-  rngState: number;
   paddles: { left: PaddleSnapshot; right: PaddleSnapshot };
   /** The AI's two faculties, each gated on its own. */
   ai: { tracking: boolean; movement: boolean };
@@ -138,7 +137,6 @@ export interface CaromDebug {
   spawnBall(index: number): void;
   spawnObstacle(index: number): void;
   reset(): void;
-  setSeed(seed: number): void;
 
   /* Screens and menus. */
   setScreen(screen: Screen): void;
@@ -162,6 +160,8 @@ export interface CaromDebug {
   setBallSpin(index: number, spin: number): void;
   setBallHeld(index: number, held: boolean): void;
   setBallHoldTimer(index: number, seconds: number): void;
+  setBallLaunchAngle(index: number, angle: number): void;
+  drawBallLaunchAngle(index: number): void;
 
   /* The AI opponent: one operation per faculty. */
   setAiTracking(enabled: boolean): void;
@@ -212,15 +212,9 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
      * deliberately untouched: it is the runtime's, and `reset` leaves it alone.
      */
     reset() {
-      game.reseed(DEFAULT_SEED);
       game.simTime = 0;
       game.titleIndex = 0;
       game.goToTitle(0);
-    },
-
-    /** The generator seeded: `seed` and `rngState` both become `seed`. */
-    setSeed(seed) {
-      game.reseed(seed);
     },
 
     // ---- Screens and menus -----------------------------------------------
@@ -315,6 +309,18 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
       if (ball !== null) ball.holdTimer = seconds;
     },
 
+    /** The angle ball `index`'s next launch leaves along, in radians. */
+    setBallLaunchAngle(index, angle) {
+      const ball = ballAt(open(), index);
+      if (ball !== null) ball.launchAngle = angle;
+    },
+
+    /** The one draw parking makes, made again on its own (specs/balls.md). */
+    drawBallLaunchAngle(index) {
+      const ball = ballAt(open(), index);
+      if (ball !== null) ball.launchAngle = drawLaunchAngle();
+    },
+
     // ---- The AI opponent -------------------------------------------------
 
     setAiTracking(enabled) {
@@ -357,8 +363,6 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
         score: { ...state.score },
         winner: state.winner,
         muted: world.audio.muted(),
-        seed: game.seed,
-        rngState: game.rngState,
         paddles: { left: paddle("left"), right: paddle("right") },
         ai: { tracking: game.ai.tracking, movement: game.ai.movement },
         balls: ballsOf(world).map((ball) => ({
@@ -371,6 +375,7 @@ export function createDebugSurface(game: CaromGame): CaromDebug {
           spin: ball.spin,
           held: ball.held,
           holdTimer: ball.holdTimer,
+          launchAngle: ball.launchAngle,
           trail: ball.trail.map((sample) => ({ ...sample })),
         })),
         obstacles: obstaclesOf(world).map((obstacle) => ({

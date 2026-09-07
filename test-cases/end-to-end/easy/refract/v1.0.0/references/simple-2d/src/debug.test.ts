@@ -4,8 +4,8 @@
 // are driven directly, state in and state out.
 
 import { describe, expect, it } from "vitest";
-import { cellCenter } from "./board";
-import { DEFAULT_SEED, REFRACT_DEBUG_VERSION } from "./constants";
+import { cellCenter, channelsOn } from "./board";
+import { CHANNELS, REFRACT_DEBUG_VERSION, TIERS } from "./constants";
 import { createDebugApi } from "./debug";
 import { createInitialState } from "./flow";
 import type { RefractState } from "./game";
@@ -63,7 +63,6 @@ describe("snapshot", () => {
       targets: expect.any(Array),
       muted: false,
       simTime: 0,
-      rngState: DEFAULT_SEED,
     });
   });
 
@@ -116,7 +115,7 @@ describe("snapshot", () => {
 });
 
 describe("reset", () => {
-  it("restores every declared field, seeds the generator, and keeps mute", () => {
+  it("restores every declared field and keeps mute", () => {
     let state = debug.loadBoard(fresh(), ["TtT"]);
     state = trace(state, [
       { col: 0, row: 0 },
@@ -124,14 +123,37 @@ describe("reset", () => {
     ]);
     state = { ...state, muted: true, simTime: 12.5 };
 
-    const reset = debug.reset(state, { seed: 99 });
-    expect(reset).toEqual({
-      ...createInitialState(),
-      muted: true,
-      rngState: 99,
-    });
+    const reset = debug.reset(state);
+    expect(reset).toEqual({ ...createInitialState(), muted: true });
+  });
+});
 
-    expect(debug.reset(state).rngState).toBe(DEFAULT_SEED);
+describe("setSolvedCount and setTier", () => {
+  it("each sets its own field alone", () => {
+    const posed = debug.loadBoard({ ...fresh(), mode: "cascade" }, ["TtT"]);
+    const counted = debug.setSolvedCount(posed, 7);
+    expect(counted).toEqual({ ...posed, solvedCount: 7 });
+    const tiered = debug.setTier(counted, 4);
+    expect(tiered).toEqual({ ...counted, tier: 4 });
+  });
+});
+
+describe("generateBoard", () => {
+  it("poses a board the generator emits at the tier named, the run untouched", () => {
+    const run = debug.setTier(
+      debug.setSolvedCount({ ...fresh(), mode: "cascade" }, 2),
+      1,
+    );
+    const posed = debug.generateBoard(run, 4);
+    expect(posed.screen).toBe("playing");
+    expect(posed.tracing).toBeNull();
+    expect(channelsOn(posed.board)).toEqual([
+      ...CHANNELS.slice(0, TIERS[3].channels),
+    ]);
+    expect(posed.beams.every((beam) => beam.cells.length === 0)).toBe(true);
+    expect(posed.solvedCount).toBe(2);
+    expect(posed.tier).toBe(1);
+    expect(posed.mode).toBe("cascade");
   });
 });
 

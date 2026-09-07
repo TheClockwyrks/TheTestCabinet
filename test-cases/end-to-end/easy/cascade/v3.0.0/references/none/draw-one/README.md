@@ -125,14 +125,16 @@ code:
   stops the loop advancing the game from the wall clock, and `advance` runs that
   many whole frames — the same update the loop runs, then a render — covering
   that much game time.
-- `reset(options?)` and `snapshot()` — return every declared field to its
-  title-screen value (seedable; `muted` deliberately kept) and read a
-  JSON-serializable view of the whole state.
+- `reset()` and `snapshot()` — return every declared field to its title-screen
+  value (`muted` deliberately kept) and read a JSON-serializable view of the
+  whole state.
 - `setScreen`, `addCard`, `removeCard`, `setCardFaceUp`, `clearPile`,
   `clearTable`, `addWasteSet`, `clearWasteSets`, `addFlyer`, `setFlyerPosition`,
   `setFlyerVelocity`, `removeFlyer`, `clearFlyers`, `setLaunchClock` and
   `clearTrail` — **poses**, each setting one field of the state and nothing else,
   so a table is built one card at a time.
+- `drawLaunchVx` — the launch's own `vx` draw performed alone, returning the
+  signed value it drew and touching no field.
 - `setAutoFlip`, `setWinDetect`, `setLaunching` and `setTrailPainting` — the four
   **faculty gates**, each gating one faculty, each on by default and restored by
   `reset`, each reported by the snapshot.
@@ -148,9 +150,8 @@ control, and the snapshot reports the result), no menu operation (Cascade's menu
 carry no selection; a validator presses a control's rectangle), and no overlay
 toggle (the runtime owns the backtick key).
 
-The surface is inert during normal play. All randomness runs off the seeded
-generator state in `src/state.ts`, so a given seed deals the same board and
-replays the same cascade exactly.
+The surface is inert during normal play. The deal's shuffle and the cascade's
+launch velocities are drawn from a random source private to `src/rng.ts`.
 
 ## Requirements
 

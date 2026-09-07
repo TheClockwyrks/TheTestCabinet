@@ -6,9 +6,8 @@
 // Health scaling belongs to the spawner rather than here, so this module decides the
 // type sequence and its cadence and nothing else.
 //
-// Every draw comes off a stream seeded from the wave number, so a wave plays the same
-// composition each time it is reached and composing wave `n` never disturbs the run's
-// own generators.
+// Every draw comes off a stream keyed by the wave number, so a wave plays the same
+// composition each time it is reached, and composing wave `n` touches nothing else.
 
 import { LOAD_TYPES, type Difficulty, type LoadType } from "./constants";
 import { next, range, stream } from "./rng";
@@ -58,7 +57,7 @@ function requiredBase(wave: number, diff: Difficulty): number {
   return most;
 }
 
-/** Compose a wave. Deterministic in the wave number and the difficulty. */
+/** Compose a wave. A function of the wave number and the difficulty alone. */
 export function buildWave(wave: number, diff: Difficulty): Wave {
   const events = rawMix(wave, diff);
 

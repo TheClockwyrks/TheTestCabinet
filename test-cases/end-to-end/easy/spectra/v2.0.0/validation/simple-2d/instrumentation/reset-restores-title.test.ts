@@ -38,11 +38,8 @@
 //
 // THE ID COUNTER IS READ THE ONLY WAY IT CAN BE. It is not a snapshot field, so
 // what is compared is the id the FIRST entity of a fresh game took against the id
-// the first entity added after the reset takes: "so two runs reset with the same
-// seed report the same ids for the same scenario".
-//
-// WHAT THIS DOES NOT DECIDE. What `reset({ seed })` does to the game's
-// randomness, which is `instrumentation/reset-seeds-randomness`'s.
+// the first entity added after the reset takes: "so the same scenario posed after
+// two resets reports the same ids both times".
 
 import { afterEach, beforeEach, it } from "vitest";
 import {

@@ -321,7 +321,7 @@ src/
     targets.ts        Every screen's pointer targets, and the hit test over them
     deal.ts           Dealing an opening board
     flow.ts           The screens and their menus
-    rng.ts            The seeded generator: a draw beside the next state
+    random.ts         The game's own random source
     debug.ts          The pose logic behind the debug surface, and the snapshot
     fixtures.ts       Boards the core's own tests are written against
   assets.ts           The manifest of produced files, and the store that holds them

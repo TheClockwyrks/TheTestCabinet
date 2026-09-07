@@ -65,7 +65,6 @@ it("carries the whole documented shape on every screen", async () => {
     assertEqual(typeof s.run.hurtFlash, "number", `run.hurtFlash on ${screen}`);
     assertEqual(typeof s.accumulator, "number", `accumulator on ${screen}`);
     assertEqual(typeof s.simTime, "number", `simTime on ${screen}`);
-    assertEqual(typeof s.rngState, "number", `rngState on ${screen}`);
     assertEqual(typeof s.muted, "boolean", `muted on ${screen}`);
 
     if (screen === "title" || screen === "howto" || screen === "almanac") {

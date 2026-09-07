@@ -114,6 +114,7 @@ describe("the ball", () => {
       spin: 0,
       held: true,
       holdTimer: HOLD_TIME,
+      serveSign: expect.any(Number),
       trail: [],
     });
   });

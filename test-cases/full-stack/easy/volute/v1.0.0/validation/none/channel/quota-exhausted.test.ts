@@ -36,9 +36,6 @@ const START_S = 100;
 /** Ten seconds of simulated time, every tick of which could have emitted. */
 const TICKS = 600;
 
-/** Long enough for the build's own render loop to have drawn the hall. */
-const RENDER_MS = 120;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -62,7 +59,8 @@ it("places no core at the inlet once the quota is spent", async () => {
 
   const after = await h.step(TICKS);
 
-  await h.page.waitForTimeout(RENDER_MS);
+  // Each stepped tick ends in a render (`specs/instrumentation.md`, `step`), so
+  // the canvas already shows the hall the last tick left.
   await captureStill(h, "empty-inlet");
 
   assertEqual(

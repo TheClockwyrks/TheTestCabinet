@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 it("takes the first choice from a press and release on its target", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   const board = await loadBoard(h, MINIMAL_2X1);
 
   // One segment joins the two emitters and solves the board, which is what

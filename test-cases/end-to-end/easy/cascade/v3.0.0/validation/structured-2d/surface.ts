@@ -202,7 +202,7 @@ export interface CascadeSnapshot {
 export interface CascadeDebugApi {
   version: number;
 
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): CascadeSnapshot;
   /**
    * The hit region of item `index` on the menu the current screen shows, or
@@ -270,6 +270,12 @@ export interface CascadeDebugApi {
   clearFlyers(): void;
   setLaunchClock(seconds: number): void;
   clearTrail(): void;
+  /**
+   * Performs one launch's `vx` draw alone and returns the signed value drawn.
+   *
+   * A reading like `snapshot`: it changes nothing.
+   */
+  drawLaunchVx(): number;
 }
 
 /**
@@ -280,7 +286,7 @@ export interface CascadeDebugApi {
  * sweeps the surface (instrumentation/surface-present) calls a reading for its
  * value and a pose for its effect.
  */
-export const READINGS = ["snapshot"] as const;
+export const READINGS = ["snapshot", "drawLaunchVx"] as const;
 
 /**
  * The two operations that BOTH act on the live game and return a verdict.
@@ -336,6 +342,7 @@ export const REQUIRED_OPS = [
   "clearFlyers",
   "setLaunchClock",
   "clearTrail",
+  "drawLaunchVx",
 ] as const;
 
 /** Every field the documented snapshot shape carries, in the order it lists them. */

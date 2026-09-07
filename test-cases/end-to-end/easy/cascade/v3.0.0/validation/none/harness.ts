@@ -200,6 +200,7 @@ export const REQUIRED_OPS = [
   "clearFlyers",
   "setLaunchClock",
   "clearTrail",
+  "drawLaunchVx",
 ] as const;
 
 /** The four screens the game moves between (`specs/screens.md`). */
@@ -336,7 +337,7 @@ export interface CascadeSnapshot {
  * needs and what nothing else does.
  */
 export interface CascadeDebugApi {
-  reset(options?: { seed?: number }): Promise<void>;
+  reset(): Promise<void>;
   snapshot(): Promise<CascadeSnapshot>;
   /** The region of item `index` on the current screen's menu, or `null`. */
   menuItemRect(index: number): Promise<MenuRect | null>;
@@ -402,6 +403,8 @@ export interface CascadeDebugApi {
   clearFlyers(): Promise<void>;
   setLaunchClock(seconds: number): Promise<void>;
   clearTrail(): Promise<void>;
+  /** One launch's `vx` draw, performed alone: the signed value it drew. */
+  drawLaunchVx(): Promise<number>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -522,11 +525,17 @@ export function framesFor(duration: number): number {
  * empty, the text the next frame drew, how much of the table is still painted.
  * None of it is quantised to a frame, which is what the fine step above exists
  * for. `specs/instrumentation.md` has the game integrate whatever delta a frame
- * supplies and `instrumentation/advances-in-frames` is the point that grades
- * exactly that, so a wait taken in coarser frames arrives at the same place — the
- * references were measured at 240, 120, 60 and 30 Hz and end `cascadeDone` with
- * all fifty-two launched and nothing in flight at the same `12.57` s of game time
- * at every one of them.
+ * supplies, and `instrumentation/advances-in-frames` is the point that grades
+ * exactly that.
+ *
+ * AND WHERE A CASCADE ENDS IS NOT A FRAME-RATE QUANTITY EITHER. Two things decide
+ * it, and `specs/victory.md` integrates both exactly however an interval is
+ * divided into frames: the launch clock adds each frame's delta and carries the
+ * remainder, so the fifty-second launch falls at the same game time whatever the
+ * frames were, and a card retires on `x` alone, which advances by `vx * dt` at a
+ * `vx` the bounce leaves unchanged. What gravity and the floor do to `y` in
+ * between is the one part a coarser frame moves, and it is exactly what the
+ * checks stepped at {@link TICK_HZ} are for.
  *
  * Sixty is also what a browser gives a game on an ordinary display, so it is the
  * rate the ending a player sees really runs at. A check reads at {@link TICK_HZ}

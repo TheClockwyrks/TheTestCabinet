@@ -116,7 +116,8 @@ function routeDistances(
  * The three branches of `specs/hunter.md`, in the order it states them: the first
  * step of a shortest open route; failing that the open neighbor least far from
  * the target in tile distance; failing that no step at all. Ties are broken by
- * the fixed direction order in `src/grid.ts`, so the choice is reproducible.
+ * the fixed direction order in `src/grid.ts`, so the choice is one the build
+ * fixes.
  */
 export function chooseStep(state: FloeState, bear: Bear): Facing | null {
   const open = openGrid(state);

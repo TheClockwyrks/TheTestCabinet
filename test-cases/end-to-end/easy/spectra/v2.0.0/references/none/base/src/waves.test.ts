@@ -169,21 +169,19 @@ describe("a standard wave, built", () => {
       expect(clock).toBeGreaterThanOrEqual(0);
       expect(clock).toBeLessThan(fluxWindow(1));
     }
-    // The generator was consumed, so a fresh wave draws different phases.
+    // Each Flux's clock is its own draw, so a fresh wave draws different ones.
     const other = createState(stubArt());
     other.stage = 1;
-    other.rngState = 987654;
     const otherClocks = buildStandardWave(other)
       .filter((drone) => drone.kind === "flux")
       .map((drone) => drone.bandClock);
     expect(otherClocks).not.toEqual(clocks);
   });
 
-  it("builds the same wave twice from the same seed", () => {
-    const shape = (seed: number): string => {
+  it("lays out the same block for a stage every time it is built", () => {
+    const shape = (): string => {
       const state = createState(stubArt());
       state.stage = 5;
-      state.rngState = seed;
       return JSON.stringify(
         buildStandardWave(state).map((drone) => [
           drone.kind,
@@ -191,12 +189,10 @@ describe("a standard wave, built", () => {
           drone.slotX,
           drone.slotY,
           drone.entryGroup,
-          drone.bandClock,
         ]),
       );
     };
-    expect(shape(42)).toBe(shape(42));
-    expect(shape(42)).not.toBe(shape(43));
+    expect(shape()).toBe(shape());
   });
 
   it("numbers its entry groups from zero, with no gap", () => {

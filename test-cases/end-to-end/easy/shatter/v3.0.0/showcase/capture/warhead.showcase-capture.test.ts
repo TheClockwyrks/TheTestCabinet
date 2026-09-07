@@ -8,10 +8,17 @@
 // WHAT IT DOES. It opens a real game the way a player does — the title screen,
 // then `PLAY` confirmed with a real key edge — and then flies the ship with
 // scripted keyboard input for half a minute: turning, thrusting, firing, and
-// dodging. Nothing is posed mid-play. The only debug operation the take uses is
-// `reset({seed})`, which is how a take is made reproducible, and it runs before
-// the game opens. Every rock that breaks, every wave that turns over and every
+// dodging. Nothing is posed mid-play. The only debug operation a take uses is
+// `reset()`, which puts the game on its title screen, and it runs before the
+// game opens. Every rock that breaks, every wave that turns over and every
 // saucer that arrives on screen is the build's own rules answering that input.
+//
+// EVERY TAKE IS RECORDED, AND THE BEST IS NAMED. The game draws its waves, its
+// saucer's arrivals and its aim at random, so no take can be flown a second time
+// and come out the same; a take auditioned with the recorder off could not then
+// be re-run under it. Each take therefore runs under the recorder from the start,
+// its media written under a prefix of its own, and is rated once it ends; the
+// run prints the rating of every take and names the one to keep.
 //
 // HOW THE PLAYER AIMS. Shatter's whole idea is that the well bends a shot, so
 // "point at the rock and fire" misses almost everything. The player therefore
@@ -100,16 +107,12 @@ const num = (name: string, fallback: number): number =>
 const MIN_SECONDS = num("TCAB_SHOWCASE_MIN_SECONDS", 26);
 /** The hard ceiling, past which a take ends wherever it stands. */
 const MAX_SECONDS = num("TCAB_SHOWCASE_MAX_SECONDS", 36);
-/** The seeds auditioned, each crossed with every roam phase. */
-const SEEDS = (process.env.TCAB_SHOWCASE_SEEDS ?? "1,2,3,4,5,6,7,8")
-  .split(",")
-  .map((entry) => Number(entry.trim()));
-/** The roam phases auditioned. */
+/** How many takes are flown at each roam phase. */
+const TAKES = num("TCAB_SHOWCASE_TAKES", 3);
+/** The roam phases flown. */
 const PHASES = (process.env.TCAB_SHOWCASE_PHASES ?? "0,1,2")
   .split(",")
   .map((entry) => Number(entry.trim()));
-/** `<seed>:<phase>` records that take and auditions nothing. */
-const FORCED = process.env.TCAB_SHOWCASE_TAKE;
 
 /* -------------------------------------------------------------------------- */
 /* Flying the world forward, under the specification's own rules              */
@@ -614,22 +617,26 @@ interface Take {
 const FRAMES_MIN = Math.round(MIN_SECONDS * TICK_HZ);
 const FRAMES_MAX = Math.round(MAX_SECONDS * TICK_HZ);
 
+/**
+ * Fly one take at `phase`, writing its stills under `prefix`.
+ *
+ * Runs under the recorder, so the console lines it prints as the take unfolds
+ * are the record of what the clip under that prefix shows.
+ */
 async function runTake(
   h: Harness,
-  seed: number,
   phase: number,
-  record: boolean,
+  prefix: string,
 ): Promise<Take> {
   const pilot = new Pilot(h, phase);
-  // A previous take can end mid-press; a key still down would leak into this one
-  // and break the same-seed reproducibility the audition rests on.
+  // A previous take can end mid-press; a key still down would leak into this one.
   pilot.hands();
   h.cues.length = 0;
   h.loops.length = 0;
 
   // The title, held for a beat, then `PLAY` taken with a real key edge. Recorded
   // from here, so the clip opens where a player opens the game.
-  resetTo(h, seed);
+  resetTo(h);
   await h.advance(45);
   await tapAction(h, "confirm");
 
@@ -705,12 +712,10 @@ async function runTake(
       const paid = snapshot.score - score;
       if (paid >= SCORE_SAUCER) saucerKilled = true;
       leftAt = frames;
-      if (record) {
-        console.log(
-          `saucer ${saucerId} left at ${(frames / TICK_HZ).toFixed(1)}s, ` +
-            `${paid} points on the tick`,
-        );
-      }
+      console.log(
+        `saucer ${saucerId} left at ${(frames / TICK_HZ).toFixed(1)}s, ` +
+          `${paid} points on the tick`,
+      );
     }
     if (nowSaucer !== null && nowSaucer !== saucerId) {
       // ONE VISIT TREADING ON THE LAST. specs/saucer.md puts 25 to 35 seconds
@@ -720,11 +725,9 @@ async function runTake(
       if (leftAt >= 0 && frames - leftAt < SAUCER_GAP_MIN * TICK_HZ) {
         backToBack = true;
       }
-      if (record) {
-        console.log(
-          `saucer ${nowSaucer} arrived at ${(frames / TICK_HZ).toFixed(1)}s`,
-        );
-      }
+      console.log(
+        `saucer ${nowSaucer} arrived at ${(frames / TICK_HZ).toFixed(1)}s`,
+      );
     }
     saucerId = nowSaucer;
     score = snapshot.score;
@@ -734,51 +737,49 @@ async function runTake(
       break;
     }
 
-    if (record) {
-      // THE STILLS COME FROM THIS VERY TAKE, and each is the BEST frame the take
-      // offered for what it is named for rather than the first acceptable one:
-      // the file is simply rewritten whenever a better frame comes along, so what
-      // is left on disk at the end is the take's high-water mark.
-      const midScore =
-        Math.min(snapshot.rocks.length, 12) * 2 +
-        snapshot.bullets.length * 5 +
-        (snapshot.rocks.some((rock) => rock.size !== "large") ? 5 : 0) +
-        (snapshot.ship.y > 150 ? 3 : 0);
-      if (frames > FRAMES_MIN * 0.3 && midScore > bestMid) {
-        bestMid = midScore;
-        captureStill(h, "mid-wave");
-      }
-      // The second still is the torpedo mid-run: the munition in flight, closing
-      // on the rock it will destroy, with the field busy behind it.
-      const fired = snapshot.torpedoes ?? [];
-      if (fired.length > 0) {
-        let closing = Infinity;
-        for (const one of fired) {
-          for (const rock of snapshot.rocks) {
-            closing = Math.min(
-              closing,
-              wrappedDistance(one, rock) - ROCK_RADIUS[rock.size],
-            );
-          }
-        }
-        const runScore =
-          Math.max(0, 300 - closing) +
-          Math.min(snapshot.rocks.length, 12) * 5 +
-          snapshot.bullets.length * 6;
-        if (closing > 12 && runScore > bestRun) {
-          bestRun = runScore;
-          captureStill(h, "torpedo-run");
+    // THE STILLS COME FROM THIS VERY TAKE, and each is the BEST frame the take
+    // offered for what it is named for rather than the first acceptable one:
+    // the file is simply rewritten whenever a better frame comes along, so what
+    // is left on disk at the end is the take's high-water mark.
+    const midScore =
+      Math.min(snapshot.rocks.length, 12) * 2 +
+      snapshot.bullets.length * 5 +
+      (snapshot.rocks.some((rock) => rock.size !== "large") ? 5 : 0) +
+      (snapshot.ship.y > 150 ? 3 : 0);
+    if (frames > FRAMES_MIN * 0.3 && midScore > bestMid) {
+      bestMid = midScore;
+      captureStill(h, `${prefix}mid-wave`);
+    }
+    // The second still is the torpedo mid-run: the munition in flight, closing
+    // on the rock it will destroy, with the field busy behind it.
+    const fired = snapshot.torpedoes ?? [];
+    if (fired.length > 0) {
+      let closing = Infinity;
+      for (const one of fired) {
+        for (const rock of snapshot.rocks) {
+          closing = Math.min(
+            closing,
+            wrappedDistance(one, rock) - ROCK_RADIUS[rock.size],
+          );
         }
       }
-      if (
-        process.env.TCAB_SHOWCASE_QA_STILLS === "1" &&
-        frames % (TICK_HZ * 3) === 0
-      ) {
-        captureStill(
-          h,
-          `qa-${String(frames / (TICK_HZ * 3)).padStart(2, "0")}`,
-        );
+      const runScore =
+        Math.max(0, 300 - closing) +
+        Math.min(snapshot.rocks.length, 12) * 5 +
+        snapshot.bullets.length * 6;
+      if (closing > 12 && runScore > bestRun) {
+        bestRun = runScore;
+        captureStill(h, `${prefix}torpedo-run`);
       }
+    }
+    if (
+      process.env.TCAB_SHOWCASE_QA_STILLS === "1" &&
+      frames % (TICK_HZ * 3) === 0
+    ) {
+      captureStill(
+        h,
+        `${prefix}qa-${String(frames / (TICK_HZ * 3)).padStart(2, "0")}`,
+      );
     }
 
     if (frames < FRAMES_MIN) continue;
@@ -856,33 +857,26 @@ afterEach(() => {
 it("records a gameplay clip", async () => {
   const h = harness;
 
-  let chosen: { seed: number; phase: number } | null = null;
-  if (FORCED !== undefined && FORCED !== "") {
-    const [seed, phase] = FORCED.split(":").map(Number);
-    chosen = { seed, phase };
-    console.log(`forced take seed=${seed} phase=${phase}`);
-  } else {
-    let best = -Infinity;
-    for (const seed of SEEDS) {
-      for (const phase of PHASES) {
-        const take = await runTake(h, seed, phase, false);
-        const rating = judge(take);
-        console.log(
-          `take seed=${seed} phase=${phase}: ${describe(take)} -> ${rating.toFixed(0)}`,
-        );
-        if (rating > best) {
-          best = rating;
-          chosen = { seed, phase };
-        }
-      }
+  let best: { prefix: string; rating: number } | null = null;
+  let take = 0;
+  for (const phase of PHASES) {
+    for (let attempt = 1; attempt <= TAKES; attempt += 1) {
+      take += 1;
+      const prefix = `take-${String(take).padStart(2, "0")}-`;
+      console.log(`take ${take}: phase ${phase}, recording as ${prefix}*`);
+      const result = await captureReplay(h, `${prefix}gameplay`, () =>
+        runTake(h, phase, prefix),
+      );
+      const rating = judge(result);
+      console.log(
+        `take ${take} (phase ${phase}): ${describe(result)} -> ${rating.toFixed(0)}`,
+      );
+      if (best === null || rating > best.rating) best = { prefix, rating };
     }
   }
 
-  console.log(`recording take seed=${chosen!.seed} phase=${chosen!.phase}`);
-  const final = await captureReplay(h, "gameplay", () =>
-    runTake(h, chosen!.seed, chosen!.phase, true),
-  );
   console.log(
-    `recorded seed=${chosen!.seed} phase=${chosen!.phase}: ${describe(final)}`,
+    `best take: ${best!.prefix}* at ${best!.rating.toFixed(0)}; copy its ` +
+      "gameplay replay and stills into the showcase",
   );
 }, 3_600_000);

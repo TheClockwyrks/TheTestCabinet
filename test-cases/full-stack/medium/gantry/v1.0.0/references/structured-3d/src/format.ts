@@ -35,12 +35,20 @@ export function fixed(value: number, places = 1): string {
   return text === "-" + (0).toFixed(places) ? (0).toFixed(places) : text;
 }
 
-/** A cost or a budget: whole force-free units, grouped for reading. */
+/**
+ * A cost or a budget: whole force-free units, grouped for reading.
+ *
+ * The digit triples are set apart by a no-break space rather than an ASCII
+ * space: the two draw alike, but a reader assembling a frame's text out of its
+ * separate draw runs joins those runs with an ASCII space, so `2 400` set with
+ * one would read as the two figures 2 and 400 rather than the one figure it
+ * states.
+ */
 export function cost(value: number): string {
   if (!Number.isFinite(value)) return "—";
   return Math.round(value)
     .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+    .replace(/\B(?=(\d{3})+(?!\d))/g, "\u00A0");
 }
 
 /** A run clock or a par time, in seconds. */

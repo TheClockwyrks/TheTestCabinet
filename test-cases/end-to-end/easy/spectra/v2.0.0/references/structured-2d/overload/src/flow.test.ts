@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   CHALLENGE_TOTAL,
-  DEFAULT_SEED,
   DIVE_FIRST_DELAY,
   READY_HOLD,
   SCORE_STAGE_CLEAR,
@@ -47,7 +46,7 @@ describe("reset", () => {
     poseDrone(state, "shard", 300, 200);
     addPlayerBulletTo(state, 300, 400, "cyan");
 
-    resetState(state, 5);
+    resetState(state);
 
     expect(state).toMatchObject({
       screen: "title",
@@ -66,7 +65,6 @@ describe("reset", () => {
       diveClock: 0,
       diveTarget: DIVE_FIRST_DELAY,
       simTime: 0,
-      rngState: 5,
       // Muting is a player preference the runtime owns, so it is left alone.
       muted: true,
     });
@@ -81,13 +79,6 @@ describe("reset", () => {
       cooldown: 0,
       contact: true,
     });
-  });
-
-  it("seeds the generator with the default when none is named", () => {
-    const state = titleState();
-    state.rngState = 99;
-    resetState(state);
-    expect(state.rngState).toBe(DEFAULT_SEED);
   });
 });
 

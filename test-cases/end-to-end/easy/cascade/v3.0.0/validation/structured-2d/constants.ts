@@ -246,9 +246,6 @@ export const CUES = {
 /** The version the surface reports, as a plain number. */
 export const CASCADE_DEBUG_VERSION = 1;
 
-/** The seed `reset()` uses when the caller names none. */
-export const DEFAULT_SEED = 1;
-
 /* ---- What the specification leaves to the build --------------------------- */
 //
 // ONE VALUE, AND IT GRADES NOTHING. `specs/screens.md` and `specs/table.md` fix

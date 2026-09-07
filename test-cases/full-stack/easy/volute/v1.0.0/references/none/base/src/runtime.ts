@@ -76,8 +76,6 @@ export interface RuntimeOptions {
   canvas: HTMLCanvasElement;
   /** The produced files the renderer and the audio bus draw and play. */
   assets: Assets;
-  /** The seed the game's one generator opens on. */
-  seed: number;
   /** Where size, pixel density and events come from; defaults to the DOM. */
   surface?: Surface;
   /** Where the audio bus gets its context; defaults to the platform's. */
@@ -127,7 +125,7 @@ export function createRuntime(options: RuntimeOptions): Runtime {
   const audio = new AudioBus(options.audioContext);
   const diagnostics = new Diagnostics();
   const effects = new Effects(assets, options.createCanvas);
-  const state = createState(options.seed);
+  const state = createState();
 
   let viewport = fit();
   let context: CanvasRenderingContext2D | null = null;

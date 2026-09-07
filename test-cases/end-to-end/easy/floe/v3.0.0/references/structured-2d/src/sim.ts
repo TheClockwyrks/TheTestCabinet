@@ -3,9 +3,8 @@
 // One tick is the whole clock (specs/overview.md), so everything that happens in
 // Floe happens in `stepTick` below, in the order this file fixes: the screen and
 // its menu first, then the strait, then the crossing on it. Nothing here draws
-// and nothing here reads the wall clock, which is what lets the same starting
-// state driven by the same inputs over the same elapsed game time reach the same
-// state every time.
+// and nothing here reads the wall clock: the core is render-free, and a tick
+// means the same thing whatever the frame rate.
 //
 // The authoritative game is the world the engine owns (`specs/state.md`): the
 // run's figures on `FloeState`, the strait's bodies as tagged actors. This file
@@ -29,7 +28,6 @@ import {
   CLEAR_PAUSE,
   CUES,
   DEATH_PAUSE,
-  DEFAULT_SEED,
   FISH_INTERVAL,
   FISH_LINGER,
   HOP_COOLDOWN,
@@ -200,18 +198,13 @@ function openBays(): boolean[] {
 }
 
 /**
- * Restore every field to its title-screen value and reseed the generator
- * (specs/instrumentation.md).
+ * Restore every field to its title-screen value (specs/instrumentation.md).
  *
  * `muted` is deliberately untouched, and it could not be touched from here in
  * any case: the mute bit is the engine's own and a reset is not a reason to start
  * making noise again.
  */
-export function resetGame(
-  world: World,
-  state: FloeState,
-  seed = DEFAULT_SEED,
-): void {
+export function resetGame(world: World, state: FloeState): void {
   state.screen = "title";
   state.menuIndex = 0;
   state.phase = "crossing";
@@ -230,7 +223,6 @@ export function resetGame(
   state.fishCadence = true;
   state.timerRunning = true;
   state.simTime = 0;
-  state.rngState = seed;
   state.nextId = 1;
   state.effects = [];
   state.slots = freshSlots(1);
@@ -614,7 +606,7 @@ function stepFish(state: FloeState, dt: number): void {
     state.fishTimer = FISH_INTERVAL;
     return;
   }
-  const bay = pick(state, open) ?? open[0];
+  const bay = pick(open) ?? open[0];
   state.fishBay = bay;
   state.lastFishBay = bay;
   state.fishTimer = FISH_LINGER;

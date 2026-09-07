@@ -3,12 +3,13 @@
 // Not a validator: a temporary capture driver staged beside the harness to
 // (re)record `showcase/base/crossing.json.gz`, `mid-crossing.png` and
 // `title.png` from the `structured-2d` reference implementation. It opens a run
-// the way a player opens one — `reset({ seed })` for a chosen seed, then
-// `confirm` on the title's CROSS — and from there plays the critter with real
-// held-key input on the four movement actions. Nothing is posed mid-play: the
-// four world gates stay on, so bears emerge on the run's own conditions, the
-// catch costs a life, the crossing timer drains and the bonus catch comes and
-// goes exactly as they do for a player.
+// the way a player opens one — `reset()`, then `confirm` on the title's CROSS —
+// and from there plays the critter with real held-key input on the four
+// movement actions. The lanes are laid out on the game's own draw, so every
+// take is recorded as it plays and the winner of the audition is the one kept.
+// Nothing is posed mid-play: the four world gates stay on, so bears emerge on
+// the run's own conditions, the catch costs a life, the crossing timer drains
+// and the bonus catch comes and goes exactly as they do for a player.
 //
 // The player has two layers, as Carom v3.0.0's drivers do.
 //
@@ -33,6 +34,8 @@
 //     validation/showcase-capture.test.ts
 
 import { Image } from "@napi-rs/canvas";
+import { existsSync, readdirSync, renameSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, it } from "vitest";
 import {
   BAYS,
@@ -500,6 +503,32 @@ const QA_STILLS = process.env.TCAB_SHOWCASE_QA_STILLS === "1";
 /** Whether a take reports where it stalled, for tuning the player. */
 const TRACE = process.env.TCAB_SHOWCASE_TRACE === "1";
 
+/**
+ * Keep take `index`'s recording and still under the showcase's own names,
+ * `crossing.json.gz` and `mid-crossing.png`, and drop every other take's files.
+ *
+ * The harness writes each output under
+ * `$TCAB_VALIDATION_MEDIA_DIR/validation/<this suite>/<id>.<ext>`, and with the
+ * directory unset it writes nothing, so there is nothing to keep or drop.
+ */
+function keepTake(index: number): void {
+  const mediaDir = process.env.TCAB_VALIDATION_MEDIA_DIR;
+  if (mediaDir === undefined || mediaDir === "") return;
+  const dir = join(mediaDir, "validation", "showcase-capture.test.ts");
+  if (!existsSync(dir)) return;
+  const keep: Array<[string, string]> = [
+    [`take-${index}.json.gz`, "crossing.json.gz"],
+    [`take-${index}-mid-crossing.png`, "mid-crossing.png"],
+  ];
+  for (const [from, to] of keep) {
+    const source = join(dir, from);
+    if (existsSync(source)) renameSync(source, join(dir, to));
+  }
+  for (const name of readdirSync(dir)) {
+    if (name.startsWith("take-")) unlinkSync(join(dir, name));
+  }
+}
+
 let harness: Harness;
 
 beforeEach(async () => {
@@ -525,23 +554,19 @@ it("records the base showcase", async () => {
   );
 
   /**
-   * One take: open a run at `seed` through the title, play it out with the
-   * scripted crosser, and report what it turned into.
+   * One take: open a run through the title, play it out with the scripted
+   * crosser under the recorder, and report what it turned into.
    *
-   * The same seed and style replay the identical take — that is the debug
-   * surface's determinism contract — which is what lets a take be auditioned
-   * with the recorder off and then re-run under it exactly.
+   * The strait a run opens on is the game's own draw, so no take can be played
+   * twice: each is recorded as it happens, as `take-<n>` with its best still as
+   * `take-<n>-mid-crossing`, and the audition keeps the winner's files.
    */
-  const runTake = async (
-    seed: number,
-    style: Style,
-    record: boolean,
-  ): Promise<Take> => {
+  const runTake = async (index: number, style: Style): Promise<Take> => {
     const player = new Crosser(h, style);
     // A previous take can end mid-press; clear the keyboard so nothing leaks
-    // into this one and breaks same-seed reproducibility.
+    // into this one.
     player.release();
-    await startRun(h, seed);
+    await startRun(h);
 
     let frames = 0;
     let bays = 0;
@@ -628,15 +653,13 @@ it("records the base showcase", async () => {
       const value = stillValueOf(snapshot);
       if (value > stillScore) {
         stillScore = value;
-        if (record) captureStill(h, "mid-crossing");
+        captureStill(h, `take-${index}-mid-crossing`);
       }
-      if (record) {
-        if (QA_STILLS && frames % (TICK_HZ * 2) === 0) {
-          captureStill(
-            h,
-            `qa-${String(frames / (TICK_HZ * 2)).padStart(3, "0")}`,
-          );
-        }
+      if (QA_STILLS && frames % (TICK_HZ * 2) === 0) {
+        captureStill(
+          h,
+          `take-${index}-qa-${String(frames / (TICK_HZ * 2)).padStart(3, "0")}`,
+        );
       }
 
       previous = snapshot;
@@ -721,19 +744,23 @@ it("records the base showcase", async () => {
     { patience: 0.22, lean: -1 },
     { patience: 0.18, lean: 1 },
   ];
-  const seeds = (process.env.TCAB_SHOWCASE_SEEDS ?? "1,2,3,4,5")
-    .split(",")
-    .map((value) => Number(value.trim()));
+  /** How many takes each style is auditioned over. */
+  const takesPerStyle = Number(process.env.TCAB_SHOWCASE_TAKES ?? "5");
 
-  // `TCAB_SHOWCASE_TAKE=<seed>:<patience>:<lean>` skips the audition and records
-  // exactly that take, which is how a committed clip is reproduced.
-  const forced = process.env.TCAB_SHOWCASE_TAKE;
-  let best: { seed: number; style: Style; take: Take } | null = null;
-  for (const seed of forced === undefined ? seeds : []) {
-    for (const style of styles) {
-      const take = await runTake(seed, style, false);
+  // Every take is recorded as it plays, because none can be played again: the
+  // strait it opens on is the game's own draw. The audition scores each one and
+  // keeps the winner's files under the showcase's names.
+  let best: { index: number; style: Style; take: Take } | null = null;
+  let index = 0;
+  for (const style of styles) {
+    for (let attempt = 0; attempt < takesPerStyle; attempt += 1) {
+      index += 1;
+      const at = index;
+      const take = await captureReplay(h, `take-${at}`, () =>
+        runTake(at, style),
+      );
       console.log(
-        `take seed=${seed} patience=${style.patience} lean=${style.lean}: ` +
+        `take ${at} patience=${style.patience} lean=${style.lean}: ` +
           `${seconds(take.frames).toFixed(1)}s, ${take.bays} bay(s), ` +
           `${take.rows} rows, ${take.deaths} death(s), ` +
           `${take.water} water frames, ${take.hunted} hunted frames, ` +
@@ -743,36 +770,29 @@ it("records the base showcase", async () => {
           take.score.toFixed(1),
       );
       if (best === null || take.score > best.take.score) {
-        best = { seed, style, take };
+        best = { index: at, style, take };
       }
     }
   }
 
-  let winner: { seed: number; style: Style };
-  if (forced === undefined) {
-    winner = best!;
-  } else {
-    const [seed, patience, lean] = forced.split(":").map(Number);
-    winner = { seed, style: { patience, lean: lean < 0 ? -1 : 1 } };
-  }
+  const winner = best!;
+  const final = winner.take;
   console.log(
-    `recording take seed=${winner.seed} patience=${winner.style.patience} ` +
+    `keeping take ${winner.index} patience=${winner.style.patience} ` +
       `lean=${winner.style.lean}`,
   );
-  const final = await captureReplay(h, "crossing", () =>
-    runTake(winner.seed, winner.style, true),
-  );
+  keepTake(winner.index);
 
   // The title screen, from the same reference: `reset` puts the game back on it,
   // and one frame draws it.
-  h.debug.reset({ seed: winner.seed });
+  h.debug.reset();
   await h.advance(1);
   captureStill(h, "title");
 
   console.log(
     JSON.stringify(
       {
-        seed: winner.seed,
+        take: winner.index,
         style: winner.style,
         seconds: Number(seconds(final.frames).toFixed(2)),
         bays: final.bays,

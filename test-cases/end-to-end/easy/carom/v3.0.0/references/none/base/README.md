@@ -132,9 +132,9 @@ The build exposes the surface `specs/instrumentation.md` specifies on
   scenario empties the field and spawns back exactly the bodies its requirement
   is about; an absent ball takes no part in a frame and an absent obstacle has no
   collision.
-- `reset()` and `setSeed(seed)` — return every declared field to its title-screen
-  value, and seed the generator. A reset leaves the mute bit and the clock alone,
-  because neither is a field of the state.
+- `reset()` — returns every declared field to its title-screen value. A reset
+  leaves the mute bit and the clock alone, because neither is a field of the
+  state.
 - `setScreen`, `setMode`, `setMenuIndex`, `setTitleIndex`, `setResumeScreen`,
   `setScore(p1, p2)`, `setWinner`, `setReceiver` — the screens, the menus and the
   match, one field each.
@@ -143,7 +143,8 @@ driven)` — the paddles, one side at a time. A driven paddle moves at that
   side's `drivenVy` and neither the keys nor the AI touch it; the other side goes
   on playing normally.
 - `setBallPosition`, `setBallVelocity`, `setBallSpin`, `setBallHeld`,
-  `setBallHoldTimer` — the ball. This variant plays with one, so none of them
+  `setBallHoldTimer`, `setBallServeSign`, `drawBallServeSign` — the ball. This
+  variant plays with one, so none of them
   takes an index. Ending the hold does not launch the ball: the game's own rule
   serves it on the next frame.
 - `setAiTracking(enabled)` and `setAiMovement(enabled)` — the AI's two faculties,
@@ -242,7 +243,7 @@ src/
   state.ts            The state contract and the transitions that pose it
   game.ts             The state machine, the per-frame update, and the three
                       functions the runtime drives
-  rng.ts              The seeded generator, over CaromState.rngState
+  random.ts           The serve sign draw a parked ball takes
   entities.ts         Paddle and ball arithmetic and geometry
   trail.ts            The ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision, the spin mechanic

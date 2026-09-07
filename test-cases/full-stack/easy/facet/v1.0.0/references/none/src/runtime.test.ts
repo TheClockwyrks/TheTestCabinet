@@ -107,7 +107,12 @@ function gesturedCanvas(): HTMLCanvasElement & { listeners: string[] } {
 
 /** A runtime over a recording game, already built but not initialized. */
 function bench(
-  options: { cssWidth?: number; dpr?: number; canvas?: HTMLCanvasElement } = {},
+  options: {
+    cssWidth?: number;
+    dpr?: number;
+    canvas?: HTMLCanvasElement;
+    assets?: AssetStore;
+  } = {},
 ) {
   const log: Recorded = { updates: [], renders: 0 };
   const events = new EventTarget();
@@ -120,7 +125,7 @@ function bench(
     background: "#000",
     surface: surfaceOf(events, options.cssWidth ?? 1280, 720, options.dpr ?? 1),
     audioContext: () => null,
-    assets: assets.store,
+    assets: options.assets ?? assets.store,
     scratch: (width, height) =>
       createCanvas(width, height).getContext(
         "2d",
@@ -190,6 +195,22 @@ describe("createRuntime", () => {
         Object.keys(manifest.systems).length +
         Object.keys(manifest.sounds).length,
     );
+  });
+
+  it("settles loaded once every produced file's load has settled", async () => {
+    // Every file fails, which settles the load the same way an arrival does:
+    // a missing file is named rather than fatal (src/assets.ts).
+    const refuse = (): Promise<never> =>
+      Promise.reject(new Error("Facet: no such file"));
+    const store = new AssetStore(
+      { image: refuse, json: refuse, bytes: refuse },
+      assetManifest(),
+    );
+    const { runtime } = bench({ assets: store });
+    await expect(runtime.loaded()).rejects.toThrow(/has not initialized/);
+    runtime.initialize();
+    await runtime.loaded();
+    expect(store.ready()).toBe(true);
   });
 
   it("fits the stage into the surface, letterboxing the leftover", () => {

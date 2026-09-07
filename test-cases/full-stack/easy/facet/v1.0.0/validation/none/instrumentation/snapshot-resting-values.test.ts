@@ -35,6 +35,7 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertDeepEqual, assertEqual, assertNull } from "../assert";
+import { RESTING_REFILL_KINDS } from "../constants";
 import {
   captureStill,
   createHarness,
@@ -96,6 +97,14 @@ it("holds every field at its resting value while no board is in play", async () 
   assertEqual(s.moveScore, 0, "moveScore with no move running");
   assertEqual(s.bestMove, 0, "bestMove with no move scored");
   assertEqual(s.bestChain, 0, "bestChain with no chain run");
+
+  // No refill is posed on any column: one empty string per column, whatever
+  // the board.
+  assertDeepEqual(
+    s.refillKinds,
+    RESTING_REFILL_KINDS,
+    "refillKinds with no refill posed",
+  );
 
   // The menu is live here, and rests on its first item.
   assertEqual(s.menuIndex, 0, "menuIndex on the title screen");

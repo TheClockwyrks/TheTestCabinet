@@ -7,13 +7,23 @@ import {
   BREAK_FRAME_SECONDS,
   PRISM_TURN_FRAME_SECONDS,
   Presentation,
+  boardReplaced,
+  isDealtBoard,
   prismTurnFrame,
   sameBoard,
   type StepReport,
 } from "./effects";
 import { BREAK_FRAMES, PRISM_TURN_FRAMES } from "./assets";
 import { FALL_SECONDS_PER_ROW, WAVE_SECONDS } from "./constants";
-import { cellCenter, parseBoard, withGem } from "./core";
+import {
+  applySwap,
+  cellCenter,
+  createInitialState,
+  parseBoard,
+  withGem,
+  type BoardState,
+  type FacetState,
+} from "./core";
 import { quietRows, quietRowsWith } from "./core/fixtures";
 import type { ScratchCanvas } from "./scratch";
 
@@ -69,6 +79,32 @@ function step(
 /** One board, and a board that is not it. */
 const BOARD = parseBoard(quietRows());
 const OTHER = parseBoard(quietRowsWith({ "0,0": "M0" }));
+
+/** A round in play holding `board`, standing still. */
+function at(board: BoardState): FacetState {
+  return { ...createInitialState(), screen: "playing", board };
+}
+
+/** `board` with every gem dealt in from above its row, as a fresh deal is. */
+function dealt(board: BoardState): BoardState {
+  return {
+    ...board,
+    gems: board.gems.map((gem, index) =>
+      gem === null ? gem : { ...gem, fell: Math.floor(index / board.cols) + 1 },
+    ),
+  };
+}
+
+/** `observe` over two boards, each standing in a round of its own. */
+function observe(
+  presentation: Presentation,
+  before: BoardState,
+  after: BoardState,
+  steps: readonly StepReport[],
+  assets: AssetStore,
+): void {
+  presentation.observe(at(before), at(after), steps, assets);
+}
 
 /** How much paint a cell's own square carries, which is where its sheet goes. */
 function inkAround(
@@ -162,7 +198,13 @@ describe("Presentation", () => {
   it("plays a break sheet at each cleared cell, then retires it", () => {
     const presentation = new Presentation(scratchFactory().scratch);
     const board = BOARD;
-    presentation.observe(board, board, [step([[2, 3, "ruby", false]])], assets);
+    observe(
+      presentation,
+      board,
+      board,
+      [step([[2, 3, "ruby", false]])],
+      assets,
+    );
     expect(presentation.idle()).toBe(false);
     presentation.advance(BREAK_FRAMES * BREAK_FRAME_SECONDS + 0.001);
     // The bursts outlive the sheet, so the sheet alone is checked by drawing.
@@ -178,7 +220,7 @@ describe("Presentation", () => {
     const { scratch, sizes } = scratchFactory();
     const presentation = new Presentation(scratch);
     const board = BOARD;
-    presentation.observe(board, board, [step([[0, 0, null, false]])], assets);
+    observe(presentation, board, board, [step([[0, 0, null, false]])], assets);
     // One clear burst was still thrown for it.
     expect(sizes).toEqual(["96x96"]);
   });
@@ -187,7 +229,7 @@ describe("Presentation", () => {
     const { scratch, sizes } = scratchFactory();
     const presentation = new Presentation(scratch);
     const board = BOARD;
-    presentation.observe(board, board, [step([[1, 1, "jade", true]])], assets);
+    observe(presentation, board, board, [step([[1, 1, "jade", true]])], assets);
     expect(sizes).toEqual(["256x256"]);
   });
 
@@ -195,7 +237,7 @@ describe("Presentation", () => {
     const { scratch, sizes } = scratchFactory();
     const presentation = new Presentation(scratch);
     const board = BOARD;
-    presentation.observe(board, board, [step([], [[4, 4]])], assets);
+    observe(presentation, board, board, [step([], [[4, 4]])], assets);
     expect(sizes).toEqual(["128x128"]);
   });
 
@@ -208,19 +250,20 @@ describe("Presentation", () => {
       [1, 0, "ruby", false],
       [2, 0, "ruby", false],
     ]);
-    presentation.observe(board, board, [three], assets);
+    observe(presentation, board, board, [three], assets);
     expect(sizes).toHaveLength(3);
     // Run them out, then throw three more: no new canvas is needed.
     presentation.advance(4);
     expect(presentation.idle()).toBe(true);
-    presentation.observe(board, board, [three], assets);
+    observe(presentation, board, board, [three], assets);
     expect(sizes).toHaveLength(3);
   });
 
   it("retires a burst once its particles are gone", () => {
     const presentation = new Presentation(scratchFactory().scratch);
     const board = BOARD;
-    presentation.observe(
+    observe(
+      presentation,
       board,
       board,
       [step([[3, 3, "amber", false]])],
@@ -234,7 +277,8 @@ describe("Presentation", () => {
     const presentation = new Presentation(scratchFactory().scratch);
     const first = BOARD;
     const second = OTHER;
-    presentation.observe(
+    observe(
+      presentation,
       first,
       first,
       [step([[3, 3, "amber", false]])],
@@ -243,27 +287,29 @@ describe("Presentation", () => {
     expect(presentation.idle()).toBe(false);
     // A fresh deal, a posed board, or a reset: the board the next frame is
     // handed is not the one the effects were thrown on.
-    presentation.observe(first, second, [], assets);
+    observe(presentation, first, second, [], assets);
     expect(presentation.idle()).toBe(true);
   });
 
   it("keeps playing while the board is the one it last saw", () => {
     const presentation = new Presentation(scratchFactory().scratch);
     const board = BOARD;
-    presentation.observe(
+    observe(
+      presentation,
       board,
       board,
       [step([[3, 3, "amber", false]])],
       assets,
     );
-    presentation.observe(board, board, [], assets);
+    observe(presentation, board, board, [], assets);
     expect(presentation.idle()).toBe(false);
   });
 
   it("clears on request", () => {
     const presentation = new Presentation(scratchFactory().scratch);
     const board = BOARD;
-    presentation.observe(
+    observe(
+      presentation,
       board,
       board,
       [step([[3, 3, "amber", false]])],
@@ -276,7 +322,8 @@ describe("Presentation", () => {
   it("draws both layers over a real context without throwing", () => {
     const presentation = new Presentation(scratchFactory().scratch);
     const board = BOARD;
-    presentation.observe(
+    observe(
+      presentation,
       board,
       board,
       [
@@ -305,7 +352,8 @@ describe("Presentation", () => {
     const presentation = new Presentation(() => null);
     const board = BOARD;
     expect(() => {
-      presentation.observe(
+      observe(
+        presentation,
         board,
         board,
         [step([[0, 0, "ruby", false]])],
@@ -331,7 +379,7 @@ describe("Presentation", () => {
           ],
       ),
     );
-    presentation.observe(board, board, [many], assets);
+    observe(presentation, board, board, [many], assets);
     expect(sizes.length).toBeLessThan(40);
   });
 
@@ -342,7 +390,13 @@ describe("Presentation", () => {
       json: () => new Promise(() => {}),
     });
     const board = BOARD;
-    presentation.observe(board, board, [step([[1, 1, "ruby", false]])], assets);
+    observe(
+      presentation,
+      board,
+      board,
+      [step([[1, 1, "ruby", false]])],
+      assets,
+    );
     const ctx = createCanvas(1280, 720).getContext(
       "2d",
     ) as unknown as CanvasRenderingContext2D;
@@ -356,7 +410,7 @@ describe("Presentation", () => {
     const empty = new AssetStore(diskIo());
     const presentation = new Presentation(scratch);
     const board = BOARD;
-    presentation.observe(board, board, [step([[0, 0, "ruby", false]])], empty);
+    observe(presentation, board, board, [step([[0, 0, "ruby", false]])], empty);
     expect(sizes).toEqual([]);
   });
 
@@ -364,7 +418,8 @@ describe("Presentation", () => {
     const presentation = new Presentation(scratchFactory().scratch);
     const board = BOARD;
     // Wave 0 goes at once; wave 2 waits two wave-lengths into the step.
-    presentation.observe(
+    observe(
+      presentation,
       board,
       board,
       [
@@ -393,7 +448,8 @@ describe("Presentation", () => {
     const { scratch, sizes } = scratchFactory();
     const presentation = new Presentation(scratch);
     const board = BOARD;
-    presentation.observe(
+    observe(
+      presentation,
       board,
       board,
       [step([[2, 2, "ruby", false, 3]])],
@@ -422,13 +478,13 @@ describe("Presentation", () => {
       { col: 6, row: 6 },
       { kind: null, cut: "prism", strain: 0, fell: 0 },
     );
-    presentation.observe(withCuts, withCuts, [], assets);
+    observe(presentation, withCuts, withCuts, [], assets);
     // One 96x96 canvas per cut standing on the board, and none for the rest.
     expect(sizes).toEqual(["96x96", "96x96"]);
 
     // The aura goes when the stone does, and its canvas returns to the pool.
-    presentation.observe(withCuts, BOARD, [], assets);
-    presentation.observe(BOARD, withCuts, [], assets);
+    observe(presentation, withCuts, BOARD, [], assets);
+    observe(presentation, BOARD, withCuts, [], assets);
     expect(sizes).toEqual(["96x96", "96x96"]);
   });
 
@@ -444,7 +500,7 @@ describe("Presentation", () => {
         fell: 0,
       },
     );
-    presentation.observe(withCut, withCut, [], assets);
+    observe(presentation, withCut, withCut, [], assets);
     for (let frame = 0; frame < 120; frame += 1) presentation.advance(1 / 60);
     // An aura runs for as long as its stone stands, so it is not "flying".
     expect(presentation.idle()).toBe(true);
@@ -458,33 +514,114 @@ describe("Presentation", () => {
     expect(ctx.globalAlpha).toBe(1);
   });
 
-  it("pours a board that no step explains, and lands it", () => {
+  it("pours a freshly dealt board that no step explains, and lands it", () => {
     const presentation = new Presentation(scratchFactory().scratch);
     expect(presentation.pourAge()).toBeNull();
 
-    const poured = withGem(
-      BOARD,
-      { col: 0, row: 0 },
-      {
-        kind: "ruby",
-        cut: "plain",
-        strain: 0,
-        fell: 4,
-      },
-    );
-    presentation.observe(BOARD, poured, [], assets);
+    const poured = dealt(BOARD);
+    observe(presentation, BOARD, poured, [], assets);
     expect(presentation.pourAge()).toBe(0);
 
     presentation.advance(2 * FALL_SECONDS_PER_ROW);
     expect(presentation.pourAge()).toBeCloseTo(2 * FALL_SECONDS_PER_ROW, 6);
-    presentation.advance(3 * FALL_SECONDS_PER_ROW);
+    // The bottom row came in from above the top one, eight rows up.
+    presentation.advance(6 * FALL_SECONDS_PER_ROW);
     // The longest fall on it has landed, so nothing is pouring any more.
     expect(presentation.pourAge()).toBeNull();
   });
 
   it("starts no pour for a board that is standing still", () => {
     const presentation = new Presentation(scratchFactory().scratch);
-    presentation.observe(BOARD, OTHER, [], assets);
+    observe(presentation, BOARD, OTHER, [], assets);
     expect(presentation.pourAge()).toBeNull();
+  });
+
+  it("starts no pour for a posed board only some of whose gems fell", () => {
+    // A posed `setCell`, or a board a chain step left behind: some stones
+    // carry a `fell`, but the board was not dealt, so it stands where it is.
+    const presentation = new Presentation(scratchFactory().scratch);
+    const posed = withGem(
+      BOARD,
+      { col: 0, row: 0 },
+      { kind: "ruby", cut: "plain", strain: 0, fell: 4 },
+    );
+    observe(presentation, BOARD, posed, [], assets);
+    expect(presentation.pourAge()).toBeNull();
+  });
+
+  it("neither pours nor clears when an accepted swap exchanges two cells", () => {
+    // The board a swap leaves still carries every `fell` the deal or the last
+    // step gave its stones. Reading the exchange as a new board would pour
+    // the whole of it in from above on the frame the player let go — and do
+    // it again on every later move, over whichever columns the previous chain
+    // refilled.
+    const presentation = new Presentation(scratchFactory().scratch);
+    const before = dealt(BOARD);
+    observe(
+      presentation,
+      before,
+      before,
+      [step([[3, 3, "amber", false]])],
+      assets,
+    );
+    expect(presentation.idle()).toBe(false);
+
+    const swap = { a: { col: 3, row: 3 }, b: { col: 3, row: 4 } };
+    const swapping: FacetState = {
+      ...at(applySwap(before, swap)),
+      phase: "swapping",
+      chainSwap: swap,
+    };
+    presentation.observe(at(before), swapping, [], assets);
+    expect(presentation.pourAge()).toBeNull();
+    expect(presentation.idle()).toBe(false);
+  });
+
+  it("clears, without pouring, for a posed board that stands still", () => {
+    const presentation = new Presentation(scratchFactory().scratch);
+    observe(
+      presentation,
+      BOARD,
+      BOARD,
+      [step([[3, 3, "amber", false]])],
+      assets,
+    );
+    expect(presentation.idle()).toBe(false);
+    observe(presentation, BOARD, OTHER, [], assets);
+    expect(presentation.idle()).toBe(true);
+    expect(presentation.pourAge()).toBeNull();
+  });
+});
+
+describe("isDealtBoard", () => {
+  it("is true only when every gem came in from above its row", () => {
+    expect(isDealtBoard(dealt(BOARD))).toBe(true);
+    expect(isDealtBoard(BOARD)).toBe(false);
+    expect(
+      isDealtBoard(
+        withGem(
+          dealt(BOARD),
+          { col: 2, row: 5 },
+          { kind: "ruby", cut: "plain", strain: 0, fell: 5 },
+        ),
+      ),
+    ).toBe(false);
+    expect(isDealtBoard({ cols: 0, rows: 0, gems: [] })).toBe(false);
+  });
+});
+
+describe("boardReplaced", () => {
+  it("is a board that differs by value with no swap in motion", () => {
+    expect(boardReplaced(at(BOARD), at(OTHER))).toBe(true);
+    expect(
+      boardReplaced(at(BOARD), at({ ...BOARD, gems: [...BOARD.gems] })),
+    ).toBe(false);
+    const swap = { a: { col: 0, row: 0 }, b: { col: 1, row: 0 } };
+    const swapping: FacetState = {
+      ...at(applySwap(BOARD, swap)),
+      phase: "swapping",
+      chainSwap: swap,
+    };
+    expect(boardReplaced(at(BOARD), swapping)).toBe(false);
   });
 });

@@ -3,9 +3,9 @@
 //
 // THE RULE. "Audio belongs to the frames. A pose changes the state alone and
 // sounds nothing, the pointer operations included; the cues a scenario hears come
-// from the frames advanced after it" (`specs/instrumentation.md`, A deterministic
+// from the frames advanced after it" (`specs/instrumentation.md`, A render-free
 // core). The two groups that would sound something say it again where a reader
-// would look for it: Navigation, "No cue sounds at the call, as the deterministic
+// would look for it: Navigation, "No cue sounds at the call, as the render-free
 // core above states", and The editor's hands, "The three sound nothing at the call,
 // as every pose does. The cue of an edit one of them commits sounds on the next
 // frame advanced, because every cue of `specs/ui.md` is played from a frame."

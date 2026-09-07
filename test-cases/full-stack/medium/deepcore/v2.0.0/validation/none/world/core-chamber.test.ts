@@ -22,8 +22,6 @@ import {
 import { captureStill, createHarness, type Harness } from "../harness";
 import { generatedMine, kindAt, look } from "../generation/mine-scan";
 
-const SEEDS = [1, 5] as const;
-
 let h: Harness;
 
 beforeEach(async () => {
@@ -37,26 +35,24 @@ afterEach(async () => {
 it("lays the Core at column 16 and bedrock across the rest of the chamber", async () => {
   let deepest = 0;
   for (const size of WORLD_SIZES) {
-    for (const seed of SEEDS) {
-      const at = `the ${size} mine on seed ${seed}`;
-      const scan = await generatedMine(h, seed, size as WorldSize);
-      deepest = scan.coreRow;
+    const at = `the ${size} mine`;
+    const scan = await generatedMine(h, size as WorldSize);
+    deepest = scan.coreRow;
 
-      assertEqual(
-        kindAt(scan, CORE_COL, scan.coreRow),
-        "core",
-        `the Core tile in ${at}`,
-      );
+    assertEqual(
+      kindAt(scan, CORE_COL, scan.coreRow),
+      "core",
+      `the Core tile in ${at}`,
+    );
 
-      const wrong: string[] = [];
-      for (let col = 0; col < WORLD_COLS; col += 1) {
-        if (col === CORE_COL) continue;
-        const kind = kindAt(scan, col, scan.coreRow);
-        if (kind !== "bedrock")
-          wrong.push(`(${col}, ${scan.coreRow}) is ${kind}`);
-      }
-      assertDeepEqual(wrong.slice(0, 5), [], `the chamber of ${at}`);
+    const wrong: string[] = [];
+    for (let col = 0; col < WORLD_COLS; col += 1) {
+      if (col === CORE_COL) continue;
+      const kind = kindAt(scan, col, scan.coreRow);
+      if (kind !== "bedrock")
+        wrong.push(`(${col}, ${scan.coreRow}) is ${kind}`);
     }
+    assertDeepEqual(wrong.slice(0, 5), [], `the chamber of ${at}`);
   }
 
   // The picture: the chamber at the bottom of the mine last read.

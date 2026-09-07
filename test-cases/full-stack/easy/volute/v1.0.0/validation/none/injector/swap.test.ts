@@ -9,8 +9,8 @@
 // specs/controls.md binds swap to `KeyX`, read as a press edge, and makes it live
 // on `playing`. specs/instrumentation.md's `setLoaded` / `setQueued` "sets the
 // core the injector holds loaded, and the one it holds queued, to `charge`", and
-// leaves the generator untouched — so the two charges the check poses are the two
-// it reads back, and no draw can substitute for the exchange.
+// changes nothing else — so the two charges the check poses are the two it reads
+// back, and no draw can substitute for the exchange.
 //
 // THE TWO CHARGES. `halide` and `cobalt`, the pair the review item names. They
 // are distinct, which is the whole of what the reading needs: after the press the

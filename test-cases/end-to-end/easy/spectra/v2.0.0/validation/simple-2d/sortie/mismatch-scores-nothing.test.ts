@@ -15,7 +15,7 @@
 // those three wrong models would read as one number and the third would pass
 // silently.
 //
-// The seed is an order of magnitude below `EXTRA_LIFE_AT` (`20000`,
+// The posed score is an order of magnitude below `EXTRA_LIFE_AT` (`20000`,
 // `specs/progression.md`), so the run's one extra life cannot be crossed and
 // nothing but this shot can touch the score.
 //
@@ -71,7 +71,7 @@ const SETTLE_SECONDS = 0.1;
  *
  * Any number would do; this one is no figure of `specs/scoring.md` and no multiple
  * of one, so every wrong payment reads as its own number and none lands back on
- * the seed by coincidence. It is far below `EXTRA_LIFE_AT` (`20000`), so the run's
+ * the posed score by coincidence. It is far below `EXTRA_LIFE_AT` (`20000`), so the run's
  * one extra life cannot be crossed by anything this scenario does.
  */
 const POSED_SCORE = 1234;

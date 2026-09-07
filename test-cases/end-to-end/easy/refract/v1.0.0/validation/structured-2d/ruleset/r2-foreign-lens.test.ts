@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 it("a move onto another channel's lens is refused", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R2_FOREIGN);
 
   // The square beam, drawn to its own lens: S(0,2) -> s(1,1).

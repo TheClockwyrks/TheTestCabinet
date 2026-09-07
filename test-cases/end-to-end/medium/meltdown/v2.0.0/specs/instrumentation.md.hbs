@@ -61,26 +61,18 @@ play, so a scenario driven from code behaves exactly like one played by hand.
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
 
-## A deterministic core
+## A render-free core
 
-The surface rests on the simulation being deterministic: every rate integrated
-against the game time each frame advances by, so an interval of game time reaches
-the same state however it was divided into frames. Two more properties make the
-game driveable from code:
+The surface rests on a render-free core. Game state advances from the elapsed
+game time the game is handed, independent of a canvas, of the frame loop that
+measured it, and of wall-clock time. The dependency runs one way: the simulation
+reads nothing from the renderer. Whether a tile is blocked, which unit an emitter
+targets, how much a shot removes, and how a frame's heat resolves are all decided
+from the floor alone.
 
-- Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the frame loop that measured it, and of wall-clock
-  time. The dependency runs one way: the simulation reads nothing from the
-  renderer. Whether a tile is blocked, which unit an emitter targets, how much a
-  shot removes, and how a frame's heat resolves are all decided from the floor
-  alone.
-- Seeded randomness. Any randomness the game uses runs off a generator seeded
-  from the state's generator field, and it keeps its whole generator state in
-  that field, so reseeding and replaying the same calls reproduces the same
-  result exactly. The vent each unit enters at is drawn from it.
-
-Given the same seed and the same sequence of calls and elapsed game time, the
-game reaches the same state every time.
+Every rate is integrated against the game time each frame advances by, so an
+interval of game time reaches the same state however it was divided into frames,
+and a step of game time means the same thing whatever the frame rate.
 
 ## What the runtime provides instead
 
@@ -154,21 +146,20 @@ read and changes nothing.
 
 | Operation | Effect |
 | --- | --- |
-| `reset(seed)` | Restores every declared field of the state to its title-screen value, listed below. |
+| `reset()` | Restores every declared field of the state to its title-screen value, listed below. |
 | `snapshot()` | A pure read of the state, returned as the object under Snapshot shape below. It changes nothing. |
 
 `reset` restores `screen` to `"title"`, `phase` to `"opening"`, `menuIndex` to
 `0`, `mode` to `"containment"`, `difficulty` to `"medium"`, `money` to the
 starting money that pair gives, `lives` to its starting lives, `score` to `0`,
 `wave` to `1`, `buildTimer` to `0`, `wavePending` to `0`, `speed` to `1`,
-`selected` to `null`, `hoverShop` to `null`, `build` to `null`, and `simTime` to
-`0`. It empties the tower and surge rosters, clears the spawner's clock, and
-turns the world gate `waveSpawning` back on.
+`selected` to `null`, `hoverShop` to `null`, `build` to `null`, `simTime` to
+`0`, and `spawnVent` to `null`. It empties the tower and surge rosters, clears
+the spawner's clock, and turns the world gate `waveSpawning` back on.
 
-`seed`, a number defaulting to `DEFAULT_SEED` (`1`), seeds all of the game's
-randomness. `muted` is left exactly as it stands, because muting is a
-player preference the runtime owns, and so is `pointer`, which mirrors something
-the runtime owns as well.
+`muted` is left exactly as it stands, because muting is a player preference the
+runtime owns, and so is `pointer`, which mirrors something the runtime owns as
+well.
 {{#if (eq engine.slug "none")}}
 `autoStep` is left as it stands too: who drives the clock is not part of the
 game's state.
@@ -302,6 +293,8 @@ sees on the preview.
 | `setUnitSlow(id, factor)` | Sets the fraction of speed the live slow removes, `0` for none. `speed` follows immediately. |
 | `setUnitSlowTimer(id, seconds)` | Sets the seconds the live slow has left, `0` for none. |
 | `setUnitMotion(id, enabled)` | The motion gate, below. |
+| `setSpawnVent(vent)` | The vent pose, below. |
+| `drawVent()` | The vent draw, below. |
 
 `motion` gates the unit's locomotion, which is whether it advances along its
 route or its flight line, and nothing else. Off, the unit holds its position, and
@@ -309,8 +302,22 @@ its route is still computed from the tile it stands on, so `remaining` still
 follows the floor and rises when a wall is built across its way. It is `true` for
 a unit the game itself released.
 
-A unit's flight and its vent are fixed by its type and by where it entered, so
-the surface poses neither.
+`setSpawnVent(vent)` poses the vent the run's own release enters units at:
+`"left"`, `"top"`, or `null`. While `spawnVent` holds a vent, every unit the
+spawner releases enters at that vent in place of the draw `specs/waves.md`
+states, and while it holds `null` the spawner draws as it does in play. It poses
+the release alone: it moves no live unit, and a released unit's exhaust and route
+follow its vent exactly as a drawn unit's do. It is `null` when the game starts,
+restored to `null` by `reset`, and reported as `spawnVent`.
+
+`drawVent()` is a reading that performs one vent draw exactly as the release
+performs it, the two vents equally likely, and returns the vent it drew,
+`"left"` or `"top"`. Nothing else happens: no unit is added, and a posed
+`spawnVent` is neither consulted nor changed. Each call is one independent draw,
+so repeated calls sample the draw.
+
+A live unit's flight and its vent are fixed by its type and by where it entered,
+so no operation changes either on a unit already on the floor.
 
 ### The pointer
 
@@ -352,6 +359,7 @@ present, so every operation is verifiable by setting a value and reading it back
   speed: 1 | 2,
   muted: <boolean>,                         // the game's copy of the runtime's mute bit
   waveSpawning: <boolean>,                  // the world gate
+  spawnVent: "left" | "top" | null,         // the vent posed for the release, else null
 {{#if (eq engine.slug "none")}}
   autoStep: <boolean>,                      // who drives the clock
 {{/if}}

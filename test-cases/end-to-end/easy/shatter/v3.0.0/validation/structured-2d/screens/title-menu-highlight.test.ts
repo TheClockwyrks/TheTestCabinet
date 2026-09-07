@@ -6,23 +6,21 @@
 // entry that highlight rests on, and `specs/instrumentation.md`'s `setMenuIndex`
 // "Sets the highlighted entry of whatever menu the current screen shows".
 //
-// TWO FRAMES OF THE SAME GAME AT THE SAME INSTANT, DIFFERING ONLY IN
-// `menuIndex`. Each is drawn on a HARNESS OF ITS OWN, freshly built and given a
-// `reset(DEFAULT_SEED)` and one `setMenuIndex` before its single frame. Two
-// harnesses rather than two passes over one, because both must stand at the same
-// point of the game's own clock and carry the same generator: `specs/ui.md`
-// allows "the star and a few dimmed drifting rocks" behind the title menu, and a
-// check that compared two frames a tick apart would read that drift as a
-// highlight. A fresh harness has run no frame, whatever the build's `reset`
-// does with `simTime`, and the shared seed makes what is behind the menu the
-// same in both. So EVERY pixel that differs between the two frames differs
-// because of the selection, and nothing here rests on a second requirement being
-// met first.
+// THREE FRAMES OF ONE GAME A TICK APART, THE LAST WITH `menuIndex` MOVED.
+// `specs/ui.md` allows the title screen a moving backdrop — "the star and a few
+// dimmed drifting rocks" may show behind the menu — so a row's pixels may change
+// from one tick to the next with no highlight involved, and a check that read
+// two frames a tick apart would count that drift as a highlight. So the first
+// two frames are read with the selection HELD, which measures what one tick of
+// the build's own backdrop does to each row on its own, and the third with the
+// selection MOVED. What is asserted is how much MORE the move repainted than the
+// control tick did, so the backdrop is subtracted out rather than mistaken for a
+// highlight, and nothing here rests on a second requirement being met first.
 //
 // BOTH ENTRIES' ROWS MUST CHANGE, and that is the whole of "the difference moves
 // with setMenuIndex". Moving the selection from entry 0 to entry 1 takes the
 // mark OFF the first row and PUTS it on the second, so both rows are drawn
-// differently in the two frames. A build that draws every entry alike fails
+// differently once it has moved. A build that draws every entry alike fails
 // because neither row changes; one that always marks the same entry whatever
 // `menuIndex` says fails for the same reason; one that marks the wrong entry
 // still moves its mark and is caught instead by `controls/menu-*` and by the
@@ -43,7 +41,6 @@
 
 import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../constants";
-import { DEFAULT_SEED } from "../surface";
 import { assertGreaterThan, assertGreaterThanOrEqual } from "../assert";
 import {
   canvasPixels,
@@ -73,8 +70,8 @@ const SECOND = 1;
 const CHANGED_DISTANCE = 8;
 
 /**
- * How many pixels of a row must change for the row to have been drawn
- * differently.
+ * How many pixels of a row the move must repaint, beyond what the control tick
+ * repainted on that same row, for the row to have been drawn differently.
  *
  * `specs/ui.md` requires every piece of a screen's text to be legible at the
  * logical field size, `1280 x 720`, so a menu entry's glyphs are of the order of
@@ -98,39 +95,35 @@ const CHANGED_PIXELS = 64;
  */
 const BAND_FRACTION = 0.4;
 
-/** The harness whose title screen has the highlight on the first entry. */
 let h: Harness;
-
-/** The harness whose title screen has it on the second, at the same instant. */
-let moved: Harness;
 
 beforeEach(async () => {
   h = await createHarness();
-  moved = await createHarness();
 });
 
 afterEach(() => {
   h?.dispose();
-  moved?.dispose();
 });
 
 it("draws the entry menuIndex names differently, and moves that difference with setMenuIndex", async () => {
   // The title screen with the highlight on the first entry.
-  resetTo(h, DEFAULT_SEED);
+  resetTo(h);
   h.debug.setMenuIndex(FIRST);
   clearCalls(h);
   await h.advance(1);
   const rows = menuRows(h, TITLE_ITEMS);
-  const onFirst = canvasPixels(h);
+  const held = canvasPixels(h);
 
-  // The same screen of the same game at the same instant, with the highlight on
-  // the second entry and nothing else changed.
-  resetTo(moved, DEFAULT_SEED);
-  moved.debug.setMenuIndex(SECOND);
-  clearCalls(moved);
-  await moved.advance(1);
-  const onSecond = canvasPixels(moved);
-  captureStill(moved, "highlight");
+  // The same screen a tick later with the selection held, so the change between
+  // the two is the build's own backdrop and nothing else.
+  await h.advance(1);
+  const control = canvasPixels(h);
+
+  // And a tick after that with the highlight moved to the second entry.
+  h.debug.setMenuIndex(SECOND);
+  await h.advance(1);
+  const moved = canvasPixels(h);
+  captureStill(h, "highlight");
 
   const gap = rows[SECOND].y - rows[FIRST].y;
   assertGreaterThan(
@@ -143,13 +136,17 @@ it("draws the entry menuIndex names differently, and moves that difference with 
 
   const half = gap * BAND_FRACTION;
   for (const entry of [FIRST, SECOND]) {
+    const y = rows[entry].y;
+    const backdrop = bandChanged(h, held, control, y, half, CHANGED_DISTANCE);
+    const repainted = bandChanged(h, control, moved, y, half, CHANGED_DISTANCE);
     assertGreaterThanOrEqual(
-      bandChanged(h, onFirst, onSecond, rows[entry].y, half, CHANGED_DISTANCE),
+      repainted - backdrop,
       CHANGED_PIXELS,
       `pixels of the row ${JSON.stringify(rows[entry].item)} was drawn on ` +
         `that differ by more than ${String(CHANGED_DISTANCE)} of 441 between ` +
-        `menuIndex ${String(FIRST)} and menuIndex ${String(SECOND)}, read ` +
-        `${String(half)} units either side of y ${String(rows[entry].y)} — ` +
+        `menuIndex ${String(FIRST)} and menuIndex ${String(SECOND)}, beyond ` +
+        `the ${String(backdrop)} a tick of the build's own backdrop repainted, ` +
+        `read ${String(half)} units either side of y ${String(y)} — ` +
         "the highlighted entry is drawn distinctly from the others " +
         "(specs/ui.md), so moving the selection changes how BOTH the entry it " +
         "left and the entry it landed on are drawn",

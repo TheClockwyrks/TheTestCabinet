@@ -35,8 +35,8 @@ interface Bench {
   act(action: ActionName): void;
 }
 
-function bench(seed = 1): Bench {
-  const state = initialState(seed);
+function bench(): Bench {
+  const state = initialState();
   const cues: CueName[] = [];
   return {
     state,
@@ -407,33 +407,20 @@ describe("the accumulator", () => {
 });
 
 describe("reset", () => {
-  it("returns to the title with a seeded generator, keeping muted", () => {
+  it("returns to the title, keeping muted", () => {
     const { state } = bench();
     startRun(state);
     runFrame(state, 1, () => undefined);
     state.spawning = false;
     state.muted = true;
     state.simTime = 5;
-    resetState(state, 42);
+    state.run.nextChestItem = "brass";
+    resetState(state);
     expect(state.screen).toBe("title");
     expect(state.run).toEqual(idleRun());
     expect(state.spawning).toBe(true);
     expect(state.simTime).toBe(0);
-    expect(state.rngState).toBe(42);
+    expect(state.run.nextChestItem).toBeNull();
     expect(state.muted).toBe(true);
-  });
-
-  it("replays the same run from the same seed", () => {
-    const a = initialState(9);
-    const b = initialState(9);
-    for (const state of [a, b]) {
-      startRun(state);
-      state.run.pendingLevelUps = 3;
-      runFrame(state, TICK_DT, () => undefined);
-      choose(state, 1, () => undefined);
-      choose(state, 0, () => undefined);
-    }
-    expect(a.run.offers).toEqual(b.run.offers);
-    expect(a.rngState).toBe(b.rngState);
   });
 });

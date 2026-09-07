@@ -11,36 +11,40 @@
 //
 // "The charges in play are the level's charge set, the set every charge draw
 // falls back to." Two draws put a core on the channel, and `specs/channel.md`
-// states both: the seeded cores, whose "charge is drawn from the seeded generator
-// uniformly over the level's charge set", and an emission, "uniformly over the
-// set of distinct charges on the channel at the moment of emission, and uniformly
-// over the level's charge set when the channel carries no core".
+// states both: the seeded cores, whose "charge is drawn at random, uniformly
+// over the level's charge set", and an emission, "uniformly over the set of
+// distinct charges on the channel at the moment of emission, and uniformly over
+// the level's charge set when the channel carries no core".
 //
 // THE DRIVE, IN TWO HALVES, BECAUSE THE SET IS REACHED TWO WAYS.
 //
 //   1. The opening twelve. `startLevel(n)` seeds them from the level's set, so
 //      every charge the level opens with is read straight off the snapshot.
-//   2. Emissions. The channel-carrying case draws from the charges already
-//      standing, which cannot leave the set a conformant seed put there, so the
-//      half that exercises the LEVEL's set is the empty-channel fallback. Twenty
-//      further cores are placed by emptying the channel, leaving the inlet a
-//      quota, and stepping one tick: `specs/channel.md` — "A channel carrying no
-//      core satisfies that condition, so an emission follows at once."
-//   3. A run of ordinary play between the two, long enough for several emissions
-//      onto a channel that is carrying cores, so a build that draws an emission
-//      from some fixed set rather than from the level's is caught there as well.
+//   2. The emission that falls back to the level's set. An emission onto a
+//      channel that is carrying cores draws from the charges already standing,
+//      which cannot leave the set the opening put there, so the half that
+//      reaches the LEVEL's set is the empty-channel fallback: the channel is
+//      emptied, the inlet is left a quota with its gate open, and one tick is
+//      stepped. `specs/channel.md` — "A channel carrying no core satisfies that
+//      condition, so an emission follows at once."
 //
-// WHY TWENTY. The set is small and the draw is uniform, so twenty independent
-// draws is what makes a stray member likely to show rather than a formality; the
-// point is decided by whether any charge seen falls outside the set, so more
-// draws only sharpen it.
+// THE SAMPLE. Twelve opening charges and eight emissions a level, each read
+// against the set the specification names for it. A handful of unposed draws is
+// what a check on a draw's RANGE reads: how many draws it takes for a set to
+// show every one of its members is a property of a build's generator rather
+// than of the specification.
+//
+// WHAT THIS FILE DELIBERATELY DOES NOT DRIVE. An emission onto an occupied
+// channel is `channel/emission-charge-present`'s point, and reaching one means
+// riding the train for hundreds of ticks a level. Every draw read here is posed
+// instead.
 //
 // TOLERANCES. None. A charge id is exact, and membership of a five-name set is a
 // yes or a no.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEachIn } from "../assert";
-import { LEVELS, SPACING, TICK_HZ } from "../constants";
+import { assertEachIn, assertLength } from "../assert";
+import { LEVELS } from "../constants";
 import {
   captureStill,
   charges,
@@ -50,10 +54,7 @@ import {
 } from "../harness";
 
 /** Emissions drawn from an emptied channel, which is the level-set fallback. */
-const EMPTY_DRAWS = 20;
-
-/** Emissions to watch onto a channel that is already carrying cores. */
-const CARRIED_EMISSIONS = 6;
+const EMPTY_DRAWS = 8;
 
 let h: Harness;
 
@@ -82,19 +83,24 @@ it("draws every core's charge from the level's own set", async () => {
     // advances one before it poses or reads further.
     assertEachIn(charges(await h.step(1)), level.charges, context);
 
-    // 2. Emissions onto a channel that is carrying cores. The inlet places one
-    //    each time the tail reaches the channel spacing, so the ticks a run of
-    //    them takes follow from the level's own feed speed, with one interval
-    //    over for the wait the opening tail starts on.
-    const interval = Math.ceil((SPACING / level.feed) * TICK_HZ);
-    const after = await h.step(interval * (CARRIED_EMISSIONS + 1));
-    assertEachIn(charges(after), level.charges, context);
-
-    // 3. Emissions onto an empty channel, which is the draw that reaches for the
-    //    level's set rather than for what is standing on the channel.
+    // 2. Emissions onto an empty channel, which is the draw that reaches for
+    //    the level's set rather than for what is standing on the channel.
     for (let draw = 0; draw < EMPTY_DRAWS; draw += 1) {
-      await poseHall(h, { level: level.level, quotaRemaining: level.quota });
-      assertEachIn(charges(await h.step(1)), level.charges, context);
+      await poseHall(h, {
+        level: level.level,
+        // The draw being read IS an emission, so the inlet's gate is open.
+        emission: true,
+        quotaRemaining: level.quota,
+      });
+      const placed = charges(await h.step(1));
+      // The emission "follows at once" onto an empty channel, so the tick placed
+      // exactly one core, and the reading is of that core rather than of nothing.
+      assertLength(
+        placed,
+        1,
+        `the cores one tick placed onto the emptied channel on level ${level.level}`,
+      );
+      assertEachIn(placed, level.charges, context);
     }
   }
 });

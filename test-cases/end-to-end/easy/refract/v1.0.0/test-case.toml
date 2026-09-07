@@ -52,7 +52,7 @@ prompt = "prompt.hbs"
 # make the job tight. Refract asks for substantially more construction than a
 # single real-time loop does: a rule engine that decides every move against nine
 # conditions, a pointer tracing model with grab, shorten and retract behavior, a
-# seeded generator that must never emit an unsolvable board, twenty-four fixed
+# board generator that must never emit an unsolvable board, twenty-four fixed
 # boards transcribed exactly, two modes with six screens between them, and — under
 # the engineless run — the whole runtime layer beneath all of that. Three hours is
 # comfortably more than a healthy build of that size needs while still catching a
@@ -299,8 +299,8 @@ source = "specs/controls.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; an API to drive and inspect the game from code through its own
+# The debugging and automation surface every build must expose: a render-free
+# core; an API to drive and inspect the game from code through its own
 # real input path; and a read-only debug overlay. Framed as an ordinary developer
 # affordance of the game. It branches on the engine for how the surface is reached
 # and for the clock operations only an engineless build owns.
@@ -476,7 +476,7 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These points check that it is really there,
-# really wired to the running game, and really deterministic — a surface that
+# really wired to the running game, and really the game's own — a surface that
 # reports a plausible-looking object unconnected to what is on screen is the
 # failure mode worth naming, and it also shows up as every other suite failing to
 # run.
@@ -499,7 +499,7 @@ validation = { script = "instrumentation/surface-present.test.ts", outputs = [
 [[review.categories.items]]
 id = "snapshot-shape"
 title = "Snapshot reports the full documented shape"
-description = "On a posed board carrying all three channels and a crystal, with a partial beam drawn, the snapshot reports version REFRACT_DEBUG_VERSION (2) and every field specs/instrumentation.md lists with its documented type — screen, mode, menuIndex, selectIndex, the four progress fields, the board, one beams entry per channel present, solved, tracing, pointer, muted, simTime, and rngState — with each node's x and y on the cell center formula in specs/board.md and spent, complete, and solved derived exactly as specs/beams.md states."
+description = "On a posed board carrying all three channels and a crystal, with a partial beam drawn, the snapshot reports version REFRACT_DEBUG_VERSION (2) and every field specs/instrumentation.md lists with its documented type — screen, mode, menuIndex, selectIndex, the four progress fields, the board, one beams entry per channel present, solved, tracing, pointer, muted, and simTime — with each node's x and y on the cell center formula in specs/board.md and spent, complete, and solved derived exactly as specs/beams.md states."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "broken"
 # Automated validation: pose a board exercising every branch of the shape (three
@@ -550,15 +550,53 @@ validation = { script = "instrumentation/trace-prefix.test.ts", outputs = [
 [[review.categories.items]]
 id = "reset"
 title = "reset returns the game to its title-screen values"
-description = "After progress in both modes, reset({seed: 7}) restores the title screen with menuIndex 0, mode campaign, no board in play, every beam empty, no trace live, simTime 0, campaign progress cleared and cascade progress back to solvedCount 0 and tier 1, seeds rngState from options.seed defaulting to DEFAULT_SEED (1), and leaves muted untouched."
+description = "After progress in both modes, reset() restores the title screen with menuIndex 0, mode campaign, no board in play, every beam empty, no trace live, simTime 0, campaign progress cleared and cascade progress back to solvedCount 0 and tier 1, and leaves muted untouched."
 domains = ["campaign", "cascade", "tracing", "presentation"]
 failure_cap = "broken"
-# Automated validation: dirty everything first — solve campaign board 1, enter
-# cascade and solve one there — then reset and hold the state against the full
-# title-state list in specs/instrumentation.md. See
-# validation/<engine>/instrumentation/reset.test.ts.
+# Automated validation: dirty everything first — solve campaign board 1, pose a
+# cascade run in progress with a trace live on a posed board — then reset and
+# hold the state against the full title-state list in specs/instrumentation.md.
+# See validation/<engine>/instrumentation/reset.test.ts.
 validation = { script = "instrumentation/reset.test.ts", outputs = [
   { id = "title", name = "The title after reset", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-solved-count"
+title = "setSolvedCount poses the run's boards-solved count alone"
+description = "On a posed cascade board, setSolvedCount(7) leaves the snapshot reporting solvedCount 7 with tier, mode, screen, the board, and the beams exactly as they were, as specs/instrumentation.md states of the operation."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: pose a cascade board, set the count, and read the whole
+# snapshot back against the one it replaced with only solvedCount changed. See
+# validation/<engine>/instrumentation/set-solved-count.test.ts.
+validation = { script = "instrumentation/set-solved-count.test.ts", outputs = [
+  { id = "posed", name = "The run with its count posed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "set-tier"
+title = "setTier poses the run's tier alone"
+description = "On a posed cascade board, setTier(4) leaves the snapshot reporting tier 4 with solvedCount, mode, screen, the board, and the beams exactly as they were, as specs/instrumentation.md states of the operation."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: pose a cascade board, set the tier, and read the whole
+# snapshot back against the one it replaced with only tier changed. See
+# validation/<engine>/instrumentation/set-tier.test.ts.
+validation = { script = "instrumentation/set-tier.test.ts", outputs = [
+  { id = "posed", name = "The run with its tier posed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "generate-board"
+title = "generateBoard poses a board the generator emits at the tier named"
+description = "From the title with a cascade run posed at solvedCount 2 and tier 1, generateBoard(4) moves to playing with a board present that carries the channel count tier 4's row of the ladder states, every beam empty, no trace live, and solvedCount, tier, and mode exactly as they were, as specs/instrumentation.md states of the operation."
+domains = ["campaign", "cascade", "tracing", "presentation"]
+failure_cap = "broken"
+# Automated validation: pose a run in progress on the title, ask for a tier-4
+# board, and read the screen, the board's channels, the beams, the trace, and
+# the untouched progression back. The tier named differs from the run's own so
+# a build generating at state.tier fails on the channel count. See
+# validation/<engine>/instrumentation/generate-board.test.ts.
+validation = { script = "instrumentation/generate-board.test.ts", outputs = [
+  { id = "generated", name = "The generated board the operation posed", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "overlay"
@@ -1297,8 +1335,8 @@ validation = { script = "campaign/back-discards.test.ts", outputs = [
 # there is no way to skip it, so solvability is checked hardest and over many
 # boards rather than one. The suites share a solver derived from the specs alone —
 # constraint propagation over the limits in specs/beams.md — so a generated board
-# is proven solvable by solving it, and the sweep that proves it also reads the
-# ladder back.
+# is proven solvable by solving it, posed at every tier through generateBoard,
+# and the ladder is read back over posed counts.
 [[review.categories]]
 id = "cascade"
 title = "Cascade"
@@ -1323,7 +1361,7 @@ validation = { script = "cascade/cascade-back-to-title.test.ts", outputs = [
 [[review.categories.items]]
 id = "cascade-restarts-fresh"
 title = "Starting Cascade again begins a fresh sequence"
-description = "After a run is abandoned with back, starting Cascade again begins a fresh sequence from solvedCount 0 and tier 1."
+description = "After a run posed at solvedCount 5 and tier 2 is abandoned with back, starting Cascade again begins a fresh sequence from solvedCount 0 and tier 1."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/cascade-restarts-fresh.test.ts", outputs = [
@@ -1332,22 +1370,22 @@ validation = { script = "cascade/cascade-restarts-fresh.test.ts", outputs = [
 [[review.categories.items]]
 id = "boards-are-solvable"
 title = "Every generated board is solvable"
-description = "Board after board, a set of beams satisfying every rule exists and the player can reach it: twenty-five consecutive generated boards, reaching MAX_TIER (5) and continuing there, are each solved by a solver derived from the specs alone. No board the sequence hands the player is a dead end."
+description = "Board after board, a set of beams satisfying every rule exists and the player can reach it: five boards generated at each of the five tiers through generateBoard are each solved by a solver derived from the specs alone, and the build accepts each traced solution. No board the generator hands the player is a dead end."
 domains = ["cascade"]
 failure_cap = "broken"
-# Automated validation: solve the sequence for real — snapshot each board, run the
-# spec-derived solver, trace the found beams, assert solved, take NEXT BOARD — for
-# twenty-five boards, crossing the whole ladder and continuing at the top tier. The solver's expansion cap is a
-# generous runaway stop; the residual risk of a conformant board it cannot crack
-# inside the cap is documented in the suite header. See
+# Automated validation: pose five boards at each tier through generateBoard —
+# read each off the snapshot, run the spec-derived solver, trace the found beams,
+# assert solved — twenty-five boards across the whole ladder. The solver's
+# expansion cap is a generous runaway stop; the residual risk of a conformant
+# board it cannot crack inside the cap is documented in the suite header. See
 # validation/<engine>/cascade/boards-are-solvable.test.ts.
 validation = { script = "cascade/boards-are-solvable.test.ts", outputs = [
-  { id = "solve", name = "A generated board solved by the sweep", kind = "replay" },
+  { id = "solve", name = "A generated top-tier board solved", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "generated-boards-fit-the-grid"
 title = "Every generated board fits the grid"
-description = "Every generated board across the sweep fits within GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6)."
+description = "Every board generated through generateBoard, five at each tier, fits within GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6)."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/generated-boards-fit-the-grid.test.ts", outputs = [
@@ -1356,7 +1394,7 @@ validation = { script = "cascade/generated-boards-fit-the-grid.test.ts", outputs
 [[review.categories.items]]
 id = "generated-boards-have-two-emitters-per-channel"
 title = "Every generated board carries exactly two emitters per channel"
-description = "Every generated board across the sweep carries the first n of CHANNELS, with exactly two emitters for each channel present."
+description = "Every board generated through generateBoard, five at each tier, carries the first n of CHANNELS, with exactly two emitters for each channel present."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/generated-boards-have-two-emitters-per-channel.test.ts", outputs = [
@@ -1365,7 +1403,7 @@ validation = { script = "cascade/generated-boards-have-two-emitters-per-channel.
 [[review.categories.items]]
 id = "generated-crystal-charges-in-range"
 title = "Every generated crystal carries a legal charge count"
-description = "Every crystal on every generated board across the sweep carries 1 to MAX_CHARGES (3) charges."
+description = "Every crystal on every board generated through generateBoard, five at each tier, carries 1 to MAX_CHARGES (3) charges."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/generated-crystal-charges-in-range.test.ts", outputs = [
@@ -1374,7 +1412,7 @@ validation = { script = "cascade/generated-crystal-charges-in-range.test.ts", ou
 [[review.categories.items]]
 id = "tier-ladder"
 title = "The tier climbs on the ladder specified"
-description = "After every solve across the sweep, tier is min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER) exactly, climbing one step every TIER_ADVANCE (5) boards solved and holding at MAX_TIER (5) from the twentieth solve onward."
+description = "With the run posed at each count from 0 to 24 and a posed board solved, the tier after the solve is min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER) exactly, climbing one step every TIER_ADVANCE (5) boards solved and holding at MAX_TIER (5) from the twentieth solve onward."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/tier-ladder.test.ts", outputs = [
@@ -1383,7 +1421,7 @@ validation = { script = "cascade/tier-ladder.test.ts", outputs = [
 [[review.categories.items]]
 id = "tier-grid-range"
 title = "Each tier emits grids inside its stated range"
-description = "Each generated board's cols and rows fall within the grid range the row specs/modes/cascade.md gives its tier, each drawn independently."
+description = "Each board generated through generateBoard at a tier, five per tier, has cols and rows within the grid range the row specs/modes/cascade.md gives that tier."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/tier-grid-range.test.ts", outputs = [
@@ -1392,7 +1430,7 @@ validation = { script = "cascade/tier-grid-range.test.ts", outputs = [
 [[review.categories.items]]
 id = "tier-channel-count"
 title = "Each tier emits the channel count its rung states"
-description = "Each generated board carries exactly the number of channels the row specs/modes/cascade.md gives its tier, and they are the first n of CHANNELS."
+description = "Each board generated through generateBoard at a tier, five per tier, carries exactly the number of channels the row specs/modes/cascade.md gives that tier, and they are the first n of CHANNELS."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/tier-channel-count.test.ts", outputs = [
@@ -1401,7 +1439,7 @@ validation = { script = "cascade/tier-channel-count.test.ts", outputs = [
 [[review.categories.items]]
 id = "tier-crystal-count-and-charges"
 title = "Each tier crowds its crystals as its rung states"
-description = "Each generated board's crystal count, and each crystal's charges, fall within the ranges the row specs/modes/cascade.md gives its tier."
+description = "Each board generated through generateBoard at a tier, five per tier, has a crystal count, and charges on each crystal, within the ranges the row specs/modes/cascade.md gives that tier."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/tier-crystal-count-and-charges.test.ts", outputs = [
@@ -1410,7 +1448,7 @@ validation = { script = "cascade/tier-crystal-count-and-charges.test.ts", output
 [[review.categories.items]]
 id = "tier-empty-cells"
 title = "Each tier leaves at most the empty cells its rung allows"
-description = "Each generated board's empty-cell count is at most the count the row specs/modes/cascade.md gives its tier."
+description = "Each board generated through generateBoard at a tier, five per tier, leaves at most the empty cells the row specs/modes/cascade.md gives that tier."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/tier-empty-cells.test.ts", outputs = [
@@ -1421,10 +1459,10 @@ validation = { script = "cascade/tier-empty-cells.test.ts", outputs = [
 # pieces of generator work — shared crystals is a placement property, the
 # determined share needs the whole solution set enumerated — so each is its own
 # point and a failed grade names the measure the generator missed. Each of the
-# five sweeps twenty-five consecutive generated boards, recomputes the measures
-# with the oracle's own enumeration (metrics.ts, derived from
+# five poses five boards at every tier through generateBoard, recomputes the
+# measures with the oracle's own enumeration (metrics.ts, derived from
 # specs/modes/cascade.md and specs/beams.md alone), and holds each board against
-# ITS OWN bound in the tier's row. The enumeration stops one past the tier's
+# ITS OWN bound in the row of the tier it was generated at. The enumeration stops one past the tier's
 # solutions bound, which is a measurement reporting a board over its bound; a
 # separate expansion budget is a runaway stop, and a board the budget abandons is
 # not measured and not judged. Each point is decided on the boards that measured,
@@ -1432,7 +1470,7 @@ validation = { script = "cascade/tier-empty-cells.test.ts", outputs = [
 [[review.categories.items]]
 id = "floor-routes-per-channel"
 title = "Every generated board meets its tier's routes-per-channel floor"
-description = "Across the sweep, every channel present on each generated board admits at least the number of distinct complete beams its tier's row of the difficulty floor states, as specs/modes/cascade.md defines routes per channel."
+description = "On five boards generated at each tier, every channel present on each board admits at least the number of distinct complete beams its tier's row of the difficulty floor states, as specs/modes/cascade.md defines routes per channel."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/floor-routes-per-channel.test.ts", outputs = [
@@ -1441,7 +1479,7 @@ validation = { script = "cascade/floor-routes-per-channel.test.ts", outputs = [
 [[review.categories.items]]
 id = "floor-solution-count"
 title = "Every generated board admits the solution count its tier allows"
-description = "Across the sweep, each generated board's number of distinct solutions falls within the range its tier's row of the difficulty floor states, as specs/modes/cascade.md defines a solution."
+description = "On five boards generated at each tier, each board's number of distinct solutions falls within the range its tier's row of the difficulty floor states, as specs/modes/cascade.md defines a solution."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/floor-solution-count.test.ts", outputs = [
@@ -1450,7 +1488,7 @@ validation = { script = "cascade/floor-solution-count.test.ts", outputs = [
 [[review.categories.items]]
 id = "floor-determined-share"
 title = "Every generated board stays under its tier's determined share"
-description = "Across the sweep, each generated board's determined share — the channel-and-segment pairs appearing in every solution, as a share of L — is at most the figure its tier's row of the difficulty floor states, where the row states one."
+description = "On five boards generated at each tier, each board's determined share — the channel-and-segment pairs appearing in every solution, as a share of L — is at most the figure its tier's row of the difficulty floor states, where the row states one."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/floor-determined-share.test.ts", outputs = [
@@ -1459,7 +1497,7 @@ validation = { script = "cascade/floor-determined-share.test.ts", outputs = [
 [[review.categories.items]]
 id = "floor-branching-factor"
 title = "Every generated board meets its tier's branching factor"
-description = "Across the sweep, each generated board's branching factor — the mean count of moves rules R1 to R5 allow before each segment, replayed over every solution — is at least the figure its tier's row of the difficulty floor states."
+description = "On five boards generated at each tier, each board's branching factor — the mean count of moves rules R1 to R5 allow before each segment, replayed over every solution — is at least the figure its tier's row of the difficulty floor states."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/floor-branching-factor.test.ts", outputs = [
@@ -1468,7 +1506,7 @@ validation = { script = "cascade/floor-branching-factor.test.ts", outputs = [
 [[review.categories.items]]
 id = "floor-shared-crystals"
 title = "Every generated board meets its tier's shared-crystal floor"
-description = "Across the sweep, each generated board's shared crystals — the largest count, across its solutions, of crystals crossed by beams of two or more channels within a single solution — is at least the figure its tier's row of the difficulty floor states, where the row states one."
+description = "On five boards generated at each tier, each board's shared crystals — the largest count, across its solutions, of crystals crossed by beams of two or more channels within a single solution — is at least the figure its tier's row of the difficulty floor states, where the row states one."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/floor-shared-crystals.test.ts", outputs = [
@@ -1477,23 +1515,11 @@ validation = { script = "cascade/floor-shared-crystals.test.ts", outputs = [
 [[review.categories.items]]
 id = "sequence-is-endless"
 title = "The sequence has no last board"
-description = "Play continues at MAX_TIER (5) indefinitely: past the twentieth solve, NEXT BOARD keeps producing well-formed boards and solvedCount keeps rising by one per board solved."
+description = "Play continues at MAX_TIER (5) indefinitely: with the run posed past the twentieth solve, each further solve raises solvedCount by one and holds the tier at MAX_TIER, and NEXT BOARD keeps producing well-formed boards carrying MAX_TIER's channel count."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/sequence-is-endless.test.ts", outputs = [
   { id = "board", name = "A fresh board deep into the sequence", kind = "image" },
-] }
-[[review.categories.items]]
-id = "seeded-sequence"
-title = "A seed reproduces the same sequence"
-description = "Two runs seeded with the same value produce the same first six boards in the same order, so the sequence is a function of the seed alone."
-domains = ["cascade"]
-failure_cap = "passable"
-# Automated validation: reset({seed: 5}) twice and solve the first pass's boards
-# with the routes the solver found there — determinism means they re-apply on the
-# second pass. See validation/<engine>/cascade/seeded-sequence.test.ts.
-validation = { script = "cascade/seeded-sequence.test.ts", outputs = [
-  { id = "board", name = "A board the seed reproduces", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "cascade-solved-reached"
@@ -1516,7 +1542,7 @@ validation = { script = "cascade/cascade-solved-copy.test.ts", outputs = [
 [[review.categories.items]]
 id = "solved-next-board"
 title = "NEXT BOARD hands the player a fresh board at the tier the run has reached"
-description = "After five solves (solvedCount 5, tier 2), confirm on NEXT BOARD moves to playing with a board present and every beam empty, and leaves solvedCount at 5 and tier at 2, which is what separates it from RESTART."
+description = "With the run posed at four solves and a fifth board solved (solvedCount 5, tier 2), confirm on NEXT BOARD moves to playing with a board present carrying tier 2's channel count and every beam empty, and leaves solvedCount at 5 and tier at 2, which is what separates it from RESTART."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/solved-next-board.test.ts", outputs = [
@@ -1525,7 +1551,7 @@ validation = { script = "cascade/solved-next-board.test.ts", outputs = [
 [[review.categories.items]]
 id = "restart"
 title = "RESTART drops to tier 1"
-description = "After two solves, RESTART returns solvedCount to 0 and tier to 1, generates a board, and moves to playing with every beam empty."
+description = "With the run posed at one solve and a second board solved, RESTART returns solvedCount to 0 and tier to 1, generates a board carrying tier 1's channel count, and moves to playing with every beam empty."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/restart.test.ts", outputs = [
@@ -1543,7 +1569,7 @@ validation = { script = "cascade/solved-back.test.ts", outputs = [
 [[review.categories.items]]
 id = "hud-solved-count"
 title = "The boards-solved count is on screen while playing"
-description = "During playing after two solves, a frame draws HUD_SOLVED_LABEL (SOLVED) with the digit 2 within HUD_VALUE_GAP (96) of it, both clear of the board in play, whose extent specs/board.md gives for that board's own cols and rows, widened by NODE_R (30). The count is the run's one measure, so a missing count is scuffed rather than cosmetic."
+description = "During playing with the run posed at two solves, a frame draws HUD_SOLVED_LABEL (SOLVED) with the digit 2 within HUD_VALUE_GAP (96) of it, both clear of the board in play, whose extent specs/board.md gives for that board's own cols and rows, widened by NODE_R (30). The count is the run's one measure, so a missing count is scuffed rather than cosmetic."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/hud-solved-count.test.ts", outputs = [

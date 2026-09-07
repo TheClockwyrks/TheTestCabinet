@@ -51,9 +51,8 @@ import {
  */
 export const SURFACE_ROW = 0;
 
-/** How an expedition opens: the seed, the size, and the mode it is played in. */
+/** How an expedition opens: the size, and the mode it is played in. */
 export interface ExpeditionOptions {
-  seed?: number;
   size?: WorldSize;
   mode?: Mode;
 }

@@ -134,10 +134,10 @@ a hundred and twenty. Held actions are read by every sub-step; the press edges �
 the flip, the discharge, a menu move, a pause — are handed to the first sub-step
 alone, so a press acts exactly once however finely the frame was divided.
 
-**Every random choice runs off one seeded generator** whose whole state is the
-single number `rngState` in the game's state: the wave's layout, which drone
-dives next, the gap before the next dive, a Flux's starting phase and each
-burst's scatter. `reset({ seed })` reseeds it, so a scenario replays exactly.
+**Every random choice runs off the host's own generator**, through
+`src/random.ts`: the wave's layout, which drone dives next, the gap before the
+next dive, a Flux's starting clock and each burst's scatter. Nothing about a draw
+is part of `SpectraState`, and a scenario is posed rather than replayed.
 
 ## Debugging and automation
 
@@ -159,7 +159,7 @@ await engine.advance(20);
 const { drones, bullets, bursts, score } = engine.debug.snapshot(engine.state);
 ```
 
-Beside the core (`reset`, seedable, and `snapshot`) it carries the screen and run
+Beside the core (`reset` and `snapshot`) it carries the screen and run
 poses, the three **world gates** — `setWaveEntry`, `setDiveLaunching` and
 `setShipContact`, each gating one faculty of the wave itself so a posed scenario
 is not invaded by entities its requirement never asked for — the ship and cannon
@@ -256,7 +256,7 @@ src/
   game.ts             The SpectraState contract, BACKGROUND, and the three
                       functions the engine drives
   sim.ts              The mutable mirror a frame is built in, and FrameEvents
-  rng.ts              The one seeded generator, whose state is one number
+  random.ts           The game's random draws, off the host's own generator
   bands.ts            Effective band: the stored band taken as its opposite once
                       per swap that holds, and the shimmer and inversion tests
   ship.ts             The lane clamp, the three fire gates, and the flip

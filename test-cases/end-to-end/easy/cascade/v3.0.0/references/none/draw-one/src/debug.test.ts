@@ -7,6 +7,8 @@ import {
   DEAL_MODE_LABEL,
   FOUNDATION_X,
   LAUNCH_INTERVAL,
+  LAUNCH_VX_MAX,
+  LAUNCH_VX_MIN,
   TOP_ROW_Y,
   TURN_COUNT,
 } from "./constants";
@@ -38,13 +40,13 @@ class TestClock implements DebugClock {
   }
 }
 
-function surface(seed = 1): {
+function surface(): {
   api: CascadeDebugApi;
   state: CascadeState;
   clock: TestClock;
   audio: RecordingAudio;
 } {
-  const state = testState(seed);
+  const state = testState();
   const clock = new TestClock(state);
   const audio = new RecordingAudio();
   return { api: createDebugApi(state, clock, audio), state, clock, audio };
@@ -85,6 +87,7 @@ describe("the surface", () => {
       "clearFlyers",
       "setLaunchClock",
       "clearTrail",
+      "drawLaunchVx",
     ]) {
       expect(typeof (api as unknown as Record<string, unknown>)[name]).toBe(
         "function",
@@ -188,6 +191,19 @@ describe("the surface", () => {
     expect(api.snapshot().flyers).toHaveLength(0);
   });
 
+  it("draws a launch vx in range and changes nothing", () => {
+    const { api } = surface();
+    api.setScreen("won");
+    api.addCard("foundation", 0, "spades", 13, true);
+    const before = api.snapshot();
+    for (let draw = 0; draw < 32; draw += 1) {
+      const vx = api.drawLaunchVx();
+      expect(Math.abs(vx)).toBeGreaterThanOrEqual(LAUNCH_VX_MIN);
+      expect(Math.abs(vx)).toBeLessThanOrEqual(LAUNCH_VX_MAX);
+    }
+    expect(api.snapshot()).toEqual(before);
+  });
+
   it("appends a card and touches nothing else", () => {
     const { api } = surface();
     api.addCard("tableau", 0, "spades", 2, true);
@@ -271,23 +287,20 @@ describe("the surface", () => {
     expect(api.snapshot().foundations[2][0].id).toBe(id);
   });
 
-  it("deals from a seed, repeatably, and clears the painted table", () => {
+  it("deals a full deck afresh, and clears the painted table", () => {
     const one = surface();
-    const two = surface();
-    one.api.reset({ seed: 42 });
-    two.api.reset({ seed: 42 });
+    one.api.reset();
     one.state.trailStamps = 30;
     one.api.deal();
-    two.api.deal();
     const shape = (api: CascadeDebugApi) =>
       api.snapshot().tableau.map((c) => c.map((x) => `${x.suit}${x.rank}`));
-    expect(shape(one.api)).toEqual(shape(two.api));
+    expect(shape(one.api).flat()).toHaveLength(28);
     expect(one.api.snapshot().trailStamps).toBe(0);
     // A deal leaves the screen alone.
     expect(one.api.snapshot().screen).toBe("title");
 
     const other = surface();
-    other.api.reset({ seed: 43 });
+    other.api.reset();
     other.api.deal();
     expect(shape(other.api)).not.toEqual(shape(one.api));
   });

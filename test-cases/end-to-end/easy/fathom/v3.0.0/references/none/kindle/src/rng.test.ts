@@ -4,7 +4,7 @@ import { Rng } from "./rng";
 
 describe("Rng", () => {
   it("returns values in [0, 1)", () => {
-    const rng = new Rng(7);
+    const rng = new Rng();
     for (let i = 0; i < 1000; i++) {
       const v = rng.next();
       expect(v).toBeGreaterThanOrEqual(0);
@@ -12,42 +12,16 @@ describe("Rng", () => {
     }
   });
 
-  it("reproduces the same sequence from the same seed", () => {
-    const a = new Rng(12345);
-    const b = new Rng(12345);
-    const left = Array.from({ length: 50 }, () => a.next());
-    const right = Array.from({ length: 50 }, () => b.next());
-    expect(left).toEqual(right);
-  });
-
-  it("produces a different sequence from a different seed", () => {
-    const a = Array.from(
-      { length: 20 },
-      (
-        (rng) => () =>
-          rng.next()
-      )(new Rng(1)),
-    );
-    const b = Array.from(
-      { length: 20 },
-      (
-        (rng) => () =>
-          rng.next()
-      )(new Rng(2)),
-    );
-    expect(a).not.toEqual(b);
-  });
-
-  it("restarts the sequence on reseed", () => {
-    const rng = new Rng(99);
-    const first = Array.from({ length: 10 }, () => rng.next());
-    rng.reseed(99);
-    const again = Array.from({ length: 10 }, () => rng.next());
-    expect(again).toEqual(first);
+  it("reads the source it is opened over", () => {
+    const values = [0.25, 0.5, 0.75];
+    const rng = new Rng(() => values.shift() ?? 0);
+    expect(rng.next()).toBe(0.25);
+    expect(rng.next()).toBe(0.5);
+    expect(rng.next()).toBe(0.75);
   });
 
   it("draws whole numbers inside the count", () => {
-    const rng = new Rng(3);
+    const rng = new Rng();
     const seen = new Set<number>();
     for (let i = 0; i < 500; i++) {
       const v = rng.int(4);
@@ -59,8 +33,15 @@ describe("Rng", () => {
     expect(seen.size).toBe(4);
   });
 
+  it("maps a draw onto the item at its share of the list", () => {
+    const items = ["a", "b", "c", "d"] as const;
+    expect(new Rng(() => 0).pick(items)).toBe("a");
+    expect(new Rng(() => 0.26).pick(items)).toBe("b");
+    expect(new Rng(() => 0.999).pick(items)).toBe("d");
+  });
+
   it("picks every item of a list often enough to be uniform", () => {
-    const rng = new Rng(11);
+    const rng = new Rng();
     const items = ["a", "b", "c"] as const;
     const counts = new Map<string, number>(items.map((i) => [i, 0]));
     for (let i = 0; i < 3000; i++) {

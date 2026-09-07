@@ -4,7 +4,7 @@
 //   - `specs/controls.md` ("Actions and bindings"): `pause` is bound to `KeyP`,
 //     read as an edge, and "pauses on `playing`"; "a frame whose press leaves
 //     `playing` ticks nothing and discards the accumulator."
-//   - `specs/instrumentation.md` ("A deterministic core"): "so is the
+//   - `specs/instrumentation.md` ("A render-free core"): "so is the
 //     remainder on any other frame or pose that leaves `playing`. On every
 //     other screen a frame ticks nothing and the accumulator holds `0`."
 //   - `specs/instrumentation.md` (`setScreen`): "Nothing else changes: the

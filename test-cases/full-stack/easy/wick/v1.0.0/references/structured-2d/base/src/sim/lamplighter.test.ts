@@ -20,12 +20,12 @@ import { DAWN_TICK } from "./lamplighter";
 import { tick } from "./tick";
 
 function playing(): { state: WickState; rng: Rng; cues: Set<CueName> } {
-  const state = initialState(1);
+  const state = initialState();
   state.run = freshRun();
   state.screen = "playing";
   // Taper would slash whatever stands at the lamplighter's feet.
   state.weaponFire = false;
-  const rng = new Rng(() => state);
+  const rng = new Rng();
   return { state, rng, cues: new Set() };
 }
 

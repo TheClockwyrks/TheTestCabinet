@@ -554,9 +554,6 @@ export interface Harness {
     count: number,
     watch?: (snapshot: OrrerySnapshot, frame: number) => boolean,
   ): Promise<OrrerySnapshot[]>;
-  /** Hand the game to the engine's own frame loop for `ms` of real time. */
-  runFor(ms: number): Promise<void>;
-
   /** Press a key and leave it down, as a player holding it would. */
   hold(code: string): Promise<void>;
   /** Release a key held by {@link hold}. */
@@ -782,17 +779,18 @@ export async function createHarness(
       let snapshot = await readSnapshot();
       if (predicate(snapshot)) return { hit: true, frames: 0, snapshot };
       let frames = 0;
-      let since = Date.now();
+      let sinceYield = 0;
       while (frames < maxFrames) {
         const run = Math.min(poll, maxFrames - frames);
         await advance(run);
         frames += run;
+        sinceYield += run;
         snapshot = await readSnapshot();
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
         // A sweep of several hundred frames runs inside one `await`, and the
         // reporter, the timers and every socket read live on the loop it is
         // holding. Nothing observable changes; the host stops looking hung.
-        since = await breathe(since);
+        sinceYield = await breathe(sinceYield);
       }
       return { hit: false, frames, snapshot };
     },
@@ -806,14 +804,6 @@ export async function createHarness(
         if (watch?.(snapshot, i + 1) === true) break;
       }
       return seen;
-    },
-
-    async runFor(ms) {
-      const controller = new AbortController();
-      const running = engine.run({ signal: controller.signal });
-      await new Promise((done) => setTimeout(done, ms));
-      controller.abort();
-      await running;
     },
 
     hold: (code) => {

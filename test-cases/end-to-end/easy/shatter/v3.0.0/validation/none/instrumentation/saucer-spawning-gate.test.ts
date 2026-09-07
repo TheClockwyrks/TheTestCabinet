@@ -1,12 +1,12 @@
 // instrumentation/saucer-spawning-gate — `setSaucerSpawning(false)` really does
 // shut the game's own arrival of a saucer, and opening it lets one in.
 //
-// WHY A MINUTE. `specs/saucer.md` puts the first arrival of a game at
-// `SAUCER_FIRST_DELAY` (18 seconds) and every later one `SAUCER_GAP_MIN` to
-// `SAUCER_GAP_MAX` (25 to 35 seconds) after the previous saucer leaves. Sixty
-// seconds of game time with the gate shut is more than three first delays and
-// longer than the longest gap, so a build whose gate does nothing has had every
-// opportunity the specification gives it.
+// WHY THE FIRST DELAY AND TWO SECONDS OVER. `specs/saucer.md` puts the first
+// arrival of a game at `SAUCER_FIRST_DELAY` (18 seconds), so a gate that does
+// nothing has let a saucer in by the time the window closes, and a gate that
+// works has held the one arrival the cadence owed inside it. The gate's hold over
+// LATER arrivals follows from the same faculty, and a watch past the first delay
+// would grade the cadence's gaps a second time.
 //
 // WHY THE GATE MATTERS TO EVERYTHING ELSE. `startPlaying` shuts it for every
 // scenario in this project, because a scenario that runs past eighteen seconds of
@@ -15,12 +15,14 @@
 // an enemy into every long scenario in the case — which is why the item exists to
 // name it.
 //
-// AND THE OPEN LEG IS GENEROUS ON PURPOSE. Nothing in `specs/instrumentation.md`
-// says what a shut gate does to the arrival CLOCK: a build may hold it while the
-// gate is shut, or let it run and arrive the moment the gate opens. Both are
-// conformant, so the open leg allows the longest wait either model can produce —
-// the first delay plus the longest gap — rather than demanding a schedule the
-// specification never fixed.
+// AND THE OPEN LEG IS GENEROUS ON PURPOSE. It asks only that the gate let an
+// arrival happen AT ALL. WHEN it happens is `saucer/first-arrives-at-18s`'s to
+// decide, and a window closing on the first delay would make one late arrival cost
+// a build two points. Nothing in `specs/instrumentation.md` says what a shut gate
+// does to the arrival CLOCK either — a build may hold it while the gate is shut, or
+// let it run and arrive the moment the gate opens, and both are conformant — so the
+// open leg allows the longest wait either model can produce, the first delay plus
+// the longest gap, rather than demanding a schedule the specification never fixed.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertNull, assertTrue } from "../assert";
@@ -34,8 +36,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** The game time a shut gate is watched over, in seconds. */
-const QUIET_TIME = 60;
+/** The game time a shut gate is watched over, in seconds. See the header. */
+const QUIET_TIME = SAUCER_FIRST_DELAY + 2;
 
 /**
  * The game time an open gate is given to produce a saucer, in seconds.
@@ -58,7 +60,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("keeps the saucer away for a minute while the gate is shut", async () => {
+it("keeps the saucer away past the first delay while the gate is shut", async () => {
   // `startPlaying` opens with the saucer gate shut, which is the state under test.
   await startPlaying(h);
   const joined = await h.skipUntil((s) => s.saucer !== null, {

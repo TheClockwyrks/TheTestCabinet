@@ -22,6 +22,7 @@ import {
   FLOE_DEBUG_VERSION,
   HUD_H,
   ICE_LANES,
+  ICE_TOP,
   PAUSE_ITEMS,
   ROW_BAYS,
   ROW_CAP,
@@ -193,6 +194,7 @@ const SURFACE_MEMBERS = [
   "setFloeX",
   "setLaneSpeed",
   "setLaneDirection",
+  "setLanePhase",
   "setBay",
   "clearBays",
   "setFishBay",
@@ -452,33 +454,24 @@ describe("the fixed step", () => {
     expect(harness.snapshot().simTime).toBeCloseTo(1 + TICK_DT, 9);
   });
 
-  it("reaches the same state however the interval was divided into frames", async () => {
-    const other = await createHarness();
+  it("runs the same whole ticks however the interval was divided into frames", async () => {
+    harness.debug.reset();
+    harness.debug.setScreen("playing");
+    harness.debug.setBearEmergence(false);
+    harness.debug.clearVehicles();
+    harness.debug.clearFloes();
+    harness.debug.addVehicle(ICE_TOP, "car", 200);
+    harness.debug.setLaneSpeed(ICE_TOP, 2);
+    harness.debug.setLaneDirection(ICE_TOP, 1);
+    // Ten ticks a frame: two seconds of game time in twenty-four frames.
+    harness.pace(10);
     try {
-      for (const h of [harness, other]) {
-        h.debug.reset({ seed: 12 });
-        h.debug.setScreen("playing");
-        h.debug.setBearEmergence(false);
-        h.debug.addCritter(20, ROW_MEDIAN);
-        h.debug.addBear(10, ROW_MEDIAN);
-      }
-      // One tick a frame against ten ticks a frame: two seconds of game time.
-      await harness.step(TICK_HZ * 2);
-      other.pace(10);
-      await other.step((TICK_HZ * 2) / 10);
-      other.pace(1);
-
-      const a = harness.snapshot();
-      const b = other.snapshot();
-      expect(b.simTime).toBeCloseTo(a.simTime, 9);
-      expect(b.bears[0].x).toBeCloseTo(a.bears[0].x, 6);
-      expect(b.bears[0].y).toBeCloseTo(a.bears[0].y, 6);
-      expect(b.vehicles.map((item) => Math.round(item.x))).toEqual(
-        a.vehicles.map((item) => Math.round(item.x)),
-      );
+      await harness.step((TICK_HZ * 2) / 10);
     } finally {
-      other.dispose();
+      harness.pace(1);
     }
+    expect(harness.snapshot().simTime).toBeCloseTo(2, 9);
+    expect(harness.snapshot().vehicles[0].x).toBeCloseTo(200 + 2 * 2 * TILE, 6);
   });
 
   it("keeps accumulating simTime while the screen is paused", async () => {
@@ -498,24 +491,32 @@ describe("the fixed step", () => {
   });
 });
 
-describe("the deterministic core", () => {
-  it("reproduces a run from the same seed and differs from another", () => {
-    harness.debug.reset({ seed: 7 });
-    const first = harness.snapshot();
-    harness.debug.reset({ seed: 7 });
-    const again = harness.snapshot();
-    expect(again.vehicles.map((item) => item.x)).toEqual(
-      first.vehicles.map((item) => item.x),
+describe("the core", () => {
+  it("relays one lane at a posed phase and leaves its motion alone", () => {
+    harness.debug.reset();
+    harness.debug.setLaneSpeed(12, 0.5);
+    harness.debug.setLaneDirection(12, -1);
+    harness.debug.clearVehicles();
+    harness.debug.addVehicle(12, "plow", 100);
+    harness.debug.setLanePhase(12, 700);
+    const s = harness.snapshot();
+    const lane = s.iceLanes.find((entry) => entry.row === 12);
+    expect(lane?.speed).toBe(0.5);
+    expect(lane?.dir).toBe(-1);
+    const items = s.vehicles
+      .filter((item) => item.row === 12)
+      .sort((a, b) => a.x - b.x);
+    expect(items.every((item) => item.kind === "car")).toBe(true);
+    expect(items.some((item) => Math.abs(item.x - 700) < 1e-9)).toBe(true);
+    const period = (2 + 7) * TILE;
+    for (let i = 1; i < items.length; i += 1) {
+      expect(items[i].x - items[i - 1].x).toBeCloseTo(period, 9);
+    }
+    expect(items[0].x).toBeLessThanOrEqual(7 * TILE);
+    expect(items[items.length - 1].x + 2 * TILE).toBeGreaterThanOrEqual(
+      1280 - 7 * TILE,
     );
-    expect(again.floes.map((item) => item.x)).toEqual(
-      first.floes.map((item) => item.x),
-    );
-
-    harness.debug.reset({ seed: 8 });
-    const other = harness.snapshot();
-    expect(other.vehicles.map((item) => item.x)).not.toEqual(
-      first.vehicles.map((item) => item.x),
-    );
+    expect(s.vehicles.filter((item) => item.row !== 12)).toHaveLength(0);
   });
 
   it("restores every field to its title-screen value", async () => {

@@ -40,7 +40,7 @@ import {
 
 /**
  * Pose a quiet, live field with the game's OWN saucer arrival running, from a
- * `reset` at `seed`.
+ * `reset`.
  *
  * `reset` is what puts the arrival clock back to the start of a game's cadence
  * (`specs/instrumentation.md`), which is the whole precondition of
@@ -55,23 +55,34 @@ import {
  * The field it leaves holds no rock, no bullet and no saucer, so the only thing
  * that can put a saucer on it is the build's own spawner.
  */
-export async function openSaucerGame(h: Harness, seed?: number): Promise<void> {
-  await h.debug.reset(seed === undefined ? undefined : { seed });
+export async function openSaucerGame(h: Harness): Promise<void> {
+  await h.debug.reset();
   await startPlaying(h);
   await h.debug.setSaucerSpawning(true);
 }
+
+/**
+ * The due a check poses to bring an arrival on at once, in seconds.
+ *
+ * `setSaucerDue` sets the figure the gap draw decides (`specs/instrumentation.md`),
+ * so a check that wants an arrival without waiting out the cadence poses a short
+ * one. A quarter of a second, which is thirty ticks: long enough that a build's
+ * clock has whole ticks to reach it, short enough that a tick-by-tick sweep to
+ * the arrival costs nothing.
+ */
+export const SHORT_DUE = 0.25;
 
 /* -------------------------------------------------------------------------- */
 /* Sweeps that run inside the page                                             */
 /* -------------------------------------------------------------------------- */
 //
 // THE SAUCER'S SCENARIOS READ A LOT OF TICKS AND ALMOST NOTHING OFF EACH ONE.
-// `at-most-one-at-a-time` needs the reported saucer id on EVERY tick of two minutes
-// of game time — 14 400 of them — because what it is looking for is the tick
-// reporting no saucer between two visits, and a stride that stepped over that tick
-// would fail a conformant build. `avoids-the-core` needs the saucer's centre every
-// eight ticks of fifty-four crossings. The three aim items need the tick each of
-// sixty shots was fired on. And every wait for an arrival covers eighteen to
+// `at-most-one-at-a-time` needs the reported saucer id on EVERY tick of fifty
+// seconds of game time — 6 000 of them — because what it is looking for is the
+// tick reporting no saucer between two visits, and a stride that stepped over that
+// tick would fail a conformant build. `avoids-the-core` needs the saucer's centre
+// every eight ticks of twenty crossings. The aim items need the tick each of a
+// handful of shots was fired on. And every wait for an arrival covers up to
 // thirty-five seconds of game time to read one id.
 //
 // A CROSSING INTO THE PAGE PER SAMPLE IS WHAT COSTS, NOT THE TICKS. The simulation
@@ -204,8 +215,8 @@ export async function nextArrival(
   const stride = options.stride ?? 1;
   const maxTicks = options.maxTicks ?? ARRIVAL_CEILING_TICKS;
   // THE SWEEP RUNS INSIDE THE PAGE, for the reason the section above states at
-  // length: sixteen arrivals under four seeds is nine hundred round trips, and on
-  // a host also running a model's build that is what decides how long these items
+  // length: a wait for an arrival is up to thousands of round trips, and on a
+  // host also running a model's build that is what decides how long these items
   // take.
   const found = await traceNextArrival(h, afterId, stride, maxTicks);
   if (!found.hit) {
@@ -224,46 +235,29 @@ export async function nextArrival(
 }
 
 /**
- * Catch a game's FIRST arrival on the tick it is first reported, whenever it comes.
+ * Bring the next arrival on with a short due and catch it on the tick it is first
+ * reported, whenever it comes.
  *
- * TWO PASSES, AND THE REASON IS A READING THAT MOVES. A saucer crosses at
- * `SAUCER_SPEED` from the moment it enters, so a sweep that samples every `stride`
- * ticks reports an entry column up to `stride / TICK_HZ` seconds of travel inside
- * the edge it entered at — 14 units at a tenth of a second — and
- * `enters-at-an-edge` is a check on exactly that column. Sampling every tick for
- * the whole wait would cost eighteen seconds of game time in single-tick crossings
- * into the page, per seed.
+ * A saucer crosses at `SAUCER_SPEED` from the moment it enters, so a sweep that
+ * samples every `stride` ticks reports an entry column up to `stride / TICK_HZ`
+ * seconds of travel inside the edge it entered at, and `enters-at-an-edge` is a
+ * check on exactly that column. So the due is posed short and every tick from
+ * there is sampled: the arrival is caught on the tick it happens, and the whole
+ * sweep is a handful of ticks rather than eighteen seconds of them.
  *
- * So the wait is run twice. The first pass strides coarsely and learns WHEN the
- * arrival happened; the second re-opens the same game at the same seed, skips in
- * one call to a stride short of that moment, and then samples every tick.
- * `specs/instrumentation.md` fixes that the same seed and the same elapsed game
- * time reach the same state every time, so the second pass replays the first, and
- * `snapshot` is a pure read that no number of extra calls can move.
- *
- * Nothing here assumes WHEN the arrival comes: the coarse pass finds it wherever it
- * is, and a build whose first saucer is late is caught just as exactly as one whose
- * first saucer is on time. That is `first-arrives-at-18s`'s requirement, not this
- * route's.
+ * `afterId` is the saucer the field held before, or `null` for the first wait of
+ * a game, as {@link nextArrival} takes it. The field must be clear of a saucer
+ * when this is called: the cadence only runs while it is.
  */
-export async function closeUpFirstArrival(
+export async function closeUpArrival(
   h: Harness,
-  seed: number,
-  options: { stride?: number } = {},
+  afterId: number | null,
 ): Promise<Arrival> {
-  const stride = options.stride ?? 30;
-
-  await openSaucerGame(h, seed);
-  const coarse = await nextArrival(h, null, { stride });
-
-  await openSaucerGame(h, seed);
-  const lead = Math.max(0, coarse.ticks - stride);
-  await h.skip(lead);
-  const fine = await nextArrival(h, null, {
+  await h.debug.setSaucerDue(SHORT_DUE);
+  return nextArrival(h, afterId, {
     stride: 1,
-    maxTicks: stride * 2,
+    maxTicks: ticksFor(SHORT_DUE) * 4,
   });
-  return { ...fine, ticks: lead + fine.ticks };
 }
 
 /** How near an edge a centre stands, across the seam, in logical units. */
@@ -302,7 +296,7 @@ export interface Volley {
  * would then never see it arrive.
  *
  * `leadIn` skips whole ticks before the sampling starts, for a check that wants
- * sixty shots and does not read the gaps between them: every tick it skips is
+ * several shots and does not read the gaps between them: every tick it skips is
  * counted in `ticks` just the same, and a build that fires FASTER than the lead-in
  * simply has some of its rounds passed over, which changes which shots are read and
  * not what any of them is. A check whose requirement IS the gap passes no lead-in.
@@ -427,7 +421,7 @@ export async function traceSaucerVisits(
  * hold the tick before, and report that tick — all inside the page.
  *
  * The page-side counterpart of the sweep {@link nextVolley} describes, and the
- * same sweep: the first sample is the state it starts from and seeds the
+ * same sweep: the first sample is the state it starts from and starts the
  * comparison, every tick after it is a real `advance(1)`, and the first tick
  * carrying a round the previous sample did not is the one that comes back.
  * `null` is "no round appeared inside `maxTicks`", which is the caller's failure

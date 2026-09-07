@@ -15,7 +15,6 @@
 import {
   BANNER_TIME,
   CUES,
-  DEFAULT_SEED,
   ENDING_ITEMS,
   PAUSE_ITEMS,
   RESPAWN_INVULN,
@@ -70,11 +69,14 @@ export function openingState(sprites: Sprites): WirewormState {
     glitchTimer: 0,
     corruptorTimer: 0,
     dropperTimer: 0,
+    nextWormEntry: null,
+    nextGlitchEntry: null,
+    nextDropperEntry: null,
+    nextCorruptorEntry: null,
 
     nextId: 1,
     simTime: 0,
     muted: false,
-    rngState: DEFAULT_SEED,
 
     presses: [],
 
@@ -92,7 +94,7 @@ export function blankState(): WirewormState {
  * `reset`). `muted` is a player preference the runtime owns and is left exactly
  * as it stands, and the loaded art is left with it.
  */
-export function resetToTitle(sim: Sim, seed = DEFAULT_SEED): void {
+export function resetToTitle(sim: Sim): void {
   const fresh = openingState(sim.sprites);
   sim.screen = fresh.screen;
   sim.phase = fresh.phase;
@@ -119,9 +121,12 @@ export function resetToTitle(sim: Sim, seed = DEFAULT_SEED): void {
   sim.glitchTimer = 0;
   sim.corruptorTimer = 0;
   sim.dropperTimer = 0;
+  sim.nextWormEntry = null;
+  sim.nextGlitchEntry = null;
+  sim.nextDropperEntry = null;
+  sim.nextCorruptorEntry = null;
   sim.nextId = fresh.nextId;
   sim.simTime = 0;
-  sim.rngState = seed;
   sim.presses = [];
 }
 
@@ -224,7 +229,11 @@ export function clearLevel(sim: Sim, ev: FrameEvents): void {
   sim.dropperTimer = 0;
 }
 
-/** The banner or the respawn giving way to live play, which is when a worm enters. */
+/**
+ * The banner or the respawn giving way to live play, which is when a worm
+ * enters. The spawner clocks stand exactly where they were: only opening a run
+ * and clearing a level set them (specs/foes.md, The spawner clocks).
+ */
 export function beginActive(sim: Sim): void {
   const wasRespawn = sim.phase === "respawn";
   sim.phase = "active";
@@ -232,9 +241,6 @@ export function beginActive(sim: Sim): void {
   // Only a respawn grants the spawn-in invulnerability; a level's banner does
   // not, because nothing was standing in the cursor when the level opened.
   if (wasRespawn) sim.cursor.invulnerable = RESPAWN_INVULN;
-  sim.glitchTimer = 0;
-  sim.corruptorTimer = 0;
-  sim.dropperTimer = 0;
   if (sim.wormEntry) enterWorm(sim);
 }
 

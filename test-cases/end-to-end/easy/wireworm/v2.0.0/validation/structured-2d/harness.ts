@@ -31,7 +31,7 @@
 // poses a node the rules apply to unchanged, `addWorm` builds a worm the step
 // clock drives, `addBolt` places a bolt the real shot code resolves, and
 // `reset` gives everything back. Posing through it is how a scenario is
-// reproducible, and it is the seam the case's specification documents.
+// arranged, and it is the seam the case's specification documents.
 // `surface.ts` is that specification as types, and it is the only description
 // of the surface this harness reads: the build's own module for it is never
 // imported.
@@ -64,7 +64,7 @@
 // integrated against the delta the frame hands the game, which is why
 // `[instrumentation]` carries no `tick_hz` — so the fixed clock is the SUITE's
 // choice. A check that is specifically about the step size
-// (instrumentation/deterministic-core) builds its own harnesses with clocks of
+// (instrumentation/render-free-core) builds its own harnesses with clocks of
 // its own.
 //
 // SPRITES, HEADLESS. The suite runs in `node`, where `fetch` and
@@ -147,6 +147,7 @@ import { fail } from "./assert";
 import type {
   ArcSnapshot,
   BoltSnapshot,
+  Edge,
   FoeKind,
   FoeSnapshot,
   NodeSnapshot,
@@ -162,6 +163,7 @@ import type {
 export type {
   ArcSnapshot,
   BoltSnapshot,
+  Edge,
   FoeKind,
   FoeSnapshot,
   MenuRect,
@@ -725,9 +727,6 @@ export interface WirewormExtras {
 
   /** Run whole frames covering `duration` seconds of game time. */
   advanceSeconds(duration: number): Promise<void>;
-  /** Drive the engine's own frame loop for `ms` of real time, then halt it. */
-  runFor(ms: number): Promise<void>;
-
   /**
    * Move the pointer to a logical point with nothing pressed, then run the frame
    * that reads it. The hover `specs/ui.md` selects a menu item on.
@@ -864,14 +863,6 @@ const kit = createEngineCaseHarness<
 
       advanceSeconds: (duration) => base.advance(ticksFor(duration)),
 
-      async runFor(ms: number) {
-        const controller = new AbortController();
-        const running = engine.run({ signal: controller.signal });
-        await new Promise((wake) => setTimeout(wake, ms));
-        controller.abort();
-        await running;
-      },
-
       async movePointer(x, y, options = {}) {
         // `-1` is what a browser puts in `button` for an event about position.
         dispatchPointer("pointermove", x, y, -1, options);
@@ -980,35 +971,36 @@ export async function createHarness(
 // about a worm's step poses no foe.
 
 /**
- * `reset({seed})`: the title screen, a seeded generator, every declared field at
- * its title-screen value. Every suite's opening move.
+ * `reset()`: the title screen, every declared field at its title-screen value.
+ * Every suite's opening move.
  *
  * No frame is advanced. A pose acts on the live game at the call under this
  * engine (specs/instrumentation.md), so the state is restored when this returns,
  * and a check about what `reset` restores — `simTime` among them — reads a game
  * that has run no frame since.
  */
-export function resetTo(h: Harness, seed?: number): void {
-  h.debug.reset(seed === undefined ? undefined : { seed });
+export function resetTo(h: Harness): void {
+  h.debug.reset();
 }
 
 /**
  * A NEW RUN, opened the way a player opens one.
  *
- * `reset(seed)` for the title screen and a seeded generator, then `confirm` on
- * the title's highlighted first item, `DESCEND`, which is what opens a run
- * (specs/ui.md) — and a run opens with the fresh scatter specs/nodes.md lays
- * (specs/progression.md, Starting a run). No pose on the surface starts a run,
- * and there is not meant to be one: the field is laid by the path the menu
- * takes, and that path is what a check about the starting field is about.
+ * `reset()` for the title screen, then `confirm` on the title's highlighted
+ * first item, `DESCEND`, which is what opens a run (specs/ui.md) — and a run
+ * opens with the fresh scatter specs/nodes.md lays (specs/progression.md,
+ * Starting a run). No pose on the surface starts a run, and there is not meant
+ * to be one: the field is laid by the path the menu takes, and that path is
+ * what a check about the starting field is about. Each run opened is a fresh
+ * draw of that scatter.
  *
  * One frame runs, the frame that delivers the key's edge. A run opens on its
  * `banner` phase, so the level's worm has not entered and level 1 spawns no
  * foe, and what stands on the board when this returns is the starting field
  * alone.
  */
-export async function startRun(h: Harness, seed?: number): Promise<void> {
-  resetTo(h, seed);
+export async function startRun(h: Harness): Promise<void> {
+  resetTo(h);
   await tapAction(h, "confirm");
 }
 
@@ -1034,8 +1026,7 @@ export async function startRun(h: Harness, seed?: number): Promise<void> {
  * on itself, and only that one. A check that finds itself needing a gate for any
  * other reason has been mis-posed.
  *
- * The generator is left as it stands, so a check that wants a seeded one calls
- * {@link resetTo} first. No frame is advanced: every pose here lands at the call.
+ * No frame is advanced: every pose here lands at the call.
  */
 export function startPlaying(h: Harness): void {
   h.debug.clearNodes();

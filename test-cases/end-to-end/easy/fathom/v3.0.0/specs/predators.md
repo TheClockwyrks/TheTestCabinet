@@ -45,9 +45,9 @@ own right.
 ## Wander
 
 A predator with no fix wanders, reports `state` as `"wander"`, and travels at its own
-patrol speed. At each junction it picks at random among the open directions leading
-out of it, preferring a direction other than an immediate reverse whenever one is
-open.
+patrol speed. At each junction it takes a direction drawn uniformly at random from
+the open directions leading out of it other than an immediate reverse, and takes
+the reverse where it is the only open direction.
 
 ## The fix and the chase
 

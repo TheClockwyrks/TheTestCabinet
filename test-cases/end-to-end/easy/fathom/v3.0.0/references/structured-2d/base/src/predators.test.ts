@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   ALERT_TIME,
-  DEFAULT_SEED,
   DRIFTER_SPEED,
   FLARE_BLOOM,
   FLARE_CHARGE,
@@ -75,7 +74,7 @@ function scene(
       pings,
       alerts,
       blooms,
-      rng: new Rng(DEFAULT_SEED),
+      rng: new Rng(),
       ping: (_source, tint) => {
         pings.push(tint);
       },
@@ -375,7 +374,7 @@ describe("the den and the schedule", () => {
       pings: [],
       alerts: [],
       blooms: [],
-      rng: new Rng(DEFAULT_SEED),
+      rng: new Rng(),
       ping: () => undefined,
       acquired: () => undefined,
       bloomed: () => undefined,

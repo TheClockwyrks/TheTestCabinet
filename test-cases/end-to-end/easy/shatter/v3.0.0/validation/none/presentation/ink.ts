@@ -199,8 +199,8 @@ export interface InkGrid {
   ink: number[];
 }
 
-/** One animation frame, so a read sees the picture the last tick left behind. */
-async function settle(h: Harness): Promise<void> {
+/** The browser's next paint, so a read sees the picture the last tick left behind. */
+async function nextPaint(h: Harness): Promise<void> {
   await h.page.evaluate(
     () =>
       new Promise<void>((done) => {
@@ -216,7 +216,7 @@ export async function readInk(
   cell: number,
   against: Rgb,
 ): Promise<InkGrid> {
-  await settle(h);
+  await nextPaint(h);
   const view = h.viewport();
   const origin = h.device(rect.x, rect.y);
   const step = Math.max(1, Math.round(cell * view.scale));

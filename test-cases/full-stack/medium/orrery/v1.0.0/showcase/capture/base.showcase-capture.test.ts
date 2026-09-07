@@ -43,8 +43,11 @@
 // show the real art, so this driver REFUSES to record a take whose warm-up drew
 // no decoded image at all, or whose loader reported a failure.
 //
-// Auditioning is free: with `TCAB_VALIDATION_MEDIA_DIR` unset every write below
-// is a no-op and the take is merely played and measured.
+// THE AUDITION RECORDS EVERY TAKE AND KEEPS THE WINNER. Each candidate is played
+// under the recorder, written under its own name, and measured; the driver then
+// names the most watchable, and that take's files are the ones copied into the
+// showcase. Nothing is played twice. With `TCAB_VALIDATION_MEDIA_DIR` unset every
+// write below is a no-op, so the same audition is a dry run that only measures.
 
 import { it } from "vitest";
 import {
@@ -92,8 +95,8 @@ function number(name: string, fallback: number): number {
 
 /**
  * The take recorded when one is named: `<mode>:<number>`, one-based, as the
- * select screen numbers a challenge. Naming one skips the audition entirely,
- * which is how the committed clip is reproduced without paying for the rest.
+ * select screen numbers a challenge. Naming one skips the audition entirely and
+ * writes the take under the showcase's own file names.
  */
 const NAMED_TAKE = process.env.TCAB_SHOWCASE_TAKE ?? "";
 
@@ -111,9 +114,6 @@ const NAMED_TAKE = process.env.TCAB_SHOWCASE_TAKE ?? "";
 const AUDITION =
   process.env.TCAB_SHOWCASE_TAKES ??
   "campaign:1,extras:2,extras:3,extras:4,extras:5,extras:6,extras:7,extras:8,extras:9,extras:10";
-
-/** The take recorded when the audition finds nothing inside the bounds. */
-const FALLBACK_TAKE = "extras:8";
 
 /** The shortest a take may run, in seconds. Under this it reads as a snippet. */
 const MIN_SECONDS = number("TCAB_SHOWCASE_MIN_SECONDS", 20);
@@ -220,6 +220,11 @@ function parseTake(text: string): Take | null {
 /** How a take is written in a log line. */
 function takeName(take: Take): string {
   return `${take.mode}:${take.number}`;
+}
+
+/** The prefix an auditioned take's files carry, so every take keeps its own. */
+function takePrefix(take: Take): string {
+  return `${take.mode}-${String(take.number)}-`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -626,59 +631,74 @@ function report(measured: Measured, chosen: number | null): string {
   ].join("  ");
 }
 
+/**
+ * Play one take on a fresh, warmed build under the recorder, writing its replay
+ * and its three stills under `prefix`, and answer what it was worth.
+ */
+async function record(take: Take, prefix: string): Promise<Measured> {
+  const h = await warmed();
+  try {
+    return await captureReplay(h, `${prefix}solving-a-challenge`, () =>
+      playTake(h, take, (id) => captureStill(h, `${prefix}${id}`)),
+    );
+  } finally {
+    await h.dispose();
+  }
+}
+
+/** The log line that closes a recording. */
+function pacing(measured: Measured): string {
+  return (
+    `${measured.seconds.toFixed(1)}s at ${String(TICK_HZ)} frames a second, ` +
+    `opening at ${String(SPEEDS[DEFAULT_SPEED_INDEX])} cycles a second`
+  );
+}
+
 it(
   "records the base variant's showcase from the reference build",
   { timeout: 60 * 60 * 1000 },
   async () => {
     const named = parseTake(NAMED_TAKE);
-    let chosen: Take;
 
     if (named !== null) {
-      chosen = named;
       console.log(
-        `orrery showcase: recording the named take ${takeName(chosen)}`,
+        `orrery showcase: recording the named take ${takeName(named)}`,
       );
-    } else {
-      const candidates = AUDITION.split(",")
-        .map(parseTake)
-        .filter((take): take is Take => take !== null);
-      let best: { take: Take; score: number } | null = null;
-      for (const take of candidates) {
-        const h = await warmed();
-        try {
-          const measured = await playTake(h, take, () => Promise.resolve());
-          const value = score(measured);
-          console.log(report(measured, value));
-          if (value !== null && (best === null || value > best.score)) {
-            best = { take, score: value };
-          }
-        } finally {
-          await h.dispose();
-        }
-      }
-      chosen = best?.take ?? (parseTake(FALLBACK_TAKE) as Take);
-      console.log(`orrery showcase: recording ${takeName(chosen)}`);
-    }
-
-    const h = await warmed();
-    try {
-      const measured = await captureReplay(h, "solving-a-challenge", () =>
-        playTake(h, chosen, (id) => captureStill(h, id)),
-      );
+      const measured = await record(named, "");
       console.log(report(measured, score(measured)));
       if (!measured.completed) {
         throw new Error(
-          `${takeName(chosen)} did not complete, so the recorded take ends on ` +
+          `${takeName(named)} did not complete, so the recorded take ends on ` +
             "nothing",
         );
       }
-      console.log(
-        `orrery showcase: ${measured.seconds.toFixed(1)}s at ` +
-          `${String(TICK_HZ)} frames a second, opening at ` +
-          `${String(SPEEDS[DEFAULT_SPEED_INDEX])} cycles a second`,
-      );
-    } finally {
-      await h.dispose();
+      console.log(`orrery showcase: ${pacing(measured)}`);
+      return;
     }
+
+    const candidates = AUDITION.split(",")
+      .map(parseTake)
+      .filter((take): take is Take => take !== null);
+    let best: { measured: Measured; score: number } | null = null;
+    for (const take of candidates) {
+      const measured = await record(take, takePrefix(take));
+      const value = score(measured);
+      console.log(report(measured, value));
+      if (value !== null && (best === null || value > best.score)) {
+        best = { measured, score: value };
+      }
+    }
+    if (best === null) {
+      throw new Error(
+        "no auditioned take came in complete and within the bounds; widen " +
+          "them, or name one with TCAB_SHOWCASE_TAKE to record it regardless",
+      );
+    }
+    const prefix = takePrefix(best.measured.take);
+    console.log(
+      `orrery showcase: keep ${takeName(best.measured.take)}, written as ` +
+        `${prefix}solving-a-challenge.json.gz, ${prefix}machine.png, ` +
+        `${prefix}running.png and ${prefix}solved.png; ${pacing(best.measured)}`,
+    );
   },
 );

@@ -85,11 +85,15 @@ function look(id: number) {
 
 describe("the frame", () => {
   it("reaches the same state however a second was divided into frames", () => {
+    // Nothing on this field is drawn at random: a Flux runs its clock, a Shard
+    // rides the sway, and two bullets fly clear of everything.
     const run = (frames: number): string => {
-      d.reset({ seed: 9 });
-      d.setScreen("inWave");
-      const id = drone("shard", 500, 180);
-      d.setDronePhase(id, "diving");
+      posed();
+      const flux = drone("flux", 500, 180);
+      d.setDroneBandClock(flux, 1.5);
+      drone("shard", 700, 260);
+      d.addPlayerBullet(300, 640, "cyan");
+      d.addEnemyBullet(900, 100, "magenta");
       d.advance(1, frames);
       const snapshot = d.snapshot();
       return JSON.stringify({

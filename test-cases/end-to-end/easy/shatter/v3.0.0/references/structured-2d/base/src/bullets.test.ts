@@ -203,7 +203,7 @@ describe("a round in flight", () => {
   it("holds the same reading however the ticks are grouped", async () => {
     const reading = async (chunk: number): Promise<string> => {
       const h = await createHarness();
-      h.debug.reset({ seed: 2 });
+      h.debug.reset();
       startPlaying(h.debug);
       h.debug.addBullet(120, STAR_Y - 150, 700, 0);
       for (let done = 0; done < ticksFor(0.5); done += chunk) {

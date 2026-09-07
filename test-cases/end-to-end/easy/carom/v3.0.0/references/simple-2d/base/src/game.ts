@@ -32,7 +32,7 @@
 //   * Nothing authoritative lives anywhere else. There is no module-level game
 //     state in this build and no closure over mutable data — every module beside
 //     this one is arithmetic over the record below. `reset()` on the debug
-//     surface restores exactly these fields, so a scenario replays identically.
+//     surface restores exactly these fields, so nothing survives a reset.
 //   * Every field is `readonly` and every array is a `readonly` array, so the
 //     declared type and the `DeepReadonly` view the engine hands out are the same
 //     shape: a transition spreads a state into the next one without a cast.
@@ -170,6 +170,11 @@ export interface BallState {
   readonly held: boolean;
   /** Seconds remaining of that wait. */
   readonly holdTimer: number;
+  /**
+   * The vertical sign the serve takes, drawn afresh whenever the ball is parked
+   * and posed by the debug surface (specs/balls.md).
+   */
+  readonly serveSign: 1 | -1;
   /** The ball's trail samples, oldest first. */
   readonly trail: readonly TrailSample[];
 }
@@ -248,10 +253,6 @@ export interface CaromState {
    * with it, so what `snapshot()` reports is what the player hears.
    */
   readonly muted: boolean;
-  /** The seed the game's random generator was last seeded from. */
-  readonly seed: number;
-  /** The whole state of that generator, as a single number. */
-  readonly rngState: number;
 
   /** The presses in flight. Derived bookkeeping; see {@link PressAnchor}. */
   readonly presses: readonly PressAnchor[];

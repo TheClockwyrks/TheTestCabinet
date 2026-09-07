@@ -45,8 +45,8 @@
 //
 //   2. AND AS A DIFFERENCE, which catches a body a build drew from art of its
 //      own. Two straits are drawn, identical in everything the HUD shows — same
-//      score, same lives, same level, same timer, same bays, same frame of the
-//      same seeded clock — and differing only in whether the four bodies are on
+//      score, same lives, same level, same timer, same bays, one frame from the
+//      same reset — and differing only in whether the four bodies are on
 //      the strait at all. Whatever blits reach into the bar in the empty one are
 //      the HUD's own; if the populated one reaches into it any more, that is a
 //      body drawn where the specification says none is.
@@ -266,8 +266,8 @@ it("draws no critter, bear, vehicle or floe inside the HUD bar", async () => {
   poseLane(populated, FLOE.row, FLOE.kind, [FLOE.col]);
 
   // One frame each, and the same one: both games have run exactly one tick from
-  // the same seeded reset, so anything a build animates is at the same phase in
-  // both pictures.
+  // a reset, so anything a build animates is at the same phase in both
+  // pictures.
   empty.calls.length = 0;
   populated.calls.length = 0;
   await empty.advance(1);

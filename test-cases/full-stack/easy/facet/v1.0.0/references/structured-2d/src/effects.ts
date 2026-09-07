@@ -3,9 +3,9 @@
 //
 // Everything here is DECORATION, and it is deliberately kept out of the game's
 // state. `specs/state.md` fixes what the state carries and
-// `specs/instrumentation.md` rests on that state being reproducible from a seed
-// and a delta time; a shatter still flying when a scenario reads the board
-// would be neither. So the simulation reports what each chain step did
+// `specs/instrumentation.md` rests on that state advancing from the delta time
+// alone; a shatter still flying when a scenario reads the board would be
+// neither. So the simulation reports what each chain step did
 // (`src/steps.ts` derives it from the core's own rules), this module turns those
 // reports into things that move, and nothing here is ever read back.
 //

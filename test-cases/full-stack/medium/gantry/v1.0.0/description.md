@@ -20,6 +20,5 @@ and mounts, plus the crate, container, and drum load classes. It produces all
 of its audio the same way and wires both into the 3D scene it renders.
 
 The simulation is exact. Programmed motion gives closed-form accelerations,
-the solve has a unique answer, and the pendulum is specified to the tick, so a
-structure and tape replay identically every time and small canonical trusses
-can be checked against textbook member forces.
+the solve has a unique answer, and the pendulum is specified to the tick, so
+small canonical trusses can be checked against textbook member forces.

@@ -21,28 +21,18 @@
 // least the `nextId` the run held before the tick.
 //
 // LANDING A PUDDLE ON AN ENEMY. Where a puddle lands is a random draw, so a
-// check that needs an enemy under the puddle on the tick it appears cannot
-// pose the enemy first. `specs/instrumentation.md` ("A deterministic core")
-// fixes the way round that: "Given the same seed, the same sequence of
-// operations, and the same number of ticks, the game reaches the same `run`
-// and `rngState` every time." `fireOntoEnemy` runs the scenario twice from the
-// same seed with the same operations in the same order, differing only in the
-// coordinates one `spawnEnemy` is given: first with the enemy far outside the
-// scatter disk, to learn where the puddle lands, then with the enemy at that
-// point. A build whose second firing lands elsewhere has broken that stated
-// rule, and the point fails on it.
+// check that needs an enemy under the puddle on the tick it appears poses the
+// draw: `specs/instrumentation.md` ("Drawn outcomes"), `setNextPuddleOffset(dx,
+// dy)`: "One puddle of the next Oil Splash or Blaze firing lands at the
+// lamplighter's center of that tick plus the offset". `fireOntoEnemy`
+// poses the offset, stands the enemy at the point it names, and fires. A build
+// whose firing lands elsewhere has broken that stated rule, and the point
+// fails on it.
 //
 // Every figure below is read from `../constants`, never from a build.
 
+import { assertEqual, assertNear, assertTrue, fail } from "../assert";
 import {
-  assertEqual,
-  assertGreaterThan,
-  assertNear,
-  assertTrue,
-  fail,
-} from "../assert";
-import {
-  DEFAULT_SEED,
   FLOAT_TOL,
   OIL_SCATTER,
   POSITION_TOL,
@@ -71,12 +61,11 @@ import {
 export const OIL: PuddleWeapon = "oil-splash";
 
 /**
- * Where an enemy stands while a landing point is learned: on the `+x` axis,
- * well outside the scatter disk. The farthest a puddle's edge can reach is
- * `OIL_SCATTER` plus the largest table radius (`70`), and no enemy's radius
- * closes the rest of the gap, so the enemy overlaps no puddle there.
+ * The offset the posed puddle lands at, about the lamplighter's center: inside
+ * the scatter disk, and far enough from the center that a puddle of the
+ * largest table radius (`70`) about it clears the lamplighter's own circle.
  */
-export const FAR_OUT: XY = { x: OIL_SCATTER * 2.5, y: 0 };
+export const POSED_OFFSET: XY = { x: OIL_SCATTER / 2, y: -OIL_SCATTER / 4 };
 
 /** The Oil Splash puddles among the zones `firing` created, in id order. */
 export function puddlesOf(firing: Firing): ZoneView[] {
@@ -147,32 +136,24 @@ export interface Landing {
 
 /**
  * Fire Oil Splash at `level` on an isolated night with one enemy of `type`
- * standing exactly where the puddle lands, and answer the firing, the enemy as
- * posed, and the puddle.
+ * standing exactly where one puddle of the firing is posed to land, and
+ * answer the firing, the enemy as posed, and the puddle.
  *
- * Two passes from `seed`, as the file comment explains: the first learns the
- * landing point with the enemy at {@link FAR_OUT}, the second poses the enemy
- * there and fires again. Level `1` fires one puddle, so the landing point is
- * unambiguous; a caller wanting more puddles has more than one point to
- * choose from and this helper takes the first.
+ * The landing point is {@link POSED_OFFSET} from the lamplighter's center,
+ * posed through `setNextPuddleOffset` as the file comment explains; the enemy
+ * is placed there before the firing tick.
  */
 export async function fireOntoEnemy(
   h: Harness,
   type: EnemyId,
   level = 1,
-  seed = DEFAULT_SEED,
 ): Promise<Landing> {
-  await isolate(h, { seed });
-  await placeEnemy(h, type, FAR_OUT.x, FAR_OUT.y);
-  const scouted = puddlesOf(await fireOil(h, level));
-  assertGreaterThan(
-    scouted.length,
-    0,
-    "Oil Splash puddles the scouting firing tick created",
-  );
-  const landing = centerOf(scouted[0]!);
-
-  await isolate(h, { seed });
+  const opened = await isolate(h);
+  const landing: XY = {
+    x: opened.run.player.x + POSED_OFFSET.x,
+    y: opened.run.player.y + POSED_OFFSET.y,
+  };
+  await h.debug.setNextPuddleOffset(POSED_OFFSET.x, POSED_OFFSET.y);
   const enemy = await placeEnemy(h, type, landing.x, landing.y);
   const firing = await fireOil(h, level);
   const puddle = puddlesOf(firing).find((zone) =>
@@ -180,10 +161,9 @@ export async function fireOntoEnemy(
   );
   if (puddle === undefined) {
     fail(
-      `a puddle landing at (${landing.x}, ${landing.y}), where the same seed ` +
-        "and the same operations landed one before " +
-        "(specs/instrumentation.md: the same seed, operations, and ticks " +
-        "reach the same run every time)",
+      `a puddle landing at (${landing.x}, ${landing.y}), the lamplighter's ` +
+        "center plus the posed offset (specs/instrumentation.md, " +
+        "setNextPuddleOffset)",
       puddlesOf(firing).map(centerOf),
     );
   }

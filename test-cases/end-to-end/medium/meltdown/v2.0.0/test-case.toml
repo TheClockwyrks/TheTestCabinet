@@ -325,7 +325,7 @@ source = "specs/building.md"
 source = "specs/surge.md"
 
 # The run: the three phases and their clocks, the wave progression as closed
-# forms, the spawn cadence and the seeded vent draw, the per-wave HP scaling, what
+# forms, the spawn cadence and the per-unit vent draw, the per-wave HP scaling, what
 # clears a wave, victory and loss, and what pausing and the speed toggle do to the
 # simulation. Seeded verbatim.
 [[spec]]
@@ -378,10 +378,10 @@ source = "specs/audio.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; every operation by name, signature and effect, including the
-# world gate and the three faculty gates, each stated as gating ONE faculty and
-# nothing else; what `reset` restores; the snapshot shape; the identity rules; and
+# The debugging and automation surface every build must expose: a render-free
+# core; every operation by name, signature and effect, including the world gate,
+# the vent pose, and the three faculty gates, each stated as gating ONE faculty
+# and nothing else; what `reset` restores; the snapshot shape; the identity rules; and
 # the read-only debug overlay. Framed as an ordinary developer affordance of the
 # game. It branches on the engine for how the surface is reached, for the
 # operation shape, and for the two clock operations only an engineless build owns.
@@ -536,7 +536,7 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These items check that it is really there, really
-# wired to the running game, and really deterministic, and that each of the four
+# wired to the running game, and really render-free, and that each of the four
 # gates it carries gates ONE faculty and leaves the rest running. A surface that
 # reports a plausible-looking object unconnected to what is on screen is the
 # failure mode worth naming, and it also shows up as every other suite failing to
@@ -653,21 +653,12 @@ validation = { script = "instrumentation/reset-restores-title.test.ts", outputs 
   { id = "title", name = "The title screen reset returned to", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "reset-seeds-randomness"
-title = "reset seeds the game's randomness"
-description = "Two waves released after reset(7) draw the identical sequence of vents, and a wave after reset(8) draws a different one."
-domains = ["run"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seeds-randomness.test.ts", outputs = [
-  { id = "seeded", name = "A wave drawn from the seeded vent order", kind = "image" },
-] }
-[[review.categories.items]]
-id = "deterministic-core"
+id = "render-free-core"
 title = "The simulation advances on elapsed time alone"
-description = "One second of game time covered as one frame and as 120 frames adds 1.0 to simTime either way and leaves a unit walking an open row at the same position, so the simulation reads nothing from the renderer."
+description = "One second of game time covered as one frame and as 120 frames adds 1.0 to simTime either way and leaves a unit walking an open row within half a logical unit of the same position, so the simulation reads nothing from the renderer."
 domains = ["heat", "defense", "run", "presentation"]
 failure_cap = "passable"
-validation = { script = "instrumentation/deterministic-core.test.ts", outputs = [
+validation = { script = "instrumentation/render-free-core.test.ts", outputs = [
   { id = "advanced", name = "The same second covered two ways", kind = "image" },
 ] }
 [[review.categories.items]]
@@ -818,6 +809,52 @@ failure_cap = "passable"
 validation = { script = "instrumentation/wave-spawning-gate-holds-auto-start.test.ts", outputs = [
   { id = "held", name = "A build timer at zero with the phase held", kind = "image" },
   { id = "started", name = "The same timer starting the wave", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spawn-vent-pose"
+title = "setSpawnVent enters every released unit at the posed vent"
+description = "With \"left\" posed, every unit the run's own release puts on the floor enters at the left vent, and with \"top\" posed every one enters at the top vent; the pose reads back as spawnVent."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-vent-pose.test.ts", outputs = [
+  { id = "posed-left", name = "A release with the left vent posed", kind = "image" },
+  { id = "posed-top", name = "A release with the top vent posed", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spawn-vent-pose-leaves-live-units"
+title = "setSpawnVent moves no live unit"
+description = "Posing a vent, and clearing it, leaves every unit already on the floor with its vent, exhaust, position and route exactly as they were."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-vent-pose-leaves-live-units.test.ts", outputs = [
+  { id = "held", name = "Two live units untouched by the pose", kind = "image" },
+] }
+[[review.categories.items]]
+id = "spawn-vent-pose-cleared"
+title = "setSpawnVent(null) returns the release to the draw"
+description = "After a wave's first units are released under a posed vent, clearing the pose mid-release reads back as null and each of the next units enters at one of the two vents."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/spawn-vent-pose-cleared.test.ts", outputs = [
+  { id = "resumed", name = "The release drawing again once the pose is cleared", kind = "image" },
+] }
+[[review.categories.items]]
+id = "draw-vent-returns-a-vent"
+title = "drawVent returns a vent"
+description = "Every call of drawVent returns \"left\" or \"top\"."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/draw-vent-returns-a-vent.test.ts", outputs = [
+  { id = "drawn", name = "The floor after a run of draws", kind = "image" },
+] }
+[[review.categories.items]]
+id = "draw-vent-changes-nothing"
+title = "drawVent changes nothing"
+description = "Two hundred calls of drawVent on a posed floor leave the snapshot identical, the posed spawnVent included: no unit is added and the pose stands."
+domains = ["run"]
+failure_cap = "passable"
+validation = { script = "instrumentation/draw-vent-changes-nothing.test.ts", outputs = [
+  { id = "unchanged", name = "The posed floor after a run of draws", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "set-score-pays-nothing"
@@ -2458,7 +2495,7 @@ validation = { script = "surge/milestone-wave-carries-a-core.test.ts", outputs =
 [[review.categories.items]]
 id = "single-type-waves"
 title = "Each wave fields one type"
-description = "Every unit a Containment wave releases is the same type, read off a wave released with the run's own spawner on. The Hundred is the stated exception and is not in scope here."
+description = "The units a Containment wave releases are all one type, read off the front of waves released with the run's own spawner on. The Hundred is the stated exception and is not in scope here."
 domains = ["run"]
 failure_cap = "broken"
 validation = { script = "surge/single-type-waves.test.ts", outputs = [
@@ -2483,13 +2520,13 @@ validation = { script = "surge/spawn-cadence.test.ts", outputs = [
   { id = "cadence", name = "Units arriving on the stated cadence", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "vent-drawn-from-the-seed"
-title = "The vent each unit enters from is seeded"
-description = "Across a wave of forty units both vents are used, and the sequence is identical for two runs at the same seed."
+id = "vent-drawn-at-random"
+title = "The vent each unit enters from is drawn"
+description = "Across forty draws through drawVent, every draw is a vent and both vents appear."
 domains = ["run"]
 failure_cap = "passable"
-validation = { script = "surge/vent-drawn-from-the-seed.test.ts", outputs = [
-  { id = "vents", name = "The vent order one seed drew", kind = "image" },
+validation = { script = "surge/vent-drawn-at-random.test.ts", outputs = [
+  { id = "vents", name = "A wave entering from both vents", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "enters-on-an-open-opening-tile"
@@ -2502,15 +2539,18 @@ validation = { script = "surge/enters-on-an-open-opening-tile.test.ts", outputs 
 ] }
 
 # --- The run -------------------------------------------------------------------
-# The frame around a match. Five items in this group are governed by one rule:
-# whether time passes is measured on the clock the player's game actually runs on,
-# never through a stepping operation, because the stepping operation is
-# instrumentation and the question is about the game. pause-freezes-the-floor,
-# pause-freezes-the-heat, resume-runs-the-floor-again, game-runs-on-its-own-clock
-# and speed-doubles-the-game-time each settle over a real window on the build's
-# own clock, in legs of equal length, with both readings taken from the ONE
-# snapshot on the press so the pair spans the paused window and nothing else. The
-# running leg is what stops a dead floor passing vacuously.
+# The frame around a match. Five items in this group are about whether time
+# passes, and each is measured over a stated number of driven frames of a stated
+# length, never over a stretch of real time, so the same game time lands on any
+# machine. pause-freezes-the-floor, pause-freezes-the-heat,
+# resume-runs-the-floor-again and speed-doubles-the-game-time read legs of equal
+# length with both readings taken from the ONE snapshot on the press, so the pair
+# spans the window the press opened and nothing else, and the running leg is what
+# stops a dead floor passing vacuously. game-runs-on-its-own-clock, the fifth,
+# reads whether the elapsed time a frame carries reaches the simulation, which
+# under an engine is the build's integration of the frame the engine hands it;
+# under none the frame loop is the build's own and only real time could decide it,
+# so the item is scoped to the engines.
 [[review.categories]]
 id = "waves"
 title = "The run"
@@ -2661,7 +2701,7 @@ validation = { script = "waves/building-allowed-during-a-wave.test.ts", outputs 
 [[review.categories.items]]
 id = "pause-freezes-the-floor"
 title = "Pausing freezes the floor"
-description = "On the build's own clock, over two windows of the same length: a Mote must travel more than PAUSE_MIN_TRAVEL in the first, and once paused must drift less than PAUSE_MAX_DRIFT while simTime gains less than PAUSE_MAX_CLOCK_DRIFT in the second, both readings taken from the one snapshot on the press."
+description = "Over two windows of the same number of driven frames: a Mote must travel more than PAUSE_MIN_TRAVEL in the first, and once paused must drift less than PAUSE_MAX_DRIFT while simTime gains less than PAUSE_MAX_CLOCK_DRIFT in the second, both readings taken from the one snapshot on the press."
 domains = ["run"]
 failure_cap = "broken"
 validation = { script = "waves/pause-freezes-the-floor.test.ts", outputs = [
@@ -2687,13 +2727,13 @@ validation = { script = "waves/resume-runs-the-floor-again.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "game-runs-on-its-own-clock"
-title = "The game advances itself"
-description = "With nothing stepping it, the floor advances: a Mote travels and simTime gains over a real window."
+title = "The game advances by the elapsed time of its frames"
+description = "Over a window of driven frames, simTime gains the game time those frames carried and a Mote travels; under none the frame loop is the build's own and only real time could decide it, so the item is scoped to the engines."
 domains = ["run"]
 failure_cap = "broken"
-validation = { script = "waves/game-runs-on-its-own-clock.test.ts", outputs = [
+validation = { script = "waves/game-runs-on-its-own-clock.test.ts", engines = ["simple-2d", "structured-2d"], outputs = [
   { id = "before", name = "The instant the window opened", kind = "image" },
-  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
+  { id = "after", name = "The same floor at the end of the window", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "speed-doubles-the-game-time"

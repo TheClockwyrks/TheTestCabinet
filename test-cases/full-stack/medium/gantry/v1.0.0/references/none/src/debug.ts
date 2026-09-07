@@ -297,6 +297,7 @@ export interface GantryDebugApi {
     yaw: number,
   ): void;
   setLoadPhase(index: number, phase: string): void;
+  setRunTick(tick: number): void;
   setSpeedIndex(index: number): void;
 
   // Input
@@ -326,6 +327,13 @@ function requireNumber(name: string, value: unknown): number {
 function requireInteger(name: string, value: unknown): number {
   const n = requireNumber(name, value);
   if (!Number.isInteger(n)) invalid(`${name} must be an integer`);
+  return n;
+}
+
+/** A count: an integer at or above zero, with no upper bound of its own. */
+function requireWholeNumber(name: string, value: unknown): number {
+  const n = requireInteger(name, value);
+  if (n < 0) invalid(`${name} must be at or above 0`);
   return n;
 }
 
@@ -927,6 +935,12 @@ export function createDebugSurface(game: Game): GantryDebugApi {
       const what = requireOneOf("phase", phase, LOAD_PHASES);
       if (!running()) return;
       put(st.setLoadPhase(state, load, what));
+    },
+
+    setRunTick(tick) {
+      const at = requireWholeNumber("tick", tick);
+      if (!running()) return;
+      put(st.setRunTick(now(), at));
     },
 
     setSpeedIndex(index) {

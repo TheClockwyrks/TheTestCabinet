@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 it("empties every beam at once on KeyR, leaving the nodes and the screen alone", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, R2_FOREIGN);
 
   // A partial beam on each channel.

@@ -22,7 +22,7 @@ halves that behave differently: five limits are checked on every pointer move
 and refuse it, and four completion conditions are evaluated over a finished
 board and never refuse anything. A build that confuses the two halves rejects
 the first segment of every board, because an empty beam does not yet satisfy a
-condition phrased with "exactly". Around that sit a seeded board generator,
+condition phrased with "exactly". Around that sit a board generator,
 pointer input resolved against a hit radius, six screens across two modes worked
 by mouse, touch, and keyboard alike, and a debug surface that drives the real
 input path.
@@ -32,10 +32,10 @@ input path.
 Both modes ship in every build and are picked from the title menu. `state.mode`
 is `"campaign" | "cascade"` and the snapshot reports it.
 
-| Mode     | What it is                                                                                                                                                                                                                                                                                                                                                   |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Campaign | `CAMPAIGN_LENGTH` (`24`) hand-built boards in four sets of six, listed in `specs/campaign-boards.md` and opened in order as each is solved. It uses no randomness at all. It adds the `select` grid and the `complete` screen.                                                                                                                               |
-| Cascade  | One unbroken sequence with no last board. The build carries a seeded generator that emits, for a given seed and tier, a board that is solvable and meets the tier's difficulty floor — five measures bounded per tier in `specs/modes/cascade.md`. The tier climbs every `TIER_ADVANCE` (`5`) solves, five tiers deep. Generation runs off `state.rngState`. |
+| Mode     | What it is                                                                                                                                                                                                                                                                                                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Campaign | `CAMPAIGN_LENGTH` (`24`) hand-built boards in four sets of six, listed in `specs/campaign-boards.md` and opened in order as each is solved. It uses no randomness at all. It adds the `select` grid and the `complete` screen.                                                                                                                                                |
+| Cascade  | One unbroken sequence with no last board. The build carries a generator that emits, for a given tier, a board drawn at random that is solvable and meets the tier's difficulty floor — five measures bounded per tier in `specs/modes/cascade.md`. The tier climbs every `TIER_ADVANCE` (`5`) solves, five tiers deep. The debug surface poses a generated board at any tier. |
 
 The six screens are the union of both modes: `title`, `howto`, `select`,
 `playing`, `solved`, `complete`. `select` and `complete` are reached in Campaign

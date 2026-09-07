@@ -25,7 +25,6 @@
 import type { World } from "@clockwyrks/structured-2d";
 import {
   BAY_COUNT,
-  DEFAULT_SEED,
   FISH_INTERVAL,
   FISH_LINGER,
   FLOE_DEBUG_VERSION,
@@ -47,7 +46,7 @@ import {
   syncFish,
 } from "./entities";
 import { commitStep, settleBear } from "./hunter";
-import { addFloe, addVehicle, laneAt, layoutLevel } from "./lanes";
+import { addFloe, addVehicle, laneAt, layoutLane, layoutLevel } from "./lanes";
 import { menuItemRect, type MenuRect } from "./menus";
 import { resetGame } from "./sim";
 import { snapshot, type FloeSnapshotShape } from "./snapshot";
@@ -67,7 +66,7 @@ export interface FloeDebugApi {
   version: number;
 
   // The core.
-  reset(options?: { seed?: number }): void;
+  reset(): void;
   snapshot(): FloeSnapshotShape;
   menuItemRect(index: number): MenuRect | null;
 
@@ -120,6 +119,7 @@ export interface FloeDebugApi {
   setFloeX(id: number, x: number): void;
   setLaneSpeed(row: number, speed: number): void;
   setLaneDirection(row: number, dir: LaneDir): void;
+  setLanePhase(row: number, x: number): void;
 
   // The bays and the bonus catch.
   setBay(index: number, filled: boolean): void;
@@ -186,9 +186,9 @@ export function createDebugApi(open: () => World): FloeDebugApi {
 
     // ---- The core ----
 
-    reset(options) {
+    reset() {
       const world = open();
-      resetGame(world, floeState(world), options?.seed ?? DEFAULT_SEED);
+      resetGame(world, floeState(world));
     },
 
     snapshot() {
@@ -437,6 +437,12 @@ export function createDebugApi(open: () => World): FloeDebugApi {
       const lane = laneAt(floeState(open()), row);
       if (lane === null) return;
       lane.dir = dir < 0 ? -1 : 1;
+    },
+
+    /** Relays one lane at a phase; its speed and direction are untouched. */
+    setLanePhase(row, x) {
+      const world = open();
+      layoutLane(world, floeState(world), row, x);
     },
 
     // ---- The bays and the bonus catch ----

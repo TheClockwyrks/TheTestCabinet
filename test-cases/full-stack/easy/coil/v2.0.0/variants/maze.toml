@@ -140,11 +140,11 @@ validation = { script = "board/obstacles-clear-start-row.test.ts", outputs = [
 [[review.categories.items]]
 id = "pellet-avoids-obstacles"
 title = "A pellet never spawns on the course"
-description = "Across a long run of eats no pellet the game places ever lands on an obstacle cell, so the course counts against the valid set."
+description = "A cell of the course posed as the next pellet is discarded at the spawn, so the pellet an eat places lands clear of every obstacle cell and the course counts against the valid set."
 domains = ["maze"]
 failure_cap = "scuffed"
-# Automated validation: drive a long run of eats and test every placed pellet
-# against the obstacle cells. See
+# Automated validation: pose a cell of the laid course as the next pellet, drive
+# one eat, and read that the placed pellet is on none of the course's cells. See
 # validation/<engine>/board/pellet-avoids-obstacles.test.ts.
 validation = { script = "board/pellet-avoids-obstacles.test.ts", outputs = [
   { id = "avoid", name = "Pellets respawning clear of the course", kind = "replay" },
@@ -195,7 +195,7 @@ validation = { script = "instrumentation/cleared-board-keeps-its-border.test.ts"
 [[review.categories.items]]
 id = "cleared-cell-takes-a-pellet"
 title = "A cleared cell is open to a pellet"
-description = "After clearObstacles a cell the course held is back in the valid set a pellet is drawn from, so a long run of respawns eventually places one on it."
+description = "After clearObstacles a cell the course held is back in the valid set a pellet is drawn from, so a spawn whose valid set holds that cell alone places the pellet on it."
 domains = ["maze"]
 failure_cap = "passable"
 # Automated validation: clear the course, pose a chain that leaves only cells

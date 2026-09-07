@@ -21,7 +21,6 @@ export const DAWN_TIME = 600;
 /** The tick on which the night ends: `DAWN_TIME × TICK_HZ`. */
 export const DAWN_TICK = DAWN_TIME * TICK_HZ;
 
-export const DEFAULT_SEED = 1;
 export const WICK_DEBUG_VERSION = 1;
 
 // ---- The lamplighter -------------------------------------------------------

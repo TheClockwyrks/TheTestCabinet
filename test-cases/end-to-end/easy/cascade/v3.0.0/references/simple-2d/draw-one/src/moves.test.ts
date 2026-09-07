@@ -74,18 +74,13 @@ describe("the deal", () => {
     expect(new Set(cards.map((c) => c.id)).size).toBe(DECK_SIZE);
   });
 
-  it("deals afresh from a different seed and identically from the same one", () => {
+  it("deals afresh, so two deals lay out different columns", () => {
     const key = (state: CascadeState) =>
       state.tableau
         .flat()
         .map((c) => `${c.suit}${c.rank}`)
         .join(",");
-    expect(key(deal({ ...table(), rngState: 1 }).state)).toBe(
-      key(deal({ ...table(), rngState: 1 }).state),
-    );
-    expect(key(deal({ ...table(), rngState: 1 }).state)).not.toBe(
-      key(deal({ ...table(), rngState: 2 }).state),
-    );
+    expect(key(deal(table()).state)).not.toBe(key(deal(table()).state));
   });
 
   it("winds the cascade back and clears the painted table", () => {

@@ -68,51 +68,40 @@ function tickingClock(game: Game): SurfaceClock {
   };
 }
 
-describe("determinism through the surface", () => {
-  it("reproduces identical snapshots from the same seed and the same ops", () => {
-    const run = (): unknown => {
-      const game = new Game();
-      const api = createApi(game, tickingClock(game));
-      api.setAutoStep(false);
-      api.reset(42);
-      api.setScreen("playing");
-      api.setPaddleAngle(15);
-      api.launchBall();
-      api.setRingSpeed(3, -21.5);
-      api.spawnBall(100, 500, 180, -120);
-      api.spawnPod("widen", 300, 640);
-      api.setEffectTicks("pierce", 90);
-      api.step(240);
-      return api.snapshot();
-    };
-    expect(run()).toEqual(run());
+describe("the pod draw through the surface", () => {
+  it("sheds a posed kind from a stepped destruction", () => {
+    const game = new Game();
+    const api = createApi(game, tickingClock(game));
+    api.setAutoStep(false);
+    api.setScreen("playing");
+    api.setWaveAdvance(false);
+    api.setNextPod("multiball");
+    api.setEffectTicks("pierce", 100000);
+    api.setRingAngle(1, 0);
+    api.clearBalls();
+    api.spawnBall(...outsideRingOne());
+    api.step(30);
+    const snap = api.snapshot();
+    expect(snap.pods.map((pod) => pod.kind)).toEqual(["multiball"]);
+    expect(snap.nextPod).toBeNull();
   });
 
-  it("draws a different pod sequence from a different seed, same ops", () => {
-    const run = (seed: number): unknown => {
-      const game = new Game();
-      const api = createApi(game, tickingClock(game));
-      api.setAutoStep(false);
-      api.reset(seed);
-      api.setScreen("playing");
-      // Rain hits until pod draws diverge: pierce destroys outright, and
-      // wave advance held off keeps the session on `playing` throughout.
-      api.setWaveAdvance(false);
-      api.setEffectTicks("pierce", 100000);
-      for (let i = 0; i < 12; i += 1) {
-        api.setRingAngle(1, 0);
-        api.spawnTarget(1, 0, 1);
-        api.clearBalls();
-        api.spawnBall(...outsideRingOne());
-        api.step(30);
-      }
-      const snap = api.snapshot();
-      return { pods: snap.pods.map((pod) => pod.kind), score: snap.score };
-    };
-    const a = run(1);
-    const b = run(999);
-    expect(run(1)).toEqual(a);
-    expect(a).not.toEqual(b);
+  it("draws a pod alone, adding nothing to the field", () => {
+    const game = new Game();
+    const api = createApi(game, tickingClock(game));
+    api.setAutoStep(false);
+    api.setScreen("playing");
+    const before = api.snapshot();
+    const outcome = api.drawPod();
+    expect([
+      null,
+      "widen",
+      "multiball",
+      "shield",
+      "pierce",
+      "narrow",
+    ]).toContain(outcome);
+    expect(api.snapshot()).toEqual(before);
   });
 
   it("steps through the real tick path, so cues fire on stepped contacts", () => {

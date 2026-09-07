@@ -26,20 +26,13 @@
 import { STRAIT_W, TILE } from "../constants";
 import type { FloeSnapshot, Harness, ItemView } from "../harness";
 
-/** What `layOutLevel` may vary beyond the level itself. */
-export interface LayoutOptions {
-  /** The seed all of the game's randomness runs off, `DEFAULT_SEED` by default. */
-  seed?: number;
-}
-
 /**
  * Lay the strait out for a level and hand back the level exactly as it was laid.
  *
  * The sequence, and why each part of it is here:
  *
- *   - `reset(options)` puts every field back to its title-screen value and seeds
- *     the generator the lanes' phases are drawn from
- *     (`specs/instrumentation.md`), so what follows is a level laid out from a
+ *   - `reset()` puts every field back to its title-screen value
+ *     (specs/instrumentation.md), so what follows is a level laid out from a
  *     known start rather than whatever the previous check left.
  *   - `setLevel(level)` re-lays the sixteen lanes for the level asked for. It is
  *     called even for level `1`, so every level this group reads arrives by the
@@ -64,10 +57,9 @@ export interface LayoutOptions {
 export async function layOutLevel(
   h: Harness,
   level = 1,
-  options: LayoutOptions = {},
 ): Promise<FloeSnapshot> {
   const { debug } = h;
-  await debug.reset(options.seed === undefined ? undefined : options);
+  await debug.reset();
   await debug.setLevel(level);
   await debug.setFishCadence(false);
   await debug.setScreen("playing");

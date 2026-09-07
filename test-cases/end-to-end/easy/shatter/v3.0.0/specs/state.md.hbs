@@ -29,14 +29,15 @@ Whatever its shape, the state carries the following.
 - Every bullet the ship has in flight, each with a distinct id, its centre, its
   velocity, and the seconds of its life left.
 - Every rock on the field, each with a distinct id, its centre, its velocity, its
-  size, and its drawn spin.
+  size, and the spin it is drawn at.
 {{#if (eq variant.slug "warhead")}}
   Each rock also carries its remaining health and the seconds of hit flash left on
   it.
 {{/if}}
 - The saucer, when one is up: a distinct id, its centre, its velocity, its three
-  faculty gates, its fire clock, its weave clock, and the seconds it has been on
-  the field. There is one slot, which is empty when no saucer is up.
+  faculty gates, its weave direction, its fire clock, its weave clock, and the
+  seconds it has been on the field. There is one slot, which is empty when no
+  saucer is up.
 - Every saucer bullet in flight, each with a distinct id, its centre, its
   velocity, and the seconds of its life left.
 {{#if (eq variant.slug "warhead")}}
@@ -52,14 +53,20 @@ Whatever its shape, the state carries the following.
 - The saucer cadence's clock: how far the game is toward the next arrival, and
   what it must reach for that arrival to happen.
 
+## Posed draws
+
+- The outcome posed for each draw the debug surface can pose ahead of the game
+  making it: the edge and the row the next saucer enters at, the aim error of the
+  saucer's next shot, the base drift speed of the next placement of rocks, and
+  the edge the next recycled rock re-enters at. Each is empty when no pose stands,
+  and the draw that consumes it empties it.
+
 ## The rest
 
 - The fraction of a tick carried over from the previous frame, in seconds.
 - The simulation time, in seconds, which every tick adds `TICK_DT` to whatever the
   screen.
 - Whether sound is muted, refreshed from the runtime's mute bit in every update.
-- The state of the seeded random generator, which every draw `specs/simulation.md`
-  lists comes from.
 - Whatever the game needs to hand a fresh id to the next rock, bullet, saucer
   bullet, or saucer it creates, so no two entities live at one moment share an id.
 {{else if (eq engine.slug "simple-2d")}}
@@ -74,6 +81,8 @@ as `DeepReadonly<ShatterState>` in any case.
 
 ```ts
 export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type SaucerEdge = "left" | "right";
+export type FieldEdge = "top" | "bottom" | "left" | "right";
 
 export interface ShipState {
   readonly x: number;
@@ -119,6 +128,7 @@ export interface SaucerState {
   readonly mind: boolean;
   readonly gun: boolean;
   readonly travel: boolean;
+  readonly weave: 1 | -1;
   readonly fireClock: number;
   readonly weaveClock: number;
   readonly age: number;
@@ -161,11 +171,16 @@ export interface ShatterState {
   readonly saucerClock: number;
   readonly saucerDue: number;
 
+  readonly nextSaucerEdge: SaucerEdge | null;
+  readonly nextSaucerRow: number | null;
+  readonly nextSaucerAim: number | null;
+  readonly nextRockSpeed: number | null;
+  readonly nextRecycleEdge: FieldEdge | null;
+
   readonly tickClock: number;
   readonly nextId: number;
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 }
 ```
 {{else}}
@@ -183,10 +198,12 @@ framework's states are live objects: a tick writes the fields it advances in
 place, and each field initializer below is that field's title-screen value, the
 same value the debug surface's `reset` restores. `GameState` comes from the
 engine's package, and `RockSize`, `START_LIVES`, `SAFE_X`, `SAFE_Y`, `FACE_UP`,
-`SAUCER_FIRST_DELAY`, and `DEFAULT_SEED` from `src/constants.ts`.
+and `SAUCER_FIRST_DELAY` from `src/constants.ts`.
 
 ```ts
 export type Screen = "title" | "howto" | "playing" | "paused" | "gameover";
+export type SaucerEdge = "left" | "right";
+export type FieldEdge = "top" | "bottom" | "left" | "right";
 
 export interface ShipState {
   x: number;
@@ -232,6 +249,7 @@ export interface SaucerState {
   mind: boolean;
   gun: boolean;
   travel: boolean;
+  weave: 1 | -1;
   fireClock: number;
   weaveClock: number;
   age: number;
@@ -284,11 +302,16 @@ export class ShatterState extends GameState {
   saucerClock = 0;
   saucerDue = SAUCER_FIRST_DELAY;
 
+  nextSaucerEdge: SaucerEdge | null = null;
+  nextSaucerRow: number | null = null;
+  nextSaucerAim: number | null = null;
+  nextRockSpeed: number | null = null;
+  nextRecycleEdge: FieldEdge | null = null;
+
   tickClock = 0;
   nextId = 1;
   simTime = 0;
   muted = false;
-  rngState = DEFAULT_SEED;
 }
 ```
 {{/if}}
@@ -322,7 +345,8 @@ export class ShatterState extends GameState {
   the rock exists.
 - `x`, `y`, `vx`, `vy` — its centre and its velocity.
 - `size` — `"large"`, `"medium"`, or `"small"`.
-- `spin` — its drawn rotation, in radians. It affects nothing but the drawing.
+- `spin` — the rotation it is drawn at, in radians. It affects nothing but the
+  drawing.
 {{#if (eq variant.slug "warhead")}}
 - `health` — the hits it has left, from `1` to the full health of its size.
 - `flash` — the seconds of hit flash left on it, `0` for none.
@@ -346,6 +370,10 @@ The one saucer slot, `null` when none is up.
 - `x`, `y`, `vx`, `vy` — its centre and its velocity.
 - `mind`, `gun`, `travel` — its three faculty gates, which the debug surface
   poses. Each is `true` for a saucer the game itself brought in.
+- `weave` — its weave direction, `1` for down and `-1` for up: the direction its
+  next reroll takes while it has no vertical velocity, as `specs/saucer.md`
+  states. It is drawn when the game brings the saucer in, `1` for one the debug
+  surface adds, and the debug surface poses it.
 - `fireClock` — the seconds until its next shot.
 - `weaveClock` — the seconds until its next weave reroll.
 - `age` — the seconds it has been on the field, against `SAUCER_LIFETIME`.
@@ -370,7 +398,22 @@ surface poses.
 - `saucerClock` — how far the current cadence has run, in seconds.
 - `saucerDue` — what `saucerClock` must reach for the next saucer to arrive. It is
   `SAUCER_FIRST_DELAY` at the start of a game and a fresh draw from
-  `SAUCER_GAP_MIN` to `SAUCER_GAP_MAX` after each saucer leaves.
+  `SAUCER_GAP_MIN` to `SAUCER_GAP_MAX` after each saucer leaves, and the debug
+  surface poses it.
+
+## Posed draws
+
+Each is the outcome the debug surface has posed for one draw the game has yet to
+make, and `null` when no pose stands. The draw that consumes a pose returns its
+field to `null`, and `reset` returns every one to `null`.
+
+- `nextSaucerEdge` — the edge the next saucer the game's cadence brings in enters
+  at.
+- `nextSaucerRow` — the row it enters at.
+- `nextSaucerAim` — the aim error, in radians, of the next shot the saucer fires.
+- `nextRockSpeed` — the base drift speed every rock of the next placement takes:
+  the next wave's rocks, or the next rock the star recycles.
+- `nextRecycleEdge` — the edge the next rock the star recycles re-enters at.
 
 ## The rest
 
@@ -383,8 +426,6 @@ surface poses.
 - `muted` — the game's readable copy of the runtime's mute bit, refreshed in every
   update. The runtime owns muting, and this field is what the debug surface
   reports.
-- `rngState` — the state of the game's seeded random generator, which every draw
-  `specs/simulation.md` lists comes from.
 
 ## The contract
 

@@ -35,7 +35,7 @@ another is whether the rules underneath it are exactly right. A chain step has t
 seed a clear set from the runs on the board, grow it to a fixed point through the
 cuts and the flawed stones, score it, spread strain to the survivors, collapse
 the columns, and refill — in one order, with one answer, every time. Around that
-sit a seeded deal that owes the player an opening board with a legal swap on it,
+sit a deal that owes the player an opening board with a legal swap on it,
 a legal-swap search that decides when the round is over, a move that is offered
 and withdrawn under the hand before a release commits it, animation the rules
 have to wait on rather than paper over, and six screens every one of which a

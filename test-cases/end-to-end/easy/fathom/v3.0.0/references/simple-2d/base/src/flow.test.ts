@@ -46,8 +46,8 @@ const NO_ART: Sheets = {
   trench: [],
 };
 
-function opening(seed = 1): FathomState {
-  return openingState(NO_ART, seed, false);
+function opening(): FathomState {
+  return openingState(NO_ART, false);
 }
 
 describe("the opening state", () => {
@@ -95,9 +95,8 @@ describe("the opening state", () => {
     expect(state.predators.map((p) => p.releaseIn)).toEqual([0, 5, 10]);
   });
 
-  it("reaches the same maze from the same seed and a different one otherwise", () => {
-    expect(opening(7).maze.rows).toEqual(opening(7).maze.rows);
-    expect(opening(7).maze.rows).not.toEqual(opening(8).maze.rows);
+  it("lays out a fresh maze for each opening", () => {
+    expect(opening().maze.rows).not.toEqual(opening().maze.rows);
   });
 });
 

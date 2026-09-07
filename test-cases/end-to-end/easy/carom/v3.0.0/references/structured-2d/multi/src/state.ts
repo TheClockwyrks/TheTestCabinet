@@ -5,8 +5,8 @@
 //
 //   * The game INSTANCE (`src/game.ts`) carries what must survive a level
 //     transition: the mode, the title menu's remembered selection, the
-//     accumulated simulation time, the seeded generator, the AI's two
-//     faculties, and the debug driver's hold on each paddle.
+//     accumulated simulation time, the AI's two faculties, and the debug
+//     driver's hold on each paddle.
 //   * The world's GAME STATE (`CaromState`, below) carries what is scoped to
 //     the screen a world is showing: the screen itself, the highlighted menu
 //     item, the screen a pause resumes to, the two scores, and the winner.
@@ -68,8 +68,7 @@ export class CaromState extends GameState {
   /**
    * The game instance, bound by `CaromGame.worldOpened` before the world's
    * first frame. It is how this world's controllers, actors, and mode reach the
-   * state that outlives a level: the mode, the driver, the AI's faculties, and
-   * the seeded generator.
+   * state that outlives a level: the mode, the driver, and the AI's faculties.
    */
   declare game: CaromGame;
 

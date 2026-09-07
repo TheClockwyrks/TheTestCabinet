@@ -88,7 +88,7 @@ describe("the pieces", () => {
       .map((c) => c.text);
     expect(lines).toContain("SITE 1 / 6");
     expect(lines).toContain("FIRST LIFT");
-    expect(lines).toContain("COST 0 / 3 000");
+    expect(lines).toContain("COST 0 / 3\u00A0000");
     expect(lines).toContain("TAPE 1 STEPS");
   });
 

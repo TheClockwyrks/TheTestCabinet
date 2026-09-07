@@ -18,9 +18,9 @@ Two ways to play ship in every build, chosen from the title menu.
 
 - Campaign: a course of twenty-four hand-built boards in four sets of six,
   opened in order as each is solved, with a select grid and a completion screen.
-- Cascade: endless. The game carries a seeded generator that emits a solvable
-  board on demand, holds every board to its tier's difficulty floor, and climbs
-  the tier as boards fall — five tiers, five boards each.
+- Cascade: endless. The game carries a generator that emits a solvable board on
+  demand, holds every board to its tier's difficulty floor, and climbs the tier
+  as boards fall — five tiers, five boards each.
 
 ## Why it is a benchmark
 
@@ -31,7 +31,7 @@ checked on each move and refusing it, and four are completion conditions,
 evaluated over a finished board and never used to refuse anything. Treating a
 completion condition as a limit rejects the first segment of every board,
 because an empty beam does not yet satisfy it. Around the rules sit a board
-generator that must produce genuinely solvable boards from a seed, pointer input
+generator that must produce genuinely solvable boards on demand, pointer input
 resolved against a hit radius smaller than half the cell pitch, two modes with
 six screens between them, and a debug surface that drives the real input path.
 

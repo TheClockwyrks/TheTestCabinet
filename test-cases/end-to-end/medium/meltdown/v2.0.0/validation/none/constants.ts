@@ -553,7 +553,6 @@ export function hpScale(w: number): number {
 export const BUILD_PHASE_TIME = 15;
 /** Seconds of game time between two releases of a wave. */
 export const WAVE_SPAWN_INTERVAL = 0.6;
-
 /** The types the opening eight waves field, in order. */
 export const WAVE_OPENING: readonly SurgeType[] = [
   "mote",
@@ -865,5 +864,3 @@ export const UNBOUND_KEY = "KeyZ";
 
 /** The version the surface reports. */
 export const MELTDOWN_DEBUG_VERSION = 1;
-/** The seed `reset` uses when none is named. */
-export const DEFAULT_SEED = 1;

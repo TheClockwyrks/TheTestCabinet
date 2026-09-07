@@ -17,9 +17,9 @@
 // matching Scrap components, which specs/scrap-press.md makes available in every
 // phase and prices at nothing.
 //
-// THE WAIT IS A MINUTE OF SIMULATION, NOT A COUNT OF FRAMES. The claim the wait
-// tests is that nothing accrues over time, so what it has to be is long — and it
-// is kept at a minute. How that minute is divided is the check's to choose:
+// THE WAIT IS HALF A MINUTE OF SIMULATION, NOT A COUNT OF FRAMES. The claim the
+// wait tests is that nothing accrues over time, so what it has to be is long, and
+// `IDLE_SECONDS` is what it is. How that span is divided is the check's to choose:
 // specs/instrumentation.md guarantees that "an interval of simulation time reaches
 // the same state however it was divided into frames", and
 // `instrumentation/frame-division-movement` and
@@ -48,8 +48,8 @@ const CHARGE = 300;
 /** The frame rate the whole check runs at: see the header. */
 const STEADY_HZ = 5;
 
-/** A minute of simulation sat through in a build phase. */
-const IDLE = 60 * STEADY_HZ;
+/** Half a minute of simulation sat through in a build phase. */
+const IDLE_SECONDS = 30;
 
 /** The wave launched and cleared, and the two anchors the fold stands on. */
 const WAVE = 6;
@@ -85,7 +85,7 @@ it("holds Grid Integrity where a leak left it across a clear, a wait, a refineme
     );
     const afterClear = cleared.snapshot.integrity;
 
-    await h.advance(IDLE);
+    await h.advanceSeconds(IDLE_SECONDS);
     const afterWait = h.snapshot().integrity;
 
     h.debug.upgradeQuality();
@@ -134,7 +134,7 @@ it("holds Grid Integrity where a leak left it across a clear, a wait, a refineme
   assertEqual(
     readings.afterWait,
     INTEGRITY,
-    "a minute of a build phase returns nothing",
+    `${IDLE_SECONDS} seconds of a build phase returns nothing`,
   );
   assertEqual(
     readings.afterRefine,

@@ -25,40 +25,33 @@
 // into the ground. `poseCrane` fails this check if any of it was refused, so the
 // crane graded is the crane described.
 //
-// THE RUN MISSES PAR ON TIME BY BEING SLOW. The tape is one move step, the hoist
-// let out `0.95` units at `0.05` a second — a rate "greater than `0` and at most
-// the axis's max rate", which specs/program.md accepts — so the step alone takes
-// nineteen seconds of run clock against a par of eighteen. Nothing else moves,
-// so the long run is a long run and not a risk of collapse.
+// THE RUN MISSES PAR ON TIME BY BEING POSED PAST IT. `setRunTick` "sets the
+// number of ticks the run has taken, from which the run clock is `tick / TICK_HZ`
+// seconds" (specs/instrumentation.md), so the run stands at nineteen seconds of
+// run clock — a second past par — the moment it starts, and the ticks that
+// decide the verdict are the two the tape costs rather than the nineteen hundred
+// a watch would take. The pose is a precondition like every other: the run is
+// still `running` when it is read back, and its own rules reach the verdict on
+// the ticks that follow.
 //
-// NINETEEN SECONDS OF RUN CLOCK IS THIS CHECK'S IRREDUCIBLE COST, and the route
-// spends nothing else. The clock is the tick count over `TICK_HZ` and no pose in
-// specs/instrumentation.md writes it, so a clear reached past a par time of
-// eighteen seconds has to be TICKED past eighteen seconds — the one thing here
-// that cannot be posed. What the route refuses to spend is a crossing into the
-// page per tick: the ticks are driven as two batched runs, one to `18.1` seconds
-// where the run is already past par and still spending its step, and one that
-// carries it past the end of the step, rather than swept a tick at a time. The
-// tape is cut to the shortest that outlasts par rather than left at the
-// twenty-four seconds an arbitrary distance gave it, and the watch speed is left
-// where the run starts it: posing `setSpeedIndex` would cover the same run clock
-// in a quarter of the frames, and would make this item fail on a build whose
-// only fault was in the watch speed — a fault that belongs to another item.
+// THE TAPE IS ONE STEP THAT MOVES NOTHING. The `hoist` is commanded to the value
+// it already stands at, which `specs/program.md` makes a step "done on the tick
+// it is issued", so the tick after it finds no step left and is the tick the run
+// ends on. Nothing in the yard moves while the verdict is reached, and the watch
+// speed is left where the run starts it.
 //
 // THE LOAD IS PLACED THROUGH THE SURFACE, because what this point is about is
 // the verdict a spent tape reaches and not the lift that gets there.
 // specs/instrumentation.md: `setLoadPhase` to `"placed"` "sets the load down
 // exactly as a successful `release` leaves it", and "none of them reaches a
-// verdict: the run's own rules decide clearing". So the run is left to end
-// itself, on its own tick, with every load placed and both figures worse than
-// par.
+// verdict: the run's own rules decide clearing".
 //
 // THE YARD HOLDS ONE LOAD AND NOTHING ELSE: the crate Site 1 asks for, cleared
 // and added back, so the clear this point reads is a clear with a load in it.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertTrue } from "../assert";
-import { HOIST_START } from "../constants";
+import { HOIST_MAX_RATE, HOIST_START } from "../constants";
 import {
   DESIGNS,
   addOneLoad,
@@ -67,7 +60,7 @@ import {
   openSite,
   poseCrane,
   poseTape,
-  runTicks,
+  runUntil,
   startRun,
   ticksFor,
   type CraneDesign,
@@ -112,26 +105,22 @@ const LOAD = {
 };
 
 /**
- * Let the hoist out `0.95` units at `0.05` a second: nineteen seconds of tape,
- * a second past Site 1's par time and no longer. The ramp `HOIST_ACCEL` (`6`)
- * puts on and takes off at this rate is eight milliseconds at each end, so the
- * step is nineteen seconds to well inside a tick.
+ * One step that moves nothing: the `hoist` stands at `HOIST_START` when a run
+ * starts (specs/state.md), so specs/program.md finds this command arrived on the
+ * tick it is issued and the tick after it ends the run.
  */
-const SLOW_RATE = 0.05;
-const HOIST_TARGET = HOIST_START + 0.95;
-const STEP_TIME = 19;
 const TAPE: readonly TapeStepSpec[] = [
   {
     kind: "move",
-    commands: [{ axis: "hoist", target: HOIST_TARGET, rate: SLOW_RATE }],
+    commands: [{ axis: "hoist", target: HOIST_START, rate: HOIST_MAX_RATE }],
   },
 ];
 
-/** Past par by a tenth of a second, and still a second short of the step. */
-const PAST_PAR = ticksFor(PAR_TIME + 0.1);
+/** Nineteen seconds of run clock: a second past Site 1's par time, and no more. */
+const POSED_TICK = ticksFor(PAR_TIME + 1);
 
-/** From there to half a second past the end of the step, and so past the end. */
-const TO_THE_END = ticksFor(STEP_TIME + 0.5) - PAST_PAR;
+/** The tape is spent two ticks in, so this is a verdict rather than a wait. */
+const CAP = 8;
 
 let h: Harness;
 
@@ -164,15 +153,14 @@ it("clears the site on a run whose cost and time both miss par", async () => {
   );
 
   await startRun(h);
+  await h.debug.setRunTick(POSED_TICK);
   await h.debug.setLoadPhase(0, "placed");
 
-  // Two batched crossings: to past par with the step still live, then past the
-  // end of the step, where the run's own last tick has decided the verdict.
-  const running = await runTicks(h, PAST_PAR);
+  const running = await h.snapshot();
   assertEqual(
     running.run.phase,
     "running",
-    "the run at 18.1 seconds, past par and still spending the slow step " +
+    "the run at nineteen seconds of run clock, past par and still going " +
       "(specs/program.md)",
   );
   assertGreaterThan(
@@ -182,7 +170,12 @@ it("clears the site on a run whose cost and time both miss par", async () => {
       "time of 18 (specs/sites.md § Site 1 — First Lift)",
   );
 
-  const ended = await runTicks(h, TO_THE_END);
+  const ended = await runUntil(
+    h,
+    (s) => s.run.phase !== "running",
+    CAP,
+    "the run to reach a verdict of its own once the tape runs out",
+  );
 
   await h.capture(
     "over-par",

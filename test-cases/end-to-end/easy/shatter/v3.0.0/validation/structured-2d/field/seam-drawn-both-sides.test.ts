@@ -11,7 +11,7 @@
 // WHAT IS READ, AND WHY IT IS PIXELS. The look is the build's: `specs/overview.md`
 // fixes no palette, no rock shape and no line weight, only that a rock reads apart
 // from the field. So this reads the canvas rather than the drawing calls, and it
-// reads it as a DIFFERENCE against the same tick of the same seeded game with no
+// reads it as a DIFFERENCE against the same tick of the same empty game with no
 // rock on it (`paint.ts`), so the baseline is the field the build itself painted,
 // whatever it painted there, and what is asserted is the rock's own contribution
 // to it. Nothing here fixes a colour.

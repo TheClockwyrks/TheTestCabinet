@@ -42,26 +42,24 @@ const WORKERS = Math.max(availableParallelism(), 1);
 
 export default defineEngineValidationConfig({
   root: new URL("..", import.meta.url).pathname,
-  // A wave driven to its clear, or a run driven to its finale, is thousands of
-  // frames of real simulation, and a check that reads a whole campaign's worth of
-  // compositions drives fourteen of them in one test. Those drives run in this
-  // process rather than in a browser, so a file in flight is a core in use.
+  // A wave driven to its clear, and a run driven to its finale, are posed rather
+  // than played out: a check reaches the state its requirement is about through
+  // the debug API and spends its frames on the behaviour it reads, at a frame
+  // rate it chooses for the span it is covering. Those drives run in this process
+  // rather than in a browser, so a file in flight is a core in use.
   //
-  // FIVE MINUTES, MEASURED. Every produced file reaches the loader for every
-  // check, so a campaign drive blits the run's own art frame after frame rather
-  // than stroking geometry, and the heaviest files in this project were measured
-  // at three and a half minutes each with every worker simulating at once — past
-  // the three-minute ceiling that stood before. An allowance a CORRECT build can
-  // cross is a defect in the check, because it turns how busy the machine was into
-  // a lost point, so the ceiling is set against the measured worst case rather
-  // than against a quiet machine. It is still a cap on a hang rather than a budget
-  // anything spends, and the whole run is capped again from outside at forty-five
-  // minutes.
-  testTimeout: 300_000,
-  // The same allowance for a hook, and for the same measurement: a `beforeEach`
-  // here constructs an engine and awaits a game whose `initialize` decodes some
-  // hundred produced sprites, on a host where every other worker is simulating.
-  hookTimeout: 300_000,
+  // THIRTY SECONDS, WHICH IS A HANG CAP AND NOT A BUDGET. Every check in this
+  // project finishes in under three seconds on a quiet core, which is the ceiling
+  // `guides/authoring/writing-debug-apis-and-validators` sets and what the frame
+  // counts here are chosen against. The allowance is an order of magnitude above
+  // that so a check cannot lose its point to a busy machine, and a check that
+  // reaches it is hung rather than slow. The whole run is capped again from
+  // outside at forty-five minutes.
+  testTimeout: 30_000,
+  // The same allowance for a hook: a `beforeEach` here constructs an engine and
+  // awaits a game whose `initialize` decodes some hundred produced sprites, on a
+  // host where every other worker is simulating.
+  hookTimeout: 30_000,
   // ONE WORKER PER CORE, WHICH IS NEITHER OF VITEST'S TWO EASY ANSWERS.
   //
   // Left alone, vitest takes `availableParallelism() - 1` workers. On the two-core

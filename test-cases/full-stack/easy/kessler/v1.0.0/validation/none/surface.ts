@@ -68,6 +68,8 @@ export const REQUIRED_OPS = [
   "setRingSpeed",
   "clearPods",
   "spawnPod",
+  "setNextPod",
+  "drawPod",
   "setEffectTicks",
   "setShield",
   "setWaveAdvance",
@@ -113,6 +115,9 @@ export interface RingSnapshot {
   targets: TargetSnapshot[];
 }
 
+/** What `setNextPod` poses for the next draw: a kind, `none`, or nothing. */
+export type PodPose = PodKind | "none" | null;
+
 /** One falling pod, in spawn order, oldest first. */
 export interface PodSnapshot {
   kind: string;
@@ -140,8 +145,6 @@ export interface KesslerSnapshot {
   wave: number;
   score: number;
   lives: number;
-  /** The seed the last `reset` laid the pod generator with. */
-  seed: number;
   /** Ticks left of the interstitial; counts down on `waveclear` alone. */
   interstitialTicks: number;
   /** Whether the frame loop advances the simulation from the wall clock. */
@@ -149,6 +152,8 @@ export interface KesslerSnapshot {
   /** The two driver switches, each on by default and restored by `reset`. */
   waveAdvance: boolean;
   podSpawn: boolean;
+  /** The outcome `setNextPod` posed for the next draw; `null` once consumed. */
+  nextPod: PodPose;
   paddle: { angleDeg: number; spanDeg: number };
   balls: BallSnapshot[];
   /** Always three entries, ring 1 first. */
@@ -179,8 +184,8 @@ export interface KesslerDebugApi {
   /** Run `ticks` whole ticks (>= 1, default 1), each followed by a render. */
   step(ticks?: number): void;
 
-  /** Restore the boot state; `seed` seeds the pod generator. */
-  reset(seed?: number): void;
+  /** Restore the boot state, with no posed pod outcome. */
+  reset(): void;
   /** A pure read of the state. It changes nothing. */
   snapshot(): KesslerSnapshot;
   /**
@@ -225,8 +230,12 @@ export interface KesslerDebugApi {
 
   /** Remove every falling pod. Nothing is caught and nothing burns. */
   clearPods(): void;
-  /** Add one pod of `kind` at `(x, y)`; the generator is not consumed. */
+  /** Add one pod of `kind` at `(x, y)`; no draw is made. */
   spawnPod(kind: PodKind, x: number, y: number): void;
+  /** Pose the next draw's outcome: a kind, or `none`; consumed by that draw. */
+  setNextPod(kind: PodKind | "none"): void;
+  /** Perform one pod draw alone and return its outcome; changes nothing. */
+  drawPod(): PodKind | null;
 
   /** Set a timed effect's timer; `> 0` puts it in force, `0` ends it. */
   setEffectTicks(kind: "widen" | "narrow" | "pierce", ticks: number): void;

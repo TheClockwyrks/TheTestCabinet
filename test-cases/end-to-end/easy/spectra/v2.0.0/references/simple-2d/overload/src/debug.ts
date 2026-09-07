@@ -28,7 +28,6 @@
 // and the snapshot reports it).
 
 import {
-  DEFAULT_SEED,
   OVERLOAD_AT,
   RESONANCE_MAX,
   SHIP_X_MAX,
@@ -161,10 +160,7 @@ type Pose = (state: DeepReadonly<SpectraState>) => SpectraState;
 export interface SpectraDebugApi {
   version: number;
 
-  reset(
-    state: DeepReadonly<SpectraState>,
-    options?: { seed?: number },
-  ): SpectraState;
+  reset(state: DeepReadonly<SpectraState>): SpectraState;
   snapshot(state: DeepReadonly<SpectraState>): SpectraSnapshot;
   menuItemRect(
     state: DeepReadonly<SpectraState>,
@@ -353,9 +349,9 @@ export function createDebugApi(): SpectraDebugApi {
 
     // ---- The core --------------------------------------------------------
 
-    reset: (state, options) =>
+    reset: (state) =>
       pose((sim) => {
-        resetToTitle(sim, options?.seed ?? DEFAULT_SEED);
+        resetToTitle(sim);
       })(state),
 
     snapshot: (state) => snapshot(state),

@@ -13,7 +13,7 @@
 //   specs/controls.md ("Moving the lamplighter"): "On `playing`, the four
 //   movement actions are read as held values, sampled once per frame and
 //   applied to every tick that frame consumes."
-//   specs/instrumentation.md ("A deterministic core"): "On `playing`, each
+//   specs/instrumentation.md ("A render-free core"): "On `playing`, each
 //   frame's delta time joins the accumulator, every whole `TICK_DT` in it is
 //   consumed as a tick", with `TICK_DT` `1 / 60`, so a frame of 0.05 s is
 //   three ticks (0.05 × 60 = 3, and "a remainder whose magnitude is below

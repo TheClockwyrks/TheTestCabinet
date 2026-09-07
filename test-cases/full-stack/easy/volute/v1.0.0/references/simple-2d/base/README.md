@@ -127,7 +127,7 @@ const engine = createEngine({
 await engine.initialize();
 
 const debug = engine.debug;
-engine.apply((s) => debug.reset(s, { seed: 1 }));
+engine.apply((s) => debug.reset(s));
 engine.apply((s) => debug.setScore(s, 0));
 engine.apply((s) => debug.setCells(s, CELLS));
 engine.apply((s) => debug.startLevel(s, 1));
@@ -136,7 +136,9 @@ console.log(debug.snapshot(engine.state).train.length);
 ```
 
 A pose arranges the hall and decides nothing: every insertion, extraction, score,
-chain step, mark, cell, clear and ending comes from the ticks run after it, so
-the same seed and the same calls reach the same state every time.
+chain step, mark, cell, clear and ending comes from the ticks run after it. Where
+the game would draw at random, a scenario poses the outcome instead: `poseTrain`
+the cores on the channel, `setLoaded` and `setQueued` the injector's charges, and
+`setNextEmitted` the charge of the next core the inlet emits.
 
 The backtick key opens the engine's read-only overlay on the same ground truth.

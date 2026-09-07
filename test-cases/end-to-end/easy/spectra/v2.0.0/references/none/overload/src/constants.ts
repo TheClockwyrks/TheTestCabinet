@@ -343,8 +343,6 @@ export const BAND_LABELS: Readonly<Record<Band, string>> = {
 
 /** The version the surface reports. */
 export const SPECTRA_DEBUG_VERSION = 1;
-/** The seed `reset()` uses when it is given none. */
-export const DEFAULT_SEED = 1;
 /** The `KeyboardEvent.code` that shows and hides the debug overlay. */
 export const OVERLAY_KEY = "Backquote";
 /** The `window` property the surface is installed on. */

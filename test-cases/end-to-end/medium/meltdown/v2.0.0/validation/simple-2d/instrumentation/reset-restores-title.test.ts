@@ -104,6 +104,7 @@ it("restores every declared field, and leaves muted exactly as it stands", async
   h.debug.setHoverShop("lance");
   h.debug.setArmed("bloom");
   h.debug.setWaveSpawning(false);
+  h.debug.setSpawnVent("top");
 
   // The mute bit, through the action's own binding — the only way a build's
   // surface offers.
@@ -143,6 +144,7 @@ it("restores every declared field, and leaves muted exactly as it stands", async
   assertLength(title.towers, 0, "the tower roster is emptied");
   assertLength(title.surge, 0, "the surge roster is emptied");
   assertEqual(title.waveSpawning, true, "the world gate is turned back on");
+  assertNull(title.spawnVent, "spawnVent: the vent pose is cleared");
 
   // The one field the specification names as untouched.
   assertEqual(

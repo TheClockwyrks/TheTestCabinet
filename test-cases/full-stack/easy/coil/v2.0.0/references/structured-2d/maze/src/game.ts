@@ -38,7 +38,6 @@ import { Arena } from "./arena";
 import { loadSprites, NO_SPRITES, type SnakeSprites } from "./assets";
 import { defineCues, playTickEvents, stopMusicOffTheRound } from "./audio";
 import {
-  DEFAULT_SEED,
   OBSTACLE_CELLS,
   START_CELLS,
   START_DIR,
@@ -52,7 +51,6 @@ import { createDebugApi, type CoilDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { goTo } from "./flow";
 import { registerActions } from "./input";
-import { seedState } from "./rng";
 import { tick } from "./sim";
 import { COLORS } from "./theme";
 
@@ -120,13 +118,16 @@ export class CoilState extends GameState {
   travel = true;
   /** The placement inside step 5. */
   pelletRespawn = true;
+  /**
+   * The cell `setNextPellet` posed for the next spawn, or `null` while none
+   * stands. The spawn that consumes it decides whether it is valid.
+   */
+  nextPellet: Cell | null = null;
 
   /** Game time held past the last whole tick, carried into the next frame. */
   accumulator = 0;
   /** Seconds left of the head's bite; `0` is the resting pose. */
   biteRemaining = 0;
-  /** The pellet generator's whole state (`src/rng.ts`). */
-  rngState = seedState(DEFAULT_SEED);
 
   /**
    * The produced sprite set the renderer draws the snake from, handed over by

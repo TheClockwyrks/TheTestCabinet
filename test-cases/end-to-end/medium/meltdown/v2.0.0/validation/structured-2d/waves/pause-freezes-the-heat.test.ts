@@ -14,16 +14,18 @@
 // ================================ THE CLOCK RULE ============================
 //
 // ANY CHECK ABOUT WHETHER TIME PASSES IS MEASURED ON THE CLOCK THE PLAYER'S GAME
-// ACTUALLY RUNS ON, NEVER THROUGH A STEPPING OPERATION. So nothing steps the
-// game here either: `windowOfRealTime` hands the frame loop and a real-time
-// clock back to the build for each leg (`harness.ts`, Windows on the build's own
-// clock). TWO LEGS OF THE SAME LENGTH ON THE SAME TOWER, a running one its heat
-// must move across and a paused one it must not; BOTH PAUSED READINGS FROM THE
-// ONE SNAPSHOT ON THE PRESS, which is what `windowOfRealTime` guarantees; and
-// the pause pressed through its real binding rather than posed with `setScreen`,
-// which runs no screen entry effect (`specs/instrumentation.md`). The running
-// leg is what stops a build with no heat model at all passing the paused one
-// vacuously.
+// ACTUALLY RUNS ON, NEVER THROUGH A STEPPING OPERATION. Under this engine
+// `engine.advance` is the engine's own frame loop running the identical frame a
+// player's frame runs, so `windowOfFrames` IS the player's clock (`harness.ts`,
+// Windows on the build's own clock); what the rule binds is the shape. TWO LEGS
+// OF THE SAME LENGTH ON THE SAME TOWER, a running one its heat must move across
+// and a paused one it must not; BOTH PAUSED READINGS FROM THE ONE SNAPSHOT ON
+// THE PRESS, which is what `windowOfFrames` guarantees; and the pause pressed
+// through its real binding rather than posed with `setScreen`, which runs no
+// screen entry effect (`specs/instrumentation.md`). Each leg is a stated number
+// of frames of a stated length rather than a stretch of wall clock, so the same
+// game time lands on any machine. The running leg is what stops a build with no
+// heat model at all passing the paused one vacuously.
 //
 // ============================================================================
 //
@@ -64,12 +66,7 @@
 // heat model fails the running leg.
 
 import { afterEach, beforeEach, it } from "vitest";
-import {
-  assertEqual,
-  assertGreaterThan,
-  assertLessThan,
-  assertTrue,
-} from "../assert";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { BINDINGS } from "../constants";
 import {
   captureReplay,
@@ -77,9 +74,9 @@ import {
   poseTarget,
   poseTower,
   startRun,
+  ticksFor,
   towerById,
-  windowOfClockGain,
-  windowOfRealTime,
+  windowOfFrames,
   type Harness,
 } from "../harness";
 import { heatMoved } from "./run";
@@ -111,40 +108,16 @@ const MARK = { col: 7, row: 4 } as const;
 const MARK_HP = 10_000;
 
 /**
- * The length of the RUNNING leg: a second and a half of the BUILD'S OWN clock,
- * spent by the build's own loop.
+ * The length of each leg: a second and a half of the build's own clock, in
+ * frames of the suite's.
  *
- * Nothing steps the game across it — the rule above is the whole item — but a leg
- * closed by a STOPWATCH covers however much game time this machine's scheduler let
- * the loop produce, each frame worth at most the `WallClock`'s clamp. On a loaded
- * runner that is a fraction of what the same build produces idle, so a heat floor
- * read off such a leg fails a conformant build for the load on the machine that
- * scored it. Closed on `simTime` the leg holds the ten shots the figures below are
- * counted from on any machine, and takes longer on a slow one instead of firing
- * fewer.
+ * At the Stutter's specified `7.0` shots a second the running leg holds ten of
+ * them, so the heat it produces is several times the bound below however the
+ * shots fall inside it. The same frames of the same clock on any machine, so
+ * the game time each leg covers is the specification's and nothing about the
+ * host.
  */
-const WINDOW_SECONDS = 1.5;
-
-/**
- * The real time the running leg is given to gain {@link WINDOW_SECONDS}: a minute.
- * A ceiling on the HOST, not a bound on the build; a leg that never closes means
- * the simulation does not advance unless something steps it, which is
- * `waves.game-runs-on-its-own-clock`'s verdict rather than this item's.
- */
-const WINDOW_DEADLINE_MS = 60_000;
-
-/**
- * The real time the PAUSED leg is spent over: as long as the running leg took, and
- * never less than a second and a half nor more than ten.
- *
- * A paused leg cannot be closed on the build's own clock, because the whole claim
- * is that the clock does not move; so it is spent in real time, and giving it the
- * real time the running leg beside it needed keeps the two comparable on a machine
- * of any speed. Neither bound can fail a correct build — a longer paused window
- * only gives a heat pass that kept running more room to show itself.
- */
-const PAUSED_FLOOR_MS = 1500;
-const PAUSED_CAP_MS = 10_000;
+const WINDOW = ticksFor(1.5);
 
 /**
  * The least the heat must move across the running leg: `30` points.
@@ -161,18 +134,13 @@ const MIN_HEAT_GAIN = 30;
 /**
  * The most the heat may move across the paused leg: `9` points.
  *
- * Not zero, and the figure is one shot's worth. The press and the heat are read
- * a round trip apart, a build may legally resolve an injected key on the frame
- * after it arrived, and that frame may be the one on which a shot lands: one
- * Stutter shot is `4.2` heat into a mass of `0.5`, which is `8.4`. Nine clears
- * it, and it is under a third of what a leg that kept firing moves.
+ * Not zero, and the figure is one shot's worth. A build may legally resolve an
+ * injected key on the frame after it arrived, and that frame may be the one on
+ * which a shot lands: one Stutter shot is `4.2` heat into a mass of `0.5`, which
+ * is `8.4`. Nine clears it, and it is under a third of what a leg that kept
+ * firing moves.
  */
 const MAX_HEAT_DRIFT = 9;
-
-/** The paused leg's real length, from the real time the running leg took. */
-function pausedWindowMs(runningElapsedMs: number): number {
-  return Math.min(Math.max(runningElapsedMs, PAUSED_FLOOR_MS), PAUSED_CAP_MS);
-}
 
 let h: Harness;
 
@@ -190,14 +158,10 @@ it("holds a firing tower's heat across a paused window it climbed the one before
   poseTarget(h, "mote", MARK.col, MARK.row, MARK_HP);
 
   const legs = await captureReplay(h, "frozen", async () => {
-    const running = await windowOfClockGain(
-      h,
-      WINDOW_SECONDS,
-      WINDOW_DEADLINE_MS,
-    );
+    const running = await windowOfFrames(h, WINDOW);
     await h.tap(PAUSE_KEY);
     const screen = h.snapshot().screen;
-    const paused = await windowOfRealTime(h, pausedWindowMs(running.ms));
+    const paused = await windowOfFrames(h, WINDOW);
     return { running, paused, screen };
   });
 
@@ -207,20 +171,14 @@ it("holds a firing tower's heat across a paused window it climbed the one before
     0,
     `precondition: the heat the ${TOWER} opened the running leg at`,
   );
-  assertTrue(
-    legs.running.reached,
-    `precondition: the build's own clock gained ${WINDOW_SECONDS} seconds with ` +
-      `nothing stepping it, within ${WINDOW_DEADLINE_MS / 1000}s of real time`,
-  );
   assertGreaterThan(
     heatMoved(legs.running, gun, "running leg"),
     MIN_HEAT_GAIN,
-    `the heat a firing ${TOWER} gained across the ${WINDOW_SECONDS} seconds the ` +
-      `build's own clock gained`,
+    `the heat a firing ${TOWER} gained across the running leg`,
   );
   assertLessThan(
     Math.abs(heatMoved(legs.paused, gun, "paused leg")),
     MAX_HEAT_DRIFT,
-    `the heat a firing ${TOWER} moved by across a paused leg of the same real length`,
+    `the heat a firing ${TOWER} moved by across a paused leg of the same length`,
   );
 });

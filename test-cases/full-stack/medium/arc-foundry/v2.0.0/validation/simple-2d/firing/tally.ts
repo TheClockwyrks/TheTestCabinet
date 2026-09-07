@@ -23,7 +23,6 @@ import {
   standComponent,
   structureById,
   type StructureView,
-  ticks,
 } from "../harness";
 import { difficultyById, loadDef, scaledHp } from "../constants";
 
@@ -39,6 +38,16 @@ export const PLACES = [
 
 /** How long the Emitter is given to work through them, in seconds. */
 const PATIENCE = 20;
+
+/**
+ * The rate the clearing is driven at.
+ *
+ * The frames are a cadence being sat out rather than frames anything is read on,
+ * and specs/instrumentation.md guarantees that "an interval of simulation time
+ * reaches the same state however it was divided into frames". A shot still steps
+ * well inside the `2 * PROJECTILE_HIT_R` window it has to be caught in here.
+ */
+export const TALLY_HZ = 60;
 
 /** One Mote's health at wave 1 on Medium, from `specs/enemies.md`'s formula. */
 export const MOTE_HP = scaledHp(
@@ -69,7 +78,7 @@ export async function clearsThreeMotes(
 
   const cleared = await captureReplay(h, output, () =>
     h.until((s) => s.units.length === 0, {
-      maxFrames: ticks(PATIENCE),
+      maxFrames: h.ticks(PATIENCE),
       poll: 2,
     }),
   );

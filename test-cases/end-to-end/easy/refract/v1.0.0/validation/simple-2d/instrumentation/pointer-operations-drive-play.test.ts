@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 it("draws a beam purely from code, each call taking effect as it is made", async () => {
-  await resetTo(h, 1);
+  await resetTo(h);
   await loadBoard(h, GEO_3X3);
 
   // The press, on the emitter's center: the trace begins in the same call —

@@ -1002,22 +1002,46 @@ describe("the release", () => {
     expect([...types]).toEqual(["sprint"]);
   });
 
-  it("draws each unit's vent from the seed", async () => {
-    const vents = async (seed: number): Promise<string[]> => {
-      h.pose((d, s) => d.reset(s, seed));
+  it("uses both vents across a wave with no vent posed", async () => {
+    h.pose((d, s) => d.reset(s));
+    h.pose((d, s) => d.setScreen(s, "playing"));
+    h.pose((d, s) => d.setPhase(s, "wave"));
+    h.pose((d, s) => d.setLives(s, 1_000));
+    h.pose((d, s) => d.setWavePending(s, 40));
+    // Gathered as they arrive, because an undefended floor leaks them again.
+    const vents = new Map<number, string>();
+    for (let interval = 0; interval < 40; interval += 1) {
+      await h.engine.advance(72);
+      for (const u of h.snap().surge) vents.set(u.id, u.vent);
+    }
+    expect(vents.size).toBe(40);
+    expect(new Set(vents.values()).size).toBe(2);
+  });
+
+  it("enters every released unit at the posed vent while one is posed", async () => {
+    for (const vent of ["left", "top"] as const) {
+      h.pose((d, s) => d.reset(s));
       h.pose((d, s) => d.setScreen(s, "playing"));
       h.pose((d, s) => d.setPhase(s, "wave"));
-      h.pose((d, s) => d.setWavePending(s, 12));
-      await h.engine.advance(12 * 72);
-      return h.snap().surge.map((u) => u.vent);
-    };
-    const first = await vents(7);
-    const again = await vents(7);
-    const other = await vents(8);
-    expect(first).toHaveLength(12);
-    expect(first).toEqual(again);
-    expect(first).not.toEqual(other);
-    expect(new Set(first).size).toBe(2);
+      h.pose((d, s) => d.setSpawnVent(s, vent));
+      h.pose((d, s) => d.setWavePending(s, 8));
+      await h.engine.advance(8 * 72);
+      const vents = h.snap().surge.map((u) => u.vent);
+      expect(vents).toHaveLength(8);
+      expect(new Set(vents)).toEqual(new Set([vent]));
+    }
+  });
+
+  it("draws a vent on its own, both vents over a run, and poses nothing", () => {
+    startRun();
+    h.pose((d, s) => d.setSpawnVent(s, "top"));
+    h.pose((d, s) => d.addUnit(s, "mote", "left"));
+    const before = h.snap();
+    const drawn = new Set<string>();
+    for (let i = 0; i < 200; i += 1)
+      drawn.add(h.engine.debug.drawVent(h.engine.state));
+    expect([...drawn].sort()).toEqual(["left", "top"]);
+    expect(h.snap()).toEqual(before);
   });
 });
 

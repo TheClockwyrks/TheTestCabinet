@@ -9,6 +9,7 @@ import {
   ITEM_LEN,
   LEVEL_GAP_EVERY,
   LEVEL_SPEED_STEP,
+  ROW_MEDIAN,
   STRAIT_W,
   TILE,
   WATER_LANES,
@@ -189,7 +190,11 @@ describe("the per-level scaling", () => {
   });
 
   it("replaces both rosters with fresh ids and leaves the rest standing", () => {
-    harness.debug.addCritter(12, 9);
+    // The critter stands on the median: its footing is derived from the floes
+    // on its row, and the relaid water band is the level's own fresh draw, so a
+    // critter on a water row could read a different footing without having
+    // been touched.
+    harness.debug.addCritter(12, ROW_MEDIAN);
     harness.debug.setBearEmergence(false);
     harness.debug.addBear(12, 12);
     harness.debug.setBay(2, true);

@@ -20,8 +20,7 @@
 // no catch can precede the burn-up.
 //
 // THE WORLD IS ONE POD AND THE PLANET: isolate() empties the field and holds
-// both driver switches, and spawnPod leaves the seeded generator where it
-// stands.
+// both driver switches, and spawnPod makes no draw.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLength } from "../assert";

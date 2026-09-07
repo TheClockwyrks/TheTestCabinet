@@ -22,7 +22,7 @@ import {
   type RockSize,
 } from "./constants";
 import { takeId } from "./entities";
-import type { RockState, ShatterState } from "./game";
+import type { FieldEdge, RockState, ShatterState } from "./game";
 import { randomInt, randomRange } from "./rng";
 
 /** How far inside the edge a re-entering rock is placed. */
@@ -57,7 +57,11 @@ export function advanceSpins(state: ShatterState): void {
 
 /** A fresh base drift speed for a rock of `size`, drawn from its own range. */
 export function baseDriftSpeed(state: ShatterState, size: RockSize): number {
-  return randomRange(state, ROCK_SPEED_MIN[size], ROCK_SPEED_MAX[size]);
+  // The speed the debug surface posed for the next placement, consumed here, or
+  // a draw from the size's own range.
+  const posed = state.nextRockSpeed;
+  state.nextRockSpeed = null;
+  return posed ?? randomRange(ROCK_SPEED_MIN[size], ROCK_SPEED_MAX[size]);
 }
 
 /**
@@ -108,29 +112,32 @@ export function shatterRock(
  * nothing scores.
  */
 export function recycleRock(state: ShatterState, rock: RockState): void {
-  const edge = randomInt(state, 0, 3);
+  // The posed edge where the debug surface posed one, consumed here; else a
+  // draw, each edge a quarter of the time.
+  const edge = state.nextRecycleEdge ?? FIELD_EDGES[randomInt(0, 3)];
+  state.nextRecycleEdge = null;
   const speed = baseDriftSpeed(state, rock.size);
-  const spread = randomRange(state, -REENTRY_SPREAD, REENTRY_SPREAD);
+  const spread = randomRange(-REENTRY_SPREAD, REENTRY_SPREAD);
 
   let inward: number;
   switch (edge) {
-    case 0:
+    case "left":
       rock.x = REENTRY_INSET;
-      rock.y = randomRange(state, 0, FIELD_H);
+      rock.y = randomRange(0, FIELD_H);
       inward = 0;
       break;
-    case 1:
+    case "right":
       rock.x = FIELD_W - REENTRY_INSET;
-      rock.y = randomRange(state, 0, FIELD_H);
+      rock.y = randomRange(0, FIELD_H);
       inward = Math.PI;
       break;
-    case 2:
-      rock.x = randomRange(state, 0, FIELD_W);
+    case "top":
+      rock.x = randomRange(0, FIELD_W);
       rock.y = REENTRY_INSET;
       inward = Math.PI / 2;
       break;
     default:
-      rock.x = randomRange(state, 0, FIELD_W);
+      rock.x = randomRange(0, FIELD_W);
       rock.y = FIELD_H - REENTRY_INSET;
       inward = -Math.PI / 2;
       break;
@@ -140,3 +147,6 @@ export function recycleRock(state: ShatterState, rock: RockState): void {
   rock.vx = Math.cos(heading) * speed;
   rock.vy = Math.sin(heading) * speed;
 }
+
+/** The four edges, in the order a drawn index names them. */
+const FIELD_EDGES: readonly FieldEdge[] = ["left", "right", "top", "bottom"];

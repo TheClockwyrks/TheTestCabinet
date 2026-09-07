@@ -56,8 +56,7 @@ export const STARFIELD_MIN = 40;
  * A frame worth `dt` runs `n = max(1, ceil(dt / SUBSTEP_MAX))` sub-steps of
  * `h = dt / n`, so one second of game time covers exactly the same ground
  * whether it arrives as one frame, as sixty, or as a hundred and twenty. That is
- * what `instrumentation/deterministic-core` asserts as an identity rather than as
- * a tolerance.
+ * what `instrumentation/elapsed-time-steps` holds each division to.
  */
 export const SUBSTEP_MAX = 1 / 120;
 
@@ -498,6 +497,3 @@ export type CueName = (typeof CUES)[number] | typeof OVERLOAD_CUE;
 
 /** The version the surface reports as `version`. */
 export const SPECTRA_DEBUG_VERSION = 1;
-
-/** The seed a bare `reset()` re-arms. */
-export const DEFAULT_SEED = 1;

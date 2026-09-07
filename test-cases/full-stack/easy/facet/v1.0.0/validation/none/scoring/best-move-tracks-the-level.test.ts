@@ -20,11 +20,10 @@
 // to one point because the maximum is one rule.
 //
 // THE TWO DRIVES ARE NOT REQUIRED TO SCORE ALIKE. The board and the swap are the
-// same, but the generator has advanced by the time the second drive runs, so R9's
-// refill deals differently and the chain may not run to the same depth. Each
-// drive is therefore measured against its OWN `moveScore`, read out of the same
-// snapshot as the `bestMove` it is compared with, rather than against the other
-// drive's figure.
+// same, but R9's refill is drawn afresh on each drive, so the two chains may not
+// run to the same depth. Each drive is therefore measured against its OWN
+// `moveScore`, read out of the same snapshot as the `bestMove` it is compared
+// with, rather than against the other drive's figure.
 //
 // WHEN THE READING IS TAKEN. Once `phase` has returned to `idle`, which is when
 // specs/rules.md says the figure is taken. `swapAndResolve` carries the board

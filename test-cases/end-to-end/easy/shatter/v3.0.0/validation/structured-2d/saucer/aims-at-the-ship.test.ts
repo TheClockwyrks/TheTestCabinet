@@ -3,98 +3,65 @@
 // THE RULE. `specs/saucer.md`, Firing: the saucer "fires one saucer bullet aimed
 // at the ship's current position", and "the shot's bearing is the bearing from the
 // saucer to the ship, offset by an angle drawn afresh for every shot, uniformly
-// from `-SAUCER_AIM_ERROR` to `+SAUCER_AIM_ERROR` (`10` degrees)". A single shot
-// therefore says almost nothing — it is entitled to be ten degrees off — so the
-// AIM is read as the mean of sixty of them, which the error cannot move.
+// from `-SAUCER_AIM_ERROR` to `+SAUCER_AIM_ERROR` (`10` degrees)".
 //
-// THE THREE DEGREES ARE DERIVED FROM THE SPECIFICATION AND THE SAMPLE SIZE, NEVER
-// FROM A REFERENCE RUN. The per-shot error is a uniform draw over
-// `+/- SAUCER_AIM_ERROR`, whose standard deviation is `E / sqrt(3)` = `5.77`
-// degrees. The mean of `n` such draws therefore has a standard error of
-// `E / sqrt(3n)`, which at `n = 60` is `0.745` degrees — so three degrees is four
-// standard errors, which a conformant build clears in all but about one run in
-// sixteen thousand, and which a build that aims at where the ship WAS, or at the
-// field's centre, or leads a stationary target, misses outright.
+// THE ERROR IS POSED AT ZERO, SO THE AIM IS READ DIRECTLY. The draw is what
+// stands between a shot and the bearing to the ship, and
+// `specs/instrumentation.md` gives the surface `setNextSaucerAim`, which sets the
+// outcome of that draw for the next shot. With it posed at `0` the round has to
+// leave along the bearing to the ship exactly, and the reading is one shot rather
+// than the mean of a sample. The draw's own range and scatter are
+// `aim-error-within-10-degrees`'s and `aim-error-varies-per-shot`'s items, read
+// off unposed shots.
 //
-// WHAT IS READ. The bearing each round's velocity runs along at the sample it
-// first appears on, against the bearing from the saucer to the ship — measured
-// along the shortest wrapped separation, which is what every rule that aims at a
-// body in this game means (`specs/field.md`) — and the mean of the sixty signed
-// differences.
+// TWO GUNNERS, ON OPPOSITE SIDES OF THE SHIP, so a build that fires along a fixed
+// bearing, or at the ship's safe point rather than at the ship, reads wrong on at
+// least one of them. Each is posed at rest with its mind and travel shut, so its
+// own velocity is zero and the round's velocity is the aim (`shots.ts`); the ship
+// stands `400` units from either, at rest with its lethal contact test shut.
 //
-// THE SAUCER IS POSED AT REST, AND THAT IS LOAD-BEARING. A round leaves at
-// `SAUCER_BULLET_SPEED` "plus the saucer's own velocity", and `addSaucer` brings a
-// craft on at `SAUCER_SPEED` (`140`) — which would tilt every bearing here by
-// seventeen degrees and grade the inheritance instead of the aim. The inheritance
-// is `saucer/bullet-carries-the-saucers-velocity`'s point;
-// `setSaucerVelocity(0, 0)` is what keeps it out of this one. The mind and the
-// travel are shut too, so the craft stands where it was put and the bearing to the
-// ship is one number for the whole run. See `shots.ts`.
+// THE TOLERANCE IS HALF A DEGREE, and it is a reading cost rather than room on
+// the rule. A round is ballistic from the moment it leaves, and this point
+// samples every `SHOT_TICKS_PER_FRAME` ticks, so a reading can be up to three
+// ticks old: at `(60, 60)` the well turns a `300`-unit-per-second round by
+// `0.05` degrees over those ticks, and at `(860, 60)`, `372` units from the star,
+// by `0.16`. A build that aims a whole degree off is twice the bound out.
 //
-// THE SHIP IS POSED 400 UNITS AWAY AND LEFT THERE, at rest with its lethal contact
-// test shut (`startPlaying`), so the rounds pass over it rather than ending the
-// run — and so "the ship's current position" is a fixed thing the sixty shots can
-// be averaged against.
-//
-// WHERE THE SCENARIO STANDS, AND WHY IT IS IN A CORNER. A round is ballistic from
-// the moment it leaves (`specs/saucer.md`: "It is pulled by the well"), and this
-// point samples every `SHOT_TICKS_PER_FRAME` ticks, so a reading can be up to
-// three ticks old. At `(60, 60)` the well pulls at `10.6` units per second squared
-// (`specs/gravity.md`), which over three ticks turns a `300`-unit-per-second round
-// by `0.05` degrees — a fifteenth of one standard error, and a sixtieth of the
-// bound. The lane to the ship passes `300` units clear of the star, so no round is
-// absorbed on its way there either.
+// WHAT THIS DOES NOT DECIDE. The bound on the error (`aim-error-within-10-degrees`)
+// or that it is redrawn (`aim-error-varies-per-shot`).
 
 import { afterEach, beforeEach, it } from "vitest";
-import { DEG, SAUCER_AIM_ERROR } from "../constants";
-import { assertLength, assertLessThanOrEqual } from "../assert";
+import { DEG } from "../constants";
+import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import { angleDelta } from "../geometry";
-import {
-  captureStill,
-  poseShip,
-  resetTo,
-  startPlaying,
-  type Harness,
-} from "../harness";
+import { captureStill, poseShip, startPlaying, type Harness } from "../harness";
 import {
   collectShots,
   createShotHarness,
   framesFor,
   poseGunner,
   SHOT_TICKS_PER_FRAME,
+  type GunPose,
 } from "./shots";
 
-/** The seed the run is opened on, so the sixty draws are the same every run. */
-const SEED = 1;
-
-/** Where the gunner stands, at rest. See the header for why this corner. */
-const GUN_POSE = { x: 60, y: 60, vx: 0, vy: 0 };
-
-/** Where the ship is posed: 400 units away, along the row the gunner is on. */
+/** Where the ship is posed: on the top row of the field, clear of the star. */
 const SHIP_X = 460;
 const SHIP_Y = 60;
 
-/** How many shots the mean is taken over. */
-const SHOTS = 60;
+/** The two gunners, `400` units either side of the ship along its row, at rest. */
+const GUN_POSES: readonly GunPose[] = [
+  { x: SHIP_X - 400, y: SHIP_Y, vx: 0, vy: 0 },
+  { x: SHIP_X + 400, y: SHIP_Y, vx: 0, vy: 0 },
+];
 
-/**
- * How long the collection may run for, in seconds of game time.
- *
- * Sixty shots at `SAUCER_FIRE_INTERVAL` is `96` s of firing, and a visit lasting
- * `SAUCER_LIFETIME` (`12` s) yields seven shots before the gunner has to be posed
- * again — so nine visits, about `110` s. `140` is the budget a run that never
- * reaches sixty is cut off at, so it is reported as a shot count rather than as a
- * bearing.
- */
-const BUDGET = 140;
+/** How long a wait for one shot runs, in seconds: a little over one interval. */
+const BUDGET = 3;
 
-/**
- * How far the mean bearing may sit from the bearing to the ship, in radians.
- *
- * Three degrees: four standard errors of the mean of `SHOTS` uniform draws over
- * `+/- SAUCER_AIM_ERROR`. See the header for the derivation.
- */
-const TOLERANCE = 3 * DEG;
+/** How far the shot's aim may stand from the bearing to the ship, in degrees. */
+const AIM_TOLERANCE_DEG = 0.5;
+
+/** The decimal places the posed error is read back to: exactly. */
+const READ_BACK_DIGITS = 9;
 
 let h: Harness;
 
@@ -106,42 +73,51 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("centres sixty shots on the bearing to the ship within three degrees", async () => {
-  resetTo(h, SEED);
+it("fires a shot with no aim error straight along the bearing to the ship", async () => {
   startPlaying(h);
   poseShip(h, { x: SHIP_X, y: SHIP_Y, vx: 0, vy: 0 });
-  poseGunner(h, GUN_POSE);
 
-  const shots = await collectShots(
-    h,
-    GUN_POSE,
-    SHOTS,
-    framesFor(BUDGET, SHOT_TICKS_PER_FRAME),
-  );
-  // The spread of sixty aimed shots at the ship.
-  // The sweep above runs undrawn, so one frame is drawn for the picture —
-  // after every reading the verdict rests on has been taken.
-  await h.paint();
-  captureStill(h, "aim");
+  for (const [index, pose] of GUN_POSES.entries()) {
+    h.debug.clearEnemyBullets();
+    h.debug.removeSaucer();
+    poseGunner(h, pose);
+    h.debug.setNextSaucerAim(0);
+    assertCloseTo(
+      h.snapshot().nextSaucerAim ?? Number.NaN,
+      0,
+      READ_BACK_DIGITS,
+      "setNextSaucerAim(0) read back before the shot (specs/instrumentation.md)",
+    );
 
-  assertLength(
-    shots,
-    SHOTS,
-    `rounds collected inside ${BUDGET} s of game time — the saucer fires one ` +
-      "every SAUCER_FIRE_INTERVAL it is on the field (specs/saucer.md)",
-  );
+    const shots = await collectShots(
+      h,
+      pose,
+      1,
+      framesFor(BUDGET, SHOT_TICKS_PER_FRAME),
+    );
+    if (index === 0) {
+      // The shot leaving straight for the ship. The collection runs undrawn, so
+      // one frame is drawn for the picture, after the reading was taken.
+      await h.paint();
+      captureStill(h, "aim");
+    }
 
-  const errors = shots.map((shot) => angleDelta(shot.aimed, shot.heading));
-  const mean = errors.reduce((sum, error) => sum + error, 0) / errors.length;
-
-  assertLessThanOrEqual(
-    Math.abs(mean / DEG),
-    TOLERANCE / DEG,
-    `the mean bearing of ${SHOTS} shots, in degrees off the bearing from the ` +
-      "saucer to the ship — the per-shot error is a uniform draw over " +
-      `+/- SAUCER_AIM_ERROR (${SAUCER_AIM_ERROR / DEG} degrees), so the mean ` +
-      `of ${SHOTS} has a standard error of ` +
-      `${(SAUCER_AIM_ERROR / DEG / Math.sqrt(3 * SHOTS)).toFixed(3)} degrees ` +
-      "and this bound is four of them (specs/saucer.md)",
-  );
+    assertLength(
+      shots,
+      1,
+      `a round fired from (${pose.x}, ${pose.y}) inside ${BUDGET} s of game ` +
+        "time — the saucer fires one every SAUCER_FIRE_INTERVAL it is on the " +
+        "field (specs/saucer.md)",
+    );
+    const shot = shots[0];
+    assertEqual(
+      Math.abs(angleDelta(shot.aimed, shot.heading)) / DEG <= AIM_TOLERANCE_DEG,
+      true,
+      `degrees between the shot's aim and the bearing from (${pose.x}, ` +
+        `${pose.y}) to the ship, with the aim error posed at 0: read ` +
+        `${(Math.abs(angleDelta(shot.aimed, shot.heading)) / DEG).toFixed(3)} ` +
+        `against ${AIM_TOLERANCE_DEG} — the shot is aimed at the ship's current ` +
+        "position (specs/saucer.md)",
+    );
+  }
 });

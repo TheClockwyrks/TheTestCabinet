@@ -9,7 +9,7 @@
 //     table's row reads "| 5:00 | 300 | Mothwing spawns at a spawn point |".
 //   - `specs/enemies.md` ("The spawn ring"): "A spawn point is
 //     `SPAWN_DISTANCE` (`760`) units from the lamplighter's center at an angle
-//     drawn uniformly from the seeded generator", which is where the event
+//     drawn uniformly over the full circle", which is where the event
 //     places what it spawns.
 //   - `specs/enemies.md` ("Scripted events"): "`firedEvents` lists the times
 //     that have fired, in ascending order whatever order they fired in."

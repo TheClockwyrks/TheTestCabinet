@@ -375,8 +375,8 @@ source = "specs/audio.md.hbs"
 [[spec]]
 source = "specs/state.md.hbs"
 
-# The debugging and automation surface every build must expose: a deterministic,
-# render-free core; every operation by name, signature and effect, the four faculty
+# The debugging and automation surface every build must expose: a render-free
+# core; every operation by name, signature and effect, the four faculty
 # gates among them; the snapshot shape; the identity rules for cards and flyers;
 # and a read-only debug overlay. Framed as an ordinary developer affordance of the
 # game. It branches on the engine for where the surface is reached, the operation
@@ -534,9 +534,9 @@ format = 2
 # The debug surface is a deliverable of the build, not a courtesy: it is how the
 # game is driven and inspected from code, and every other suite on this checklist
 # poses its scenario through it. These points check that it is really there,
-# really wired to the running game, really deterministic, and that each pose reads
-# back. A surface that reports a plausible-looking object unconnected to what is on
-# screen is the failure mode worth naming.
+# really wired to the running game, and that each pose reads back. A surface
+# that reports a plausible-looking object unconnected to what is on screen is
+# the failure mode worth naming.
 #
 # TWELVE OF THEM ARE THE FACULTY GATES. Cascade needs no world gates: nothing in
 # Klondike arrives uninvited, the game moves only when the player moves it, and an
@@ -557,13 +557,9 @@ format = 2
 # `cascade.trail-persists` and nothing else, and a build that paints correctly but
 # never clears fails these five and nothing else.
 #
-# Three items cap at `passable` rather than `broken`, deliberately. A build whose
-# seeded deal does not reproduce, or whose cascade is not reproducible from a seed,
-# is a completely playable game of Klondike with a completely watchable ending: the
-# player loses nothing. This category names all four domains, so capping such an
-# item `broken` would rate an otherwise perfect build broken across the board for a
-# defect no player can see. `broken` here is reserved for the surface every other
-# suite drives through.
+# `broken` here is reserved for the surface every other suite drives through;
+# a pose that reads back wrongly is a playable game with a defect no player can
+# see, and such items cap at `passable`.
 [[review.categories]]
 id = "instrumentation"
 title = "Instrumentation"
@@ -681,6 +677,15 @@ validation = { script = "instrumentation/launch-clock-reads-back.test.ts", outpu
   { id = "posed", name = "The table the posed launch clock was read off", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "draw-launch-vx-stands-alone"
+title = "The launch draw launches nothing"
+description = "drawLaunchVx() returns a number and leaves every field of snapshot() as it stood, with no card launched and no flyer added."
+domains = ["rules", "handling", "cascade", "presentation"]
+failure_cap = "passable"
+validation = { script = "instrumentation/draw-launch-vx-stands-alone.test.ts", outputs = [
+  { id = "drawn", name = "The table the draw was taken over, unchanged", kind = "image" },
+] }
+[[review.categories.items]]
 id = "reset-restores-title"
 title = "reset returns the game to its title values"
 description = "After a posed board, a held run, flyers in flight and every gate off, reset() restores each declared field to the value the specification lists and leaves muted untouched."
@@ -697,24 +702,6 @@ domains = ["rules", "handling", "cascade", "presentation"]
 failure_cap = "passable"
 validation = { script = "instrumentation/reset-clears-trail.test.ts", outputs = [
   { id = "cleared", name = "The clean table reset returned to", kind = "image" },
-] }
-[[review.categories.items]]
-id = "reset-seed-repeats-deal"
-title = "The same seed deals the same board"
-description = "reset({ seed }) then deal(), twice, produces the identical arrangement of all fifty-two cards."
-domains = ["rules", "handling", "cascade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seed-repeats-deal.test.ts", outputs = [
-  { id = "dealt", name = "The board the seed dealt, both times", kind = "image" },
-] }
-[[review.categories.items]]
-id = "reset-seed-differs"
-title = "Different seeds deal different boards"
-description = "Two different seeds produce different arrangements."
-domains = ["rules", "handling", "cascade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/reset-seed-differs.test.ts", outputs = [
-  { id = "dealt", name = "The two boards two seeds dealt", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "card-ids-distinct"
@@ -1070,15 +1057,6 @@ validation = { script = "instrumentation/sim-time-accumulates.test.ts", outputs 
   { id = "advanced", name = "The board after the advanced second", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "deterministic-cascade"
-title = "The same seed replays the same cascade"
-description = "Two runs from one seed, advanced identically, put every flyer at the same position within 0.5 units."
-domains = ["rules", "handling", "cascade", "presentation"]
-failure_cap = "passable"
-validation = { script = "instrumentation/deterministic-cascade.test.ts", outputs = [
-  { id = "replay", name = "One seed's cascade, replayed", kind = "replay" },
-] }
-[[review.categories.items]]
 id = "advances-in-frames"
 title = "The simulation advances on elapsed time alone"
 description = "With setLaunching(false) and one flyer posed clear of the floor and of both side edges, one second of game time covered as one frame and as sixty frames adds 1.0 to simTime either way and leaves the flyer's x the same within 0.5 units, so the simulation reads nothing from the renderer."
@@ -1325,11 +1303,11 @@ validation = { script = "deal/full-deck.test.ts", outputs = [
 [[review.categories.items]]
 id = "reshuffled"
 title = "Every deal is shuffled afresh"
-description = "Deals from two different seeds differ in the arrangement of their columns."
+description = "Two deals in a row differ in the arrangement of their columns."
 domains = ["rules"]
 failure_cap = "scuffed"
 validation = { script = "deal/reshuffled.test.ts", outputs = [
-  { id = "deals", name = "The two boards two seeds dealt", kind = "image" },
+  { id = "deals", name = "The two boards two deals laid out", kind = "image" },
 ] }
 # `specs/deal.md` states the clearing as part of what a new deal IS, so a build
 # that reads its specs puts it on the deal path and what `deal()` leaves behind is
@@ -3130,10 +3108,20 @@ title = "The Victory Cascade"
 # The mean is the honest figure because the launch rule carries its remainder, so
 # the cadence does not drift; a per-gap tolerance tighter than a frame would only
 # be measuring the validator's own step.
+#
+# THIS IS THE ITEM THAT SAYS OTHERWISE about the group's frame. The launch clock
+# adds each frame's delta and carries what it does not spend, so a card leaves at
+# the same game time however the interval was divided, and a frame decides only
+# which frame the launch is read on. The engine suites therefore watch these three
+# seconds in frames of 1/40 s, which is also what makes the CARRY readable: at
+# 1/240 s the interval is 43.2 frames, so a clock that zeroed its remainder where
+# the specification subtracts the interval launches every forty-fourth frame, a
+# cadence 1.9% wide and still seventeen cards over the window; at 1/40 s it
+# launches every eighth frame, 0.2 s apart, and fifteen cards over the window.
 [[review.categories.items]]
 id = "launch-cadence"
 title = "A card launches every 0.18 s"
-description = "Over three seconds advanced in frames of 1/240 s, exactly floor(3 / LAUNCH_INTERVAL) + 1 (17) cards have launched, and the mean gap between successive launches is within 2% of LAUNCH_INTERVAL."
+description = "Over three seconds of a running cascade, exactly floor(3 / LAUNCH_INTERVAL) + 1 (17) cards have launched, and the mean gap between successive launches is within 2% of LAUNCH_INTERVAL."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/launch-cadence.test.ts", outputs = [
@@ -3175,23 +3163,31 @@ failure_cap = "passable"
 validation = { script = "cascade/launch-vy.test.ts", outputs = [
   { id = "launch", name = "The launched card on its way up", kind = "image" },
 ] }
+# The two `vx` items are decided through `drawLaunchVx`, the operation that
+# performs one launch's draw and nothing else, rather than by reading a whole
+# cascade. The magnitude item reads a handful of draws and holds each to the
+# range; the sign item reads a small sample and holds it to carry more than one
+# sign, which a fair sign fails with a chance of one in 2^31, beyond six standard
+# deviations. Neither item asserts a ratio or a spread, because a sample cannot
+# decide a distribution without failing conformant builds by chance; what they
+# decide is that no draw leaves the range and that the sign varies.
 [[review.categories.items]]
 id = "launch-vx-magnitude"
 title = "A launched card's horizontal speed is in range"
-description = "Every launch's |vx| lies in [180, 420]."
+description = "Every one of a handful of values drawLaunchVx() returns has |vx| in [180, 420]."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/launch-vx-magnitude.test.ts", outputs = [
-  { id = "launches", name = "The spread of launch speeds", kind = "image" },
+  { id = "launches", name = "The drawn speeds, posed as cards in flight", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "launch-vx-both-signs"
 title = "Cards launch to both sides"
-description = "Across fifty-two launches both signs of vx occur."
+description = "A small sample of values drawLaunchVx() returns carries more than one sign."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/launch-vx-both-signs.test.ts", outputs = [
-  { id = "launches", name = "Cards launching to both sides", kind = "image" },
+  { id = "launches", name = "The drawn speeds carrying cards to both sides", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "gravity"

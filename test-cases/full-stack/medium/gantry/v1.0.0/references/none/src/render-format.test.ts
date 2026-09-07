@@ -46,9 +46,9 @@ describe("numbers", () => {
   it("groups a cost so it reads at a glance", () => {
     expect(cost(0)).toBe("0");
     expect(cost(940)).toBe("940");
-    expect(cost(2400)).toBe("2 400");
-    expect(cost(1234567)).toBe("1 234 567");
-    expect(cost(2399.6)).toBe("2 400");
+    expect(cost(2400)).toBe("2\u00A0400");
+    expect(cost(1234567)).toBe("1\u00A0234\u00A0567");
+    expect(cost(2399.6)).toBe("2\u00A0400");
   });
 
   it("reads a run clock off the tick count", () => {

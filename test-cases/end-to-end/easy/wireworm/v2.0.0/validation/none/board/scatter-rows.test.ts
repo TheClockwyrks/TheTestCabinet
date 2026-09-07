@@ -14,12 +14,12 @@
 // has entered and nothing has spawned: every node standing is a node the scatter
 // laid.
 //
-// Several seeds, because the tiles are drawn from the generator: a build that
-// clamps its row on one draw and not the next has a wrong rule, and the seeds
-// exercise that one edge the one way. HOW MANY nodes are laid is
-// board/scatter-density's requirement; the count is read here only far enough to
-// know a scatter happened at all, since a run that laid nothing would satisfy
-// every row rule by laying no rows.
+// Several runs, because the tiles are a draw: a build that clamps its row on one
+// draw and not the next has a wrong rule, and each run opened afresh is one draw
+// of the same rule. HOW MANY nodes are laid is a share of a generated world,
+// which no point counts; the count is read here only far enough to know a
+// scatter happened at all, since a run that laid nothing would satisfy every
+// row rule by laying no rows.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -31,8 +31,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seeds the scatter is read over. Each is one draw of the same rule. */
-const SEEDS = [1, 2, 3, 7, 11];
+/** The runs the scatter is read over. Each is one draw of the same rule. */
+const RUNS = [1, 2, 3];
 
 let h: Harness;
 
@@ -44,24 +44,24 @@ afterEach(async () => {
   await h?.dispose();
 });
 
-it.each(SEEDS)(
-  "keeps the entry row and the band clear from seed %i",
-  async (seed) => {
-    await startRunFromTitle(h, { seed });
+it.each(RUNS)(
+  "keeps the entry row and the band clear on run %i",
+  async (run) => {
+    await startRunFromTitle(h);
     await captureStill(h, "scatter");
 
     const { nodes } = await h.snapshot();
     assertGreaterThan(
       nodes.length,
       0,
-      `a starting scatter to read, from seed ${seed} (specs/nodes.md)`,
+      `a starting scatter to read, on run ${run} (specs/nodes.md)`,
     );
 
     const inEntryRow = nodes.filter((node) => node.r === ENTRY_ROW);
     assertEqual(
       inEntryRow.length,
       0,
-      `nodes laid in the entry row, row ${ENTRY_ROW}, from seed ${seed}`,
+      `nodes laid in the entry row, row ${ENTRY_ROW}, on run ${run}`,
     );
 
     const inBand = nodes.filter((node) => node.r >= BAND_TOP_ROW);
@@ -69,7 +69,7 @@ it.each(SEEDS)(
       inBand.length,
       0,
       `nodes laid in the player band, rows ${BAND_TOP_ROW}..${ROWS - 1}, ` +
-        `from seed ${seed}`,
+        `on run ${run}`,
     );
   },
 );

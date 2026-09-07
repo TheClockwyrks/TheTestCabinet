@@ -35,9 +35,6 @@ import {
   type Harness,
 } from "../harness";
 
-/** The seed both halves of the comparison run under. */
-const SEED = 3;
-
 /** Where the firing structure stands, and where its target is held. */
 const TOWER_AT = { col: 20, row: 10 };
 const TARGET_AT = { x: 600, y: 276 };
@@ -75,7 +72,7 @@ it("flies a projectile the same distance however the interval is divided", async
   // a fixed line and the comparison reads travel alone.
   const armed: { id: number; x: number; y: number }[] = [];
   for (const h of [coarse, fine]) {
-    openYard(h, { seed: SEED, wave: 1 });
+    openYard(h, { wave: 1 });
     standComponent(h, "discharge", 5, TOWER_AT.col, TOWER_AT.row);
     parkUnit(h, "overload", TARGET_AT);
 

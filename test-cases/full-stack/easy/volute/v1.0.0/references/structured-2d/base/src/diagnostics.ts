@@ -18,13 +18,13 @@ function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/** The two values that outlive a level transition, read off the instance. */
+/** The values that outlive a level transition, read off the instance. */
 export function registerInstanceDiagnostics(
   api: InitApi,
   game: VoluteGame,
 ): void {
-  api.diagnostics.register("seed", () => game.rngState >>> 0);
   api.diagnostics.register("sim", () => round(game.simTime()));
+  api.diagnostics.register("next emitted", () => game.nextEmitted ?? "-");
 }
 
 /** Everything read off the open world, registered as that world begins play. */

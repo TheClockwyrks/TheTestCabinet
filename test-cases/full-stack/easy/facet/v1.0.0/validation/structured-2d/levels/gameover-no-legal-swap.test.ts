@@ -17,7 +17,7 @@
 // selection" where they were, so the step keeps holding and reads this board
 // when its hold is up.
 //
-// That is what makes the check decide THIS point rather than the seeded refill.
+// That is what makes the check decide THIS point rather than the drawn refill.
 // Letting a chain run itself out on a board that happens to go dead leaves the
 // question to R9's random draw, which would answer differently for two builds
 // that are both right; posing the dead board outright asks every build the same

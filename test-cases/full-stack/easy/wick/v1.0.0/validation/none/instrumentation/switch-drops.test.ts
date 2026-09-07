@@ -1,15 +1,19 @@
 // Wick — instrumentation/switch-drops: with `setDrops(false)` a moth killed by
-// a bolt leaves nothing on the field, and with the switch back on the same kill
-// leaves its gem where it died.
+// a bolt leaves nothing on the field and makes no drop roll, so a posed
+// `nextDrop` stands; with the switch back on the same kill leaves its gem
+// where it died and the posed drop beside it.
 //
 // WHERE THE THRESHOLD COMES FROM (specs/instrumentation.md — "The driver
 // switches"): "`setDrops(on)` | `drops` | An enemy that dies leaves what
 // `specs/world.md` gives it: a common's gem and the bread or draft its roll
-// draws, and an elite's chest. | A death leaves nothing on the field and draws
-// nothing from the generator. The enemy still dies, still counts as a kill, and
-// still sounds." specs/world.md — "Gems": "While `drops` is on, every common
-// enemy drops one gem of the tier `specs/enemies.md` lists for its type, at the
-// enemy's position, on the tick it dies", and a moth's tier is that file's.
+// drops, and an elite's chest. | A death leaves nothing on the field and makes
+// no drop roll, so a posed `nextDrop` stands. The enemy still dies, still
+// counts as a kill, and still sounds." specs/world.md — "Gems": "While `drops`
+// is on, every common enemy drops one gem of the tier `specs/enemies.md` lists
+// for its type, at the enemy's position, on the tick it dies", and a moth's
+// tier is that file's. specs/instrumentation.md ("Drawn outcomes"),
+// `setNextDrop(kind)`: "A death while `drops` is off ... leave[s] it
+// standing."
 //
 // WHY THE WORLD IS POSED AS IT IS. The kill is the real one: a moth at its own
 // point and a level-1 Ember bolt posed on its center, so the tick's phase 6
@@ -19,16 +23,17 @@
 // lies where it fell rather than flying off and being collected. Every other
 // faculty is held, so nothing else could add or remove an entity.
 //
-// THE TOLERANCE. Counts and a position, all read exactly; the gem's center is
-// the enemy's own, which specs/world.md states without a tolerance.
+// THE TOLERANCE. Counts, a kind, and a position, all read exactly; the gem's
+// center is the enemy's own, which specs/world.md states without a tolerance.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertEqual, assertLength } from "../assert";
+import { assertEqual, assertLength, assertNull } from "../assert";
 import {
   captureStill,
   createHarness,
   isolate,
   newGems,
+  newPickups,
   placeEnemy,
   placeProjectile,
   type Harness,
@@ -43,6 +48,9 @@ const KILL_ENEMY = "moth";
 /** A bolt that hits one enemy and stops. */
 const NO_PIERCE = 0;
 
+/** The drop posed before the held kill, which only the second kill may take. */
+const POSED = "bread";
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -56,6 +64,7 @@ afterEach(async () => {
 it("leaves nothing on a kill while off, and the gem once on", async () => {
   const opened = await isolate(h);
   assertEqual(opened.drops, false, "the drops switch an isolated night holds");
+  await h.debug.setNextDrop(POSED);
 
   await placeEnemy(h, KILL_ENEMY, KILL_OFFSET, 0);
   await placeProjectile(h, "ember", KILL_OFFSET, 0, 0, 0, NO_PIERCE);
@@ -64,6 +73,7 @@ it("leaves nothing on a kill while off, and the gem once on", async () => {
   assertEqual(held.run.kills, 1, "the kill the tick counted while off");
   assertLength(held.run.gems, 0, "the gems a kill left while off");
   assertLength(held.run.pickups, 0, "the pickups a kill left while off");
+  assertEqual(held.run.nextDrop, POSED, "the posed drop after a held kill");
 
   await h.debug.setDrops(true);
   await placeEnemy(h, KILL_ENEMY, KILL_OFFSET, 0);
@@ -76,4 +86,8 @@ it("leaves nothing on a kill while off, and the gem once on", async () => {
   assertLength(gems, 1, "the gems the kill left once the switch was on");
   assertEqual(gems[0]?.x, KILL_OFFSET, "the gem's x, the moth's own");
   assertEqual(gems[0]?.y, 0, "the gem's y, the moth's own");
+  const pickups = newPickups(held, dropped);
+  assertLength(pickups, 1, "the pickups the kill left once the switch was on");
+  assertEqual(pickups[0]?.kind, POSED, "the posed drop, taken by the kill");
+  assertNull(dropped.run.nextDrop, "the pose once the kill consumed it");
 });

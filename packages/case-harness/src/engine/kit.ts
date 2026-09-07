@@ -122,6 +122,19 @@ export interface EngineHarnessOptions {
   cssHeight?: number;
   /** Device pixels per CSS pixel. Defaults to 1, so one device pixel is one unit. */
   dpr?: number;
+  /**
+   * Whether every drawing operation is recorded into {@link EngineHarness.calls}.
+   * Defaults to `true`.
+   *
+   * A check that reads what the build DREW needs the call log, and a check that
+   * reads what the build DID does not. Recording is not free: every method the
+   * pipeline calls and every property it sets passes through a proxy that
+   * allocates a record of it, which on a busy frame is a sizeable share of the
+   * frame's cost. Over the thousands of frames a long drive spends, that is a
+   * share of the drive paid for a log the check never opens, so a drive asks for
+   * it off and reads `calls` empty.
+   */
+  recordDrawCalls?: boolean;
 }
 
 /**
@@ -399,7 +412,10 @@ export function createEngineCaseHarness<S, D extends object, E, X = unknown>(
       cssHeight: options.cssHeight ?? config.stage.height,
       dpr: options.dpr ?? 1,
     };
-    const recording = createRecordingCanvas(shape, config.recorder);
+    const recording = createRecordingCanvas(shape, {
+      ...config.recorder,
+      record: options.recordDrawCalls ?? true,
+    });
     const target = new EventTarget();
     const engine = config.createEngine({
       canvas: recording.element,
@@ -472,11 +488,12 @@ export function createEngineCaseHarness<S, D extends object, E, X = unknown>(
         }
 
         let frames = 0;
-        let since = Date.now();
+        let sinceYield = 0;
         while (frames < maxFrames) {
           const step = Math.min(poll, maxFrames - frames);
           await driven.advance(step);
           frames += step;
+          sinceYield += step;
           snapshot = config.snapshot(debug, engine);
           if (predicate(snapshot)) {
             return { hit: true, frames, ticks: frames, snapshot };
@@ -484,7 +501,7 @@ export function createEngineCaseHarness<S, D extends object, E, X = unknown>(
           // A sweep of several hundred frames runs inside one `await`, and the
           // reporter, the timers and every socket read live on the loop it is
           // holding. Nothing observable changes; the host stops looking hung.
-          since = await breathe(since);
+          sinceYield = await breathe(sinceYield);
         }
         return { hit: false, frames, ticks: frames, snapshot };
       },

@@ -105,8 +105,8 @@ a candidate, and neither is the base weapon it came from.
 | Health it restores      | `LAMP_OIL_HEAL` | `30`       |
 
 The overlay offers `OFFER_COUNT` distinct candidates drawn uniformly at random
-from the pool without replacement, using the game's seeded random generator,
-and every candidate in a pool smaller than `OFFER_COUNT` is offered. When the
+from the pool without replacement, and every candidate in a pool smaller than
+`OFFER_COUNT` is offered. When the
 pool is empty the overlay offers exactly one item, `LAMP_OIL_ID`, which fills
 no slot. `offers` holds the drawn ids in the order they are listed.
 

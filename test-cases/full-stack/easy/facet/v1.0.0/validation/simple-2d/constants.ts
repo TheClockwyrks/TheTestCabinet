@@ -424,8 +424,14 @@ export const UNBOUND_KEY = "F8";
 /** The version the surface carries as `version`. */
 export const FACET_DEBUG_VERSION = 1;
 
-/** The seed `reset()` applies when the caller names none. */
-export const DEFAULT_SEED = 1;
+/**
+ * What `refillKinds` holds while no refill is posed: `GRID_COLS` entries, one
+ * per column, each `""` for a column that draws (specs/instrumentation.md).
+ */
+export const RESTING_REFILL_KINDS: readonly string[] = Array.from(
+  { length: GRID_COLS },
+  () => "",
+);
 
 /**
  * The global an engineless build installs its finished surface on,

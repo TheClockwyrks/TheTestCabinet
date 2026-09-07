@@ -17,9 +17,9 @@
 // leak is the simulation's. Arranging the input is authoring; posing the outcome
 // would be fabrication.
 //
-// AUDITIONING. Confirming a difficulty starts a run and reseeds the press, which is
-// the game keeping two runs started from the menu off the same rolls, so a take
-// cannot be played silently and then replayed identically under the recorder. Every
+// AUDITIONING. The press rolls at random on every drop, so two runs started from
+// the menu never draw the same rolls, and a take cannot be played silently and then
+// played again under the recorder as the same session. Every
 // take is therefore recorded as it is played and the best one is kept: the take that
 // was judged is the take that was committed. The judge scores what makes a watchable
 // clip — structures standing, kills landed, waves cleared, folds committed (a recipe
@@ -448,10 +448,9 @@ function judge(take: Take): number {
 it("records session clips", async () => {
   // EVERY TAKE IS RECORDED, AND THE BEST ONE IS KEPT.
   //
-  // Confirming a difficulty is what starts a run, and the game reseeds its press
-  // there on purpose, so that two runs started from the menu never draw the same
-  // rolls. A take driven the way a player drives one therefore cannot be
-  // auditioned with the recorder off and then replayed identically under it: the
+  // The press rolls at random on every drop, so two runs started from the menu
+  // never draw the same rolls. A take driven the way a player drives one therefore
+  // cannot be auditioned with the recorder off and then played again under it: the
   // second playing is a different session. So each take is recorded as it is
   // played, judged on what it actually produced, and the winner's files are the
   // ones committed — the take that was judged is the take that was kept.

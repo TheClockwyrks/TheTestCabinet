@@ -81,19 +81,19 @@ export function nextLaunchFoundation(sim: Sim): number | null {
   return null;
 }
 
+/**
+ * One launch's `vx`: a magnitude drawn uniformly from its range and a sign
+ * chosen with equal probability, each afresh at the call.
+ */
+export function drawLaunchVx(): number {
+  return nextSign() * nextRange(LAUNCH_VX_MIN, LAUNCH_VX_MAX);
+}
+
 /** Launch the top card of foundation `index` into flight. */
 export function launchFrom(sim: Sim, index: number): void {
   const pile = sim.foundations[index] as MutCard[];
   const card = pile.pop();
   if (card === undefined) return;
-
-  const [magnitude, afterMagnitude] = nextRange(
-    sim.rngState,
-    LAUNCH_VX_MIN,
-    LAUNCH_VX_MAX,
-  );
-  const [sign, afterSign] = nextSign(afterMagnitude);
-  sim.rngState = afterSign;
 
   sim.flyers.push({
     id: card.id,
@@ -101,7 +101,7 @@ export function launchFrom(sim: Sim, index: number): void {
     rank: card.rank,
     x: FOUNDATION_X[index] ?? 0,
     y: TOP_ROW_Y,
-    vx: sign * magnitude,
+    vx: drawLaunchVx(),
     vy: LAUNCH_VY,
   });
   sim.launched += 1;

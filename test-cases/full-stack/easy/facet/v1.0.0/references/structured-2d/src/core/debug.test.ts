@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_SEED,
   FACET_DEBUG_VERSION,
   GRID_COLS,
   GRID_ROWS,
@@ -18,6 +17,7 @@ import {
   clearBoard,
   clearChain,
   clearOffer,
+  clearRefillKinds,
   clearRefusal,
   clearSelection,
   dealBoard,
@@ -32,12 +32,13 @@ import {
   setMenuIndex,
   setMoveScore,
   setOffer,
+  setRefillKinds,
   setScore,
   setScreen,
   setSelection,
   snapshot,
 } from "./debug";
-import { quietRows, quietRowsWith } from "./fixtures";
+import { quietRows, quietRowsWith, withQuietRefill } from "./fixtures";
 import {
   continueLevel,
   openHowTo,
@@ -47,12 +48,12 @@ import {
   startRound,
 } from "./flow";
 import { targetsFor } from "./targets";
-import { createInitialState, type FacetState } from "./state";
+import { createInitialState, NO_REFILL, type FacetState } from "./state";
 
-const title = () => createInitialState(1);
+const title = () => createInitialState();
 
 const play = (edits: Readonly<Record<string, string>> = {}): FacetState =>
-  setScreen(loadBoard(createInitialState(1), quietRowsWith(edits)), "playing");
+  setScreen(loadBoard(createInitialState(), quietRowsWith(edits)), "playing");
 
 const ROW_RUN = { "3,3": "R0", "4,4": "R0" };
 const ROW_RUN_SWAP = { a: { col: 3, row: 3 }, b: { col: 3, row: 4 } };
@@ -90,7 +91,7 @@ describe("snapshot", () => {
       bestMove: 0,
       bestChain: 0,
       legalSwap: false,
-      rngState: 1,
+      refillKinds: ["", "", "", "", "", "", "", ""],
       pointer: { x: 0, y: 0, down: false, device: "mouse" },
       armedTarget: null,
       targets: targetsFor("title").map((target) => ({ ...target })),
@@ -226,7 +227,9 @@ describe("snapshot", () => {
   });
 
   it("reports the level's figures as the level earns them", () => {
-    const resolving = move(play(ROW_RUN));
+    // The refill is posed so the chain ends at step 1, where the move is
+    // weighed against the level's best.
+    const resolving = move(withQuietRefill(play(ROW_RUN)));
     const shot = snapshot(resolving);
     expect(shot.moveScore).toBe(30);
     expect(shot.bestChain).toBe(1);
@@ -272,10 +275,9 @@ describe("reset", () => {
     expect(snapshot(reset(played))).toEqual(snapshot(title()));
   });
 
-  it("seeds rngState, defaulting to DEFAULT_SEED", () => {
-    expect(reset(title()).rngState).toBe(DEFAULT_SEED);
-    expect(reset(title(), {}).rngState).toBe(DEFAULT_SEED);
-    expect(reset(title(), { seed: 99 }).rngState).toBe(99);
+  it("leaves no refill posed", () => {
+    const posed = setRefillKinds(title(), 2, "RA");
+    expect(reset(posed).refillKinds).toEqual(NO_REFILL);
   });
 
   it("leaves muted alone, because the runtime owns muting", () => {
@@ -283,10 +285,10 @@ describe("reset", () => {
     expect(reset({ ...title(), muted: false }).muted).toBe(false);
   });
 
-  it("plus start is a round from a known deal", () => {
-    const first = startRound(reset(title(), { seed: 4242 }));
-    const second = startRound(reset(play(), { seed: 4242 }));
-    expect(formatBoard(first.board)).toEqual(formatBoard(second.board));
+  it("plus start is a round on a fresh opening board", () => {
+    const started = startRound(reset(play()));
+    expect(started.screen).toBe("playing");
+    expect(started.board.cols).toBe(GRID_COLS);
   });
 });
 
@@ -308,7 +310,7 @@ describe("loadBoard", () => {
     expect(snapshot(posed).lastFall).toBe(0);
   });
 
-  it("leaves the round's figures, the generator, and simTime alone", () => {
+  it("leaves the round's figures, the posed refill, and simTime alone", () => {
     const mid = {
       ...play(),
       score: 700,
@@ -318,7 +320,7 @@ describe("loadBoard", () => {
       bestMove: 260,
       bestChain: 3,
       simTime: 9,
-      rngState: 55,
+      refillKinds: ["", "J", "", "", "", "", "", ""],
     };
     const posed = loadBoard(mid, quietRows());
     expect(posed.score).toBe(700);
@@ -328,7 +330,7 @@ describe("loadBoard", () => {
     expect(posed.bestMove).toBe(260);
     expect(posed.bestChain).toBe(3);
     expect(posed.simTime).toBe(9);
-    expect(posed.rngState).toBe(55);
+    expect(posed.refillKinds[1]).toBe("J");
   });
 
   it("rests exactly as written until a swap is accepted on it", () => {
@@ -520,5 +522,39 @@ describe("the screen poses", () => {
     expect(shot.bestChain).toBe(0);
     expect(shot.score).toBe(2100);
     expect(shot.legalSwap).toBe(true);
+  });
+});
+
+describe("setRefillKinds and clearRefillKinds", () => {
+  it("poses one column's refill and leaves the others", () => {
+    const posed = setRefillKinds(setRefillKinds(play(), 1, "RA"), 6, "J");
+    expect(posed.refillKinds).toEqual(["", "RA", "", "", "", "", "J", ""]);
+    expect(snapshot(posed).refillKinds).toEqual(posed.refillKinds);
+    expect(snapshot(posed).refillKinds).not.toBe(posed.refillKinds);
+  });
+
+  it("writes the pose and nothing else", () => {
+    const before = play(ROW_RUN);
+    const posed = setRefillKinds(before, 3, "S");
+    expect({ ...posed, refillKinds: before.refillKinds }).toEqual(before);
+    expect(before.refillKinds).toEqual(NO_REFILL);
+  });
+
+  it("replaces a column's pose, and an empty string returns it to drawing", () => {
+    const twice = setRefillKinds(setRefillKinds(play(), 1, "RA"), 1, "C");
+    expect(twice.refillKinds[1]).toBe("C");
+    expect(setRefillKinds(twice, 1, "").refillKinds).toEqual(NO_REFILL);
+  });
+
+  it("refuses a column off the board and a letter that names no kind", () => {
+    expect(() => setRefillKinds(play(), GRID_COLS, "R")).toThrow();
+    expect(() => setRefillKinds(play(), -1, "R")).toThrow();
+    expect(() => setRefillKinds(play(), 0, "RX")).toThrow();
+    expect(() => setRefillKinds(play(), 0, "r")).toThrow();
+  });
+
+  it("clears every column's pose at once", () => {
+    const posed = setRefillKinds(setRefillKinds(play(), 1, "RA"), 6, "J");
+    expect(clearRefillKinds(posed).refillKinds).toEqual(NO_REFILL);
   });
 });

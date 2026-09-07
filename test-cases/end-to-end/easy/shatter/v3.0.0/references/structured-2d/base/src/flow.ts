@@ -18,7 +18,6 @@ import {
   INVULN_TIME,
 } from "./constants";
 import type { ShatterState } from "./game";
-import { seedRandom } from "./rng";
 import { placeShipAtSafePoint } from "./ship";
 import { spawnWave } from "./waves";
 
@@ -43,10 +42,10 @@ function clearIntent(state: ShatterState): void {
 }
 
 /**
- * Every declared field back to its title-screen value, and the generator
- * pointed at `seed`. `muted` is left exactly as it stands.
+ * Every declared field back to its title-screen value, every posed draw
+ * cleared. `muted` is left exactly as it stands.
  */
-export function resetState(state: ShatterState, seed: number): void {
+export function resetState(state: ShatterState): void {
   state.screen = "title";
   state.menuIndex = 0;
 
@@ -66,10 +65,15 @@ export function resetState(state: ShatterState, seed: number): void {
   state.saucerClock = 0;
   state.saucerDue = SAUCER_FIRST_DELAY;
 
+  state.nextSaucerEdge = null;
+  state.nextSaucerRow = null;
+  state.nextSaucerAim = null;
+  state.nextRockSpeed = null;
+  state.nextRecycleEdge = null;
+
   state.tickClock = 0;
   state.nextId = 1;
   state.simTime = 0;
-  seedRandom(state, seed);
 
   clearIntent(state);
   state.extraLifeNotice = 0;

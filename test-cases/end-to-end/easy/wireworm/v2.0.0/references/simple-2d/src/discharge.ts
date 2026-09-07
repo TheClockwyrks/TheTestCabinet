@@ -12,7 +12,7 @@
 // is what the chain rule fixes, so it is state and it lasts `ARC_LIFE`. How a
 // link is DRAWN is this build's own design and lives in `src/render.ts`; its
 // shape is fixed when the arc is created, and the jitter that shapes it is a
-// draw from the run's own generator, so a discharge reads as one bolt fading
+// function of the tiles it joins, so a discharge reads as one bolt fading
 // rather than as static.
 
 import {

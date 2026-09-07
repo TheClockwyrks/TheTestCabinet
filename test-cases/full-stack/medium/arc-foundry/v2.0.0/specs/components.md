@@ -36,7 +36,7 @@ and a burn do to the unit that carries them; this section fixes what applies the
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | slow      | On impact, applies a slow of the stated amount for the stated duration to the struck unit.                                                                        |
 | burn      | On impact, applies a burn of `shotDamage * frac` per second for the stated duration to the struck unit.                                                           |
-| crit      | Each shot has the stated chance to deal `critMult` times its damage instead of its damage. The roll comes off the game's seeded generator.                        |
+| crit      | Each shot has the stated chance to deal `critMult` times its damage instead of its damage. The chance is rolled independently on every shot.                      |
 | multishot | Each cadence the structure fires at up to `N` distinct in-range units instead of one, choosing the top `N` by its targeting priority, each as its own projectile. |
 | aura      | Every firing structure whose center lies within `auraRadius` of the source deals `1 + auraBonus` times its damage.                                                |
 
@@ -101,7 +101,7 @@ combination towers.
 | `strongest` | Carrying the most remaining health.                                       |
 | `weakest`   | Carrying the least remaining health.                                      |
 
-Ties resolve toward the unit further along the chain, so the choice is deterministic.
+Ties resolve toward the unit further along the chain.
 Changing a priority costs nothing and takes effect on the next shot.
 
 - A structure with chain, splash, or multishot picks its primary target, or its top `N`

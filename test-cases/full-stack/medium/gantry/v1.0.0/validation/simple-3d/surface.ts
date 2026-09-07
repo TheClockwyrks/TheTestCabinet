@@ -598,6 +598,8 @@ export interface GantryDebugApi {
     index: number,
     phase: LoadPhase,
   ): GantryState;
+  /** Sets the number of ticks the run has taken, and so the run clock. */
+  setRunTick(state: DeepReadonly<GantryState>, tick: number): GantryState;
   /** Sets the watch speed to that index into `RUN_SPEEDS`. */
   setSpeedIndex(state: DeepReadonly<GantryState>, index: number): GantryState;
 }

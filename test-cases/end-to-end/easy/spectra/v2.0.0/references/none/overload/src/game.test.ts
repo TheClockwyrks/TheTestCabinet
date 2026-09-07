@@ -63,13 +63,16 @@ function only(driven: ReturnType<typeof driver>) {
 
 describe("the frame", () => {
   it("reaches the identical state however a second is divided", () => {
+    // Nothing on this field is drawn at random: a Flux runs its clock, and two
+    // bullets fly clear of everything.
     const shapes = [1, 60, 120].map((frames) => {
       const driven = driver();
       startPosed(driven);
-      const id = poseDrone(driven, "shard", 400, 200);
-      driven.debug.setDronePhase(id, "diving");
-      driven.debug.setDroneTravel(id, true);
+      const id = poseDrone(driven, "flux", 400, 200);
+      driven.debug.setDroneBandClock(id, 1.5);
+      driven.debug.setDroneOscillation(id, true);
       driven.debug.addPlayerBullet(900, 500, "cyan");
+      driven.debug.addEnemyBullet(300, 100, "magenta");
       driven.advance(1, frames);
       return JSON.stringify(driven.debug.snapshot());
     });

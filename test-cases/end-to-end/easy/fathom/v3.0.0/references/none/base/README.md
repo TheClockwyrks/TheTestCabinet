@@ -112,7 +112,7 @@ release schedule and the real contact rules produce everything that follows.
 ```js
 const f = window.__fathom;
 f.setAutoStep(false); // take the game off the wall clock
-f.reset({ seed: 7 }); // title screen, seeded randomness
+f.reset(); // title screen, a fresh maze
 f.setScreen("playing"); // straight into live play
 f.clearPredators(); // an empty trench to build the scenario in
 f.setForagerTile(17, 15); // pose the forager
@@ -202,7 +202,7 @@ src/
   constants.ts      every figure the specification fixes
   theme.ts          this build's palette, type, and layout choices
   types.ts          the vocabulary the snapshot reports
-  rng.ts            the one seedable generator every draw runs off
+  rng.ts            the source every random draw is taken through
   maze.ts           the layout, the tile queries, the flood, the routing
   sensing.ts        the fog of war and the forager's light
   sonar.ts          a wavefront travelling out through the corridors

@@ -13,7 +13,6 @@ import {
   START_LIVES,
   TITLE_ITEMS,
   CHALLENGE_TOTAL,
-  DEFAULT_SEED,
 } from "./constants";
 import { newFrameEvents } from "./events";
 import {
@@ -63,7 +62,7 @@ describe("the reset", () => {
     poseDrone(state, "shard", 400, 200);
     posePlayerBullet(state, 400, 300, "cyan");
 
-    resetToTitle(state, DEFAULT_SEED);
+    resetToTitle(state);
 
     const fresh = new SpectraState();
     expect(state.screen).toBe(fresh.screen);
@@ -103,7 +102,7 @@ describe("the reset", () => {
     state.waveEntry = false;
     state.diveLaunching = false;
     state.ship.contact = false;
-    resetToTitle(state, DEFAULT_SEED);
+    resetToTitle(state);
     expect(state.waveEntry).toBe(true);
     expect(state.diveLaunching).toBe(true);
     expect(state.ship.contact).toBe(true);
@@ -112,18 +111,8 @@ describe("the reset", () => {
   it("leaves muting exactly as it stands", () => {
     const state = liveWave();
     state.muted = true;
-    resetToTitle(state, DEFAULT_SEED);
+    resetToTitle(state);
     expect(state.muted).toBe(true);
-  });
-
-  it("seeds the game's randomness from the seed it was given", () => {
-    const a = liveWave();
-    const b = liveWave();
-    resetToTitle(a, 11);
-    resetToTitle(b, 11);
-    expect(a.rngState).toBe(b.rngState);
-    resetToTitle(b, 12);
-    expect(a.rngState).not.toBe(b.rngState);
   });
 });
 

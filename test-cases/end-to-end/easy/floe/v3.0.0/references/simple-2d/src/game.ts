@@ -198,7 +198,6 @@ export interface FloeState {
 
   readonly simTime: number;
   readonly muted: boolean;
-  readonly rngState: number;
 
   // ---- Beyond the declaration, as `specs/state.md` permits -----------------
 

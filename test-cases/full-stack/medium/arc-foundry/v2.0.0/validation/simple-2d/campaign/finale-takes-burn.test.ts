@@ -41,7 +41,6 @@ import {
   parkUnit,
   releaseUnit,
   standComponent,
-  TICK_HZ,
   unitById,
 } from "../harness";
 
@@ -54,11 +53,22 @@ const BURN = {
   seconds: RECTIFIER_BURN_DUR,
 };
 
+/**
+ * The rate this check is driven at.
+ *
+ * Both spans are frames spent letting a cadence and a burn run rather than frames
+ * a position is read on, and specs/instrumentation.md guarantees that "an
+ * interval of simulation time reaches the same state however it was divided into
+ * frames". A shot still steps well inside the `2 * PROJECTILE_HIT_R` window it
+ * has to be caught in.
+ */
+const BURN_HZ = 60;
+
 /** Five seconds: many cadences of it, while the Dynamo is still in reach. */
-const MAX_FRAMES = 5 * 120;
+const MAX_FRAMES = 5 * BURN_HZ;
 
 /** A hit lands inside one frame of the sample that first shows it. */
-const TOLERANCE = 2 / TICK_HZ;
+const TOLERANCE = 2 / BURN_HZ;
 
 /** The burn posed on the empty yard, and how long it is watched for. */
 const POSED = { dps: 40, seconds: 6 };
@@ -67,7 +77,7 @@ const WATCH = 3;
 let h: Harness;
 
 beforeEach(async () => {
-  h = await createHarness();
+  h = await createHarness({ hz: BURN_HZ });
 });
 
 afterEach(() => {

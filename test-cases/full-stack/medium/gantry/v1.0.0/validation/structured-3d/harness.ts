@@ -262,6 +262,7 @@ export const REQUIRED_OPS = [
   "setBobVelocity",
   "setLoadPose",
   "setLoadPhase",
+  "setRunTick",
   "setSpeedIndex",
 ] as const;
 
@@ -457,24 +458,27 @@ export interface Harness {
   capture(id: string, name: string): Promise<void>;
 
   /**
-   * Hand the page back its own paint loop, for the rest of this harness's life.
+   * Draw the state as it stands, advancing nothing.
    *
-   * A NO-OP HERE, and deliberately still present. Under this engine the game runs
-   * in this process over a canvas the harness owns, so there is no page painting
-   * on its own and nothing to hand back. The engineless harness DOES hold the
-   * build's free-running frames (see `validation/none/paint-gate.js`), and the one
-   * check whose subject is that loop asks for them back — so the operation exists
-   * on all three harnesses and that check stays one file in three directories.
-   */
-  releasePaint(): Promise<void>;
-
-  /**
-   * Run one of the frames the page is being held back from.
+   * WHAT IT IS FOR. A still is whatever the last frame that ran drew, and a pose
+   * draws nothing: an arrangement made through the debug API leaves the picture
+   * as the frame before it left it. A check whose evidence is the arrangement
+   * ITSELF — rather than what the simulation made of it — paints one frame
+   * before it captures, and this is that frame.
    *
-   * A NO-OP HERE, for the reason `releasePaint` gives: this engine draws when the
-   * harness's own clock says so and there is no held frame to run.
+   * IT COVERS NO TIME. The engine's clock is swapped for one whose frame is
+   * worth nothing, for this one frame, and put back afterwards.
+   * `specs/overview.md` has each frame's delta time accumulate, "whole ticks are
+   * consumed from the accumulation, and a remainder shorter than a tick waits
+   * for the next frame", so a frame worth nothing finds no whole tick to consume
+   * and every rate the simulation integrates is multiplied by zero. What the
+   * frame does do is render, which is what the still is of.
+   *
+   * IT IS NOT A SUBSTITUTE FOR A FRAME A CHECK OWES. A check that asks what the
+   * simulation DID advances it; this one asks only what the screen says about a
+   * state nothing has run over yet.
    */
-  paintFrame(): Promise<void>;
+  paint(): Promise<void>;
 
   /* ---- This engine's own, for the few suites that are about it ------------ */
 
@@ -784,16 +788,17 @@ const decodeCue = (bytes: Uint8Array): AudioBufferLike =>
  * A clock whose every frame is worth no time at all.
  *
  * `ConstantClock` refuses a step of zero, and rightly: a game driven by one would
- * never move. This is not a clock a game is driven by — it delivers exactly one
- * frame, at construction, so the engine's camera is the game's before a check
- * asks where anything is drawn. `null` would be the clock saying "this tick is
- * not a frame", which is the opposite of what is wanted; `0` is a frame that
- * covers no time.
+ * never move. This is not a clock a game is driven by — it is swapped in for a
+ * single frame and swapped straight back out, twice over: once at construction,
+ * so the engine's camera is the game's before a check asks where anything is
+ * drawn, and once per {@link Harness.paint}, so a check can put the state it
+ * posed on screen. `null` would be the clock saying "this tick is not a frame",
+ * which is the opposite of what is wanted; `0` is a frame that covers no time.
  */
 const ZERO_CLOCK: Clock = { delta: () => 0 };
 
 /**
- * When this worker last let its event loop turn.
+ * Frames this worker has driven since it last let its event loop turn.
  *
  * WHY A DRIVE HANDS THE EVENT LOOP A TURN. `engine.advance(n)` returns a promise,
  * but the `n` frames have already run by the time it does: the engine steps them
@@ -803,14 +808,19 @@ const ZERO_CLOCK: Clock = { delta: () => 0 };
  * microtask, which runs before the loop is reached at all. Vitest reports a
  * running file to its runner over a socket served by that same loop, and a report
  * left unanswered for long enough is abandoned, which spoils the RUN over a check
- * that passed. The package's `breathe` lets one real turn through whenever the
- * frames just run have held the loop long enough. Nothing measured here depends on
- * wall-clock time — every check supplies its own clock and the engine reads no
- * other — so the turn changes no reading.
+ * that passed. The package's `breathe` lets one real turn through every so many
+ * frames driven.
+ *
+ * THE COUNT IS FRAMES AND NEVER ELAPSED TIME. A clock read here would make how
+ * often this harness yields a property of the host it runs on, and two hosts
+ * would drive the same check through different interleavings. Frames are what a
+ * check spends, they are the same number on every machine, and the turn changes
+ * no reading either way — every check supplies its own clock and the engine reads
+ * no other.
  *
  * Per WORKER rather than per harness, because the loop it is letting turn is.
  */
-let yieldedAt = Date.now();
+let framesSinceYield = 0;
 
 /**
  * The package's engine machinery, bound to Gantry on this engine.
@@ -1018,7 +1028,16 @@ export async function createHarness(
   // belongs to whatever harness came before it.
   const requestsFrom = assets.mark();
 
-  const base = await kit.createHarness(options);
+  // The clock every frame this harness drives is taken off, held here because it
+  // is put back twice: after the opening frame of no time below, and after each
+  // frame `paint` draws. A `ConstantClock` is stateless, but a check that supplied
+  // a clock of its own may have handed one that is not, and putting back the
+  // instance it gave keeps that clock's own position. It is handed to the kit
+  // rather than left to the kit's own default, so the engine is built with
+  // exactly this instance.
+  const clock: Clock = options.clock ?? new ConstantClock(TICK_MS);
+
+  const base = await kit.createHarness({ ...options, clock });
   const engine = base.engine;
   const read = readOf(engine);
 
@@ -1077,7 +1096,7 @@ export async function createHarness(
       base.calls.length = 0;
       await base.advance(1);
     }
-    yieldedAt = await breathe(yieldedAt);
+    framesSinceYield = await breathe(framesSinceYield + count);
   };
 
   const harness: Harness = {
@@ -1219,17 +1238,20 @@ export async function createHarness(
       return cueNames().filter((cue) => audio.looping(cue));
     },
 
-    async releasePaint() {
-      // Nothing paints on its own here; see the declaration.
-    },
-
-    async paintFrame() {
-      // Nothing is held back here; see the declaration.
-    },
-
     async capture(id, name) {
       captureStill(harness, id);
       console.log(`gantry: captured ${id} — ${name}`);
+    },
+
+    async paint() {
+      if (surface === null) refuse();
+      // The same move `createHarness` makes before it hands this harness back,
+      // and for the same reason: a frame of no time runs the render without
+      // running the simulation. See the declaration.
+      engine.setClock(ZERO_CLOCK);
+      base.calls.length = 0;
+      await base.advance(1);
+      engine.setClock(clock);
     },
 
     surfaceFault: fault,
@@ -1319,7 +1341,7 @@ export async function createHarness(
     engine.setClock(ZERO_CLOCK);
     base.calls.length = 0;
     await base.advance(1);
-    engine.setClock(options.clock ?? new ConstantClock(TICK_MS));
+    engine.setClock(clock);
     drained = base.cues.length;
   }
 
@@ -1410,9 +1432,11 @@ class PointerEvt extends Event {
  * What is written is whatever the last frame that RAN left behind, so call it
  * after the frame that poses the thing under test — an `advance(1)` following the
  * arrangement — and before the assertions, so a check that fails still leaves the
- * picture that shows why. A capture that cannot be written is reported as an
- * output that never turned up, which is a fact about the host rather than about
- * the build, so it warns rather than raising.
+ * picture that shows why. A check that owes no such frame, because what it decides
+ * is the arrangement itself, calls {@link Harness.paint} first: one frame that
+ * covers no time, which draws the state as it stands. A capture that cannot be
+ * written is reported as an output that never turned up, which is a fact about the
+ * host rather than about the build, so it warns rather than raising.
  */
 export function captureStill(h: Harness, outputId: string): void {
   kit.captureStill(baseOf(h), outputId);
