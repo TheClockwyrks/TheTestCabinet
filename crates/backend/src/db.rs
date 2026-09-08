@@ -2388,11 +2388,21 @@ pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<Aes
 /// moment the run completes. Otherwise it is the legacy review aggregate
 /// ([`aggregate_review_rating`]), `None` while the run has no reviews. Both are
 /// composed with the toolchain gate.
+///
+/// A run whose terminal state is not
+/// [scored](test_cabinet_core::run_record::RunState::is_scored) — a catastrophic
+/// failure, a timeout, or any tier that released nothing — has no rating at all
+/// (`None`), whatever its case version. Its build never loaded, so no validator
+/// ran against it, and the validators' figure over an empty verdict set would
+/// otherwise read as flawless.
 pub(crate) fn functional_rating(
     manifest: Option<&StoredManifest>,
     record: &RunRecord,
     reviews: &[StoredReview],
 ) -> Option<Rating> {
+    if !record.status.state.is_scored() {
+        return None;
+    }
     match manifest.filter(|manifest| manifest.validator_rated()) {
         Some(manifest) => {
             let variant = record.subject.variant.as_str();

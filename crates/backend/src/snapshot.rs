@@ -3741,7 +3741,10 @@ fn aggregate_aesthetic_inner(
 /// `Some`. Otherwise the aggregate reviewer score: the case's declared checklist
 /// weights scored against each of the run's `reviews`, then averaged (see
 /// [`test_cabinet_core::review::aggregate_score`]), `None` when the run carries no
-/// reviews.
+/// reviews. Either way `None` for a run whose terminal state is not
+/// [scored](test_cabinet_core::run_record::RunState::is_scored) — a failure tier
+/// has no checklist to score, and a validator-rated one ran no validator to score
+/// it with.
 ///
 /// The checklist weights live only in the case catalog (the manifest), never on a
 /// run or review, so this is the single source of truth shared by the two callers
@@ -3754,6 +3757,9 @@ pub(crate) fn run_summary_score(
     record: &test_cabinet_core::RunRecord,
     reviews: &[crate::db::StoredReview],
 ) -> Option<RunScoreOut> {
+    if !record.status.state.is_scored() {
+        return None;
+    }
     let items = review_items_for_engine(
         manifest,
         &record.subject.variant,

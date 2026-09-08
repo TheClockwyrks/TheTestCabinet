@@ -705,7 +705,10 @@ cannot read answers `404` here and is reached through [`GET
   validators' rating while the run has no reviews, present from completion,
   and the worst of its reviews' effective ratings once it has any; on a legacy
   run the review aggregate. Composed with the toolchain gate either way. `null`
-  while unset, which is a legacy run with no review.
+  while unset, which is a legacy run with no review, and `null` for every run
+  that did not complete: a catastrophic failure, a timeout, or any other
+  failure tier is unscored, whatever its case version, since no build loaded
+  for a validator or reviewer to rate.
 - `aesthetic`: the run's aggregate aesthetic rating, the worst run-wide
   tier across its reviews. `null` when no review has rated that channel: every
   legacy run, and an unreviewed validator-rated one.
@@ -715,7 +718,8 @@ cannot read answers `404` here and is reached through [`GET
   (`reviews` is `0`), present from completion, and the mean of its reviews'
   effective scores once it has any, with `reviews` counting them; on a legacy
   run the mean across its reviews, `null` while unreviewed. `null` when the
-  run's case version is not ingested.
+  run's case version is not ingested, and `null` for every run that did not
+  complete, for the same reason its `rating` is.
 
 The four are always present, `null` rather than omitted when unset. A run's
 detail and its summary card always report the same functional rating and score.

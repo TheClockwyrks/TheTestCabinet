@@ -7551,6 +7551,54 @@ fn functional_rating_takes_the_lowest_cap_among_failing_points() {
     assert_eq!(functional_rating(None, &record("r"), &[]), None);
 }
 
+#[test]
+fn a_run_that_did_not_complete_has_no_functional_rating() {
+    use test_cabinet_core::RunState;
+    let manifest = validator_manifest();
+    // A catastrophic build never loaded, so no validator ran: the empty verdict
+    // set must not read as a flawless run.
+    let mut record = validator_record("r", &[]);
+    record.status.state = RunState::Catastrophic;
+    assert_eq!(functional_rating(Some(&manifest), &record, &[]), None);
+    // Nor may a review's overrides rate it — there is no build the review saw.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &record,
+            &[override_review(
+                "u1",
+                AestheticRating::Good,
+                &[("hud", true)]
+            )]
+        ),
+        None
+    );
+    // Every non-completed tier is unscored, whether validator-rated or legacy.
+    for state in [
+        RunState::TimedOut,
+        RunState::HarnessError,
+        RunState::LimitExceeded,
+        RunState::Hung,
+        RunState::Infrastructure,
+        RunState::Canceled,
+    ] {
+        let mut record = validator_record("r", &[("serve", true), ("hud", true)]);
+        record.status.state = state;
+        assert_eq!(functional_rating(Some(&manifest), &record, &[]), None);
+        let mut legacy_record = super::tests::record("r");
+        legacy_record.status.state = state;
+        assert_eq!(
+            functional_rating(None, &legacy_record, &[review_by("u1", Rating::Flawless)]),
+            None
+        );
+    }
+    // The completed tier is the one that rates.
+    assert_eq!(
+        functional_rating(Some(&manifest), &validator_record("r", &[]), &[]),
+        Some(Rating::Flawless)
+    );
+}
+
 #[tokio::test]
 async fn a_validator_rated_run_is_rated_at_push_from_its_validators() {
     let db = Db::connect_in_memory().await.unwrap();

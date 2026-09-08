@@ -623,6 +623,20 @@ impl RunState {
         matches!(self, RunState::Completed)
     }
 
+    /// Whether a run in this state carries a functional rating and a checklist
+    /// score at all. True only for [`Completed`](RunState::Completed): the checklist
+    /// is decided against a build that loaded, so every other tier is **unscored**
+    /// — a [`Catastrophic`](RunState::Catastrophic) run never loaded, a
+    /// [`TimedOut`](RunState::TimedOut) one never finished, and the rest released
+    /// nothing — and each is reported as its own per-model statistic instead.
+    ///
+    /// This is the gate the store's rating and score seams apply *before* consulting
+    /// the validators: on a validator-rated version an unloaded build ran no
+    /// validator, and zero failures would otherwise read as a flawless run.
+    pub fn is_scored(self) -> bool {
+        matches!(self, RunState::Completed)
+    }
+
     /// Classify a run that failed *before* producing an implementation. A harness
     /// session stopped at the run's maximum runtime is a model outcome (the model
     /// never converged) → [`TimedOut`](RunState::TimedOut); the harness (or its
