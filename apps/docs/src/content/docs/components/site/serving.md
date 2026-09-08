@@ -12,9 +12,9 @@ visitors without a rebuild.
 `tcab-gallery` is a Node service that serves [testcabinet.ai](https://testcabinet.ai).
 It mounts the same routed application the [web](/components/web/overview/) and
 Tauri consoles mount, shared through the [UI library](/components/ui/overview/),
-with `canExecute` false. It imports that application's route table directly, so
-the routes the origin resolves and the routes the application renders are one
-definition.
+with execution disabled so it presents the published gallery alone. It resolves
+routes from that application's own route table, so the routes the origin
+resolves and the routes the application renders are one definition.
 
 The service ships as a container image built alongside the other service images
 and runs on the plane described in [Public Gallery](/deployment/public-gallery/).
@@ -27,16 +27,15 @@ application's catch-all route renders the not-found page inside it. A path
 shaped like a run page is answered with a 404 unless its run id names a
 published run.
 
-Every route is served at the URL requested. A deep link such as `/runs/<id>`
-resolves directly, and the origin holds the whole route table, so the console-only
-routes the gallery does not mount are answered as the unrecognized paths they are.
+Every route is served at the URL requested, so a deep link such as `/runs/<id>`
+resolves directly. The console-only routes the gallery leaves unmounted are
+answered as unrecognized paths.
 
 ## Preview tags
 
 Each run page carries preview tags describing that run: its title, description,
 and image, written into the document head from the run's projection row. Every
-visitor is served the same document, so the tags a crawler indexes are the tags
-ordinary traffic exercises.
+visitor is served the same document.
 
 ## Data sources
 

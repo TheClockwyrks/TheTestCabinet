@@ -5,11 +5,10 @@ title: Metrics
 ## Overview
 
 Every run records the resources it consumed: how long each stage of the run
-took, normalized token counts, and cost. These are the numbers the
-[site](/components/site/overview/) surfaces alongside a run. They are distinct
-from the run's quality score and rating, which come from its
-[review](/components/core/results/#reviews). A per-case leaderboard ranks by
-score, never by cost or tokens.
+took, normalized token counts, and cost. They are distinct from the run's
+quality score and rating, which come from its
+[review](/components/core/results/#reviews), and take no part in ranking a
+run.
 
 ## Durations
 
@@ -26,21 +25,17 @@ records the duration of each lifecycle stage beside it.
 
 Setup, session and teardown sum exactly to the run time. The run time excludes
 the wall clock a run container spent queued for cluster capacity before it
-started; that wait is subtracted from setup, the stage that contains it.
+started, which is subtracted from setup, the stage that contains it. Validation
+sits outside the run time, which is frozen before the validation pass and before
+every post-run stage.
 
-Validation sits outside the run time, which is frozen before the validation pass
-and before every post-run stage.
-
-The session duration is the figure that describes a model. Setup is shared by
-every run of a test case and dominates the run time whenever the session is
-short, so four runs that differ only in the model can record run times within a
-few percent of each other while their sessions differ by multiples. The run time
+The session duration is the figure that describes a model, and the run time
 answers what a run cost in machine time. Both depend heavily on which provider
-served the requests, so each is presented as a secondary figure.
+served the requests.
 
 Each stage duration is optional. `null` means the run recorded no figure for
-that stage, which is distinct from `0`. A canceled gg run records no validation
-duration, because a cancellation skips validation.
+that stage, which is distinct from `0`. A cancellation skips validation, so a
+canceled gg run records no validation duration.
 
 ## Tokens
 
@@ -49,13 +44,13 @@ Every run records four normalized token classes:
 - Uncached input tokens: input tokens that were not served from the provider's
   cache. A harness that reports input as `input + cache_read` has its cached
   reads subtracted so this value excludes them.
-- Cached input tokens: input tokens served from the provider's cache. They are
-  billed at a lower rate, so they are tracked separately.
+- Cached input tokens: input tokens served from the provider's cache, tracked
+  separately because they are billed at a lower rate.
 - Output tokens: non-reasoning output tokens. A harness that reports output as
   `output + reasoning` has its reasoning tokens subtracted so this value
   excludes them.
-- Reasoning tokens: internal reasoning tokens. They are billed as output tokens
-  and are tracked separately because they are not useful output to a reader.
+- Reasoning tokens: internal reasoning tokens, billed as output tokens and
+  tracked separately because they are not useful output to a reader.
 
 Each class is optional. A class is `null` when the harness does not report it,
 which is distinct from `0`, meaning the harness reported the class and it was
@@ -66,9 +61,9 @@ A `null` class still counts toward the totals. A harness that reports no split
 folds those tokens into the class it does report: a cache-unaware harness
 reports all input as uncached, and a harness that folds reasoning into output
 reports it there. An input or output total is `null` only when neither class on
-that side is reported. What `null` signals is that the breakdown is unavailable,
-so a consumer must not chart cached against uncached for a run whose cached
-class is `null`.
+that side is reported. `null` signals that the breakdown is unavailable, so a
+consumer separates cached from uncached only for a run that reports the cached
+class.
 
 The [agent harness layer](/components/core/harnesses/#usage-reporting) produces
 these normalized values from each harness's raw reporting.
@@ -77,21 +72,21 @@ these normalized values from each harness's raw reporting.
 
 Every run records cost two ways:
 
-- The comparable cost, the canonical figure shown on the site. It is computed
-  from the per-token prices OpenRouter lists for the model used rather than the
-  amount actually charged, because OpenRouter may route one model to providers
-  that price calls differently.
+- The comparable cost, the canonical figure. It is computed from the per-token
+  prices OpenRouter lists for the model used rather than the amount actually
+  charged, because OpenRouter may route one model to providers that price calls
+  differently.
 - The actual cost charged for the run, recorded alongside the comparable cost
   for reference.
 
 Comparable cost is derived from the recorded token classes and the listed prices
 for uncached input, cached input, and output tokens, with reasoning tokens
 priced at the output rate. A class that carries tokens but whose per-token price
-is unknown makes the whole cost unknown rather than under-counted; a class with
-zero tokens needs no price. A cost of `null` means unknown, distinct from `0.0`,
-a genuinely free run. Both figures are `null` whenever the cost cannot be
-determined, including when no token class was reported at all: a run whose usage
-never reached us is not a free run, so it is never recorded as `$0.00`.
+is unknown makes the whole cost unknown rather than under-counted, while a class
+with zero tokens needs no price. A cost of `null` means unknown, distinct from
+`0.0`, a genuinely free run. Both figures are `null` whenever the cost cannot be
+determined, including when no token class was reported at all, so a run whose
+usage never reached us is recorded as unknown rather than as `$0.00`.
 
 ### Price history
 
@@ -106,24 +101,20 @@ with the context window, release date, and accepted input modalities.
 A model with no price on record is seeded the first time it is seen at all, both
 when it is curated in the app and when a run binding it is enqueued, so a cost
 split is available while the run is still going. The history is retained per
-model and shown on the model's detail page.
+model.
 
 A model id carrying a `:free`-style OpenRouter variant tag is priced at the
 model's base rate. The tag selects a pricing route rather than a different
-model, so it neither splits the model in two nor makes a run look free.
+model.
 
 ### Harness-reported cost
 
 Some harnesses drive a single provider directly through an API key and report
-the exact cost of a run themselves; Claude Code reports a `total_cost_usd`
+the exact cost of a run themselves. Claude Code reports a `total_cost_usd`
 figure on its terminal result. When a harness reports its own cost, that figure
 is used for both the comparable and the actual cost and the OpenRouter price
-lookup is skipped.
-
-A harness that talks to one provider at one price is already provider-stable, so
-its reported charge serves as the comparable figure directly. These harnesses
-also pass provider-native model ids, which OpenRouter's catalog need not list at
-all.
+lookup is skipped. These harnesses pass provider-native model ids, which
+OpenRouter's catalog need not list.
 
 The [agent harness layer](/components/core/harnesses/#usage-reporting) extracts
 any reported cost from each harness's output.

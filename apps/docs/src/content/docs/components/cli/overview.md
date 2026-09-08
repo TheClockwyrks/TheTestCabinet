@@ -7,11 +7,11 @@ The Test Cabinet's CLI is the `tcab` binary, an enqueue-and-watch client of the
 control plane on the command line so test case runs can be scripted and
 benchmark sweeps run in batch.
 
-`tcab` executes no runs locally. `tcab run` enqueues a run on the backend's job
+Every run executes remotely. `tcab run` enqueues a run on the backend's job
 queue, a [dispatcher](/components/dispatcher/overview/) claims it, and a per-run
 [driver](/components/driver/overview/) pod executes it and streams progress back
-through the backend. The CLI therefore needs no container runtime of its own. It
-needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
+through the backend. The CLI therefore needs no container runtime of its own,
+only a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 [Execution](/components/core/execution/).
 
 ## Commands
@@ -22,13 +22,13 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
   [variant](/testing/end-to-end/overview/),
   [harness](/components/core/harnesses/), model,
   [orchestrator](/components/core/orchestrators/) and
-  [engine](/components/core/engines/), prints the queued job id,
-  streams the run's live [event stream](/components/core/events/) until it
-  finishes, then reads the produced [run record](/components/core/run-records/)
-  back and prints its summary. `--max-runtime` overrides the case's per-run cap,
-  `--auth-mode` selects the harness authentication mode, and `--retry-count`
-  sets how many times the backend retries the run after a terminal
-  infrastructure error or a catastrophic build, with `0` disabling retries.
+  [engine](/components/core/engines/), streams the run's live [event
+  stream](/components/core/events/) until it finishes, then reads the produced
+  [run record](/components/core/run-records/) back. `--max-runtime` overrides
+  the case's per-run cap, `--auth-mode` selects the harness authentication mode,
+  and `--retry-count` sets how many times the backend retries the run after a
+  terminal infrastructure error or a catastrophic build, with `0` disabling
+  retries.
   `--out-dir` also writes the fetched record as `<record-id>.json` there.
   Requires `TCAB_BACKEND_URL` and a logged-in account.
 
@@ -45,8 +45,8 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
 - `validate` runs [validation](/components/core/validation/) over a produced
   implementation and reports whether the tree satisfied everything the case
   declares. It leaves the directory as it found it, apart from the install and
-  build it runs there and the media it synthesizes under `.vendor/`, so it is safe
-  to point at a case's committed reference implementation. See [Exit
+  build it runs there and the media it synthesizes under `.vendor/`, so it is
+  safe to point at a case's committed reference implementation. See [Exit
   codes](#exit-codes) for what makes it fail.
 - `harnesses` lists the supported agent harnesses and whether each one's
   resolved authentication mode has the credentials it needs.
@@ -77,14 +77,14 @@ These listings accept `--json`.
   carry several reviews, one per account.
 - `publish <run-id>...` does self-review and publish in one step: it submits the
   operator's own review from a `<run-id>.md` writeup in the working directory,
-  enqueues the publish, and prints the release's live progress until it
+  enqueues the publish, and streams the release's progress until it
   finishes. Publishing a legacy run requires at least one review, which the
   self-review satisfies. A validator-rated run with no writeup is published
-  without a self-review, and the command says so; whether a writeup-less run is
-  validator-rated is decided by asking the backend for the run's case version, so
-  a run that lacks a writeup while the backend cannot be reached is refused with
-  that reason. Every run's writeup is gated before anything is submitted, so a
-  batch is never left half-published. `--dry-run` prints the plan instead.
+  without a self-review, and the command says so. Whether a writeup-less run is
+  validator-rated is decided by asking the backend for the run's case version,
+  so a run that lacks a writeup while the backend cannot be reached is refused
+  with that reason. Every run's writeup is gated before anything is submitted,
+  so a batch is never left half-published. `--dry-run` prints the plan instead.
   Where different people review, use `review` and have an operator publish.
 
 ### Reference implementations and baselines
@@ -92,9 +92,9 @@ These listings accept `--json`.
 `publish-reference --env <prod|staging> <slug> [<version>] [--variant <slug>]
 [--engine <slug>] [--all-variants]` deploys a case's [reference
 implementations](/components/core/results/#reference-implementations) and
-records where they landed. `--env` is required, so a publish can never silently
-target prod; it selects the Cloudflare Pages project (prod's
-`test-cabinet-references` or staging's `test-cabinet-references-staging`).
+records where they landed. `--env` is required, so a publish always names the
+environment it targets. It selects the Cloudflare Pages project, prod's
+`test-cabinet-references` or staging's `test-cabinet-references-staging`.
 `--dry-run` prints the plan without building, deploying or writing anything.
 
 The unit of work is the variant-on-an-engine pair, resolved from each targeted
@@ -104,16 +104,16 @@ pair's reference directory, scrubs the output with the same secret-redaction
 pass the [publisher](/components/core/results/#secret-redaction) uses, deploys
 the static build to that Pages project under a per-variant, per-engine branch
 alias, reads the served URL back out of `wrangler`'s output, and writes it into
-the committed `test-cases/reference-builds.lock.json` under the `--env` key. The URL is parsed
-rather than constructed because Cloudflare truncates long subdomains.
+the committed `test-cases/reference-builds.lock.json` under the `--env` key. The
+URL is parsed rather than constructed because Cloudflare truncates long
+subdomains.
 
-The command never contacts the backend, so it needs no backend URL or login,
-only `wrangler`. The private backends ingest the lockfile from their own
-checkout on the next `scripts/reingest-cluster.sh`, which upserts the
-`case_reference_build` table the version response and public snapshot read. The
-command also refreshes each variant's committed baseline validation media from
-the build it deploys; `--skip-baselines` deploys without re-capturing when that
-media is current.
+The command contacts no backend, so it requires only `wrangler`. The private
+backends ingest the lockfile from their own checkout on the next
+`scripts/reingest-cluster.sh`, which upserts the `case_reference_build` table the
+version response and public snapshot read. The command also refreshes each
+variant's committed baseline validation media from the build it deploys.
+`--skip-baselines` deploys without re-capturing when that media is current.
 
 An [asset-generation](/testing/asset-generation/overview/) case declares no
 `[build]` table and produces no site, so the same command takes a different path
@@ -121,9 +121,9 @@ for it: it seeds a scratch workspace from the manifest, runs the variant's
 `reference-impl/<variant>/draw.sh` with the case's drawing binary on `PATH`, and
 uploads the frames and action logs to the public snapshot bucket under
 `media/references/<slug>/<version>/<variant>/frames/`. That path needs the
-target environment's `TCAB_R2_*` credentials rather than `wrangler`, and writes
-no lockfile: the keys are constructible, so the backend discovers what exists by
-listing that prefix at ingest.
+target environment's `TCAB_R2_*` credentials rather than `wrangler`. It writes
+no lockfile because the keys are constructible, so the backend discovers what
+exists by listing that prefix at ingest.
 
 `capture-baselines <slug> [<version>] [--variant <slug>] [--all-variants]
 [--engine <slug>] [--dry-run]` regenerates a case version's committed baseline
@@ -134,30 +134,27 @@ works in is the variant/engine pair. For each targeted pair it runs the case's
 produces every [scripted review
 item](/testing/end-to-end/manifests/#automated-validation)'s declared outputs
 from it, and writes them under the version folder's
-`validation-baseline/<engine>/<variant>/`, together with the
-[shared image store](/components/core/validation/#the-shared-image-store) the
-recordings among them draw from. That directory is regenerated wholesale, so a
-renamed or removed output never lingers. The media is the
-expected-behavior half of the reviewer's side-by-side and is a fixed property of
-the case version.
+`validation-baseline/<engine>/<variant>/`, together with the [shared image
+store](/components/core/validation/#the-shared-image-store) the recordings among
+them draw from. That directory is regenerated wholesale, so a renamed or removed
+output never lingers. The media is the expected-behavior half of the comparison
+a reviewer makes and is a fixed property of the case version.
 
 How the outputs are produced follows the case, exactly as it does per run: a
 case shipping a validator project for the engine has its baseline recorded by
 running those suites against the reference implementation, and a case shipping
-none has its reference build served and driven in a browser. Either way both
-panes a reviewer compares come from the same scenario driven the same way, which
-is the only thing that makes the comparison mean anything.
+none has its reference build served and driven in a browser. Both halves of
+that comparison therefore come from the same scenario driven the same way.
 
-A reference implementation is the case's own answer, so every unit is expected to
-run clean against it. A unit that does not is named as it is found and fails its
-target; the sweep still runs every remaining target first, so one pass reports
-every fault. `publish-reference` shares that rule through the same capture, and a
-target whose baseline it could not produce is never deployed.
+A reference implementation is the case's own answer, so every unit is expected
+to run clean against it. A unit that does not fails its target. The sweep still
+runs every remaining target first, so one pass reports every fault.
+`publish-reference` shares that rule through the same capture, and a target
+whose baseline it could not produce is never deployed.
 
-The command deploys nothing and writes no lockfile, so it takes no `--env` and
-needs no Cloudflare credentials, only the case's toolchain — and a browser for a
-case decided by browser scripts. It is the command to run while authoring or
-revising validators.
+`capture-baselines` deploys nothing and writes no lockfile, so it takes no
+`--env` and requires only the case's toolchain, plus a browser for a case
+decided by browser scripts.
 
 ### Analysis
 
@@ -173,25 +170,21 @@ It is the same analysis a run records about its produced tree, pointed at any
 tree on disk, so it needs no run, container, backend or credentials, and it
 executes nothing in the tree it reads.
 
-The report leads with the figures that characterise a tree in one line, lays the
-rest out by family in the order of the analyzer's own metric catalog, and
-finishes with the specifics worth acting on: the most complex functions with
-their file and line, the largest files, the import cycles, and the largest
-duplicated blocks. `--seed-commit` makes the authored set exact when the
-directory is a seeded run workspace; without it every file in the tree is
-treated as authored, which is the right answer for an ordinary source tree.
-`--json` prints the full analysis document for piping onward.
+`--seed-commit` makes the authored set exact when the directory is a seeded run
+workspace. Left off, every file in the tree is treated as authored, which is the
+right answer for an ordinary source tree. `--json` prints the full analysis
+document for piping onward.
 
 ## Exit codes
 
-`tcab` exits `0` only when the thing it was asked to do succeeded, so a script or
-a CI step reads the status rather than the log. Anything that stopped a command
-from doing its job — an unresolvable case, an unreachable backend, a missing
-browser, a rejected login — exits non-zero with the reason on standard error.
+`tcab` exits `0` only when the thing it was asked to do succeeded, so a script
+or a CI step reads the status rather than the log. Anything that stopped a
+command from doing its job, such as an unresolvable case, an unreachable
+backend, a missing browser or a rejected login, exits non-zero with the reason
+on standard error.
 
-Two commands additionally carry a _verdict_: they ran to completion and the
-answer they arrived at is itself a pass or a fail. Both print a final line naming
-every fault, so the tail of a log says what went wrong.
+Two commands additionally carry a verdict: they ran to completion and the answer
+they arrived at is itself a pass or a fail. Both report every fault they found.
 
 `validate` exits non-zero when the tree it was pointed at failed the case. Each
 of these is a fault the tree earned:
@@ -205,29 +198,22 @@ of these is a fault the tree earned:
 - A gating validator decided a verdict against the build.
 - A gating validator did not run against the build, whether it failed the
   debug-API contract or was recorded
-  [inconclusive](/components/core/validation/#validators) — a precondition that
-  went unmet, a suite that could not be run, a run the host stopped on time. This
-  is the one place the exit code deliberately parts from the run's score. Scoring
-  skips an inconclusive unit because it says nothing about the build, but
-  `validate` answers a different question: whether this tree satisfied
-  everything the case declares, and a unit that decided nothing has not been
-  satisfied. Passing it would be an all-clear from a broken host or an
-  uninstallable tree — every unit of a case once went undecided because the
-  produced tree had no `vitest` binary, and the command reported that as a pass.
-  The final line names the two apart so a host problem is not read as a build
-  problem: contract failures are listed by verdict id, and inconclusive units are
-  grouped by kind and reason, with the ids listed only when there are few and one
-  shared reason quoted once when every unit failed for it. Only a point an
-  erratum excludes from scoring costs nothing.
+  [inconclusive](/components/core/validation/#validators). Scoring skips an
+  inconclusive unit, but `validate` asks whether the tree satisfied everything
+  the case declares, and a unit that decided nothing has not. The final line
+  separates the two: contract failures by verdict id, and inconclusive units
+  grouped by kind and reason, with the ids listed when there are few and one
+  shared reason quoted once when every unit failed for it. A point an erratum
+  excludes from scoring costs nothing.
 - An [adversarial](/testing/adversarial/overview/) submission forfeited its
-  match, which is a failure to present a playable controller. A loss or a draw is
-  a result rather than a fault.
+  match, which is a failure to present a playable controller. A loss or a draw
+  is a result rather than a fault.
 
 `capture-baselines` exits non-zero when any targeted reference build failed to
 build or left a unit that did not run clean. The sweep finishes every target
-first, so one pass reports every fault, and the final line names the targets that
-failed. `publish-reference` decides a baseline capture by the same rule and skips
-deploying the target whose media it could not produce.
+first, so one pass reports every fault. `publish-reference` decides a baseline
+capture by the same rule and skips deploying the target whose media it could not
+produce.
 
 ## Authentication
 
@@ -236,9 +222,9 @@ The CLI deals with several independent kinds of credential and keeps them apart.
 - Harness API keys are supplied to the run's container as secrets so the agent
   harness can reach its model provider. See
   [Authentication](/components/core/harnesses/#authentication).
-- Backend reads, meaning resolving definitions and reading runs, are handled at
-  the network layer: the CLI must be on the backend's private network, and
-  presents no token to read.
+- Reading definitions and runs from the backend is handled at the network
+  layer. The CLI must be on the backend's private network and presents no token
+  to read.
 - Account credentials authenticate the mutating backend calls (launching a run,
   reviewing, publishing) and the launch gate. `tcab login` or `tcab register`
   signs in to the [auth service](/components/auth/overview/) (`TCAB_AUTH_URL`)

@@ -5,9 +5,8 @@ title: Overview
 The core component is a Rust library that implements the majority of The Test
 Cabinet's functionality. Every other component links against this library and
 exposes its functionality through its own interface rather than re-implementing
-any of it. Keeping the orchestration here is what lets runs be driven
-identically whether they are launched from a script, a remote request, or a
-window. See [Architecture](/components/architecture/).
+any of it, so a run behaves identically whether it is launched from a script, a
+remote request, or a window. See [Architecture](/components/architecture/).
 
 ## Responsibilities
 
@@ -42,13 +41,11 @@ contracts the rest of the system is built around.
 
 ## Wrapping the core
 
-The wrapping components are thin.
+The wrapping components are thin, adding only the surface their own interface
+requires. The behavior of a run lives in the core.
 
 - The [CLI](/components/cli/overview/) exposes the core as the `tcab` binary.
 - The [driver](/components/driver/overview/) exposes the same run functionality
   as a per-run executor that the dispatcher creates a Kubernetes `Job` for.
 - The [Tauri app](/components/tauri/overview/) exposes it as an interactive
   desktop GUI.
-
-Each adds only the surface its interface requires. The behavior of a run lives
-here.

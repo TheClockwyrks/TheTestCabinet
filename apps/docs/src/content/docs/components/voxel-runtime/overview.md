@@ -6,32 +6,30 @@ The voxel runtime (`@clockwyrks/voxel-runtime`, in `packages/voxel-runtime`)
 is the shared TypeScript library that turns a
 [voxel-family](/testing/asset-generation/overview/#voxel-and-meshed-models)
 run's produced artifacts into a posable, renderable 3D model. The geometry
-arrives ready-made: the [meshing
-binaries](/testing/asset-generation/voxel-binaries/) run surface extraction
-once, in Rust, and emit each part's triangles as a standard glTF 2.0 binary. The
-runtime decodes that geometry and never meshes anything itself.
+arrives ready-made as glTF 2.0 binaries from the [meshing
+binaries](/testing/asset-generation/voxel-binaries/), and the runtime decodes it
+rather than meshing anything itself.
 
-It is consumed by the in-repo [3D viewer](/components/ui/overview/) that reviews
-voxel runs and by games that embed a produced model, so the posing math and the
-mesh loading live in one place. It is a code-sharing library rather than a
-component: it ships no service and runs in no process of its own.
+It is a code-sharing library rather than a component: it ships no service and
+runs in no process of its own. Both the in-repo 3D viewer that reviews voxel
+runs and games that embed a produced model consume it, so the posing math and
+the mesh loading live in one place.
 
 ## The pure-core and three split
 
 The package ships two subpath entries so a consumer takes only what it needs.
 
-`@clockwyrks/voxel-runtime`, the root, is the pure core: the contract types,
-the framework-agnostic posing and animation math, linear-blend skinning, and the
+`@clockwyrks/voxel-runtime`, the root, is the pure core: the contract types, the
+framework-agnostic posing and animation math, linear-blend skinning, and the
 `parseGlb` and `parseSkinnedGlb` decoders that turn a part's `.glb` into a
 `PartMesh` or `SkinnedMesh` of plain typed arrays. It carries no rendering
 dependency, so a game with its own renderer, a headless consumer, or the [glTF
 exporter](#exporting-to-gltf) uses it alone.
 
-`@clockwyrks/voxel-runtime/three` is the three.js binding:
-`buildPartGeometry`, which wraps a core `PartMesh` into a `BufferGeometry`, plus
-the `VoxelRig` and `SkinnedVoxelRig` scene objects built on the core. `three` is
-a peer dependency, so a consuming game shares its single `three` instance with
-the runtime.
+`@clockwyrks/voxel-runtime/three` is the three.js binding: `buildPartGeometry`,
+which wraps a core `PartMesh` into a `BufferGeometry`, plus the `VoxelRig` and
+`SkinnedVoxelRig` scene objects built on the core. `three` is a peer dependency,
+so a consuming game shares its single `three` instance with the runtime.
 
 The core's contract types are re-exported from
 [`@clockwyrks/run-record`](/components/core/run-records/), so the runtime and
@@ -44,8 +42,8 @@ A rigid model's artifacts are its `rig.json` and one `.glb` per part.
 `rig.json` is the rig the model produced: the parts, a parent/child hierarchy
 each carrying an attachment pivot; the joints, named single-axis degrees of
 freedom that are either caller-driven or `auto`; and the model-authored
-animations, named F-curve timelines. Parts and joints are model-invented. The
-case fixes only its required animations, by name.
+animations, named F-curve timelines. Parts and joints are model-invented, and
+the case fixes only its required animations, by name.
 
 Each part's `.glb` carries that part's surface mesh, which `parseGlb` decodes
 into a `PartMesh`: flat `positions` and `normals`, per-vertex linear `0..1` RGB
@@ -54,36 +52,17 @@ static model emits a single `mesh.glb`. An empty part is a socket and decodes to
 an empty `PartMesh`.
 
 A skinned model (the `mc-skinned`, `sn-skinned`, and `dc-skinned` kinds) emits a
-single `mesh.glb` instead, which `parseSkinnedGlb` decodes into a `SkinnedMesh`:
-the same geometry plus `JOINTS_0`, up to four influencing bone indices per
-vertex, `WEIGHTS_0`, their normalized weights, and the skeleton those indices
-address. The rig's parts are the bones, matched to the skeleton by name.
+single `mesh.glb`, which `parseSkinnedGlb` decodes into a `SkinnedMesh`: the
+same geometry plus `JOINTS_0`, up to four influencing bone indices per vertex,
+`WEIGHTS_0`, their normalized weights, and the skeleton those indices address.
+The rig's parts are the bones, matched to the skeleton by name.
 
-### Geometry sources
+The runtime consumes finished triangles only. Every mesher a case may run,
+whether cube, Marching Cubes, Surface Nets or Dual Contouring, yields the same
+`PartMesh` shape, so a single load-and-render path serves all of them.
 
-The runtime never sees voxels or a signed-distance field, only the finished
-triangles. Which mesher produced them is chosen upstream by the binary the case
-runs, and each binary has a fixed surface character:
-
-- cube (`voxel`, `voxel-anim`) — the blocky, axis-aligned surface of an
-  opaque-RGB voxel volume, its interior faces culled.
-- Marching Cubes (`mc`, `mc-anim`) — low poly: a coarse sample grid gives
-  chunky, faceted surfaces.
-- Surface Nets (`sn`, `sn-anim`) — smooth mid-fidelity: watertight, an even
-  triangle density, and rounded features.
-- Dual Contouring (`dc`, `dc-anim`) — high fidelity: a fine grid plus QEF vertex
-  placement that preserves sharp edges and corners.
-
-Every one of them yields the same `PartMesh` shape, so a single load-and-render
-path serves all of them.
-
-:::note[Two renderers of the same geometry]
 This library is the browser and three renderer. The binaries render their own
-preview PNGs headlessly through a `wgpu` renderer targeting Mesa lavapipe. Both
-draw the same `.glb` geometry. See the [voxel
-binaries](/testing/asset-generation/voxel-binaries/) for how previews are
-produced.
-:::
+preview PNGs of the same `.glb` geometry headlessly.
 
 ## Posing
 
@@ -102,10 +81,9 @@ stays exactly where it was sculpted.
 A joint's contribution is `mount ∘ driven`. The mount is fixed: an optional
 `orient` rotation about the pivot, in radians as Euler X→Y→Z, and an optional
 `offset` translation in voxels. The driven part is the joint's single-axis
-rotation or translation at its current value. A joint with no mount contributes
-only the driven motion. A joint with a mount and an empty driven range is a
-purely static attachment, which is how a component is mounted at a custom
-rotation and translation.
+rotation or translation at its current value. A joint with a mount and an empty
+driven range is a purely static attachment, which is how a component is mounted
+at a custom rotation and translation.
 
 Every joint reads its value from the `caller` map, falling back to the joint's
 `rest` and clamped to `[min, max]`. A game supplies caller-driven joints
@@ -133,20 +111,19 @@ joint name to value, which is exactly what `poseRig` takes as `caller`.
 
 An animation is either `auto_play`, played continuously by default, or a named
 playable triggered on demand. Playing one overlays only the joints its tracks
-drive, so every other joint holds at its caller or rest pose and a game can play
-a `recoil` clip while it keeps driving `turret_yaw` from aim state.
+drive, so every other joint holds at its caller or rest pose.
 
 ### Skinning
 
 A skinned character is one continuous mesh whose vertices blend their bones'
-transforms, rather than a set of rigid parts each posed about a pivot. It is
-driven from the same `rig.json` through the same `poseRig` composition.
+transforms, driven from the same `rig.json` through the same `poseRig`
+composition.
 
 `skinningMatrices(rig, mesh, input)` returns one matrix per bone, in the mesh's
 bone order, each the bone's posed world matrix times its inverse-bind matrix. A
 bone with no matching rig part contributes the identity, so it holds at bind
-pose. `skinMesh` applies those matrices on the CPU with no `three` dependency;
-the three binding's `SkinnedVoxelRig` applies the identical math on the GPU.
+pose. `skinMesh` applies those matrices on the CPU with no `three` dependency,
+and the three binding's `SkinnedVoxelRig` applies the identical math on the GPU.
 
 ## The `VoxelRig` API
 
@@ -158,7 +135,7 @@ The three binding wraps the core in a scene object a game drives directly.
 - `pose(caller)` — set the caller-driven joint values, clamped to each joint's
   range.
 - `playAnimation(name)` — play one of the model's animations by name, or `null`
-  to stop. An `auto_play` animation runs continuously by default.
+  to stop.
 - `update(dtSeconds)` — advance the playback clock, posing each driven joint
   from its F-curve while the rest hold at their caller or rest pose.
 - `seek(timeMs)` — set the playback clock directly.
@@ -173,17 +150,15 @@ The three binding wraps the core in a scene object a game drives directly.
 identity outside `root`, so a consumer's transform on `root` places the
 character without double-transforming the skin.
 
-These are the objects the review viewers mount, so a game and the review UI pose
-a produced model identically.
+The review viewers mount these same objects, so a game and the review UI pose a
+produced model identically.
 
 ## Exporting to glTF
 
 To embed a produced voxel model in a game engine as a ready-made animated mesh,
-rather than shipping `rig.json` plus per-part `.glb` and posing at runtime, the
-repo ships `scripts/voxel-to-gltf.mjs`. It packs a run's artifacts into a single
-whole-rig glTF 2.0 or GLB, decoding each part's `.glb` geometry with the same
-logic `parseGlb` uses, so one exporter serves the cube and MC/SN/DC families
-alike:
+the repo ships `scripts/voxel-to-gltf.mjs`. It packs a run's artifacts into a
+single whole-rig glTF 2.0 or GLB, so one exporter serves the cube and MC/SN/DC
+families alike:
 
 ```sh
 # A rigged, animated model (rig.json carries the parts, joints, and animations):
@@ -191,6 +166,11 @@ node scripts/voxel-to-gltf.mjs --rig rig.json --meshes meshes/ --out model.glb
 # A static model (one mesh.glb, no rig):
 node scripts/voxel-to-gltf.mjs --meshes mesh.glb --out model.glb
 ```
+
+Output is GLB by default, or a `.gltf` plus `.bin` pair when `--out` ends in
+`.gltf`. The tool accepts either the raw produced `rig.json` or a run record's
+resolved `ModelSpec` rig, and it is dependency-free. It decodes each part's
+geometry and poses the rig with the same logic the core does.
 
 The output carries one mesh per part, vertex-colored, and a node hierarchy
 matching the part tree, each node named after its part so a game can find and
@@ -209,13 +189,9 @@ consumption path:
 - The joint interface. A `<model>.interface.json` sidecar, mirrored into each
   driven node's glTF `extras`, lists every caller joint with its node, kind,
   axis, and its `min`, `max` and `rest` values. It is the portable form of
-  `jointNames("caller")` and `jointRange`, and it is what a game reads to rotate
-  a turret or pitch a gun within its limits.
+  `jointNames("caller")` and `jointRange`.
 
 A game can therefore play the baked clips or drive the caller joints itself by
 transforming the named nodes within their limits, exactly as `VoxelRig` does.
-The tool is dependency-free, with rig-posing math mirroring the tested core, and
-it accepts either the raw produced `rig.json` or a run record's resolved
-`ModelSpec` rig. It is an authoring and build step for the games that consume
-the assets, outside what a voxel test case can reach. Output is GLB by default,
-or a `.gltf` plus `.bin` pair when `--out` ends in `.gltf`.
+The exporter is an authoring and build step for the games that consume the
+assets, outside what a voxel test case can reach.

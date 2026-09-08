@@ -9,11 +9,10 @@ the tower-defense cases. Groups exist for presentation: the home page renders
 one cross-case leaderboard per group, so a visitor sees which models build the
 best game of each kind without opening every member case.
 
-Groups are global and shared by every visitor. They are distinct from two
-neighbouring concepts: a case's `tags`, which classify one case for filtering,
-and the per-account case groups of [coverage
-plans](/components/backend/coverage/), which schedule a reviewer's runs. A
-test-case group decides only what the home page presents.
+Groups are global and shared by every visitor, and they decide only what the
+home page presents. A case's `tags` classify one case for filtering, and the
+per-account case groups of [coverage plans](/components/backend/coverage/)
+schedule a reviewer's runs.
 
 ## The group catalogue
 
@@ -21,7 +20,7 @@ A group is a directory under `test-case-groups/<slug>/` in the repository,
 containing one manifest, `test-case-group.toml`, which declares:
 
 - `slug`, the stable identifier, matching the directory name;
-- `name`, the display name heading the group's leaderboard;
+- `name`, the display name;
 - `summary`, an optional one-line description;
 - `rank`, an optional ordering key. Groups order by rank ascending, then by
   name, and ranked groups precede unranked ones.
@@ -54,14 +53,9 @@ Snapshot](/components/backend/snapshot/#test-case-groups).
 
 ## The home page leaderboard
 
-The home page renders one leaderboard per group, folded from the scored runs of
-the group's member cases at each case's current version. One row is a harness,
-model, and engine combination. Rows rank by mean score fraction: a run
-contributes its earned share of its own case's checklist weight, so runs of
-cases with different point totals stay comparable. Ties break by the better
-best rating, then by recency.
-
-The top five rows are shown. Each row carries the model, the harness, the mean
-score as a percentage, the mean comparable cost, and the row's best rating,
-with the aesthetic rating beside it when the row has one. A game jam member
+A group's leaderboard is folded from the scored runs of its member cases at each
+case's current version, grouped by harness, model, and engine. Entries rank by
+mean score fraction: a run contributes its earned share of its own case's
+checklist weight, so runs of cases with different point totals stay comparable.
+Ties break by the better best rating, then by recency. A game jam member
 contributes its whole-game grade in place of a functional rating.

@@ -19,31 +19,28 @@ the run.
 
 Like every other [runner](/components/architecture/#runners-and-reporters), the
 driver takes a run's behavior from the core. It assembles the same
-[`RunEngine`](/components/core/execution/) any other host does and swaps the
-in-process sinks for backend-streaming ones.
+[`RunEngine`](/components/core/execution/) any other host does, with
+backend-streaming sinks in place of the in-process ones.
 
-- It accepts the launch request the dispatcher passed in and drives the run
-  through the core. The request names a version, a variant, a
-  [harness](/components/core/harnesses/), a model, and an
-  [orchestrator](/components/core/orchestrators/).
+- It drives the launch request the dispatcher passed in through the core. The
+  request names a version, a variant, a [harness](/components/core/harnesses/),
+  a model, and an [orchestrator](/components/core/orchestrators/).
 - It streams the run's live [harness events](/components/core/events/) to the
   backend as they happen, along with the live drawing [preview
   frames](/testing/asset-generation/sprite-binaries/#live-preview) of an
-  [asset-generation](/testing/asset-generation/overview/) run. The backend's
-  relay fans them out to every watching console.
+  asset-generation run. The backend's relay fans them out to every watching
+  console.
 - It produces the same [run record](/components/core/run-records/) any other
   host would and reports it with the terminal status. The backend persists it
   using the events the relay already accumulated.
 
 The driver reports `starting` before any work, advances the job to `running`
 once setup finishes and the harness session is about to begin, and posts its
-terminal status once. It waits for the relay to drain first, so every streamed
-event has reached the backend before any terminal status is sent.
-
-The run's own start is taken immediately after the `starting` report. That is what
-lets the backend stamp [`startedAt`](/components/backend/api/#topics) from that
-transition and have it name the same instant the produced record does, so a console
-counting a live duration measures the run the finished figure describes.
+terminal status once, after the relay has drained so that every streamed event
+has reached the backend first. The run's own start is taken immediately after
+the `starting` report, so the [`startedAt`](/components/backend/api/#topics) the
+backend stamps from that transition names the same instant the produced record
+does.
 
 ## Sandbox container runtime
 
@@ -65,42 +62,34 @@ frame to the backend.
 
 ## Cancellation
 
-A run can be killed while it is in progress from the console's live monitor. The
-console asks the backend to cancel the job, the backend moves it to the terminal
-`canceled` state and closes its live stream, and every watching monitor reflects
-the end at once. The operator's answer is settled immediately and waits on
-nothing the run still has to do.
+A run can be killed while it is in progress. The console asks the backend to
+cancel the job, the backend moves it to the terminal `canceled` state and closes
+its live stream, so every watcher sees the end at once. The operator's answer is
+settled immediately, waiting on nothing the run still has to do.
 
 What happens to the run in flight depends on the harness. The driver polls its
-own job's state while the run proceeds, and on observing the cancellation it
-winds a [gg](/gg/overview/) session down and records what the run produced, or
-destroys a run of any other harness outright. gg is the one harness with a
-wind-down protocol to ask for: every other is a CLI the Test Cabinet drives
-through an `exec`, with no boundary at which it can be told to stop and no
-epilogue to wait for.
+own job's state while the run proceeds. On observing the cancellation it winds a
+[gg](/gg/overview/) session down and records what the run produced. A run of any
+other harness is destroyed outright, because gg is the one harness with a
+wind-down protocol to ask for and every other is a CLI the Test Cabinet drives
+through an `exec`.
 
-The disposition also turns on whether the session has begun. A gg run is wound
-down only once gg has been launched inside the sandbox, because what a kill
-preserves is what the session got through. A kill that lands earlier, while the
-driver resolves the definition, pulls the image, starts the sandbox, or seeds
-the workspace, finds no session to stop and nothing worth a record, so the
-driver destroys the run exactly as it destroys a third-party one: it records
-nothing, posts no further status, tears the sandbox down, and exits. The job
-stays `canceled` with the record slot empty.
-
-Two checks enforce this. The driver refuses to advance the job to `running`
-once it has observed the kill, and the engine refuses to launch a session
-against a raised latch, stopping the sandbox it started instead. A kill that
-lands after gg is launched is a wind-down however little the session has done.
+A gg run is wound down only once gg has been launched inside the sandbox,
+because what a kill preserves is what the session got through. A kill that lands
+after that launch is a wind-down however little the session has done. A kill
+that lands earlier, while the driver resolves the definition, pulls the image,
+starts the sandbox, or seeds the workspace, destroys the run exactly as it
+destroys a third-party one. Two checks enforce that boundary: the driver refuses
+to advance the job to `running` once it has observed the kill, and the engine
+refuses to launch a session against a raised latch and stops the sandbox it
+started instead.
 
 ### gg wind-down
 
 The driver raises the run's cancellation latch and keeps awaiting the run,
-bounded by a 20-minute wind-down grace. Awaiting rather than dropping is what
-preserves the stages that turn a session into a result: collecting the produced
-tree, folding the accumulated usage into metrics, and writing the record. The
-latch is a request to stop at the next clean boundary, after which the run
-finishes through its ordinary path.
+bounded by a 20-minute wind-down grace. Awaiting the run preserves the stages
+that turn a session into a result. The latch is a request to stop at the next
+clean boundary, after which the run finishes through its ordinary path.
 
 The engine races the session against the latch. On a kill it writes the
 cancellation sentinel, a file at the path gg was named in its invocation
@@ -108,24 +97,21 @@ document, and keeps draining gg's telemetry stream for up to its own 10-minute
 grace so the session's epilogue is ingested.
 
 Every gg agent, the root and every subagent, checks that sentinel at its turn
-boundary, next to the run-wide deadline and cost ceilings and on the same terms
-(see [Execution limits](/gg/execution-limits/#cancellation)). The turn already
+boundary on the same terms as the run-wide deadline and cost ceilings (see
+[Execution limits](/gg/execution-limits/#cancellation)). The turn already
 in flight completes, so nothing is abandoned half-applied. The agent ends with
-the terminal status `canceled` and no limit breach. The session then runs its
-ordinary epilogue: the per-profile rollups, the session summary, the
+the terminal status `canceled` and no limit breach, and the session then runs
+its ordinary epilogue: the per-profile rollups, the session summary, the
 [session-record](/gg/session-record/) sidecar, and the session-ended event.
 
 The engine therefore gets back a normal harness outcome marked canceled,
 carrying the tokens, the cost and the session summary the run accumulated, and
 walks its whole post-session path: it collects the produced tree out of the
 sandbox, runs the post-run analysis stages, folds the metrics, and assembles the
-[run record](/components/core/run-records/).
-
-The one stage a cancellation skips is
-[validation](/components/core/validation/). Every other stage reads state the
-run already produced, while validation is fresh work that judges output an
-operator chose to stop, so a canceled run's validation summary is empty rather
-than failed. The record's terminal state is
+[run record](/components/core/run-records/). The one stage a cancellation skips
+is [validation](/components/core/validation/), which is fresh work judging
+output an operator chose to stop, so a canceled run's validation summary is
+empty rather than failed. The record's terminal state is
 [`canceled`](/components/core/run-records/#status).
 
 The driver then runs every artifact upload it runs for any other run and posts a
@@ -137,78 +123,58 @@ nothing else: no state change, no completion notification, and no retry.
 
 Two paths produce a bare canceled record instead: the session does not wind down
 inside the grace, or the run errors on its way out. Both concern a session that
-had been launched; a run killed before that is destroyed rather than recorded
-bare. In both the driver builds
-the record itself from what it still holds: state
-[`canceled`](/components/core/run-records/#status), the detail
+had been launched, since a run killed before that is destroyed rather than
+recorded bare. In both the driver builds the record itself from what it still
+holds: state [`canceled`](/components/core/run-records/#status), the detail
 `canceled by operator`, and the resolved case identity and test type when the
 definition had materialized. That record carries no produced tree and zero
 metrics.
 
-That record anchors the run's streamed data. The run streamed
-[events](/components/core/events/) right up to the kill, and those are already
-in the backend's hands; without a record to attach them to, the killed run never
-reaches the run list. Recording here is best-effort: the job is already terminal
-and the teardown still has to happen, so a record that cannot be built or posted
-is logged rather than fatal.
+That record anchors the [events](/components/core/events/) the run streamed
+right up to the kill, which the backend already holds, and is what brings the
+killed run into the run list. Recording here is best-effort: the job is already
+terminal and the teardown still has to happen, so a record that cannot be built
+or posted is logged rather than fatal.
 
 ### Third-party destruction
 
 A canceled run of any other harness is destroyed. The driver drops the run
-future, tears the sandbox down, and exits. It keeps nothing: no record is built,
-no artifacts are uploaded, and no terminal status is posted, so the job stays
-`canceled` with the record slot empty and the run is absent from the run list.
-The events the relay streamed before the kill are discarded with it.
+future, tears the sandbox down, and exits. No record is built, no artifacts are
+uploaded, and no terminal status is posted, so the job stays `canceled` with the
+record slot empty and the run is absent from the run list. The events the relay
+streamed before the kill are discarded with it.
 
-Destroying the run is what frees its scheduling slot promptly. Such a harness
-never observes the latch, so waiting on it yields no earlier record and only
-keeps the driver Job running until the session reaches its own end, while the
-[dispatcher](/components/dispatcher/overview/) counts running driver Jobs against
-its in-flight cap. A destroyed run's driver goes terminal promptly, so the runs
-an operator queues after a kill start straight away.
+Destroying the run is what frees its scheduling slot promptly, so the runs an
+operator queues after a kill start straight away. The disposition is decided by
+harness alone rather than by how far the run got, so a kill that lands in the
+post-session stages destroys the run just as one landing mid-session does.
 
-For a third-party harness the disposition is decided by harness alone, not by
-how far the run got, so a kill that lands in the post-session stages destroys
-the run just as one landing mid-session does. Those stages are minutes of work
-holding the same slot, and an operator who stopped the run asked for the slot
-back rather than for the tail to be finished on their behalf.
-
-"Promptly" is the [cancellation poll](#cancellation) interval plus whatever the
-run is doing when the kill lands: the driver can only abandon the run at a point
-where the run yields, and validation drives a browser synchronously, so a kill
-during it waits for that stage to return. A kill during a session — the ordinary
-case — is seconds.
-
-A run that reaches its **own** ending in the window between the kill and the
-driver's next poll is not destroyed, because nothing was interrupted: the driver
-finalizes it like any other finished run and posts its terminal status, which
-the backend discards, leaving the job `canceled`.
-
-Dropping the run future closes the host's end of the harness `exec` and nothing
-more, so deleting the sandbox is what ends the harness process and stops it
-spending.
+A run that reaches its own ending in the window between the kill and the
+driver's next poll is not destroyed. The driver finalizes it like any other
+finished run and posts its terminal status, which the backend discards, leaving
+the job `canceled`.
 
 ### Teardown and late statuses
 
 Every cancellation tears the sandbox down. The sandbox outlives the run future,
 so the driver deletes it by the job-id label it stamped on it when it started
 it: the run's sandbox pod under the Kubernetes runtime, and the run's container
-under the CLI runtime. The driver then exits successfully, so the cluster reads
-a canceled run as a driver success rather than retrying it, and its Job goes
+under the CLI runtime. Deleting the sandbox is what ends the harness process and
+stops it spending. The driver then exits successfully, so the cluster reads a
+canceled run as a driver success rather than retrying it, and its `Job` goes
 terminal. A gg run holds its dispatcher slot for the length of its wind-down,
 bounded by the 20-minute grace.
 
 The one exception is a destroyed run whose teardown failed. There the teardown
-_is_ the kill, so the driver exits non-zero instead: a failed driver Job is what
+is the kill, so the driver exits non-zero instead: a failed driver `Job` is what
 the dispatcher's [reaper](#sandbox-lifetime) looks for, and reporting the
 failure hands it the sandbox that is still running the harness. A destroyed run
 also sweeps twice, a couple of seconds apart, because dropping the run future
-cancels an in-flight sandbox creation on the client side only — the sandbox can
-still appear just after the first sweep looked.
+cancels an in-flight sandbox creation on the client side only and the sandbox
+can still appear just after the first sweep looked.
 
-A wound-down gg run appears in the run list like any other unpublished run, with
-a working Events view, and is [never
-publishable](/components/core/results/#publish).
+A wound-down gg run appears in the run list like any other unpublished run and
+is [never publishable](/components/core/results/#publish).
 
 Any other late status a winding-down driver posts before it notices the kill is
 discarded by the backend, so only the driver's own `canceled` acknowledgement
@@ -216,28 +182,28 @@ can touch a canceled run.
 
 ## Sandbox lifetime
 
-The driver deletes the sandbox pod it created at the end of every run, and again on
-[cancellation](#cancellation). Both of those are **in-process**, so a driver that
-dies by `SIGKILL` — an OOM kill, an eviction, a node drain, a spot preemption — runs
-neither, and the sandbox it leaves behind would otherwise live forever: its
-keep-alive command is `sleep infinity`, and it deliberately carries no
-`ownerReference` for Kubernetes to garbage-collect it by. (Its only candidate parent
-is the driver `Job`, which `ttlSecondsAfterFinished` reaps minutes after the run
-ends — as an owner that would cascade-delete healthy sandboxes out from under long
-runs.) A leaked sandbox holds its CPU and memory _requests_ against the node for as
-long as it lives, which crowds out new runs.
+The driver deletes the sandbox pod it created at the end of every run, and again
+on [cancellation](#cancellation). Both of those are in-process, so a driver that
+dies by `SIGKILL` from an OOM kill, an eviction, a node drain, or a spot
+preemption runs neither. A leaked sandbox lives indefinitely, since its
+keep-alive command is `sleep infinity` and it carries no `ownerReference`, and
+it holds its CPU and memory requests against the node the whole time, which
+crowds out new runs. The only candidate owner is the driver `Job`, which
+`ttlSecondsAfterFinished` reaps minutes after the run ends and which would
+therefore cascade-delete healthy sandboxes out from under long runs.
 
 Two mechanisms outside the driver close that gap:
 
-- The [dispatcher](/components/dispatcher/overview/) **reaps** the sandbox. It
-  watches every driver `Job` it created, so it learns when one fails terminally, and
-  deletes the pods carrying that job's id and the driver's `managed-by` label. This
-  is the primary path and it runs within a poll interval of the death.
-- The sandbox pod carries an **`activeDeadlineSeconds`** of its own
+- The [dispatcher](/components/dispatcher/overview/) reaps the sandbox. It
+  watches every driver `Job` it created, so it learns when one fails terminally,
+  and deletes the pods carrying that job's id and the driver's `managed-by`
+  label. This is the primary path and it runs within a poll interval of the
+  death.
+- The sandbox pod carries an `activeDeadlineSeconds` of its own
   (`TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`, default 24h; `0` disables it) as a
-  last-resort backstop for the case where the dispatcher is down or lacks the RBAC
-  too. It is sized to outlast any real run — it is a leak bound, **not** a run
-  timeout, and nothing else caps a run's duration.
+  last-resort backstop for a dispatcher that is down or lacks the RBAC. It is
+  sized to outlast any real run: it is a leak bound rather than a run timeout,
+  and nothing else caps a run's duration.
 
 ## Artifacts
 
@@ -254,13 +220,12 @@ so the driver also mirrors a backend-driven run's servable media into the
 [backend](/components/backend/overview/) store: every run's
 proof-of-implementation media, synthesized validation media and code-analysis
 document, the files of a run's [showcase](/components/core/showcase/), an
-adversarial run's controller wasm and proof replays, a performance
-run's scored scenarios, an asset-generation run's regenerated and preview images
-with their action log, and a captured gg replay. That store, rather than the
-artifact service, is what the backend exports the public
-[snapshot](/components/backend/overview/) from and what the per-run tabs read.
-Each mirror is best-effort: a failure is logged and the run's record still
-reports.
+adversarial run's controller wasm and proof replays, a performance run's scored
+scenarios, an asset-generation run's regenerated and preview images with their
+action log, and a captured gg replay. That store, rather than the artifact
+service, is what the backend exports the public snapshot from and what a console
+reads a run's media from. Each mirror is best-effort: a failure is logged and
+the run's record still reports.
 
 The store is the fast path rather than the record of truth. It is an ephemeral
 volume in production, so it can be empty for a run published after a backend
@@ -284,18 +249,18 @@ See [Kubernetes: staging & prod](/deployment/kubernetes/run-plane/#rbac).
 ## Deployment
 
 The driver is the `test-cabinet-driver` crate (`crates/driver`). It is a client
-rather than a server, so it carries no app-level auth of its own; its streaming
+rather than a server, so it carries no app-level auth of its own. Its streaming
 calls authenticate to the backend with the per-job token the dispatcher passed
 in. Its configuration is entirely environment variables, documented in
 `crates/driver/src/config.rs`.
 
-The driver image ships no publish CLIs, because publishing is a separate backend
-operation. It does carry the tooling a run needs end to end in-process: `git` to
+The driver image carries the tooling a run needs end to end in-process: `git` to
 seed each run's fresh repository, and a Node runtime with the bundled Playwright
 browser to run an end-to-end case's build steps and load-check the build with a
 headless screenshot. That is the same browser toolchain the
 [backend](/components/backend/overview/) bakes to render references, so the
 image layers the driver binary on the Node and browser base. It also bakes the
 static-musl gg binary the core copies into each sandbox pod, so a gg run
-installs locally with no network egress. The driver runs unprivileged and needs
-no Docker or Podman daemon.
+installs locally with no network egress. Publishing is a separate backend
+operation, so the image ships no publish CLIs. The driver runs unprivileged and
+needs no Docker or Podman daemon.
