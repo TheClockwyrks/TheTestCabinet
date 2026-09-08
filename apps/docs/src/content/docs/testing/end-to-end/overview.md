@@ -199,14 +199,15 @@ be a plain command such as `npm install` or invoke a file the workspace
 supplies. Carom and Coil use `npm install && npx playwright install chromium`.
 
 The command is bounded by the run's maximum runtime, so a hung setup cannot run
-unbounded. It is verified and retried the way validation's
+unbounded. That bound covers the init as a whole: every attempt, check, and delay
+between them shares it. It is verified and retried the way validation's
 [dependency install](/components/core/validation/#the-dependency-install) is:
-after each attempt, every package the workspace's lockfile declares for the
-container must be present on disk, and a non-zero exit or a missing package is
-run again after a delay, up to three attempts in all. Each retry is reported as
-a warning in the run's event stream naming the attempt and its reason. A
-workspace without a lockfile, or a container in which the check cannot run, is
-accepted as unchecked.
+after each attempt, every package the install would place in the container,
+decided by the same rule, must be present on disk, and a non-zero exit or a
+missing package is run again after a delay, up to three attempts in all. Each
+retry is reported as a warning in the run's event stream naming the attempt and
+its reason. A workspace without a lockfile, or a container in which the check
+cannot run, is accepted as unchecked.
 
 After the last attempt, a non-zero exit, or a zero exit with a declared package
 still missing, aborts the run before the harness starts and tears the container

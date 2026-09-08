@@ -44,18 +44,26 @@ The case's install command is run once per collected tree. The
 have their dependencies, and where that install succeeded validation reports the
 recorded step as its own install result.
 
-Validation runs the install itself for any tree that carries no successful
-install of that same command, such as `tcab validate` against an implementation
-directory or a tree whose earlier install failed. The summary reports the install
-as its own step on both paths.
+Validation reuses the recorded install of that same command whatever it came
+to, so a tree whose install failed is reported with that failure and never
+built. Validation runs the install itself only for a tree that carries no
+recorded install, such as `tcab validate` against an implementation directory.
+The summary reports the install as its own step on both paths.
 
 Every install is verified against the tree's lockfile. After the command exits,
-each package the lockfile declares for the host's platform, architecture, and
-libc family must be present on disk, leaving out the dev and optional packages
-the command's own flags omit. A command that exits non-zero, or exits zero and
-leaves such a package absent, is run again after a delay, up to three attempts
-in all. A tree without a lockfile, or with one that declares no packages, is
-accepted as unchecked.
+each package the install would place on the host must be present on disk. A
+package is one the install would place when the lockfile's dependency graph
+reaches it from the project and its workspaces without passing through a package
+the install leaves out. The install leaves out the dependency classes the
+command itself omits, a package whose declared platform, architecture, or libc
+family the host fails, an optional package whose declared node engine range the
+host's node fails, every package that requires one of those unconditionally, and
+every package reachable only through one of those. This is the rule npm's own
+tree builder applies, so a healthy install always checks complete.
+
+A command that exits non-zero, or exits zero and leaves such a package absent,
+is run again after a delay, up to three attempts in all. A tree without a
+lockfile, or with one that declares no packages, is accepted as unchecked.
 
 The install succeeds when an attempt exits zero with every declared package
 present. After the last attempt, a non-zero exit fails the install as a failed
