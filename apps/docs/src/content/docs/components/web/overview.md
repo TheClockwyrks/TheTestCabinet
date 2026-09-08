@@ -165,6 +165,31 @@ status note explains only what no control shows: a full review buffer, runs the
 queue is holding back, cells nothing can launch, or a plan that is finished. A
 halt reports what it cancelled.
 
+A plan opens on three tabs, each its own URL so a reviewer can link and return
+to the one they are working from. Dashboard carries where the plan stands and
+every control that moves it. Reviews is the plan's unreviewed queue, one row per
+run, each row opening that run's verdict. Tests is the matrix of what the plan
+still needs, grouped and ordered exactly as the plan runs it.
+
+The three tabs are one surface with three bodies. They share one read of the
+board, one set of controls, and one on-open top-up, so pressing a tab moves only
+the body and the report of what a control just did survives the press.
+
+Every figure and control sits inside a panel. The Dashboard states the plan's
+position as counts: cells covered, runs missing, buffer occupancy, runs awaiting
+the reviewer, runs the queue is holding back, and cells nothing can launch.
+
+The Dashboard also breaks the plan's runs down by model, by combination, by test
+case, and by rating, and charts the rating mix per combination. The board's
+counts say how many runs a cell has; the breakdowns say what those runs were,
+which is what tells a covered plan apart from a covered plan whose runs are all
+broken. They are derived from the recorded runs matching the plan's cells, so a
+rating that moves under a review is reflected on the next read.
+
+Each cell of the Tests matrix offers two launches: one more run, or the cell's
+whole shortfall. Both launch the cell's own pin, engine included, so a run
+bought by hand counts against the cell it came from.
+
 Nothing here polls in the background. A top-up happens when the console asks:
 opening a plan with auto top-up on, turning a plan's auto top-up or a ladder on,
 asking for one by hand, or, where the plan or ladder tops up on review,
