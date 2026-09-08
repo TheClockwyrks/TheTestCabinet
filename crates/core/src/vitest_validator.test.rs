@@ -1127,16 +1127,46 @@ fn a_suite_of_another_engine_contributes_no_filter() {
 #[test]
 fn a_tree_a_stage_already_installed_is_not_installed_again() {
     let repo = tempfile::tempdir().expect("a scratch tree");
-    let prepared = crate::execution::PreparedInstall::completed(&crate::validation::StepResult {
+    let prepared = crate::execution::PreparedInstall::recorded(&crate::validation::StepResult {
         command: "npm ci".to_string(),
         succeeded: true,
         detail: None,
+        output: None,
+        attempts: None,
     });
-    let artifacts = ArtifactCollection::new(repo.path().to_path_buf()).prepared_by(prepared);
+    let artifacts = ArtifactCollection::new(repo.path().to_path_buf()).prepared_by(Some(prepared));
 
     // `false` would fail if it were run; the tree is already prepared, so it is not.
     ensure_dependencies(repo.path(), &artifacts, "npm ci", VITEST_INSTALL_TIMEOUT)
         .expect("nothing is installed again");
+}
+
+#[test]
+fn a_tree_whose_recorded_install_failed_is_not_installed_again() {
+    let repo = tempfile::tempdir().expect("a scratch tree");
+    let prepared = crate::execution::PreparedInstall::recorded(&crate::validation::StepResult {
+        command: "npm ci".to_string(),
+        succeeded: false,
+        detail: Some(
+            "the install exited 0 but left 1 lockfile package uninstalled: \
+             node_modules/@rolldown/binding-linux-arm64-gnu"
+                .to_string(),
+        ),
+        output: Some(String::new()),
+        attempts: Some(3),
+    });
+    let artifacts = ArtifactCollection::new(repo.path().to_path_buf()).prepared_by(Some(prepared));
+
+    // The verified install spent its attempts; the suite reports that outcome
+    // instead of running `npm ci` (which would fail here) once more.
+    let error = ensure_dependencies(repo.path(), &artifacts, "npm ci", VITEST_INSTALL_TIMEOUT)
+        .expect_err("a failed install leaves nothing to run against");
+    assert!(
+        error.reason.contains("binding-linux-arm64-gnu"),
+        "the failure names the install's own reason: {}",
+        error.reason,
+    );
+    assert_eq!(error.inconclusive, Inconclusive::NotRun);
 }
 
 #[test]

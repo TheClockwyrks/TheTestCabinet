@@ -134,16 +134,16 @@ pub struct PostRunReport {
     /// stage whose case declares no `[toolchain]` table — which the record's `Option`
     /// reports as *not checked*, distinct from *checked and clean*.
     pub toolchain: Option<crate::toolchain::ToolchainSummary>,
-    /// The case's dependency install, when this stage ran it over the collected tree
-    /// and it succeeded.
+    /// The case's dependency install, when this stage ran it over the collected tree.
     ///
     /// A stage may leave the tree in the state the next reader of it needs, and the
     /// next reader here is validation, which runs the very same install. Reporting the
-    /// completed install lets the engine stamp it onto the
+    /// recorded install lets the engine stamp it onto the
     /// [tree's description](crate::ArtifactCollection::prepared_install) before
-    /// validation, which then reuses the recorded step instead of installing again.
-    /// `None` from a stage that installed nothing and from an install that failed,
-    /// both of which leave a tree validation must install into itself.
+    /// validation, which then reuses the recorded step instead of installing again —
+    /// a failed one included, since the verified install's attempts are spent and
+    /// its failure is final. `None` from a stage that ran no install, which leaves a
+    /// tree validation must install into itself.
     pub prepared_install: Option<crate::execution::PreparedInstall>,
 }
 
@@ -185,12 +185,12 @@ impl PostRunReport {
     /// what both the record and validation see.
     pub fn toolchain(summary: crate::toolchain::ToolchainSummary) -> Self {
         let prepared_install =
-            crate::execution::PreparedInstall::completed(&(&summary.install).into());
+            crate::execution::PreparedInstall::recorded(&(&summary.install).into());
         Self {
             artifacts: Vec::new(),
             code_analysis: None,
             toolchain: Some(summary),
-            prepared_install,
+            prepared_install: Some(prepared_install),
         }
     }
 

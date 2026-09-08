@@ -351,10 +351,13 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// from deserializing exactly as one added to `RunRecord` itself would.
 ///
 /// Generation 2 is the gg agent profile's `openingTurn` becoming required: every gg
-/// record stored before it lacks the key and no longer reads. Generation 1's digest
-/// last moved when `DebugScriptResult` gained
-/// [`inconclusive`](tcab_core::validation::Inconclusive), a change stored records
-/// survived because the new field is an `Option` that is `None` on older records.
+/// record stored before it lacks the key and no longer reads. Its digest last moved
+/// when the validation summary's `StepResult` gained `output` and `attempts` and the
+/// toolchain's `ToolchainCommandResult` gained `attempts` (the verified, retried
+/// dependency install), a change stored records survived because every new field is
+/// an `Option` that is `None` on older records. Generation 1's digest last moved
+/// when `DebugScriptResult` gained
+/// [`inconclusive`](tcab_core::validation::Inconclusive), for the same reason.
 const RECORD_SHAPES: &[(u32, &str)] = &[
     (
         1,
@@ -362,7 +365,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         2,
-        "5bf07ee93ada473ab4c75bb34281b598f5286e4788a722e169141b4bc27c1e9e",
+        "9417274233742e26a223882d852690c729844f5c63cd05166f218176f648c879",
     ),
 ];
 

@@ -59,11 +59,15 @@ fn sample_record() -> RunRecord {
                 command: "npm ci".to_string(),
                 succeeded: true,
                 detail: None,
+                output: None,
+                attempts: None,
             }),
             build: Some(StepResult {
                 command: "npm run build".to_string(),
                 succeeded: true,
                 detail: None,
+                output: None,
+                attempts: None,
             }),
             checks: vec![CheckResult {
                 view: "title".to_string(),

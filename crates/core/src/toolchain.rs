@@ -175,7 +175,9 @@ pub struct ToolchainCommandResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub exit_code: Option<i32>,
-    /// Whether the command ran and exited zero.
+    /// Whether the command ran and exited zero — and, for the [verified
+    /// install](crate::install), left every package the lockfile declares for the
+    /// host on disk.
     pub succeeded: bool,
     /// A bounded excerpt of the command's combined output, capped at
     /// [`TOOLCHAIN_OUTPUT_LIMIT`] bytes. Empty when the command produced none.
@@ -183,11 +185,18 @@ pub struct ToolchainCommandResult {
     /// Whether [`output`](Self::output) is an excerpt rather than the whole of what
     /// the command printed.
     pub truncated: bool,
-    /// Why the command did not run, when it did not. `None` for a command that ran,
-    /// whatever it exited with.
+    /// Why the command did not run, when it did not; or, for an install that ran
+    /// and exited zero but still did not succeed, the lockfile packages it left
+    /// uninstalled. `None` for any other command that ran, whatever it exited with.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub detail: Option<String>,
+    /// How many times the command was run before this result was final. Present on
+    /// the [verified install](crate::install), which is retried; absent on every
+    /// command that is run once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub attempts: Option<u32>,
 }
 
 impl ToolchainCommandResult {
@@ -201,6 +210,7 @@ impl ToolchainCommandResult {
             output: String::new(),
             truncated: false,
             detail: Some(detail.into()),
+            attempts: None,
         }
     }
 
@@ -215,6 +225,7 @@ impl ToolchainCommandResult {
             output,
             truncated,
             detail: None,
+            attempts: None,
         }
     }
 }
@@ -226,22 +237,37 @@ impl From<&ToolchainCommandResult> for crate::validation::StepResult {
     /// and the [toolchain stage](crate::toolchain_stage) runs that same install as a
     /// toolchain command. This is how the one recorded outcome reaches the validation
     /// summary when the stage got there first, so the summary carries the step that
-    /// actually ran rather than a second one describing it.
+    /// actually ran rather than a second one describing it. The validator's own
+    /// steps go through the same conversion, so a step reads the same whichever
+    /// path produced it.
     fn from(result: &ToolchainCommandResult) -> Self {
-        // A failure says why: the reason it never started, or the output it printed
-        // when it ran and exited non-zero. A step that succeeded needs no detail.
-        let detail = (!result.succeeded)
-            .then(|| {
-                result
-                    .detail
-                    .clone()
-                    .or_else(|| (!result.output.trim().is_empty()).then(|| result.output.clone()))
+        // A failure says why: the reason it never started, the packages an install
+        // left missing, or — for a command that ran and exited non-zero — the output
+        // it printed, which is where the real error is. The first line of that detail
+        // is always the reason on its own (the exit, or the reason it never ran), with
+        // the output excerpt on the lines after it, so a reader that has room for one
+        // line — a run's status — can take the reason alone. A step that succeeded
+        // needs no detail.
+        let detail = (!result.succeeded).then(|| {
+            result.detail.clone().unwrap_or_else(|| {
+                let output = result.output.trim();
+                let how = match result.exit_code {
+                    Some(code) => format!("exited {code}"),
+                    None => "was killed by a signal".to_string(),
+                };
+                if output.is_empty() {
+                    format!("`{}` {how}", result.command)
+                } else {
+                    format!("`{}` {how}:\n{output}", result.command)
+                }
             })
-            .flatten();
+        });
         Self {
             command: result.command.clone(),
             succeeded: result.succeeded,
             detail,
+            output: result.ran.then(|| result.output.clone()),
+            attempts: result.attempts,
         }
     }
 }

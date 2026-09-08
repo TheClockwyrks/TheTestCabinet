@@ -38,7 +38,9 @@ pub mod gg_session_record;
 pub mod harness;
 pub mod harness_registry;
 pub mod harness_telemetry;
+pub mod install;
 pub mod job_api;
+pub mod lockfile_check;
 pub mod match_play;
 pub mod metrics;
 pub mod model_id;
@@ -133,11 +135,16 @@ pub use harness::{
     resolve_run_image,
 };
 pub use harness_registry::DefaultHarnessRegistry;
+pub use install::{
+    INSTALL_ATTEMPTS, INSTALL_RETRY_DELAY, INSTALL_TIMEOUT, InstallOutcome, install_with_retry,
+    install_with_retry_blocking, run_command, run_command_blocking,
+};
 pub use job_api::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, JobSummary, LaunchAck,
     LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, Notification, NotificationKind,
     NotificationOutcome, RunEvent, RunEventKind, StatusUpdate, StreamTopicsBody,
 };
+pub use lockfile_check::{LOCKFILE_CHECK_SCRIPT, LockfileCheck, check_tree, parse_report};
 pub use metrics::{Cost, RunDurations, RunMetrics, TokenCounts, TokenPrices};
 pub use orchestrator::{
     BUILT_IN_SLUGS, ONE_SHOT_SLUG, Orchestrator, OrchestratorCatalog, OrchestratorManifest,
@@ -1016,7 +1023,14 @@ where
             // the user-level bin dirs); a login shell could reset `PATH` from
             // `/etc/profile` and drop them.
             let command = vec!["sh".to_string(), "-c".to_string(), install.to_string()];
-            if let Err(err) = run_setup(&self.runtime, &handle, &command, max_runtime).await {
+            if let Err(err) = run_setup(
+                &self.runtime,
+                &handle,
+                &command,
+                Duration::from_secs(max_runtime),
+            )
+            .await
+            {
                 events.emit(&HarnessEvent::system(
                     SystemStage::InstallHarness,
                     SystemStatus::Failed,
@@ -1088,16 +1102,27 @@ where
         // is mounted at the working directory. This is where a case installs its
         // dependencies or runs a setup script (for example `npm install`) before
         // the harness starts, so the workspace it shipped is fully prepared. It
-        // runs as the container's unprivileged run user in the workspace; a
-        // non-zero exit or a timeout aborts the run — a broken setup would only
-        // waste a harness session — and the container is torn down first.
+        // runs as the container's unprivileged run user in the workspace and is
+        // verified against the workspace's lockfile and retried the way the host's
+        // install is (see [`run_init`]); an init that still has not succeeded
+        // after its last attempt, or that times out, aborts the run — a broken
+        // setup would only waste a harness session — and the container is torn
+        // down first.
         if let Some(init) = &test_case.init {
             events.emit(&HarnessEvent::system(
                 SystemStage::InitTestCase,
                 SystemStatus::Started,
             ));
-            let command = vec!["sh".to_string(), "-c".to_string(), init.clone()];
-            if let Err(err) = run_setup(&self.runtime, &handle, &command, max_runtime).await {
+            if let Err(err) = run_init(
+                &self.runtime,
+                &handle,
+                init,
+                max_runtime,
+                INSTALL_RETRY_DELAY,
+                events,
+            )
+            .await
+            {
                 events.emit(&HarnessEvent::system(
                     SystemStage::InitTestCase,
                     SystemStatus::Failed,
@@ -1912,13 +1937,19 @@ where
         )?;
 
         // A clean harness exit that produced nothing evaluable is a model
-        // catastrophe, not a completion (computed before `validation` is moved into
-        // the record). A canceled run is neither: an operator ended it, so it is
-        // recorded as what it is rather than judged on output it never finished.
-        let terminal_state = if outcome.canceled {
-            RunState::Canceled
+        // catastrophe, not a completion — unless the reason nothing was evaluable is
+        // that the Test Cabinet's own dependency install never succeeded, which is
+        // an infrastructure failure carrying the install's reason (computed before
+        // `validation` is moved into the record). A canceled run is neither: an
+        // operator ended it, so it is recorded as what it is rather than judged on
+        // output it never finished.
+        let status = if outcome.canceled {
+            RunStatus {
+                state: RunState::Canceled,
+                detail: None,
+            }
         } else {
-            completed_state(test_case.test_type, &validation)
+            completed_status(test_case.test_type, &validation)
         };
         let record = RunRecord {
             id: run_id.to_string(),
@@ -1959,10 +1990,7 @@ where
             metrics,
             validation,
             links: RunLinks::default(),
-            status: RunStatus {
-                state: terminal_state,
-                detail: None,
-            },
+            status,
             // For a game jam, capture the produced gameplay README so a later run of
             // the same jam by this model can be briefed on what was already built and
             // asked for something distinct. `None` for every other type, and for a jam
@@ -2214,38 +2242,80 @@ fn read_showcase(repo_path: &Path) -> Option<RunShowcase> {
     Some(RunShowcase { description, media })
 }
 
-/// The terminal state for a run whose harness exited cleanly, given the test type
+/// The terminal status for a run whose harness exited cleanly, given the test type
 /// and its validation summary.
 ///
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
-/// (end-to-end, full-stack, game-jam, asset-generation) this splits two ways: an
-/// output that never loaded leaves nothing to review — the model's output is broken
-/// — so the run is [`RunState::Catastrophic`]; anything that loaded is
-/// [`RunState::Completed`] and goes to review, however badly it validated. A
-/// validation script that could not be driven fails the individual checklist point
-/// it backs (see [`crate::validation::DebugScriptResult`]) rather than diverting the
-/// whole run out of review, so a build with a broken debug API is scored down by a
-/// reviewer who can see exactly which checks it cost. The **auto-scored** types
+/// (end-to-end, full-stack, game-jam, asset-generation) this splits three ways.
+/// An output whose [dependency install](crate::install) did not succeed — after
+/// every attempt the verified install makes — was never given a chance to build,
+/// so nothing about the model can be concluded: the run is
+/// [`RunState::Infrastructure`], with a [`RunStatus::detail`] naming the install's
+/// reason. Otherwise an output that never loaded leaves nothing to review — the
+/// model's output is broken (a tree with no `package.json`, or a build or load
+/// that failed after its install succeeded) — so the run is
+/// [`RunState::Catastrophic`]; anything that loaded is [`RunState::Completed`]
+/// and goes to review, however badly it validated. A validation script that could
+/// not be driven fails the individual checklist point it backs (see
+/// [`crate::validation::DebugScriptResult`]) rather than diverting the whole run
+/// out of review, so a build with a broken debug API is scored down by a reviewer
+/// who can see exactly which checks it cost. The **auto-scored** types
 /// (adversarial, performance) carry their authoritative result in the validation
 /// summary even when `loaded` is false (a forfeit or an incorrect engine is a real,
 /// low score, not a catastrophe), so they stay [`RunState::Completed`]; a per-type
 /// catastrophic tier for them is deferred.
-fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
+///
+/// Only the infrastructure outcome carries a detail: the other two are read from
+/// the validation summary itself.
+fn completed_status(test_type: TestType, validation: &ValidationSummary) -> RunStatus {
+    let state = |state: RunState| RunStatus {
+        state,
+        detail: None,
+    };
+
     // Only the human-reviewed types gate this way; the auto-scored types carry
     // their result even on a bad load, and none of them declare debug scripts.
     if !matches!(
         test_type,
         TestType::EndToEnd | TestType::FullStack | TestType::GameJam | TestType::AssetGeneration
     ) {
-        return RunState::Completed;
+        return state(RunState::Completed);
     }
 
     if validation.loaded {
-        RunState::Completed
-    } else {
-        // Nothing was produced that runs: no build to host, nothing to review.
-        RunState::Catastrophic
+        return state(RunState::Completed);
     }
+
+    // The install ran and did not succeed: the tree was never built, so the
+    // failure is the Test Cabinet's, and the reason is the install's own — the
+    // packages it left uninstalled, the exit that failed, or why it never ran. A
+    // tree that never reached the install (no `package.json`) has no install step
+    // at all and stays a catastrophe below.
+    //
+    // The status detail is what a run list and a run's header show, so it carries
+    // the reason alone: the first line of the step's detail, which is the reason
+    // on its own, and never the output excerpt behind it, which the install step
+    // itself records in full.
+    if let Some(install) = validation.install.as_ref().filter(|step| !step.succeeded) {
+        let reason = install
+            .detail
+            .as_deref()
+            .and_then(|detail| detail.lines().next())
+            .map(|line| line.trim().trim_end_matches(':').trim_end())
+            .filter(|line| !line.is_empty())
+            .unwrap_or("the install did not succeed");
+        let attempts = match install.attempts {
+            Some(attempts) if attempts > 1 => format!(" after {attempts} attempts"),
+            _ => String::new(),
+        };
+        return RunStatus {
+            state: RunState::Infrastructure,
+            detail: Some(format!("dependency install failed: {reason}{attempts}")),
+        };
+    }
+
+    // Nothing was produced that runs: no build to host, nothing to review.
+    state(RunState::Catastrophic)
 }
 
 /// Mint a fresh run id.
@@ -2453,10 +2523,13 @@ fn write_jsonl<T: serde::Serialize>(path: &std::path::Path, items: &[T]) -> Resu
 /// step onto [`Error::HarnessInstall`]/[`Error::HarnessInstallTimedOut`], the
 /// init step onto [`Error::Init`]/[`Error::InitTimedOut`] — so each failure
 /// reads in terms of the step that produced it.
+#[derive(Debug)]
 enum SetupError {
     /// The command did not finish within the wall-clock cap.
     TimedOut,
-    /// The command exited non-zero; the string summarizes the captured output.
+    /// The command exited non-zero, or — for the init step's last attempt — exited
+    /// zero but left lockfile packages uninstalled; the string summarizes the
+    /// captured output, or names the missing packages.
     Failed(String),
     /// The container runtime itself failed to run the command.
     Runtime(Error),
@@ -2465,18 +2538,19 @@ enum SetupError {
 /// Run a setup command inside the run container under a wall-clock cap, returning
 /// a [`SetupError`] if it exits non-zero or does not finish in time.
 ///
-/// The command is bounded by the same `seconds` cap as the harness session so a
-/// hung setup step can never run unbounded. On a non-zero exit the captured
-/// output is summarized so a broken setup can be diagnosed; the caller tears the
-/// container down on any error this returns.
+/// The command is bounded by `cap` — the harness install by the run's maximum
+/// runtime, an init attempt by what is left of it — so a hung setup step can
+/// never run unbounded. On a non-zero exit the captured output is summarized so a
+/// broken setup can be diagnosed; the caller tears the container down on any
+/// error this returns.
 async fn run_setup(
     runtime: &impl ContainerRuntime,
     handle: &ContainerHandle,
     command: &[String],
-    seconds: u64,
+    cap: Duration,
 ) -> std::result::Result<(), SetupError> {
     let exec = runtime.exec(handle, command);
-    let output = match tokio::time::timeout(Duration::from_secs(seconds), exec).await {
+    let output = match tokio::time::timeout(cap, exec).await {
         Ok(Ok(output)) => output,
         Ok(Err(err)) => return Err(SetupError::Runtime(err)),
         Err(_elapsed) => return Err(SetupError::TimedOut),
@@ -2485,6 +2559,175 @@ async fn run_setup(
         return Err(SetupError::Failed(init_failure_detail(&output)));
     }
     Ok(())
+}
+
+/// Run a test case's `init` command inside the run container as a verified,
+/// retried install.
+///
+/// An init is almost always a dependency install (`npm ci`, `npm install && npx
+/// playwright install chromium`), and an install that exits zero is not
+/// necessarily complete: a registry blip makes npm drop a platform-specific
+/// optional package and exit zero regardless, and the run then fails minutes
+/// later in a way that reads as the model's fault. So an attempt that exits zero
+/// is checked against the workspace's lockfile with the very same script the host
+/// runs over a collected tree ([`LOCKFILE_CHECK_SCRIPT`]), executed through the
+/// runtime's exec in the workspace. An attempt that exits non-zero, or that exits
+/// zero and leaves a package the install should have placed absent, is retried
+/// after `delay` — a warning event naming the attempt and the reason goes out
+/// first — up to [`INSTALL_ATTEMPTS`] attempts in all.
+///
+/// The whole of it — every attempt, every check, and the delays between them — is
+/// bounded by `seconds`, the run's maximum runtime, as one budget: each attempt
+/// runs under whatever the earlier ones left. An attempt that outruns the budget
+/// is a timeout and is not retried; an attempt that fails with too little budget
+/// left for the delay and another attempt fails there, saying so. A runtime error
+/// is not retried either. After the last attempt a non-zero exit fails with the
+/// output summary it always did, and a zero exit with packages still missing fails
+/// with a detail naming them. A workspace that cannot be checked — no lockfile, no
+/// `node` in the image, the script not running — is accepted as it stands,
+/// exactly as the host accepts an uncheckable tree.
+async fn run_init(
+    runtime: &impl ContainerRuntime,
+    handle: &ContainerHandle,
+    init: &str,
+    seconds: u64,
+    delay: Duration,
+    events: &mut dyn EventSink,
+) -> std::result::Result<(), SetupError> {
+    // A non-login shell, for the same reason the harness install uses one: the
+    // container's own `PATH` already carries what the init needs.
+    let command = vec!["sh".to_string(), "-c".to_string(), init.to_string()];
+    // Measured on tokio's clock, the one the caps below run on, so the budget and
+    // the timeouts charged against it agree (and a paused test clock drives both).
+    let budget = Duration::from_secs(seconds);
+    let started = tokio::time::Instant::now();
+    let remaining = || budget.saturating_sub(started.elapsed());
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        let cap = remaining();
+        if cap.is_zero() {
+            return Err(SetupError::TimedOut);
+        }
+        let reason = match run_setup(runtime, handle, &command, cap).await {
+            Ok(()) => {
+                let check = check_workspace_lockfile(runtime, handle, init, remaining()).await;
+                match check {
+                    LockfileCheck::Checked { missing } if !missing.is_empty() => {
+                        install::missing_detail(&missing)
+                    }
+                    LockfileCheck::Checked { .. } => return Ok(()),
+                    LockfileCheck::NotChecked { reason } => {
+                        tracing::debug!(
+                            init,
+                            reason,
+                            "the init's workspace was accepted unchecked"
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+            // An attempt that spent the budget has left nothing for another; and a
+            // runtime that cannot run the command at all will not run it on a retry
+            // either.
+            Err(err @ (SetupError::TimedOut | SetupError::Runtime(_))) => return Err(err),
+            Err(SetupError::Failed(detail)) => detail,
+        };
+        if attempt >= INSTALL_ATTEMPTS {
+            return Err(SetupError::Failed(reason));
+        }
+        // The delay is charged against the same budget. A retry that could not
+        // start until the budget was gone would only time out, so the attempt that
+        // just failed is the last, and its reason says why no other was made.
+        if remaining() <= delay {
+            return Err(SetupError::Failed(format!(
+                "{reason} (no time remained in the run's maximum runtime for another attempt)"
+            )));
+        }
+        let message = format!(
+            "init attempt {attempt} of {INSTALL_ATTEMPTS} did not complete ({reason}); retrying in {} seconds",
+            delay.as_secs()
+        );
+        tracing::warn!(
+            init,
+            attempt,
+            reason,
+            delay_secs = delay.as_secs_f64(),
+            "{message}"
+        );
+        events.emit(&HarnessEvent {
+            timestamp: crate::event::now_timestamp(),
+            session_id: None,
+            kind: EventKind::Warning {
+                message,
+                code: None,
+            },
+        });
+        tokio::time::sleep(delay).await;
+    }
+}
+
+/// How long the in-container lockfile check may take. It walks the lockfile's
+/// dependency graph and stats one directory per package, so a real run is well
+/// under a second; the cap keeps a wedged `node` from holding the init open, and
+/// a check that outruns it counts as not checked rather than as a verdict.
+const CONTAINER_CHECK_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Run the [lockfile check](crate::lockfile_check) over the run container's
+/// workspace, through the runtime's exec.
+///
+/// Every runtime execs in the workspace ([`WORKSPACE_DIR`]) as the run user, which
+/// is where and as whom the init ran, so the script sees the tree the init left.
+/// The script is handed to `node` inline, as it is on the host, so the workspace is
+/// never left carrying a file of the Test Cabinet's. `init` is passed as the
+/// script's install command so the dependency classes its flags omit are left out
+/// of the check. The check runs under [`CONTAINER_CHECK_TIMEOUT`] or what is left
+/// of the init's budget, whichever is shorter. Anything that keeps the script from
+/// reporting — no `node` in the image, a runtime error, the cap — reads as *not
+/// checked*, never as a failure.
+async fn check_workspace_lockfile(
+    runtime: &impl ContainerRuntime,
+    handle: &ContainerHandle,
+    init: &str,
+    remaining: Duration,
+) -> LockfileCheck {
+    let command = vec![
+        "node".to_string(),
+        "--input-type=module".to_string(),
+        "-e".to_string(),
+        LOCKFILE_CHECK_SCRIPT.to_string(),
+        "--".to_string(),
+        init.to_string(),
+    ];
+    let cap = CONTAINER_CHECK_TIMEOUT.min(remaining);
+    let output = match tokio::time::timeout(cap, runtime.exec(handle, &command)).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(err)) => {
+            return LockfileCheck::NotChecked {
+                reason: format!("the lockfile check could not be run in the container: {err}"),
+            };
+        }
+        Err(_elapsed) => {
+            return LockfileCheck::NotChecked {
+                reason: format!(
+                    "the lockfile check did not finish within {} seconds",
+                    cap.as_secs()
+                ),
+            };
+        }
+    };
+    if output.exit_code != 0 {
+        // `node` absent from the image (127), or the script crashing: the check
+        // could not see into the tree, and the tree is accepted as it stands.
+        return LockfileCheck::NotChecked {
+            reason: format!(
+                "the lockfile check exited {}: {}",
+                output.exit_code,
+                output.stderr.trim().lines().last().unwrap_or_default()
+            ),
+        };
+    }
+    parse_report(&output.stdout)
 }
 
 /// Summarize a failed init command's output into a single-line-ish detail: the

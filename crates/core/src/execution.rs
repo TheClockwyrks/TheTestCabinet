@@ -402,19 +402,21 @@ pub struct ExecOutput {
     pub idle_timed_out: bool,
 }
 
-/// The case's dependency install, already completed over a collected tree.
+/// The case's dependency install, already run to its final outcome over a
+/// collected tree.
 ///
 /// The [toolchain stage](crate::toolchain_stage) runs the case's `[build]` install
 /// over the collected tree so its commands have their dependencies, and validation
 /// then needs that same tree installed. A lockfile install such as `npm ci` clears
 /// `node_modules` and rebuilds it from the lockfile, so running the command a second
-/// time reproduces the state it already produced. Carrying the completed install on
+/// time reproduces the state it already produced. Carrying the recorded install on
 /// the tree's own description is what lets validation skip the repeat and report the
 /// recorded step in its place.
 ///
-/// Only a **successful** install prepares a tree: an install that failed left the
-/// dependencies in whatever state it managed, which is not a tree anything may build
-/// from. [`completed`](Self::completed) is therefore the only constructor.
+/// An install that did not succeed is carried too. The [verified
+/// install](crate::install) has already made every attempt it is allowed, so its
+/// failure is final: validation reports that step as its own and never builds the
+/// tree, rather than spending the attempts over again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedInstall {
     /// The install command that was run, verbatim as the case's `[build]` table
@@ -428,13 +430,12 @@ pub struct PreparedInstall {
 }
 
 impl PreparedInstall {
-    /// Describe the tree an install left behind, or `None` when the install did not
-    /// succeed and therefore prepared nothing.
-    pub fn completed(step: &StepResult) -> Option<Self> {
-        step.succeeded.then(|| Self {
+    /// Describe the tree an install left behind, whatever it came to.
+    pub fn recorded(step: &StepResult) -> Self {
+        Self {
             command: step.command.trim().to_string(),
             step: step.clone(),
-        })
+        }
     }
 }
 
@@ -448,8 +449,8 @@ impl PreparedInstall {
 pub struct ArtifactCollection {
     /// Host path to the collected working tree.
     pub repo_path: PathBuf,
-    /// The dependency install a [post-run stage](crate::post_run) already completed
-    /// over this tree, when one did.
+    /// The dependency install a [post-run stage](crate::post_run) already ran over
+    /// this tree, when one did.
     ///
     /// Deliberately not serialized. This describes the tree as it stands in **this**
     /// process, right now, and the only writer is the engine stamping what its own
@@ -488,7 +489,7 @@ impl ArtifactCollection {
         }
     }
 
-    /// The same tree, now carrying the install that was completed over it.
+    /// The same tree, now carrying the install that was run over it.
     #[must_use]
     pub fn prepared_by(mut self, install: Option<PreparedInstall>) -> Self {
         self.prepared_install = install;
@@ -515,8 +516,8 @@ impl ArtifactCollection {
             .filter(|engine| engine.provides_runtime())
     }
 
-    /// The completed install to reuse for `command`, when this tree has had exactly
-    /// that command run successfully over it.
+    /// The recorded install to reuse for `command`, when this tree has had exactly
+    /// that command run over it.
     ///
     /// The comparison is what keeps the signal honest: a tree prepared by one case's
     /// install command answers only for that command, and any other caller gets

@@ -62,6 +62,39 @@ fn retry_count_falls_back_to_default_on_unparseable_request() {
 }
 
 #[test]
+fn a_succeeded_report_whose_record_is_an_infrastructure_failure_lands_as_a_failed_job() {
+    // The engine hands back a record for a clean harness exit whatever it decided
+    // about the run. Its own outcomes — completed, catastrophic — are the model's
+    // and land as a succeeded job; a record it classified as the Test Cabinet's own
+    // failure (a dependency install that never succeeded) lands the way every other
+    // infrastructure failure does, failed with the record's reason.
+    let mut record = crate::db::tests::record("run-1");
+    record.status = test_cabinet_core::run_record::RunStatus {
+        state: RunState::Infrastructure,
+        detail: Some("dependency install failed: `npm ci` exited 1 after 3 attempts".to_string()),
+    };
+    assert_eq!(
+        succeeded_job_outcome(&record),
+        (
+            JobState::Failed,
+            Some("dependency install failed: `npm ci` exited 1 after 3 attempts")
+        )
+    );
+
+    for state in [RunState::Completed, RunState::Catastrophic] {
+        record.status = test_cabinet_core::run_record::RunStatus {
+            state,
+            detail: None,
+        };
+        assert_eq!(
+            succeeded_job_outcome(&record),
+            (JobState::Succeeded, None),
+            "{state:?}"
+        );
+    }
+}
+
+#[test]
 fn terminal_run_state_falls_back_when_no_record() {
     // With no record, the caller's fallback stands in (a `failed` report with no
     // record it could build is treated as our infrastructure).

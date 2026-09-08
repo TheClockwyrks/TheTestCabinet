@@ -68,9 +68,10 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
 /**
  * The terminal state of a run — the single axis that decides publishability and
  * how a run scores. Classified objectively at the point a run ends: a clean
- * harness exit splits into [`Completed`](RunState::Completed) and
+ * harness exit splits into [`Completed`](RunState::Completed),
  * [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
- * never built or loaded);
+ * never built or loaded) and, when the output's dependency install never
+ * succeeded, [`Infrastructure`](RunState::Infrastructure);
  * a harness that stopped itself on one of its own configured ceilings is
  * [`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any
  * other way is a [`HarnessError`](RunState::HarnessError), and one that stops
@@ -555,14 +556,30 @@ export type StepResult = {
    */
   command: string;
   /**
-   * Whether the command exited successfully.
+   * Whether the step succeeded: the command exited zero and, for the
+   * [verified install](crate::install), left every package the lockfile declares
+   * for the host on disk.
    */
   succeeded: boolean;
   /**
-   * Detail about a failure (a tail of the command's stderr), or `None` when
-   * the step succeeded.
+   * Detail about a failure — why the command could not be started, the packages
+   * an install left uninstalled, or the bounded output of a command that exited
+   * non-zero — or `None` when the step succeeded.
    */
   detail: string | null;
+  /**
+   * A bounded excerpt of the command's combined stdout and stderr, capped at
+   * [`TOOLCHAIN_OUTPUT_LIMIT`](crate::toolchain::TOOLCHAIN_OUTPUT_LIMIT) bytes.
+   * Present whenever the command ran, whatever it exited with; absent when it
+   * could not be started, and on records from before it was kept.
+   */
+  output?: string;
+  /**
+   * How many times the command was run before this result was final. Present on
+   * the install, which is retried; absent on the build, which runs once, and on
+   * records from before it was kept.
+   */
+  attempts?: number;
 };
 
 /**
@@ -1817,7 +1834,9 @@ export type ToolchainCommandResult = {
    */
   exitCode?: number;
   /**
-   * Whether the command ran and exited zero.
+   * Whether the command ran and exited zero — and, for the [verified
+   * install](crate::install), left every package the lockfile declares for the
+   * host on disk.
    */
   succeeded: boolean;
   /**
@@ -1831,10 +1850,17 @@ export type ToolchainCommandResult = {
    */
   truncated: boolean;
   /**
-   * Why the command did not run, when it did not. `None` for a command that ran,
-   * whatever it exited with.
+   * Why the command did not run, when it did not; or, for an install that ran
+   * and exited zero but still did not succeed, the lockfile packages it left
+   * uninstalled. `None` for any other command that ran, whatever it exited with.
    */
   detail?: string;
+  /**
+   * How many times the command was run before this result was final. Present on
+   * the [verified install](crate::install), which is retried; absent on every
+   * command that is run once.
+   */
+  attempts?: number;
 };
 
 /**

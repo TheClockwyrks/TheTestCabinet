@@ -29,7 +29,12 @@
 //! The collected tree carries no `node_modules` (the collector
 //! [skips it](crate::SKIPPED_DIRS), and a lockfile install reproduces it exactly),
 //! so this stage runs the case's own `install` command first and reports it as its
-//! own result, bounded by [`INSTALL_TIMEOUT`].
+//! own result, bounded by [`INSTALL_TIMEOUT`]. That install is the
+//! [verified, retried one](crate::install): an attempt that exits non-zero, or
+//! exits zero and leaves a package the lockfile declares for the host off the disk,
+//! is run again after a delay, and the recorded result carries the number of
+//! attempts it took. An install that still has not succeeded after the last attempt
+//! is recorded as failed with the missing packages named.
 //!
 //! Validation runs that same install. When this stage's succeeded, it reports the
 //! install it completed on its [report](crate::PostRunReport::prepared_install), the
@@ -67,10 +72,10 @@
 //! a typecheck that *ran* and exited non-zero gates the run.
 
 use std::path::Path;
-use std::process::Stdio;
 use std::time::Duration;
 
 use crate::error::Result;
+use crate::install::{INSTALL_RETRY_DELAY, install_with_retry, run_command};
 use crate::playable::find_build_output;
 use crate::post_run::{PostRunContext, PostRunReport, PostRunStage};
 use crate::toolchain::{
@@ -78,9 +83,7 @@ use crate::toolchain::{
 };
 use crate::toolchain_report::{discard_reports, read_coverage_summary, read_test_report};
 
-/// Wall-clock cap on the dependency install, and on the static build the smoke
-/// check needs. A cold `npm ci` for a game project is minutes, not seconds.
-pub const INSTALL_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+pub use crate::install::INSTALL_TIMEOUT;
 
 /// Wall-clock cap on each declared toolchain command.
 ///
@@ -103,8 +106,21 @@ const MAX_CONSOLE_ERROR_LEN: usize = 500;
 /// that record is applied where a run's overall rating and score are aggregated
 /// (see [`crate::review::gated_rating`]). Keeping the measurement and the verdict
 /// apart is what lets a reviewer's own marks survive the gate untouched.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ToolchainStage;
+#[derive(Debug, Clone, Copy)]
+pub struct ToolchainStage {
+    /// How long a failed or incomplete install attempt waits before it is retried.
+    /// [`INSTALL_RETRY_DELAY`] in production; tests inject zero so a fixture that
+    /// exercises a failing install does not wait out the real delay.
+    pub install_retry_delay: Duration,
+}
+
+impl Default for ToolchainStage {
+    fn default() -> Self {
+        Self {
+            install_retry_delay: INSTALL_RETRY_DELAY,
+        }
+    }
+}
 
 #[async_trait::async_trait]
 impl PostRunStage for ToolchainStage {
@@ -137,7 +153,22 @@ impl PostRunStage for ToolchainStage {
             return Ok(PostRunReport::empty());
         }
 
-        let install = run_command(repo, &build.install, INSTALL_TIMEOUT).await;
+        let install = install_with_retry(
+            repo,
+            &build.install,
+            INSTALL_TIMEOUT,
+            self.install_retry_delay,
+        )
+        .await;
+        if !install.missing().is_empty() {
+            tracing::warn!(
+                run_id = context.run_id,
+                attempts = install.attempts,
+                missing = ?install.missing(),
+                "the install left lockfile packages uninstalled after every attempt",
+            );
+        }
+        let install = install.result;
         let unavailable = (!install.succeeded).then(|| {
             format!(
                 "not run: the `{}` install did not succeed",
@@ -314,69 +345,6 @@ fn truncate_chars(line: &str, limit: usize) -> String {
         return line.to_string();
     }
     line.chars().take(limit).collect::<String>() + "…"
-}
-
-/// Run one declared command through `sh -c` from `repo`, bounded by `timeout`.
-///
-/// Only the bounded result is returned. The unbounded output used to be handed back
-/// beside it so the test command's figures could be scraped out of it; those figures
-/// now come from the files the runner wrote (see [`crate::toolchain_report`]), and
-/// nothing else ever wanted the whole of what a command printed.
-async fn run_command(repo: &Path, command: &str, timeout: Duration) -> ToolchainCommandResult {
-    // `sh -c` verbatim, matching how the validator runs the case's `[build]`
-    // commands: the manifest declares a shell line, not an argv vector.
-    let child = match tokio::process::Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .current_dir(repo)
-        // `CI` is what makes a test runner run once and exit instead of dropping
-        // into watch mode, and `NO_COLOR` keeps the excerpt readable.
-        .env("CI", "1")
-        .env("NO_COLOR", "1")
-        .env("FORCE_COLOR", "0")
-        // Nothing may prompt: a tool waiting on stdin would otherwise burn the
-        // whole timeout on a question no one is there to answer.
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // Dropping the future on timeout must not leave the shell running.
-        .kill_on_drop(true)
-        .spawn()
-    {
-        Ok(child) => child,
-        Err(err) => {
-            return ToolchainCommandResult::skipped(
-                command,
-                format!("could not start `sh`: {err}"),
-            );
-        }
-    };
-
-    let Ok(output) = tokio::time::timeout(timeout, child.wait_with_output()).await else {
-        return ToolchainCommandResult::skipped(
-            command,
-            format!("timed out after {} seconds", timeout.as_secs()),
-        );
-    };
-    let output = match output {
-        Ok(output) => output,
-        Err(err) => {
-            return ToolchainCommandResult::skipped(command, format!("could not be run: {err}"));
-        }
-    };
-
-    // stdout then stderr, in that order: `tsc` writes its diagnostics to stdout
-    // while most runners write their summary to stderr, and a single combined
-    // excerpt is what a reader wants rather than two half-empty ones.
-    let mut raw = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !stderr.trim().is_empty() {
-        if !raw.is_empty() && !raw.ends_with('\n') {
-            raw.push('\n');
-        }
-        raw.push_str(&stderr);
-    }
-    ToolchainCommandResult::ran(command, output.status.code(), &raw)
 }
 
 #[cfg(test)]

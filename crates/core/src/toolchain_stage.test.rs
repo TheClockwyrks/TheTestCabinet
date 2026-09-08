@@ -137,10 +137,12 @@ async fn drive(
         request: &request,
         canceled,
     };
-    ToolchainStage
-        .run(&context)
-        .await
-        .expect("the stage reports through the record, never by failing the run")
+    ToolchainStage {
+        install_retry_delay: Duration::ZERO,
+    }
+    .run(&context)
+    .await
+    .expect("the stage reports through the record, never by failing the run")
 }
 
 /// The `[build]` commands the fixture cases use: both no-ops that succeed.

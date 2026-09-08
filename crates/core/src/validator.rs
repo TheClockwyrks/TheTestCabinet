@@ -9,12 +9,15 @@
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
 
 use crate::adversarial_validator::AdversarialValidator;
 use crate::browser::{self, ScriptOutputSpec, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
+use crate::install::{
+    INSTALL_RETRY_DELAY, INSTALL_TIMEOUT, install_with_retry_blocking, run_command_blocking,
+};
 use crate::performance_validator::PerformanceValidator;
 use crate::reference::RenderedReference;
 use crate::test_case::{
@@ -44,6 +47,10 @@ pub struct BuildValidator {
     /// captures land in a fresh unique sub-directory of this, so concurrent runs
     /// never share a capture path.
     screenshot_dir: PathBuf,
+    /// How long a failed or incomplete install attempt waits before it is retried,
+    /// when this validator runs the install itself. [`INSTALL_RETRY_DELAY`] unless
+    /// [`with_install_retry_delay`](Self::with_install_retry_delay) says otherwise.
+    install_retry_delay: Duration,
 }
 
 impl BuildValidator {
@@ -53,7 +60,15 @@ impl BuildValidator {
     pub fn new(screenshot_dir: impl Into<PathBuf>) -> Self {
         Self {
             screenshot_dir: screenshot_dir.into(),
+            install_retry_delay: INSTALL_RETRY_DELAY,
         }
+    }
+
+    /// Wait `delay` between install attempts instead of the production delay. Tests
+    /// inject zero so a fixture whose install fails does not wait out the real one.
+    pub fn with_install_retry_delay(mut self, delay: Duration) -> Self {
+        self.install_retry_delay = delay;
+        self
     }
 }
 
@@ -101,19 +116,22 @@ impl Validator for BuildValidator {
         //
         // A [post-run stage](crate::post_run) may already have run this exact install
         // over this exact tree, in which case the tree carries the step it recorded
-        // and that step is reported here verbatim. Running the command again would
-        // clear `node_modules` and rebuild it from the same lockfile, which is the
-        // state the tree is already in. Every other caller — `tcab validate` against
-        // an implementation directory foremost — finds nothing prepared and installs.
+        // and that step is reported here verbatim, whatever it came to. Running the
+        // command again would clear `node_modules` and rebuild it from the same
+        // lockfile, which is the state the tree is already in; and an install that
+        // failed has spent every attempt the verified install allows, so its failure
+        // is final rather than an invitation to try again. Every other caller — `tcab
+        // validate` against an implementation directory foremost — finds nothing
+        // prepared and installs.
         let install = match artifacts.prepared_install_for(&build_commands.install) {
             Some(prepared) => prepared.step.clone(),
-            None => run_step(repo, &build_commands.install),
+            None => install_step(repo, &build_commands.install, self.install_retry_delay),
         };
         if !install.succeeded {
             let detail = install.detail.clone().unwrap_or_default();
             return Ok(failed_load(&detail, Some(install), None, proof_results));
         }
-        let build = run_step(repo, &build_commands.build);
+        let build = build_step(repo, &build_commands.build);
         if !build.succeeded {
             let detail = build.detail.clone().unwrap_or_default();
             return Ok(failed_load(
@@ -3307,42 +3325,35 @@ fn unreached(test_case: &TestCaseVersion, detail: &str) -> Vec<CheckResult> {
         .collect()
 }
 
-/// Run one required build step (the manifest's `install` or `build` command) in
-/// `repo`, capturing its outcome as a [`StepResult`] for the validation summary.
-fn run_step(repo: &Path, command: &str) -> StepResult {
-    match run_command(repo, command) {
-        Ok(()) => StepResult {
-            command: command.to_string(),
-            succeeded: true,
-            detail: None,
-        },
-        Err(detail) => StepResult {
-            command: command.to_string(),
-            succeeded: false,
-            detail: Some(detail),
-        },
+/// Run the manifest's `install` command in `repo` as the [verified, retried
+/// install](crate::install), reporting the final attempt as a [`StepResult`] for
+/// the validation summary: its bounded output, the number of attempts it took, and
+/// — when it did not succeed — the reason, which for an install that exited zero
+/// is the lockfile packages it left behind.
+fn install_step(repo: &Path, command: &str, retry_delay: Duration) -> StepResult {
+    let outcome = install_with_retry_blocking(repo, command, INSTALL_TIMEOUT, retry_delay);
+    if !outcome.missing().is_empty() {
+        tracing::warn!(
+            command,
+            attempts = outcome.attempts,
+            missing = ?outcome.missing(),
+            "the install left lockfile packages uninstalled after every attempt",
+        );
     }
+    (&outcome.result).into()
 }
 
-/// Run one build command in `repo` through a shell, returning a description of
-/// any failure. The command is a manifest-declared string (for example `npm ci`
-/// or `npm run build`), so it is run via `sh -c` to honor whatever form a case
-/// chooses; only the produced implementation it operates on is untrusted, and
-/// running its build scripts is the point.
-fn run_command(repo: &Path, command: &str) -> std::result::Result<(), String> {
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .current_dir(repo)
-        .output()
-        .map_err(|err| format!("failed to run `{command}`: {err}"))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let tail: String = stderr.lines().rev().take(5).collect::<Vec<_>>().join("; ");
-        Err(format!("`{command}` failed: {tail}"))
-    }
+/// Run the manifest's `build` command in `repo` once, reporting it as a
+/// [`StepResult`] whose detail on failure is a bounded excerpt of everything the
+/// command printed, so the real error is what a reader sees rather than whatever
+/// happened to be on the last few lines of stderr.
+///
+/// The command is a manifest-declared string (for example `npm run build`), so it
+/// is run via `sh -c` to honor whatever form a case chooses; only the produced
+/// implementation it operates on is untrusted, and running its build scripts is the
+/// point.
+fn build_step(repo: &Path, command: &str) -> StepResult {
+    (&run_command_blocking(repo, command, INSTALL_TIMEOUT)).into()
 }
 
 /// A decoded image reduced to the fields the similarity score needs.

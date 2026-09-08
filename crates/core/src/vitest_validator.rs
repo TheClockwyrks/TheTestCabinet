@@ -753,20 +753,37 @@ fn case_harness_source() -> Option<PathBuf> {
 /// Make sure the tree's dependencies are installed, installing only when nothing has.
 ///
 /// The tree reaching validation is normally installed already: the
-/// [toolchain stage](crate::toolchain_stage) records the install it completed on the
-/// [collection](ArtifactCollection::prepared_install) and the validator reuses or
-/// repeats that install before any stage that needs dependencies. Reinstalling would
-/// be minutes spent reproducing a state already on disk, so the command runs only for
-/// a tree nothing prepared and whose `node_modules` is absent.
+/// [toolchain stage](crate::toolchain_stage) records the install it ran on the
+/// [collection](ArtifactCollection::prepared_install) and the validator reuses that
+/// install before any stage that needs dependencies. Reinstalling would be minutes
+/// spent reproducing a state already on disk, so the command runs only for a tree
+/// nothing prepared and whose `node_modules` is absent. A recorded install that
+/// failed is final, and the suite reports it rather than installing again.
 fn ensure_dependencies(
     repo: &Path,
     artifacts: &ArtifactCollection,
     install_command: &str,
     timeout: Duration,
 ) -> Result<(), RunnerFailure> {
-    if artifacts.prepared_install_for(install_command).is_some()
-        || repo.join("node_modules").is_dir()
-    {
+    if let Some(prepared) = artifacts.prepared_install_for(install_command) {
+        // The tree already answers for this command: installed, or failed after
+        // every attempt the verified install allows, in which case the suite has no
+        // dependencies to run against and says so rather than installing again.
+        return if prepared.step.succeeded {
+            Ok(())
+        } else {
+            Err(RunnerFailure::not_run(format!(
+                "`{}` did not succeed: {}",
+                install_command.trim(),
+                prepared
+                    .step
+                    .detail
+                    .as_deref()
+                    .unwrap_or("the install did not succeed"),
+            )))
+        };
+    }
+    if repo.join("node_modules").is_dir() {
         return Ok(());
     }
     let scratch = tempfile::Builder::new()

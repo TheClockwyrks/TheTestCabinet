@@ -2,8 +2,8 @@
 //!
 //! The case's `[build]` install is run once per tree. A
 //! [post-run stage](crate::post_run) that already ran it hands validation the step it
-//! recorded; anything else makes validation run the command itself. These tests pin
-//! both paths and the shape of what is reported on each.
+//! recorded, whatever it came to; anything else makes validation run the command
+//! itself. These tests pin both paths and the shape of what is reported on each.
 
 use super::BuildValidator;
 use crate::execution::{ArtifactCollection, PreparedInstall};
@@ -179,25 +179,49 @@ fn validation_reuses_an_install_a_stage_already_completed() {
 }
 
 #[test]
-fn validation_installs_when_the_prepared_install_failed() {
+fn validation_reports_a_prepared_install_that_failed_without_running_it() {
     let dir = tempfile::tempdir().expect("temp dir");
     let repo = produced_tree(dir.path());
-    // An install that exited non-zero left the tree's dependencies in whatever state
-    // it managed, so it prepares nothing and the report carries nothing.
-    let report = PostRunReport::toolchain(toolchain_summary(ToolchainCommandResult::ran(
+    // The stage's install exited non-zero on its last attempt. The verified install
+    // has no attempts left, so validation reports that outcome as its own install
+    // step and never builds the tree, rather than running the attempts over again.
+    let mut recorded = ToolchainCommandResult::ran(
         INSTALL,
         Some(1),
-        "npm ERR! lockfile out of date",
-    )));
-    assert!(report.prepared_install.is_none());
+        "npm ERR! code E503\nnpm ERR! 503 Service Unavailable",
+    );
+    recorded.attempts = Some(3);
+    let report = PostRunReport::toolchain(toolchain_summary(recorded));
+    let prepared = report
+        .prepared_install
+        .clone()
+        .expect("an install that ran is recorded, whatever it came to");
+    assert!(!prepared.step.succeeded);
     let artifacts = ArtifactCollection::new(repo.clone()).prepared_by(report.prepared_install);
 
-    let install = reported_install(&artifacts);
+    let summary = BuildValidator::new(dir.path())
+        .validate(&version(), &variant(), &artifacts, &[], &[])
+        .expect("validate");
 
-    assert_eq!(installs(&repo), 1, "validation installed for itself");
+    assert_eq!(installs(&repo), 0, "the command was not run a second time");
+    let install = summary
+        .install
+        .expect("the install step is always reported");
+    assert_eq!(install, prepared.step);
+    assert_eq!(install.attempts, Some(3));
+    assert!(!summary.loaded);
+    assert_eq!(
+        summary.build, None,
+        "a tree whose install failed is never built"
+    );
     assert!(
-        install.succeeded,
-        "and reached its own verdict about the tree",
+        summary
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("E503"),
+        "the load failure is the install's own reason: {:?}",
+        summary.detail
     );
 }
 
@@ -207,35 +231,40 @@ fn the_reported_install_step_has_the_same_shape_either_way() {
     let fresh = reported_install(&ArtifactCollection::new(produced_tree(
         &dir.path().join("fresh"),
     )));
+    // What the stage records for a verified install that completed on its first
+    // attempt.
+    let mut recorded = ToolchainCommandResult::ran(INSTALL, Some(0), "added 1 package");
+    recorded.attempts = Some(1);
     let reused = reported_install(
-        &ArtifactCollection::new(produced_tree(&dir.path().join("reused"))).prepared_by(
-            PostRunReport::toolchain(toolchain_summary(ToolchainCommandResult::ran(
-                INSTALL,
-                Some(0),
-                "added 1 package",
-            )))
-            .prepared_install,
-        ),
+        &ArtifactCollection::new(produced_tree(&dir.path().join("reused")))
+            .prepared_by(PostRunReport::toolchain(toolchain_summary(recorded)).prepared_install),
     );
 
     // A reader of the summary sees one install step, naming the command the manifest
-    // declared, with the same outcome and no failure detail, however it was obtained.
-    assert_eq!(fresh, reused);
-    assert_eq!(reused.command, INSTALL);
-    assert!(reused.succeeded);
-    assert_eq!(reused.detail, None);
+    // declared, with the same outcome, no failure detail, its captured output and the
+    // attempts it took, however it was obtained. Only the output's text differs: it
+    // is what each command actually printed.
+    for step in [&fresh, &reused] {
+        assert_eq!(step.command, INSTALL);
+        assert!(step.succeeded);
+        assert_eq!(step.detail, None);
+        assert_eq!(step.attempts, Some(1));
+        assert!(step.output.is_some(), "a step that ran carries its output");
+    }
+    assert_eq!(reused.output.as_deref(), Some("added 1 package"));
 }
 
 #[test]
 fn a_tree_prepared_by_another_command_is_not_reused() {
     // The tree answers for the command that was run over it and no other, so a case
     // whose install differs installs for itself.
-    let prepared = PreparedInstall::completed(&StepResult {
+    let prepared = PreparedInstall::recorded(&StepResult {
         command: "pnpm install --frozen-lockfile".to_string(),
         succeeded: true,
         detail: None,
-    })
-    .expect("a successful step prepares the tree");
+        output: None,
+        attempts: None,
+    });
     let artifacts = ArtifactCollection::new("/tmp/tree").prepared_by(Some(prepared));
 
     assert!(artifacts.prepared_install_for(INSTALL).is_none());

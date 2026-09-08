@@ -30,6 +30,8 @@ fn step(command: &str, succeeded: bool) -> StepResult {
         command: command.to_string(),
         succeeded,
         detail: (!succeeded).then(|| "exit status 1".to_string()),
+        output: None,
+        attempts: None,
     }
 }
 

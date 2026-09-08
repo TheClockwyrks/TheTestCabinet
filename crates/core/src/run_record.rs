@@ -437,9 +437,10 @@ pub struct RunLinks {
 
 /// The terminal state of a run — the single axis that decides publishability and
 /// how a run scores. Classified objectively at the point a run ends: a clean
-/// harness exit splits into [`Completed`](RunState::Completed) and
+/// harness exit splits into [`Completed`](RunState::Completed),
 /// [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
-/// never built or loaded);
+/// never built or loaded) and, when the output's dependency install never
+/// succeeded, [`Infrastructure`](RunState::Infrastructure);
 /// a harness that stopped itself on one of its own configured ceilings is
 /// [`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any
 /// other way is a [`HarnessError`](RunState::HarnessError), and one that stops
@@ -462,10 +463,13 @@ pub enum RunState {
     /// it has no review checklist to score and is reported as a separate
     /// catastrophic-failure statistic.
     ///
-    /// Reserved for a total failure to produce a runnable artifact. An output that
-    /// builds and loads is reviewable however badly it behaves: a missing or
-    /// non-conformant debug API fails the individual checklist points its validation
-    /// scripts back (see
+    /// Reserved for a total failure to produce a runnable artifact: a tree with no
+    /// `package.json`, or one whose build or load failed after its dependency
+    /// install succeeded. A tree whose [dependency install](crate::install) did not
+    /// succeed is not this — its output was never given a chance to build, so it is
+    /// [`Infrastructure`](RunState::Infrastructure). An output that builds and loads
+    /// is reviewable however badly it behaves: a missing or non-conformant debug API
+    /// fails the individual checklist points its validation scripts back (see
     /// [`DebugScriptResult`](crate::validation::DebugScriptResult)), scoring the run
     /// down rather than removing it from review.
     Catastrophic,
@@ -519,11 +523,14 @@ pub enum RunState {
     /// its own timer rather than observing.
     Hung,
     /// The Test Cabinet's own infrastructure failed: the container would not start
-    /// or pull, a pod was OOM-killed, or seeding / the case's init step failed. Not
-    /// the model's fault — retained with a diagnostic [`RunStatus::detail`] for
-    /// debugging, but **never** publishable and excluded from every model statistic.
-    /// A harness that merely exited non-zero is a
-    /// [`HarnessError`](RunState::HarnessError), not this.
+    /// or pull, a pod was OOM-killed, seeding or the case's init step failed, or the
+    /// collected tree's [dependency install](crate::install) did not succeed after
+    /// its retries. Not the model's fault — retained with a diagnostic
+    /// [`RunStatus::detail`] giving the reason, but **never** publishable and
+    /// excluded from every model statistic. A run that reached the install carries
+    /// its collected tree and its [validation summary](crate::validation::ValidationSummary),
+    /// unlike the earlier failures, which produced neither. A harness that merely
+    /// exited non-zero is a [`HarnessError`](RunState::HarnessError), not this.
     Infrastructure,
     /// An operator killed the run before it finished — a deliberate stop, not an
     /// outcome. **Never** publishable and excluded from every model statistic: nothing

@@ -357,7 +357,7 @@ where
         // the two above it *writes* to the collected tree: it installs the
         // dependencies its commands need and runs the build its smoke check serves.
         // A `typecheck` that ran and failed is what gates the run.
-        toolchain: Some(Box::new(ToolchainStage)),
+        toolchain: Some(Box::new(ToolchainStage::default())),
         validator: DispatchValidator::new(screenshot_dir),
         prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),

@@ -1150,26 +1150,53 @@ pub async fn update_status(
                 ApiError::unprocessable("a succeeded status must carry the run record")
             })?;
             let record_id = persist_record(&state, &id, record).await?;
-            state
-                .db
-                .set_job_state(&id, "succeeded", &now, None, Some(&record_id))
-                .await
-                .map_err(ApiError::from)?;
-            finish_and_notify(
-                &state,
-                RunEvent::finished(
-                    &id,
-                    job_summary(&job),
-                    JobState::Succeeded,
-                    Some(&record_id),
-                    None,
-                ),
-                Notification::completed(&id, job_summary(&job), &record_id),
-            );
-            // A clean harness exit is `Completed` (evaluable) or `Catastrophic`
-            // (the model claimed done but the build won't load) — the record carries
-            // which.
+            // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
+            // model claimed done but the build won't load) — the record carries
+            // which — unless the engine classified the run as the Test Cabinet's own
+            // failure: a collected tree whose dependency install never succeeded. That
+            // run lands the way every other infrastructure failure does, as a failed
+            // job carrying the record's reason with a failure notification, so an
+            // observer sees one shape for one kind of outcome.
             let terminal_state = terminal_run_state(Some(record), RunState::Completed);
+            match succeeded_job_outcome(record) {
+                (JobState::Failed, detail) => {
+                    let detail = detail.unwrap_or("run failed");
+                    state
+                        .db
+                        .set_job_state(&id, "failed", &now, Some(detail), Some(&record_id))
+                        .await
+                        .map_err(ApiError::from)?;
+                    finish_and_notify(
+                        &state,
+                        RunEvent::finished(
+                            &id,
+                            job_summary(&job),
+                            JobState::Failed,
+                            Some(&record_id),
+                            Some(detail),
+                        ),
+                        Notification::failed(&id, job_summary(&job), detail, Some(&record_id)),
+                    );
+                }
+                _ => {
+                    state
+                        .db
+                        .set_job_state(&id, "succeeded", &now, None, Some(&record_id))
+                        .await
+                        .map_err(ApiError::from)?;
+                    finish_and_notify(
+                        &state,
+                        RunEvent::finished(
+                            &id,
+                            job_summary(&job),
+                            JobState::Succeeded,
+                            Some(&record_id),
+                            None,
+                        ),
+                        Notification::completed(&id, job_summary(&job), &record_id),
+                    );
+                }
+            }
             maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
             Ok(StatusCode::NO_CONTENT)
         }
@@ -1216,6 +1243,18 @@ const MAX_RETRY_COUNT: u32 = 10;
 /// carries its record).
 fn terminal_run_state(record: Option<&RunRecord>, fallback: RunState) -> RunState {
     record.map(|record| record.status.state).unwrap_or(fallback)
+}
+
+/// How a record the driver handed back as `succeeded` lands on its job: a
+/// succeeded job for every outcome the engine reached on the model's own account,
+/// and a failed job, carrying the record's status detail, for a record the engine
+/// classified as an [infrastructure](RunState::Infrastructure) failure — the one
+/// clean-exit outcome that is the Test Cabinet's fault rather than the model's.
+fn succeeded_job_outcome(record: &RunRecord) -> (JobState, Option<&str>) {
+    match record.status.state {
+        RunState::Infrastructure => (JobState::Failed, record.status.detail.as_deref()),
+        _ => (JobState::Succeeded, None),
+    }
 }
 
 /// The `retryCount` a job's stored launch request asks for, defaulting to

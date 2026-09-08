@@ -5,16 +5,24 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use super::{
+    ContainerHandle, ContainerRuntime, ContainerSpec, ContainerStart, EventSink,
+    LOCKFILE_CHECK_SCRIPT, SetupError,
+};
+use super::{
     EngineCatalog, EngineSelection, EngineSupport, Error, EventFormat, EventKind, EventParser,
     HarnessEvent, HarnessOutcome, HarnessSlug, MAX_GAME_JAM_README_BYTES,
     MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, NONE_SLUG, OrchestratorSelection,
     OutputStream, RawOutputLine, ResolvedEngine, Result, RunRequest, RunState, TestCaseVersion,
-    TestType, Usage, build_failed_record, completed_state, copy_tree, init_failure_detail,
-    read_game_jam_readme, read_showcase, resolve_engine, with_runtime_cap, write_run_streams,
+    TestType, Usage, build_failed_record, completed_status, copy_tree, init_failure_detail,
+    read_game_jam_readme, read_showcase, resolve_engine, run_init, with_runtime_cap,
+    write_run_streams,
 };
 use crate::execution::ExecOutput;
 use crate::test_case::MediaKind;
-use crate::validation::{DebugScriptResult, ValidationSummary};
+use crate::validation::{DebugScriptResult, StepResult, ValidationSummary};
+use std::collections::VecDeque;
+use std::sync::Mutex;
+use std::time::Duration;
 use time::OffsetDateTime;
 
 #[test]
@@ -43,7 +51,7 @@ fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
         ..Default::default()
     };
     assert_eq!(
-        completed_state(TestType::EndToEnd, &broken_api),
+        completed_status(TestType::EndToEnd, &broken_api).state,
         RunState::Completed
     );
     // ...and it keeps the playable build the reviewer needs to open.
@@ -57,7 +65,7 @@ fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
         ..Default::default()
     };
     assert_eq!(
-        completed_state(TestType::EndToEnd, &never_loaded),
+        completed_status(TestType::EndToEnd, &never_loaded).state,
         RunState::Catastrophic
     );
     assert!(!RunState::Catastrophic.has_playable_build());
@@ -68,9 +76,161 @@ fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
         ..Default::default()
     };
     assert_eq!(
-        completed_state(TestType::EndToEnd, &clean),
+        completed_status(TestType::EndToEnd, &clean).state,
         RunState::Completed
     );
+}
+
+/// The install step of a validation summary, as the validator reports it.
+fn install_step(succeeded: bool, detail: Option<&str>) -> StepResult {
+    StepResult {
+        command: "npm ci".to_string(),
+        succeeded,
+        detail: detail.map(str::to_string),
+        output: Some("npm warn deprecated…".to_string()),
+        attempts: Some(3),
+    }
+}
+
+/// A tree whose dependency install did not succeed was never given a chance to
+/// build: nothing about the model can be concluded, so the run is the Test
+/// Cabinet's own infrastructure failure, and its status carries the install's
+/// reason so the run list says why.
+#[test]
+fn a_failed_install_ends_a_reviewed_run_as_infrastructure_with_the_installs_reason() {
+    let detail = "the install exited 0 but left 1 lockfile package uninstalled: \
+                  node_modules/@rolldown/binding-linux-arm64-gnu";
+    let install_failed = ValidationSummary {
+        loaded: false,
+        detail: Some(detail.to_string()),
+        install: Some(install_step(false, Some(detail))),
+        ..Default::default()
+    };
+    for test_type in [
+        TestType::EndToEnd,
+        TestType::FullStack,
+        TestType::GameJam,
+        TestType::AssetGeneration,
+    ] {
+        let status = completed_status(test_type, &install_failed);
+        assert_eq!(status.state, RunState::Infrastructure, "{test_type:?}");
+        assert_eq!(
+            status.detail.as_deref(),
+            Some(&*format!(
+                "dependency install failed: {detail} after 3 attempts"
+            )),
+            "{test_type:?}"
+        );
+    }
+    // Retained for inspection only: never published, never counted.
+    assert!(!RunState::Infrastructure.is_publishable());
+    assert!(!RunState::Infrastructure.is_scored());
+
+    // A failed install that reported no detail still names the step at fault.
+    let undetailed = ValidationSummary {
+        loaded: false,
+        install: Some(install_step(false, None)),
+        ..Default::default()
+    };
+    let status = completed_status(TestType::EndToEnd, &undetailed);
+    assert_eq!(status.state, RunState::Infrastructure);
+    assert_eq!(
+        status.detail.as_deref(),
+        Some("dependency install failed: the install did not succeed after 3 attempts")
+    );
+
+    // An install that ran and exited non-zero carries its whole output excerpt in
+    // its step detail, on the lines after the reason. The status detail is what a
+    // run list and a run's header show, so it takes the reason alone.
+    let exited = ValidationSummary {
+        loaded: false,
+        install: Some(install_step(
+            false,
+            Some("`npm ci` exited 1:\nnpm ERR! code E503\nnpm ERR! 503 Service Unavailable"),
+        )),
+        ..Default::default()
+    };
+    let status = completed_status(TestType::EndToEnd, &exited);
+    assert_eq!(
+        status.detail.as_deref(),
+        Some("dependency install failed: `npm ci` exited 1 after 3 attempts")
+    );
+
+    // A single attempt (a command that never started) reports no attempt count.
+    let never_ran = ValidationSummary {
+        loaded: false,
+        install: Some(StepResult {
+            attempts: Some(1),
+            ..install_step(false, Some("timed out after 1200 seconds"))
+        }),
+        ..Default::default()
+    };
+    let status = completed_status(TestType::EndToEnd, &never_ran);
+    assert_eq!(
+        status.detail.as_deref(),
+        Some("dependency install failed: timed out after 1200 seconds")
+    );
+}
+
+/// `catastrophic` stays the state for the model's own failures to produce a runnable
+/// artifact: a tree that never reached the install (no `package.json`), or one whose
+/// build or load failed after its install succeeded. Neither carries a status detail
+/// — the validation summary says what failed.
+#[test]
+fn a_model_output_that_never_loaded_after_its_install_succeeded_is_catastrophic() {
+    let no_package_json = ValidationSummary {
+        loaded: false,
+        detail: Some("no package.json found".to_string()),
+        ..Default::default()
+    };
+    let status = completed_status(TestType::EndToEnd, &no_package_json);
+    assert_eq!(status.state, RunState::Catastrophic);
+    assert_eq!(status.detail, None);
+
+    let build_failed = ValidationSummary {
+        loaded: false,
+        detail: Some("`npm run build` exited 1".to_string()),
+        install: Some(install_step(true, None)),
+        build: Some(StepResult {
+            command: "npm run build".to_string(),
+            succeeded: false,
+            detail: Some("`npm run build` exited 1: error TS2304".to_string()),
+            output: Some("error TS2304".to_string()),
+            attempts: None,
+        }),
+        ..Default::default()
+    };
+    let status = completed_status(TestType::EndToEnd, &build_failed);
+    assert_eq!(status.state, RunState::Catastrophic);
+    assert_eq!(status.detail, None);
+
+    // …and a build that loaded is completed with no detail, whatever its install
+    // took to get there.
+    let loaded = ValidationSummary {
+        loaded: true,
+        install: Some(install_step(true, None)),
+        ..Default::default()
+    };
+    let status = completed_status(TestType::EndToEnd, &loaded);
+    assert_eq!(status.state, RunState::Completed);
+    assert_eq!(status.detail, None);
+}
+
+/// The auto-scored types carry their authoritative result in the validation
+/// summary whatever the load did, so a failed install does not divert them either:
+/// they keep today's behaviour and stay completed.
+#[test]
+fn an_auto_scored_run_stays_completed_whatever_its_install_did() {
+    let install_failed = ValidationSummary {
+        loaded: false,
+        install: Some(install_step(false, Some("`npm ci` exited 1"))),
+        ..Default::default()
+    };
+    for test_type in [TestType::Adversarial, TestType::Performance] {
+        let status = completed_status(test_type, &install_failed);
+        assert_eq!(status.state, RunState::Completed, "{test_type:?}");
+        assert_eq!(status.detail, None, "{test_type:?}");
+    }
 }
 
 #[test]
@@ -1094,4 +1254,360 @@ fn a_case_declaring_no_range_never_consults_the_package_store() {
 
     assert_eq!(engine.slug(), "simple-2d");
     assert_eq!(engine.version(), None);
+}
+
+/// What one exec call against the [`ScriptedRuntime`] does.
+enum Step {
+    /// Finish with this exit code and output.
+    Exit(i32, &'static str, &'static str),
+    /// Take this long, then finish with this exit code and output.
+    SlowExit(Duration, i32, &'static str, &'static str),
+    /// Never finish, so the caller's cap fires.
+    Hang,
+    /// The runtime itself fails to run the command.
+    Fail,
+}
+
+/// A container runtime whose exec calls play a script, one step per call, and
+/// record every command they were given. The init helper is the only thing that
+/// execs here, so the script is the sequence of init attempts and lockfile checks
+/// the helper is expected to make.
+struct ScriptedRuntime {
+    steps: Mutex<VecDeque<Step>>,
+    commands: Mutex<Vec<Vec<String>>>,
+}
+
+impl ScriptedRuntime {
+    fn new(steps: Vec<Step>) -> Self {
+        Self {
+            steps: Mutex::new(steps.into()),
+            commands: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn commands(&self) -> Vec<Vec<String>> {
+        self.commands.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl ContainerRuntime for ScriptedRuntime {
+    async fn start(&self, _spec: &ContainerSpec) -> Result<ContainerStart> {
+        unreachable!("the init helper never starts a container")
+    }
+
+    async fn exec(&self, _container: &ContainerHandle, command: &[String]) -> Result<ExecOutput> {
+        self.commands.lock().unwrap().push(command.to_vec());
+        let step = self
+            .steps
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("more exec calls than the script allows");
+        match step {
+            Step::Exit(exit_code, stdout, stderr) => Ok(ExecOutput {
+                exit_code,
+                stdout: stdout.to_string(),
+                stderr: stderr.to_string(),
+                idle_timed_out: false,
+            }),
+            Step::SlowExit(takes, exit_code, stdout, stderr) => {
+                tokio::time::sleep(takes).await;
+                Ok(ExecOutput {
+                    exit_code,
+                    stdout: stdout.to_string(),
+                    stderr: stderr.to_string(),
+                    idle_timed_out: false,
+                })
+            }
+            Step::Hang => {
+                tokio::time::sleep(Duration::from_secs(1_000_000)).await;
+                unreachable!("a hung exec is dropped by the cap")
+            }
+            Step::Fail => Err(Error::ContainerRuntime("exec is broken".to_string())),
+        }
+    }
+
+    async fn stop(&self, _container: &ContainerHandle) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Keeps every event the init helper emits.
+#[derive(Default)]
+struct CollectingSink(Vec<HarnessEvent>);
+
+impl EventSink for CollectingSink {
+    fn emit(&mut self, event: &HarnessEvent) {
+        self.0.push(event.clone());
+    }
+}
+
+impl CollectingSink {
+    fn warnings(&self) -> Vec<String> {
+        self.0
+            .iter()
+            .filter_map(|event| match &event.kind {
+                EventKind::Warning { message, .. } => Some(message.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+const INIT: &str = "npm ci && npx playwright install chromium";
+const MISSING_ONE: &str =
+    "{\"checked\":true,\"missing\":[\"node_modules/@rolldown/binding-linux-arm64-gnu\"]}\n";
+const COMPLETE: &str = "{\"checked\":true,\"missing\":[]}\n";
+
+fn handle() -> ContainerHandle {
+    ContainerHandle {
+        id: "run-container".to_string(),
+    }
+}
+
+async fn drive(runtime: &ScriptedRuntime, seconds: u64) -> (Result<(), SetupError>, Vec<String>) {
+    drive_with(runtime, seconds, Duration::ZERO).await
+}
+
+async fn drive_with(
+    runtime: &ScriptedRuntime,
+    seconds: u64,
+    delay: Duration,
+) -> (Result<(), SetupError>, Vec<String>) {
+    let mut sink = CollectingSink::default();
+    let result = run_init(runtime, &handle(), INIT, seconds, delay, &mut sink).await;
+    (result, sink.warnings())
+}
+
+#[tokio::test]
+async fn init_runs_the_command_then_the_lockfile_check_in_the_workspace() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::Exit(0, "added 200 packages\n", ""),
+        Step::Exit(0, COMPLETE, ""),
+    ]);
+
+    let (result, warnings) = drive(&runtime, 60).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let commands = runtime.commands();
+    assert_eq!(commands.len(), 2);
+    assert_eq!(commands[0], vec!["sh", "-c", INIT]);
+    // The very same embedded script the host runs, evaluated inline with the init
+    // command last so the script derives its omit flags from it.
+    assert_eq!(
+        commands[1],
+        vec![
+            "node",
+            "--input-type=module",
+            "-e",
+            LOCKFILE_CHECK_SCRIPT,
+            "--",
+            INIT
+        ]
+    );
+}
+
+#[tokio::test]
+async fn init_is_retried_after_a_non_zero_exit_and_then_succeeds() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::Exit(1, "", "npm ERR! network ECONNRESET\n"),
+        Step::Exit(0, "", ""),
+        Step::Exit(0, COMPLETE, ""),
+    ]);
+
+    let (result, warnings) = drive(&runtime, 60).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(runtime.commands().len(), 3);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("attempt 1 of 3"), "{}", warnings[0]);
+    assert!(warnings[0].contains("code 1"), "{}", warnings[0]);
+    assert!(warnings[0].contains("ECONNRESET"), "{}", warnings[0]);
+}
+
+#[tokio::test]
+async fn init_that_exits_zero_with_a_package_missing_is_retried_and_then_succeeds() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::Exit(0, "", ""),
+        Step::Exit(0, MISSING_ONE, ""),
+        Step::Exit(0, "", ""),
+        Step::Exit(0, COMPLETE, ""),
+    ]);
+
+    let (result, warnings) = drive(&runtime, 60).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(runtime.commands().len(), 4);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("attempt 1 of 3"), "{}", warnings[0]);
+    assert!(
+        warnings[0].contains("exited 0 but left 1 lockfile package uninstalled"),
+        "{}",
+        warnings[0]
+    );
+    assert!(
+        warnings[0].contains("node_modules/@rolldown/binding-linux-arm64-gnu"),
+        "{}",
+        warnings[0]
+    );
+}
+
+#[tokio::test]
+async fn init_still_missing_a_package_after_three_attempts_fails_naming_it() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::Exit(0, "", ""),
+        Step::Exit(0, MISSING_ONE, ""),
+        Step::Exit(0, "", ""),
+        Step::Exit(0, MISSING_ONE, ""),
+        Step::Exit(0, "", ""),
+        Step::Exit(0, MISSING_ONE, ""),
+    ]);
+
+    let (result, warnings) = drive(&runtime, 60).await;
+
+    let Err(SetupError::Failed(detail)) = result else {
+        panic!("expected a failed init, got {result:?}");
+    };
+    assert_eq!(
+        detail,
+        "the install exited 0 but left 1 lockfile package uninstalled: \
+         node_modules/@rolldown/binding-linux-arm64-gnu"
+    );
+    // Three attempts, each followed by its check; a warning before each retry
+    // but none after the last attempt.
+    assert_eq!(runtime.commands().len(), 6);
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(warnings[1].contains("attempt 2 of 3"), "{}", warnings[1]);
+}
+
+#[tokio::test]
+async fn init_that_exits_non_zero_on_every_attempt_fails_with_its_output() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::Exit(1, "", "npm ERR! first\n"),
+        Step::Exit(1, "", "npm ERR! second\n"),
+        Step::Exit(2, "", "npm ERR! third\n"),
+    ]);
+
+    let (result, warnings) = drive(&runtime, 60).await;
+
+    let Err(SetupError::Failed(detail)) = result else {
+        panic!("expected a failed init, got {result:?}");
+    };
+    assert!(detail.contains("code 2"), "{detail}");
+    assert!(detail.contains("npm ERR! third"), "{detail}");
+    assert_eq!(runtime.commands().len(), 3);
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn init_that_times_out_is_not_retried() {
+    let runtime = ScriptedRuntime::new(vec![Step::Hang, Step::Exit(0, "", "")]);
+
+    let (result, warnings) = drive(&runtime, 5).await;
+
+    assert!(matches!(result, Err(SetupError::TimedOut)), "{result:?}");
+    assert_eq!(runtime.commands().len(), 1);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+/// The run's maximum runtime bounds the init as a whole, so a retry runs under
+/// whatever the earlier attempts left of it rather than under a fresh cap.
+#[tokio::test(start_paused = true)]
+async fn init_attempts_share_the_runs_maximum_runtime_as_one_budget() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::SlowExit(Duration::from_secs(8), 1, "", "npm ERR! ECONNRESET\n"),
+        Step::Hang,
+    ]);
+    let started = tokio::time::Instant::now();
+
+    let (result, warnings) = drive(&runtime, 10).await;
+
+    assert!(matches!(result, Err(SetupError::TimedOut)), "{result:?}");
+    assert_eq!(
+        runtime.commands().len(),
+        2,
+        "the retry was made under what was left"
+    );
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert_eq!(
+        started.elapsed(),
+        Duration::from_secs(10),
+        "the second attempt got the 2 seconds the first left, not 10 of its own"
+    );
+}
+
+/// When too little of the budget is left for the delay and another attempt, the
+/// attempt that just failed is the last, and its reason says why.
+#[tokio::test(start_paused = true)]
+async fn init_out_of_budget_for_a_retry_fails_with_the_last_attempts_reason() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::SlowExit(Duration::from_secs(8), 1, "", "npm ERR! ECONNRESET\n"),
+        Step::Exit(0, "", ""),
+    ]);
+
+    let (result, warnings) = drive_with(&runtime, 10, Duration::from_secs(5)).await;
+
+    let Err(SetupError::Failed(detail)) = result else {
+        panic!("expected a failed init, got {result:?}");
+    };
+    assert!(detail.contains("ECONNRESET"), "{detail}");
+    assert!(detail.contains("no time remained"), "{detail}");
+    assert_eq!(runtime.commands().len(), 1, "no retry was started");
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[tokio::test]
+async fn init_whose_runtime_fails_is_not_retried() {
+    let runtime = ScriptedRuntime::new(vec![Step::Fail, Step::Exit(0, "", "")]);
+
+    let (result, warnings) = drive(&runtime, 60).await;
+
+    assert!(matches!(result, Err(SetupError::Runtime(_))), "{result:?}");
+    assert_eq!(runtime.commands().len(), 1);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[tokio::test]
+async fn init_in_a_container_without_node_is_accepted_unchecked() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::Exit(0, "", ""),
+        Step::Exit(127, "", "sh: node: not found\n"),
+    ]);
+
+    let (result, warnings) = drive(&runtime, 60).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(runtime.commands().len(), 2);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[tokio::test]
+async fn init_in_a_workspace_without_a_lockfile_is_accepted_unchecked() {
+    let runtime = ScriptedRuntime::new(vec![
+        Step::Exit(0, "", ""),
+        Step::Exit(
+            0,
+            "{\"checked\":false,\"reason\":\"no package-lock.json in the working directory\"}\n",
+            "",
+        ),
+    ]);
+
+    let (result, warnings) = drive(&runtime, 60).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(runtime.commands().len(), 2);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn init_whose_lockfile_check_hangs_is_accepted_unchecked() {
+    let runtime = ScriptedRuntime::new(vec![Step::Exit(0, "", ""), Step::Hang]);
+
+    let (result, warnings) = drive(&runtime, 3600).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(runtime.commands().len(), 2);
+    assert!(warnings.is_empty(), "{warnings:?}");
 }

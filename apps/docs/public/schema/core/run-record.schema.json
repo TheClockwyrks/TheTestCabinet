@@ -1704,7 +1704,7 @@
       "type": "object"
     },
     "RunState": {
-      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) and\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded);\na harness that stopped itself on one of its own configured ceilings is\n[`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any\nother way is a [`HarnessError`](RunState::HarnessError), and one that stops\nresponding altogether is [`Hung`](RunState::Hung); a run stopped before the\nharness finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),\n[`Canceled`](RunState::Canceled) (an operator killed it), or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed),\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded) and, when the output's dependency install never\nsucceeded, [`Infrastructure`](RunState::Infrastructure);\na harness that stopped itself on one of its own configured ceilings is\n[`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any\nother way is a [`HarnessError`](RunState::HarnessError), and one that stops\nresponding altogether is [`Hung`](RunState::Hung); a run stopped before the\nharness finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),\n[`Canceled`](RunState::Canceled) (an operator killed it), or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
@@ -1713,7 +1713,7 @@
         },
         {
           "const": "catastrophic",
-          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load, so there is nothing to evaluate and **no playable\nbuild**. The *model* is the reason: a catastrophic failure is real signal at\nthe benchmark's edge, so it is publishable (carrying its broken source), but\nit has no review checklist to score and is reported as a separate\ncatastrophic-failure statistic.\n\nReserved for a total failure to produce a runnable artifact. An output that\nbuilds and loads is reviewable however badly it behaves: a missing or\nnon-conformant debug API fails the individual checklist points its validation\nscripts back (see\n[`DebugScriptResult`](crate::validation::DebugScriptResult)), scoring the run\ndown rather than removing it from review.",
+          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load, so there is nothing to evaluate and **no playable\nbuild**. The *model* is the reason: a catastrophic failure is real signal at\nthe benchmark's edge, so it is publishable (carrying its broken source), but\nit has no review checklist to score and is reported as a separate\ncatastrophic-failure statistic.\n\nReserved for a total failure to produce a runnable artifact: a tree with no\n`package.json`, or one whose build or load failed after its dependency\ninstall succeeded. A tree whose [dependency install](crate::install) did not\nsucceed is not this — its output was never given a chance to build, so it is\n[`Infrastructure`](RunState::Infrastructure). An output that builds and loads\nis reviewable however badly it behaves: a missing or non-conformant debug API\nfails the individual checklist points its validation scripts back (see\n[`DebugScriptResult`](crate::validation::DebugScriptResult)), scoring the run\ndown rather than removing it from review.",
           "type": "string"
         },
         {
@@ -1738,7 +1738,7 @@
         },
         {
           "const": "infrastructure",
-          "description": "The Test Cabinet's own infrastructure failed: the container would not start\nor pull, a pod was OOM-killed, or seeding / the case's init step failed. Not\nthe model's fault — retained with a diagnostic [`RunStatus::detail`] for\ndebugging, but **never** publishable and excluded from every model statistic.\nA harness that merely exited non-zero is a\n[`HarnessError`](RunState::HarnessError), not this.",
+          "description": "The Test Cabinet's own infrastructure failed: the container would not start\nor pull, a pod was OOM-killed, seeding or the case's init step failed, or the\ncollected tree's [dependency install](crate::install) did not succeed after\nits retries. Not the model's fault — retained with a diagnostic\n[`RunStatus::detail`] giving the reason, but **never** publishable and\nexcluded from every model statistic. A run that reached the install carries\nits collected tree and its [validation summary](crate::validation::ValidationSummary),\nunlike the earlier failures, which produced neither. A harness that merely\nexited non-zero is a [`HarnessError`](RunState::HarnessError), not this.",
           "type": "string"
         },
         {
@@ -2022,16 +2022,26 @@
     "StepResult": {
       "description": "The outcome of a single **required** build step — dependency install or the\nstatic build — that every run performs before the load check.\n\nBuilding an implementation is not a single opaque step: the install and the\nbuild each run a manifest-declared command and each can fail on its own, so\neach is reported in the [`ValidationSummary`] in its own right rather than\nbeing folded silently into the load signal. See `docs/validation.md`.",
       "properties": {
+        "attempts": {
+          "description": "How many times the command was run before this result was final. Present on\nthe install, which is retried; absent on the build, which runs once, and on\nrecords from before it was kept.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
         "command": {
           "description": "The command that was run (the manifest's `install` or `build` command).",
           "type": "string"
         },
         "detail": {
-          "description": "Detail about a failure (a tail of the command's stderr), or `None` when\nthe step succeeded.",
+          "description": "Detail about a failure — why the command could not be started, the packages\nan install left uninstalled, or the bounded output of a command that exited\nnon-zero — or `None` when the step succeeded.",
+          "type": ["string", "null"]
+        },
+        "output": {
+          "description": "A bounded excerpt of the command's combined stdout and stderr, capped at\n[`TOOLCHAIN_OUTPUT_LIMIT`](crate::toolchain::TOOLCHAIN_OUTPUT_LIMIT) bytes.\nPresent whenever the command ran, whatever it exited with; absent when it\ncould not be started, and on records from before it was kept.",
           "type": ["string", "null"]
         },
         "succeeded": {
-          "description": "Whether the command exited successfully.",
+          "description": "Whether the step succeeded: the command exited zero and, for the\n[verified install](crate::install), left every package the lockfile declares\nfor the host on disk.",
           "type": "boolean"
         }
       },
@@ -2106,12 +2116,18 @@
     "ToolchainCommandResult": {
       "description": "What one toolchain command did.\n\n[`ran`](Self::ran) distinguishes *the command exited non-zero* from *the command\nwas never started* — a declared command whose prerequisite install failed did not\nfail the check, it never got the chance, and reporting that as a failure would be\na fabricated verdict. Only a command that ran and exited non-zero can gate.",
       "properties": {
+        "attempts": {
+          "description": "How many times the command was run before this result was final. Present on\nthe [verified install](crate::install), which is retried; absent on every\ncommand that is run once.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
         "command": {
           "description": "The command as the manifest declared it, run verbatim through `sh -c`.",
           "type": "string"
         },
         "detail": {
-          "description": "Why the command did not run, when it did not. `None` for a command that ran,\nwhatever it exited with.",
+          "description": "Why the command did not run, when it did not; or, for an install that ran\nand exited zero but still did not succeed, the lockfile packages it left\nuninstalled. `None` for any other command that ran, whatever it exited with.",
           "type": ["string", "null"]
         },
         "exitCode": {
@@ -2128,7 +2144,7 @@
           "type": "boolean"
         },
         "succeeded": {
-          "description": "Whether the command ran and exited zero.",
+          "description": "Whether the command ran and exited zero — and, for the [verified\ninstall](crate::install), left every package the lockfile declares for the\nhost on disk.",
           "type": "boolean"
         },
         "truncated": {
