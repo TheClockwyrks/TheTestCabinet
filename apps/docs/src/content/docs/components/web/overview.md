@@ -140,13 +140,29 @@ and how fast: [coverage plans](/components/backend/coverage/), which are cases
 against combinations with a target per cell, and
 [ladders](/components/backend/ladders/), an ordered climb each combination
 ascends until it fails a rung. Both read the backend's derived board and offer
-the same actions: top up now, pause, halt, and halt all. Both serve the plan's
-or ladder's own unreviewed queue in its own order rather than newest-first.
+the same actions: an auto top-up setting, top up now, halt, and halt all. Both
+serve the plan's or ladder's own unreviewed queue in its own order rather than
+newest-first.
+
+A plan's auto top-up setting drives the backend's
+[`paused`](/components/backend/coverage/#pausing-and-halting) and `autoTopUp`
+together, because a halt sets `paused` and that blocks every top-up. A halt
+therefore turns auto top-up off, turning it back on clears the halt and tops up
+at once, and a top-up requested by hand on a halted plan clears the halt without
+turning auto top-up on. A ladder's setting is whether it is enabled, because a
+ladder [starts disabled](/components/backend/ladders/#a-ladder-starts-disabled)
+and enabling it starts the climb; whether it tops up on review is a separate
+setting.
+
+A control carries its own state, so nothing beside it restates that state. A
+status note explains only what no control shows: a full review buffer, runs the
+queue is holding back, cells nothing can launch, or a plan that is finished. A
+halt reports what it cancelled.
 
 Nothing here polls in the background. A top-up happens when the console asks:
-opening a plan or ladder, asking for one by hand, or, where the plan or ladder
-has `autoTopUp` on, submitting a review, which is exactly when a buffer slot
-frees.
+opening a plan with auto top-up on, turning a plan's auto top-up or a ladder on,
+asking for one by hand, or, where the plan or ladder tops up on review,
+submitting a review, which is exactly when a buffer slot frees.
 
 A plan and a ladder pin a case coordinate of test type, case, version, variant,
 and engine, held to what the resolved version declares. The engine is part of

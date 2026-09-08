@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import type {
   CoverageQueue,
@@ -19,6 +19,7 @@ import type { BackendClient } from "../../../client/clients";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
+import { Switch } from "../../components/Switch";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { useConfirm } from "../../components/ConfirmDialog";
@@ -185,7 +186,7 @@ export function describeTally(tally: RungTally): string {
  */
 export function describeLadderTopUp(result: TopUpResult): string {
   if (result.skipped === "paused") {
-    return "This ladder is disabled, so nothing was enqueued. Enable it to let it climb.";
+    return "This ladder is disabled, so nothing was enqueued. Switch it on to let it climb.";
   }
   if (result.skipped === "busy") {
     return "A top-up for this ladder was already running, so nothing was enqueued twice.";
@@ -223,10 +224,10 @@ export function describeLadderHalt(result: HaltResult): string {
     ? "including runs already executing"
     : "that had not started";
   if (result.canceled === 0) {
-    return `Disabled. No jobs of this ladder were waiting to cancel (${scope}).`;
+    return `No jobs of this ladder were waiting to cancel (${scope}).`;
   }
   const jobs = `${result.canceled} job${result.canceled === 1 ? "" : "s"}`;
-  return `Disabled and canceled ${jobs} ${scope}.`;
+  return `Canceled ${jobs} ${scope}.`;
 }
 
 /**
@@ -234,13 +235,11 @@ export function describeLadderHalt(result: HaltResult): string {
  *
  * A ladder has one idle state a plan does not: every climber stopped. That is the
  * ladder having *answered its question*, not a fault, and saying so is the difference
- * between a reviewer reading a result and a reviewer hunting a bug. The others match
- * the plan's — disabled, or a full review buffer waiting on them.
+ * between a reviewer reading a result and a reviewer hunting a bug. The other matches
+ * the plan's — a full review buffer waiting on them. Being disabled is not one: the
+ * Enabled switch already says so, and a note repeating a control's state is noise.
  */
-export function ladderStatusNote(
-  progress: LadderProgress,
-  paused: boolean,
-): string | null {
+export function ladderStatusNote(progress: LadderProgress): string | null {
   // A climber nothing can launch keeps its rung and its "climbing" status forever, so
   // on a board it is indistinguishable from one merely waiting its turn for capacity —
   // and unlike a plan's cell it is never re-counted as satisfied or missing. It is
@@ -251,12 +250,6 @@ export function ladderStatusNote(
     stuck > 0
       ? ` ${stuck} climber${stuck === 1 ? " cannot" : "s cannot"} be launched at all — the reason is on each row, and until you fix or drop the combination it will not move again.`
       : "";
-  if (paused) {
-    return (
-      "Disabled: this ladder will not enqueue anything until you enable it, which a " +
-      `new ladder never has been. Whatever is already queued is untouched.${blocked}`
-    );
-  }
   const climbing = progress.climbers.filter(
     (c) => c.status === "climbing" || c.status === "awaitingReview",
   ).length;
@@ -746,6 +739,7 @@ export async function topUpLaddersAfterReview(
 // hand, or submitting a review with auto-top-up on.
 export function LadderPage() {
   const { ladderId = "" } = useParams();
+  const enabledId = useId();
   const { token } = useAuth();
   const { client: backend } = useBackend();
   const { confirm } = useConfirm();
@@ -826,10 +820,10 @@ export function LadderPage() {
     void refresh();
   }, [refreshToken, refresh]);
 
-  // Run the server-side top-up. `announce` is on for every gesture that asked for runs
-  // — the button, and enabling the ladder — because such a gesture must always answer,
-  // even to say "nothing to do"; a top-up run as a side effect of something else speaks
-  // only when it actually enqueued.
+  // Run the server-side top-up. `announce` is on for the button, which must always
+  // answer, even to say "nothing to do"; a top-up run as a side effect of something
+  // else — enabling the ladder — speaks only when it actually enqueued, because the
+  // switch moving is already the answer to that press.
   const topUp = useCallback(
     async (announce: boolean) => {
       if (!backend?.topUpLadder || !token) return;
@@ -862,7 +856,8 @@ export function LadderPage() {
   // Enabling immediately tops up, because "enabled" and "climbing" are the same thing
   // to a reviewer — the alternative leaves a ladder that says it is on and does nothing
   // until someone finds a second button. Disabling writes only the flag: whatever is
-  // already queued carries on, and cancelling it is what Halt is for.
+  // already queued carries on, and cancelling it is what Halt is for. Neither says
+  // anything: the switch is the state, and its tooltip is the explanation.
   const setEnabled = useCallback(
     async (enabled: boolean) => {
       if (!backend?.pauseLadder || !token) return;
@@ -871,12 +866,7 @@ export function LadderPage() {
       try {
         const schedule = await backend.pauseLadder(ladderId, !enabled, token);
         setLadder((l) => (l ? { ...l, ...schedule } : l));
-        if (!enabled) {
-          setNote(
-            "Disabled. Nothing new will be enqueued; runs already queued carry on.",
-          );
-          return;
-        }
+        if (!enabled) return;
       } catch (e) {
         setError(String(e));
         return;
@@ -884,8 +874,8 @@ export function LadderPage() {
         setBusy(false);
       }
       // Outside the guard above, so the top-up's own busy/error handling owns the rest
-      // of the gesture and its result is what the reviewer is told about.
-      await topUp(true);
+      // of the gesture.
+      await topUp(false);
     },
     [backend, token, ladderId, topUp],
   );
@@ -1108,9 +1098,7 @@ export function LadderPage() {
     );
   }
 
-  const statusNote = progress
-    ? ladderStatusNote(progress, ladder?.paused ?? false)
-    : null;
+  const statusNote = progress ? ladderStatusNote(progress) : null;
 
   return (
     <PageLayout>
@@ -1118,9 +1106,6 @@ export function LadderPage() {
         <div className={styles.detailTitleRow}>
           <BackChevron to={routes.accountLadders()} label="All ladders" />
           <h1 className={styles.detailTitle}>{ladder?.name ?? ladderId}</h1>
-          {ladder?.paused && (
-            <span className={styles.pausedBadge}>disabled</span>
-          )}
         </div>
         <Link
           className={exec.secondary}
@@ -1192,7 +1177,23 @@ export function LadderPage() {
               Climbs in this order:{" "}
               <strong>{ladderAxisLabel(progress.outerAxis)}</strong>
             </span>
-            <label className={`${styles.controlToggle} ${styles.controlEnd}`}>
+            <label
+              className={`${styles.controlToggle} ${styles.controlEnd}`}
+              htmlFor={enabledId}
+              title="On: this ladder may enqueue runs, and is topped up as soon as you switch it on. Off: nothing more is enqueued; runs already queued carry on. A new ladder starts off."
+            >
+              <Switch
+                id={enabledId}
+                checked={ladder?.paused === false}
+                // Gated on the ladder having loaded: the control sends a state, not a
+                // toggle, and it cannot know which state to send until it knows the
+                // one the ladder is in.
+                disabled={busy || !ladder || !backend?.pauseLadder}
+                onChange={(on) => void setEnabled(on)}
+              />
+              Enabled
+            </label>
+            <label className={styles.controlToggle}>
               <input
                 type="checkbox"
                 checked={ladder?.autoTopUp ?? false}
@@ -1207,13 +1208,13 @@ export function LadderPage() {
                 // A disabled ladder makes enabling the primary gesture, and topping one
                 // up is not offered at all: it could only enqueue nothing and say so,
                 // which is a button whose whole function is to report its own futility.
-                className={ladder?.paused ? exec.secondary : exec.primary}
+                className={exec.primary}
                 disabled={
                   busy || !backend?.topUpLadder || ladder?.paused !== false
                 }
                 title={
                   ladder?.paused
-                    ? "This ladder is disabled, so it can enqueue nothing. Enable it, which tops it up too."
+                    ? "This ladder is off, so it can enqueue nothing. Switch it on, which tops it up too."
                     : "Enqueue the next runs this climb needs, up to the review buffer."
                 }
                 onClick={() => void topUp(true)}
@@ -1222,25 +1223,9 @@ export function LadderPage() {
               </button>
               <button
                 type="button"
-                className={ladder?.paused ? exec.primary : exec.secondary}
-                // Gated on the ladder having loaded: the control sends a state, not a
-                // toggle, and it cannot know which state to send until it knows the
-                // one the ladder is in.
-                disabled={busy || !ladder || !backend?.pauseLadder}
-                title={
-                  ladder?.paused
-                    ? "Let this ladder enqueue runs, and top it up now."
-                    : "Stop this ladder enqueueing anything more. Runs already queued carry on."
-                }
-                onClick={() => void setEnabled(Boolean(ladder?.paused))}
-              >
-                {ladder?.paused ? "Enable" : "Disable"}
-              </button>
-              <button
-                type="button"
                 className={exec.secondary}
                 disabled={busy || !backend?.haltLadder}
-                title="Disable, and cancel this ladder's jobs that have not started yet."
+                title="Switch this ladder off, and cancel its jobs that have not started yet."
                 onClick={() => void halt(false)}
               >
                 Halt
@@ -1249,7 +1234,7 @@ export function LadderPage() {
                 type="button"
                 className={exec.danger}
                 disabled={busy || !backend?.haltAllLadder}
-                title="Disable, and cancel every job this ladder launched, runs already executing included."
+                title="Switch this ladder off, and cancel every job it launched, runs already executing included."
                 onClick={() => void halt(true)}
               >
                 Halt all

@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useParams } from "react-router";
 import { LoadingState } from "../../components/LoadingState";
+import { Switch } from "../../components/Switch";
 import type {
   CoverageAxis,
   CoverageCell,
@@ -426,16 +434,21 @@ export function describeUnlaunchable(blocked: TopUpBlocked[]): string {
  * What a top-up actually did, in one sentence.
  *
  * Every outcome has to read differently, because the reviewer's next move differs
- * for each: a paused plan wants resuming, a busy one wants nothing (another tab is
- * already doing the work), a full buffer wants *reviews* rather than more runs, and
+ * for each: a halted plan wants pressing again, a busy one wants nothing (another tab
+ * is already doing the work), a full buffer wants *reviews* rather than more runs, and
  * a satisfied plan wants a bigger target or nothing at all. "Top up did nothing" for
  * all four is the failure mode this exists to avoid — and a plan whose members are
  * broken is a fifth, which is why the blocked cells trail every outcome the scheduler
  * actually reached.
  */
 export function describeTopUp(result: TopUpResult): string {
+  // Only reachable by a race: the button clears a halt before it tops up, and the
+  // on-open call is not made while one stands. So this is "somebody else, just now".
   if (result.skipped === "paused") {
-    return "This plan is paused, so nothing was enqueued. Resume it to let it refill.";
+    return (
+      "Nothing was enqueued: this plan was halted from another tab just now. " +
+      "Press Top up now to refill it anyway."
+    );
   }
   if (result.skipped === "busy") {
     return "A top-up for this plan was already running, so nothing was enqueued twice.";
@@ -513,17 +526,18 @@ export function unresolvedGgProblem(
  * What a halt cancelled. The count is the point: "the queue was already empty" and
  * "nothing I launched was found" call for opposite next moves and are otherwise
  * indistinguishable, so a halt that merely succeeded quietly is a halt the reviewer
- * cannot act on.
+ * cannot act on. That the halt also switched auto top-up off is not restated here:
+ * the switch itself moves, and a sentence saying so would say it twice.
  */
 export function describeHalt(result: HaltResult): string {
   const scope = result.includedActive
     ? "including runs already executing"
     : "that had not started";
   if (result.canceled === 0) {
-    return `Paused. No jobs of this plan were waiting to cancel (${scope}).`;
+    return `No jobs of this plan were waiting to cancel (${scope}).`;
   }
   const jobs = `${result.canceled} job${result.canceled === 1 ? "" : "s"}`;
-  return `Paused and canceled ${jobs} ${scope}.`;
+  return `Canceled ${jobs} ${scope}.`;
 }
 
 /**
@@ -531,16 +545,15 @@ export function describeHalt(result: HaltResult): string {
  *
  * An idle plan is the single most confusing state this page can be in — the target
  * is unmet, nothing is running, and no control is obviously wrong — and each cause
- * has its own remedy: resume it, review the runs holding the buffer, fix the members
- * nothing can launch, or accept that it is finished. The `pending` count is folded in
+ * has its own remedy: review the runs holding the buffer, fix the members nothing can
+ * launch, or accept that it is finished. Whether the plan feeds itself is *not* one
+ * of them: the auto top-up switch already says so, and a note repeating a control's
+ * state is noise. The `pending` count is folded in
  * for the same reason it exists on the wire: a game jam's runs are serialized per model
  * by the queue, so they sit held back rather than running, which otherwise reads
  * exactly like a stuck queue.
  */
-export function planStatusNote(
-  coverage: CoverageMatrix,
-  paused: boolean,
-): string | null {
+export function planStatusNote(coverage: CoverageMatrix): string | null {
   const held =
     coverage.runsPending > 0
       ? ` ${coverage.runsPending} in-flight run${coverage.runsPending === 1 ? " is" : "s are"} pending: held back by the queue (its harness is at its parallelism cap, or a game jam is already running on that model), not stuck.`
@@ -553,12 +566,6 @@ export function planStatusNote(
     blockedCells > 0
       ? ` ${blockedCells} cell${blockedCells === 1 ? " cannot" : "s cannot"} be launched at all — expand the blocks below for the reason on each, and fix or drop the combination.`
       : "";
-  if (paused) {
-    return (
-      "Paused: this plan will not enqueue anything until you resume it. " +
-      `Whatever is already queued is untouched.${held}${blocked}`
-    );
-  }
   if (coverage.runsMissing === 0) {
     if (coverage.runsUnreviewed === 0)
       return `${held}${blocked}`.trim() || null;
@@ -847,7 +854,9 @@ export function ReviewQueue({
 
 // The per-plan coverage dashboard (`/account/coverage/:planId`): the matrix of what
 // this plan still needs — grouped and ordered exactly as the plan runs it — over the
-// controls that feed it (top up, pause, halt) and the review queue it has filled.
+// controls that feed it (auto top-up, top up now, halt) and the review queue it has
+// filled. The controls carry the plan's state themselves — the switch reads on or
+// off, a halt moves it — and no notice restates what a control already shows.
 // Console-only; gated on a signed-in account.
 export function CoveragePlanPage() {
   const { planId = "" } = useParams();
@@ -857,6 +866,7 @@ export function CoveragePlanPage() {
   const { active: worker } = useWorkers();
   const runtime = useRunsRuntime();
   const testCaseName = useTestCaseName();
+  const autoTopUpId = useId();
   // The account's gg configurations, needed only to trigger a gg cell by hand: the
   // matrix already carries every gg cell's name and models, but launching one needs the
   // capability set behind it, which only the configuration itself has. The load's state
@@ -954,17 +964,23 @@ export function CoveragePlanPage() {
     [backend, token, planId, refresh],
   );
 
-  // Top up once when the plan is opened. There is no background scheduler, so this
-  // call *is* the scheduler's other half (a submitted review being the first): a
-  // reviewer arriving at a plan that has room in its buffer should find it filling,
-  // not waiting to be asked. It is idempotent and serialized server-side, so a
+  // Whether this plan feeds itself, as one bit. `paused` is what a halt sets and it
+  // blocks every top-up server-side, so a plan with `autoTopUp` on but halted is not
+  // topping itself up and must not read as though it were.
+  const autoTopUp = Boolean(plan && plan.autoTopUp && !plan.paused);
+
+  // Top up once when the plan is opened, if it feeds itself. There is no background
+  // scheduler, so this call *is* the scheduler's other half (a submitted review being
+  // the first): a reviewer arriving at a plan that has room in its buffer should find
+  // it filling, not waiting to be asked. With auto top-up off, opening the page is a
+  // read — only "Top up now" enqueues. Idempotent and serialized server-side, so a
   // second tab doing the same thing enqueues nothing twice.
   const toppedUpFor = useRef<string | null>(null);
   useEffect(() => {
     if (loading || !plan || toppedUpFor.current === planId) return;
     toppedUpFor.current = planId;
-    void topUp(false);
-  }, [loading, plan, planId, topUp]);
+    if (autoTopUp) void topUp(false);
+  }, [loading, plan, planId, autoTopUp, topUp]);
 
   // Launch a set of cells by hand. The two shapes a combination takes go out on two
   // different endpoints — harness cells in one batch, gg cells one gg run each — so the
@@ -1039,62 +1055,79 @@ export function CoveragePlanPage() {
     ],
   );
 
-  // Suspend or resume topping up, leaving the queue alone. Takes the state rather
-  // than toggling, so the control cannot disagree with the server about which way it
-  // is going.
-  const setPaused = useCallback(
-    async (paused: boolean) => {
-      if (!backend?.pauseCoveragePlan || !token) return;
-      setBusy(true);
-      setError(null);
-      try {
-        const schedule = await backend.pauseCoveragePlan(planId, paused, token);
-        setPlan((p) => (p ? { ...p, ...schedule } : p));
-        setNote(
-          paused
-            ? "Paused. Nothing new will be enqueued; the queue is untouched."
-            : "Resumed. Top up now, or submit a review, to start refilling.",
-        );
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [backend, token, planId],
-  );
-
-  // Turn "top up when I submit a review" on or off. Written through the schedule
-  // resource (not the plan save), so it can never be clobbered by a member-list edit
-  // saved from another tab.
-  const setAutoTopUp = useCallback(
-    async (autoTopUp: boolean) => {
+  // Write the schedule through its own resource (not the plan save), so it can never
+  // be clobbered by a member-list edit saved from another tab. What the server now
+  // holds is what the switch and the on-open gate read.
+  const writeSchedule = useCallback(
+    async (patch: { paused: boolean; autoTopUp: boolean }) => {
       if (!backend?.setCoveragePlanSchedule || !token || !plan) return;
       const schedule: CoverageSchedule = {
         outerAxis: plan.outerAxis,
-        paused: plan.paused,
-        autoTopUp,
         bufferTarget: plan.bufferTarget,
+        ...patch,
       };
-      setBusy(true);
-      setError(null);
-      try {
-        const saved = await backend.setCoveragePlanSchedule(
-          planId,
-          schedule,
-          token,
-        );
-        setPlan((p) => (p ? { ...p, ...saved } : p));
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setBusy(false);
-      }
+      const saved = await backend.setCoveragePlanSchedule(
+        planId,
+        schedule,
+        token,
+      );
+      setPlan((p) => (p ? { ...p, ...saved } : p));
     },
     [backend, token, planId, plan],
   );
 
-  // Pause and cancel this plan's jobs. `all` extends the sweep to jobs already
+  // The one switch that decides whether this plan feeds itself: on, it tops up when
+  // opened and each time a review lands; off, only "Top up now" enqueues and the
+  // queue is left alone. Switching on clears a halt too, because a halted plan refuses
+  // every top-up and a switch reading "on" above one would be lying. Switching off
+  // leaves a halt standing: it is already off, and a halt is the louder thing.
+  //
+  // Switching on tops up at once — a reviewer who flipped it wants runs now, not after
+  // their next review — but the top-up speaks only if it enqueued something: the
+  // switch moving is the answer to the press, and "nothing to do" is already on the
+  // page as the status note.
+  const setAutoTopUp = useCallback(
+    async (on: boolean) => {
+      setBusy(true);
+      setError(null);
+      try {
+        await writeSchedule({
+          paused: on ? false : (plan?.paused ?? false),
+          autoTopUp: on,
+        });
+      } catch (e) {
+        setError(String(e));
+        return;
+      } finally {
+        setBusy(false);
+      }
+      if (on) await topUp(false);
+    },
+    [writeSchedule, plan, topUp],
+  );
+
+  // The button. A halted plan refuses every top-up server-side while its switch reads
+  // "off", so a press has to clear the halt first — otherwise auto top-up being off
+  // would appear to block topping up by hand, which is the one thing it must never
+  // mean. The switch stays off: the press asked for runs now, not for the plan to
+  // start feeding itself again.
+  const topUpNow = useCallback(async () => {
+    if (plan?.paused) {
+      setBusy(true);
+      setError(null);
+      try {
+        await writeSchedule({ paused: false, autoTopUp: false });
+      } catch (e) {
+        setError(String(e));
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
+    await topUp(true);
+  }, [plan, writeSchedule, topUp]);
+
+  // Switch auto top-up off and cancel this plan's jobs. `all` extends the sweep to jobs already
   // executing, which are partly or wholly paid for — so it is confirmed, and never
   // the control the reviewer reaches by accident.
   const halt = useCallback(
@@ -1126,7 +1159,8 @@ export function CoveragePlanPage() {
           ? await backend.haltAllCoveragePlan?.(planId, token)
           : await backend.haltCoveragePlan?.(planId, token);
         if (result) setNote(describeHalt(result));
-        // A halt always leaves the plan paused, whatever it found to cancel.
+        // A halt always leaves the plan halted — its switch reads off — whatever it
+        // found to cancel.
         setPlan((p) => (p ? { ...p, paused: true } : p));
         await refresh();
       } catch (e) {
@@ -1169,9 +1203,7 @@ export function CoveragePlanPage() {
     );
   }
 
-  const statusNote = coverage
-    ? planStatusNote(coverage, plan?.paused ?? false)
-    : null;
+  const statusNote = coverage ? planStatusNote(coverage) : null;
 
   return (
     <PageLayout>
@@ -1179,7 +1211,6 @@ export function CoveragePlanPage() {
         <div className={styles.detailTitleRow}>
           <BackChevron to={routes.accountCoverage()} label="All plans" />
           <h1 className={styles.detailTitle}>{plan?.name ?? planId}</h1>
-          {plan?.paused && <span className={styles.pausedBadge}>paused</span>}
         </div>
         <Link
           className={exec.secondary}
@@ -1264,40 +1295,34 @@ export function CoveragePlanPage() {
               Runs in this order:{" "}
               <strong>{axisLabel(coverage.outerAxis)}</strong>
             </span>
-            <label className={`${styles.controlToggle} ${styles.controlEnd}`}>
-              <input
-                type="checkbox"
-                checked={plan?.autoTopUp ?? false}
+            <label
+              className={`${styles.controlToggle} ${styles.controlEnd}`}
+              htmlFor={autoTopUpId}
+              title="On: this plan tops itself up when you open it and each time you submit a review, up to the review buffer. Off: only Top up now enqueues, and whatever is queued is left alone."
+            >
+              <Switch
+                id={autoTopUpId}
+                checked={autoTopUp}
                 disabled={busy || !plan || !backend?.setCoveragePlanSchedule}
-                onChange={(e) => void setAutoTopUp(e.target.checked)}
+                onChange={(on) => void setAutoTopUp(on)}
               />
-              Top up when I submit a review
+              Auto top-up
             </label>
             <span className={styles.controlActions}>
               <button
                 type="button"
                 className={exec.primary}
-                disabled={busy || !backend?.topUpCoveragePlan}
-                onClick={() => void topUp(true)}
+                disabled={busy || !plan || !backend?.topUpCoveragePlan}
+                title="Enqueue the next runs this plan needs, up to the review buffer."
+                onClick={() => void topUpNow()}
               >
                 {busy ? "Working…" : "Top up now"}
               </button>
               <button
                 type="button"
                 className={exec.secondary}
-                // Gated on the plan having loaded: the control sends a state, not a
-                // toggle, and it cannot know which state to send until it knows the
-                // one the plan is in.
-                disabled={busy || !plan || !backend?.pauseCoveragePlan}
-                onClick={() => void setPaused(!plan?.paused)}
-              >
-                {plan?.paused ? "Resume" : "Pause"}
-              </button>
-              <button
-                type="button"
-                className={exec.secondary}
                 disabled={busy || !backend?.haltCoveragePlan}
-                title="Pause, and cancel this plan's jobs that have not started yet."
+                title="Switch auto top-up off, and cancel this plan's jobs that have not started yet."
                 onClick={() => void halt(false)}
               >
                 Halt
@@ -1306,7 +1331,7 @@ export function CoveragePlanPage() {
                 type="button"
                 className={exec.danger}
                 disabled={busy || !backend?.haltAllCoveragePlan}
-                title="Pause, and cancel every job this plan launched, runs already executing included."
+                title="Switch auto top-up off, and cancel every job this plan launched, runs already executing included."
                 onClick={() => void halt(true)}
               >
                 Halt all

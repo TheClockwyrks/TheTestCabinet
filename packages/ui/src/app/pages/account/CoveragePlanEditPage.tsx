@@ -44,10 +44,12 @@ const DEFAULT_AUTO_TOP_UP = false;
 // group later reshapes this plan — while one-offs live on the plan. Save creates or
 // updates and returns to the plans list. Console-only; gated on a signed-in account.
 //
-// The schedule fields travel in the save body's nested `schedule`, and the plan's
-// `paused` state is carried through untouched from what was loaded: pausing and
-// halting are the dashboard's controls, and saving an edited member list here must
-// never resume a plan somebody deliberately stopped.
+// The schedule fields travel in the save body's nested `schedule`. The auto top-up
+// switch here is the same switch the dashboard carries, reading and writing the same
+// pair of flags: `paused` is what a halt sets and it blocks every top-up, so the switch
+// shows on only when the plan is both asked to feed itself and not halted, and turning
+// it on clears the halt. Left off, a halt stands — saving an edited member list must
+// never restart a plan somebody deliberately stopped.
 export function CoveragePlanEditPage() {
   const { planId } = useParams();
   const editing = Boolean(planId);
@@ -74,7 +76,7 @@ export function CoveragePlanEditPage() {
   );
   const [autoTopUp, setAutoTopUp] = useState(DEFAULT_AUTO_TOP_UP);
   const [bufferTarget, setBufferTarget] = useState<BufferTarget | null>(null);
-  // Carried, never edited here — see the note on this page's purpose above.
+  // Whether the plan was loaded halted — see the note on this page's purpose above.
   const [paused, setPaused] = useState(false);
   const [accountBuffer, setAccountBuffer] = useState<BufferTarget>(
     DEFAULT_BUFFER_TARGET,
@@ -109,7 +111,7 @@ export function CoveragePlanEditPage() {
             setCombos(plan.combos);
             setCases(plan.cases);
             setOuterAxis(plan.outerAxis);
-            setAutoTopUp(plan.autoTopUp);
+            setAutoTopUp(plan.autoTopUp && !plan.paused);
             setBufferTarget(plan.bufferTarget ?? null);
             setPaused(plan.paused);
           }
@@ -175,9 +177,9 @@ export function CoveragePlanEditPage() {
       cases,
       schedule: {
         outerAxis,
-        // Whatever the plan was loaded as (false for a new plan): the dashboard owns
-        // this control, and a member edit is not a decision to resume.
-        paused,
+        // Switching auto top-up on is a decision to run again, so it clears a halt;
+        // anything else leaves the halt as it was loaded (false for a new plan).
+        paused: autoTopUp ? false : paused,
         autoTopUp,
         // Omitted when there is no override — null means "inherit my account
         // default", a bound of 0 means "never top this plan up", and no limit means
@@ -283,9 +285,9 @@ export function CoveragePlanEditPage() {
             onChange={setBufferTarget}
           />
           <SettingRow
-            label="Top up this plan when I submit a review"
-            description="Each review submitted enqueues more of the plan, up to the review buffer."
-            help="A top-up walks the cells in the run order above, skips the ones already at their target, and enqueues whole cases at a time until the buffer is full, so a case’s repeats arrive together and can be reviewed against each other. Pausing and halting live on the plan’s dashboard."
+            label="Auto top-up"
+            description="Tops up when you open the plan and each time you submit a review, up to the review buffer. Off, only Top up now enqueues."
+            help="A top-up walks the cells in the run order above, skips the ones already at their target, and enqueues whole cases at a time until the buffer is full, so a case’s repeats arrive together and can be reviewed against each other. Halting lives on the plan’s dashboard, and switches this off."
             modified={autoTopUp !== DEFAULT_AUTO_TOP_UP}
             onReset={() => setAutoTopUp(DEFAULT_AUTO_TOP_UP)}
           >

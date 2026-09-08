@@ -169,15 +169,15 @@ export function CoveragePlansPage() {
                     >
                       {plan.name}
                     </Link>
-                    {/* A paused plan with missing runs is otherwise indistinguishable
-                        from a stuck one, and the list is where that reads worst. */}
-                    {plan.paused && (
-                      <span className={styles.pausedBadge}>paused</span>
-                    )}
                   </span>
                   <span className={styles.rowSub}>
                     {plan.runsPerCell} runs/cell
-                    {plan.autoTopUp && " · tops up on review"}
+                    {/* Whether the plan feeds itself, as the dashboard's switch shows
+                        it: a halt leaves `paused` set, which blocks every top-up, so a
+                        halted plan is not "auto" whatever its flag says. A plan without
+                        this moves only when asked, which is why a missing-runs count
+                        beside it is not a stall. */}
+                    {plan.autoTopUp && !plan.paused && " · auto top-up"}
                     {plan.runsUnreviewed > 0 &&
                       ` · ${plan.runsUnreviewed} waiting on you`}
                   </span>

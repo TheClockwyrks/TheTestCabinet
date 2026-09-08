@@ -197,8 +197,8 @@ means "top up everything". Each is a distinct instruction.
 ### Topping up
 
 Top-up is a server endpoint rather than a background daemon. A plan enqueues when
-it is opened, when a top-up is requested, and, with `autoTopUp` on, when a review
-is submitted.
+a top-up is requested and, with `autoTopUp` on, when it is opened and when a
+review is submitted.
 
 A [ladder](/components/backend/ladders/#a-ladder-starts-disabled) is fed by the
 same endpoint at different moments: it is created disabled, opening it enqueues
@@ -288,7 +288,9 @@ can act on.
 Three controls, distinct because "stop" carries three different costs:
 
 - **`pause`** stops topping up and leaves the queue completely alone. It is
-  reversible.
+  reversible. The [web console](/components/web/overview/#planning-and-steering-runs)
+  exposes no control by that name: a plan's `paused` and `autoTopUp` are driven
+  together by one auto top-up setting, and a ladder's by its enabled setting.
 - **`halt`** pauses, then cancels this plan's `queued` and `pending` jobs. Those
   jobs have no driver and have spent nothing, so it needs no confirmation. This
   is the common case.

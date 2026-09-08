@@ -699,8 +699,8 @@ describe("describeTopUp", () => {
     };
   }
 
-  it("names a paused plan as paused rather than as idle", () => {
-    expect(describeTopUp(result({ skipped: "paused" }))).toMatch(/paused/i);
+  it("names a halted plan as halted rather than as idle", () => {
+    expect(describeTopUp(result({ skipped: "paused" }))).toMatch(/halted/i);
   });
 
   it("says a concurrent top-up already ran, so nothing enqueued twice", () => {
@@ -778,10 +778,10 @@ describe("describeTopUp", () => {
 describe("describeHalt", () => {
   it("reports the count and the scope", () => {
     expect(describeHalt({ canceled: 4, includedActive: false })).toMatch(
-      /canceled 4 jobs that had not started/,
+      /canceled 4 jobs that had not started/i,
     );
     expect(describeHalt({ canceled: 1, includedActive: true })).toMatch(
-      /canceled 1 job including runs already executing/,
+      /canceled 1 job including runs already executing/i,
     );
   });
 
@@ -793,20 +793,14 @@ describe("describeHalt", () => {
 });
 
 // An idle plan is the most confusing state the page can be in, so each cause
-// explains itself and points at its own remedy.
+// explains itself and points at its own remedy — except whether the plan feeds
+// itself, which the auto top-up switch already shows and the note never repeats.
 describe("planStatusNote", () => {
-  it("explains a pause before anything else", () => {
-    const note = planStatusNote(matrix([cell()]), true);
-    expect(note).toMatch(/paused/i);
-    expect(note).toMatch(/already queued is untouched/i);
-  });
-
   it("explains a full review buffer as waiting on you", () => {
     const note = planStatusNote(
       matrix([cell({ inFlight: 1, unreviewed: 4 })], {
         bufferTarget: { kind: "bounded", runs: 5 },
       }),
-      false,
     );
     expect(note).toMatch(/5 of 5/);
     expect(note).toMatch(/review some/i);
@@ -817,7 +811,6 @@ describe("planStatusNote", () => {
       matrix([cell({ inFlight: 1, unreviewed: 40 })], {
         bufferTarget: { kind: "unbounded" },
       }),
-      false,
     );
     expect(note ?? "").not.toMatch(/waiting on you/i);
   });
@@ -825,7 +818,6 @@ describe("planStatusNote", () => {
   it("says a satisfied plan was satisfied partly by runs you have not reviewed", () => {
     const note = planStatusNote(
       matrix([cell({ completed: 3, remaining: 0, unreviewed: 2 })]),
-      false,
     );
     expect(note).toMatch(/every cell is at its target/i);
     expect(note).toMatch(/2 runs you have not reviewed/);
@@ -834,7 +826,6 @@ describe("planStatusNote", () => {
   it("distinguishes pending from stuck", () => {
     const note = planStatusNote(
       matrix([cell({ inFlight: 2, pending: 2, remaining: 0, completed: 1 })]),
-      false,
     );
     expect(note).toMatch(/held back by the queue/i);
     expect(note).toMatch(/not stuck/i);
@@ -848,13 +839,12 @@ describe("planStatusNote", () => {
           unlaunchable: "gg configuration `reviewer` no longer exists",
         }),
       ]),
-      false,
     );
     expect(note).toMatch(/1 cell cannot be launched at all/);
   });
 
   it("stays quiet when there is nothing to explain", () => {
-    expect(planStatusNote(matrix([cell()]), false)).toBeNull();
+    expect(planStatusNote(matrix([cell()]))).toBeNull();
   });
 });
 

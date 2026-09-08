@@ -410,10 +410,10 @@ describe("describeLadderTopUp", () => {
 describe("describeLadderHalt", () => {
   it("reports the count and the scope", () => {
     expect(describeLadderHalt({ canceled: 4, includedActive: false })).toMatch(
-      /canceled 4 jobs that had not started/,
+      /canceled 4 jobs that had not started/i,
     );
     expect(describeLadderHalt({ canceled: 1, includedActive: true })).toMatch(
-      /canceled 1 job including runs already executing/,
+      /canceled 1 job including runs already executing/i,
     );
   });
 
@@ -424,15 +424,10 @@ describe("describeLadderHalt", () => {
   });
 });
 
-// An idle ladder is either disabled, waiting on the reviewer, or finished — and the
-// last of those is a result, not a fault.
+// An idle ladder is either waiting on the reviewer or finished — and the last of
+// those is a result, not a fault. Being disabled is the Enabled switch's to show,
+// and the note never repeats it.
 describe("ladderStatusNote", () => {
-  it("explains being disabled before anything else", () => {
-    const note = ladderStatusNote(progress(), true);
-    expect(note).toMatch(/disabled/i);
-    expect(note).toMatch(/already queued is untouched/i);
-  });
-
   it("reads a board with nobody climbing as an answer, not a stall", () => {
     const note = ladderStatusNote(
       progress({
@@ -443,7 +438,6 @@ describe("ladderStatusNote", () => {
         climbersWalled: 1,
         climbersToppedOut: 1,
       }),
-      false,
     );
     expect(note).toMatch(/nobody is climbing/i);
     expect(note).toMatch(/answered its question/i);
@@ -455,7 +449,6 @@ describe("ladderStatusNote", () => {
         runsOutstanding: 5,
         bufferTarget: { kind: "bounded", runs: 5 },
       }),
-      false,
     );
     expect(note).toMatch(/5 of 5/);
     expect(note).toMatch(/your review/i);
@@ -464,13 +457,12 @@ describe("ladderStatusNote", () => {
   it("never says an unbounded ladder is waiting on you", () => {
     const note = ladderStatusNote(
       progress({ runsOutstanding: 50, bufferTarget: { kind: "unbounded" } }),
-      false,
     );
     expect(note ?? "").not.toMatch(/waiting on you/i);
   });
 
   it("stays quiet when the ladder is simply climbing", () => {
-    expect(ladderStatusNote(progress(), false)).toBeNull();
+    expect(ladderStatusNote(progress())).toBeNull();
   });
 
   // A climber whose configuration was deleted keeps its rung and its "climbing"
@@ -488,7 +480,6 @@ describe("ladderStatusNote", () => {
           }),
         ],
       }),
-      false,
     );
     expect(note).toMatch(/1 climber cannot be launched at all/);
     expect(note).toMatch(/reason is on each row/i);
@@ -505,9 +496,7 @@ describe("ladderStatusNote", () => {
           }),
         ],
       }),
-      true,
     );
-    expect(note).toMatch(/disabled/i);
     expect(note).toMatch(/2 climbers cannot be launched at all/);
   });
 });

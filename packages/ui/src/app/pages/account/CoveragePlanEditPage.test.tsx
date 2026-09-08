@@ -183,7 +183,7 @@ describe("CoveragePlanEditPage settings", () => {
   it("states the auto-top-up setting as a switch, not a ticked box", async () => {
     await renderEditor();
     const toggle = screen.getByRole("switch", {
-      name: "Top up this plan when I submit a review",
+      name: "Auto top-up",
     });
     expect((toggle as HTMLInputElement).checked).toBe(false);
     expect(screen.queryByRole("checkbox")).toBeNull();
@@ -204,7 +204,7 @@ describe("CoveragePlanEditPage settings", () => {
     fireEvent.change(runsPerCell(), { target: { value: "4" } });
     fireEvent.click(
       screen.getByRole("switch", {
-        name: "Top up this plan when I submit a review",
+        name: "Auto top-up",
       }),
     );
     fireEvent.change(screen.getByLabelText("Run order"), {
@@ -240,13 +240,29 @@ describe("CoveragePlanEditPage settings", () => {
     expect(saved?.schedule?.bufferTarget).toBeUndefined();
   });
 
-  // The dashboard owns pausing, and a member edit is not a decision to resume.
-  it("carries the paused state through untouched", async () => {
-    await renderEditor(plan({ paused: true }));
+  // A halt sets `paused`, which blocks every top-up, so a halted plan is shown as
+  // not topping itself up whatever its flag says — and a member edit that leaves the
+  // switch alone is not a decision to run again.
+  it("shows a halted plan as auto top-up off, and leaves the halt standing on save", async () => {
+    await renderEditor(plan({ paused: true, autoTopUp: true }));
+    const toggle = screen.getByRole("switch", { name: "Auto top-up" });
+    expect((toggle as HTMLInputElement).checked).toBe(false);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
     });
     expect(saved?.schedule?.paused).toBe(true);
+    expect(saved?.schedule?.autoTopUp).toBe(false);
+  });
+
+  // Switching it on is that decision, and the one way this page clears a halt.
+  it("clears the halt when auto top-up is switched on", async () => {
+    await renderEditor(plan({ paused: true, autoTopUp: false }));
+    fireEvent.click(screen.getByRole("switch", { name: "Auto top-up" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    });
+    expect(saved?.schedule?.paused).toBe(false);
+    expect(saved?.schedule?.autoTopUp).toBe(true);
   });
 });
 
