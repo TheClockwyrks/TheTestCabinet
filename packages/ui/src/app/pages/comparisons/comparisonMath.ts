@@ -40,7 +40,7 @@ export function isGgArm(arm: ComparisonArm): boolean {
  * Build the launch items for a **harness** arm's still-missing runs: `count`
  * copies of the one (case, version, variant, harness, model, orchestrator) tuple
  * the comparison's controls and this arm's own configuration fix. Mirrors
- * `itemsForCells` (`CoveragePlanPage`) and the new-run form's per-combination
+ * `itemsForCells` (`coveragePlan`) and the new-run form's per-combination
  * launch config — the same one-shot orchestrator, since a comparison does not
  * vary it. Returns no items when the arm is missing what a harness arm needs
  * (its harness and its model), which is exactly a gg arm — those launch through

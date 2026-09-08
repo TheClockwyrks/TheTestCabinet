@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,9 +35,6 @@ import {
   type GalleryDataInput,
 } from "../../data/galleryContext";
 import {
-  CoveragePlanPage,
-  MatrixSection,
-  ReviewQueue,
   buildGroups,
   cellKey,
   describeHalt,
@@ -40,11 +43,16 @@ import {
   itemsForCells,
   launchGgCells,
   planGgLaunches,
-  planStatusNote,
   topUpAfterReview,
   unresolvedGgProblem,
   type MatrixGroup,
-} from "./CoveragePlanPage";
+} from "./coveragePlan";
+import { CoveragePlanLayout } from "./CoveragePlanLayout";
+import { CoveragePlanPage } from "./CoveragePlanPage";
+import { CoveragePlanReviewsPage } from "./CoveragePlanReviewsPage";
+import { CoveragePlanTestsPage } from "./CoveragePlanTestsPage";
+import { MatrixSection } from "./CoverageMatrixSection";
+import { CoverageReviewQueue } from "./CoverageReviewQueue";
 
 // The page's app chrome reads contexts (gallery data, notifications) that none of
 // these tests are about; stub it as the other account page tests do.
@@ -335,10 +343,110 @@ describe("MatrixSection collapse", () => {
     );
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(screen.getByText("launch slot `critic` is unbound")).toBeTruthy();
-    const trigger = screen.getByRole("button", { name: "Blocked" });
-    expect((trigger as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(trigger);
+    // Both presses refuse, and the reason rides the wrapper rather than the buttons:
+    // a browser routes no pointer events to a disabled control, so a title on one is
+    // unreachable exactly when it has something to say.
+    for (const name of [/^Launch one run of/, /^Launch all/]) {
+      const trigger = screen.getByRole("button", { name });
+      expect((trigger as HTMLButtonElement).disabled).toBe(true);
+      expect(trigger.parentElement!.getAttribute("title")).toBe(
+        "launch slot `critic` is unbound",
+      );
+      fireEvent.click(trigger);
+    }
     expect(onTrigger).not.toHaveBeenCalled();
+  });
+
+  // The two presses are the whole point of expanding a block: one more run of a cell
+  // still being judged, or the cell's whole shortfall in one go.
+  it("offers one run and the whole shortfall, and launches exactly that much", () => {
+    const onTrigger = vi.fn();
+    render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <MatrixSection
+            group={group({ cells: [cell({ remaining: 4 })] })}
+            axis="case"
+            busy={false}
+            canTrigger
+            onTrigger={onTrigger}
+          />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    const one = screen.getByRole("button", { name: /^Launch one run of/ });
+    const all = screen.getByRole("button", { name: /^Launch all 4 missing/ });
+    expect(one.textContent).toBe("▶ x1");
+    expect(all.textContent).toBe("▶ All");
+
+    fireEvent.click(one);
+    // Exactly one run, whatever the cell is short by: a trigger that quietly bought
+    // four when one was asked for is a trigger nobody presses twice.
+    expect(onTrigger.mock.calls[0]![0][0].remaining).toBe(1);
+
+    fireEvent.click(all);
+    expect(onTrigger.mock.calls[1]![0][0].remaining).toBe(4);
+  });
+
+  // A covered cell has nothing to buy, so both presses refuse and say so rather than
+  // offering a launch that would overshoot the plan's own target.
+  it("refuses both presses on a covered cell, and says it is covered", () => {
+    const onTrigger = vi.fn();
+    render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <MatrixSection
+            group={group({ cells: [cell({ completed: 3, remaining: 0 })] })}
+            axis="case"
+            busy={false}
+            canTrigger
+            onTrigger={onTrigger}
+          />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    const one = screen.getByRole("button", { name: /^Launch one run of/ });
+    expect((one as HTMLButtonElement).disabled).toBe(true);
+    expect(one.parentElement!.getAttribute("title")).toMatch(/covered/i);
+    fireEvent.click(one);
+    expect(onTrigger).not.toHaveBeenCalled();
+    // And said in the row itself, because a tooltip on a disabled control never
+    // opens: without this a covered cell looks exactly like a broken one.
+    expect(screen.getByText("covered")).toBeTruthy();
+  });
+
+  // On a combination-grouped block the block IS the combination and each row is a
+  // different case, so a button named for the combination would give every row in the
+  // block one accessible name and hide the only fact that tells them apart.
+  it("names a trigger by the row's own axis, not the block's", () => {
+    render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <MatrixSection
+            group={group({
+              cells: [cell(), cell({ slug: "caldera" })],
+            })}
+            axis="combination"
+            busy={false}
+            canTrigger
+            onTrigger={vi.fn()}
+          />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(
+      screen.getByRole("button", {
+        name: "Launch one run of Carom · base · v1.0.0",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Launch one run of Caldera · base · v1.0.0",
+      }),
+    ).toBeTruthy();
   });
 
   it("says how much of a cell is pending and how much awaits review", () => {
@@ -792,66 +900,10 @@ describe("describeHalt", () => {
   });
 });
 
-// An idle plan is the most confusing state the page can be in, so each cause
-// explains itself and points at its own remedy — except whether the plan feeds
-// itself, which the auto top-up switch already shows and the note never repeats.
-describe("planStatusNote", () => {
-  it("explains a full review buffer as waiting on you", () => {
-    const note = planStatusNote(
-      matrix([cell({ inFlight: 1, unreviewed: 4 })], {
-        bufferTarget: { kind: "bounded", runs: 5 },
-      }),
-    );
-    expect(note).toMatch(/5 of 5/);
-    expect(note).toMatch(/review some/i);
-  });
-
-  it("never says an unbounded plan is waiting on you", () => {
-    const note = planStatusNote(
-      matrix([cell({ inFlight: 1, unreviewed: 40 })], {
-        bufferTarget: { kind: "unbounded" },
-      }),
-    );
-    expect(note ?? "").not.toMatch(/waiting on you/i);
-  });
-
-  it("says a satisfied plan was satisfied partly by runs you have not reviewed", () => {
-    const note = planStatusNote(
-      matrix([cell({ completed: 3, remaining: 0, unreviewed: 2 })]),
-    );
-    expect(note).toMatch(/every cell is at its target/i);
-    expect(note).toMatch(/2 runs you have not reviewed/);
-  });
-
-  it("distinguishes pending from stuck", () => {
-    const note = planStatusNote(
-      matrix([cell({ inFlight: 2, pending: 2, remaining: 0, completed: 1 })]),
-    );
-    expect(note).toMatch(/held back by the queue/i);
-    expect(note).toMatch(/not stuck/i);
-  });
-
-  it("names the cells nothing can launch, which no other count explains", () => {
-    const note = planStatusNote(
-      matrix([
-        cell(),
-        ggCell({
-          unlaunchable: "gg configuration `reviewer` no longer exists",
-        }),
-      ]),
-    );
-    expect(note).toMatch(/1 cell cannot be launched at all/);
-  });
-
-  it("stays quiet when there is nothing to explain", () => {
-    expect(planStatusNote(matrix([cell()]))).toBeNull();
-  });
-});
-
 // The queue is the review loop's list: it must open runs in the plan's own order and
 // leave a back-return behind it, so reviewing walks the buffer and lands back on the
 // plan rather than on the runs index.
-describe("ReviewQueue", () => {
+describe("CoverageReviewQueue", () => {
   function queue(): CoverageQueue {
     return {
       runs: [
@@ -884,14 +936,14 @@ describe("ReviewQueue", () => {
   // index as it renders.
   function Dashboard() {
     useRecordSectionIndex("coverage");
-    return <ReviewQueue queue={queue()} />;
+    return <CoverageReviewQueue queue={queue()} />;
   }
 
   it("names a queued run's engine, so two pins do not read alike", () => {
     render(
       <MemoryRouter initialEntries={["/account/coverage/p1"]}>
         <GalleryDataProvider value={galleryValue()}>
-          <ReviewQueue
+          <CoverageReviewQueue
             queue={{
               runs: [
                 {
@@ -918,7 +970,7 @@ describe("ReviewQueue", () => {
     render(
       <MemoryRouter initialEntries={["/account/coverage/p1"]}>
         <GalleryDataProvider value={galleryValue()}>
-          <ReviewQueue queue={queue()} />
+          <CoverageReviewQueue queue={queue()} />
         </GalleryDataProvider>
       </MemoryRouter>,
     );
@@ -929,14 +981,19 @@ describe("ReviewQueue", () => {
     render(
       <MemoryRouter initialEntries={["/account/coverage/p1"]}>
         <GalleryDataProvider value={galleryValue()}>
-          <ReviewQueue queue={queue()} />
+          <CoverageReviewQueue queue={queue()} />
         </GalleryDataProvider>
       </MemoryRouter>,
     );
     const links = screen.getAllByRole("link");
     // Emission order, not newest-first and not alphabetical (the catalog resolver
-    // title-cases a slug it does not know).
-    expect(links.map((l) => l.textContent)).toEqual(["Zeta", "Alpha"]);
+    // title-cases a slug it does not know). The whole row is the link, so the case
+    // name leads its text rather than being the whole of it.
+    expect(links.map((l) => l.textContent?.startsWith("Zeta"))).toEqual([
+      true,
+      false,
+    ]);
+    expect(links[1]!.textContent?.startsWith("Alpha")).toBe(true);
     // The queue is a review worklist, so its rows deep-link to the run's
     // Verdict tab rather than the Play landing tab.
     expect(links[0]!.getAttribute("href")).toBe("/runs/r1/verdict");
@@ -968,7 +1025,9 @@ describe("ReviewQueue", () => {
   it("renames the run's back control to the dashboard it now returns to", () => {
     function LadderDashboard() {
       useRecordSectionIndex("coverage");
-      return <ReviewQueue queue={queue()} returnLabel="Back to the ladder" />;
+      return (
+        <CoverageReviewQueue queue={queue()} returnLabel="Back to the ladder" />
+      );
     }
     render(
       <MemoryRouter initialEntries={["/account/ladders/l1"]}>
@@ -1117,12 +1176,20 @@ const worker = {
   client: { launchJobs: vi.fn() } as unknown as WorkerClient,
 };
 
-function backendValue(cells: CoverageCell[]): BackendContextValue {
+// How many server-side top-ups the mounted section has asked for. A top-up is not a
+// read: whenever the buffer has room it mints jobs that cost money, so the count is a
+// behavioural assertion rather than a call tally.
+let topUps = 0;
+
+function backendValue(
+  cells: CoverageCell[],
+  planQueue: CoverageQueue = { runs: [], truncated: false },
+  autoTopUp = true,
+): BackendContextValue {
   return {
     client: {
       getCoveragePlanCoverage: async () => matrix(cells),
-      getCoveragePlanQueue: async () =>
-        ({ runs: [], truncated: false }) as CoverageQueue,
+      getCoveragePlanQueue: async () => planQueue,
       listCoveragePlans: async () => [
         {
           id: "p1",
@@ -1135,16 +1202,18 @@ function backendValue(cells: CoverageCell[]): BackendContextValue {
           updatedAt: "2026-08-15T00:00:00Z",
           outerAxis: "case",
           paused: false,
-          autoTopUp: false,
+          autoTopUp,
         },
       ],
-      topUpCoveragePlan: async () =>
-        ({
+      topUpCoveragePlan: async () => {
+        topUps += 1;
+        return {
           bufferTarget: { kind: "bounded", runs: 10 },
           enqueued: 0,
           cells: [],
           unlaunchable: [],
-        }) as TopUpResult,
+        } as TopUpResult;
+      },
     } as unknown as BackendClient,
     identity: null,
     status: "ready",
@@ -1165,17 +1234,32 @@ function workersValue(): WorkersContextValue {
   } as unknown as WorkersContextValue;
 }
 
-function renderPlanPage(cells: CoverageCell[]) {
+// The plan's three tabs mounted together, so a test can land on any of them and
+// follow the strip between them exactly as a reviewer does.
+function renderPlanSection(
+  cells: CoverageCell[],
+  opts: { at?: string; queue?: CoverageQueue; autoTopUp?: boolean } = {},
+) {
   render(
-    <MemoryRouter initialEntries={["/account/coverage/p1"]}>
-      <BackendProvider value={backendValue(cells)}>
+    <MemoryRouter initialEntries={[opts.at ?? "/account/coverage/p1"]}>
+      <BackendProvider
+        value={backendValue(cells, opts.queue, opts.autoTopUp ?? true)}
+      >
         <WorkersProvider value={workersValue()}>
           <GalleryDataProvider value={galleryValue()}>
             <Routes>
+              {/* Nested exactly as the app mounts them, so a tab press moves the
+                  body and leaves the layout — and its once-per-visit top-up —
+                  where it was. */}
               <Route
                 path="/account/coverage/:planId"
-                element={<CoveragePlanPage />}
-              />
+                element={<CoveragePlanLayout />}
+              >
+                <Route index element={<CoveragePlanPage />} />
+                <Route path="reviews" element={<CoveragePlanReviewsPage />} />
+                <Route path="tests" element={<CoveragePlanTestsPage />} />
+              </Route>
+              <Route path="/runs/:runId/verdict" element={<p>a run</p>} />
             </Routes>
           </GalleryDataProvider>
         </WorkersProvider>
@@ -1184,12 +1268,16 @@ function renderPlanPage(cells: CoverageCell[]) {
   );
 }
 
+function renderPlanPage(cells: CoverageCell[]) {
+  renderPlanSection(cells);
+}
+
 // The dashboard's one decision about its controls: which are live, given a worker and
 // the state of the account's gg configurations.
 describe("CoveragePlanPage triggers", () => {
   async function renderPage() {
     renderPlanPage([cell(), ggCell()]);
-    return await screen.findByRole("button", { name: "Trigger all missing" });
+    return await screen.findByRole("button", { name: "▶ All missing" });
   }
 
   beforeEach(() => {
@@ -1235,5 +1323,171 @@ describe("CoveragePlanPage empty state", () => {
     const said = (await screen.findByText(/This plan is empty/)).textContent;
     expect(said).toMatch(/gg configuration/);
     expect(said).not.toMatch(/harness\/model/);
+  });
+});
+
+// A plan is three surfaces, not one page: where it stands and what moves it, the runs
+// waiting on the reviewer, and the matrix of what is still missing. Each is its own
+// URL so a reviewer can sit on the one they are working from.
+describe("CoveragePlanLayout tabs", () => {
+  beforeEach(() => {
+    ggState = { options: [ggOption()], loading: false, error: null };
+  });
+
+  it("offers all three surfaces and marks the one being viewed", async () => {
+    renderPlanSection([cell()]);
+    const dashboard = await screen.findByRole("link", { name: "Dashboard" });
+    expect(dashboard.getAttribute("aria-current")).toBe("page");
+    expect(
+      screen.getByRole("link", { name: "Tests" }).getAttribute("href"),
+    ).toBe("/account/coverage/p1/tests");
+  });
+
+  // How much is waiting on the reviewer is the number that decides whether they open
+  // the tab at all, so the strip carries it rather than making them look.
+  it("carries the outstanding review count on the Reviews tab", async () => {
+    renderPlanSection([cell({ unreviewed: 2 })]);
+    expect(
+      await screen.findByRole("link", { name: "Reviews (2)" }),
+    ).toBeTruthy();
+  });
+
+  it("leaves the Reviews tab uncounted when nothing is waiting", async () => {
+    renderPlanSection([cell()]);
+    expect(await screen.findByRole("link", { name: "Reviews" })).toBeTruthy();
+  });
+
+  // The matrix is the Tests tab's whole body, and it is not on the Dashboard: the two
+  // answer different questions and a reviewer steering the plan should not have to
+  // scroll past every block to reach a control.
+  it("puts the matrix on the Tests tab and nowhere else", async () => {
+    renderPlanSection([cell()], { at: "/account/coverage/p1/tests" });
+    expect(await screen.findByRole("button", { expanded: false })).toBeTruthy();
+  });
+});
+
+// The Reviews tab is the review loop's worklist. It is a widget of rows rather than
+// text on the backdrop, and it says so even when there is nothing waiting.
+describe("CoveragePlanReviewsPage", () => {
+  beforeEach(() => {
+    ggState = { options: [ggOption()], loading: false, error: null };
+  });
+
+  it("lists each waiting run as a row that opens its verdict", async () => {
+    renderPlanSection([cell()], {
+      at: "/account/coverage/p1/reviews",
+      queue: {
+        runs: [
+          {
+            runId: "r1",
+            slug: "zeta",
+            version: "v1.0.0",
+            variant: "base",
+            engine: "none",
+            harness: "claude",
+            model: "opus",
+            finishedAt: "2026-08-15T00:00:00Z",
+          },
+        ],
+        truncated: false,
+      },
+    });
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    const link = within(rows[0]!).getByRole("link");
+    expect(link.getAttribute("href")).toBe("/runs/r1/verdict");
+    // The row carries what tells it apart from its siblings in the buffer.
+    expect(link.textContent).toMatch(/Zeta/);
+    expect(link.textContent).toMatch(/claude · opus/);
+  });
+
+  it("says nothing is waiting rather than rendering an empty surface", async () => {
+    renderPlanSection([cell()], { at: "/account/coverage/p1/reviews" });
+    expect(await screen.findByText(/Nothing is waiting on you/)).toBeTruthy();
+  });
+});
+
+// A plan that feeds itself opens by topping itself up: there is no background
+// scheduler, so arriving at one with room in its buffer should find it filling.
+// Arriving is the whole trigger — moving between the plan's own tabs is not arriving,
+// and a top-up per tab press would spend money on idle navigation.
+describe("CoveragePlanLayout on-open top-up", () => {
+  beforeEach(() => {
+    topUps = 0;
+    ggState = { options: [ggOption()], loading: false, error: null };
+  });
+
+  it("tops up once when the plan is opened", async () => {
+    renderPlanSection([cell()]);
+    await screen.findByRole("link", { name: "Dashboard" });
+    await waitFor(() => expect(topUps).toBe(1));
+  });
+
+  // With auto top-up off, opening a plan is a read: only "Top up now" spends money.
+  it("does not top up on open when auto top-up is off", async () => {
+    renderPlanSection([cell()], { autoTopUp: false });
+    await screen.findByText("Cells covered");
+    expect(topUps).toBe(0);
+  });
+
+  it("does not top up again when a tab is pressed", async () => {
+    renderPlanSection([cell()]);
+    await screen.findByRole("link", { name: "Dashboard" });
+    await waitFor(() => expect(topUps).toBe(1));
+
+    fireEvent.click(screen.getByRole("link", { name: "Tests" }));
+    await screen.findByRole("button", { expanded: false });
+    fireEvent.click(screen.getByRole("link", { name: "Reviews" }));
+    await screen.findByText(/Nothing is waiting on you/);
+    fireEvent.click(screen.getByRole("link", { name: "Dashboard" }));
+    await screen.findByText("Cells covered");
+
+    // Still one. The layout is the tabs' parent route, so a press moves the body
+    // beneath it and never remounts the fetch or the top-up.
+    expect(topUps).toBe(1);
+  });
+
+  // The sentence saying what "Top up now" just did has to survive the press that acts
+  // on it: a reviewer reads "enqueued six runs", clicks Reviews, and the note must
+  // still be there.
+  it("keeps a control's report across a tab press", async () => {
+    renderPlanSection([cell()]);
+    const topUp = await screen.findByRole("button", { name: "Top up now" });
+    fireEvent.click(topUp);
+    const note = await screen.findByText(/Nothing left to enqueue/);
+    expect(note).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "Tests" }));
+    expect(screen.getByText(/Nothing left to enqueue/)).toBeTruthy();
+  });
+});
+
+// A plan whose whole shortfall is broken members is the state that reads as merely idle
+// and is the hardest to diagnose, so the count has to be on the surface the reviewer
+// steers from.
+describe("CoveragePlanPage blocked cells", () => {
+  beforeEach(() => {
+    topUps = 0;
+    ggState = { options: [ggOption()], loading: false, error: null };
+  });
+
+  it("counts the cells nothing can launch, which no other figure explains", async () => {
+    renderPlanSection([cell({ unlaunchable: "slot `critic` is unbound" })]);
+    expect(await screen.findByText("Blocked cells")).toBeTruthy();
+  });
+
+  it("says nothing about blocked cells when there are none", async () => {
+    renderPlanSection([cell()]);
+    await screen.findByText("Cells covered");
+    expect(screen.queryByText("Blocked cells")).toBeNull();
+  });
+
+  // The control is dead because nothing is launchable, not because the plan is done —
+  // and a tooltip that claimed otherwise would send the reviewer looking in the wrong
+  // place.
+  it("explains why launching everything is refused when the shortfall is blocked", async () => {
+    renderPlanSection([cell({ unlaunchable: "slot `critic` is unbound" })]);
+    const all = await screen.findByRole("button", { name: "▶ All missing" });
+    expect((all as HTMLButtonElement).disabled).toBe(true);
+    expect(all.getAttribute("title")).toMatch(/Nothing can be launched/);
   });
 });

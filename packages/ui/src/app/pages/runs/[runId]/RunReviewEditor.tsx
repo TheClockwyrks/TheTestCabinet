@@ -24,7 +24,7 @@ import {
   type ValidationMedia,
 } from "../../../data/galleryContext";
 import { useTestCase } from "../../../data/useTestCase";
-import { topUpAfterReview } from "../../account/CoveragePlanPage";
+import { topUpAfterReview } from "../../account/coveragePlan";
 import { topUpLaddersAfterReview } from "../../account/LadderPage";
 import { MediaView } from "../../../components/MediaView";
 import { SubmitNotice } from "../../../components/SubmitNotice";

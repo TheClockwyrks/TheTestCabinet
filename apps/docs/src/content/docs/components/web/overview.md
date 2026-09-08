@@ -161,9 +161,10 @@ and enabling it starts the climb; whether it tops up on review is a separate
 setting.
 
 A control carries its own state, so nothing beside it restates that state. A
-status note explains only what no control shows: a full review buffer, runs the
-queue is holding back, cells nothing can launch, or a plan that is finished. A
-halt reports what it cancelled.
+ladder's status note explains only what no control shows: a full review buffer,
+runs the queue is holding back, climbers nothing can launch, or a climb that is
+finished. A plan carries no such note, because its Dashboard already states each
+of those as a count. A halt reports what it cancelled.
 
 A plan opens on three tabs, each its own URL so a reviewer can link and return
 to the one they are working from. Dashboard carries where the plan stands and

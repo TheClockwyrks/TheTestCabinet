@@ -71,7 +71,7 @@ vi.mock("../../../data/galleryContext", () => ({
 vi.mock("../../../data/useTestCase", () => ({
   useTestCase: () => ({ testCase: fixture.testCase }),
 }));
-vi.mock("../../account/CoveragePlanPage", () => ({
+vi.mock("../../account/coveragePlan", () => ({
   topUpAfterReview: async () => {},
 }));
 vi.mock("../../account/LadderPage", () => ({

@@ -5,7 +5,10 @@ import { ReviewsPage } from "./ReviewsPage";
 import { LoginPage } from "./LoginPage";
 import { RegisterPage } from "./RegisterPage";
 import { CoveragePlansPage } from "./CoveragePlansPage";
+import { CoveragePlanLayout } from "./CoveragePlanLayout";
 import { CoveragePlanPage } from "./CoveragePlanPage";
+import { CoveragePlanReviewsPage } from "./CoveragePlanReviewsPage";
+import { CoveragePlanTestsPage } from "./CoveragePlanTestsPage";
 import { CoveragePlanEditPage } from "./CoveragePlanEditPage";
 import { LaddersPage } from "./LaddersPage";
 import { LadderPage } from "./LadderPage";
@@ -53,10 +56,17 @@ export function accountRoutes(canExecute: boolean) {
             path={routePatterns.accountCoveragePlanEdit}
             element={<CoveragePlanEditPage />}
           />
+          {/* A plan's three tabs are child routes of one layout, so pressing a tab
+              moves only the body: the layout keeps its fetch, its controls, and its
+              once-per-visit top-up across the press. */}
           <Route
             path={routePatterns.accountCoveragePlan}
-            element={<CoveragePlanPage />}
-          />
+            element={<CoveragePlanLayout />}
+          >
+            <Route index element={<CoveragePlanPage />} />
+            <Route path="reviews" element={<CoveragePlanReviewsPage />} />
+            <Route path="tests" element={<CoveragePlanTestsPage />} />
+          </Route>
           <Route
             path={routePatterns.accountLadders}
             element={<LaddersPage />}

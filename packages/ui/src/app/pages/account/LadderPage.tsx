@@ -28,7 +28,8 @@ import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import { routes } from "../../routes";
-import { ReviewQueue, describeUnlaunchable } from "./CoveragePlanPage";
+import { CoverageReviewQueue } from "./CoverageReviewQueue";
+import { describeUnlaunchable } from "./coveragePlan";
 import {
   bufferIsFull,
   bufferedStatTitle,
@@ -243,8 +244,8 @@ export function ladderStatusNote(progress: LadderProgress): string | null {
   // A climber nothing can launch keeps its rung and its "climbing" status forever, so
   // on a board it is indistinguishable from one merely waiting its turn for capacity —
   // and unlike a plan's cell it is never re-counted as satisfied or missing. It is
-  // therefore named alongside every other outcome, exactly as `planStatusNote` names a
-  // plan's blocked cells; the reason itself lives on the climber's own row.
+  // therefore named alongside every other outcome; the reason itself lives on the
+  // climber's own row.
   const stuck = progress.climbers.filter((c) => c.unlaunchable).length;
   const blocked =
     stuck > 0
@@ -1247,7 +1248,10 @@ export function LadderPage() {
           )}
 
           {queue && (
-            <ReviewQueue queue={queue} returnLabel="Back to the ladder" />
+            <CoverageReviewQueue
+              queue={queue}
+              returnLabel="Back to the ladder"
+            />
           )}
 
           <div className={ladderStyles.climbers}>

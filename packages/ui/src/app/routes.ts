@@ -118,6 +118,13 @@ export const routes = {
   accountCoveragePlanNew: (): string => "/account/coverage/new",
   accountCoveragePlan: (planId: string): string =>
     `/account/coverage/${planId}`,
+  // A plan's other two surfaces. Each tab is its own URL so a reviewer working
+  // through a queue, or steering the matrix, can link and return to the one they
+  // are on rather than the dashboard the plan opens at.
+  accountCoveragePlanReviews: (planId: string): string =>
+    `/account/coverage/${planId}/reviews`,
+  accountCoveragePlanTests: (planId: string): string =>
+    `/account/coverage/${planId}/tests`,
   accountCoveragePlanEdit: (planId: string): string =>
     `/account/coverage/${planId}/edit`,
   // The account section's ladders tab (consoles only): the reviewer's ladders — an
@@ -409,12 +416,15 @@ export const routePatterns = {
   login: "/login",
   register: "/register",
   accountReviews: "/account/reviews",
-  // The account section's reviewer-coverage surfaces. `new` and `:planId/edit`
-  // are more specific than the bare list/detail, and `new` (static) ranks above
-  // the dynamic `:planId`, so react-router matches them correctly.
+  // The account section's reviewer-coverage surfaces. A plan's tabs
+  // (`:planId/reviews`, `:planId/tests`) and its editor are more specific than
+  // the bare detail, and `new` (static) ranks above the dynamic `:planId`, so
+  // react-router matches them correctly.
   accountCoverage: "/account/coverage",
   accountCoveragePlanNew: "/account/coverage/new",
   accountCoveragePlan: "/account/coverage/:planId",
+  accountCoveragePlanReviews: "/account/coverage/:planId/reviews",
+  accountCoveragePlanTests: "/account/coverage/:planId/tests",
   accountCoveragePlanEdit: "/account/coverage/:planId/edit",
   // The ladder surfaces, laid out exactly as the plan ones: `new` (static) ranks
   // above the dynamic `:ladderId`, and `:ladderId/edit` is more specific than the

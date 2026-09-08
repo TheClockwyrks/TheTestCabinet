@@ -1,6 +1,7 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
 @use "../../styles/halo" as h;
+@use "../../styles/breakpoints" as bp;
 
 .empty {
   color: t.$color-text-muted;
@@ -192,11 +193,8 @@
   white-space: nowrap;
 }
 
-// The plan's own review queue, in the plan's emission order.
-.queue {
-  margin-bottom: t.$space-xl;
-}
-
+// The plan's own review queue, in the plan's emission order: a column of identical
+// rows, each one the press that opens its run.
 .queueList {
   list-style: none;
   margin: 0;
@@ -206,30 +204,68 @@
   gap: t.$space-2xs;
 }
 
-// One queued run: the case name followed by the identity that distinguishes it from
-// its siblings in the buffer. Wraps on a narrow viewport rather than truncating —
-// the model is exactly what tells two adjacent rows apart.
+// One queued run as a whole row: its identity on the left, when it finished and the
+// affordance that opens it on the right. The row is the link, so the press target is
+// the row rather than a word inside it. Wraps on a narrow viewport rather than
+// truncating — the model is exactly what tells two adjacent rows apart.
 .queueRow {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: t.$space-sm t.$space-md;
-  padding: t.$space-2xs 0;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: t.$color-bg-2;
+  color: inherit;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: none;
+    border-color: t.$color-accent;
+
+    .queueGo {
+      color: t.$color-accent;
+    }
+  }
 }
 
-.queueLink {
+// The row's left half: the case name followed by the qualifiers that tell it apart
+// from its siblings in the buffer.
+.queueIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-sm t.$space-md;
+  min-width: 0;
+  flex: 1;
+}
+
+.queueName {
   color: t.$color-accent;
   font-size: t.$font-md;
-
-  &:hover {
-    text-decoration: underline;
-  }
 }
 
 .queueMeta {
   color: t.$color-text-muted;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
+}
+
+// When the run finished, kept beside the affordance that opens it: a queue walked in
+// emission order is not in time order, so how old a row is has to be said.
+.queueWhen {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+.queueGo {
+  color: t.$color-text-muted;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
 }
 
 // The explanatory line under a field inside a member-entry stack, where there is no
@@ -450,6 +486,14 @@
   padding: t.$space-2xs 0;
 }
 
+// The cell's two presses, kept together in the row's last column so the pair reads as
+// one control rather than as two columns that drift apart across rows.
+.cellTriggers {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
 .cellDone .cellLabel {
   color: t.$color-text-muted;
 }
@@ -473,6 +517,17 @@
 .cellNote {
   margin-left: t.$space-sm;
   color: t.$color-warning;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+// The "covered" marker trailing a satisfied cell's count. Muted rather than warned,
+// because it is the one qualifier on the row that reports nothing to act on — and it
+// is here rather than only on the disabled buttons, which cannot show a tooltip.
+.cellCovered {
+  margin-left: t.$space-sm;
+  color: t.$color-text-muted;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
   white-space: nowrap;
@@ -533,14 +588,13 @@
   white-space: nowrap;
 }
 
-// Hold the trigger button's width steady across its "Trigger one" / "Covered"
-// states so the column edge never jumps as cells fill. Sized to the wider
-// "Trigger one" label exactly: in the monospace `--ttc-font`, 11 chars == 11ch,
-// plus the shared button's 1.5rem side padding and 1px borders (border-box). A
-// plain rem min-width has to be guessed against the font's advance and silently
-// fails to engage if it undershoots.
+// Hold both trigger buttons to one width so the pair is symmetric and the column
+// edge never jumps between rows. Sized to the labels exactly: in the monospace
+// `--ttc-font`, "▶ All" is 5 chars == 5ch, plus the shared button's 1.5rem side
+// padding and 1px borders (border-box). A plain rem min-width has to be guessed
+// against the font's advance and silently fails to engage if it undershoots.
 .cellButton {
-  min-width: calc(11ch + #{t.$space-lg} * 2 + #{t.$border-hairline} * 2);
+  min-width: calc(5ch + #{t.$space-lg} * 2 + #{t.$border-hairline} * 2);
   text-align: center;
 }
 
@@ -999,4 +1053,173 @@
   display: flex;
   gap: t.$space-sm;
   margin-bottom: t.$space-lg;
+}
+
+// --- A plan's tab strip ----------------------------------------------------
+
+// The tab bar across a plan's three surfaces, mirroring the account, runs, and
+// test-case strips: a row of underlined pills riding a hairline baseline, the active
+// one glowing in the accent. Sits between the plan header and the tab's body.
+.tabStrip {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+
+  // On narrow screens the tabs read as a single swipeable strip rather than
+  // wrapping, matching the other tab strips.
+  @include bp.below(t.$bp-md) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * t.$space-md);
+    padding-inline: t.$space-md;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    @include s.swipe-fade;
+  }
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    white-space: nowrap;
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  @include h.halo-glow;
+  border-bottom-color: t.$color-accent;
+}
+
+// --- The Dashboard tab -----------------------------------------------------
+
+// The dashboard's panels, stacked with one rhythm. Every figure and every control on
+// this tab sits inside one of them, so nothing reads as loose text on the backdrop.
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.boardPanel,
+.controlPanel,
+.metricsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+// A panel's heading: a small, uppercase, letter-spaced label. Sitting inside the card
+// rather than on the backdrop, it needs no readability halo.
+.metricsTitle {
+  margin: 0;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+// A panel's loading, empty, or partial-corpus note.
+.metricsEmpty {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// A responsive row of labelled figures, collapsing from a full row to one column as
+// the viewport narrows.
+.metricTiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: t.$space-md;
+}
+
+// The breakdown rings sharing the metrics panel. `align-items: start` lets each ring
+// size to its own legend without the differing lengths stretching its neighbours.
+.metricCharts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: t.$space-lg;
+  align-items: start;
+  padding-top: t.$space-lg;
+  border-top: t.$border-hairline solid t.$color-border;
+}
+
+// The dashboard's control strip already sits inside a panel, so it drops the frame
+// `.controls` draws for the ladder board, which has none of its own.
+.panelControls {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+// --- The Reviews tab -------------------------------------------------------
+
+.queuePanel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.queueHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+}
+
+.queueTitle {
+  margin: 0;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+// How many runs are waiting, beside the heading: the number that decides whether the
+// reviewer opens the tab at all.
+.queueCount {
+  color: t.$color-accent;
+  font-family: var(--ttc-font);
+  font-size: t.$font-lg;
+}
+
+.queueEmpty,
+.queueMore {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
 }
