@@ -1988,22 +1988,24 @@ validation = { script = "visibility/ball.test.ts", outputs = [
 
 # --- HUD ----------------------------------------------------------------------
 # The two scores are read from what the build draws: after setScore(7, 9) the frame's
-# text draws are inspected for the digits, player one's anchored left of center and
-# player two's anchored right of it. Where the text sits and how it is set is the
+# text draws are inspected for the digits, player one's figure left of center and
+# player two's figure right of it. Where the text sits and how it is set is the
 # build's.
 #
-# WHAT "LEFT OF CENTER" IS MEASURED FROM is the run's ANCHOR, in all three projects.
-# specs/overview.md fixes the position each score is DRAWN AT, and the anchor is that
-# position mapped through whatever transform and alignment the build drew under, so
-# the three projects decide the point one way and a build grades the same on every
-# engine.
+# WHAT "LEFT OF CENTER" IS MEASURED FROM is the FIGURE's place, in all three projects.
+# specs/overview.md fixes where each score's figure is drawn, not how many runs the
+# scoreboard is. A run showing only the one score is read at its anchor, mapped through
+# whatever transform and alignment the build drew under; a run carrying both scores (a
+# centred `7     9`) is read by where that score's glyphs sit within the run's measured
+# extent. The three projects decide the point one way and a build grades the same on
+# every engine.
 [[review.categories]]
 id = "hud"
 title = "HUD"
 [[review.categories.items]]
 id = "score-p1"
 title = "Player one's score is drawn"
-description = "After setScore(7, 9), a frame of the live match draws the text 7 anchored left of the field's center."
+description = "After setScore(7, 9), a frame of the live match draws the text 7 left of the field's center."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
 # Automated validation: pose the scores, render, and find the text draw. See
@@ -2014,7 +2016,7 @@ validation = { script = "hud/score-p1.test.ts", outputs = [
 [[review.categories.items]]
 id = "score-p2"
 title = "Player two's score is drawn"
-description = "After setScore(7, 9), a frame of the live match draws the text 9 anchored right of the field's center."
+description = "After setScore(7, 9), a frame of the live match draws the text 9 right of the field's center."
 domains = ["single-player", "versus"]
 failure_cap = "scuffed"
 # Automated validation: pose the scores, render, and find the text draw. See

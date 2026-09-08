@@ -4,7 +4,7 @@
 // field, player one's left of center. The scores are posed at 7-9 through the
 // surface, so the two numbers are distinct and neither is the 0 a fresh match
 // draws everywhere, and the next frame's text is read: a run showing `7` as a
-// figure of its own, anchored left of `FIELD_CX`. The anchor is mapped through
+// figure of its own, placed left of `FIELD_CX`. The anchor is mapped through
 // whatever transform the build drew under (`textDraws`), so a HUD drawn at a
 // translated origin reads the same as one drawn in field coordinates.
 //
@@ -16,10 +16,13 @@
 // obstacles go with it; the paddles are the field furniture no operation
 // removes, and neither is touched, since nothing here reads one.
 //
-// THE ANCHOR IS THE READING, in this project and in both engine projects alike.
-// specs/overview.md fixes the position each score is DRAWN AT, so `textDraws`
-// reporting each run as the point its anchor names is the whole of what the
-// requirement asks for, and the three projects decide the point one way.
+// THE FIGURE'S PLACE IS THE READING, in this project and in both engine projects
+// alike. specs/overview.md fixes where each score's FIGURE is drawn, not how
+// many runs the scoreboard is: a run showing only this score is read at the
+// point its anchor names, and a run carrying both scores — a centred `7     9`
+// — is read by where this score's glyphs sit within the run's measured extent,
+// which `textDraws` carries from the harness's `measureText` recording. The
+// three projects decide the point one way.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -31,6 +34,7 @@ import {
   startPlaying,
   textDraws,
   type Harness,
+  type TextDraw,
 } from "../harness";
 
 const SCORE = { p1: 7, p2: 9 };
@@ -88,6 +92,38 @@ function shows(text: string, score: number): boolean {
   );
 }
 
+/**
+ * Where, in logical x, the glyphs of `score`'s figure sit inside `span`.
+ *
+ * A run that carries only this score is placed where its anchor is: the point
+ * the build placed the figure at. A run that carries both scores — `7     9`
+ * centred on the field — places each figure by its glyphs, estimated from the
+ * run's measured extent in proportion to the figure's character position: exact
+ * for a centred scoreboard whose figures sit at either end, and within a glyph
+ * elsewhere. A run showing neither this score, nor a measured extent to place
+ * it in, places nothing.
+ */
+function figureX(
+  span: Pick<TextDraw, "text" | "x" | "left" | "right">,
+  score: number,
+  other: number,
+): number | null {
+  if (!shows(span.text, score)) return null;
+  if (!shows(span.text, other)) return span.x;
+  const hit = renderings(score)
+    .map((figure) =>
+      new RegExp(`(?<![\\d.])0*${escapeRegExp(figure)}(?![\\d.])`).exec(
+        span.text,
+      ),
+    )
+    .find((match) => match !== null);
+  if (!hit) return null;
+  const width = span.right - span.left;
+  if (!(width > 0)) return null;
+  const centre = (hit.index + hit[0].length / 2) / span.text.length;
+  return span.left + width * centre;
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -108,12 +144,12 @@ it("draws player one's score left of center", async () => {
 
   const played = await h.snapshot();
   assertEqual(played.screen, "playing");
-  const runs = textDraws(calls).filter(
-    (run) => shows(run.text, SCORE.p1) && !shows(run.text, SCORE.p2),
-  );
-  assertGreaterThan(runs.length, 0);
+  const placed = textDraws(calls)
+    .map((run) => figureX(run, SCORE.p1, SCORE.p2))
+    .filter((x): x is number => x !== null);
+  assertGreaterThan(placed.length, 0);
   assertEqual(
-    runs.some((run) => run.x < FIELD_CX),
+    placed.some((x) => x < FIELD_CX),
     true,
   );
 });

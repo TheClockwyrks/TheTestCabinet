@@ -6,10 +6,13 @@
 // live match is rendered, and the frame's text draws are read back, each placed
 // in logical units through the transform and alignment the build drew it with.
 // The score must be drawn as a run whose digits read as that score — a label
-// around it and zero padding (`07`) are fine, the other score's digit in the
-// same run is not — anchored on its side of the field's center. The anchor is
-// the point the build PLACED the figure at, which is what specs/overview.md
-// fixes, and it is the point all three projects read.
+// around it and zero padding (`07`) are fine — with the figure on its side of
+// the field's center. specs/overview.md fixes where each score's FIGURE is
+// drawn, not how many runs the scoreboard is: a run showing only this score is
+// read at its anchor, the point the build placed it at, and a run carrying both
+// scores — a centred `7     9` — is read by where this score's glyphs sit
+// within the run's measured extent, which every harness records
+// (`measureText`). All three projects decide the point this way.
 //
 // THE FIELD IS EMPTY. This point is about the two figures the HUD draws, so the
 // countdown is opened, the field is CLEARED, and `playing` is posed over it. An
@@ -29,6 +32,7 @@ import {
   drawnTextSpans,
   openCountdown,
   type Harness,
+  type TextSpan,
 } from "../harness";
 
 const P1_SCORE = 7;
@@ -87,6 +91,38 @@ function shows(text: string, score: number): boolean {
   );
 }
 
+/**
+ * Where, in logical x, the glyphs of `score`'s figure sit inside `span`.
+ *
+ * A run that carries only this score is placed where its anchor is: the point
+ * the build placed the figure at. A run that carries both scores — `7     9`
+ * centred on the field — places each figure by its glyphs, estimated from the
+ * run's measured extent in proportion to the figure's character position: exact
+ * for a centred scoreboard whose figures sit at either end, and within a glyph
+ * elsewhere. A run showing neither this score, nor a measured extent to place
+ * it in, places nothing.
+ */
+function figureX(
+  span: Pick<TextSpan, "text" | "x" | "left" | "right">,
+  score: number,
+  other: number,
+): number | null {
+  if (!shows(span.text, score)) return null;
+  if (!shows(span.text, other)) return span.x;
+  const hit = renderings(score)
+    .map((figure) =>
+      new RegExp(`(?<![\\d.])0*${escapeRegExp(figure)}(?![\\d.])`).exec(
+        span.text,
+      ),
+    )
+    .find((match) => match !== null);
+  if (!hit) return null;
+  const width = span.right - span.left;
+  if (!(width > 0)) return null;
+  const centre = (hit.index + hit[0].length / 2) / span.text.length;
+  return span.left + width * centre;
+}
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -110,12 +146,12 @@ it("draws player two's score right of the field's center", async () => {
   captureStill(h, "hud");
 
   assertDeepEqual(h.snapshot().score, { p1: P1_SCORE, p2: P2_SCORE });
-  const runs = drawnTextSpans(h).filter(
-    (span) => shows(span.text, P2_SCORE) && !shows(span.text, P1_SCORE),
-  );
-  assertGreaterThan(runs.length, 0);
+  const placed = drawnTextSpans(h)
+    .map((span) => figureX(span, P2_SCORE, P1_SCORE))
+    .filter((x): x is number => x !== null);
+  assertGreaterThan(placed.length, 0);
   assertEqual(
-    runs.some((span) => span.x > FIELD_CX),
+    placed.some((x) => x > FIELD_CX),
     true,
   );
 });
