@@ -12,22 +12,17 @@ import {
 } from "../../../data/galleryContext";
 import { useRunVariant } from "../../../data/useRunVariant";
 import type { ReviewItemSummary } from "../../../data/testCases";
-import { FailureCapBadge } from "@clockwyrks/ui";
 import {
   VERDICT_META,
   automatedVerdicts,
   effectiveVerdicts,
-  formatPoints,
+  formatWeight,
   subItemVerdictId,
   verdictIdsForItem,
   type VerdictStatus,
 } from "../../../data/ratings";
 import { MediaView } from "../../../components/MediaView";
-import {
-  ReviewItemCapNote,
-  capOutcome,
-  formatDomainNames,
-} from "./ReviewItemCap";
+import { ReviewItemHeading, capOutcome } from "./ReviewItemCap";
 import { ReviewItemAssets } from "./AssetResultSection";
 import { ValidationReplayPair } from "./ValidationReplayPair";
 import { ValidationMediaPair } from "./ValidationMediaPair";
@@ -46,11 +41,6 @@ const INCONCLUSIVE_NOTE: Record<Inconclusive, string> = {
     "The validators ran out of time on the machine that scored this run, so they left this point undecided. Nothing here is a judgement of the build.",
 };
 
-/** Format a point weight as `1 pt` / `2 pts`. */
-function pts(weight: number): string {
-  return `${weight} ${weight === 1 ? "pt" : "pts"}`;
-}
-
 // The read-only per-item browser over a run's automated review items — the
 // **single per-item surface** of a validator-rated run's Verdict tab: the same
 // navigable rail + one-question-at-a-time panel the review editor walks a
@@ -58,9 +48,9 @@ function pts(weight: number): string {
 // restore controls. Each point shows its prose, the assets it names, the
 // expected-vs-submitted media it pairs, the automated-validation media backing
 // its verdict (the reference implementation beside this run's build), the
-// mechanical assertions the debug script checked, the failure cap and affected
-// domains of every capped point (colored while the point fails and its cap is
-// in force, greyed otherwise), the backing validator script (its detail,
+// mechanical assertions the debug script checked, the failure cap of every
+// capped point (colored while the point fails and its cap is in force, dimmed
+// otherwise), the backing validator script (its detail,
 // path, and ran / did-not-run / inconclusive state), and the effective
 // verdict readout — the validators' call, or a reviewer's override where one
 // exists, marked as such.
@@ -72,7 +62,6 @@ function pts(weight: number): string {
 export function ReviewItemBrowser({
   run,
   items,
-  domains = [],
   reviews = [],
 }: {
   run: RunRecord;
@@ -80,9 +69,6 @@ export function ReviewItemBrowser({
    * checklist (the editor's loaded items, or the verdict panel's scoring
    * model), so the browser can never disagree with the surface it sits on. */
   items: readonly ReviewItemSummary[];
-  /** The effective scoring domains, so a failing point's cap line can name the
-   * domains it affects. Ids fall back where a name is unavailable. */
-  domains?: readonly { id: string; name: string }[];
   /** The run's reviews, whose checklists are reviewer overrides: the readout
    * shows each point's effective verdict and marks overridden points. Empty
    * shows the validators' verdicts alone. */
@@ -138,12 +124,6 @@ export function ReviewItemBrowser({
     for (const v of verdicts) map.set(v.id, v.status);
     return map;
   }, [run, reviews]);
-
-  // Domain id → display name, for the failure-cap line of a failing point.
-  const domainNameById = useMemo(
-    () => new Map(domains.map((d) => [d.id, d.name])),
-    [domains],
-  );
 
   // The validator script backing each verdict id: the script whose own unit id
   // matches, or the one whose verdicts decided it — so a point can show the
@@ -232,13 +212,9 @@ export function ReviewItemBrowser({
   // validators left undecided) and the readout says so.
   const slotAuto = autoById.get(slotVerdictId);
   const slotOverridden = slotStatus != null && slotAuto !== slotStatus;
-  // The failure cap + affected domains of the point — shown on every capped
-  // point, with the badge lit only while the point fails and the cap is in force.
+  // The failure cap of the point — shown on every capped point, with the badge
+  // lit only while the point fails and the cap is in force.
   const slotCap = sub ? sub.failureCap : item.failureCap;
-  const slotCapDomains = formatDomainNames(
-    (sub ? sub.domains : item.domains) ?? [],
-    domainNameById,
-  );
   const slotCapOutcome = capOutcome(slotStatus, slotNotScored);
   // The validator script backing this point, for its detail, path, and state.
   const slotScript = scriptByVerdict.get(slotVerdictId);
@@ -343,24 +319,8 @@ export function ReviewItemBrowser({
                     {mark}
                   </span>
                   <span className={styles.itemNavTitle}>
-                    {it.title} ({pts(it.weight)})
+                    {it.title} ({formatWeight(it.weight)})
                   </span>
-                  {/* A leaf item's failure cap, lit while the item fails; a
-                      category's caps sit on its sub-items below. */}
-                  {subItems.length === 0 && it.failureCap && (
-                    <FailureCapBadge
-                      cap={it.failureCap}
-                      outcome={capOutcome(
-                        verdictById.get(it.id),
-                        it.scored === false,
-                      )}
-                      domains={formatDomainNames(
-                        it.domains ?? [],
-                        domainNameById,
-                      )}
-                      className={styles.navCap}
-                    />
-                  )}
                 </button>
                 {/* The sub-item list stays mounted so it can animate open/closed;
                     while collapsed it is `inert` so its buttons stay out of the
@@ -406,21 +366,6 @@ export function ReviewItemBrowser({
                                 <span className={styles.subNavTitle}>
                                   {subItem.title}
                                 </span>
-                                {subItem.failureCap && (
-                                  <FailureCapBadge
-                                    cap={subItem.failureCap}
-                                    outcome={capOutcome(
-                                      st,
-                                      it.scored === false ||
-                                        subItem.scored === false,
-                                    )}
-                                    domains={formatDomainNames(
-                                      subItem.domains ?? [],
-                                      domainNameById,
-                                    )}
-                                    className={styles.navCap}
-                                  />
-                                )}
                               </button>
                             </li>
                           );
@@ -439,25 +384,17 @@ export function ReviewItemBrowser({
           the script checked, and the validators' Pass/Fail — nothing editable. */}
       <div className={styles.questionPanel}>
         {sub && <span className={styles.checklistCategory}>{item.title}</span>}
-        <span className={styles.checklistTitle}>
-          <span className={styles.checklistNumber}>{slotIndex + 1}.</span>{" "}
-          {sub ? sub.title : item.title}{" "}
-          {slotNotScored ? (
-            <span className={styles.notScored}>Not scored</span>
-          ) : (
-            <>({sub ? formatPoints(sub.weight ?? 1) : pts(item.weight)})</>
-          )}
-        </span>
-        {/* The failure cap this point carries and the domains a failure lowers,
-            on every capped point: the badge reads in the tier's color while the
-            point fails (the cap is in force) and greyed out otherwise. */}
-        {slotCap && (
-          <ReviewItemCapNote
-            cap={slotCap}
-            outcome={slotCapOutcome}
-            domains={slotCapDomains}
-          />
-        )}
+        {/* The heading carries the point's failure cap at its right edge on
+            every capped point: in the tier's color while the point fails (the
+            cap is in force) and dimmed otherwise. */}
+        <ReviewItemHeading
+          number={slotIndex + 1}
+          title={sub ? sub.title : item.title}
+          points={formatWeight(sub ? (sub.weight ?? 1) : item.weight)}
+          notScored={slotNotScored}
+          cap={slotCap}
+          outcome={slotCapOutcome}
+        />
         {sub
           ? sub.description && (
               <span className={styles.checklistText}>{sub.description}</span>

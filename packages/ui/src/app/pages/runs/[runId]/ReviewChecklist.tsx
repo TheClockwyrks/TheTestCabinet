@@ -4,6 +4,7 @@ import {
   GRADE_META,
   GRADE_MAX_POINTS,
   VERDICT_META,
+  formatWeight,
   isGrade,
   subItemVerdictId,
   type FailureCap,
@@ -33,11 +34,6 @@ const NOT_SCORED_MARK = "Skip";
 
 // The id used to group review items that belong to no declared domain.
 const GENERAL = "__general__";
-
-// Format a point weight as `1 pt` / `2 pts`.
-function pts(weight: number): string {
-  return `${weight} ${weight === 1 ? "pt" : "pts"}`;
-}
 
 // One heading-plus-rows block of the checklist: a scoring domain, a scoring
 // category, or (heading `null`) an unlabeled run of rows.
@@ -327,7 +323,9 @@ function ChecklistItemGroup({
           {item.scored === false ? (
             <span className={styles.notScored}>not scored</span>
           ) : (
-            <span className={styles.verdictWeight}>({pts(item.weight)})</span>
+            <span className={styles.verdictWeight}>
+              ({formatWeight(item.weight)})
+            </span>
           )}
         </span>
       </span>
@@ -422,7 +420,7 @@ function ChecklistRow({
       ? null
       : graded
         ? `${grade ? grade.points * weight : 0} / ${weight * GRADE_MAX_POINTS} pts`
-        : pts(weight);
+        : formatWeight(weight);
   // In the definition view there are no verdicts, so the status gutter holds no
   // marker and every row reads flush left. In verdict mode the gutter is always kept
   // so rows stay aligned: a rated row shows its Pass/Fail (or grade) marker, and a
@@ -468,7 +466,6 @@ function ChecklistRow({
             <FailureCapBadge
               cap={cap.cap}
               outcome={bare ? undefined : capOutcome}
-              domains={cap.domains}
             />
             {cap.domains.length > 0 && (
               <span className={styles.capDomains}>

@@ -98,12 +98,13 @@ On a validator-rated run the checklist lives in the Verdict tab's item
 browser, visible to every visitor, the public gallery included. Each item
 shows the validator's verdict, its assertions, and the media it captured
 beside the case's reference, together with the validator script's detail and
-whether it ran. Every capped point names its failure cap, as a rating badge,
-and the domains it affects: the badge reads in the tier's color while the
-point fails and its cap is in force, and greyed out while the point passes.
-Hover the badge for what a failure cap is and whether this one applies. Read
-the browser to understand what the build got wrong before rating how it looks
-and feels, and override a verdict only where the machine's call is wrong.
+whether it ran. Every capped point names its failure cap as a rating badge at
+the right of its title: the badge reads in the tier's color while the point
+fails and its cap is in force, and dimmed while the point passes or is
+undecided. Each side of the reference-vs-run media carries a download control;
+a replay downloads as a WebM clip rendered at its recorded pace. Read the
+browser to understand what the build got wrong before rating how it looks and
+feels, and override a verdict only where the machine's call is wrong.
 
 ### Legacy checklist
 

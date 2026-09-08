@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { FailureCapBadge, type FailureCapOutcome } from "@clockwyrks/ui";
 import type { FailureCap, VerdictStatus } from "../../../data/ratings";
 import styles from "../RunExec.module.scss";
@@ -17,56 +18,51 @@ export function capOutcome(
   return "undecided";
 }
 
-/** "Single player", "Single player and Versus", "A, B, and C". Ids fall back
- * where no name is known. */
-export function formatDomainNames(
-  ids: readonly string[],
-  nameById: ReadonlyMap<string, string>,
-): string[] {
-  return ids.map((id) => nameById.get(id) ?? id);
-}
-
-function joinNames(names: readonly string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
-}
-
-const NOT_APPLIED: Record<Exclude<FailureCapOutcome, "failed">, string> = {
-  passed: "this item passed, so it does not apply.",
-  undecided: "this item is undecided, so it does not apply.",
-  unscored: "this item is not scored, so it never applies.",
-};
-
 /**
- * The failure-cap line of one browsed or reviewed point: the cap as a rating
- * badge (colored while the item fails, greyed otherwise) followed by the
- * domains a failure lowers and whether the cap is in force. Always shown on a
- * capped point, so a reader sees what every item is worth beyond its points,
- * not only the ones that failed.
+ * The heading of one browsed or reviewed point: its number, title, and points
+ * (or its "not scored" mark) on the left, and — on a capped point — its failure
+ * cap as a rating badge at the right edge of the same row, lit while the point
+ * fails and its cap is in force, dimmed otherwise. Shared by the read-only
+ * browser and the review editor's walker so the two heads read identically.
  */
-export function ReviewItemCapNote({
+export function ReviewItemHeading({
+  number,
+  title,
+  points,
+  notScored,
   cap,
   outcome,
-  domains,
 }: {
-  cap: FailureCap;
+  /** The point's position in the walk, 1-based. */
+  number: number;
+  title: string;
+  /** The formatted points label (`2 pts`, `5 / 10 pts`). Ignored while the
+   * point is not scored. */
+  points: ReactNode;
+  /** Whether the point is excluded from scoring for the version. */
+  notScored: boolean;
+  /** The point's failure cap, when it carries one. */
+  cap?: FailureCap | null;
+  /** Whether that cap is in force. */
   outcome: FailureCapOutcome;
-  /** Display names of the affected domains. */
-  domains: readonly string[];
 }) {
-  const affected = joinNames(domains) || "its domains";
   return (
-    <p
-      className={styles.capNote}
-      data-applied={outcome === "failed" ? "true" : undefined}
-    >
-      <FailureCapBadge cap={cap} outcome={outcome} domains={domains} />
-      <span>
-        {outcome === "failed"
-          ? `Failing caps ${affected}.`
-          : `Failing would cap ${affected}; ${NOT_APPLIED[outcome]}`}
+    <div className={styles.checklistTitleRow}>
+      <span className={styles.checklistTitle}>
+        <span className={styles.checklistNumber}>{number}.</span> {title}{" "}
+        {notScored ? (
+          <span className={styles.notScored}>Not scored</span>
+        ) : (
+          <>({points})</>
+        )}
       </span>
-    </p>
+      {cap && (
+        <FailureCapBadge
+          cap={cap}
+          outcome={outcome}
+          className={styles.titleCap}
+        />
+      )}
+    </div>
   );
 }

@@ -121,7 +121,9 @@ automated verdict is available the moment the run completes. It is
 informational, so every visitor sees it, the public gallery included. Every
 capped point carries its failure cap as a rating badge, in the tier's colour
 while the point fails and the cap is in force, and dimmed while it passes or is
-undecided.
+undecided. Either side of a point's reference-versus-run media can be
+downloaded: an image or a clip as the file it is, and a replay rendered to a
+WebM clip at its recorded pace.
 
 A run's checklist is the case's checklist restricted to the run's engine,
 holding the points whose [validator covers that

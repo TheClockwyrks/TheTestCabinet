@@ -200,3 +200,11 @@ export function formatPoints(points: number): string {
   if (Number.isInteger(points)) return String(points);
   return points.toFixed(2).replace(/\.?0+$/, "");
 }
+
+/**
+ * A point weight with its unit: `1 pt`, `2 pts`, `0.5 pts`. The figure is
+ * {@link formatPoints}; the unit is singular only for exactly one point.
+ */
+export function formatWeight(weight: number): string {
+  return `${formatPoints(weight)} ${weight === 1 ? "pt" : "pts"}`;
+}

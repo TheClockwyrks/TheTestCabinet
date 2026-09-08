@@ -223,12 +223,7 @@ function ReadOnlyVerdictPanel({
               reference-vs-run media, assertions, failure caps, and backing
               script behind its (effective) verdict. Read-only, so it renders
               for every visitor — the public gallery included. */}
-          <ReviewItemBrowser
-            run={run}
-            items={model.items}
-            domains={model.domains}
-            reviews={reviews}
-          />
+          <ReviewItemBrowser run={run} items={model.items} reviews={reviews} />
           {review?.body && (
             <Markdown breaks className={styles.writeupBody}>
               {review.body}

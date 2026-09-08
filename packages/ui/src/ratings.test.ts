@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPoints } from "./ratings";
+import { formatPoints, formatWeight } from "./ratings";
 
 // The scoring and aggregation rules this module used to own now live in
 // `@clockwyrks/run-stats`, and their tests moved with them
@@ -21,5 +21,16 @@ describe("formatPoints", () => {
     expect(formatPoints(5.001)).toBe("5");
     expect(formatPoints(5.1)).toBe("5.1");
     expect(formatPoints(14.5)).toBe("14.5");
+  });
+});
+
+describe("formatWeight", () => {
+  it("names the unit, singular only for exactly one point", () => {
+    expect(formatWeight(1)).toBe("1 pt");
+    expect(formatWeight(2)).toBe("2 pts");
+    expect(formatWeight(0)).toBe("0 pts");
+    // A fractional weight reads through formatPoints and is never "one".
+    expect(formatWeight(0.5)).toBe("0.5 pts");
+    expect(formatWeight(1 / 3)).toBe("0.33 pts");
   });
 });

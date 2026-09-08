@@ -9,11 +9,7 @@ export {
 } from "./Dialog";
 export { Markdown } from "./Markdown";
 export { RatingBadge } from "./RatingBadge";
-export {
-  FailureCapBadge,
-  failureCapExplanation,
-  type FailureCapOutcome,
-} from "./FailureCapBadge";
+export { FailureCapBadge, type FailureCapOutcome } from "./FailureCapBadge";
 export { AestheticBadge } from "./AestheticBadge";
 export { GradeBadge } from "./GradeBadge";
 export { Panel } from "./Panel";

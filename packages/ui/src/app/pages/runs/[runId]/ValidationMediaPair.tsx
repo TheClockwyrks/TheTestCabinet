@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { ValidationMedia } from "../../../data/galleryContext";
 import { MediaView } from "../../../components/MediaView";
+import { PaneDownloadButton } from "./PaneDownloadButton";
+import { downloadMediaFile, paneFileStem } from "./mediaDownload";
 import styles from "../RunExec.module.scss";
 
 // One automated-validation output shown as a side-by-side pair: the case's
@@ -11,7 +13,8 @@ import styles from "../RunExec.module.scss";
 // Play restarts both clips from the top and plays them together (so the reference and
 // the run advance frame-for-frame), Pause stops both, and the clips loop so the
 // comparison keeps repeating. The two clips are muted so playing them together is not
-// a cacophony.
+// a cacophony. Each pane's label carries a download control that saves that
+// side's captured file as it is.
 //
 // This is the pairing for an image or a clip. An output captured as an engine
 // replay is paired by {@link ValidationReplayPair} instead: a recording has no
@@ -68,10 +71,11 @@ export function ValidationMediaPair({ media }: { media: ValidationMedia }) {
   }, [media.actualUrl, media.baselineUrl]);
 
   return (
-    <figure className={styles.validationOutput}>
-      <figcaption className={styles.validationOutputHeader}>
-        <span className={styles.validationOutputName}>{media.name}</span>
-        {isVideo && (hasActual || hasBaseline) && (
+    // The output's name is not printed — the item's prose above says what is
+    // being compared — but it still names the figure for assistive technology.
+    <figure className={styles.validationOutput} aria-label={media.name}>
+      {isVideo && (hasActual || hasBaseline) && (
+        <div className={styles.validationOutputHeader}>
           <button
             type="button"
             className={styles.validationPlay}
@@ -80,8 +84,8 @@ export function ValidationMediaPair({ media }: { media: ValidationMedia }) {
           >
             {playing ? "⏸ Pause" : "▶ Play"}
           </button>
-        )}
-      </figcaption>
+        </div>
+      )}
       <div
         className={`${styles.mediaPanes}${
           hasActual && hasBaseline ? "" : ` ${styles.mediaPanesSingle}`
@@ -89,7 +93,22 @@ export function ValidationMediaPair({ media }: { media: ValidationMedia }) {
       >
         {hasBaseline && (
           <figure className={styles.mediaPane}>
-            <figcaption className={styles.mediaPaneLabel}>Reference</figcaption>
+            <figcaption className={styles.mediaPaneLabel}>
+              <span className={styles.mediaPaneName}>
+                <span>Reference</span>
+                <PaneDownloadButton
+                  key={media.baselineUrl}
+                  label="Download reference"
+                  download={() =>
+                    downloadMediaFile(
+                      media.baselineUrl!,
+                      media.kind,
+                      paneFileStem(media.name, "reference"),
+                    )
+                  }
+                />
+              </span>
+            </figcaption>
             <MediaView
               kind={media.kind}
               url={media.baselineUrl!}
@@ -101,7 +120,23 @@ export function ValidationMediaPair({ media }: { media: ValidationMedia }) {
           </figure>
         )}
         <figure className={styles.mediaPane}>
-          <figcaption className={styles.mediaPaneLabel}>This run</figcaption>
+          <figcaption className={styles.mediaPaneLabel}>
+            <span className={styles.mediaPaneName}>
+              <span>This run</span>
+              <PaneDownloadButton
+                key={media.actualUrl ?? ""}
+                label="Download this run"
+                disabled={!hasActual}
+                download={() =>
+                  downloadMediaFile(
+                    media.actualUrl!,
+                    media.kind,
+                    paneFileStem(media.name, "run"),
+                  )
+                }
+              />
+            </span>
+          </figcaption>
           {hasActual ? (
             <MediaView
               kind={media.kind}

@@ -201,9 +201,19 @@ describe("RunVerdictPage read-only on a validator-rated run", () => {
       screen.getByRole("navigation", { name: "Checked points" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Ball serves/ })).toBeTruthy();
-    expect(screen.getByText("Serve still")).toBeTruthy();
+    // The output's name is not printed between the prose and the panes; it
+    // names the figure for assistive technology instead.
+    expect(screen.queryByText("Serve still")).toBeNull();
+    expect(screen.getByRole("figure", { name: "Serve still" })).toBeTruthy();
     expect(screen.getByText("Reference")).toBeTruthy();
     expect(screen.getByText("This run")).toBeTruthy();
+    // Each side can be saved: the run's captured file as it is.
+    expect(
+      screen.getByRole("button", { name: "Download reference" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Download this run" }),
+    ).toBeTruthy();
     expect(screen.getByText(/decided by this run/)).toBeTruthy();
 
     // Read-only throughout: no verdict radiogroups, no restore, no unplayable
@@ -235,41 +245,38 @@ describe("RunVerdictPage read-only on a validator-rated run", () => {
     expect(within(rail).getAllByText("✓").length).toBeGreaterThan(0);
     expect(within(rail).getAllByText("✕").length).toBeGreaterThan(0);
 
-    // Every rail row shows the tier its point caps at on failure: greyed on the
-    // passing serve (its Broken cap is not in force), lit on the failing AI
-    // point (its Scuffed cap is).
+    // The rail rows carry the marks only — no cap badges — so the rail stays a
+    // clean at-a-glance list.
     const serveNav = screen.getByRole("button", { name: /^Ball serves/ });
-    const serveCap = within(serveNav).getByText("Broken");
-    expect(serveCap.getAttribute("data-muted")).toBe("true");
-    expect(serveCap.getAttribute("title")).toMatch(
-      /passed, so its cap does not apply/,
-    );
+    expect(within(serveNav).queryByText("Broken")).toBeNull();
     const aiNav = screen.getByRole("button", {
       name: /^AI paddle tracks the ball \(Solo\)/,
     });
-    const aiCap = within(aiNav).getByText("Scuffed");
-    expect(aiCap.getAttribute("data-muted")).toBeNull();
-    expect(aiCap.getAttribute("title")).toMatch(
-      /failed, so its cap is in force/,
-    );
+    expect(within(aiNav).queryByText("Scuffed")).toBeNull();
 
-    // The first (passing) point's panel also carries its cap line, greyed and
-    // saying the cap did not apply.
-    const serveNote = screen.getByText(/Failing would cap Single player/);
-    expect(serveNote.textContent).toBe(
-      "Failing would cap Single player; this item passed, so it does not apply.",
+    // The first (passing) point's heading carries its cap at the right of the
+    // title row, dimmed because the cap is not in force, with the one fixed
+    // hover text. Its points read with their unit.
+    const serveHeading = screen.getByText(/^1\./).closest("div")!;
+    expect(serveHeading.textContent).toContain("Ball serves (1 pt)");
+    const serveCap = within(serveHeading).getByText("Broken");
+    expect(serveCap.getAttribute("data-muted")).toBe("true");
+    expect(serveCap.getAttribute("title")).toBe(
+      "Rating cap applied on failure.",
     );
-    expect(serveNote.closest("p")!.getAttribute("data-applied")).toBeNull();
+    // No explanatory line follows the heading.
+    expect(screen.queryByText(/Failing would cap/)).toBeNull();
 
-    // Stepping to the failing AI point, the browser shows the detail the strip
-    // no longer carries: the failure cap (in force) + affected domains, and the
-    // backing validator script's state and path.
+    // Stepping to the failing AI point, the browser shows its cap lit (in
+    // force) and the backing validator script's state and path.
     fireEvent.click(aiNav);
-    const aiNote = screen.getByText("Failing caps Single player.");
-    expect(aiNote.closest("p")!.getAttribute("data-applied")).toBe("true");
-    const panelCap = within(aiNote.closest("p")!).getByText("Scuffed");
+    expect(screen.queryByText(/Failing caps/)).toBeNull();
+    const aiHeading = screen.getByText(/^2\./).closest("div")!;
+    const panelCap = within(aiHeading).getByText("Scuffed");
     expect(panelCap.getAttribute("data-muted")).toBeNull();
-    expect(panelCap.getAttribute("title")).toMatch(/^Failure cap: Scuffed\./);
+    expect(panelCap.getAttribute("title")).toBe(
+      "Rating cap applied on failure.",
+    );
     expect(
       screen.getByText(/The validator script ran to completion/),
     ).toBeTruthy();

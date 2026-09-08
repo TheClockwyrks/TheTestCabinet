@@ -67,6 +67,7 @@ export {
   verdictIdsForItem,
   reviewItemsForEngine,
   formatPoints,
+  formatWeight,
   type AggregateScore,
   aggregateScore,
   aggregateRating,

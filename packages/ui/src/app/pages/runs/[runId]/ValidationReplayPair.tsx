@@ -8,6 +8,10 @@ import {
   type LoadedRecording,
 } from "../replay/ReplayPlayer";
 import { timelineFor, useReplayClock } from "../replay/useReplayClock";
+import { encodeReplayWebm } from "../replay/replayWebm";
+import { downloadBlob } from "./download";
+import { PaneDownloadButton } from "./PaneDownloadButton";
+import { paneFileStem, type PaneSide } from "./mediaDownload";
 import exec from "../RunExec.module.scss";
 
 // One automated-validation output captured as an ENGINE REPLAY, shown as a
@@ -30,6 +34,10 @@ import exec from "../RunExec.module.scss";
 // the finding, and a blank pane reads as a player that broke. Each pane's label
 // row carries its own recording's length, so two different figures across the row
 // are what say the two builds did not draw for the same span.
+//
+// Each pane's label also carries a download control. A recording is not a file a
+// reviewer can hand to anyone, so the control renders it to a WebM clip at the
+// pace the player shows it (see `encodeReplayWebm`) and saves that.
 export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
   // Each side is given the resolver for its OWN namespace: the baseline's images
   // are case-scoped media of the case version, the actual's are run-scoped media of
@@ -54,10 +62,9 @@ export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
   const hasActual = media.actualUrl !== null;
 
   return (
-    <figure className={exec.validationOutput}>
-      <figcaption className={exec.validationOutputHeader}>
-        <span className={exec.validationOutputName}>{media.name}</span>
-      </figcaption>
+    // The output's name is not printed — the item's prose above says what is
+    // being compared — but it still names the figure for assistive technology.
+    <figure className={exec.validationOutput} aria-label={media.name}>
       <div
         className={`${exec.mediaPanes}${
           hasActual && hasBaseline ? "" : ` ${exec.mediaPanesSingle}`
@@ -66,7 +73,15 @@ export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
         {hasBaseline && (
           <figure className={exec.mediaPane}>
             <figcaption className={exec.mediaPaneLabel}>
-              <span>Reference</span>
+              <span className={exec.mediaPaneName}>
+                <span>Reference</span>
+                <ReplayDownload
+                  key={media.baselineUrl}
+                  side={baseline}
+                  name={media.name}
+                  as="reference"
+                />
+              </span>
               <PaneLength side={baseline} />
             </figcaption>
             <ReplayPane
@@ -79,7 +94,15 @@ export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
         )}
         <figure className={exec.mediaPane}>
           <figcaption className={exec.mediaPaneLabel}>
-            <span>This run</span>
+            <span className={exec.mediaPaneName}>
+              <span>This run</span>
+              <ReplayDownload
+                key={media.actualUrl ?? ""}
+                side={actual}
+                name={media.name}
+                as="run"
+              />
+            </span>
             <PaneLength side={actual} />
           </figcaption>
           <ReplayPane
@@ -97,6 +120,36 @@ export function ValidationReplayPair({ media }: { media: ValidationMedia }) {
           which keeps the row from appearing under the panes mid-load. */}
       {(hasBaseline || hasActual) && <ReplayTransport clock={clock} />}
     </figure>
+  );
+}
+
+/**
+ * The download control for one side: renders the loaded recording to a WebM clip
+ * and saves it. Disabled until the recording (and its images) have arrived, and
+ * for a side that has none — there is nothing to render.
+ */
+function ReplayDownload({
+  side,
+  name,
+  as,
+}: {
+  side: LoadedRecording;
+  name: string;
+  as: PaneSide;
+}) {
+  const { recording, resources } = side;
+  const ready =
+    recording !== null && resources !== null && recording.frames.length > 0;
+  return (
+    <PaneDownloadButton
+      label={as === "reference" ? "Download reference" : "Download this run"}
+      disabled={!ready}
+      download={async () => {
+        if (!ready) return;
+        const blob = await encodeReplayWebm(recording, resources);
+        downloadBlob(blob, `${paneFileStem(name, as)}.webm`);
+      }}
+    />
   );
 }
 

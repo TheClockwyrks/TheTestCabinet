@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router";
 import {
   AestheticBadge,
   Avatar,
-  FailureCapBadge,
   GradeBadge,
   Panel,
   RatingBadge,
@@ -33,11 +32,7 @@ import { ReviewItemAssets } from "./AssetResultSection";
 import { ValidationReplayPair } from "./ValidationReplayPair";
 import { ValidationMediaPair } from "./ValidationMediaPair";
 import { ReviewItemBrowser } from "./ReviewItemBrowser";
-import {
-  ReviewItemCapNote,
-  capOutcome,
-  formatDomainNames,
-} from "./ReviewItemCap";
+import { ReviewItemHeading, capOutcome } from "./ReviewItemCap";
 import { DebugScriptList } from "./DebugScriptList";
 import {
   AESTHETIC_META,
@@ -55,6 +50,7 @@ import {
   aggregateScore,
   automatedVerdicts,
   formatPoints,
+  formatWeight,
   isAestheticRating,
   isGrade,
   isRating,
@@ -66,7 +62,6 @@ import {
   validatorReviewScore,
   verdictIdsForItem,
   type AestheticRating,
-  type FailureCap,
   type GradeStatus,
   type Rating,
 } from "../../../data/ratings";
@@ -97,11 +92,6 @@ const AESTHETIC_CRITERIA = AESTHETIC_RATINGS.map(
   (rt) => `${AESTHETIC_META[rt].label}: ${AESTHETIC_META[rt].description}`,
 ).join("\n\n");
 
-/** Format a point weight as `1 pt` / `2 pts`. */
-function pts(weight: number): string {
-  return `${weight} ${weight === 1 ? "pt" : "pts"}`;
-}
-
 /**
  * The points label for a checklist item: a binary item shows its flat weight
  * (`2 pts`); a graded game-jam category shows what it earned over its available
@@ -111,7 +101,7 @@ function itemPoints(
   item: { weight: number; graded?: boolean },
   status: VerdictStatus | "" | undefined,
 ): string {
-  if (!item.graded) return pts(item.weight);
+  if (!item.graded) return formatWeight(item.weight);
   const available = item.weight * GRADE_MAX_POINTS;
   const earned =
     status && isGrade(status) ? GRADE_META[status].points * item.weight : 0;
@@ -1112,19 +1102,8 @@ export function RunReviewEditor({
     : "";
   // On a validator-rated version every point carries a failure cap; the walker
   // shows it on every point (lit while the point's effective verdict is Fail) so
-  // the reviewer sees what each override is worth. Domain ids read by name.
-  const domainNameById = new Map(domains.map((d) => [d.id, d.name]));
-  const capFor = (point: {
-    failureCap?: FailureCap | null;
-    domains?: string[];
-  }) =>
-    validatorRated && point.failureCap
-      ? {
-          cap: point.failureCap,
-          domains: formatDomainNames(point.domains ?? [], domainNameById),
-        }
-      : undefined;
-  const slotCap = item ? capFor(sub ?? item) : undefined;
+  // the reviewer sees what each override is worth.
+  const slotCap = item && validatorRated ? (sub ?? item).failureCap : undefined;
   // The slot index of a category's first review item, and of a specific sub-item, so
   // the rail's category header and sub-item rows can jump to the right slot.
   const firstSlotOfItem = (itemIndex: number) =>
@@ -1285,12 +1264,7 @@ export function RunReviewEditor({
           visitor sees on the published Verdict tab. Never rendered beside the
           walker: the page shows one item list at a time. */}
       {validatorRated && !showForm && items.length > 0 && (
-        <ReviewItemBrowser
-          run={run}
-          items={items}
-          domains={domains}
-          reviews={reviews}
-        />
+        <ReviewItemBrowser run={run} items={items} reviews={reviews} />
       )}
 
       {/* The instrumentation debug scripts this run's automated-validation items
@@ -1533,26 +1507,6 @@ export function RunReviewEditor({
                             {it.title} (
                             {itemPoints(it, verdicts[it.id]?.status)})
                           </span>
-                          {/* A leaf item's failure cap, lit while the item's
-                          effective verdict is Fail; a category's caps sit on
-                          its sub-items below. */}
-                          {subItems.length === 0 &&
-                            (() => {
-                              const cap = capFor(it);
-                              return (
-                                cap && (
-                                  <FailureCapBadge
-                                    cap={cap.cap}
-                                    outcome={capOutcome(
-                                      verdicts[it.id]?.status,
-                                      it.scored === false,
-                                    )}
-                                    domains={cap.domains}
-                                    className={styles.navCap}
-                                  />
-                                )
-                              );
-                            })()}
                         </button>
                         {/* The sub-item list stays mounted so it can animate its
                         height open/closed (grid 0fr→1fr) rather than snapping in;
@@ -1609,23 +1563,6 @@ export function RunReviewEditor({
                                         <span className={styles.subNavTitle}>
                                           {subItem.title}
                                         </span>
-                                        {(() => {
-                                          const cap = capFor(subItem);
-                                          return (
-                                            cap && (
-                                              <FailureCapBadge
-                                                cap={cap.cap}
-                                                outcome={capOutcome(
-                                                  st,
-                                                  it.scored === false ||
-                                                    subItem.scored === false,
-                                                )}
-                                                domains={cap.domains}
-                                                className={styles.navCap}
-                                              />
-                                            )
-                                          );
-                                        })()}
                                       </button>
                                     </li>
                                   );
@@ -1648,37 +1585,25 @@ export function RunReviewEditor({
                 {sub && (
                   <span className={styles.checklistCategory}>{item.title}</span>
                 )}
-                <span className={styles.checklistTitle}>
-                  <span className={styles.checklistNumber}>
-                    {slotIndex + 1}.
-                  </span>{" "}
-                  {sub ? sub.title : item.title}{" "}
-                  {slotNotScored ? (
-                    <span className={styles.notScored}>Not scored</span>
-                  ) : (
-                    <>
-                      (
-                      {sub
-                        ? formatPoints(sub.weight ?? 1)
-                        : itemPoints(item, verdicts[item.id]?.status)}
-                      )
-                    </>
+                {/* The heading carries the point's failure cap at its right
+                edge on every capped point: lit while the effective verdict is
+                Fail (the cap is in force), dimmed otherwise — so the reviewer
+                sees what overriding this verdict is worth before recording it. */}
+                <ReviewItemHeading
+                  number={slotIndex + 1}
+                  title={sub ? sub.title : item.title}
+                  points={
+                    sub
+                      ? formatWeight(sub.weight ?? 1)
+                      : itemPoints(item, verdicts[item.id]?.status)
+                  }
+                  notScored={slotNotScored}
+                  cap={slotCap}
+                  outcome={capOutcome(
+                    verdicts[slotVerdictId]?.status,
+                    slotNotScored,
                   )}
-                </span>
-                {/* The point's failure cap and the domains a failure lowers, on
-                every capped point: lit while the effective verdict is Fail (the
-                cap is in force), greyed out otherwise — so the reviewer sees what
-                overriding this verdict is worth before recording it. */}
-                {slotCap && (
-                  <ReviewItemCapNote
-                    cap={slotCap.cap}
-                    outcome={capOutcome(
-                      verdicts[slotVerdictId]?.status,
-                      slotNotScored,
-                    )}
-                    domains={slotCap.domains}
-                  />
-                )}
+                />
                 {/* The point's prose: a sub-item's own description, or a whole item's
                 text (a category itself carries none). */}
                 {sub

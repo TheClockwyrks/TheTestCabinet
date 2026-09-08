@@ -256,17 +256,16 @@ describe("ReviewChecklist on a validator-rated version", () => {
   it("shows each point's failure cap and the domains it affects, by name", () => {
     render(<ReviewChecklist model={rated} />);
     // The definition view has no verdicts, so each cap reads in its tier's
-    // color (nothing has passed to grey it) and explains what a cap is.
+    // color (nothing has passed to dim it) and says what the badge is.
     const broken = screen.getByText("Broken");
     expect(broken.getAttribute("data-rating")).toBe("broken");
     expect(broken.getAttribute("data-muted")).toBeNull();
-    expect(broken.getAttribute("title")).toMatch(/^Failure cap: Broken\./);
-    expect(broken.getAttribute("title")).toMatch(/Single player and Versus/);
+    expect(broken.getAttribute("title")).toBe("Rating cap applied on failure.");
     expect(screen.getByText(/caps Single player, Versus/)).toBeTruthy();
     expect(screen.getByText("Scuffed")).toBeTruthy();
   });
 
-  it("greys a passed point's cap and lights a failed point's", () => {
+  it("dims a passed point's cap and lights a failed point's", () => {
     render(
       <ReviewChecklist
         model={rated}
@@ -276,15 +275,15 @@ describe("ReviewChecklist on a validator-rated version", () => {
         ]}
       />,
     );
+    // The hover text is the same either way: the state reads through the
+    // badge itself, not its title.
     const broken = screen.getByText("Broken");
     expect(broken.getAttribute("data-muted")).toBe("true");
-    expect(broken.getAttribute("title")).toMatch(
-      /passed, so its cap does not apply/,
-    );
+    expect(broken.getAttribute("title")).toBe("Rating cap applied on failure.");
     const scuffed = screen.getByText("Scuffed");
     expect(scuffed.getAttribute("data-muted")).toBeNull();
-    expect(scuffed.getAttribute("title")).toMatch(
-      /failed, so its cap is in force/,
+    expect(scuffed.getAttribute("title")).toBe(
+      "Rating cap applied on failure.",
     );
   });
 

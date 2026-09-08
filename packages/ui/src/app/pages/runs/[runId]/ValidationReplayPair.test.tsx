@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ValidationMedia } from "../../../data/galleryContext";
 import { RECORDING_FORMAT } from "../replay/format";
+import * as webm from "../replay/replayWebm";
+import * as download from "./download";
 import { ValidationReplayPair } from "./ValidationReplayPair";
 
 /**
@@ -77,6 +79,7 @@ function serve(baseline: number, actual: number): void {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -158,6 +161,37 @@ describe("the replay comparison", () => {
     });
     expect(screen.getByText("6 frames")).toBeInTheDocument();
     expect(screen.getByText("1 / 6")).toBeInTheDocument();
+  });
+
+  it("renders a side to a WebM clip on request, once it has loaded", async () => {
+    serve(5, 3);
+    const encode = vi
+      .spyOn(webm, "encodeReplayWebm")
+      .mockResolvedValue(new Blob(["webm"], { type: "video/webm" }));
+    const save = vi
+      .spyOn(download, "downloadBlob")
+      .mockImplementation(() => {});
+    render(<ValidationReplayPair media={media()} />);
+
+    // Nothing to render until the recording (and its images) have arrived.
+    const reference = screen.getByRole("button", {
+      name: "Download reference",
+    });
+    expect(reference).toBeDisabled();
+    await waitFor(() => expect(reference).toBeEnabled());
+
+    fireEvent.click(reference);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    // The export is of THIS side's recording — the five-frame reference, not the
+    // three-frame run beside it — and is named for the output and the side.
+    expect(encode).toHaveBeenCalledTimes(1);
+    expect(encode.mock.calls[0]![0].frames).toHaveLength(5);
+    expect(save.mock.calls[0]![1]).toBe("walk-cycle-reference.webm");
+
+    fireEvent.click(screen.getByRole("button", { name: "Download this run" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(encode.mock.calls[1]![0].frames).toHaveLength(3);
+    expect(save.mock.calls[1]![1]).toBe("walk-cycle-run.webm");
   });
 
   it("says why a side cannot be played instead of showing an empty pane", async () => {

@@ -7,8 +7,9 @@ interface RatingBadgeProps {
   /** Replaces the tier's description as the hover text, for a badge that stands
    * for something other than a run's rating (a review item's failure cap). */
   title?: string;
-  /** Greys the chip out: the tier is named but is not in force — a failure cap
-   * on an item that did not fail. The label still reads the tier. */
+  /** Dims the chip: the tier is named but is not in force — a failure cap on
+   * an item that did not fail. The label still reads the tier, but the chip
+   * reads as disabled rather than as a plainer badge. */
   muted?: boolean;
 }
 
