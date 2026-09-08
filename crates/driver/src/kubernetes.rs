@@ -147,9 +147,23 @@ const DEFAULT_POD_ACTIVE_DEADLINE: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// How many times to attempt the streaming `tar` artifact collection before giving
 /// up. The collection rides the kube exec WebSocket, where a transient tunnel drop
-/// surfaces as a missing exit `Status` (`tar exit -1`) on an otherwise-finished run;
-/// `tar -c` is read-only so re-running it is safe. See `KubernetesArtifactCollector`.
+/// surfaces as a missing exit `Status` (`tar exit -1`) on an otherwise-finished run,
+/// and where the tail of stdout can go missing behind an exit `Status` of `0` (an
+/// archive without its [`COLLECT_END_MARK`]); `tar -c` is read-only so re-running
+/// it is safe. See `KubernetesArtifactCollector`.
 const COLLECT_ATTEMPTS: u32 = 4;
+
+/// The bytes the collection pipeline prints to stdout after the archive, so the
+/// host can tell a whole stream from a truncated one.
+///
+/// An exec's exit `Status` is not proof its stdout arrived: the client stops reading
+/// the moment the status frame lands, and Kubernetes has been seen to drop the tail
+/// of a large exec stdout under load with no error at all
+/// (kubernetes/kubernetes#124571). Stdout is delivered in order, though, so if the
+/// last bytes of the stream made it, everything before them did. The mark is printed
+/// only after `tar` exited `0` (see `collect_tar_command`), and it is ASCII that a
+/// tar stream, which ends in zero-filled blocks, never ends with on its own.
+const COLLECT_END_MARK: &[u8] = b"--tcab-collect-complete--";
 
 /// Configuration for the Kubernetes runtime, resolved from the driver's
 /// environment (see [`crate::config`]). Everything here scopes *sandbox pods*;
@@ -1006,27 +1020,46 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         let dest = self
             .base_dir
             .join(format!("artifact-{}", cuid2::create_id()));
-        std::fs::create_dir_all(&dest).map_err(|err| Error::ArtifactCollection(err.to_string()))?;
 
         // `tar -c -C /work .` writes the working tree to stdout as a binary stream;
         // the extracting `tar` ran as `node`, so it can read its own tree. Stream it
         // to a scratch file (the tree can be large) and unpack into the native host
         // destination. The regenerable dependency directories the published
         // implementation never keeps are excluded here so they never enter the
-        // archive (see `collect_tar_command`).
+        // archive, and the pipeline ends by printing [`COLLECT_END_MARK`] after the
+        // archive so the host can prove the stream arrived whole (see
+        // `collect_tar_command`).
         let command = collect_tar_command();
 
         // Retry the streaming collection a few times. `tar -c` is read-only, so
-        // re-running it is safe, and the failure it guards against is transient: the
-        // collection rides the kube exec WebSocket, and a managed API-server tunnel
-        // severing that long-lived stream surfaces as a missing terminating `Status`
-        // frame — `tar exit -1` with empty stderr — even though the run finished and
-        // its tree is intact. Without this the one blip permanently fails an
-        // otherwise-successful run, since the dispatcher never retries a driver Job.
+        // re-running it is safe, and every failure it guards against is transient:
+        // the collection rides the kube exec WebSocket, and that transport can
+        //
+        // - sever the long-lived stream (a managed API-server tunnel dropping it),
+        //   which surfaces as a missing terminating `Status` frame — `tar exit -1`
+        //   with empty stderr — even though the run finished and its tree is intact;
+        // - deliver the exit `Status` before the last of stdout, so `tar` reports
+        //   `0` for an archive the host received truncated. The client stops reading
+        //   the moment the status lands, and Kubernetes itself has been seen to drop
+        //   the tail of a large exec stdout under load without any error
+        //   (kubernetes/kubernetes#124571). That is what [`COLLECT_END_MARK`]
+        //   catches: an archive that does not end with it did not arrive whole, no
+        //   matter what exit code came with it. Without the mark the truncation
+        //   shows up later — as an unpack that fails mid-file, or worse, as a tree
+        //   silently missing its last files.
+        //
+        // Without the retry a single blip permanently fails an otherwise-successful
+        // run, since the dispatcher never retries a driver Job.
         let archive_path = self
             .base_dir
             .join(format!("artifact-{}.tar", cuid2::create_id()));
         for attempt in 1..=COLLECT_ATTEMPTS {
+            // A fresh destination per attempt: a failed unpack leaves a partial tree
+            // behind, and the next attempt must not stack on top of it.
+            let _ = std::fs::remove_dir_all(&dest);
+            std::fs::create_dir_all(&dest)
+                .map_err(|err| Error::ArtifactCollection(err.to_string()))?;
+
             let mut archive = tokio::fs::File::create(&archive_path)
                 .await
                 .map_err(|err| {
@@ -1038,15 +1071,20 @@ impl ArtifactCollector for KubernetesArtifactCollector {
                 .await;
             drop(archive);
 
-            // Treat both a non-zero `tar` exit and an exec transport error as
-            // retryable; surface the last one if every attempt is exhausted.
+            // Treat a non-zero `tar` exit, an exec transport error, a truncated
+            // stream, and an unpack failure all as retryable; surface the last one if
+            // every attempt is exhausted.
             let failure = match result {
-                Ok((0, _)) => {
-                    let unpack = unpack_archive_file(&archive_path, &dest);
-                    let _ = std::fs::remove_file(&archive_path);
-                    unpack?;
-                    return Ok(ArtifactCollection::new(dest));
-                }
+                Ok((0, _)) => match verify_collected_archive(&archive_path) {
+                    Ok(()) => match unpack_archive_file(&archive_path, &dest) {
+                        Ok(()) => {
+                            let _ = std::fs::remove_file(&archive_path);
+                            return Ok(ArtifactCollection::new(dest));
+                        }
+                        Err(err) => err,
+                    },
+                    Err(err) => err,
+                },
                 Ok((exit_code, stderr)) => Error::ArtifactCollection(format!(
                     "collecting `{WORK_DIR}` from run pod `{}` failed (tar exit {exit_code}): {}",
                     container.id,
@@ -1057,6 +1095,7 @@ impl ArtifactCollector for KubernetesArtifactCollector {
             let _ = std::fs::remove_file(&archive_path);
 
             if attempt == COLLECT_ATTEMPTS {
+                let _ = std::fs::remove_dir_all(&dest);
                 return Err(failure);
             }
             tracing::warn!(
@@ -1580,9 +1619,10 @@ fn pod_waiting_reason(pod: &Pod) -> Option<String> {
         .and_then(|waiting| waiting.reason.clone())
 }
 
-/// The `tar -c` command that streams the run's `/work` tree out of the pod to
-/// stdout, excluding the regenerable dependency directories the published
-/// implementation never keeps ([`SKIPPED_DIRS`]).
+/// The command that streams the run's `/work` tree out of the pod to stdout as a
+/// tar archive followed by [`COLLECT_END_MARK`], excluding the regenerable
+/// dependency directories the published implementation never keeps
+/// ([`SKIPPED_DIRS`]).
 ///
 /// Excluding them at pack time — rather than packing, unpacking on the host, then
 /// dropping them in `copy_tree` — keeps the archive small and, critically, avoids
@@ -1591,17 +1631,66 @@ fn pod_waiting_reason(pod: &Pod) -> Option<String> {
 /// chokes on (the tree is discarded immediately afterward regardless). GNU tar's
 /// `--exclude` is unanchored, so a bare directory name matches that directory at
 /// any depth.
+///
+/// The mark is printed by a second command run only if `tar` exited `0` (`&&`), so
+/// the pipeline's exit code is `tar`'s whenever `tar` failed, and a stream that
+/// ends with the mark carries an archive `tar` finished writing. The host verifies
+/// and strips it with [`verify_collected_archive`]. No path or user input reaches
+/// the shell: every word here is a literal.
 fn collect_tar_command() -> Vec<String> {
-    let mut command = vec!["tar".to_string(), "-c".to_string()];
-    command.extend(SKIPPED_DIRS.iter().map(|dir| format!("--exclude={dir}")));
-    command.extend([
+    let mut tar = vec!["tar".to_string(), "-c".to_string()];
+    tar.extend(SKIPPED_DIRS.iter().map(|dir| format!("--exclude={dir}")));
+    tar.extend([
         "-f".to_string(),
         "-".to_string(),
         "-C".to_string(),
         WORK_DIR.to_string(),
         ".".to_string(),
     ]);
-    command
+    let mark = std::str::from_utf8(COLLECT_END_MARK).expect("the end mark is ASCII");
+    vec![
+        "sh".to_string(),
+        "-c".to_string(),
+        format!("{} && printf '%s' '{mark}'", tar.join(" ")),
+    ]
+}
+
+/// Prove the collected stream arrived whole, and leave `archive` a plain tar file.
+///
+/// The stream ends with [`COLLECT_END_MARK`] only if every byte before it arrived
+/// (stdout is delivered in order) and `tar` exited `0` before it was printed. An
+/// archive that does not end with the mark was cut short in transit — whatever exit
+/// code came with it — and is reported as a collection failure for the caller to
+/// retry. One that does is truncated by the mark's length so `tar` never sees it.
+fn verify_collected_archive(archive: &Path) -> Result<()> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(archive)
+        .map_err(|err| Error::ArtifactCollection(format!("opening collected archive: {err}")))?;
+    let len = file
+        .metadata()
+        .map_err(|err| Error::ArtifactCollection(format!("sizing collected archive: {err}")))?
+        .len();
+    let mark_len = COLLECT_END_MARK.len() as u64;
+    let mut tail = vec![0u8; COLLECT_END_MARK.len()];
+    let complete = len >= mark_len
+        && file
+            .seek(SeekFrom::Start(len - mark_len))
+            .and_then(|_| file.read_exact(&mut tail))
+            .map_err(|err| Error::ArtifactCollection(format!("reading collected archive: {err}")))
+            .map(|()| tail == COLLECT_END_MARK)?;
+    if !complete {
+        return Err(Error::ArtifactCollection(format!(
+            "the collected archive arrived truncated: {len} bytes received and the stream \
+             does not end with the completion mark, so the exec transport dropped the \
+             tail of stdout behind tar's exit status"
+        )));
+    }
+    file.set_len(len - mark_len)
+        .map_err(|err| Error::ArtifactCollection(format!("trimming collected archive: {err}")))
 }
 
 /// Build a tar archive of the *contents* of `dir` (entries relative to the
@@ -1645,10 +1734,30 @@ fn tar_files(files: &[ContainerFile]) -> Result<Vec<u8>> {
 }
 
 /// Unpack a tar archive file into `dest` on the host.
+///
+/// The `tar` crate reports an entry that would not unpack as a chain — the host path,
+/// then the entry, then the I/O error underneath — and only the outermost link is in
+/// its `Display`. The report here walks the whole chain, because the innermost link
+/// is the one that says *why*: a stream cut short, a full disk, a permission.
 fn unpack_archive_file(archive: &Path, dest: &Path) -> Result<()> {
     let file = std::fs::File::open(archive)
         .map_err(|err| Error::ArtifactCollection(format!("opening collected archive: {err}")))?;
-    tar::Archive::new(file)
-        .unpack(dest)
-        .map_err(|err| Error::ArtifactCollection(format!("unpacking collected archive: {err}")))
+    tar::Archive::new(file).unpack(dest).map_err(|err| {
+        Error::ArtifactCollection(format!(
+            "unpacking collected archive: {}",
+            error_chain(&err)
+        ))
+    })
+}
+
+/// An error and every cause beneath it, outermost first, joined with `: `.
+fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut chain = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        chain.push_str(": ");
+        chain.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    chain
 }
