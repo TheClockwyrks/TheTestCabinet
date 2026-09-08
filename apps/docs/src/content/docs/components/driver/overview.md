@@ -207,6 +207,19 @@ Two mechanisms outside the driver close that gap:
 
 ## Artifacts
 
+Under the Kubernetes runtime the driver collects the produced tree out of the
+sandbox pod over an exec: a `tar` of `/work` streamed to stdout, with the
+regenerable dependency directories excluded at pack time. The exec's exit status
+is not proof that its stdout arrived, because the transport can deliver the
+status before the tail of the stream and drop the rest without an error. The
+pipeline therefore prints a fixed completion mark after the archive, only once
+`tar` has exited successfully, and the driver accepts a collected stream only
+when it ends with that mark. A stream without the mark, a `tar` that reported a
+failure, a lost exec stream and an archive that fails to unpack are each
+retried with a fresh stream and a fresh destination, up to a fixed number of
+attempts; `tar -c` is read-only, so repeating it is safe. A collection failure
+report names the innermost cause of the failure.
+
 The sandbox pod is ephemeral and its disk is lost on exit, so the driver uploads
 the produced run tree to the [artifact service](/components/artifacts/overview/)
 (`TCAB_ARTIFACTS_URL`, forwarded by the dispatcher) before reporting terminal
