@@ -7,7 +7,9 @@ run and then reviewed by a person who plays it. The automated pass builds the
 produced game with the manifest's `[build]` commands, serves the static output,
 loads it in a headless browser, and records whether it runs at all. A build that
 never loads leaves nothing to review, so the run is recorded as a catastrophic
-failure rather than sent to review.
+failure rather than sent to review. A tree whose dependency install does not
+succeed is recorded as an infrastructure failure instead, since the game was
+never given a chance to build.
 
 The review is where a jam differs. A jam has no specification to conform to and
 no scoring domains, so it is graded on categories instead of scored against a

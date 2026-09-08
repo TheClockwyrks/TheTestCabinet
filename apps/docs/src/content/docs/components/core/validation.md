@@ -34,7 +34,8 @@ Validation must:
 - Detect fatal errors, including build failures and uncaught runtime errors that
   prevent the application from rendering.
 
-A run that cannot load is recorded as such.
+A run that cannot load is recorded as such. A tree whose dependency install
+does not succeed is never built, and the run ends as an infrastructure failure.
 
 ### The dependency install
 
@@ -47,6 +48,22 @@ Validation runs the install itself for any tree that carries no successful
 install of that same command, such as `tcab validate` against an implementation
 directory or a tree whose earlier install failed. The summary reports the install
 as its own step on both paths.
+
+Every install is verified against the tree's lockfile. After the command exits,
+each package the lockfile declares for the host's platform, architecture, and
+libc family must be present on disk, leaving out the dev and optional packages
+the command's own flags omit. A command that exits non-zero, or exits zero and
+leaves such a package absent, is run again after a delay, up to three attempts
+in all. A tree without a lockfile, or with one that declares no packages, is
+accepted as unchecked.
+
+The install succeeds when an attempt exits zero with every declared package
+present. After the last attempt, a non-zero exit fails the install as a failed
+command, and a zero exit fails it with a detail naming the packages still
+missing. The install result records a bounded excerpt of its captured output and
+the number of attempts it took. An install that fails on a run's collected tree
+ends the run as an [`infrastructure`](/components/core/run-records/#status)
+failure, since the model's output was never given a chance to build.
 
 ## Validators
 
@@ -402,7 +419,9 @@ its TypeScript commands run over the collected tree after the run's container is
 gone, together with a smoke check that builds the implementation and opens it in
 a headless browser. Each command's outcome and a bounded excerpt of its output
 are recorded on the run record's own `toolchain` block, beside the validation
-summary.
+summary. The install command is the verified, retried
+[dependency install](#the-dependency-install), and its record also carries the
+number of attempts it took.
 
 A `typecheck` that ran and exited non-zero gates the run: its functional rating
 is `broken` and its score zero, because code that does not compile is not
@@ -429,7 +448,9 @@ Validation output is summarized into the
 validation did. Building an implementation is reported as its constituent steps.
 The dependency install and the static build are required steps that every run
 performs, and each is reported as its own result with its outcome rather than
-being folded into the load signal.
+being folded into the load signal. Each step records a bounded excerpt of its
+combined output, which is also the detail a failed build reports, and the install
+records the number of attempts it took.
 
 The summary therefore covers the install and the build alongside whether the
 implementation loaded. It also carries:

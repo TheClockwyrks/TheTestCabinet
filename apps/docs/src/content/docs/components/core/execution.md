@@ -188,8 +188,12 @@ unprivileged run user with the seeded repository as its working directory.
 
 - It is bounded by the run's maximum runtime, the same cap that bounds the
   harness session.
-- A non-zero exit or a timeout aborts the run before the harness starts and
-  tears the container down, with the captured output surfaced for diagnosis.
+- It is verified against the workspace's lockfile and retried, up to three
+  attempts, as [Init](/testing/end-to-end/overview/#init) describes. After the
+  last attempt, a non-zero exit or a declared package still missing aborts the
+  run before the harness starts and tears the container down, with the captured
+  output surfaced for diagnosis. A timeout aborts it the same way without a
+  retry.
 - Because init needs a running container, it is excluded from `tcab seed`, which
   only materializes the seeded files on disk.
 

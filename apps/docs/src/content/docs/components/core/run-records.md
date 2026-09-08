@@ -93,7 +93,8 @@ A summary of the [validation](/components/core/validation/) results: the outcome
 of the required install and build steps, whether the implementation loaded, the
 similarity signal from each declared check, a proof result per declared
 proof-of-implementation artifact, and a debug-script result per validated verdict
-unit.
+unit. Each install or build step that ran carries a bounded excerpt of its
+captured output, and the install carries the number of attempts it took.
 
 Each validated verdict unit carries one entry per media output its checklist item
 declares, recording the output's id, its display name, its kind, and whether the
@@ -151,8 +152,9 @@ The run's terminal state, with enough detail to understand a failure. One of:
   completion, but the output did not build or load, so there was no playable
   build and nothing to evaluate. A publishable model failure with no review
   checklist, reported as a separate catastrophic-failure statistic. Reserved for
-  a total failure to produce a runnable artifact: an output that builds and loads
-  is reviewed however badly it behaves.
+  a total failure to produce a runnable artifact: a tree with no `package.json`,
+  or one whose build or load failed after its dependency install succeeded. An
+  output that builds and loads is reviewed however badly it behaves.
 - `timed_out`: the run hit its maximum runtime and was stopped before the harness
   finished, meaning the model never converged. A publishable tier distinct from
   `catastrophic`, likewise unscored.
@@ -179,9 +181,13 @@ The run's terminal state, with enough detail to understand a failure. One of:
   limits, so a run's fate is decided here and a case's `max_runtime_hours` stays
   reachable however long it is.
 - `infrastructure`: the Test Cabinet's own infrastructure failed, covering a
-  container that would not start or pull, an OOM-killed pod, and a failure in
-  seeding or the case's init step. Retained with a diagnostic detail, never
-  publishable, and excluded from every model statistic.
+  container that would not start or pull, an OOM-killed pod, a failure in
+  seeding or the case's init step, and a collected tree whose
+  [dependency install](/components/core/validation/#the-dependency-install) did
+  not succeed after its retries. Retained with a diagnostic detail giving the
+  reason, never publishable, and excluded from every model statistic. A run
+  that reached the install carries its collected tree and its validation
+  summary.
 - `canceled`: an operator killed a [gg](/gg/overview/) run before it finished.
   Retained, visible, and inspectable, never publishable, and excluded from every
   model statistic, because nothing about the model can be concluded from a run a

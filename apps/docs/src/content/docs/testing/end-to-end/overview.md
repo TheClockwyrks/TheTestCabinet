@@ -199,10 +199,21 @@ be a plain command such as `npm install` or invoke a file the workspace
 supplies. Carom and Coil use `npm install && npx playwright install chromium`.
 
 The command is bounded by the run's maximum runtime, so a hung setup cannot run
-unbounded. A non-zero exit or a timeout aborts the run before the harness starts
-and tears the container down, with the captured output surfaced for diagnosis.
-`init` runs only in a real run; `tcab seed` materializes the seeded files
-without a container and reports the command instead of executing it.
+unbounded. It is verified and retried the way validation's
+[dependency install](/components/core/validation/#the-dependency-install) is:
+after each attempt, every package the workspace's lockfile declares for the
+container must be present on disk, and a non-zero exit or a missing package is
+run again after a delay, up to three attempts in all. Each retry is reported as
+a warning in the run's event stream naming the attempt and its reason. A
+workspace without a lockfile, or a container in which the check cannot run, is
+accepted as unchecked.
+
+After the last attempt, a non-zero exit, or a zero exit with a declared package
+still missing, aborts the run before the harness starts and tears the container
+down, with the captured output and the missing packages surfaced for diagnosis.
+A timeout aborts the run the same way without a retry. `init` runs only in a
+real run; `tcab seed` materializes the seeded files without a container and
+reports the command instead of executing it.
 
 ## Packages
 

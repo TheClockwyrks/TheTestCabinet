@@ -236,7 +236,8 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   [Workspace](/testing/end-to-end/overview/#workspace).
 - `init` is an optional command run inside the run container once the workspace
   and specs are seeded and before the harness starts. It must be non-empty when
-  declared. See [Init](/testing/end-to-end/overview/#init).
+  declared. It is verified against the workspace's lockfile and retried, up to
+  three attempts. See [Init](/testing/end-to-end/overview/#init).
 - `assets` lists files or directories seeded into the run at their path relative
   to the version folder; a directory is seeded recursively.
 - `packages` lists the Test Cabinet runtime libraries the build imports. Each
